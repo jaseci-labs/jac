@@ -70,14 +70,33 @@ impl BoundaryAnalysisPass._resolve_native_module(
     return src_mod_str;
 }
 
+impl BoundaryAnalysisPass._in_native_module(self: BoundaryAnalysisPass) -> bool {
+    import os;
+    import from jaclang.jac0core.ext_registry { is_native_module }
+    if not (self.ir_in and self.ir_in.loc) {
+        return False;
+    }
+    mod_path = self.ir_in.loc.mod_path;
+    if mod_path and is_native_module(mod_path) {
+        return True;
+    }
+    if (
+        self.prog
+        and self.prog._auto_promote_native
+        and self.prog._auto_promote_target
+        and mod_path
+    ) {
+        return os.path.realpath(mod_path) == os.path.realpath(
+            self.prog._auto_promote_target
+        );
+    }
+    return False;
+}
+
 impl BoundaryAnalysisPass.enter_import(
     self: BoundaryAnalysisPass, nd: uni.Import
 ) -> None {
-    import from jaclang.jac0core.ext_registry {
-        is_server_module,
-        is_client_module,
-        is_native_module
-    }
+    import from jaclang.jac0core.ext_registry { is_server_module, is_client_module }
     import_context = self._get_context(nd);
     if (nd.from_loc and isinstance(nd.from_loc, uni.ModulePath)) {
         module_name = nd.from_loc?.dot_path_str;
@@ -122,11 +141,7 @@ impl BoundaryAnalysisPass.enter_import(
 
                         is_native_ctx = (
                             import_context == InteropContext.NATIVE
-                            or (
-                                self.ir_in
-                                and self.ir_in.loc
-                                and is_native_module(self.ir_in.loc.mod_path)
-                            )
+                            or self._in_native_module()
                         );
                         if (is_native_ctx and func_name not in manifest.bindings) {
                             binding = InteropBinding(
@@ -433,14 +448,9 @@ impl BoundaryAnalysisPass.enter_func_call(
                 right_name = nd.target.right?.value;
             }
 
-            import from jaclang.jac0core.ext_registry { is_native_module }
             _is_native_ctx = (
                 self._get_context(nd) == InteropContext.NATIVE
-                or (
-                    self.ir_in
-                    and self.ir_in.loc
-                    and is_native_module(self.ir_in.loc.mod_path)
-                )
+                or self._in_native_module()
             );
             if right_name and _is_native_ctx {
                 (mod_path, _ctx) = self._imported_native_modules[base_name];
@@ -472,7 +482,7 @@ impl BoundaryAnalysisPass.enter_func_call(
     manifest = self.ir_in.gen.interop_manifest;
     if (func_name in self._imported_native_funcs) {
         (source_module, import_ctx) = self._imported_native_funcs[func_name];
-        if (caller_ctx == InteropContext.NATIVE) {
+        if (caller_ctx == InteropContext.NATIVE or self._in_native_module()) {
             if (func_name not in manifest.bindings) {
                 binding = InteropBinding(
                     name=func_name,
