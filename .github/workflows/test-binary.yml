@@ -159,6 +159,17 @@ jobs:
         run: |
           chmod +x "$PWD/bin/jac"
           echo "$PWD/bin" >> "$GITHUB_PATH"
+      # Self-contained nacompile tests static-link against a vendored musl
+      # runtime; the in-tree (dev-mode) nacompile resolves it from
+      # .pbs-build/<arch>/musl/lib, so harvest it from the bundled Zig here.
+      - name: Set up Zig 0.16.0 (vendor static-musl runtime)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+      - name: Vendor static-musl runtime
+        working-directory: jac
+        run: zig build vendor-musl --summary all
       - name: Compiler suite via the binary
         working-directory: jac
         run: |
@@ -198,6 +209,16 @@ jobs:
           node-version: "20"
       - name: Set up Bun (JS backend tests)
         uses: oven-sh/setup-bun@v2
+      # Self-contained nacompile tests static-link against a vendored musl
+      # runtime, resolved in dev mode from .pbs-build/<arch>/musl/lib.
+      - name: Set up Zig 0.16.0 (vendor static-musl runtime)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+      - name: Vendor static-musl runtime
+        working-directory: jac
+        run: zig build vendor-musl --summary all
       - name: Runtime suite via the binary (everything except compiler)
         working-directory: jac
         run: |

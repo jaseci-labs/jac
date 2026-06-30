@@ -32,7 +32,7 @@ def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
             'declare i32 @__cxa_atexit(ptr, ptr, ptr)\n' + 'define i32 @atexit(ptr %atx_fn) {\nentry:\n' + '    %atx_r = call i32 @__cxa_atexit(ptr %atx_fn, ptr null, ptr @__dso_handle)\n' + '    ret i32 %atx_r\n}\n\n'
         );
     ir = (
-        '\n; --- injected entry point ---\n' + globals_ir + initarr_ir + exit_decl + lsm_decl + dso_def + atexit_def + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    %ia = load ptr, ptr @__jac_init_array\n' + '    %ic = load i64, ptr @__jac_init_count\n' + '    br label %ia.cond\n' + 'ia.cond:\n' + '    %i = phi i64 [ 0, %entry ], [ %inext, %ia.body ]\n' + '    %more = icmp ult i64 %i, %ic\n' + '    br i1 %more, label %ia.body, label %ia.done\n' + 'ia.body:\n' + '    %slot = getelementptr ptr, ptr %ia, i64 %i\n' + '    %fn = load ptr, ptr %slot\n' + '    call void %fn()\n' + '    %inext = add i64 %i, 1\n' + '    br label %ia.cond\n' + 'ia.done:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    call void @_jac_boot(i32 %argc, ptr %argv, ptr %sp)\n' + '    unreachable\n' + '}\n\n' + '; A NORMAL (non-naked) shim makes the hand-off to __libc_start_main. The naked\n' + '; _start cannot align the stack for __libc_start_main\'s 7th argument\n' + '; (stack_end), which x86-64 passes on the stack: a misaligned call leaves the\n' + '; whole program 8 bytes off, faulting any AVX `vmovdqa` (e.g. OpenSSL sha512).\n' + '; Routing through a framed function lets the backend align the call correctly.\n' + '; (#6978 Phase 1)\n' + 'define internal void @_jac_boot(i32 %bargc, ptr %bargv, ptr %bstack) noreturn {\n' + 'entry:\n' + '    %r = call i32 @__libc_start_main(ptr @main, i32 %bargc, ptr %bargv, ptr null, ptr null, ptr null, ptr %bstack)\n' + '    unreachable\n' + '}\n'
+        '\n; --- injected entry point ---\n' + globals_ir + initarr_ir + exit_decl + lsm_decl + dso_def + atexit_def + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    %ia = load ptr, ptr @__jac_init_array\n' + '    %ic = load i64, ptr @__jac_init_count\n' + '    br label %ia.cond\n' + 'ia.cond:\n' + '    %i = phi i64 [ 0, %entry ], [ %inext, %ia.body ]\n' + '    %more = icmp ult i64 %i, %ic\n' + '    br i1 %more, label %ia.body, label %ia.done\n' + 'ia.body:\n' + '    %slot = getelementptr ptr, ptr %ia, i64 %i\n' + '    %fn = load ptr, ptr %slot\n' + '    call void %fn()\n' + '    %inext = add i64 %i, 1\n' + '    br label %ia.cond\n' + 'ia.done:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    call void @_jac_boot(i32 %argc, ptr %argv, ptr %sp)\n' + '    unreachable\n' + '}\n\n' + 'define internal void @_jac_boot(i32 %bargc, ptr %bargv, ptr %bstack) noreturn {\n' + 'entry:\n' + '    %r = call i32 @__libc_start_main(ptr @main, i32 %bargc, ptr %bargv, ptr null, ptr null, ptr null, ptr %bstack)\n' + '    unreachable\n' + '}\n'
     );
     return llvm_ir_str + ir;
 }
@@ -44,6 +44,23 @@ def _inject_entry_macho(llvm_ir_str: str) -> str {
         if has_jac_argc
         else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
     ir = '\n; --- injected entry point ---\n' + globals_ir + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n';
+    return llvm_ir_str + ir;
+}
+
+
+def _inject_entry_elf_static(llvm_ir_str: str) -> str {
+    has_jac_argc = "__jac_argc" in llvm_ir_str;
+    globals_ir = ""
+        if has_jac_argc
+        else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    initarr_ir = ""
+        if "__jac_init_array" in llvm_ir_str
+        else (
+            '@__jac_init_array = global ptr null\n' + '@__jac_init_count = global i64 0\n\n'
+        );
+    ir = (
+        '\n; --- injected entry point (musl static) ---\n' + globals_ir + initarr_ir + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    %ia = load ptr, ptr @__jac_init_array\n' + '    %ic = load i64, ptr @__jac_init_count\n' + '    br label %ia.cond\n' + 'ia.cond:\n' + '    %i = phi i64 [ 0, %entry ], [ %inext, %ia.body ]\n' + '    %more = icmp ult i64 %i, %ic\n' + '    br i1 %more, label %ia.body, label %ia.done\n' + 'ia.body:\n' + '    %slot = getelementptr ptr, ptr %ia, i64 %i\n' + '    %fn = load ptr, ptr %slot\n' + '    call void %fn()\n' + '    %inext = add i64 %i, 1\n' + '    br label %ia.cond\n' + 'ia.done:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n'
+    );
     return llvm_ir_str + ir;
 }
 
@@ -303,6 +320,47 @@ impl nacompile(
 
     export_symbols: list[str] = [];
     init_funcs: list[str] = [];
+
+    clib_paths = ir_module.gen._clib_paths;
+    (archive_members, _floor_handled) = _collect_floor_archives(
+        clib_paths or [], ir_module.gen._clib_symbol_lib, triple, is_macos
+    );
+    if archive_members {
+        console.print(
+            f"  Static-linking {len(archive_members)} floor archive member(s)."
+        );
+    }
+
+    if is_windows {
+        needed_libs: list[str] = ["msvcrt.dll"];
+    } elif is_macos {
+        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
+    } else {
+        needed_libs: list[str] = [];
+    }
+    _lib_norm: dict[str, str] = {};
+    if clib_paths {
+        for lib_path in clib_paths {
+            if lib_path in _floor_handled {
+                continue;
+            }
+            _needed = lib_path;
+            if (not os.path.isabs(lib_path))
+            and (not lib_path.startswith("$"))
+            and (not lib_path.startswith("@"))
+            and ("/" in lib_path or "\\" in lib_path) {
+                _needed = os.path.basename(lib_path);
+            }
+            if _needed not in needed_libs {
+                needed_libs.append(_needed);
+            }
+            _lib_norm[lib_path] = _needed;
+        }
+    }
+
+    _is_linux_exec = (not shared) and (not is_windows) and (not is_macos);
+    _static_musl = _is_linux_exec and (len(needed_libs) == 0);
+
     if shared {
         _transitive: list[str] = [];
         _mf = ir_module.gen.interop_manifest;
@@ -311,7 +369,6 @@ impl nacompile(
         }
         (llvm_ir_str, _extra_exports) = _inject_shared_init(llvm_ir_str, _transitive);
         init_funcs = ["__jac_shared_init"];
-
         for _s in ir_module.gen._exported_symbols {
             if _s not in export_symbols {
                 export_symbols.append(_s);
@@ -338,51 +395,15 @@ impl nacompile(
         llvm_ir_str = _inject_entry_pe(llvm_ir_str);
     } elif is_macos {
         llvm_ir_str = _inject_entry_macho(llvm_ir_str);
+    } elif _static_musl {
+        llvm_ir_str = _inject_entry_elf_static(llvm_ir_str);
     } else {
         llvm_ir_str = _inject_entry_elf(llvm_ir_str, triple);
     }
 
-    if is_windows {
-        needed_libs: list[str] = ["msvcrt.dll"];
-    } elif is_macos {
-        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
-    } else {
-        needed_libs: list[str] = [];
-    }
-
-    clib_paths = ir_module.gen._clib_paths;
-
-    (archive_members, _floor_handled) = _collect_floor_archives(
-        clib_paths or [], ir_module.gen._clib_symbol_lib, triple, is_macos
-    );
-    if archive_members {
-        console.print(
-            f"  Static-linking {len(archive_members)} floor archive member(s)."
-        );
-    }
-
-    _lib_norm: dict[str, str] = {};
-    if clib_paths {
-        for lib_path in clib_paths {
-            if lib_path in _floor_handled {
-                continue;
-            }
-
-            _needed = lib_path;
-            if (not os.path.isabs(lib_path))
-            and (not lib_path.startswith("$"))
-            and (not lib_path.startswith("@"))
-            and ("/" in lib_path or "\\" in lib_path) {
-                _needed = os.path.basename(lib_path);
-            }
-            if _needed not in needed_libs {
-                needed_libs.append(_needed);
-            }
-            _lib_norm[lib_path] = _needed;
-        }
-    }
-
-    if not is_macos and not is_windows {
+    if (shared or (_is_linux_exec and not _static_musl))
+    and not is_macos
+    and not is_windows {
         if "libc.so.6" not in needed_libs {
             needed_libs.append("libc.so.6");
         }
@@ -501,16 +522,36 @@ impl nacompile(
         }
     } else {
         import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+        _crt_objects: list[bytes] = [];
+        if _static_musl {
+            _musl = _collect_musl_static(obj_bytes, triple);
+            if _musl is None {
+                console.error(
+                    "Static musl runtime not found. Expected a vendored musl "
+                    "libc.a under .pbs-build/<arch>/musl/lib (run `zig build "
+                    "vendor-musl`) or set JAC_NATIVE_MUSL_DIR."
+                );
+                return 1;
+            }
+            (_musl_members, _crt_objects) = _musl;
+            archive_members = archive_members + _musl_members;
+            console.print(
+                f"  Static-linking musl: {len(_musl_members)} libc member(s) + "
+                f"{len(_crt_objects)} crt object(s)."
+            );
+        }
         try {
             success = ElfLinker.link(
                 obj_bytes=obj_bytes,
                 output_path=output,
                 needed_libs=needed_libs,
+                crt_objects=_crt_objects,
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
                 soname=os.path.basename(output),
-                archive_members=archive_members
+                archive_members=archive_members,
+                static_link=_static_musl
             );
         } except Exception as e {
             console.error(f"ELF linking failed: {e}");
@@ -692,4 +733,122 @@ def _collect_floor_archives(
         }
     }
     return (member_bytes, handled);
+}
+
+
+def _musl_lib_dir(triple: str) -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
+    if env and os.path.isdir(env) {
+        return env;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+    pbs = os.path.join(pkg_root, ".pbs-build");
+    if os.path.isdir(pbs) {
+        for d in sorted(os.listdir(pbs)) {
+            libdir = os.path.join(pbs, d, "musl", "lib");
+            if os.path.isdir(libdir)
+            and os.path.isfile(os.path.join(libdir, "libc.a"))
+            and (want in d) {
+                return libdir;
+            }
+        }
+    }
+
+    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
+    if os.path.isdir(floor) {
+        for d in sorted(os.listdir(floor)) {
+            cand = os.path.join(floor, d, "musl");
+            if os.path.isdir(cand)
+            and os.path.isfile(os.path.join(cand, "libc.a"))
+            and (want in d) {
+                return cand;
+            }
+        }
+    }
+    return None;
+}
+
+
+def _collect_musl_static(obj_bytes: bytes, triple: str) -> (tuple | None) {
+    import os;
+    import from jaclang.compiler.passes.native.linker_common {
+        select_ar_members,
+        _ar_member_undefs
+    }
+    lib_dir = _musl_lib_dir(triple);
+    if lib_dir is None {
+        return None;
+    }
+    libc_a = os.path.join(lib_dir, "libc.a");
+    if not os.path.isfile(libc_a) {
+        return None;
+    }
+
+    crt_objects: list[bytes] = [];
+    _have_crt1 = False;
+    for crt_name in ["crt1.o", "crti.o", "crtn.o"] {
+        p = os.path.join(lib_dir, crt_name);
+        if os.path.isfile(p) {
+            with open(p, "rb") as _cf {
+                crt_objects.append(_cf.read());
+            }
+            if crt_name == "crt1.o" {
+                _have_crt1 = True;
+            }
+        }
+    }
+    if not _have_crt1 {
+        return None;
+    }
+
+    archives_data: list[bytes] = [];
+    for af in ["libc.a", "libzigc.a", "libcompiler_rt.a"] {
+        p = os.path.join(lib_dir, af);
+        if os.path.isfile(p) {
+            with open(p, "rb") as _af {
+                archives_data.append(_af.read());
+            }
+        }
+    }
+
+    work_roots: list[str] = [];
+    known: set[str] = set();
+    for blob in [obj_bytes] + crt_objects {
+        for u in _ar_member_undefs(blob) {
+            if u not in known {
+                known.add(u);
+                work_roots.append(u);
+            }
+        }
+    }
+
+    import hashlib;
+    member_bytes: list[bytes] = [];
+    seen_members: set[bytes] = set();
+    changed = True;
+    while changed {
+        changed = False;
+        for data in archives_data {
+            for m in select_ar_members(data, work_roots) {
+                key = hashlib.sha256(m.data).digest();
+                if key in seen_members {
+                    continue;
+                }
+                seen_members.add(key);
+                member_bytes.append(m.data);
+                changed = True;
+                for u in _ar_member_undefs(m.data) {
+                    if u not in known {
+                        known.add(u);
+                        work_roots.append(u);
+                    }
+                }
+            }
+        }
+    }
+
+    return (member_bytes, crt_objects);
 }
