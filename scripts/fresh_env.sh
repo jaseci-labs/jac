@@ -52,8 +52,9 @@ echo "Add it to PATH, e.g.:  export PATH=\"$PWD/jac/zig-out/bin:\$PATH\""
 export PATH="$PWD/jac/zig-out/bin:$PATH"
 
 # Plugins (editable, global): importable from anywhere, including each plugin dir.
+# scale and the MCP server are built into the jac binary (jaclang.scale /
+# jaclang.cli.mcp), so byllm is the only separately-installed plugin.
 jac install -e jac-byllm --global
-jac install -e jac-scale --global
 
 # pre-commit is a standalone contributor tool (not part of the jac toolchain).
 # Its jac hooks shell out to the `jac` binary on PATH, so all it needs is the

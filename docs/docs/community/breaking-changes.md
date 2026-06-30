@@ -7,6 +7,21 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### jac-scale folded into `jaclang` core
+
+`jac-scale` is no longer a separate PyPI package or plugin. Its serving and deployment subsystem is now built into `jaclang` core and importable as `jaclang.scale` (was `jac_scale`). This is a **clean break** -- there is no backward-compatible `jac-scale` package or `jac_scale` import shim.
+
+**Impact:**
+
+- There is no more `jac install jac-scale` / `jac install 'jac-scale[...]'` / `pip install jac-scale`. The scale subsystem ships inside the `jac` binary.
+- Code that did `import from jac_scale...` (e.g. `import from jac_scale.persistence.lib { kvstore }`) must change to `import from jaclang.scale...` (e.g. `import from jaclang.scale.persistence.lib { kvstore }`).
+- `jac plugins enable scale` is no longer needed -- scale is always available.
+- Scale's optional third-party dependencies (fastapi, pymongo, redis, kubernetes, prometheus-client, ...) are no longer installed via package extras. Instead, declare the matching `[scale.*]` config in `jac.toml` and run `jac install`; the capability registry resolves the required libraries into the project's `.jac/venv`.
+
+**Unchanged from a user's perspective:** `jac start`, `jac start --scale`, and all `[scale.*]` / `[plugins.scale.*]` config behave exactly as before -- only the packaging changed.
+
+---
+
 ### Version 0.16.4
 
 #### 1. Connect Operator Returns the Right-Hand Side As-Is (Node or List)

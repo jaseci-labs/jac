@@ -24,7 +24,7 @@ walker create {
 
 After `jac enter app.jac create`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac enter app.jac dump` (with a walker that traverses `[-->]`) sees them.
 
-**Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Install [`jac-scale`](plugins/jac-scale.md) and configure `MONGODB_URI` and persistence flips to `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
+**Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
 
 ---
 
@@ -188,7 +188,7 @@ In every such case, the row is **moved to a quarantine sidecar**:
 
 The quarantine row carries the full original payload, the timestamp, the error message, and the source format version. **Nothing is ever silently deleted** -- that's the contract. Inspect with `jac db quarantine list` / `jac db quarantine show <id>`. Recover (after you fix the cause) with `jac db recover` / `jac db recover-all`.
 
-On the Mongo backend, quarantined documents additionally carry a machine-readable `reason_code` and are [auto-retried at startup](#jac-scale-lazy-read-repair-and-self-healing-quarantine) when a new deploy plausibly fixes them.
+On the Mongo backend, quarantined documents additionally carry a machine-readable `reason_code` and are [auto-retried at startup](#scale-lazy-read-repair-and-self-healing-quarantine) when a new deploy plausibly fixes them.
 
 If you've used Jac before and remember "delete `.jac/data/` to run again after editing a node," that workflow is no longer required. Schema edits don't wipe data; they at worst move data to quarantine where you can rescue it.
 
@@ -336,9 +336,9 @@ On load, a row with *both* keys is recognized as dual-written, not drifted: an e
 | `detect` | Drift is detected and logged (`steps not applied: [...]`) but nothing is mutated -- a production dry-run |
 | `off` | Legacy load behavior (no renames, no upgrades, no new atticing). Previously written attics still round-trip so data is never lost |
 
-### jac-scale: lazy read-repair and self-healing quarantine
+### scale: lazy read-repair and self-healing quarantine
 
-With the [`jac-scale`](plugins/jac-scale.md) Mongo backend, repair goes one step further:
+With the [scale](plugins/jac-scale.md) Mongo backend, repair goes one step further:
 
 - **Read-repair write-back.** When a load applies repair steps, the upgraded document is written back with compare-and-set on the originally stored fingerprint. A concurrent writer on an older app version cleanly wins the race; the document simply repairs again on its next read. The L2 Redis cache is invalidated on write-back. (SQLite repairs in memory on every load; the write-back optimization is Mongo-only.)
 - **Quarantine reason codes.** Quarantined documents are stamped with a machine-readable `reason_code` -- `CLASS_MISSING`, `FIELD_RECONSTRUCT`, `DESER_ERROR`, or `CASCADE` -- visible via `jac db quarantine show`.
@@ -404,7 +404,7 @@ Registered schema drift rules
 
 ## Backend portability
 
-Everything above is **backend-agnostic**. The `PersistentMemory` interface defines the contract; both `SqliteMemory` and the `jac-scale` `MongoBackend` implement it, and so will any future plugin-provided backend (Postgres, DynamoDB, whatever).
+Everything above is **backend-agnostic**. The `PersistentMemory` interface defines the contract; both `SqliteMemory` and the built-in scale `MongoBackend` implement it, and so will any future plugin-provided backend (Postgres, DynamoDB, whatever).
 
 That means the same set of guarantees holds regardless of where your data lives:
 
@@ -518,6 +518,6 @@ Currently out of scope (planned follow-on work):
 - **Background sweep** -- repair is lazy (on read) plus startup auto-retry; cold documents that are never read stay at their old shape until touched. They repair correctly whenever that happens.
 - **Compiler enforcement** -- there's no build-time lint yet that detects an undeclared breaking change against a schema lockfile.
 - **Deep container coercion** -- `list[int] → list[str]` doesn't recurse into elements (a `schema_upgrade` callback covers this case today).
-- **Redis cache parity** -- the L2 cache (`RedisBackend` in jac-scale) still uses pickle. Since it's a cache (the L3 backend is the source of truth), the impact is bounded; the same machinery could be ported when needed.
+- **Redis cache parity** -- the L2 cache (`RedisBackend` in the scale subsystem) still uses pickle. Since it's a cache (the L3 backend is the source of truth), the impact is bounded; the same machinery could be ported when needed.
 
 For arbitrary transforms the escape hatch is `schema_upgrade` -- a `dict -> dict` callback with full control over the raw stored document. If something still can't be expressed, the quarantine sidecar preserves the original payload for manual handling.

@@ -84,7 +84,7 @@ def _boot_impl(entry_file: str, graph_path: str) {
     }
     import jaclang;
     _ensure_jac_meta_importer();
-    import from jac_scale.inprocess { prepare_inprocess_runtime }
+    import from jaclang.scale.server.inprocess { prepare_inprocess_runtime }
 
     _runtime = prepare_inprocess_runtime(
         entry_file,

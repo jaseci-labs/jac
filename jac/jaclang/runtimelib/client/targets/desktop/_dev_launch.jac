@@ -15,10 +15,6 @@ def _dev_roots_from_env -> dict[str, str] {
         return roots;
     }
     roots["JAC_DESKTOP_JAC_SRC"] = dev_src;
-    scale = src.parent / "jac-scale";
-    if (scale / "jac_scale" / "inprocess.jac").exists() {
-        roots["JAC_DESKTOP_SCALE_SRC"] = str(scale);
-    }
     return roots;
 }
 
@@ -51,13 +47,10 @@ def _editable_roots_from_site -> dict[str, str] {
             if (pkg_root / "jaclang").is_dir() {
                 roots["JAC_DESKTOP_JAC_SRC"] = str(pkg_root);
             }
-            if (pkg_root / "jac_scale" / "inprocess.jac").exists() {
-                roots["JAC_DESKTOP_SCALE_SRC"] = str(pkg_root);
-            }
         }
     }
 
-    _wanted = {"JAC_DESKTOP_JAC_SRC": "jaclang", "JAC_DESKTOP_SCALE_SRC": "jac_scale"};
+    _wanted = {"JAC_DESKTOP_JAC_SRC": "jaclang"};
     for (env_key, mod_name) in _wanted.items() {
         if env_key in roots {
             continue;

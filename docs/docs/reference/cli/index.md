@@ -2,7 +2,7 @@
 
 The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac format`, `jac lint`), managing dependencies (`jac add`, `jac install`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
 
-The CLI is extensible through plugins. When you install a plugin like `jac-scale`, it adds new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment. The built-in full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins, now part of `jaclang` core) contributes others, such as `jac build --client desktop` for desktop app packaging.
+The CLI is extensible through plugins, and several capabilities are built into core. The built-in `scale` subsystem (formerly the `jac-scale` plugin, now part of `jaclang` core) adds deployment commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment. The built-in full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins, now part of `jaclang` core) contributes others, such as `jac build --client desktop` for desktop app packaging. Installable plugins like `byllm` add their own commands the same way.
 
 > **💡 Enhanced Output**: All CLI commands render beautiful, colorful Rich-style output out of the box -- themes, panels, and spinners are built into jaclang by default, with no extra install needed.
 
@@ -27,8 +27,8 @@ The CLI is extensible through plugins. When you install a plugin like `jac-scale
 | `jac plugins` | Manage plugins |
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
-| `jac destroy` | Remove Kubernetes deployment (jac-scale) |
-| `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
+| `jac destroy` | Remove Kubernetes deployment (scale) |
+| `jac status` | Show deployment status of Kubernetes resources (scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies from `jac.toml`, or `jac install <pkg>` to install packages into the project's `.jac/venv` |
 | `jac x` | Run an installed CLI tool (Python console-script or npm tool) under the `jac` runtime |
@@ -69,9 +69,9 @@ _/ |\__,_|\___|    Python 3.12.3
 
 🔌 Plugins Detected:
    byllm==0.4.15
-   jac-client==0.2.11
-   jac-scale==0.2.1
 ```
+
+(Scale and the full-stack client framework ship inside the binary as built-in core providers, so they are not listed here as separately-installed plugins.)
 
 ---
 
@@ -180,7 +180,7 @@ jac run greet.jac --name Alice
 
 ### jac start
 
-Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
+Start a Jac application as an HTTP API server. Use `--scale` to deploy to Kubernetes (handled by the built-in `scale` subsystem; the first `--scale` run resolves its deploy deps via `jac install`). Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
 
 ```bash
 jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa,mobile}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-b] [--no-build] [filename]
@@ -199,7 +199,7 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--client` | Client build target (`web`, `desktop`, `pwa`, `mobile`) | None |
 | `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
 | `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
-| `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
+| `--scale` | Deploy to Kubernetes (built-in scale subsystem) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
 **Examples:**
@@ -226,7 +226,7 @@ jac start main.jac --client mobile --dev --platform ios
 # Mobile dev with explicit host override
 jac start main.jac --client mobile --dev --host 192.168.1.25
 
-# Deploy to Kubernetes (requires jac-scale plugin)
+# Deploy to Kubernetes (built-in scale subsystem)
 jac start --scale
 
 # Build and deploy to Kubernetes
@@ -800,9 +800,9 @@ jac plugins disabled
 >
 > **💡 Popular Plugins**:
 >
-> - **jac-scale**: Kubernetes deployment and scaling (`jac install jac-scale`)
+> - **byllm**: LLM integration (`jac install byllm`)
 >
-> (Full-stack web and native-desktop app building ships with `jaclang` core -- no plugin install needed.)
+> (Kubernetes deployment and scaling ships with `jaclang` core as the built-in `scale` subsystem -- no plugin install needed; its optional deps are pulled per-project via `[scale.*]` config + `jac install`. Full-stack web and native-desktop app building likewise ships with `jaclang` core.)
 
 ---
 
@@ -860,7 +860,7 @@ Local model cache: /home/you/.cache/jac/models
 
 ## Database Operations
 
-The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), `MongoBackend` (with `jac-scale`), or any plugin-provided backend that implements the interface -- through the same set of subcommands.
+The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), the built-in scale `MongoBackend`, or any plugin-provided backend that implements the interface -- through the same set of subcommands.
 
 For the architectural background (fingerprints, drift detection, quarantine philosophy, alias decorator), see [Persistence & Schema Migration](../persistence.md).
 
@@ -1150,11 +1150,11 @@ jac config list -o toml
 
 ---
 
-## Deployment (jac-scale)
+## Deployment (scale)
 
 ### jac start --scale
 
-Deploy to Kubernetes using the jac-scale plugin. See the [`jac start`](#jac-start) command above for full options.
+Deploy to Kubernetes using the built-in `scale` subsystem. See the [`jac start`](#jac-start) command above for full options.
 
 ```bash
 jac start --scale           # Deploy without building
@@ -1753,7 +1753,7 @@ By default the object graph persists to a local SQLite file via the jaclang runt
 driver = "sqlalchemy"   # or "sqlite"
 ```
 
-This vendors a `backend/_jac_sqldb.py` SQLAlchemy `PersistentMemory` backend and registers it through the runtime's `get_persistent_memory` hook, and adds `SQLAlchemy` to `requirements.txt`. The connection URL defaults to a SQLite file under `backend/` and is overridable at runtime with `JAC_DB_URL` (e.g. `postgresql://...`). This is a single-writer backend (correct for one uvicorn worker); for multi-process writers use jac-scale.
+This vendors a `backend/_jac_sqldb.py` SQLAlchemy `PersistentMemory` backend and registers it through the runtime's `get_persistent_memory` hook, and adds `SQLAlchemy` to `requirements.txt`. The connection URL defaults to a SQLite file under `backend/` and is overridable at runtime with `JAC_DB_URL` (e.g. `postgresql://...`). This is a single-writer backend (correct for one uvicorn worker); for multi-process writers use the built-in scale `MongoBackend`.
 
 **Examples**
 
@@ -2220,5 +2220,5 @@ jac destroy main.jac
 ## See Also
 
 - [Project Configuration](../config/index.md)
-- [jac-scale Documentation](../plugins/jac-scale.md)
+- [Scale Documentation](../plugins/jac-scale.md)
 - [Testing Guide](../testing.md)

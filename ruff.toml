@@ -34,7 +34,7 @@ ignore = ["E501"]
 fixable = ["ALL"]
 
 [lint.isort]
-known-first-party = ["jaclang", "jac_scale", "byllm"]
+known-first-party = ["jaclang", "byllm"]
 
 [lint.flake8-annotations]
 suppress-none-returning = true

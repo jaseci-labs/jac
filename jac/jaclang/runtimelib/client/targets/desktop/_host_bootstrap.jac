@@ -3,11 +3,8 @@ import json;
 import hashlib;
 
 
-def _scale_runtime_hook_py -> str {
+def _extra_deps_hook_py -> str {
     return (
-        "_scale = os.environ.get('JAC_DESKTOP_SCALE_SRC')\n"
-        "if _scale and _scale not in sys.path:\n"
-        "    sys.path.insert(0, _scale)\n"
         "_extra = os.environ.get('JAC_DESKTOP_DEPS', '')\n"
         "if _extra:\n"
         "    for _d in _extra.split(os.pathsep):\n"
@@ -68,7 +65,7 @@ def _dispatch_boot_py(
         "import sys, os\n"
         f"_ENTRY_REL = {json.dumps(entry_rel, ensure_ascii=False)}\n"
         "_ENTRY_FILE = os.path.join(_root, 'sv', _ENTRY_REL)\n"
-    ) + _scale_runtime_hook_py() + (
+    ) + _extra_deps_hook_py() + (
         "from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch\n"
         "inprocess_dispatch.boot(_ENTRY_FILE,\n"
         "    os.path.join(_data, '.jac', 'desktop', 'graph'),\n"

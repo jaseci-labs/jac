@@ -1,0 +1,207 @@
+import contextlib;
+import os;
+import from jaclang.runtimelib.serializer { Serializer }
+import from jaclang.scale.tests.fixtures.social_graph {
+    User,
+    Post,
+    BuildGraph,
+    QueryGraph
+}
+import from jaclang.scale.persistence.lib { kvstore }
+import from jaclang.scale.persistence.db { close_all_db_connections }
+import from jaclang.scale.config.config_loader { reset_scale_config }
+import from testcontainers.mongodb { MongoDbContainer }
+import from uuid { uuid4 }
+import from jaclang.jac0core.archetype { NodeAnchor, EdgeAnchor, ObjectAnchor }
+
+def cleanup_connections {
+    with contextlib.suppress(Exception) {
+        close_all_db_connections();
+    }
+}
+
+glob _mongo_container = MongoDbContainer("mongo:7.0"),
+     MONGO_URI: str = "";
+
+with entry {
+    _mongo_container.start();
+}
+
+glob MONGO_URI = _mongo_container.get_connection_url();
+
+with entry {
+    os.environ['MONGODB_URI'] = MONGO_URI;
+    reset_scale_config();
+}
+
+test "serialize user node" {
+    u = User(name="Alice", role="admin", age=30);
+    serialized = Serializer.serialize(u, include_type=True);
+    deserialized = Serializer.deserialize(serialized);
+    assert deserialized.name == "Alice"
+    and deserialized.role == "admin"
+    and deserialized.age == 30;
+    assert type(deserialized) == User;
+}
+
+test "serialize post node" {
+    p = Post(title="Hello", content="World");
+    serialized = Serializer.serialize(p, include_type=True);
+    deserialized = Serializer.deserialize(serialized);
+    assert deserialized.title == "Hello" and deserialized.content == "World";
+    assert type(deserialized) == Post;
+}
+
+test "find_nodes queries persisted graph with BuildGraph" {
+    cleanup_connections();
+
+    db = kvstore(db_name='jac_db', db_type='mongodb', uri=MONGO_URI);
+
+    db._get_mongo_collection('_anchors').drop();
+
+    graph = BuildGraph() spawn root;
+
+    result = QueryGraph(mongo_uri=MONGO_URI) spawn root;
+    report_data = result.reports[0];
+
+    young = report_data['young'];
+    admins = report_data['admins'];
+    posts = report_data['posts'];
+
+    assert len(young) == 1 and young[0].name == 'Bob' and young[0].age == 25;
+    assert len(admins) == 1 and admins[0].name == 'Alice' and admins[0].role == 'admin';
+    assert len(posts) == 3;
+
+    db._get_mongo_collection('_anchors').drop();
+    cleanup_connections();
+}
+
+test "_id_to_stub creates valid stubs" {
+    node_id = uuid4();
+    node_stub = Serializer._id_to_stub(NodeAnchor, str(node_id));
+    assert node_stub.id == node_id and not node_stub.is_populated();
+
+    edge_id = uuid4();
+    edge_stub = Serializer._id_to_stub(EdgeAnchor, str(edge_id));
+    assert edge_stub.id == edge_id and not edge_stub.is_populated();
+
+    assert Serializer._id_to_stub(NodeAnchor, "bad-uuid") is None;
+}
+
+test "NodeAnchor edges restored as lazy stubs" {
+    edge_ids = [uuid4(), uuid4(), uuid4()];
+    anchor = Serializer._deserialize_anchor(
+        {
+            '__type__': 'NodeAnchor',
+            'id': str(uuid4()),
+            'root': str(uuid4()),
+            'edges': [str(e) for e in edge_ids]
+        }
+    );
+    assert len(anchor.edges) == 3;
+    for (i, edge) in enumerate(anchor.edges) {
+        assert edge.id == edge_ids[i] and not edge.is_populated();
+    }
+}
+
+test "EdgeAnchor source/target restored as lazy stubs" {
+    src_id = uuid4();
+    tgt_id = uuid4();
+    anchor = Serializer._deserialize_anchor(
+        {
+            '__type__': 'EdgeAnchor',
+            'id': str(uuid4()),
+            'source': str(src_id),
+            'target': str(tgt_id)
+        }
+    );
+    assert anchor.source.id == src_id and not anchor.source.is_populated();
+    assert anchor.target.id == tgt_id and not anchor.target.is_populated();
+}
+
+obj City {
+    has name: str;
+}
+
+obj Person {
+    has name: str,
+        city: City,
+        friend: (Person | None) = None;
+}
+
+test "ref_mode: shared refs deduplicated, circular graphs terminate, $ref round-trips to live objects" {
+    city = City(name="Metropolis");
+    alice = Person(name="Alice", city=city);
+    bob = Person(name="Bob", city=city);
+
+    off = Serializer.serialize([alice, bob], ref_mode=False);
+    assert off[0]["city"]["name"] == "Metropolis"
+    and off[1]["city"]["name"] == "Metropolis"
+    and "$ref" not in str(off);
+
+    bob.friend = alice;
+    alice.friend = bob;
+    city_id = jid(city);
+    alice_id = jid(alice);
+
+    data = Serializer.serialize(alice, ref_mode=True);
+    assert data["name"] == "Alice" and data["city"]["name"] == "Metropolis";
+    assert data["friend"]["name"] == "Bob";
+    assert data["friend"]["city"] == {"$ref": city_id, "$type": "object"};
+    assert data["friend"]["friend"] == {"$ref": alice_id, "$type": "object"};
+
+    resolved_city = Serializer._deserialize_value(data["friend"]["city"]);
+    resolved_alice = Serializer._deserialize_value(data["friend"]["friend"]);
+    assert resolved_city.name == "Metropolis" and resolved_alice.name == "Alice";
+}
+
+test "ref_mode: mutations reflect inline, identity and $ref stay stable across lifecycle" {
+    city = City(name="Metropolis");
+    alice = Person(name="Alice", city=city);
+    bob = Person(name="Bob", city=city);
+    alice.friend = bob;
+    bob.friend = alice;
+    city_id = jid(city);
+    alice_id = jid(alice);
+
+    city.name = "Gotham";
+    data = Serializer.serialize(alice, ref_mode=True);
+    assert data["city"]["name"] == "Gotham"
+    and data["friend"]["city"]["$ref"] == city_id;
+
+    alice.friend = None;
+    data2 = Serializer.serialize(alice, ref_mode=True);
+    assert data2["friend"] is None and data2["city"]["name"] == "Gotham";
+
+    alice.friend = Person(name="Carol", city=City(name="Star City"));
+    data3 = Serializer.serialize(alice, ref_mode=True);
+    assert data3["friend"]["name"] == "Carol"
+    and data3["friend"]["city"]["name"] == "Star City";
+
+    assert jid(city) == city_id and jid(alice) == alice_id;
+}
+
+test "ref_mode: unknown $ref falls back to typed anchor stub" {
+    ref_id = uuid4();
+
+    stub = Serializer._deserialize_value({"$ref": ref_id.hex});
+    assert isinstance(stub, ObjectAnchor)
+    and stub.id == ref_id
+    and not stub.is_populated();
+
+    assert isinstance(
+        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "node"}), NodeAnchor
+    );
+    assert isinstance(
+        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "edge"}), EdgeAnchor
+    );
+
+    assert Serializer._deserialize_value({"$ref": "not-a-uuid"}) is None;
+
+    user_dict = {"$ref": "some-value", "name": "Alice", "count": 42};
+    result = Serializer._deserialize_value(user_dict);
+    assert isinstance(result, dict)
+    and result["$ref"] == "some-value"
+    and result["name"] == "Alice"
+    and result["count"] == 42;
+}

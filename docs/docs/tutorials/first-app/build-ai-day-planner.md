@@ -4,7 +4,7 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), all packages are already included -- skip to the version check below. Otherwise install the toolchain:
+**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework and the built-in `scale` deployment subsystem) plus the **byllm** plugin for AI. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
@@ -18,13 +18,11 @@ Verify your installation meets the minimum requirements:
 jac --version
 ```
 
-The `jac --version` output lists all installed plugins and their versions. Check that the following minimums are met:
+The `jac --version` output lists the binary version and any installed plugins. Check that the following minimums are met (the full-stack client framework and the `scale` subsystem ship inside `jaclang`, so there are no separate versions for them):
 
 | Package | Minimum Version |
 |---------|----------------|
 | jaclang | 0.11.0 |
-| jac-client | 0.3.0 |
-| jac-scale | 0.2.0 |
 | byllm | 0.5.0 |
 
 **Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
@@ -3649,7 +3647,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 Now that you have a solid foundation, here are some directions to deepen your understanding:
 
-- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac-scale` to take your app to production
+- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac start --scale` (the built-in scale subsystem) to take your app to production
 - **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns like recursive traversals and multi-hop queries
 - **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for building tool-using agents
 - **Examples** -- Explore [community examples](https://github.com/Jaseci-Labs/jaseci/tree/main/examples) for inspiration on what to build next

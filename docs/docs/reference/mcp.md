@@ -352,7 +352,7 @@ Resources are read-only reference materials that AI models can load for context.
 
 | URI                                    | Description                 |
 | -------------------------------------- | --------------------------- |
-| `jac://docs/jac-scale`                 | jac-scale plugin reference  |
+| `jac://docs/jac-scale`                 | Scale reference (deployment & scaling, built into core) |
 | `jac://docs/tutorial-production-local` | Local API server deployment |
 | `jac://docs/tutorial-production-k8s`   | Kubernetes deployment       |
 
