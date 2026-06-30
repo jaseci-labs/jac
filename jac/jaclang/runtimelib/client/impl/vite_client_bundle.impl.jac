@@ -34,9 +34,7 @@ impl make_client_bundle_builder(
         vite_output_dir=client_dir / 'dist',
         vite_minify=False
     );
-    # The D9 split runtime (core + web/native adapters) ships with
-    # jaclang.runtimelib.client — always available now that the client
-    # framework is in core.
+
     try {
         import importlib;
         client_pkg = importlib.import_module("jaclang.runtimelib.client");

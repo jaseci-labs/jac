@@ -17,9 +17,7 @@ impl TypeEvaluator._resolve_jsx_component_type(
     if not component_name {
         return None;
     }
-    # Web projects: only uppercase names are treated as user components (unchanged
-    # behaviour). mobUI projects: scope resolution already ran for all names,
-    # so any name with a symbol can be a component regardless of case.
+
     if (self.program.project_kind != "mobui" and not component_name[0].isupper()) {
         return None;
     }
@@ -86,16 +84,11 @@ impl TypeEvaluator._validate_jsx_props(
         if isinstance(first_part, (uni.Name, uni.Token))
         else "";
     if self.program.project_kind == "mobui" {
-        # Scope-resolved routing: a name with a FunctionType sym is a user
-        # component regardless of case. Unresolved names are caught by
-        # JsxIntrinsicGuardPass (E1105), so we don't fall back to intrinsic
-        # validation here.
         func_type = self._resolve_jsx_component_type(expr.name);
         if func_type is not None {
             self._validate_component_jsx_props(expr, tag_name);
         }
     } else {
-        # Web project: original case-based routing (unchanged behaviour).
         is_component = tag_name and tag_name[0].isupper();
         if is_component {
             self._validate_component_jsx_props(expr, tag_name);

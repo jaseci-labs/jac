@@ -559,17 +559,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                             tag_val = part.value or "";
                             is_mobui = self.program.project_kind == "mobui";
                             if tag_val and (tag_val[0].isupper() or is_mobui) {
-                                # Uppercase: always resolve via normal scope.
-                                # mobUI projects: also try scope first for
-                                # lowercase names so imported lowercase components
-                                # (<myWidget>) are handled correctly.
                                 self.get_type_of_expression(part);
-                                # In mobUI projects, unresolved lowercase names
-                                # are caught by JsxIntrinsicGuardPass (E1105), so
-                                # we don't fall back to intrinsic registry here.
                             } elif tag_val {
-                                # Web project, lowercase: intrinsic HTML element —
-                                # resolve via _JsxIntrinsicElements registry.
                                 self._resolve_intrinsic_jsx_tag(part, tag_val);
                             }
                         }

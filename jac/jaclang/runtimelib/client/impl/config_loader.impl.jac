@@ -104,13 +104,6 @@ def _clear_node_modules(project_dir: Path | None) {
     }
 }
 
-"""Resolve active client target used for target-scoped npm subtables.
-
-Order of precedence:
-1) ``[plugins.client].target`` in jac.toml
-2) ``JAC_CLIENT_TARGET`` environment variable
-3) ``web`` default
-"""
 def _resolve_client_target(client_config: dict) -> str {
     raw = str(client_config.get("target", "") or "").strip();
     if raw == "" {
@@ -129,7 +122,6 @@ def _resolve_client_target(client_config: dict) -> str {
     return normalized;
 }
 
-"""Read target-scoped npm deps from ``[dependencies.npm.<target>]``."""
 def _get_target_scoped_npm_deps(jac_config: any, target_name: str) -> dict[str, str] {
     npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get("npm", {}));
     deps: dict[str, str] = {};
@@ -151,7 +143,6 @@ def _get_target_scoped_npm_deps(jac_config: any, target_name: str) -> dict[str, 
     return deps;
 }
 
-"""Get the plugin section name for client."""
 impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
     return "client";
 }
@@ -192,11 +183,10 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
 
     client_config = jac_config.get_plugin_config('client');
     target_name = _resolve_client_target(client_config);
-    # Get npm dependencies from [dependencies.npm]
+
     npm_deps = jac_config.get_plugin_deps('npm');
     target_scoped_npm_deps = _get_target_scoped_npm_deps(jac_config, target_name);
-    # Get npm dev dependencies from [dev-dependencies.npm]
-    # These are stored in plugin_dependencies["npm"]["dev"] after parsing
+
     npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
     dev_section = npm_plugin_deps.get('dev', {});
     npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
@@ -358,21 +348,18 @@ impl JacClientConfig.check_runtime_version(
     return (True, user_react, required_react);
 }
 
-"""Load ``[plugins.client.mobile]`` from jac.toml."""
 impl JacClientConfig.get_mobile_config(self: JacClientConfig) -> dict[str, any] {
     client_config = self.get_jac_config().get_plugin_config("client");
     section = client_config.get("mobile", {});
     return section if isinstance(section, dict) else {};
 }
 
-"""Load ``[plugins.client.react_native]`` from jac.toml."""
 impl JacClientConfig.get_react_native_config(self: JacClientConfig) -> dict[str, any] {
     client_config = self.get_jac_config().get_plugin_config("client");
     section = client_config.get("react_native", {});
     return section if isinstance(section, dict) else {};
 }
 
-"""Sync core runtime dependency versions in jac.toml."""
 impl JacClientConfig.sync_runtime_version(self: JacClientConfig) -> None {
     jac_config = self.get_jac_config();
     npm_deps: dict = dict(jac_config.get_plugin_deps('npm'));

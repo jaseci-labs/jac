@@ -104,7 +104,6 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
 }
 
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
-    # Use _entry.js to avoid conflict with compiled modules that may be named main.js
     import from jaclang.compiler.passes.ecmascript.backends.registry {
         resolve_active_backend
     }
@@ -327,9 +326,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     runtime_out = self.compiled_dir / 'client_runtime.js';
     runtime_out.write_text(runtimeutils_js, encoding='utf-8');
     self._write_source_map(mod, str(runtime_utils_path), runtime_out, runtimeutils_js);
-    # Emit the mobUI ``@jac/ui`` primitive module (``compiled/client_ui.js``) so the
-    # bundler's ``@jac/ui`` alias resolves on the web target. Shares this compiler's
-    # ``compiled_dir``; no-op when ``client_ui.cl.jac`` is absent.
+
     self.jac_client_compiler.compile_ui_utils();
     return (runtimeutils_js, all_exports);
 }

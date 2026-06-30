@@ -10,22 +10,12 @@ import from jaclang.runtimelib.client.targets.react_native.config {
     _load_react_native_config
 }
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-# Defaults mirror the documented React Native target decisions in the jac-client
-# reference (docs/docs/reference/plugins/jac-client.md). Pinned
-# versions guard against silent upstream drift breaking the scaffold; bump
-# explicitly with a smoke test, not implicitly via "@latest".
 glob DEFAULT_PROJECT_DIR_NAME = "mobile-rn",
      DEFAULT_APP_NAME = "main",
      DEFAULT_APP_SLUG = "jac-app",
      DEFAULT_APP_ID = "com.jac.app",
      EXPO_SDK_VERSION = "54",
      REACT_NATIVE_VERSION = "0.81.4",
-     # EAS CLI is versioned independently of the Expo SDK (it ships via
-     # `npx eas-cli`, not the expo package). Pin its major separately so
-     # eas.json's `cli.version` guardrail targets the right product.
      EAS_CLI_VERSION = "20",
      SUBPROCESS_TIMEOUT_BUILD: int = SUBPROCESS_TIMEOUT_BUILD_NATIVE;
 

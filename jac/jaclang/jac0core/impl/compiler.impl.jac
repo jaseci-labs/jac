@@ -563,12 +563,7 @@ impl JacCompiler.compile(
         actual_program = self._resolve_program(file_path, target_program);
     }
     actual_program._compile_options = options;
-    # Resolve project kind and project root on the *first* compile for this
-    # program (first-write wins: skip when project_kind is already resolved).
-    # Recursive sub-module compiles, boundary-analysis walks, and runtime
-    # calls such as program.compile("client_runtime.cl.jac") all share the
-    # same JacProgram; re-stamping on every call would bleed the consumer's
-    # "universal" kind onto framework files (kind-leak bug).
+
     if actual_program.project_kind == "web" {
         resolved_kind = options.project_kind;
         resolved_root = options.project_root;
@@ -581,9 +576,7 @@ impl JacCompiler.compile(
                     resolved_kind = cfg.project.client_kind or "web";
                 }
             }
-            # Auto-detect the project root from the entry file's directory so
-            # kind-sensitive passes can distinguish consumer code from
-            # framework/library files compiled into the same program later.
+
             if resolved_root is None and resolved_kind != "web" {
                 try {
                     _start = _Path(os.path.dirname(os.path.abspath(file_path)));
@@ -592,14 +585,10 @@ impl JacCompiler.compile(
                         resolved_root = str(_result[0]);
                     }
                 } except Exception {
-                    pass;  # best-effort; guard falls back to firing on everything
+                    pass;
                 }
             }
         } except ImportError {
-            # During bootstrap, compile() runs while jaclang.project.config is
-            # still partially initialized (it is itself being compiled), so the
-            # get_config import is circular. Those internal modules are never
-            # universal projects — default to web.
             resolved_kind = "web";
         }
         actual_program.project_kind = resolved_kind;

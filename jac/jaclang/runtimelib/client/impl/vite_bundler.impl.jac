@@ -441,16 +441,12 @@ impl ViteBundler._generate_vite_config_content(
         compiled_ui_relative = 'compiled/client_ui.js';
         compiled_assets_relative = 'compiled/assets';
     }
-    # mobUI ``@jac/ui`` primitive surface: alias the bare specifier to the
-    # compiled ``client_ui.js`` and map ``react-native`` -> ``react-native-web``
-    # so the same source lowers to RNW on the web target (the native target wires
-    # these in its Metro scaffold instead). ``client_ui.js`` is always emitted by
-    # ``compile_ui_utils`` on the web path, so the alias always resolves.
+
     ui_alias_str = (
         f'\n      "@jac/ui": path.resolve(buildDir, "{compiled_ui_relative}"),'
         f'\n      "react-native": "react-native-web",'
     );
-    # Check if PWA is enabled to add @jac/pwa alias
+
     pwa_alias_str = '';
     if self.config_loader.is_pwa_enabled() {
         pwa_alias_str = f'\n      "@jac/pwa": path.resolve(buildDir, "{compiled_pwa_relative}"),';

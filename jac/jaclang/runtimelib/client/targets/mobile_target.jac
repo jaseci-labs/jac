@@ -4,12 +4,6 @@ import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jaclang.runtimelib.client.targets.web_target { WebTarget }
 import from jaclang.runtimelib.client.targets.client_dev_common { _ClientHmrHandler }
 
-"""Binds Vite compiler state for JacFileWatcher HMR (decl only; see impl).
-
-Extends ``_ClientHmrHandler`` for the shared compiler/entry/project state;
-``on_event`` is implemented in ``mobile_target.impl.jac`` to call the
-Capacitor/Vite recompile pipeline.
-"""
 obj _MobileHmrHandler(_ClientHmrHandler) {
     def on_event(evt: FileChangeEvent) -> None;
 }

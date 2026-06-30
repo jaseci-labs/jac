@@ -362,11 +362,6 @@ def lint_native_incompatible_usage(compiled_dir: Path) -> dict[(str, list[str])]
 def strip_css_imports(compiled_dir: Path) -> int {
     import re;
 
-    # Matches both side-effect imports (``import "./x.css";``) and
-    # named/default imports (``import styles from "./x.css";``,
-    # ``import { a } from "./x.css";``, ``import * as s from "./x.css";``).
-    # The optional ``<bindings> from`` clause is newline-bounded so the
-    # MULTILINE anchors can't let a single match span several import lines.
     css_import_pattern = re.compile(
         r"^import\s+(?:[^'\"\n]*?\sfrom\s+)?['\"][^'\"\n]+\.(?:css|scss|sass|less)['\"]\s*;\s*$",
         re.MULTILINE

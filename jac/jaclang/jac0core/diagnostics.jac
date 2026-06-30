@@ -509,7 +509,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " allowed; only unresolved names are rejected.",
          blocks_codegen=True
      ),
-     # Comparison operator errors
      E1110 = _err(
          "E1110",
          Category.TYPE,

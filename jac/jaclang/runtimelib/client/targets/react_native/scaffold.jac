@@ -256,12 +256,6 @@ def _build_placeholder_jac_app -> str {
 }
 
 def _build_eas_json -> str {
-    # EAS Build + Update. The scaffold writes a baseline eas.json
-    # with two profiles (preview / production) so ``eas build`` and
-    # ``eas update`` work immediately. Authors customise this file in-place.
-    # NOTE: ``cli.version`` constrains the EAS CLI (shipped via
-    # ``npx eas-cli``), NOT the Expo SDK — the two are versioned
-    # independently, so it must track EAS_CLI_VERSION.
     cfg = {
         "cli": {"version": f">={EAS_CLI_VERSION}.0.0", "appVersionSource": "remote"},
         "build": {
