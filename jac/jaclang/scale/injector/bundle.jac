@@ -77,29 +77,53 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
     # [scale.secrets] forms) from the bundled jac.toml; the rest of the scale
     # config (database, storage, monitoring, tracing, kubernetes, ...) must
     # survive so the pod's `jac install` can resolve the capability intents.
+    #
+    # Secrets are recognised in every form they can be written: a secret section
+    # header, a top-level dotted secret key, and a dotted secret key nested under
+    # a parent section (`secrets.x = ...` under `[plugins.scale]`). Comment/blank
+    # lines are buffered and only committed once the following line is kept, so a
+    # comment annotating a stripped secret does not leak into the bundle.
     src = base / "jac.toml";
     if not src.is_file() {
         return None;
     }
     out: list[str] = [];
+    pending: list[str] = [];
     in_secret_section = False;
-    at_top_level = True;
+    current_section = "";
     for line in src.read_text().splitlines() {
         stripped = line.lstrip();
         if stripped.startswith("[") {
             header = stripped.lstrip("[").split("]")[0].strip();
             in_secret_section = _is_secret_path(header);
-            at_top_level = False;
+            current_section = header;
             if in_secret_section {
+                pending = [];
                 continue;
             }
-        } elif at_top_level and _is_secret_path(stripped.split("=")[0].strip()) {
+            out.extend(pending);
+            pending = [];
+            out.append(line);
             continue;
         }
-        if not in_secret_section {
-            out.append(line);
+        if in_secret_section {
+            continue;
         }
+        if stripped == "" or stripped.startswith("#") {
+            pending.append(line);
+            continue;
+        }
+        key = stripped.split("=")[0].strip();
+        full_key = key if current_section == "" else f"{current_section}.{key}";
+        if _is_secret_path(full_key) {
+            pending = [];
+            continue;
+        }
+        out.extend(pending);
+        pending = [];
+        out.append(line);
     }
+    out.extend(pending);
     return "\n".join(out) + "\n";
 }
 
