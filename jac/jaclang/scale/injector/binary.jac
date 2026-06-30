@@ -115,9 +115,16 @@ def download_release_binary(channel: str, arch: str) -> bytes {
 
     payload = _http_get_bytes(binary_url);
     if checksum_url {
-        want = _http_get_bytes(checksum_url).decode("utf-8").split()[0].strip().lower();
+        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
+        if not parts {
+            raise RuntimeError(
+                f"Checksum file at {checksum_url} is empty or malformed; "
+                f"cannot verify the downloaded binary."
+            );
+        }
+        want = parts[0].strip().lower();
         got = hashlib.sha256(payload).hexdigest();
-        if want and got != want {
+        if got != want {
             raise RuntimeError(
                 f"Checksum mismatch for the downloaded jac binary "
                 f"(expected {want}, got {got}); refusing to ship it."
