@@ -47,11 +47,12 @@ bundled one. A bundled module links through the existing cross-module machinery
   over native `int`, normalized on construction via Euclid's GCD with the sign
   carried by the numerator and the denominator kept positive (CPython's value
   model). Construction/reduction (`Fraction(n, d)`), `numerator` /
-  `denominator`, and `str()` match CPython exactly. DIVERGENCE: the native
-  backend has no operator-overload dispatch, so arithmetic and ordering are
-  exposed as methods (`add` / `sub` / `mul` / `div` / `eq` / `lt`) rather than
-  `+` / `<`; the resulting *values* are congruent. Float/Decimal/string
-  construction is out of scope.
+  `denominator`, and `str()` match CPython exactly. Arithmetic and ordering are
+  the CPython dunder methods (`__add__` / `__sub__` / `__mul__` / `__truediv__`
+  / `__eq__` / `__lt__`); since the native backend has no operator-overload
+  dispatch yet, the na fixture calls them directly (`a.__add__(b)`) where the sv
+  fixture uses `+` / `<`, and the resulting *values* are congruent.
+  Float/Decimal/string construction is out of scope.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the

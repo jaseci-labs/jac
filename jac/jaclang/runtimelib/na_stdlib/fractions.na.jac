@@ -42,38 +42,38 @@ obj:pub Fraction {
         return str(self.numerator) + "/" + str(self.denominator);
     }
 
-    def add(other: Fraction) -> Fraction {
+    def __add__(other: Fraction) -> Fraction {
         return Fraction(
             self.numerator * other.denominator + other.numerator * self.denominator,
             self.denominator * other.denominator
         );
     }
 
-    def sub(other: Fraction) -> Fraction {
+    def __sub__(other: Fraction) -> Fraction {
         return Fraction(
             self.numerator * other.denominator - other.numerator * self.denominator,
             self.denominator * other.denominator
         );
     }
 
-    def mul(other: Fraction) -> Fraction {
+    def __mul__(other: Fraction) -> Fraction {
         return Fraction(
             self.numerator * other.numerator, self.denominator * other.denominator
         );
     }
 
-    def div(other: Fraction) -> Fraction {
+    def __truediv__(other: Fraction) -> Fraction {
         return Fraction(
             self.numerator * other.denominator, self.denominator * other.numerator
         );
     }
 
-    def eq(other: Fraction) -> bool {
+    def __eq__(other: Fraction) -> bool {
         return self.numerator == other.numerator
         and self.denominator == other.denominator;
     }
 
-    def lt(other: Fraction) -> bool {
+    def __lt__(other: Fraction) -> bool {
         return self.numerator * other.denominator < other.numerator * self.denominator;
     }
 }
