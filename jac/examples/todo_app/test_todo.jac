@@ -21,7 +21,7 @@ glob _APP: str = str(Path(__file__).parent / "main.jac"),
 def _backend_available -> bool {
     try {
         import starlette.testclient;
-        import jac_scale.serve;
+        import jaclang.scale.server.serve;
         return True;
     } except ImportError {
         return False;
@@ -71,7 +71,7 @@ def _first_todo(reply: dict) -> dict {
 
 test "create_todo persists a todo" {
     if not _backend_available() {
-        print("[skip] jac-scale backend not installed");
+        print("[skip] scale backend not installed");
         return;
     }
     reply = _call("walker", "create_todo", {"text": "buy milk"});
@@ -85,7 +85,7 @@ test "create_todo persists a todo" {
 
 test "read_todos returns a created todo" {
     if not _backend_available() {
-        print("[skip] jac-scale backend not installed");
+        print("[skip] scale backend not installed");
         return;
     }
     _call("walker", "create_todo", {"text": "read me back"});
@@ -108,7 +108,7 @@ test "read_todos returns a created todo" {
 
 test "toggle_todo flips done on the node" {
     if not _backend_available() {
-        print("[skip] jac-scale backend not installed");
+        print("[skip] scale backend not installed");
         return;
     }
     create = _call("walker", "create_todo", {"text": "toggle me"});

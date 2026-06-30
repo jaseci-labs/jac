@@ -91,7 +91,7 @@ test "added field survives schema drift end-to-end" {
         );
         # Drift should be logged but cause zero data loss: quarantine empty.
         # The exact DB filename depends on get_db_path() (jaclang default is
-        # `<stem>.db`; jac-scale plugin overrides to `anchor_store.db`), so
+        # `<stem>.db`; the scale plugin overrides to `anchor_store.db`), so
         # glob rather than hard-coding.
         import sqlite3;
         data_dir = Path(tmpdir) / ".jac" / "data";

@@ -389,8 +389,8 @@ dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
 
 ### [storage]
 
-!!! warning "Plugin-Specific Configuration"
-    The `[storage]` section requires the **jac-scale** plugin and may not be available in all configurations. Running `jac config list -g storage` will return "Unknown group 'storage'" if the plugin is not installed.
+!!! note "Scale Configuration"
+    The `[storage]` section is provided by the built-in **scale** subsystem (part of `jaclang` core). Its cloud backends (S3/GCS/Azure) require the relevant client libraries in the project venv -- declare the backend in config and run `jac install` to pull them in.
 
 File storage configuration:
 
@@ -439,28 +439,27 @@ api_key = "${OPENAI_API_KEY}"
 [plugins.byllm.call_params]
 temperature = 0.7
 
-# Server settings (jac-scale)
+# Server settings (scale)
 [plugins.scale.server]
 port = 8000
 host = "0.0.0.0"
 docs_enabled = true              # Set to false to disable /docs, /redoc, /openapi.json
 
-# Webhook settings (jac-scale)
+# Webhook settings (scale)
 [plugins.scale.webhook]
 secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
 api_key_expiry_days = 365
 
-# Kubernetes version pinning (jac-scale)
+# Kubernetes version pinning (scale) -- scale and the client/desktop framework
+# ship inside the `jac` binary, so only the separate plugins are pinned here.
 [plugins.scale.kubernetes.plugin_versions]
-jaclang = "latest"           # also provides the full-stack client/desktop framework
-jac_scale = "latest"
 jac_byllm = "none"           # Use "none" to skip installation
 jac_mcp = "latest"
 ```
 
-**Prometheus Metrics (jac-scale):**
+**Prometheus Metrics (scale):**
 
 ```toml
 [plugins.scale.monitoring]
@@ -472,7 +471,7 @@ walker_metrics = true
 
 See [Prometheus Metrics](../plugins/jac-scale.md#prometheus-metrics) for details.
 
-**Kubernetes Secrets (jac-scale):**
+**Kubernetes Secrets (scale):**
 
 ```toml
 [plugins.scale.secrets]
@@ -482,7 +481,7 @@ DATABASE_PASSWORD = "${DB_PASS}"
 
 See [Kubernetes Secrets](../plugins/jac-scale.md#kubernetes-secrets) for details.
 
-See also [jac-scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
+See also [Scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
 
 **Built-in Local Models (byllm):**
 
@@ -810,7 +809,7 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `JAC_STORAGE_PATH` | Base directory for file storage |
 | `JAC_STORAGE_CREATE_DIRS` | Auto-create directories |
 
-### jac-scale: Database
+### Scale: Database
 
 | Variable | Description |
 |----------|-------------|
@@ -821,7 +820,7 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 
 Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAGE_FIREBASE_PROJECT_ID`, `JAC_STORAGE_GCS_PROJECT_ID`) override `FIREBASE_PROJECT_ID` when set.
 
-### jac-scale: Authentication
+### Scale: Authentication
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -832,7 +831,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 | `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | None |
 | `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | None |
 
-### jac-scale: Webhooks
+### Scale: Webhooks
 
 | Variable | Description |
 |----------|-------------|
@@ -841,7 +840,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 | `WEBHOOK_VERIFY_SIGNATURE` | Enable signature verification |
 | `WEBHOOK_API_KEY_EXPIRY_DAYS` | API key expiry in days |
 
-### jac-scale: Kubernetes
+### Scale: Kubernetes
 
 | Variable | Description | Default |
 |----------|-------------|---------|

@@ -103,6 +103,35 @@ def _register_builtin_shadcn_provider() -> None:
 _register_builtin_shadcn_provider()
 
 
+def _register_builtin_scale_provider() -> None:
+    """Register the built-in scale provider (serve / deploy / microservices).
+
+    This shipped as the separate ``jac-scale`` plugin; it is now part of core and
+    registers directly (no entry point, no separate package). Importing
+    ``jaclang.scale.plugin`` runs its ``with entry`` block, which registers the
+    ``JacScalePlugin`` hook implementations; we additionally register the scale
+    CLI command provider (``JacCmd`` -> ``--scale`` / ``destroy`` / ``status`` /
+    ``scale``) and the ``[scale.*]`` config-schema provider. All heavy third-party
+    imports (fastapi/uvicorn/pymongo/...) are deferred into the hook bodies, so this
+    registration never pulls the serve runtime closure at ``import jaclang`` time;
+    those deps arrive in the project ``.jac/venv`` via the capability registry.
+    """
+    try:
+        from jaclang.scale.config.plugin_config import JacScalePluginConfig
+        from jaclang.scale.plugin import JacCmd
+    except Exception as exc:  # keep core usable if scale fails to import
+        import warnings
+
+        warnings.warn(f"Built-in scale provider unavailable: {exc}", stacklevel=2)
+        return
+    for _provider in (JacCmd, JacScalePluginConfig):
+        if not plugin_manager.is_registered(_provider):
+            plugin_manager.register(_provider)
+
+
+_register_builtin_scale_provider()
+
+
 def _register_builtin_mcp_provider() -> None:
     """Register the built-in MCP server's config provider.
 

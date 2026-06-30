@@ -2228,7 +2228,7 @@ For virtual key generation, see [LiteLLM Virtual Keys](https://docs.litellm.ai/d
 
 ### Enabling Telemetry in LiteLLM Proxy Server
 
-When using jac-scale (`jac start`), LLM telemetry is automatically enabled. The server registers both a **litellm CustomLogger** (for per-call token/cost tracking) and a **byLLM agent callback** (for per-invocation metadata), then exposes REST endpoints for querying the collected data.
+When serving with the built-in scale subsystem (`jac start`), LLM telemetry is automatically enabled. The server registers both a **litellm CustomLogger** (for per-call token/cost tracking) and a **byLLM agent callback** (for per-invocation metadata), then exposes REST endpoints for querying the collected data.
 
 The telemetry endpoints are:
 

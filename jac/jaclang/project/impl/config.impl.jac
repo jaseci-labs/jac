@@ -399,6 +399,11 @@ impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, any] {
     return self.plugins.get(plugin_name, {});
 }
 
+impl JacConfig.get_section(name: str) -> dict[str, any] | None {
+    section = self._raw_data.get(name) if isinstance(self._raw_data, dict) else None;
+    return section if isinstance(section, dict) else None;
+}
+
 impl JacConfig.get_build_dir -> Path {
     import from pathlib { Path }
     base = self.project_root or Path.cwd();

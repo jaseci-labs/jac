@@ -78,7 +78,7 @@ When a top-level `def` or `walker` is served via `jac serve` / `jac start`, the 
 
 > **`:protect` is not a middle auth tier.** For endpoint auth, only `:pub` is exempt; `:protect`, `:priv`, and the unmarked default all require authentication and behave identically. The three-way gradient exists for the *visibility* axis above, not for auth. Don't reach for `:protect` expecting "lighter" auth -- there is no such thing.
 
-See [jac-scale](../plugins/jac-scale.md) for the full serve/auth model, including per-user data isolation and permission grants (which are a *third*, separate concern from endpoint auth).
+See the [Scale Reference](../plugins/jac-scale.md) for the full serve/auth model, including per-user data isolation and permission grants (which are a *third*, separate concern from endpoint auth).
 
 ---
 

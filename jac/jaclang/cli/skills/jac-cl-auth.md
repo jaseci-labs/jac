@@ -122,7 +122,7 @@ In manual routing, wrap the protected subtree the same way: `<AuthGuard redirect
 
 ## SSO login
 
-Server side: configure a provider in `jac.toml` (handled by jac-scale - see `jac-sv-auth`):
+Server side: configure a provider in `jac.toml` (handled by the built-in scale subsystem - see `jac-sv-auth`):
 
 ```toml
 [plugins.scale.sso.google]

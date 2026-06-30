@@ -122,12 +122,12 @@ exposes its own `__all__` under the `byllm` namespace:
 - **Errors**: `ByLLMError`, `AuthenticationError`, `RateLimitError`, `ModelNotFoundError`, `OutputConversionError`, `UnknownToolError`, `FinishToolError`, `ConfigurationError`, `McpError`
 - **Telemetry & batching**: `register_agent_callback`, `dispatch_batch`, `mark_serialize`
 
-### jac-scale (`jac-scale/jac_scale/`)
+### scale (`jac/jaclang/scale/`, formerly the `jac-scale` plugin)
 
-[`jac_scale/lib.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/lib.jac)
+[`jaclang/scale/persistence/lib.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/persistence/lib.jac)
 is intentionally minimal -- a single `kvstore()` factory that returns a `Db`
 instance backed by MongoDB or Redis. The substantive abstractions live in
-[`jac_scale/abstractions/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-scale/jac_scale/abstractions)
+[`jaclang/scale/abstractions/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale/abstractions)
 as interface contracts:
 
 - `database_provider.jac` -- provider interface
@@ -176,7 +176,7 @@ holds everywhere, but the four library packages do not share a common shape:
 |---|---|---|
 | `jaclang` | yes | single consolidated `__all__` re-exporting `jac0core/jaclib.jac` |
 | `byllm` | yes | own `__all__` in own namespace |
-| `jac_scale` | yes (minimal) | `lib.jac` exposes only `kvstore`; substantive abstractions in `abstractions/` directory |
+| `jaclang.scale` | yes (minimal) | `persistence/lib.jac` exposes only `kvstore`; substantive abstractions in `abstractions/` directory |
 | `jac_client` | no | plugin-based, no curated re-export |
 | `jac_mcp` | no | plugin-based, no curated re-export |
 
