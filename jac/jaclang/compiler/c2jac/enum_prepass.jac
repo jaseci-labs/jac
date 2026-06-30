@@ -26,7 +26,7 @@ demotes instead of silently shadowing it at module scope.
 
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier, Mechanism, NodeTag, TagTable }
-import from jaclang.compiler.c2jac.c_common { parse_c_int }
+import from jaclang.compiler.c2jac.c_common { enumerator_value }
 
 # Binary ops whose operands are being consumed as plain integers. An enumerator
 # appearing as an operand of one of these is evidence the program relies on the
@@ -104,37 +104,12 @@ def _collect_int_use_names(nd: object, names: set[str]) {
     }
 }
 
-def _enumerator_value(en: object, counter: int) -> tuple[int, bool] {
-    # Resolve one enumerator to (value, is_simple_constant). "Simple" means an
-    # implicit sequential value, a plain int literal, or a negated int literal —
-    # the forms both enum walks below understand. For anything else (arithmetic,
-    # identifiers, unparseable suffixed literals) is_simple is False and the
-    # returned value is a 0 placeholder. Single source for both the strict
-    # ENUM_AS_ENUM check and the best-effort ENUM_AS_CONSTS fallback.
-    if en.value is None {
-        return (counter, True);
-    }
-    if isinstance(en.value, c_ast.Constant) and en.value.type == "int" {
-        v = parse_c_int(en.value.value);
-        return (v, True) if v is not None else (0, False);
-    }
-    if (
-        isinstance(en.value, c_ast.UnaryOp)
-        and en.value.op == "-"
-        and isinstance(en.value.expr, c_ast.Constant)
-        and en.value.expr.type == "int"
-    ) {
-        v = parse_c_int(en.value.expr.value);
-        return (-v, True) if v is not None else (0, False);
-    }
-    return (0, False);
-}
 
 def _enum_explicit_values(enumerator_list: object) -> dict[str, int] | None {
     result: dict[str, int] = {};
     counter: int = 0;
     for en in enumerator_list.enumerators {
-        (v, simple) = _enumerator_value(en, counter);
+        (v, simple) = enumerator_value(en, counter);
         if not simple {
             return None;
         }
@@ -215,7 +190,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             counter = 0;
             ok = True;
             for enr in en.values.enumerators {
-                (v, simple) = _enumerator_value(enr, counter);
+                (v, simple) = enumerator_value(enr, counter);
                 best_map[enr.name] = v;
                 counter = v + 1;
                 if not simple {
