@@ -83,8 +83,12 @@ def compile_and_extract(jac_path: str) -> bytes | None {
     # End-of-unit: this file is fully compiled and its bytecode captured, so its
     # AST closure can be released before moving to the next file. This is what
     # keeps the precompile's resident memory bounded by a single file's closure
-    # instead of the cumulative union of every file in the package.
+    # instead of the cumulative union of every file in the package. Release both
+    # hubs: jaclang sources route to internal_program, while a non-jaclang
+    # package (e.g. jac-scale) routes to the local `program` -- clearing only
+    # one would leave the other's closure pinned until the next GC sweep.
     compiler.internal_program.release_compile_closure();
+    program.release_compile_closure();
     if code is None {
         return None;
     }

@@ -313,14 +313,22 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # accumulate the union of every module's AST. Symbols needed by later
         # imports re-materialize from the .jir cache on demand; native engines
         # live in _native_cache, which release_compile_closure() preserves.
-        if "JAC_NO_UNIT_EVICT" not in os.environ:
-            try:
-                program.release_compile_closure()
-                internal = compiler.internal_program
-                if internal is not program:
-                    internal.release_compile_closure()
-            except Exception:
-                pass
+        # release_compile_closure() self-guards on JAC_NO_UNIT_EVICT, so this
+        # call site and the precompile driver share one opt-out semantic. A
+        # release failure must not break the import, but it must not vanish
+        # either: silently swallowing it would silently re-introduce the
+        # unbounded AST accumulation this is meant to prevent, so log at debug.
+        try:
+            program.release_compile_closure()
+            internal = compiler.internal_program
+            if internal is not program:
+                internal.release_compile_closure()
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                f"release_compile_closure failed for {file_path}: {e}"
+            )
 
     def get_code(self, fullname: str) -> object | None:
         """Get the code object for a module.
