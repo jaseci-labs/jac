@@ -113,13 +113,17 @@ def build_pages_react_entry_script(
 }
 
 def build_web_error_overlay_entry_script(file_path: str, errors: str) -> str {
+    safe_path = file_path.replace("\\", "\\\\").replace('"', '\\"');
+    safe_errors = errors.replace("\\", "\\\\").replace("`", "\\`").replace(
+        "${", "\\${"
+    );
     return (
         'import React from "react";\n'
         'import { createRoot } from "react-dom/client";\n'
         'import { errorOverlay } from "@jac/runtime";\n'
         '\n'
         'const root = createRoot(document.getElementById("root"));\n'
-        f'root.render(errorOverlay("{file_path} ", ` {errors}`), null);\n'
+        f'root.render(errorOverlay("{safe_path} ", `{safe_errors}`), null);\n'
     );
 }
 

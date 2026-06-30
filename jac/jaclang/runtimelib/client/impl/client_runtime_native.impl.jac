@@ -263,9 +263,16 @@ impl _makeNativeLink(props: dict, children: list) -> JsxElement {
         Reflect.deleteProperty(rest, "href");
     }
     if href {
-        rest["onPress"] = lambda { RNLinking.openURL(href).catch(
-            lambda e: any { console.warn("RNLinking.openURL failed", e); }
-        ); };
+        rest["onPress"] = lambda { if href.startswith("http://")
+        or href.startswith("https://")
+        or href.startswith("mailto:")
+        or href.startswith("tel:") {
+            RNLinking.openURL(href).catch(
+                lambda e: any { console.warn("RNLinking.openURL failed", e); }
+            );
+        } else {
+            navigate(href);
+        } };
     }
     args = [RNText, rest];
     for child in children {
