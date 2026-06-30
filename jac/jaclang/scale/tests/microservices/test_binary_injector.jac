@@ -5,6 +5,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.scale.injector.binary {
     pack_toolchain,
+    host_repo_root,
     resolve_prebuilt_binary,
     _parse_owner_repo
 }
@@ -15,6 +16,19 @@ import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
+}
+
+
+test "host_repo_root resolves to the buildable jac source tree" {
+    # The repo root must be the jaclang package dir's grandparent; a wrong
+    # parent count makes host_repo_root land on <root>/jac instead.
+    import jaclang;
+    repo_root = Path(str(host_repo_root()));
+    pkg = Path(str(jaclang.__file__)).resolve().parent;
+    assert repo_root == pkg.parent.parent;
+    if (repo_root / "jac").is_dir() {
+        assert (repo_root / "jac" / "build.zig").is_file();
+    }
 }
 
 
