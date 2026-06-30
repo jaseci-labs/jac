@@ -257,16 +257,16 @@ Emitted by the type checker and type evaluator.
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
 
-### Universal-Project JSX Host Tags
+### mobUI-Project JSX Host Tags
 
-Emitted by `JsxIntrinsicGuardPass` when a `universal` project (see [React Native target](plugins/jac-client.md#react-native-target-beta)) uses a raw HTML host tag in JSX. The guard resolves every tag name in the enclosing scope; only **unresolved lowercase names** are treated as HTML host elements and rejected. Uppercase components and lowercase components that resolve to an in-scope symbol are allowed.
+Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native target](plugins/jac-client.md#react-native-target-beta)) uses a raw HTML host tag in JSX. The guard resolves every tag name in the enclosing scope; only **unresolved lowercase names** are treated as HTML host elements and rejected. Uppercase components and lowercase components that resolve to an in-scope symbol are allowed.
 
 | Code | Message |
 |------|---------|
-| `E1105` | JSX tag '<{tag}>' is not in scope in a universal project; use {suggestion} instead |
+| `E1105` | JSX tag '<{tag}>' is not in scope in a mobUI project; use {suggestion} instead |
 
 !!! tip "Fixing `E1105`"
-    `E1105` fires only in `universal` projects (`[project] kind = "universal"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/ui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`kind = "fullstack"` or unset) are unaffected -- HTML tags remain valid there.
+    `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/ui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`kind = "fullstack"` or unset) are unaffected -- HTML tags remain valid there.
 
 ### Type Warnings
 

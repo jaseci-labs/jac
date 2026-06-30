@@ -1,8 +1,8 @@
 [project]
-name = "universal-tags"
+name = "mobui-tags"
 version = "1.0.0"
-client_kind = "universal"
-description = "Universal Tag System showcase: a @jac/ui vocabulary app (one source, web + React Native)"
+client_kind = "mobui"
+description = "mobUI Tag System showcase: a @jac/ui vocabulary app (one source, web + React Native)"
 entry-point = "main.jac"
 
 [plugins.client]

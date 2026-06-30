@@ -1,7 +1,7 @@
-"""Fixture: universal projects forbid raw HTML host tags in JSX (E1105).
+"""Fixture: mobUI projects forbid raw HTML host tags in JSX (E1105).
 
 Lowercase intrinsic tags (``<div>``, ``<span>``, ``<button>``, ``<img>``)
-must each raise E1105 when compiled as a universal project. The uppercase
+must each raise E1105 when compiled as a mobUI project. The uppercase
 component ``<Card>`` is a user component and must NOT be flagged."""
 
 def Card(title: str) -> JsxElement {

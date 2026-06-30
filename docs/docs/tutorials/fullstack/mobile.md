@@ -239,9 +239,9 @@ If mobile dev starts but the app does not load correctly:
 
 The React Native target (`--client react-native`, beta) is the **native** mobile path: instead of wrapping a web bundle in a webview, it compiles your `cl` UI to platform-native views via Expo/Metro/Hermes. This gives native gesture/scroll performance and access to the React Native ecosystem, at the cost of a different rendering and styling model.
 
-### Universal projects and `@jac/ui`
+### mobUI projects and `@jac/ui`
 
-A React Native app is a **universal** project -- one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). Because React Native has no DOM, universal projects do not use HTML tags. Instead they use Jac's `@jac/ui` component vocabulary, which projects to every target:
+A React Native app is a **mobUI** project -- one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). Because React Native has no DOM, mobUI projects do not use HTML tags. Instead they use Jac's `@jac/ui` component vocabulary, which projects to every target:
 
 | `@jac/ui` | Replaces HTML |
 |-----------|---------------|
@@ -253,7 +253,7 @@ A React Native app is a **universal** project -- one source tree that compiles t
 | `ScrollView` | `ul`, `ol`, scroll areas |
 | `StyleSheet` | CSS / `className` |
 
-Styling is `style={{...}}` objects over a flexbox subset -- no CSS files, no `className`. In a universal project, raw HTML tags (`<div>`, `<span>`, ...) are **compile errors** (`E1105`) with a fix-it pointing at the `@jac/ui` primitive to use instead. See the [diagnostics reference](../../reference/diagnostics.md#universal-project-jsx-host-tags) for details.
+Styling is `style={{...}}` objects over a flexbox subset -- no CSS files, no `className`. In a mobUI project, raw HTML tags (`<div>`, `<span>`, ...) are **compile errors** (`E1105`) with a fix-it pointing at the `@jac/ui` primitive to use instead. See the [diagnostics reference](../../reference/diagnostics.md#mobui-project-jsx-host-tags) for details.
 
 ### One-time setup
 
@@ -265,13 +265,13 @@ jac setup react-native
 
 This scaffolds an Expo/Metro project at `mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`), adds a `[plugins.client.react_native]` section to `jac.toml`, and prints next steps.
 
-Then opt in to the universal project kind in `jac.toml`:
+Then opt in to the mobUI project kind in `jac.toml`:
 
 ```toml
 [project]
 name = "myapp"
 version = "0.1.0"
-kind = "universal"
+client_kind = "mobui"
 ```
 
 ### Authoring UI with `@jac/ui`

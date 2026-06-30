@@ -5345,16 +5345,16 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
     );
 }
 
-test "universal_project_forbids_html_intrinsic_tags" {
-    # D17: in a universal (React Native) project, raw HTML host tags are
+test "mobui_project_forbids_html_intrinsic_tags" {
+    # D17: in a mobui (React Native) project, raw HTML host tags are
     # forbidden — JsxIntrinsicGuardPass emits E1105 for each lowercase tag,
     # with a fix-it pointing at the @jac/ui / RN component. Uppercase user
     # components (<Card>) are allowed. The pass runs in get_ir_gen_sched, so
     # it fires even with type_check=False (the .cl.jac / build path).
-    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac");
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
     program = JacProgram();
     program.compile(
-        path, options=CompileOptions(type_check=False, project_kind="universal")
+        path, options=CompileOptions(type_check=False, project_kind="mobui")
     );
 
     e1105 = [
@@ -5380,7 +5380,7 @@ test "universal_project_forbids_html_intrinsic_tags" {
 test "web_project_allows_html_intrinsic_tags" {
     # The same fixture compiled as a plain web project (default kind) emits no
     # E1105 — host tags are allowed there.
-    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac");
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
     program = JacProgram();
     program.compile(path, options=NO_TC);
 
@@ -5394,14 +5394,14 @@ test "web_project_allows_html_intrinsic_tags" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
 }
 
-test "universal_project_allows_lowercase_component_in_scope" {
+test "mobui_project_allows_lowercase_component_in_scope" {
     # An in-scope lowercase component must NOT trigger E1105 — the guard
     # resolves it via scope lookup and recognises it as a user component.
     # The 4 HTML host tags in the same fixture still emit E1105 as expected.
-    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac");
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
     program = JacProgram();
     program.compile(
-        path, options=CompileOptions(type_check=False, project_kind="universal")
+        path, options=CompileOptions(type_check=False, project_kind="mobui")
     );
     e1105 = [
         e
@@ -5415,8 +5415,8 @@ test "universal_project_allows_lowercase_component_in_scope" {
     )}:\n{msgs}";
 }
 
-test "universal_project_lowercase_component_no_w1050" {
-    # Gap 3: in a universal project, an in-scope lowercase component must not
+test "mobui_project_lowercase_component_no_w1050" {
+    # Gap 3: in a mobui project, an in-scope lowercase component must not
     # produce W1050 ('Unknown intrinsic JSX element'). The type evaluator
     # routes it via scope resolution, not the _JsxIntrinsicElements registry.
     path = os.path.join(
@@ -5424,7 +5424,7 @@ test "universal_project_lowercase_component_no_w1050" {
     );
     program = JacProgram();
     program.compile(
-        path, options=CompileOptions(type_check=True, project_kind="universal")
+        path, options=CompileOptions(type_check=True, project_kind="mobui")
     );
     w1050 = [
         w
@@ -5436,8 +5436,8 @@ test "universal_project_lowercase_component_no_w1050" {
     );
 }
 
-test "universal_kind_does_not_leak_outside_project_root" {
-    # Regression: a consumer's project_kind="universal" must not reach files
+test "mobui_kind_does_not_leak_outside_project_root" {
+    # Regression: a consumer's project_kind="mobui" must not reach files
     # outside the project root. The real failure was client_runtime.cl.jac
     # (from jac-client) being compiled into the user's JacProgram during
     # `jac build` and receiving E1105 for its HTML tags ("kind-leak").
@@ -5450,7 +5450,7 @@ test "universal_kind_does_not_leak_outside_project_root" {
         program.compile(
             path,
             options=CompileOptions(
-                type_check=False, project_kind="universal", project_root=tmp_root
+                type_check=False, project_kind="mobui", project_root=tmp_root
             )
         );
         e1105 = [
@@ -5475,7 +5475,7 @@ test "cl_jac_files_inside_project_root_also_exempt" {
     program.compile(
         path,
         options=CompileOptions(
-            type_check=False, project_kind="universal", project_root=fixtures_dir
+            type_check=False, project_kind="mobui", project_root=fixtures_dir
         )
     );
     e1105 = [
@@ -5489,32 +5489,32 @@ test "cl_jac_files_inside_project_root_also_exempt" {
     );
 }
 
-test "jac_toml_kind_universal_round_trip" {
+test "jac_toml_kind_mobui_round_trip" {
     # Verify the jac.toml → get_config() → compile() code path for
-    # `[project] client_kind = "universal"`. All other universal-project tests set
+    # `[project] client_kind = "mobui"`. All other mobui-project tests set
     # project_kind via CompileOptions directly; this one exercises the TOML
     # read and the compiler's fallback to get_config() when no explicit kind
     # is provided.
     import tempfile;
     import from jaclang.project.config { JacConfig, get_config, set_config }
 
-    toml_content = '[project]\nname = "test-proj"\nclient_kind = "universal"\n';
+    toml_content = '[project]\nname = "test-proj"\nclient_kind = "mobui"\n';
 
     with tempfile.TemporaryDirectory() as tmp_dir {
         toml_path = Path(tmp_dir) / "jac.toml";
         toml_path.write_text(toml_content);
         # Part 1: round-trip — JacConfig.load() must parse client_kind correctly.
         cfg = JacConfig.load(toml_path);
-        assert cfg.project.client_kind == "universal" , f"Expected client_kind='universal' from jac.toml, got '{cfg.project.client_kind}'";
+        assert cfg.project.client_kind == "mobui" , f"Expected client_kind='mobui' from jac.toml, got '{cfg.project.client_kind}'";
         # Part 2: compiler fallback — inject the loaded config as the singleton
         # and compile with a plain CompileOptions() (no explicit project_kind).
         # The compiler's `resolved_kind == "web"` branch must consult get_config()
-        # and pick up "universal", causing JsxIntrinsicGuardPass to emit E1105.
+        # and pick up "mobui", causing JsxIntrinsicGuardPass to emit E1105.
         prev_cfg = get_config();
         set_config(cfg);
         try {
             fixture = os.path.join(
-                CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac"
+                CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac"
             );
             program = JacProgram();
             program.compile(fixture, options=CompileOptions(type_check=False));
@@ -5523,7 +5523,7 @@ test "jac_toml_kind_universal_round_trip" {
                 for e in program.errors_had
                 if e.code and e.code.code == "E1105"
             ];
-            assert len(e1105) == 4 , f"Expected 4 E1105 from jac.toml client_kind=universal, got {len(
+            assert len(e1105) == 4 , f"Expected 4 E1105 from jac.toml client_kind=mobui, got {len(
                 e1105
             )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
         } finally {

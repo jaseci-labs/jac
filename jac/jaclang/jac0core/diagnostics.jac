@@ -498,9 +498,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1105 = _err(
          "E1105",
          Category.TYPE,
-         "JSX tag '<{tag}>' is not in scope in a universal project;"
+         "JSX tag '<{tag}>' is not in scope in a mobUI project;"
          " use {suggestion} instead",
-         "Universal projects target React Native as well as the web, where raw"
+         "mobUI projects target React Native as well as the web, where raw"
          " HTML host elements do not exist. If '<{tag}>' is meant to be a"
          " component, make sure it is imported and in scope. Otherwise, replace"
          " it with a @jac/ui primitive (View, Text, Pressable, TextInput,"

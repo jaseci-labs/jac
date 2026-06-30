@@ -1,7 +1,7 @@
-# universal-tags
+# mobui-tags
 
-Showcase for the **Universal Tag System** - Jac's v2 cross-platform UI model
-(`[project] kind = "universal"`). One source tree compiles to **both** the web
+Showcase for the **mobUI Tag System** - Jac's v2 cross-platform UI model
+(`[project] client_kind = "mobui"`). One source tree compiles to **both** the web
 (via `react-native-web`) and **React Native** (Android/iOS).
 
 ## What it demonstrates
@@ -26,12 +26,12 @@ subset. No CSS files, no `className`, by construction.
 
 ### 2. Compile-time enforcement (E1105)
 
-In a universal project, raw HTML host tags are **compile errors** with a fix-it
+In a mobUI project, raw HTML host tags are **compile errors** with a fix-it
 pointing at the `@jac/ui` primitive to use instead. Try adding a `<div>` to
 `main.jac` and run `jac check` - you'll get:
 
 ```
-error[E1105]: JSX tag '<div>' is not in scope in a universal project;
+error[E1105]: JSX tag '<div>' is not in scope in a mobUI project;
 use View instead
 ```
 

@@ -493,7 +493,7 @@ Use `--platform ios` on macOS to produce an Xcode project. App name and id are s
 
 Ship a **true native** mobile app (Android + iOS) using [React Native](https://reactnative.dev/), with platform-native views rather than a webview. This is the *frontend only* -- it talks to your Jac server over HTTP, so deploy the backend separately (e.g. as an [API service](#api-service)).
 
-A React Native app is a **universal** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS via Metro). Instead of HTML tags, universal projects use Jac's `@jac/ui` component vocabulary (`View`, `Text`, `Pressable`, `TextInput`, `Image`, `ScrollView`), which projects to every target. Raw HTML tags (`<div>`, `<span>`, ...) are compile errors in a universal project -- see [`E1105`](../reference/diagnostics.md#universal-project-jsx-host-tags).
+A React Native app is a **mobUI** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS via Metro). Instead of HTML tags, mobUI projects use Jac's `@jac/ui` component vocabulary (`View`, `Text`, `Pressable`, `TextInput`, `Image`, `ScrollView`), which projects to every target. Raw HTML tags (`<div>`, `<span>`, ...) are compile errors in a mobUI project -- see [`E1105`](../reference/diagnostics.md#mobui-project-jsx-host-tags).
 
 ```bash
 # prerequisites: Node.js; Android: JDK + Android SDK; iOS (macOS): Xcode
@@ -504,7 +504,7 @@ jac build --client react-native --platform android
 jac build --client react-native --platform ios    # macOS only
 ```
 
-Set `kind = "universal"` under `[project]` in `jac.toml` to opt in. The scaffold and build options live under `[plugins.client.react_native]`.
+Set `client_kind = "mobui"` under `[project]` in `jac.toml` to opt in. The scaffold and build options live under `[plugins.client.react_native]`.
 
 :octicons-arrow-right-24: Full reference: [React Native target](../reference/plugins/jac-client.md#react-native-target-beta) · Tutorial: [Mobile App](../tutorials/fullstack/mobile.md#react-native-target)
 

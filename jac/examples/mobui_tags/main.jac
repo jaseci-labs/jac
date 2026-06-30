@@ -1,6 +1,6 @@
-"""Universal Tag System showcase.
+"""mobUI Tag System showcase.
 
-A ``universal`` project (``jac.toml``: ``kind = "universal"``) is one source
+A ``mobui`` project (``jac.toml``: ``client_kind = "mobui"``) is one source
 tree that targets BOTH the web (via react-native-web) and React Native
 (Android/iOS). Instead of HTML, it uses Jac's own ``@jac/ui`` component
 vocabulary - View, Text, Pressable, TextInput, Image, ScrollView - which
@@ -11,10 +11,10 @@ What this example shows off
 1. The vocabulary. Every visible element below is an ``@jac/ui`` primitive.
    There is intentionally no ``<div>``, ``<span>``, ``<button>``, ``<input>``
    or ``<img>`` anywhere in this file.
-2. Compile-time enforcement. In a universal project, raw HTML host tags are
+2. Compile-time enforcement. In a mobUI project, raw HTML host tags are
    compile errors (E1105) with a fix-it pointing at the @jac/ui primitive to
    use instead. So a stray ``<div>`` would fail the build with a message like
-   "JSX tag '<div>' is not in scope in a universal project; use View instead".
+   "JSX tag '<div>' is not in scope in a mobUI project; use View instead".
 3. Scope-based tag resolution. Lowercase tags that resolve to an in-scope
    component are allowed (see ``<counter/>`` below); uppercase components are
    always allowed. Only *unresolved* lowercase names are treated as HTML host
@@ -89,7 +89,7 @@ cl {
          );
 
     # A lowercase, in-scope component. Because ``counter`` resolves via scope
-    # lookup, the universal guard treats it as a user component and ALLOWS it -
+    # lookup, the mobUI guard treats it as a user component and ALLOWS it -
     # this is the scope-based half of the tag system (not a host HTML element).
     def counter(label: str, value: int) -> JsxElement {
         return
@@ -105,7 +105,7 @@ cl {
 
         return
             <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-                <Text style={styles.title}>Universal Tag System</Text>
+                <Text style={styles.title}>mobUI Tag System</Text>
                 <View style={styles.card}>
                     <Text style={styles.label}>Image</Text>
                     <Image

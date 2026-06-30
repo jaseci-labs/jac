@@ -1920,7 +1920,7 @@ For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullsta
 
 Native mobile applications for Android and iOS using [React Native](https://reactnative.dev/). Unlike the [Capacitor mobile target](#mobile-target-capacitor) (which wraps a web bundle in a webview), the React Native target compiles your `cl` UI to **platform-native views** via Expo/Metro/Hermes, giving native gesture/scroll performance and access to the RN ecosystem.
 
-A React Native app is a **universal** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). Universal projects use Jac's `@jac/ui` component vocabulary instead of HTML -- see [The `@jac/ui` vocabulary](#the-jacui-vocabulary) below.
+A React Native app is a **mobUI** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). mobUI projects use Jac's `@jac/ui` component vocabulary instead of HTML -- see [The `@jac/ui` vocabulary](#the-jacui-vocabulary) below.
 
 **Prerequisites:**
 
@@ -1962,13 +1962,13 @@ eas_update_branch = ""           # "" -> "production" (release) / "preview" (deb
 eas_update_message = ""          # "" -> pass --auto to `eas update`
 ```
 
-**Opting in:** set `kind = "universal"` under `[project]` in `jac.toml` to mark the project as targeting React Native as well as the web:
+**Opting in:** set `client_kind = "mobui"` under `[project]` in `jac.toml` to mark the project as targeting React Native as well as the web:
 
 ```toml
 [project]
 name = "myapp"
 version = "0.1.0"
-kind = "universal"
+client_kind = "mobui"
 ```
 
 **Notes:**
@@ -2029,7 +2029,7 @@ Authors choose per project -- or ship both targets from one repo while keeping s
 
 #### The `@jac/ui` vocabulary
 
-`@jac/ui` is Jac's UI standard library for universal projects -- a sealed, Jac-owned component vocabulary whose semantics are React Native's component/style model. It is **not** "re-exported React Native." Universal apps import **nothing** from `react-native` or `react` directly; the vocabulary is the entire authoring surface, and RN / `react-native-web` are swappable implementation backends behind it.
+`@jac/ui` is Jac's UI standard library for mobUI projects -- a sealed, Jac-owned component vocabulary whose semantics are React Native's component/style model. It is **not** "re-exported React Native." mobUI apps import **nothing** from `react-native` or `react` directly; the vocabulary is the entire authoring surface, and RN / `react-native-web` are swappable implementation backends behind it.
 
 | `@jac/ui` | Replaces HTML | Native backend (RN) | Web backend (RNW) |
 |-----------|---------------|---------------------|-------------------|
@@ -2072,17 +2072,17 @@ cl {
 
 #### Compile-time enforcement (E1105)
 
-In a universal project, raw HTML host tags in `.cl.jac` are **compile errors** with a fix-it pointing at the `@jac/ui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
+In a mobUI project, raw HTML host tags in `.cl.jac` are **compile errors** with a fix-it pointing at the `@jac/ui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
 
 ```
-error[E1105]: JSX tag '<div>' is not in scope in a universal project; use View instead
+error[E1105]: JSX tag '<div>' is not in scope in a mobUI project; use View instead
 ```
 
 - **Uppercase components** (`<Card>`, `<Image>`) are always allowed.
 - **Lowercase components that resolve to an in-scope symbol are allowed** (e.g. a local `counter` component used as `<counter .../>`).
 - Only unresolved lowercase names (`div`, `span`, ...) are rejected.
 
-See [`E1105`](../diagnostics.md#universal-project-jsx-host-tags) in the diagnostics reference. Web projects (`kind = "fullstack"` or unset) are unaffected -- HTML tags remain valid there.
+See [`E1105`](../diagnostics.md#mobui-project-jsx-host-tags) in the diagnostics reference. Web projects (`kind = "fullstack"` or unset) are unaffected -- HTML tags remain valid there.
 
 #### Platform divergence
 
