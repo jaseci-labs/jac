@@ -13,10 +13,29 @@ glob _FFI_SCALARS: set = {
          "f32",
          "f64",
 
+     },
+     _STDINT_SCALARS: dict = {
+         "int8_t": "i8",
+         "uint8_t": "u8",
+         "int16_t": "i16",
+         "uint16_t": "u16",
+         "int32_t": "i32",
+         "uint32_t": "u32",
+         "int64_t": "i64",
+         "uint64_t": "u64",
+         "intmax_t": "i64",
+         "uintmax_t": "u64",
+         "intptr_t": "i64",
+         "uintptr_t": "u64",
+         "ptrdiff_t": "i64",
+         "size_t": "u64",
+         "ssize_t": "i64",
+
      };
 
 obj BindReport {
     has functions: int = 0,
+        constants: int = 0,
         variadic: int = 0,
         skipped: int = 0;
 }
@@ -62,28 +81,57 @@ def ffi_prim(names: list) -> str {
     return "int";
 }
 
-def _ptr_ffi(ptr_decl: object) -> str {
+def _collect_typedefs(file_ast: object) -> dict {
+    out: dict = {};
+    for ext in file_ast.ext {
+        if not isinstance(ext, c_ast.Typedef) {
+            continue;
+        }
+        inner = ext.type;
+        if isinstance(inner, c_ast.TypeDecl)
+        and isinstance(inner.type, c_ast.IdentifierType) {
+            out[ext.name] = inner.type.names;
+        }
+    }
+    return out;
+}
+
+def _scalar_for_names(names: list, typedefs: dict, depth: int = 0) -> str {
+    if names and len(names) == 1 and depth < 16 {
+        nm = names[0];
+        if nm in _STDINT_SCALARS {
+            return _STDINT_SCALARS[nm];
+        }
+        if nm in typedefs {
+            return _scalar_for_names(typedefs[nm], typedefs, depth + 1);
+        }
+    }
+    return ffi_prim(names);
+}
+
+def _ptr_ffi(ptr_decl: object, typedefs: dict) -> str {
     inner = ptr_decl.type;
     if isinstance(inner, c_ast.TypeDecl) {
         names = inner.type?.names or [];
         if "char" in names and "signed" not in names and "unsigned" not in names {
             return "str";
         }
-        if names and ffi_prim(names) in _FFI_SCALARS {
+        if names and _scalar_for_names(names, typedefs) in _FFI_SCALARS {
             return "bytes";
         }
     }
     return "int";
 }
 
-def ffi_type(decl_type: object) -> str {
+def ffi_type(decl_type: object, typedefs: dict | None = None) -> str {
+    tds = typedefs or {};
     t = decl_type;
     while not isinstance(t, c_ast.TypeDecl) {
         if isinstance(t, c_ast.ArrayDecl) {
             return "int";
         }
         if isinstance(t, c_ast.PtrDecl) {
-            return _ptr_ffi(t);
+            return _ptr_ffi(t, tds);
         }
         if isinstance(t, c_ast.FuncDecl) {
             t = t.type;
@@ -95,7 +143,7 @@ def ffi_type(decl_type: object) -> str {
         }
     }
     names = t.type?.names or ["int"];
-    return ffi_prim(names);
+    return _scalar_for_names(names, tds);
 }
 
 def _is_void_params(params: list) -> bool {
@@ -113,7 +161,7 @@ def _is_void_params(params: list) -> bool {
     return False;
 }
 
-def _func_signature(funcdecl: object) -> tuple {
+def _func_signature(funcdecl: object, typedefs: dict) -> tuple {
     pl = funcdecl.args;
     if pl is None {
         return ("", False);
@@ -132,7 +180,7 @@ def _func_signature(funcdecl: object) -> tuple {
             continue;
         }
         pname = p.name or f"arg{idx}";
-        parts.append(f"{pname}: {ffi_type(p.type)}");
+        parts.append(f"{pname}: {ffi_type(p.type, typedefs)}");
         idx += 1;
     }
     return (", ".join(parts), is_var);
@@ -159,11 +207,185 @@ def _func_node(ext: object) -> object {
     return None;
 }
 
+def _c_int(text: str) -> int | None {
+    s = text;
+    while s and s[-1] in "uUlL" {
+        s = s[:-1];
+    }
+    if not s {
+        return None;
+    }
+    low = s.lower();
+    try {
+        if low.startswith("0x") {
+            return int(s, 16);
+        }
+        if low.startswith("0b") {
+            return int(s, 2);
+        }
+        if len(s) > 1 and s[0] == "0" {
+            for c in s[1:] {
+                if c not in "01234567" {
+                    return None;
+                }
+            }
+            return int(s, 8);
+        }
+        if s.isdigit() {
+            return int(s, 10);
+        }
+    } except Exception {
+        return None;
+    }
+    return None;
+}
+
+
+def _int_from_macro_tokens(toks: list) -> int | None {
+    parts = [
+        t
+        for t in toks
+        if t[0] != "CPP_WS"
+    ];
+    if not parts {
+        return None;
+    }
+    sign = 1;
+    idx = 0;
+    if parts[0][0] in ("CPP_MINUS", "CPP_PLUS") {
+        if parts[0][0] == "CPP_MINUS" {
+            sign = -1;
+        }
+        idx = 1;
+    }
+    if len(parts) - idx != 1 or parts[idx][0] != "CPP_INTEGER" {
+        return None;
+    }
+    v = _c_int(parts[idx][1]);
+    return None if v is None else sign * v;
+}
+
+
+def _const_int_node(nd: object) -> int | None {
+    if isinstance(nd, c_ast.Constant) {
+        return _c_int(nd.value) if nd.type == "int" else None;
+    }
+    if isinstance(nd, c_ast.UnaryOp) and nd.op in ("-", "+") {
+        inner = _const_int_node(nd.expr);
+        if inner is None {
+            return None;
+        }
+        return -inner if nd.op == "-" else inner;
+    }
+    return None;
+}
+
+
+def _enum_def(ext: object) -> object | None {
+    t = ext?.type;
+    while t is not None and not isinstance(t, c_ast.Enum) {
+        t = t?.type;
+    }
+    if isinstance(t, c_ast.Enum) and t.values is not None {
+        return t;
+    }
+    return None;
+}
+
+
+def _eval_enum(enum_node: object) -> list | None {
+    out: list = [];
+    nxt = 0;
+    for en in enum_node.values.enumerators {
+        if en.value is None {
+            val = nxt;
+        } else {
+            val = _const_int_node(en.value);
+            if val is None {
+                return None;
+            }
+        }
+        out.append((en.name, val));
+        nxt = val + 1;
+    }
+    return out;
+}
+
+
+def _emit_const_block(name: str, value: int) -> str {
+    return f"glob {name}: int = {value};\n";
+}
+
+
+def _take_const(
+    cname: str,
+    val: int,
+    allow_set: (set | None),
+    block_set: set,
+    seen: set,
+    lines: list,
+    rep: BindReport
+) -> None {
+    if (allow_set is not None and cname not in allow_set) or cname in block_set {
+        rep.skipped += 1;
+        return;
+    }
+    if cname in seen {
+        rep.skipped += 1;
+        return;
+    }
+    seen.add(cname);
+    lines.append(_emit_const_block(cname, val));
+    rep.constants += 1;
+}
+
+
+def _emit_consts(
+    file_ast: object,
+    macros: (dict | None),
+    allow_set: (set | None),
+    block_set: set,
+    rep: BindReport
+) -> str {
+    lines: list[str] = [];
+    seen: set = set();
+    for ext in file_ast.ext {
+        enum_node = _enum_def(ext);
+        if enum_node is None {
+            continue;
+        }
+        pairs = _eval_enum(enum_node);
+        if pairs is None {
+            rep.skipped += 1;
+            continue;
+        }
+        for (cname, val) in pairs {
+            _take_const(cname, val, allow_set, block_set, seen, lines, rep);
+        }
+    }
+    for (mname, toks) in (macros or {}).items() {
+        val = _int_from_macro_tokens(toks);
+        if val is not None {
+            _take_const(mname, val, allow_set, block_set, seen, lines, rep);
+        }
+    }
+    if not lines {
+        return "";
+    }
+    return "\n# Integer constants (enum / #define).\n" + "".join(lines);
+}
+
+
 def _emit_bindings(
-    file_ast: object, lib: str, allow: (list[str] | None), block: (list[str] | None)
+    file_ast: object,
+    lib: str,
+    allow: (list[str] | None),
+    block: (list[str] | None),
+    macros: (dict | None) = None
 ) -> tuple[str, BindReport] {
     allow_set = set(allow) if allow else None;
     block_set = set(block) if block else set();
+    typedefs = _collect_typedefs(file_ast);
     rep = BindReport();
     blocks: list[str] = [];
     for ext in file_ast.ext {
@@ -177,19 +399,21 @@ def _emit_bindings(
             continue;
         }
         funcdecl = fn.type;
-        (sig, is_var) = _func_signature(funcdecl);
-        ret = ffi_type(funcdecl.type);
+        (sig, is_var) = _func_signature(funcdecl, typedefs);
+        ret = ffi_type(funcdecl.type, typedefs);
         blocks.append(_emit_func_block(lib, name, sig, ret));
         rep.functions += 1;
         if is_var {
             rep.variadic += 1;
         }
     }
+    consts = _emit_consts(file_ast, macros, allow_set, block_set, rep);
     header = f"# Native FFI bindings for `{lib}`, generated by `jac cbindgen`.\n" + "# Do not edit by hand — regenerate from the C header.\n\n";
-    return (header + "".join(blocks), rep);
+    return (header + "".join(blocks) + consts, rep);
 }
 
-def generate_bindings(
+def bindings_from_source(
+    c_src: str,
     filename: str,
     lib: str,
     include_dirs: (list[str] | None) = None,
@@ -200,10 +424,10 @@ def generate_bindings(
     allow: (list[str] | None) = None,
     block: (list[str] | None) = None
 ) -> tuple[str, BindReport] {
-    c_src = read_file_with_encoding(filename);
+    macros: dict = {};
     if not filename.endswith(".i") {
-        import from jaclang.compiler.c2jac.preprocess { preprocess_c }
-        c_src = preprocess_c(
+        import from jaclang.compiler.c2jac.preprocess { preprocess_c_collect }
+        (c_src, macros) = preprocess_c_collect(
             c_src,
             filename,
             include_dirs=include_dirs,
@@ -228,5 +452,32 @@ def generate_bindings(
         }
         raise;
     }
-    return _emit_bindings(file_ast, lib, allow, block);
+    return _emit_bindings(file_ast, lib, allow, block, macros=macros);
+}
+
+
+def generate_bindings(
+    filename: str,
+    lib: str,
+    include_dirs: (list[str] | None) = None,
+    defines: (list[str] | None) = None,
+    undefines: (list[str] | None) = None,
+    force_includes: (list[str] | None) = None,
+    nostdinc: bool = False,
+    allow: (list[str] | None) = None,
+    block: (list[str] | None) = None
+) -> tuple[str, BindReport] {
+    c_src = read_file_with_encoding(filename);
+    return bindings_from_source(
+        c_src,
+        filename,
+        lib,
+        include_dirs=include_dirs,
+        defines=defines,
+        undefines=undefines,
+        force_includes=force_includes,
+        nostdinc=nostdinc,
+        allow=allow,
+        block=block,
+    );
 }

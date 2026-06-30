@@ -147,15 +147,18 @@ impl cbindgen(
             console.error(f"Cannot write {output}: {e}");
             return 1;
         }
-        console.print(f"[cbindgen] wrote {report.functions} binding(s) to {output}");
+        console.print(
+            f"[cbindgen] wrote {report.functions} function binding(s) and "
+            f"{report.constants} constant(s) to {output}"
+        );
     } else {
         console.print(na_str, markup=False, highlight=False);
     }
-    if report.functions == 0 {
+    if report.functions == 0 and report.constants == 0 {
         console.warning(
-            "[cbindgen] no extern function prototypes were bound — check -I "
-            "include paths, --allow/--block filters, or that the header declares "
-            "externs (Phase 0 binds functions only; structs/enums land in Phase 1)"
+            "[cbindgen] nothing was bound — check -I include paths, --allow/--block "
+            "filters, or that the header declares extern functions, enums, or "
+            "integer #define constants"
         );
     } elif report.variadic {
         console.warning(
