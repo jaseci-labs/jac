@@ -1171,17 +1171,6 @@ test "_boot_impl closes a prior runtime before re-booting" {
     }
 }
 
-
-# ------------------------------------------------------------------------------
-# dispatch_sync() -- the timeout-protected synchronous path the desktop host's
-# `_jac_unified_dispatch` uses for walker/function invokes (Greptile P1: a
-# synchronous dispatch must not hold the GIL indefinitely; a slow/stuck walker
-# must reject with NATIVE_DISPATCH_TIMEOUT instead of freezing the app).
-# ------------------------------------------------------------------------------
-
-# Backend-free: a fast dispatch round-trips its result through dispatch_sync()'s
-# worker thread unchanged (the worker runs the real `dispatch`, which here hits
-# a mock TestClient).
 test "dispatch_sync() returns the result for a fast call" {
     import from importlib { import_module }
     import from unittest.mock { MagicMock }
