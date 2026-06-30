@@ -6,7 +6,7 @@ import from jaclang.scale.injector.bundle { pack_source }
 import from jaclang.scale.injector.pvc_injector { PvcInjector, build_bundle_pvc }
 
 
-test "pack_source keeps app files but drops secrets and strips plugins.scale" {
+test "pack_source keeps scale capability intents but strips only the secrets sub-table (both forms)" {
     with tempfile.TemporaryDirectory() as project {
         with open(os.path.join(project, "app.jac"), "w") as handle {
             handle.write("walker Main {}");
@@ -18,8 +18,12 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
             handle.write("PRIVATE");
         }
         with open(os.path.join(project, "jac.toml"), "w") as handle {
+            # plugins.scale.secrets.* = a top-level dotted secret key (must strip);
+            # [plugins.scale.database] = a capability intent (must survive so the
+            # pod's `jac install` resolves it); [plugins.scale.secrets] and
+            # [scale.secrets] = the secrets sub-table in both forms (must strip).
             handle.write(
-                "plugins.scale.jwt.secret = \"topsecret\"\n" + "[project]\nname = \"x\"\n" + "[plugins.scale] # deploy creds\nimage_registry = \"creds\"\n" + "[plugins.scale.kubernetes]\nmongodb_uri = \"mongodb://u:p@h\"\n"
+                "plugins.scale.secrets.jwt = \"topsecret\"\n" + "[project]\nname = \"x\"\n" + "[plugins.scale.database]\nbackend = \"mongo\"\n" + "[plugins.scale.secrets]\nmongodb_uri = \"mongodb://u:p@h\"\n" + "[scale.secrets]\napi_key = \"shhhh\"\n"
             );
         }
         raw = pack_source(project);
@@ -33,11 +37,16 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
         assert ".env" not in names;
         assert "tls.key" not in names;
         assert "[project]" in toml_text;
-        assert "plugins.scale" not in toml_text;
-        assert "topsecret" not in toml_text;
-        assert "creds" not in toml_text;
-        assert "mongodb" not in toml_text;
         assert "name = \"x\"" in toml_text;
+        # capability intent survives the bundle (the #7069 regression)
+        assert "[plugins.scale.database]" in toml_text;
+        assert "backend = \"mongo\"" in toml_text;
+        # secrets are stripped symmetrically in both forms
+        assert "[plugins.scale.secrets]" not in toml_text;
+        assert "[scale.secrets]" not in toml_text;
+        assert "topsecret" not in toml_text;
+        assert "mongodb" not in toml_text;
+        assert "shhhh" not in toml_text;
     }
 }
 

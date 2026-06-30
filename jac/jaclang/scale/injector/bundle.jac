@@ -6,7 +6,8 @@ import from pathlib { Path }
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      JAC_HOME: str = "/app/.jachome",
-     TOOLCHAIN_SUBDIR: str = ".jactoolchain";
+     TOOLCHAIN_SUBDIR: str = ".jactoolchain",
+     JAC_ZIG_VERSION: str = "0.16.0";
 
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
@@ -61,35 +62,41 @@ def is_excluded(rel: Path) -> bool {
 }
 
 
+def _is_secret_path(name: str) -> bool {
+    # The secrets sub-table in either supported config form
+    # ([plugins.scale.secrets] or [scale.secrets]) and any of its nested tables.
+    return name == "plugins.scale.secrets"
+    or name.startswith("plugins.scale.secrets.")
+    or name == "scale.secrets"
+    or name.startswith("scale.secrets.");
+}
+
+
 def sanitized_jac_toml(base: Path) -> (str | None) {
+    # Strip only the secrets sub-table (in both [plugins.scale.secrets] and
+    # [scale.secrets] forms) from the bundled jac.toml; the rest of the scale
+    # config (database, storage, monitoring, tracing, kubernetes, ...) must
+    # survive so the pod's `jac install` can resolve the capability intents.
     src = base / "jac.toml";
     if not src.is_file() {
         return None;
     }
     out: list[str] = [];
-    in_stripped_section = False;
+    in_secret_section = False;
     at_top_level = True;
     for line in src.read_text().splitlines() {
         stripped = line.lstrip();
         if stripped.startswith("[") {
             header = stripped.lstrip("[").split("]")[0].strip();
-            # Strip [plugins.scale*] (host deploy config) and the host-side [dev]
-            # stanza: the pod's runtime channel is decided at deploy time and, for
-            # the dev channel, a pod-correct [dev] jaclang_source is injected by
-            # the bootstrap - a stale host [dev] here would point at a path that
-            # does not exist in the pod (or duplicate the injected table).
-            in_stripped_section = header == "plugins.scale"
-            or header.startswith("plugins.scale.")
-            or header == "dev"
-            or header.startswith("dev.");
+            in_secret_section = _is_secret_path(header);
             at_top_level = False;
-            if in_stripped_section {
+            if in_secret_section {
                 continue;
             }
-        } elif at_top_level and stripped.startswith("plugins.scale.") {
+        } elif at_top_level and _is_secret_path(stripped.split("=")[0].strip()) {
             continue;
         }
-        if not in_stripped_section {
+        if not in_secret_section {
             out.append(line);
         }
     }
