@@ -84,7 +84,7 @@ impl DependencyInstaller._seed_build_backend(target: Path) -> None {
         "wheel"
     ];
     try {
-        result = subprocess.run(cmd, capture_output=True, text=True);
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
         if result.returncode != 0 and self.verbose {
             console.print(
                 f"Warning: could not seed build backend in venv: {result.stderr.strip()}"
