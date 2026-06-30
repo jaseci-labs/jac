@@ -14,6 +14,7 @@ enum Idiom {
     C_FOR = "c_for",
     SWITCH_CLEAN = "switch_clean",
     DO_WHILE = "do_while",
+    PRE_INCDEC = "pre_incdec",
     TIER_B = "tier_b"
 }
 

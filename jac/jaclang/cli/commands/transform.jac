@@ -30,7 +30,6 @@ def jac2py(filename: str) -> int;
 )
 def jac2js(filename: str) -> int;
 
-"""Convert C to Jac."""
 @registry.command(
     name="c2jac",
     help="Convert C code to Jac (writes Jac to stdout; best-effort sites are flagged inline in the output)",
@@ -86,7 +85,92 @@ def c2jac(
     nostdinc: bool = False
 ) -> int;
 
-"""Deprecated alias for jac2js."""
+@registry.command(
+    name="cbindgen",
+    help="Generate a .na.jac FFI binding (import-from clib block) from a C header",
+    args=[
+        Arg.create(
+            "filename",
+            kind=ArgKind.POSITIONAL,
+            help="Path to a C header/source (.h/.c, preprocessed with pcpp) or a preprocessed .i file"
+        ),
+        Arg.create(
+            "lib",
+            kind=ArgKind.OPTION,
+            help="Target shared library: a logical name (z, crypto), a dotted name (libs.foo), or an explicit path"
+        ),
+        Arg.create(
+            "incdir",
+            kind=ArgKind.APPEND,
+            short="I",
+            help="Add a directory to the #include search path (repeatable)"
+        ),
+        Arg.create(
+            "define",
+            kind=ArgKind.APPEND,
+            short="D",
+            help="Define a macro, NAME or NAME=VALUE (repeatable)"
+        ),
+        Arg.create(
+            "undef",
+            kind=ArgKind.APPEND,
+            short="U",
+            help="Undefine a macro NAME (repeatable)"
+        ),
+        Arg.create(
+            "force-include",
+            kind=ArgKind.APPEND,
+            help="Force-include a header before the main source (gcc -include; repeatable)"
+        ),
+        Arg.create(
+            "nostdinc",
+            kind=ArgKind.FLAG,
+            help="Do not add pycparser's bundled fake libc headers to the include path"
+        ),
+        Arg.create(
+            "allow",
+            kind=ArgKind.APPEND,
+            help="Only bind these symbols (comma-separated or repeatable allowlist)"
+        ),
+        Arg.create(
+            "block",
+            kind=ArgKind.APPEND,
+            help="Never bind these symbols (comma-separated or repeatable blocklist)"
+        ),
+        Arg.create(
+            "output",
+            kind=ArgKind.OPTION,
+            short="o",
+            help="Write the generated .na.jac here instead of stdout"
+        ),
+
+    ],
+    examples=[
+        (
+            "jac cbindgen zlib.h --lib z -I /usr/include",
+            "Bind libz externs from a system header"
+        ),
+        (
+            "jac cbindgen api.h --lib mylib --allow foo,bar",
+            "Bind only the allowlisted symbols"
+        ),
+
+    ],
+    group="transform"
+)
+def cbindgen(
+    filename: str,
+    lib: str | None = None,
+    incdir: list | None = None,
+    define: list | None = None,
+    undef: list | None = None,
+    force_include: list | None = None,
+    nostdinc: bool = False,
+    allow: list | None = None,
+    block: list | None = None,
+    output: str | None = None
+) -> int;
+
 @registry.command(
     name="js",
     help="[Deprecated] Alias for 'jac2js'. Convert Jac code to JavaScript",
