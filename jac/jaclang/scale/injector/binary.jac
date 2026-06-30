@@ -33,13 +33,18 @@ def pod_zig_target(arch: str = "x86_64") -> str {
 
 def resolve_pod_build_target(node_arch: str = "x86_64") -> str | None {
     # A native build only produces a pod-runnable binary when the host is itself
-    # linux. From a non-linux host (e.g. macOS) the native build is a Mach-O
-    # binary that cannot exec in a linux container, so cross-compile to the pod
-    # platform instead. Returns None when no cross-compile is needed.
-    if platform.system() == "Linux" and host_arch() in ("x86_64", "amd64", "aarch64") {
+    # linux AND the host arch matches the pod arch. From a non-linux host (e.g.
+    # macOS), or a linux host whose arch differs from the pod arch (e.g. an
+    # aarch64/Graviton host targeting x86_64 pods), the native binary cannot
+    # exec in the container, so cross-compile to the pod platform instead.
+    # Returns None only when no cross-compile is needed.
+    pod_target = pod_zig_target(node_arch);
+    pod_arch = pod_target.split("-")[0];
+    norm_host = "aarch64" if host_arch() in ("arm64", "aarch64") else "x86_64";
+    if platform.system() == "Linux" and norm_host == pod_arch {
         return None;
     }
-    return pod_zig_target(node_arch);
+    return pod_target;
 }
 
 

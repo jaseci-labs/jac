@@ -11,15 +11,20 @@ import from jaclang.scale.injector.bundle { content_address }
 
 
 obj BinaryInjector(PvcInjector) {
-    has _toolchain_object_key: str = "",
+    # node_arch is the target pod node architecture (x86_64 / aarch64); it drives
+    # the cross-compile target so aarch64/Graviton pods get an aarch64 binary.
+    has node_arch: str = "x86_64",
+        _toolchain_object_key: str = "",
         _toolchain_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
         super.prepare(app_name, namespace, project_dir);
         repo_root = host_repo_root();
-        # Pods are linux; cross-compile when building from a non-linux host so we
-        # never ship a binary that cannot exec in the container.
-        binary = build_release_binary(repo_root, target=resolve_pod_build_target());
+        # Pods are linux; cross-compile when the host OS/arch differs from the pod
+        # so we never ship a binary that cannot exec in the container.
+        binary = build_release_binary(
+            repo_root, target=resolve_pod_build_target(self.node_arch)
+        );
 
         precompile_plugins(repo_root);
         raw = pack_toolchain(repo_root, binary);

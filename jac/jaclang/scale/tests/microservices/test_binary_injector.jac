@@ -63,10 +63,17 @@ test "a non-linux host cross-compiles the pod binary with -Dtarget" {
     assert pod_zig_target("arm64") == "aarch64-linux";
     assert pod_zig_target() == "x86_64-linux";
 
-    # On a linux host the native build already targets the pod; no -Dtarget.
+    # On a linux host whose arch matches the pod the native build is fine; no
+    # -Dtarget.
     with patch("platform.system", return_value="Linux") {
         with patch("jaclang.scale.injector.binary.host_arch", return_value="x86_64") {
             assert resolve_pod_build_target() is None;
+        }
+        # A linux aarch64/Graviton host targeting the default x86_64 pods must
+        # still cross-compile - matching OS is not enough, the arch must match.
+        with patch("jaclang.scale.injector.binary.host_arch", return_value="aarch64") {
+            assert resolve_pod_build_target() == "x86_64-linux";
+            assert resolve_pod_build_target("aarch64") is None;
         }
     }
     # Off a non-linux host we cross-compile to the (default amd64) pod platform.
