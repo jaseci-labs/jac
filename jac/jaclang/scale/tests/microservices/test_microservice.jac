@@ -34,6 +34,11 @@ def make_server(mod: str, tmp: str) -> TestClient {
 }
 
 def setup_env -> str {
+    # This test builds scale API servers in-process, so the whole process is a
+    # scale runtime: mark it so every execution context (this setup, each
+    # server's boot identity, and the per-request contexts) resolves to the
+    # shared scale tiered-memory context rather than core's local SQLite store.
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
     tmp = tempfile.mkdtemp();
     for f in glob.glob(str(FIXTURES / "*")) {
         if Path(f).is_file() {

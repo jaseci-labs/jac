@@ -34,14 +34,24 @@ def _print_autodetect_banner(routes: dict[str, str]) {
 }
 
 def _scale_runtime_active -> bool {
-    # True when this process is a scale runtime (the `jac start` server set by
-    # _scale_pre_hook, or a spawned sv sibling). Used to gate create_j_context
-    # so the scale tiered-memory context is used only while scale actually
-    # serves -- plain `jac run` / `jac test` / `jac db` keep core's SQLite store.
-    return (
+    # True when this process is a scale runtime, in which case graph state lives
+    # in the scale tiered-memory context rather than core's local SQLite store.
+    # That is the case when:
+    #   - it is the `jac start` server (JAC_SCALE_RUNTIME set by _scale_pre_hook)
+    #     or a spawned sv sibling (JAC_SV_SIBLING), or
+    #   - a scale (mongo / redis) persistence backend is configured, so even a
+    #     plain `jac run` / `jac test` pointed at that backend gets the scale
+    #     context.
+    # Otherwise (plain `jac run` / `jac test` / `jac db` with no scale backend)
+    # this declines so core's per-file `.jac/data/<name>.db` store is used.
+    if (
         os.environ.get("JAC_SCALE_RUNTIME") == "1"
         or os.environ.get("JAC_SV_SIBLING") == "1"
-    );
+    ) {
+        return True;
+    }
+    db = get_scale_config().get_database_config();
+    return bool(db.get("mongodb_uri") or db.get("redis_url"));
 }
 
 def _scale_pre_hook(context: HookContext) -> None {
