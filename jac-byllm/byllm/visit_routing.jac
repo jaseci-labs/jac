@@ -244,6 +244,7 @@ def _resolve_choice(item: object, by_handle: dict, recs: list) -> object {
 def route_visit(candidates: list, model: object) -> list {
     import from byllm.mtir { MTRuntime }
     import from byllm.types { Message, MessageRole }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     if not candidates {
         return [];
@@ -341,7 +342,7 @@ def route_visit(candidates: list, model: object) -> list {
         mtir=None,
     );
 
-    raw = model.invoke(mt_run=mt_run);
+    raw = Jac.call_llm(model, mt_run);
 
     selected = raw if isinstance(raw, list) else [raw];
     by_handle = {r["handle"]: r["node"] for r in recs};
