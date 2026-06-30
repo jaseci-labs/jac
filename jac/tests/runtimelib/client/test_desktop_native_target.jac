@@ -119,7 +119,7 @@ test "desktop dispatch config loads from jac.toml" {
 
 """The host brings up the fused runtime via the libjacpyembed shim (jac_engine_boot)
 instead of binding the build machine's libpython, and never bakes build-machine
-state. DISPATCH_PY's jac-scale seam is a slim runtime-only hook (no user-site/
+state. DISPATCH_PY's scale seam is a slim runtime-only hook (no user-site/
 getsitepackages baking)."""
 test "host source boots the fused runtime and bakes no build-machine state" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
@@ -139,17 +139,19 @@ test "host source boots the fused runtime and bakes no build-machine state" {
     assert "_baked_dep_sites" not in src , "must not bake builder site dirs";
 }
 
-"""DISPATCH_PY's jac-scale seam is runtime-only and portable: it reads
-JAC_DESKTOP_SCALE_SRC / JAC_DESKTOP_DEPS at runtime, with no build-time baking,
-so the one binary stays portable until jac-scale is bundled into the runtime."""
-test "DISPATCH_PY jac-scale hook is the slim runtime-only seam" {
+"""DISPATCH_PY's seam is runtime-only and portable: it reads JAC_DESKTOP_DEPS at
+runtime with no build-time baking. The scale backend is now folded into jaclang
+(jaclang.scale), so it travels with the jaclang source (JAC_DESKTOP_JAC_SRC) and
+no separate JAC_DESKTOP_SCALE_SRC seam is needed."""
+test "DISPATCH_PY exposes the runtime extra-deps seam" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
         _generate_host_source
     }
 
     src = _generate_host_source("T", 800, 600, "test-app");
-    assert "JAC_DESKTOP_SCALE_SRC" in src , "host must read the runtime jac-scale source seam";
     assert "JAC_DESKTOP_DEPS" in src , "host must read the runtime deps seam";
+    assert "inprocess_dispatch" in src , "host must dispatch into the in-process runtime";
+    assert "JAC_DESKTOP_SCALE_SRC" not in src , "separate scale-source seam is gone (scale is folded into jaclang)";
 }
 
 """Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
@@ -246,9 +248,7 @@ test "dev launch detects editable worktree roots" {
     if (Path(os.environ.get("JAC_DESKTOP_JAC_SRC", "")) / "jaclang").exists() {
         assert "JAC_DESKTOP_JAC_SRC" in roots , "editable jaclang root should be detected";
     }
-    if (
-        Path(os.environ.get("JAC_DESKTOP_SCALE_SRC", "")) / "jac_scale" / "inprocess.jac"
-    ).exists() {
-        assert "JAC_DESKTOP_SCALE_SRC" in roots , "editable jac-scale root should be detected";
-    }
+    # Scale is folded into jaclang (jaclang.scale), so the editable jaclang root
+    # carries it; there is no separate JAC_DESKTOP_SCALE_SRC root to detect.
+    assert "JAC_DESKTOP_SCALE_SRC" not in roots , "no separate scale root (scale is part of jaclang)";
 }

@@ -36,9 +36,11 @@ _external_plugins: list[tuple[str, Any]] = []
 def pytest_configure(config: pytest.Config) -> None:
     """Disable external plugins at the start of the jac test session.
 
-    External plugins (jac-scale, jac-client, etc.) are disabled during core jac tests
+    External plugins (jac-client, etc.) are disabled during core jac tests
     to ensure a clean test environment without MongoDB connections or other
-    plugin-specific dependencies.
+    plugin-specific dependencies. The scale backend is now built into jaclang
+    (jaclang.scale) rather than a separate package, so its provider is also
+    unregistered here by the same disabling loop.
 
     NOTE: This only applies to tests in jac/tests/, not to package-specific tests.
     """

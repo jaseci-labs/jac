@@ -4,8 +4,8 @@ Bumps package versions, syncs internal dependencies, updates release notes,
 and outputs metadata for the GitHub Actions workflow to create a release PR.
 
 Usage:
-    jac run scripts/release.jac --jac-byllm patch --jac-scale minor
-    jac run scripts/release.jac --jac-mcp patch --dry-run
+    jac run scripts/release.jac --jaclang patch --jac-byllm minor
+    jac run scripts/release.jac --jac-byllm patch --dry-run
 
 Each package flag accepts: skip (default), patch, minor, major.
 """

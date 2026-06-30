@@ -50,37 +50,13 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              release_notes="docs/docs/community/release_notes/byllm.md",
              notes_display="byllm",
              submodules=True
-         ),
-         "jac-scale": PackageInfo(
-             dir="jac-scale",
-             pypi="jac-scale",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/jac-scale.md",
-             notes_display="jac-scale",
-             submodules=True,
-             extra_build_cmd="jac run scripts/build_admin_ui.jac",
-             needs_nodejs=True
-         ),
-         "jac-mcp": PackageInfo(
-             dir="jac-mcp",
-             pypi="jac-mcp",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/jac-mcp.md",
-             notes_display="jac-mcp",
-             submodules=True,
-             extra_build_cmd="jac run scripts/bundle_docs.jac"
          )
      },
      # Internal version pins between released packages. Plugins consume jaclang
      # as a host dependency (provided by the binary), not a PyPI pin, and no
      # longer depend on each other now that the jaseci meta-package is gone, so
      # there are no cross-package version pins to sync.
-     INTERNAL_DEPS: dict[(str, list[str])] = {
-         "jaclang": [],
-         "byllm": [],
-         "jac-scale": [],
-         "jac-mcp": []
-     },
+     INTERNAL_DEPS: dict[(str, list[str])] = {"jaclang": [], "byllm": []},
      DEPENDENTS: dict[(str, list[str])] = {};
 
 with entry {

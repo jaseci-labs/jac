@@ -16,12 +16,13 @@
 # runner (pytest + xdist), so `jac test` needs no system Python. For a fully
 # self-contained release binary instead, run a plain `cd jac && zig build`.
 #
-# Plugins (byllm/scale/mcp) are still ordinary Python packages. We install them
+# Plugins (byllm/scale) are still ordinary Python packages. We install them
 # with `--global` so their source + deps land in the binary's own jac-owned site
 # (never the host) and are importable from any directory -- including each
-# plugin's own dir when you `cd jac-mcp && jac test .`. Without --global an
+# plugin's own dir when you `cd jac-scale && jac test .`. Without --global an
 # editable install would target the current project's .jac/venv only, invisible
 # from the plugin dirs. jaclang itself is provided by the binary, never installed.
+# (The MCP server is built into core now -- no separate jac-mcp install.)
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -51,9 +52,9 @@ echo "Add it to PATH, e.g.:  export PATH=\"$PWD/jac/zig-out/bin:\$PATH\""
 export PATH="$PWD/jac/zig-out/bin:$PATH"
 
 # Plugins (editable, global): importable from anywhere, including each plugin dir.
+# scale and the MCP server are built into the jac binary (jaclang.scale /
+# jaclang.cli.mcp), so byllm is the only separately-installed plugin.
 jac install -e jac-byllm --global
-jac install -e jac-scale --global
-jac install -e jac-mcp --global
 
 # pre-commit is a standalone contributor tool (not part of the jac toolchain).
 # Its jac hooks shell out to the `jac` binary on PATH, so all it needs is the

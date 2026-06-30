@@ -487,13 +487,15 @@ impl install(
     no_deps: bool = False,
     quiet: bool = False,
     prefer_binary: bool = False,
-    install_global: bool = False
+    install_global: bool = False,
+    scale: bool = False
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies {
         DependencyInstaller,
-        get_venv_site_packages
+        get_venv_site_packages,
+        capability_specs_for_install
     }
     import from jaclang.project.dep_registry { get_dependency_registry }
 
@@ -726,6 +728,11 @@ impl install(
             console.print(f"  Extras: {', '.join(extras)}", style="muted");
         }
         pip_packages.extend(extra_specs);
+    }
+
+    cap_specs = capability_specs_for_install(config, installer, scale);
+    if cap_specs {
+        pip_packages.extend(cap_specs);
     }
 
     dep_registry = get_dependency_registry();

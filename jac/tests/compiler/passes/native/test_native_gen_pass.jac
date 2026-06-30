@@ -2836,6 +2836,49 @@ test "auto promote chess.jac runs via cli" {
     );
 }
 
+test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Finding 2)" {
+    # A regular `.jac` (no `na {}` block) that imports a bundled na_stdlib module
+    # is auto-promoted by `jac nacompile`. The entry point emits a call to each
+    # imported module's `__jac_glob_init_<safe>` (driven by
+    # native_transitive_sources), so the cross-module merge MUST link those
+    # modules' definitions. Before the fix, BoundaryAnalysisPass only classified
+    # the imports as native cross-module when the main file was a `.na.jac` or the
+    # import sat in a `na {}` block, so the auto-promote case left
+    # native_cross_module_imports empty: the merge was skipped, the glob-init
+    # symbol stayed `declare`-only, and the loader aborted with
+    # `undefined symbol: __jac_glob_init_zlib_na_*`. The `.na.jac` form already
+    # worked; this pins the auto-promote (plain `.jac`) form on Linux/ELF.
+    import platform;
+    fixture = str(os.path.join(FIXTURES, "autopromote_bundled_zlib.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out = os.path.join(tmpdir, "autopromote_bundled_zlib");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out],
+            capture_output=True,
+            text=True,
+            timeout=180
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stdout: {comp.stdout[-600:]}\nstderr: {comp.stderr[-600:]}"
+        );
+        assert os.path.exists(out) , "nacompile produced no binary";
+        # Only a Linux x86_64 host can execute the produced ELF. A missing merge
+        # leaves `__jac_glob_init_zlib_na_*` an undefined symbol, so the loader
+        # aborts before `main` -- a clean run with the right CRC proves the merge.
+        if sys.platform.startswith("linux") and ("x86_64" in platform.machine()) {
+            res = subprocess.run([out], capture_output=True, text=True, timeout=30);
+            assert res.returncode == 0 , (
+                f"binary aborted (bundled module not linked): exit={res.returncode}\n"
+                f"stdout: {res.stdout[-400:]}\nstderr: {res.stderr[-400:]}"
+            );
+            assert "crc32: 3421780262" in res.stdout , (
+                f"unexpected output: stdout={res.stdout!r} stderr={res.stderr!r}"
+            );
+        }
+    }
+}
+
 # --- Native sys Module Tests ---
 test "sys argv via jac run autonative" {
     # Test that sys.argv works when running via `jac run --autonative`

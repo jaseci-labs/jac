@@ -15,7 +15,7 @@ Jac compiles one language to three runtimes - Python bytecode (server `sv`), Jav
 |---|---|---|---|---|
 | CLI tool | Script/automation run from the terminal; graph persists in `.jac/data` between runs | `jac run tool.jac` | none | `jac-node-edge-patterns`, `jac-walker-patterns` |
 | Native binary | Standalone zero-dependency executable via LLVM (restricted native subset, no Python imports) | `jac nacompile app.jac -o app` | none | `jac-native` |
-| API service | Headless REST server; `walker:pub` / `def:pub` become `POST /walker/<name>` / `/function/<name>` endpoints; Swagger at `/docs` | `jac start api.jac --no_client` | none (jac-scale for k8s deploy) | `jac-sv-endpoints`, `jac-sv-persistence`, `jac-sv-auth`, `jac-sv-multi-user` |
+| API service | Headless REST server; `walker:pub` / `def:pub` become `POST /walker/<name>` / `/function/<name>` endpoints; Swagger at `/docs` | `jac start api.jac --no_client` | none (built-in scale subsystem for k8s deploy) | `jac-sv-endpoints`, `jac-sv-persistence`, `jac-sv-auth`, `jac-sv-multi-user` |
 | Microservices | Same code split into services via `sv import` (calls become HTTP RPCs; consumer auto-starts providers) | `jac start consumer.jac --port N`; `JAC_SV_<MOD>_URL` to split hosts | none | `jac-sv-microservices`, `jac-sv-endpoints`, `jac-sv-deploy` |
 | Python package (PyPI) | pip-installable library or CLI tool; `def:pub` is the public API | `jac bundle` then `twine upload dist/*` | none | `jac-packaging`, `jac-impl-files` |
 | npm package | Client component/function library for any JS/TS project (`.d.ts` included) | `jac bundle --target npm` then `npm publish` | none | `jac-packaging`, `jac-cl-components` |
