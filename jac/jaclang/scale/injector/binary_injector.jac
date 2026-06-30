@@ -1,25 +1,37 @@
+import logging;
 import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
 import from jaclang.scale.injector.binary {
     host_repo_root,
     build_release_binary,
-    precompile_plugins,
-    pack_toolchain,
+    download_release_binary,
+    node_arch,
+    pack_binary_bytes,
     toolchain_object_key
 }
 import from jaclang.scale.injector.bundle { content_address }
+import from jaclang.scale.config.dev_config { DevDeploy, CHANNEL_LOCAL }
+
+glob logger = logging.getLogger(__name__);
 
 
 obj BinaryInjector(PvcInjector) {
-    has _toolchain_object_key: str = "",
+    # Ships a self-contained `jac` binary into pods over the bundle PVC, on top
+    # of the app source PvcInjector already seeds. The binary is either downloaded
+    # from a published release (stable/dev) or host-built from a local checkout
+    # (local); either way the pod skips the in-pod jaclang build.
+    has channel: str = "",
+        _toolchain_object_key: str = "",
         _toolchain_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
         super.prepare(app_name, namespace, project_dir);
-        repo_root = host_repo_root();
-        binary = build_release_binary(repo_root);
-
-        precompile_plugins(repo_root);
-        raw = pack_toolchain(repo_root, binary);
+        if self.channel == CHANNEL_LOCAL {
+            binary = build_release_binary(host_repo_root());
+            payload = binary.read_bytes();
+        } else {
+            payload = download_release_binary(self.channel, node_arch());
+        }
+        raw = pack_binary_bytes(payload);
         self._toolchain_object_key = toolchain_object_key(
             app_name, content_address(raw)
         );
@@ -40,39 +52,44 @@ obj BinaryInjector(PvcInjector) {
 }
 
 
+def _channel_blurb(channel: str) -> str {
+    if channel == "stable" {
+        return "downloading the latest published jac release";
+    } elif channel == "dev" {
+        return "downloading the rolling `dev` (main) jac build";
+    }
+    return "building jac from your local checkout (a few minutes on first run)";
+}
+
+
 def select_injector(
-    experimental: bool,
-    storage_class: str,
-    app_name: str,
-    namespace: str,
-    project_dir: str
+    dev: DevDeploy, storage_class: str, app_name: str, namespace: str, project_dir: str
 ) -> tuple[PvcInjector, bool, str] {
-    if experimental {
+    # stable/dev/local all ship a prebuilt-or-host-built binary; only the BRANCH
+    # escape hatch ships source and clones + builds jaclang inside the pod.
+    if dev.ships_binary() {
         import from jaclang.cli.console { console }
-        import logging;
         try {
             console.print(
-                "Building the jac binary on the host to ship into pods "
-                "(--experimental) - one-time (cached after), a few minutes on the "
-                "first run. The faster, OOM-free alternative to the in-pod build."
+                f"Preparing the '{dev.channel}' jac runtime for pods "
+                f"({_channel_blurb(dev.channel)})."
             );
-            binary_injector = BinaryInjector(storage_class=storage_class);
+            binary_injector = BinaryInjector(
+                channel=dev.channel, storage_class=storage_class
+            );
             binary_injector.prepare(app_name, namespace, project_dir);
             console.print(
-                "Built jac binary; shipping your local code to pods (pods skip "
-                "the in-pod build)."
+                "Shipping the jac binary to pods (pods skip the in-pod build)."
             );
             return (binary_injector, True, binary_injector._toolchain_object_key);
         } except Exception as exc {
-            logging.getLogger(__name__).warning(
-                f"--experimental binary-ship failed: {exc}"
-            );
+            logger.warning(f"[{dev.channel}] binary-ship failed: {exc}");
             raise RuntimeError(
-                f"--experimental could not ship a host-built jac binary: {exc}. "
-                "Put zig 0.16.0 on PATH and run 'cd jac && zig build --prefix "
-                ".ship-out', or deploy without --experimental to use the published "
-                "release. (Not silently falling back to the in-pod build - it OOMs "
-                "small nodes.)"
+                f"Could not prepare the '{dev.channel}' jac binary: {exc}. For "
+                f"stable/dev check network access to github.com/jaseci-labs/jaseci "
+                f"releases (and JAC_NODE_ARCH for cross-arch nodes); for local put "
+                f"zig 0.16.0 on PATH. (Not silently falling back to an in-pod build "
+                f"- it OOMs small nodes.)"
             );
         }
     }

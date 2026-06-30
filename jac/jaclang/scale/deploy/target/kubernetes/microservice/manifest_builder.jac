@@ -1,4 +1,5 @@
 import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.scale.config.dev_config { DevDeploy }
 import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -24,7 +25,7 @@ obj MicroserviceManifestBuilder {
         deploy_context: DeployContext = DeployContext(),
         logger: any = None,
         no_image: bool = True,
-        experimental: bool = False,
+        dev: DevDeploy = DevDeploy(),
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
@@ -50,8 +51,13 @@ obj MicroserviceManifestBuilder {
     def _prepare_injector(app_config: AppConfig) -> PvcInjector {
         import from jaclang.scale.injector.binary_injector { select_injector }
         import from jaclang.scale.injector.pvc_injector { PvcInjector }
+        if self.dev.builds_in_pod() {
+            # BRANCH escape hatch: the pod clones + builds this repo/branch.
+            self.k8s_config.jaseci_repo_url = self.dev.repo;
+            self.k8s_config.jaseci_branch = self.dev.branch;
+        }
         selection = select_injector(
-            self.experimental,
+            self.dev,
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
@@ -826,10 +832,7 @@ obj MicroserviceManifestBuilder {
         }
         spec["initContainers"].append(
             build_bootstrap_init_container(
-                self.k8s_config,
-                self.experimental,
-                self.k8s_config.python_image,
-                self._ship_binary
+                self.k8s_config, self.k8s_config.python_image, self.dev.builds_in_pod()
             )
         );
         return spec;

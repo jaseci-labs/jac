@@ -12,7 +12,7 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 
 
 def build_runtime_install_commands(
-    k8s_config: KubernetesConfig, experimental: bool, ship_binary: bool = False
+    k8s_config: KubernetesConfig, build_in_pod: bool = False
 ) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
@@ -50,26 +50,7 @@ def build_runtime_install_commands(
     commands.append('export BUN_INSTALL="$HOME/.bun"');
     commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
-    if ship_binary {
-        tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
-        commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
-        commands.append('export PATH="$HOME/.local/bin:$PATH"');
-
-        commands.append(
-            'if ! command -v jac >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
-            'shipped jac binary did not run (toolchain unpack failed or the host '
-            'binary arch does not match the node). Deploy with --experimental to '
-            'build jac in-pod instead." >&2; exit 1; fi'
-        );
-
-        # scale is built into the shipped jac binary (jaclang.scale); no separate
-        # install. The app's runtime capability closure is materialized by the
-        # app-level `jac install`. byllm is optional; the MCP server is likewise
-        # built into the jac binary now.
-        commands.append(
-            f'[ ! -d "{tc}/jac-byllm" ] || jac install -e "{tc}/jac-byllm" --global'
-        );
-    } elif experimental {
+    if build_in_pod {
         commands.append('cd "$HOME"');
         commands.append('rm -rf jaseci');
         repo_url = config.jaseci_repo_url;
@@ -116,36 +97,20 @@ def build_runtime_install_commands(
             'ln -sf "$HOME/jaseci/jac/zig-out/bin/jac" "$HOME/.local/bin/jac"'
         );
     } else {
-        packages = config.plugin_versions or {};
-        jaclang_v = packages.get('jaclang', 'latest');
-        byllm_v = packages.get('jac_byllm', 'latest');
-        install_jac = (
-            'curl -fsSL https://raw.githubusercontent.com/jaseci-labs/'
-            'jaseci/main/scripts/install.sh | bash'
-        );
-        if jaclang_v != 'latest' {
-            install_jac += f" -s -- --version {jaclang_v}";
-        }
-        commands.append(install_jac);
+        # stable / dev / local: a self-contained `jac` binary was shipped over
+        # the PVC (downloaded from a release, or host-built from a local checkout).
+        # Install it on PATH and run - no clone, no in-pod build, no plugin
+        # install: scale and the MCP server are built into the binary. The app's
+        # runtime capability closure is materialized by the app-level `jac install`.
+        tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
+        commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
         commands.append('export PATH="$HOME/.local/bin:$PATH"');
         commands.append(
-            f'if ! command -v jac >/dev/null 2>&1; then '
-            f'echo "[jac-scale] FATAL: jac was not installed (requested '
-            f'jaclang={jaclang_v}). The GitHub release lookup did not resolve. '
-            f'Pin [plugins.scale.kubernetes].plugin_versions.jaclang to a '
-            f'published release, or deploy with --experimental to build jac from '
-            f'source in-pod." >&2; exit 1; fi'
+            'if ! command -v jac >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
+            'shipped jac binary did not run (toolchain unpack failed, or the '
+            'binary arch does not match the node - set JAC_NODE_ARCH and '
+            'redeploy)." >&2; exit 1; fi'
         );
-        # scale ships inside jaclang now; the pod's runtime capability closure
-        # (serve + configured backends, never deploy.k8s) is materialized by the
-        # app-level `jac install` into the app .jac/venv, not a global package.
-        if byllm_v and byllm_v != 'none' {
-            if byllm_v == 'latest' {
-                commands.append('jac install byllm --global');
-            } else {
-                commands.append(f'jac install byllm=={byllm_v} --global');
-            }
-        }
     }
     return commands;
 }
@@ -165,12 +130,9 @@ def runtime_container_env -> list[dict[str, str]] {
 
 
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig,
-    experimental: bool,
-    base_image: str,
-    ship_binary: bool = False
+    k8s_config: KubernetesConfig, base_image: str, build_in_pod: bool = False
 ) -> dict[str, any] {
-    commands = build_runtime_install_commands(k8s_config, experimental, ship_binary);
+    commands = build_runtime_install_commands(k8s_config, build_in_pod);
     commands.append(f'cd {APP_MOUNT_PATH}');
     commands.append('jac install');
     script = ' && '.join(commands);

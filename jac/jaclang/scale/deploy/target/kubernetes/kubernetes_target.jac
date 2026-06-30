@@ -1007,8 +1007,13 @@ obj KubernetesTarget(DeploymentTarget) {
             probe_configs = self._build_probe_config(health_check_path);
 
             import from jaclang.scale.injector.binary_injector { select_injector }
-            (injector, ship_binary, _tc_key) = select_injector(
-                app_config.experimental,
+            if app_config.dev.builds_in_pod() {
+                # BRANCH escape hatch: the pod clones + builds this repo/branch.
+                self.k8s_config.jaseci_repo_url = app_config.dev.repo;
+                self.k8s_config.jaseci_branch = app_config.dev.branch;
+            }
+            (injector, _ship_binary, _tc_key) = select_injector(
+                app_config.dev,
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
@@ -1080,9 +1085,8 @@ obj KubernetesTarget(DeploymentTarget) {
             template_spec['initContainers'].append(
                 build_bootstrap_init_container(
                     self.k8s_config,
-                    app_config.experimental,
                     self.k8s_config.python_image,
-                    ship_binary
+                    app_config.dev.builds_in_pod()
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

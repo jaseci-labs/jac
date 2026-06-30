@@ -20,8 +20,6 @@ obj KubernetesRealizer {
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
 
-        experimental = context.get_arg("experimental", False);
-
         if target == "kubernetes" and enabled is not False {
             scale_discovered: dict[str, str] = {};
             if filename and os.path.exists(filename) {
@@ -97,11 +95,12 @@ obj KubernetesRealizer {
         deployment_target.secrets = scale_config.get_secrets_config();
 
         no_image = target == "kubernetes-microservice";
+        import from jaclang.scale.config.dev_config { resolve_dev_deploy }
         app_config = AppConfig(
             code_folder=code_folder,
             file_name=base_file_path,
             no_image=no_image,
-            experimental=experimental
+            dev=resolve_dev_deploy(str(code_folder))
         );
         if no_image {
             deployment_target.no_image = True;

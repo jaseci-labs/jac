@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Real-app K8s e2e for jac-scale microservice mode (NO-DOCKER path).
 #
-# Deploys the fixture with the same pipeline `jac start --scale --experimental`
-# uses: a host-built self-contained `jac` binary + precompiled plugin source are
-# shipped into the cluster over a ReadWriteMany PVC (no image build, no
-# registry), jac is installed at pod startup, then KubernetesMicroserviceTarget
+# Deploys the fixture via the LOCAL [dev] channel: a self-contained `jac` binary
+# is host-built from this checkout and shipped into the cluster over a
+# ReadWriteMany PVC (no image build, no registry), so the e2e exercises the
+# branch under test. jac is installed at pod startup, then KubernetesMicroserviceTarget
 # rolls out the gateway + per-service deployments. Verifies rollout -> gateway
 # /health -> per-service routing -> observability stack -> rolling-restart
 # zero-downtime assertion.
@@ -41,17 +41,17 @@ DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 # levels up.
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 
-# The no-Docker `--experimental` path ships the LOCAL scale source (built into
-# jaclang as jaclang.scale): PyPI lags the K-track rearchitecture, so PR-time CI
-# must exercise the in-repo code.
+# The LOCAL channel host-builds the binary from this checkout (in-repo
+# jaclang.scale), so PR-time CI exercises the branch under test rather than a
+# published release.
 if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/plugin.jac" ]; then
     echo "FAIL: jaclang.scale source not found under ${REPO_ROOT}" >&2
     exit 1
 fi
-# BinaryInjector builds the shipped binary with zig; fail early with a clear
+# The LOCAL channel builds the shipped binary with zig; fail early with a clear
 # message instead of a deep RuntimeError mid-deploy if it is missing.
 if ! command -v zig >/dev/null 2>&1; then
-    echo "FAIL: zig not on PATH (the --experimental binary-ship build needs zig 0.16.0)" >&2
+    echo "FAIL: zig not on PATH (the LOCAL [dev] channel host-build needs zig 0.16.0)" >&2
     exit 1
 fi
 
@@ -85,6 +85,7 @@ import logging, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
+from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_LOCAL
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
@@ -100,9 +101,10 @@ class StderrLogger:
         pass
 
 # No python_image override: the default base (python:3.12-slim) is a plain
-# runtime. The app source + a host-built self-contained jac binary + precompiled
-# plugin JIRs ship over the bundle PVC (experimental=True -> BinaryInjector), and
-# jac is installed at pod startup. No image build, no registry.
+# runtime. The app source + a self-contained jac binary ship over the bundle
+# PVC; jac is installed at pod startup. No image build, no registry. The LOCAL
+# channel host-builds the binary from this checkout (the e2e's own jaclang) so
+# the deploy exercises the branch under test rather than a published release.
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
@@ -112,7 +114,11 @@ target = KubernetesMicroserviceTarget(
     logger=StderrLogger(),
 )
 result = target.deploy(
-    AppConfig(code_folder=".", app_name="jac-e2e", experimental=True)
+    AppConfig(
+        code_folder=".",
+        app_name="jac-e2e",
+        dev=DevDeploy(channel=CHANNEL_LOCAL),
+    )
 )
 if not result.success:
     print(f"deploy failed: {result.message}", file=sys.stderr)
