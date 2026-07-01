@@ -31,8 +31,19 @@ if [ ! -f "${PROJECT_DIR}/jac.toml" ]; then
 fi
 
 NAMESPACE="${NAMESPACE:-jac-e2e}"
-# microk8s (host containerd) or minikube; only affects the Ingress IP probe.
+# microk8s (host containerd) or minikube; affects the Ingress IP probe and the
+# bundle PVC's storage class.
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
+# The bundle PVC is ReadWriteMany. Single-node dev clusters have no RWX class by
+# default, so pin the provisioner that binds RWX on one node: microk8s ships
+# `microk8s-hostpath` (via `enable hostpath-storage`), minikube ships
+# `standard`. Override with BUNDLE_STORAGE_CLASS for other clusters ("" lets a
+# cluster-default RWX class take over).
+case "${CLUSTER_TYPE}" in
+    microk8s) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-microk8s-hostpath}" ;;
+    minikube) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-standard}" ;;
+    *)        BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-}" ;;
+esac
 # 600s rollout = 10x typical; a fail is a real bug, not infra slowness.
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-600s}"
 DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
@@ -95,15 +106,16 @@ class StderrLogger:
         pass
 
 # No python_image override: the default base (python:3.12-slim) is a plain
-# runtime. The app source + a self-contained jac binary ship over the bundle
-# PVC; jac is installed at pod startup. No image build, no registry. The LOCAL
-# channel host-builds the binary from this checkout (the e2e's own jaclang) so
-# the deploy exercises the branch under test rather than a published release.
+# runtime. The app source + a prebuilt, downloaded self-contained jac binary
+# ship over the bundle PVC; jac is installed at pod startup. No image build, no
+# registry, no host or in-pod build - the DEV channel just downloads the rolling
+# dev binary and overlays this checkout's jaclang source on top.
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
         namespace="${NAMESPACE}",
         container_port=8000,
+        bundle_storage_class="${BUNDLE_STORAGE_CLASS}",
     ),
     logger=StderrLogger(),
 )
@@ -111,9 +123,9 @@ result = target.deploy(
     AppConfig(
         code_folder=".",
         app_name="jac-e2e",
-        # DEV channel overlaying this checkout's jaclang source on the downloaded
-        # dev binary, so the e2e exercises the branch under test (+ precompile
-        # when the runner arch matches the node).
+        # DEV channel: download the rolling dev binary and overlay this checkout's
+        # jaclang source on top, so the e2e exercises the branch under test. The
+        # pod compiles the overlay once on first boot (no host precompile).
         dev=DevDeploy(channel=CHANNEL_DEV, jaclang_source="${REPO_ROOT}/jac"),
     )
 )

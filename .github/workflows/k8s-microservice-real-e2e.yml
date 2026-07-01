@@ -1,10 +1,10 @@
 name: K8s Microservice Real E2E
 
-# Real-app e2e (no-Docker): deploys the fixture with `jac start --scale
-# --experimental` semantics - a host-built self-contained jac binary +
-# precompiled plugin source ship over a PVC (no image build), jac is installed
-# at pod startup. Verifies pods + gateway routing, rolling-restart +
-# hammer-for-non-2xx.
+# Real-app e2e (no-Docker): deploys the fixture driven by the `[dev]` jac.toml
+# stanza - a prebuilt self-contained jac binary is downloaded from jaseci-labs
+# releases and ships over a PVC (no image build) with this checkout's jaclang
+# source overlaid; jac is installed at pod startup and compiles the overlay once.
+# Verifies pods + gateway routing, rolling-restart + hammer-for-non-2xx.
 
 on:
   workflow_dispatch:
@@ -29,9 +29,10 @@ jobs:
     # (matches the test-scale-k8s gate in test-jaseci.yml).
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    # No-Docker path: a cold run also builds the shipped `.ship-out` binary
-    # (payload precompile) + precompiles the plugin JIRs. Both are cached
-    # (below), so warm runs are fast; the higher ceiling covers a cold build.
+    # No-Docker path: the pod runtime is a prebuilt binary DOWNLOADED from
+    # jaseci-labs releases (no host build-to-ship, no in-pod build). The only
+    # build here is the host `jac` used to drive the deploy, which setup-jac
+    # caches; the higher ceiling covers a cold host build + microk8s bring-up.
     timeout-minutes: 45
 
     steps:
@@ -89,49 +90,6 @@ jobs:
           kubectl wait --namespace ingress --for=condition=ready pod \
               --selector=name=nginx-ingress-microk8s --timeout=180s \
               || echo "WARN: ingress controller not ready; K10 path will skip"
-
-      - name: Set up Zig 0.16.0
-        # BinaryInjector shells out to `zig build --prefix .ship-out` to produce
-        # the self-contained binary shipped to pods. setup-jac only installs zig
-        # on a binary-cache MISS, so add it unconditionally here.
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-          use-cache: false
-
-      - name: Restore binary build deps (LLVM + pbs + bun)
-        # Same keys/paths as setup-jac so the `.ship-out` payload build reuses
-        # the already-fetched LLVM/CPython/bun trees instead of re-downloading.
-        uses: actions/cache@v4
-        with:
-          path: |
-            jac/.llvm-build
-            jac/.pbs-build
-            jac/.bun-build
-          key: shipout-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
-
-      - name: Cache shipped binary + zig build cache (.ship-out)
-        # The host-built binary is keyed on the content that goes into it; a hit
-        # makes `zig build --prefix .ship-out` a near-noop. Exact-key only so a
-        # source change rebuilds rather than shipping a stale binary.
-        uses: actions/cache@v4
-        with:
-          path: |
-            jac/.ship-out
-            jac/.zig-cache
-          key: shipout-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/launcher/**', 'jac/build.zig') }}
-
-      - name: Cache precompiled plugin JIRs (_precompiled)
-        # precompile_plugins() is idempotent (skips JIRs that still validate), so
-        # restoring the bundle turns the host precompile into fast key-checks.
-        # Scale and byLLM are built into jaclang now (jaclang.scale,
-        # jaclang.byllm), so their JIRs precompile as part of jac and are keyed
-        # via 'jac/jaclang/**'.
-        uses: actions/cache@v4
-        with:
-          path: |
-            jac/jaclang/byllm/_precompiled
-          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
 
       - name: Show cluster info
         run: |
