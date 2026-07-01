@@ -12,9 +12,11 @@ on:
   workflow_dispatch:
     inputs:
       # jaclang is no longer published to PyPI -- it ships as the native `jac`
-      # binary (see release-jaclang.yml). Plugins below still publish to PyPI.
-      jac-byllm:
-        description: "Publish jac-byllm (byllm)"
+      # binary (see release-jaclang.yml). byLLM and scale are folded into jaclang
+      # (jaclang.byllm / jaclang.scale) and no longer publish separately, so there
+      # are no PyPI plugins left to select here; manual dispatch is a no-op.
+      noop:
+        description: "(no separately-published packages remain)"
         type: boolean
         default: false
 
@@ -54,13 +56,14 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-          # Collect the checked packages (empty string when unchecked).
-          IN_BYLLM: ${{ inputs['jac-byllm'] && 'jac-byllm' || '' }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            PACKAGES="$IN_BYLLM"
-            echo "Manual dispatch - selected packages: $PACKAGES"
-            jac run scripts/parse_release.jac --packages "$PACKAGES"
+            # No PyPI plugins remain to publish manually: byLLM and scale are now
+            # folded into jaclang, and jaclang ships as the binary (not PyPI).
+            # Left as an explicit no-op so a stray manual dispatch can't publish
+            # a folded package.
+            echo "Manual dispatch - no separately-published packages remain."
+            jac run scripts/parse_release.jac --packages ""
           else
             jac run scripts/parse_release.jac --pr-title "$PR_TITLE"
           fi

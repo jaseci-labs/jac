@@ -177,7 +177,7 @@ def create(
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         (
-            "jac install -e ./jac-byllm -e ./jac-client",
+            "jac install -e ./my-plugin -e ./my-lib",
             "Install multiple packages in editable mode (space-separated or repeated -e)"
         ),
         ("jac install --dev", "Include dev dependencies"),
@@ -190,7 +190,7 @@ def create(
         ("jac install --no-deps", "Install packages without their dependencies"),
         ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
         (
-            "jac install -e ./jac-byllm --global",
+            "jac install -e ./my-plugin --global",
             "Install a plugin into the global site so it's importable from any project"
         ),
 

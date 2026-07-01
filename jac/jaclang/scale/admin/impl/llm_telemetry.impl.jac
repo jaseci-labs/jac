@@ -640,7 +640,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     }
 
     try {
-        import from byllm.telemetry { register_agent_callback }
+        import from jaclang.byllm.telemetry { register_agent_callback }
         register_agent_callback(store.record_agent_completion);
         logger.info("LLM telemetry: byllm agent callback registered");
     } except ImportError {

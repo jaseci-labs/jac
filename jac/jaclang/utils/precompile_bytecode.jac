@@ -80,6 +80,8 @@ def compile_and_extract(jac_path: str) -> bytes | None {
 
     program = JacProgram();
     code = compiler.get_bytecode(full_target=jac_path, target_program=program);
+    compiler.internal_program.release_compile_closure();
+    program.release_compile_closure();
     if code is None {
         return None;
     }

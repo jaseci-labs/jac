@@ -63,7 +63,7 @@ jobs:
             scale:
               - 'jac/jaclang/scale/**'
             byllm:
-              - 'jac-byllm/**'
+              - 'jac/jaclang/byllm/**'
             docs:
               - 'docs/**'
             desktop:
@@ -156,15 +156,20 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-byllm (global so its tests, run from jac-byllm/, can import it)
-      run: jac install -e jac-byllm --global
+    - name: Install byllm deps + test deps (global; byllm ships with jaclang)
+      # byLLM is built into jaclang (jaclang.byllm); install its `llm` capability
+      # closure directly. Pins mirror jac/jaclang/project/capabilities.jac.
+      run: |
+        jac install \
+          "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+          "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+          --global
 
     - name: Set environment for testing
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      working-directory: jac-byllm
-      run: jac test .
+      run: jac test jac/jaclang/byllm/tests
 
     - name: Install docs dependencies
       run: jac install -e docs --global
@@ -476,24 +481,15 @@ jobs:
       uses: ./.github/actions/setup-jac
 
     - name: Precompile all packages
-      # Scale is built into jaclang now (jaclang.scale), so it precompiles as
-      # part of ./jac; no separate jac-scale tree.
+      # Scale and byLLM are both built into jaclang now (jaclang.scale,
+      # jaclang.byllm), so they precompile as part of ./jac; no separate trees
+      # and no separate plugin wheels to build.
       run: |
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
-        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-byllm
 
     - name: Clean egg-info to simulate fresh build (like publish-release)
       run: |
         rm -rf jac/jaclang.egg-info
-        rm -rf jac-byllm/*.egg-info
-
-    - name: Build plugin wheels (jaclang itself ships as the binary, not a wheel)
-      run: |
-        (cd jac-byllm && jac bundle)
-        # Install the freshly built wheel INTO the binary's runtime (not system
-        # Python -- jaclang is host-provided by the binary, so the plugin must
-        # be importable by it). pytest ships in the binary, so no pip pytest.
-        jac install jac-byllm/dist/byllm-*.whl --global
 
     - name: Verify cold start with precompiled bytecode
       run: |
@@ -514,10 +510,20 @@ jobs:
           "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
           "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
           "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "requests>=2.32.0,<3.0.0" \
           --global
 
     - name: Run integration tests
       run: jac run scripts/integration_tests.jac
+
+    - name: Install byllm deps (for the built-package byllm test)
+      # byLLM ships with jaclang (jaclang.byllm); its `llm` capability closure is
+      # installed directly. Pins mirror jac/jaclang/project/capabilities.jac.
+      run: |
+        jac install \
+          "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+          "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+          --global
 
     - name: Run tests on built packages
       run: |
@@ -527,7 +533,7 @@ jobs:
         # gate and the jacpack smokes below, so it is not duplicated here.
         # Serial (JAC_TEST_JOBS=0): these byllm tests share a SQLite mock-LLM
         # cache that can't take xdist's parallel writers ("database is locked").
-        JAC_TEST_JOBS=0 jac test jac-byllm/tests/test_byllm.jac
+        JAC_TEST_JOBS=0 jac test jac/jaclang/byllm/tests/test_byllm.jac
 
     # ========== jac-gpt test ==========
     - name: Create jac-gpt from jacpack
