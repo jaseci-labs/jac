@@ -61,12 +61,21 @@ if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/plugin.jac" ]; then
 fi
 
 cleanup() {
-    echo "=== cleanup ==="
+    rc="${1:-0}"
+    echo "=== cleanup (rc=${rc}) ==="
     if [ -n "${PORT_FORWARD_PID:-}" ]; then
         kill "${PORT_FORWARD_PID}" 2>/dev/null || true
     fi
     if [ -n "${LOKI_PORT_FORWARD_PID:-}" ]; then
         kill "${LOKI_PORT_FORWARD_PID}" 2>/dev/null || true
+    fi
+    # On failure, KEEP the namespace so the caller (CI's failure-dump step, or a
+    # human) can read pod + init-container state. An EXIT trap that always deletes
+    # wipes the evidence before anything can inspect it - a failed run then looks
+    # like "No resources found". Set E2E_KEEP_NS_ON_FAIL=0 to force teardown.
+    if [ "${rc}" != "0" ] && [ "${E2E_KEEP_NS_ON_FAIL:-1}" = "1" ]; then
+        echo "=== e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
+        return
     fi
     kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout="${DELETE_TIMEOUT}" || true
     # Alloy's ClusterRole + ClusterRoleBinding are cluster-scoped so the
@@ -74,7 +83,7 @@ cleanup() {
     kubectl delete clusterrole,clusterrolebinding \
         -l managed=jac-scale --ignore-not-found 2>/dev/null || true
 }
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
 
 echo "=== deploy via KubernetesMicroserviceTarget (no-Docker: host-built binary + source over PVC) ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -404,7 +413,7 @@ run_zero_downtime_assertion() {
         done
     ) &
     local hammer_pid=$!
-    trap 'kill '"${hammer_pid}"' 2>/dev/null || true; cleanup' EXIT
+    trap 'rc=$?; kill '"${hammer_pid}"' 2>/dev/null || true; cleanup "$rc"' EXIT
 
     # Second-attempt success logs [FLAKE_RECOVERED] for greppable CI signal.
     kubectl rollout restart "deployment/${deployment}" -n "${NAMESPACE}"

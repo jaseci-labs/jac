@@ -133,21 +133,33 @@ jobs:
 
       - name: Dump kubectl state on failure
         if: failure()
+        # The e2e script keeps the jac-e2e namespace on failure (see cleanup /
+        # E2E_KEEP_NS_ON_FAIL), so this can actually read pod state. Pods that
+        # never go Ready are almost always stuck in an INIT container (download
+        # binary, jac-bootstrap, jac install, first-boot compile), whose logs the
+        # main-container `kubectl logs` misses - so dump every init + main
+        # container per pod, current and previous.
+        env:
+          NS: jac-e2e
         run: |
-          echo "=== events ==="
-          kubectl get events --sort-by='.lastTimestamp' --all-namespaces || true
-          echo "=== pods ==="
-          kubectl get pods -A -o wide || true
-          echo "=== describe pods (jac-e2e ns) ==="
-          kubectl describe pods -n jac-e2e || true
-          echo "=== gateway logs ==="
-          kubectl logs -n jac-e2e -l app=gateway --tail=100 || true
-          echo "=== service-app logs (sample) ==="
-          for app in cart-app orders-app products-app; do
-              echo "--- $app ---"
-              kubectl logs -n jac-e2e -l app=$app --tail=50 || true
+          echo "=== nodes ==="; kubectl get nodes -o wide || true
+          echo "=== all pods (every namespace) ==="; kubectl get pods -A -o wide || true
+          echo "=== events (${NS}, time-sorted) ==="
+          kubectl get events -n "${NS}" --sort-by='.lastTimestamp' || true
+          echo "=== per-pod status + all container logs (${NS}) ==="
+          for pod in $(kubectl get pods -n "${NS}" -o name 2>/dev/null); do
+            echo "############################## ${pod} ##############################"
+            echo "----- phase + container readiness -----"
+            kubectl get -n "${NS}" "${pod}" -o jsonpath='phase={.status.phase}{"\n"}{range .status.initContainerStatuses[*]}init/{.name}: ready={.ready} restarts={.restartCount} state={.state}{"\n"}{end}{range .status.containerStatuses[*]}main/{.name}: ready={.ready} restarts={.restartCount} state={.state}{"\n"}{end}' 2>/dev/null || true
+            echo ""
+            echo "----- describe (Init Containers -> Events) -----"
+            kubectl describe -n "${NS}" "${pod}" 2>/dev/null | sed -n '/Init Containers:/,/^[^ ]/p;/Events:/,$p' || true
+            for c in $(kubectl get -n "${NS}" "${pod}" -o jsonpath='{range .spec.initContainers[*]}{.name}{"\n"}{end}{range .spec.containers[*]}{.name}{"\n"}{end}' 2>/dev/null); do
+              echo "----- logs ${pod} [${c}] (tail 120) -----"
+              kubectl logs -n "${NS}" "${pod}" -c "${c}" --tail=120 2>&1 | tail -120 || true
+              kubectl logs -n "${NS}" "${pod}" -c "${c}" --previous --tail=60 2>/dev/null | tail -60 || true
+            done
           done
-          echo "=== ingress status ==="
-          kubectl describe ingress -n jac-e2e || true
+          echo "=== ingress status ==="; kubectl describe ingress -n "${NS}" || true
           echo "=== ingress controller logs ==="
           kubectl logs -n ingress -l name=nginx-ingress-microk8s --tail=50 || true
