@@ -148,10 +148,11 @@ impl collect_source_files(
                 result.append(SourceFile(wheel_path=wheel_path, source_path=file_path));
             }
         }
-        init_path = f"{pkg_name}/__init__.py";
-        if result and init_path not in seen {
-            seen.add(init_path);
-            result.append(SourceFile(wheel_path=init_path, content=b""));
+        init_py = f"{pkg_name}/__init__.py";
+        init_jac = f"{pkg_name}/__init__.jac";
+        if result and init_py not in seen and init_jac not in seen {
+            seen.add(init_py);
+            result.append(SourceFile(wheel_path=init_py, content=b""));
         }
     }
 

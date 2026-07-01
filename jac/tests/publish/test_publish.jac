@@ -250,6 +250,49 @@ test "collect_source_files raises without project root or package section" {
 }
 
 
+test "collect_source_files flat layout maps root files under package with synth init" {
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        (proj / "main.jac").write_text("# main\n");
+        (proj / "helper.py").write_text("# helper\n");
+        sub = proj / "tests";
+        sub.mkdir();
+        (sub / "test_x.jac").write_text("# test\n");
+        cfg = JacConfig.from_toml_str(
+            '[project]\nname = "flatpkg"\nversion = "1.0.0"\n'
+        );
+        cfg.project_root = proj;
+        files = collect_source_files(cfg, project_root=proj);
+        paths = [sf.wheel_path for sf in files];
+        assert "flatpkg/main.jac" in paths;
+        assert "flatpkg/helper.py" in paths;
+        assert "flatpkg/__init__.py" in paths;
+        assert not any("tests/" in p for p in paths);
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "collect_source_files flat layout keeps existing __init__.jac and skips synth" {
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        (proj / "__init__.jac").write_text("# init\n");
+        cfg = JacConfig.from_toml_str(
+            '[project]\nname = "flatinit"\nversion = "1.0.0"\n'
+        );
+        cfg.project_root = proj;
+        files = collect_source_files(cfg, project_root=proj);
+        paths = [sf.wheel_path for sf in files];
+        assert "flatinit/__init__.jac" in paths;
+        assert "flatinit/__init__.py" not in paths;
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+
 # builder — end-to-end --------------------------------------------------------------------------
 test "WheelBuilder.build produces a valid whl with required dist-info files" {
     tmpdir = tempfile.mkdtemp();
@@ -268,6 +311,26 @@ test "WheelBuilder.build produces a valid whl with required dist-info files" {
             assert any(n.endswith(".py") for n in names);
             assert not any(n.endswith(".jac") for n in names);
             assert "Name: mypkg" in zf.read(f"{di}/METADATA").decode();
+        }
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "WheelBuilder.build flat layout with __init__.jac transpiles without collision" {
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        (proj / "__init__.jac").write_text("def hi() {\n    print(\"hi\");\n}\n");
+        cfg = JacConfig.from_toml_str(
+            '[project]\nname = "flatinit"\nversion = "1.0.0"\n'
+        );
+        cfg.project_root = proj;
+        data = WheelBuilder(config=cfg, project_root=proj).build();
+        with zipfile.ZipFile(io.BytesIO(data)) as zf {
+            names = zf.namelist();
+            assert "flatinit/__init__.py" in names;
+            assert not any(n.endswith(".jac") for n in names);
         }
     } finally {
         shutil.rmtree(tmpdir, ignore_errors=True);
