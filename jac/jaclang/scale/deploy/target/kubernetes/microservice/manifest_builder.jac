@@ -29,7 +29,6 @@ obj MicroserviceManifestBuilder {
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
-        _precompiled: bool = False,
         microservices_config: dict[str, any] = {};
 
     def _ms_cfg -> dict[str, any] {
@@ -59,8 +58,7 @@ obj MicroserviceManifestBuilder {
             self.project_dir or app_config.code_folder
         );
         injector: PvcInjector = selection[0];
-        self._precompiled = bool(selection[1]);
-        self._toolchain_object_key = str(selection[2]);
+        self._toolchain_object_key = str(selection[1]);
         return injector;
     }
 
@@ -783,7 +781,7 @@ obj MicroserviceManifestBuilder {
             runtime_container_env
         }
         container["workingDir"] = APP_MOUNT_PATH;
-        env_list.extend(runtime_container_env(self._precompiled));
+        env_list.extend(runtime_container_env());
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }
@@ -824,8 +822,7 @@ obj MicroserviceManifestBuilder {
             build_bootstrap_init_container(
                 self.k8s_config,
                 self.k8s_config.python_image,
-                self.dev.overlays_source(),
-                self._precompiled
+                self.dev.overlays_source()
             )
         );
         return spec;

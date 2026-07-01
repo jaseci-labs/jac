@@ -13,9 +13,7 @@ import from jaclang.scale.injector.binary {
     pack_binary_bytes,
     pack_overlay,
     node_arch,
-    host_arch,
     resolve_overlay_source,
-    precompile_overlay,
     overlay_pod_path,
     OVERLAY_SUBDIR
 }
@@ -39,8 +37,8 @@ def _write_toml(body: str) -> str {
 }
 
 
-# ---- channel resolution -----------------------------------------------------
-test "no [dev] stanza resolves to the stable channel (no source overlay)" {
+# ---- channel + overlay resolution -------------------------------------------
+test "no [dev] stanza resolves to the stable channel, no overlay" {
     d = _write_toml("[project]\nname = \"app\"\n");
     dev = resolve_dev_deploy(d);
     assert dev.channel == CHANNEL_STABLE;
@@ -48,13 +46,14 @@ test "no [dev] stanza resolves to the stable channel (no source overlay)" {
 }
 
 
-test "bare [dev] resolves to the dev channel and overlays source" {
+test "bare [dev] is the dev channel but ships bare (no redundant main overlay)" {
     d = _write_toml("[project]\nname = \"app\"\n\n[dev]\ntest_jobs = \"auto\"\n");
     dev = resolve_dev_deploy(d);
     assert dev.channel == CHANNEL_DEV;
-    assert dev.overlays_source();
     assert dev.repo == "";
     assert dev.jaclang_source == "";
+    # the dev binary IS main HEAD, so a bare [dev] overlays nothing.
+    assert not dev.overlays_source();
 }
 
 
@@ -65,12 +64,13 @@ test "whitespace [ dev ] table still resolves to the dev channel" {
 }
 
 
-test "[dev] repo/branch is carried on the dev channel" {
+test "[dev] repo/branch overlays that source" {
     d = _write_toml(
         "[dev]\nrepo = \"https://github.com/jaseci-labs/jaseci\"\nbranch = \"wip\"\n"
     );
     dev = resolve_dev_deploy(d);
     assert dev.channel == CHANNEL_DEV;
+    assert dev.overlays_source();
     assert dev.repo == "https://github.com/jaseci-labs/jaseci";
     assert dev.branch == "wip";
 }
@@ -83,17 +83,18 @@ test "[dev] repo without branch defaults the branch to main" {
 }
 
 
-test "[dev] jaclang_source is carried on the dev channel" {
+test "[dev] jaclang_source overlays the local checkout" {
     d = _write_toml("[dev]\njaclang_source = \"jac\"\n");
     dev = resolve_dev_deploy(d);
     assert dev.channel == CHANNEL_DEV;
+    assert dev.overlays_source();
     assert dev.jaclang_source == "jac";
 }
 
 
 # ---- bootstrap command wiring -----------------------------------------------
-test "stable bootstrap installs the shipped binary, no overlay, no build" {
-    cmds = build_runtime_install_commands(KubernetesConfig(), False, False);
+test "no-overlay bootstrap installs the shipped binary; no [dev], no build" {
+    cmds = build_runtime_install_commands(KubernetesConfig(), False);
     joined = " && ".join(cmds);
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
     assert "[dev]" not in joined;
@@ -103,32 +104,22 @@ test "stable bootstrap installs the shipped binary, no overlay, no build" {
 }
 
 
-test "dev bootstrap injects [dev] jaclang_source; compiles on boot without A" {
-    cmds = build_runtime_install_commands(KubernetesConfig(), True, False);
+test "overlay bootstrap injects [dev] jaclang_source; pod compiles on boot" {
+    cmds = build_runtime_install_commands(KubernetesConfig(), True);
     joined = " && ".join(cmds);
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
     assert "[dev]" in joined;
     assert overlay_pod_path() in joined;
-    assert "JAC_NO_PRECOMPILE=0" not in joined;
+    # precompile was removed - no JAC_NO_PRECOMPILE wiring.
+    assert "JAC_NO_PRECOMPILE" not in joined;
 }
 
 
-test "dev bootstrap with A sets JAC_NO_PRECOMPILE=0 to use the shipped jir" {
-    cmds = build_runtime_install_commands(KubernetesConfig(), True, True);
-    joined = " && ".join(cmds);
-    assert "[dev]" in joined;
-    assert "JAC_NO_PRECOMPILE=0" in joined;
-}
-
-
-test "runtime_container_env exposes JAC_NO_PRECOMPILE only when precompiled" {
-    plain = runtime_container_env(False);
-    names_plain = [e["name"] for e in plain];
-    assert "JAC_NO_PRECOMPILE" not in names_plain;
-
-    precompiled = runtime_container_env(True);
-    names_pc = [e["name"] for e in precompiled];
-    assert "JAC_NO_PRECOMPILE" in names_pc;
+test "runtime_container_env exposes HOME + PATH, no JAC_NO_PRECOMPILE" {
+    names = [e["name"] for e in runtime_container_env()];
+    assert "HOME" in names;
+    assert "PATH" in names;
+    assert "JAC_NO_PRECOMPILE" not in names;
 }
 
 
@@ -148,7 +139,7 @@ test "node_arch defaults to the host arch and honors JAC_NODE_ARCH" {
 }
 
 
-test "pack_binary_bytes tars only the binary (stable channel)" {
+test "pack_binary_bytes tars only the binary (no-overlay channel)" {
     raw = pack_binary_bytes(b"ELF-binary");
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
         names = tar.getnames();
@@ -181,15 +172,6 @@ test "resolve_overlay_source prefers a local jaclang_source dir, no cleanup" {
     assert resolved == (proj / "jac").resolve();
     # a local checkout must be kept (not a throwaway clone).
     assert cleanup is None;
-}
-
-
-test "precompile_overlay is a no-op (False) on an arch mismatch" {
-    src_root = Path(tempfile.mkdtemp());
-    (src_root / "jaclang" / "utils").mkdir(parents=True);
-    (src_root / "jaclang" / "utils" / "precompile_bytecode.jac").write_text("");
-    other = "aarch64" if host_arch() == "x86_64" else "x86_64";
-    assert precompile_overlay(b"ELF", src_root, other) == False;
 }
 
 

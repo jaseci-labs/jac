@@ -12,9 +12,7 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 
 
 def build_runtime_install_commands(
-    k8s_config: KubernetesConfig,
-    overlay_source: bool = False,
-    precompiled: bool = False
+    k8s_config: KubernetesConfig, overlay_source: bool = False
 ) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
@@ -76,11 +74,8 @@ def build_runtime_install_commands(
             f"printf '\\n[dev]\\njaclang_source = \"{overlay_rel}\"\\n' "
             f'>> {APP_MOUNT_PATH}/jac.toml'
         );
-        if precompiled {
-            # Use the host-built `_precompiled` jir (OPTION A); without this the
-            # dev loop defaults JAC_NO_PRECOMPILE=1 and compiles on first import.
-            commands.append('export JAC_NO_PRECOMPILE=0');
-        }
+        # The pod compiles the overlaid jaclang on first import (the dev loop's
+        # content-keyed cache); no shipped `_precompiled` jir to opt into.
     }
     return commands;
 }
@@ -91,27 +86,18 @@ def runtime_path -> str {
 }
 
 
-def runtime_container_env(precompiled: bool = False) -> list[dict[str, str]] {
-    env: list[dict[str, str]] = [
+def runtime_container_env -> list[dict[str, str]] {
+    return [
         {"name": "HOME", "value": JAC_HOME},
         {"name": "PATH", "value": runtime_path()}
     ];
-    if precompiled {
-        # Let the runtime container load the shipped `_precompiled` jir instead of
-        # the dev loop's default JAC_NO_PRECOMPILE=1 (compile-on-boot).
-        env.append({"name": "JAC_NO_PRECOMPILE", "value": "0"});
-    }
-    return env;
 }
 
 
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig,
-    base_image: str,
-    overlay_source: bool = False,
-    precompiled: bool = False
+    k8s_config: KubernetesConfig, base_image: str, overlay_source: bool = False
 ) -> dict[str, any] {
-    commands = build_runtime_install_commands(k8s_config, overlay_source, precompiled);
+    commands = build_runtime_install_commands(k8s_config, overlay_source);
     commands.append(f'cd {APP_MOUNT_PATH}');
     commands.append('jac install');
     script = ' && '.join(commands);

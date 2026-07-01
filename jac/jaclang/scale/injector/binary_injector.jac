@@ -5,7 +5,6 @@ import from jaclang.scale.injector.binary {
     node_arch,
     resolve_overlay_source,
     cleanup_overlay_source,
-    precompile_overlay,
     pack_binary_bytes,
     pack_overlay,
     toolchain_object_key
@@ -18,24 +17,22 @@ glob logger = logging.getLogger(__name__);
 
 obj BinaryInjector(PvcInjector) {
     # Ships a prebuilt, downloaded `jac` binary into pods over the bundle PVC, on
-    # top of the app source PvcInjector already seeds. For the DEV channel it also
-    # ships a jaclang source tree to overlay on the binary (the editable dev
-    # loop), optionally precompiled to `.jir` when the binary runs on this host.
+    # top of the app source PvcInjector already seeds. When a custom source is
+    # requested (DEV with repo/branch or a local jaclang_source) it also ships a
+    # jaclang source tree to overlay on the binary via the editable dev loop; the
+    # pod compiles it on first import (no host precompile).
     has dev: DevDeploy = DevDeploy(),
-        _precompiled: bool = False,
         _toolchain_object_key: str = "",
         _toolchain_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
         super.prepare(app_name, namespace, project_dir);
-        arch = node_arch();
-        payload = download_release_binary(self.dev.channel, arch);
+        payload = download_release_binary(self.dev.channel, node_arch());
         if self.dev.overlays_source() {
             (src, cleanup) = resolve_overlay_source(
                 self.dev.repo, self.dev.branch, self.dev.jaclang_source, project_dir
             );
             try {
-                self._precompiled = precompile_overlay(payload, src, arch);
                 raw = pack_overlay(payload, src);
             } finally {
                 cleanup_overlay_source(cleanup);
@@ -63,8 +60,11 @@ obj BinaryInjector(PvcInjector) {
 }
 
 
-def _blurb(dev: DevDeploy, precompiled: bool) -> str {
+def _blurb(dev: DevDeploy) -> str {
     if not dev.overlays_source() {
+        if dev.channel == "dev" {
+            return "downloading the rolling `dev` (main HEAD) jac binary";
+        }
         return "downloading the latest published (stable) jac release";
     }
     where = (
@@ -72,23 +72,22 @@ def _blurb(dev: DevDeploy, precompiled: bool) -> str {
             if dev.repo
             else (dev.jaclang_source or "jaseci main")
     );
-    jir = "precompiled" if precompiled else "compiled on first boot";
-    return f"downloading the dev binary + overlaying jaclang source ({where}, {jir})";
+    return f"downloading the dev binary + overlaying jaclang source ({where})";
 }
 
 
 def select_injector(
     dev: DevDeploy, storage_class: str, app_name: str, namespace: str, project_dir: str
-) -> tuple[PvcInjector, bool, str] {
-    # Always ships a prebuilt binary; DEV additionally overlays jaclang source.
-    # Never builds jac (host or in-pod). Returns (injector, precompiled, key).
+) -> tuple[PvcInjector, str] {
+    # Always ships a prebuilt binary; a custom-source DEV also overlays jaclang
+    # source. Never builds jac (host or in-pod). Returns (injector, toolchain_key).
     import from jaclang.cli.console { console }
     try {
         console.print(f"Preparing the '{dev.channel}' jac runtime for pods.");
         injector = BinaryInjector(dev=dev, storage_class=storage_class);
         injector.prepare(app_name, namespace, project_dir);
-        console.print(f"Ready: {_blurb(dev, injector._precompiled)}.");
-        return (injector, injector._precompiled, injector._toolchain_object_key);
+        console.print(f"Ready: {_blurb(dev)}.");
+        return (injector, injector._toolchain_object_key);
     } except Exception as exc {
         logger.warning(f"[{dev.channel}] binary/source prep failed: {exc}");
         raise RuntimeError(

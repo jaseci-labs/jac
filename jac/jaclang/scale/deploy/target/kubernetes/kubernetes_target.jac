@@ -1006,7 +1006,7 @@ obj KubernetesTarget(DeploymentTarget) {
             probe_configs = self._build_probe_config(health_check_path);
 
             import from jaclang.scale.injector.binary_injector { select_injector }
-            (injector, precompiled, _tc_key) = select_injector(
+            (injector, _tc_key) = select_injector(
                 app_config.dev,
                 self.k8s_config.bundle_storage_class,
                 app_name,
@@ -1035,9 +1035,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 secret_ref_name=secret_ref_name,
                 needs_root=True
             );
-            container_config['env'] = container_config['env'] + runtime_container_env(
-                precompiled
-            );
+            container_config['env'] = container_config['env'] + runtime_container_env();
 
             app_sa_name = f"{app_name}-sa";
             self._create_service_account(app_sa_name, app_name, namespace, core_v1);
@@ -1082,8 +1080,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 build_bootstrap_init_container(
                     self.k8s_config,
                     self.k8s_config.python_image,
-                    app_config.dev.overlays_source(),
-                    precompiled
+                    app_config.dev.overlays_source()
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

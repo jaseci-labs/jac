@@ -168,44 +168,6 @@ def cleanup_overlay_source(cleanup_root: (Path | None)) {
 }
 
 
-def precompile_overlay(binary_bytes: bytes, source_root: Path, arch: str) -> bool {
-    # OPTION A: run the downloaded binary over the overlay's own
-    # precompile_bytecode util to emit `jaclang/_precompiled/<pyver>/*.jir`, so
-    # the pod boots without compiling. Only possible when the binary runs on this
-    # host (arch match); a mismatch - or any failure - returns False so we ship
-    # source only (OPTION B: the pod compiles once on boot). This is the swappable
-    # cross-arch seam: a future cross-arch compiler can drop in here.
-    if arch != host_arch() {
-        return False;
-    }
-    util = source_root / "jaclang" / "utils" / "precompile_bytecode.jac";
-    if not util.is_file() {
-        return False;
-    }
-    tmpbin = source_root.parent / "jac-precompiler";
-    try {
-        tmpbin.write_bytes(binary_bytes);
-        tmpbin.chmod(0o755);
-        # Hand precompile_bytecode the dir CONTAINING `jaclang/` (source_root), not
-        # `source_root/jaclang` - its find_package_dir descends to the first child
-        # package, so passing the jaclang dir would only precompile a single
-        # sub-package (e.g. byllm) instead of jaclang itself.
-        subprocess.run(
-            [str(tmpbin), "run", str(util), str(source_root)],
-            check=True,
-            timeout=_SUBPROCESS_TIMEOUT
-        );
-        return True;
-    } except Exception {
-        return False;
-    } finally {
-        if tmpbin.is_file() {
-            tmpbin.unlink();
-        }
-    }
-}
-
-
 def _skip(path: Path) -> bool {
     for part in path.parts {
         if part in _SKIP_DIRS {
@@ -232,8 +194,8 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 
 
 def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
-    # binary + the jaclang source tree (including any host-built `_precompiled`
-    # jir) so the pod reroutes `import jaclang` to it:
+    # binary + the jaclang source tree so the pod reroutes `import jaclang` to it
+    # and compiles it once on first boot (no host precompile):
     #   {TOOLCHAIN}/bin/jac  and  {TOOLCHAIN}/{OVERLAY_SUBDIR}/jaclang/...
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {

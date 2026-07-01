@@ -6,16 +6,18 @@ whether to overlay jaclang source on top of it (via the editable dev loop,
 `jaclang_source`):
 
     (no [dev])                 -> STABLE : latest published release binary, run as-is
-    [dev]                      -> DEV    : rolling `dev` prerelease binary (main) +
-                                           overlay jaclang source
-    [dev] repo=.. branch=..    -> DEV    : ...source overlaid from that repo/branch
-    [dev] jaclang_source=".."  -> DEV    : ...source overlaid from the local checkout
+    [dev]                      -> DEV    : rolling `dev` prerelease binary (main),
+                                           run as-is (no overlay - it IS main HEAD)
+    [dev] repo=.. branch=..    -> DEV    : dev binary + overlay source from repo/branch
+    [dev] jaclang_source=".."  -> DEV    : dev binary + overlay the local checkout
                                            if present, else fetched `main`
 
-For DEV the source origin resolves at deploy time as: repo/branch if given, else
-the local `jaclang_source` dir if it exists, else a fresh `main` from
-jaseci-labs. This reads the raw `[dev]` table directly rather than extending
-core's DevConfig, keeping the deploy-specific `repo`/`branch` keys out of core.
+A bare `[dev]` ships the dev binary bare because it is already built from main
+HEAD - cloning main to overlay the same code would be redundant. When a custom
+source IS requested, the origin resolves at deploy time as: repo/branch if given,
+else the local `jaclang_source` dir if it exists, else a fresh `main`. This reads
+the raw `[dev]` table directly rather than extending core's DevConfig, keeping the
+deploy-specific `repo`/`branch` keys out of core.
 """
 
 import tomllib;
@@ -32,9 +34,13 @@ obj DevDeploy {
         jaclang_source: str = "";
 
     def overlays_source -> bool {
-        # DEV overlays jaclang source on the downloaded binary; STABLE runs the
-        # binary's own bundled jaclang as-is.
-        return self.channel == CHANNEL_DEV;
+        # Overlay jaclang source on the downloaded binary ONLY when a custom
+        # source is requested (repo/branch or a local jaclang_source). A bare
+        # `[dev]` ships the dev prerelease binary as-is - it is already built from
+        # main HEAD, so cloning main to overlay the same code would be redundant.
+        # STABLE never overlays.
+        return self.channel == CHANNEL_DEV
+        and (self.repo != "" or self.jaclang_source != "");
     }
 }
 
