@@ -190,7 +190,7 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
         passes.extend([NaIRGenPass, NativeCompilePass]);
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
-    } except (ImportError, OSError) {
+    } except ImportError {
         return [PyastGenPass, PyBytecodeGenPass];
     } finally {
         _codegen_sched_loading = False;
