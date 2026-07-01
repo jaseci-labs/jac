@@ -404,6 +404,9 @@ test "check pods restarted still detects a crash-looping StatefulSet pod with no
     assert result is True , "a crash-looping StatefulSet pod (no pod-template-hash) must still fail the deploy, even while Deployment companions are on the current RS";
 }
 
+# Exercises the RS-lookup exception fallback, not the hash-scoping fix
+# itself: it passes as long as the plain broad selector still detects
+# crashes, independent of whether RS scoping exists at all.
 test "check pods restarted falls back to broad selector when RS lookup fails" {
     app_name = "myapp";
     namespace = "test-ns";
