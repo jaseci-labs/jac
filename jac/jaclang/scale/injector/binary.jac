@@ -1,49 +1,20 @@
 import io;
+import os;
 import json;
 import hashlib;
 import platform;
 import subprocess;
 import tarfile;
+import tempfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 
-glob _SHIP_PREFIX: str = ".ship-out",
-     BINARY_ARCNAME: str = "bin/jac",
-     _HTTP_TIMEOUT: int = 60;
-
-
-def host_repo_root -> Path {
-    # The monorepo source root (the dir containing `jac/build.zig`) the LOCAL
-    # channel host-builds from. Under the jac binary, __file__ lives in the
-    # runtime cache rather than the checkout, so a fixed __file__-relative guess
-    # mis-resolves; prefer an explicit JAC_REPO_ROOT override, then search upward
-    # from cwd and __file__ for the build.zig marker.
-    import os;
-    override = os.environ.get("JAC_REPO_ROOT");
-    if override {
-        return Path(override).resolve();
-    }
-    seen: set = set();
-    for start in [Path.cwd(), Path(str(__file__)).resolve()] {
-        cur: Path = start;
-        while True {
-            if cur not in seen {
-                seen.add(cur);
-                if (cur / "jac" / "build.zig").is_file() {
-                    return cur;
-                }
-            }
-            if cur.parent == cur {
-                break;
-            }
-            cur = cur.parent;
-        }
-    }
-    # Last resort: <repo>/jac/jaclang/scale/injector/binary.jac -> the repo root
-    # (which holds jac/, jac-scale/, jac-byllm/) is 5 parents up.
-    return Path(str(__file__)).resolve().parent.parent.parent.parent.parent;
-}
+glob BINARY_ARCNAME: str = "bin/jac",
+     OVERLAY_SUBDIR: str = "jaclang-src",
+     _HTTP_TIMEOUT: int = 60,
+     _JASECI_REPO: str = "https://github.com/jaseci-labs/jaseci",
+     _SKIP_DIRS: set[str] = {"__pycache__", ".git", "node_modules", ".jac"};
 
 
 def host_arch -> str {
@@ -57,7 +28,6 @@ def node_arch -> str {
     # the deploy host. Default to the host arch (the common single-machine and
     # homogeneous-cluster case) and let JAC_NODE_ARCH override for cross-arch
     # deploys (e.g. an x86_64 laptop deploying to aarch64 nodes).
-    import os;
     return os.environ.get("JAC_NODE_ARCH", "") or host_arch();
 }
 
@@ -80,7 +50,6 @@ def download_release_binary(channel: str, arch: str) -> bytes {
     #   stable -> the latest published release (jac-<ver>-linux-<arch>)
     #   dev    -> the rolling `dev` prerelease, force-moved to main HEAD on every
     #             push (jac-dev-linux-<arch>); see .github/workflows/release-dev.yml
-    # scale ships inside this binary, so no plugin source or in-pod build is needed.
     repo = "jaseci-labs/jaseci";
     api = (
         f"https://api.github.com/repos/{repo}/releases/tags/dev"
@@ -135,9 +104,97 @@ def download_release_binary(channel: str, arch: str) -> bytes {
 }
 
 
+def _clone_jac_source(repo: str, branch: str) -> Path {
+    dest = Path(tempfile.mkdtemp(prefix="jac-overlay-"));
+    subprocess.run(
+        [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "--branch",
+            branch,
+            "--single-branch",
+            repo,
+            str(dest)
+        ],
+        check=True
+    );
+    jacdir = dest / "jac";
+    if not (jacdir / "jaclang").is_dir() {
+        raise RuntimeError(
+            f"{repo}@{branch} has no jac/jaclang source tree to overlay."
+        );
+    }
+    return jacdir;
+}
+
+
+def resolve_overlay_source(
+    repo: str, branch: str, jaclang_source: str, project_dir: str
+) -> Path {
+    # Resolve the jaclang source dir to overlay on the downloaded binary. Returns
+    # the dir CONTAINING `jaclang/` (the repo's `jac/` dir). Precedence:
+    #   explicit repo/branch  ->  local jaclang_source dir if it exists  ->  main
+    if repo {
+        return _clone_jac_source(repo, branch or "main");
+    }
+    if jaclang_source {
+        local = (Path(project_dir) / jaclang_source).resolve();
+        if (local / "jaclang").is_dir() {
+            return local;
+        }
+    }
+    return _clone_jac_source(_JASECI_REPO, "main");
+}
+
+
+def precompile_overlay(binary_bytes: bytes, source_root: Path, arch: str) -> bool {
+    # OPTION A: run the downloaded binary over the overlay's own
+    # precompile_bytecode util to emit `jaclang/_precompiled/<pyver>/*.jir`, so
+    # the pod boots without compiling. Only possible when the binary runs on this
+    # host (arch match); a mismatch - or any failure - returns False so we ship
+    # source only (OPTION B: the pod compiles once on boot). This is the swappable
+    # cross-arch seam: a future cross-arch compiler can drop in here.
+    if arch != host_arch() {
+        return False;
+    }
+    util = source_root / "jaclang" / "utils" / "precompile_bytecode.jac";
+    if not util.is_file() {
+        return False;
+    }
+    tmpbin = source_root.parent / "jac-precompiler";
+    try {
+        tmpbin.write_bytes(binary_bytes);
+        tmpbin.chmod(0o755);
+        subprocess.run(
+            [str(tmpbin), "run", str(util), str(source_root / "jaclang")], check=True
+        );
+        return True;
+    } except Exception {
+        return False;
+    } finally {
+        if tmpbin.is_file() {
+            tmpbin.unlink();
+        }
+    }
+}
+
+
+def _skip(path: Path) -> bool {
+    for part in path.parts {
+        if part in _SKIP_DIRS {
+            return True;
+        }
+    }
+    return False;
+}
+
+
 def pack_binary_bytes(binary_bytes: bytes) -> bytes {
     # Tar just the self-contained `jac` binary into the toolchain layout the
-    # pod's unpack init container expects. No plugin source: scale is built in.
+    # pod's unpack init container expects. No source: the STABLE channel runs the
+    # binary's own bundled jaclang as-is.
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
@@ -149,18 +206,33 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 }
 
 
-def build_release_binary(repo_root: Path) -> Path {
-    jac_dir = repo_root / "jac";
-    prefix = jac_dir / _SHIP_PREFIX;
-    subprocess.run(["zig", "build", "fetch-llvm"], cwd=str(jac_dir), check=True);
-    subprocess.run(
-        ["zig", "build", "--prefix", str(prefix)], cwd=str(jac_dir), check=True
-    );
-    binary = prefix / "bin" / "jac";
-    if not binary.is_file() {
-        raise RuntimeError(f"zig build reported success but no binary at {binary}");
+def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
+    # binary + the jaclang source tree (including any host-built `_precompiled`
+    # jir) so the pod reroutes `import jaclang` to it:
+    #   {TOOLCHAIN}/bin/jac  and  {TOOLCHAIN}/{OVERLAY_SUBDIR}/jaclang/...
+    buf = io.BytesIO();
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
+        info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
+        info.size = len(binary_bytes);
+        info.mode = 0o755;
+        tar.addfile(info, io.BytesIO(binary_bytes));
+        jac_pkg = source_root / "jaclang";
+        for path in sorted(jac_pkg.rglob("*")) {
+            if not path.is_file() or _skip(path) {
+                continue;
+            }
+            rel = path.relative_to(source_root);
+            tar.add(str(path), arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}");
+        }
     }
-    return binary;
+    return buf.getvalue();
+}
+
+
+def overlay_pod_path -> str {
+    # Where the shipped jaclang source lands in the pod (the dir CONTAINING
+    # `jaclang/`), i.e. the value the pod's `[dev] jaclang_source` must point at.
+    return f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}";
 }
 
 

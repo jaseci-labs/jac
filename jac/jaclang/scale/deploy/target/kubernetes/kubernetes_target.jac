@@ -8,7 +8,6 @@ import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.injector.bundle { JAC_ZIG_VERSION }
 import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_name }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_bootstrap_init_container,
@@ -1007,12 +1006,7 @@ obj KubernetesTarget(DeploymentTarget) {
             probe_configs = self._build_probe_config(health_check_path);
 
             import from jaclang.scale.injector.binary_injector { select_injector }
-            if app_config.dev.builds_in_pod() {
-                # BRANCH escape hatch: the pod clones + builds this repo/branch.
-                self.k8s_config.jaseci_repo_url = app_config.dev.repo;
-                self.k8s_config.jaseci_branch = app_config.dev.branch;
-            }
-            (injector, _ship_binary, _tc_key) = select_injector(
+            (injector, precompiled, _tc_key) = select_injector(
                 app_config.dev,
                 self.k8s_config.bundle_storage_class,
                 app_name,
@@ -1041,7 +1035,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 secret_ref_name=secret_ref_name,
                 needs_root=True
             );
-            container_config['env'] = container_config['env'] + runtime_container_env();
+            container_config['env'] = container_config['env'] + runtime_container_env(
+                precompiled
+            );
 
             app_sa_name = f"{app_name}-sa";
             self._create_service_account(app_sa_name, app_name, namespace, core_v1);
@@ -1086,7 +1082,8 @@ obj KubernetesTarget(DeploymentTarget) {
                 build_bootstrap_init_container(
                     self.k8s_config,
                     self.k8s_config.python_image,
-                    app_config.dev.builds_in_pod()
+                    app_config.dev.overlays_source(),
+                    precompiled
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

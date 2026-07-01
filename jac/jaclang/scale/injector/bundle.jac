@@ -6,8 +6,7 @@ import from pathlib { Path }
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      JAC_HOME: str = "/app/.jachome",
-     TOOLCHAIN_SUBDIR: str = ".jactoolchain",
-     JAC_ZIG_VERSION: str = "0.16.0";
+     TOOLCHAIN_SUBDIR: str = ".jactoolchain";
 
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
@@ -68,22 +67,29 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
         return None;
     }
     out: list[str] = [];
-    in_scale_section = False;
+    in_stripped_section = False;
     at_top_level = True;
     for line in src.read_text().splitlines() {
         stripped = line.lstrip();
         if stripped.startswith("[") {
             header = stripped.lstrip("[").split("]")[0].strip();
-            in_scale_section = header == "plugins.scale"
-            or header.startswith("plugins.scale.");
+            # Strip [plugins.scale*] (host deploy config) and the host-side [dev]
+            # stanza: the pod's runtime channel is decided at deploy time and, for
+            # the dev channel, a pod-correct [dev] jaclang_source is injected by
+            # the bootstrap - a stale host [dev] here would point at a path that
+            # does not exist in the pod (or duplicate the injected table).
+            in_stripped_section = header == "plugins.scale"
+            or header.startswith("plugins.scale.")
+            or header == "dev"
+            or header.startswith("dev.");
             at_top_level = False;
-            if in_scale_section {
+            if in_stripped_section {
                 continue;
             }
         } elif at_top_level and stripped.startswith("plugins.scale.") {
             continue;
         }
-        if not in_scale_section {
+        if not in_stripped_section {
             out.append(line);
         }
     }

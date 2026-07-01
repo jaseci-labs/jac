@@ -1,27 +1,28 @@
 """Resolve the pod runtime channel from the project's `[dev]` jac.toml stanza.
 
-The deploy path needs to know *which* `jac` runtime to put in the pods. That is
-driven entirely by the top-level `[dev]` table in the nearest `jac.toml` (the
-same stanza Jason's editable dev loop reads for `jaclang_source`), so a normal
-app with no `[dev]` ships the published stable release, while a dev app opts into
-a rolling/main or build-from-source runtime by declaring `[dev]`:
+The binary shipped to pods is ALWAYS a prebuilt download - never built from
+source, on the host or in-pod. The `[dev]` table only decides which binary and
+whether to overlay jaclang source on top of it (via Jason's editable dev loop,
+`jaclang_source`):
 
-    (no [dev])                 -> STABLE  : download the latest published release binary
-    [dev]                      -> DEV     : download the rolling `dev` prerelease binary (main)
-    [dev] repo=.. branch=..    -> BRANCH  : clone + build that branch in-pod (escape hatch)
-    [dev] jaclang_source=".."  -> LOCAL   : host-build from the local checkout + ship the binary
+    (no [dev])                 -> STABLE : latest published release binary, run as-is
+    [dev]                      -> DEV    : rolling `dev` prerelease binary (main) +
+                                           overlay jaclang source
+    [dev] repo=.. branch=..    -> DEV    : ...source overlaid from that repo/branch
+    [dev] jaclang_source=".."  -> DEV    : ...source overlaid from the local checkout
+                                           if present, else fetched `main`
 
-This reads the raw `[dev]` table directly rather than extending core's DevConfig,
-keeping the deploy-specific `repo`/`branch` keys out of jaclang core.
+For DEV the source origin resolves at deploy time as: repo/branch if given, else
+the local `jaclang_source` dir if it exists, else a fresh `main` from
+jaseci-labs. This reads the raw `[dev]` table directly rather than extending
+core's DevConfig, keeping the deploy-specific `repo`/`branch` keys out of core.
 """
 
 import tomllib;
 import from pathlib { Path }
 
 glob CHANNEL_STABLE: str = "stable",
-     CHANNEL_DEV: str = "dev",
-     CHANNEL_BRANCH: str = "branch",
-     CHANNEL_LOCAL: str = "local";
+     CHANNEL_DEV: str = "dev";
 
 
 obj DevDeploy {
@@ -30,15 +31,10 @@ obj DevDeploy {
         branch: str = "",
         jaclang_source: str = "";
 
-    def builds_in_pod -> bool {
-        # Only the BRANCH escape hatch clones + compiles jaclang inside the pod.
-        return self.channel == CHANNEL_BRANCH;
-    }
-
-    def ships_binary -> bool {
-        # stable/dev download a prebuilt binary; local host-builds one. All three
-        # ship a self-contained `jac` over the PVC and skip the in-pod build.
-        return self.channel in (CHANNEL_STABLE, CHANNEL_DEV, CHANNEL_LOCAL);
+    def overlays_source -> bool {
+        # DEV overlays jaclang source on the downloaded binary; STABLE runs the
+        # binary's own bundled jaclang as-is.
+        return self.channel == CHANNEL_DEV;
     }
 }
 
@@ -81,20 +77,11 @@ def resolve_dev_deploy(project_dir: str) -> DevDeploy {
     repo = str(section.get("repo", "") or "");
     branch = str(section.get("branch", "") or "");
     jaclang_source = str(section.get("jaclang_source", "") or "");
-
-    # Precedence: an explicit local checkout wins (you are editing jaclang),
-    # then an explicit branch, else the bare `[dev]` rolling prerelease.
-    if jaclang_source {
-        channel = CHANNEL_LOCAL;
-    } elif repo {
-        channel = CHANNEL_BRANCH;
-        if not branch {
-            branch = "main";
-        }
-    } else {
-        channel = CHANNEL_DEV;
+    # A `[dev]` table with a repo but no branch defaults to main.
+    if repo and not branch {
+        branch = "main";
     }
     return DevDeploy(
-        channel=channel, repo=repo, branch=branch, jaclang_source=jaclang_source
+        channel=CHANNEL_DEV, repo=repo, branch=branch, jaclang_source=jaclang_source
     );
 }

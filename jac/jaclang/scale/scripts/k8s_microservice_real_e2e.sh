@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Real-app K8s e2e for jac-scale microservice mode (NO-DOCKER path).
 #
-# Deploys the fixture via the LOCAL [dev] channel: a self-contained `jac` binary
-# is host-built from this checkout and shipped into the cluster over a
-# ReadWriteMany PVC (no image build, no registry), so the e2e exercises the
-# branch under test. jac is installed at pod startup, then KubernetesMicroserviceTarget
-# rolls out the gateway + per-service deployments. Verifies rollout -> gateway
-# /health -> per-service routing -> observability stack -> rolling-restart
-# zero-downtime assertion.
+# Deploys the fixture via the DEV [dev] channel: a prebuilt `jac` binary is
+# downloaded and this checkout's jaclang source is overlaid on top (Jason's
+# editable dev loop), shipped into the cluster over a ReadWriteMany PVC (no image
+# build, no host/in-pod build), so the e2e exercises the branch under test. jac
+# is installed at pod startup, then KubernetesMicroserviceTarget rolls out the
+# gateway + per-service deployments. Verifies rollout -> gateway /health ->
+# per-service routing -> observability stack -> rolling-restart zero-downtime.
 #
 # Usage: bash k8s_microservice_real_e2e.sh <PROJECT_DIR>
 #
 # Env: CLUSTER_TYPE (minikube | microk8s; default microk8s; only affects the
 # Ingress IP probe), ROLLOUT_TIMEOUT (default 600s).
 #
-# Requires: `jac` on PATH (with jac-scale importable) and `zig` 0.16.0 on PATH
-# (BinaryInjector shells out to `zig build` to produce the shipped binary).
+# Requires: `jac` on PATH (with jac-scale importable) and network access to the
+# jaseci-labs releases (to download the prebuilt binary). No zig / no build.
 
 set -euo pipefail
 
@@ -41,17 +41,11 @@ DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 # levels up.
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 
-# The LOCAL channel host-builds the binary from this checkout (in-repo
-# jaclang.scale), so PR-time CI exercises the branch under test rather than a
+# The DEV channel overlays this checkout's jaclang source on the downloaded
+# binary, so PR-time CI exercises the branch under test rather than only a
 # published release.
 if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/plugin.jac" ]; then
     echo "FAIL: jaclang.scale source not found under ${REPO_ROOT}" >&2
-    exit 1
-fi
-# The LOCAL channel builds the shipped binary with zig; fail early with a clear
-# message instead of a deep RuntimeError mid-deploy if it is missing.
-if ! command -v zig >/dev/null 2>&1; then
-    echo "FAIL: zig not on PATH (the LOCAL [dev] channel host-build needs zig 0.16.0)" >&2
     exit 1
 fi
 
@@ -85,7 +79,7 @@ import logging, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
-from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_LOCAL
+from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_DEV
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
@@ -117,7 +111,10 @@ result = target.deploy(
     AppConfig(
         code_folder=".",
         app_name="jac-e2e",
-        dev=DevDeploy(channel=CHANNEL_LOCAL),
+        # DEV channel overlaying this checkout's jaclang source on the downloaded
+        # dev binary, so the e2e exercises the branch under test (+ precompile
+        # when the runner arch matches the node).
+        dev=DevDeploy(channel=CHANNEL_DEV, jaclang_source="${REPO_ROOT}/jac"),
     )
 )
 if not result.success:

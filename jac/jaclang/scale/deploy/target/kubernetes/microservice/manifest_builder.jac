@@ -29,7 +29,7 @@ obj MicroserviceManifestBuilder {
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
-        _ship_binary: bool = False,
+        _precompiled: bool = False,
         microservices_config: dict[str, any] = {};
 
     def _ms_cfg -> dict[str, any] {
@@ -51,11 +51,6 @@ obj MicroserviceManifestBuilder {
     def _prepare_injector(app_config: AppConfig) -> PvcInjector {
         import from jaclang.scale.injector.binary_injector { select_injector }
         import from jaclang.scale.injector.pvc_injector { PvcInjector }
-        if self.dev.builds_in_pod() {
-            # BRANCH escape hatch: the pod clones + builds this repo/branch.
-            self.k8s_config.jaseci_repo_url = self.dev.repo;
-            self.k8s_config.jaseci_branch = self.dev.branch;
-        }
         selection = select_injector(
             self.dev,
             self.k8s_config.bundle_storage_class,
@@ -64,7 +59,7 @@ obj MicroserviceManifestBuilder {
             self.project_dir or app_config.code_folder
         );
         injector: PvcInjector = selection[0];
-        self._ship_binary = bool(selection[1]);
+        self._precompiled = bool(selection[1]);
         self._toolchain_object_key = str(selection[2]);
         return injector;
     }
@@ -788,7 +783,7 @@ obj MicroserviceManifestBuilder {
             runtime_container_env
         }
         container["workingDir"] = APP_MOUNT_PATH;
-        env_list.extend(runtime_container_env());
+        env_list.extend(runtime_container_env(self._precompiled));
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }
@@ -807,18 +802,13 @@ obj MicroserviceManifestBuilder {
         spec["volumes"] = list(shared_vols);
         spec["initContainers"] = list(self.deploy_context.init_containers);
 
-        import from jaclang.scale.injector.pvc_injector { PvcInjector }
-        injector: PvcInjector = PvcInjector(
+        # Every channel ships a self-contained binary over the PVC, so the pod
+        # spec always mutates via the BinaryInjector (which unpacks the toolchain).
+        import from jaclang.scale.injector.binary_injector { BinaryInjector }
+        injector: BinaryInjector = BinaryInjector(
             storage_class=self.k8s_config.bundle_storage_class
         );
-        if self._ship_binary {
-            import from jaclang.scale.injector.binary_injector { BinaryInjector }
-            bin_inj = BinaryInjector(
-                storage_class=self.k8s_config.bundle_storage_class
-            );
-            bin_inj._toolchain_object_key = self._toolchain_object_key;
-            injector = bin_inj;
-        }
+        injector._toolchain_object_key = self._toolchain_object_key;
         injector._object_key = self._injector_object_key();
         spec["_jac_meta"] = {
             "app_name": k8s_safe_name(self.k8s_config.app_name),
@@ -832,7 +822,10 @@ obj MicroserviceManifestBuilder {
         }
         spec["initContainers"].append(
             build_bootstrap_init_container(
-                self.k8s_config, self.k8s_config.python_image, self.dev.builds_in_pod()
+                self.k8s_config,
+                self.k8s_config.python_image,
+                self.dev.overlays_source(),
+                self._precompiled
             )
         );
         return spec;
