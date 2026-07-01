@@ -62,7 +62,15 @@ jobs:
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
     steps:
+      # Check out the release tag, not the caller's default SHA. A reusable
+      # workflow (`uses:`) otherwise runs at the caller's ref, so a recovery
+      # dispatch after `main` advanced would build binaries from newer source
+      # and clobber them onto the old release -- source and assets would drift.
+      # On a release event this is the published tag; empty (artifact-only
+      # dispatch) falls through to the default ref.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
 
       - name: Install host tools (zstd)
         run: |
