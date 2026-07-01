@@ -68,7 +68,7 @@ def:pub ComboboxInput(props: any) -> JsxElement {
     showClear = props["showClear"] or False;
 
     inputProps = {};
-    for key in Object.keys(props) {  # jac:ignore[W6001]
+    for key in Object.keys(props) {
         if key not in _comboboxInputExclude {
             inputProps[key] = props[key];
         }

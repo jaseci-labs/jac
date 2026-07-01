@@ -1,45 +1,7 @@
-"""Implementation of JIR class methods."""
 import struct;
 import sys;
 import zlib;
 
-# --- StringPool methods ---
-impl StringPool.init(self: StringPool) -> None {
-    self._strings: list[str] = [];
-    self._index: dict[str, int] = {};
-}
-
-impl StringPool.intern(self: StringPool, s: str) -> int {
-    idx = self._index.get(s);
-    if idx is not None {
-        return idx;
-    }
-    idx = len(self._strings);
-    self._strings.append(s);
-    self._index[s] = idx;
-    return idx;
-}
-
-impl StringPool.get(self: StringPool, idx: int) -> str {
-    return self._strings[idx];
-}
-
-impl StringPool.__len__(self: StringPool) -> int {
-    return len(self._strings);
-}
-
-impl StringPool.serialize(self: StringPool) -> bytes {
-    buf = bytearray();
-    write_varint(buf, len(self._strings));
-    for s in self._strings {
-        encoded = s.encode('utf-8');
-        write_varint(buf, len(encoded));
-        buf.extend(encoded);
-    }
-    return bytes(buf);
-}
-
-# --- JirHeader methods ---
 impl JirHeader.to_bytes -> bytes {
     return struct.pack(
         HEADER_FMT,

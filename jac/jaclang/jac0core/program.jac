@@ -1,4 +1,3 @@
-"""Jac Program module."""
 import types;
 import from threading { Event }
 import jaclang.jac0core.unitree as uni;
@@ -9,47 +8,21 @@ import type from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
 import type from jaclang.jac0core.compiler { JacCompiler }
 import type from jaclang.jac0core.passes { Transform }
 
-"""Holds the state of a compiled Jac program."""
 class JacProgram {
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
-    # Hub cache freshness: timestamp captured when each path was inserted
-    # into `mod.hub` (or refreshed by a re-import). Compared against current
-    # source mtime + annex/variant mtimes by `is_hub_entry_fresh` so a
-    # long-lived JacProgram (e.g. the LSP server) cannot serve stale IR
-    # after a dependency changes on disk.
+    def release_compile_closure(self: JacProgram) -> None;
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
-    # Reverse-dependency map: target_path -> set of importer_paths that
-    # resolved an import to it. Used by long-lived clients (the LSP, the
-    # agent's CodeIntelligence) to fan out re-checks when a module changes.
-    # Fed two ways: opportunistically by the import resolver, and -- when
-    # `_track_dependencies` is set -- completely by `record_module_dependencies`
-    # on every compile, which is the only source that survives cache hits.
     def record_dependency(
         self: JacProgram, importer_path: str, target_path: str
     ) -> None;
 
-    # Walk a freshly compiled module's `Import` AST nodes and record every
-    # edge structurally, so `transitive_dependents` stays complete even when
-    # the importer (or its targets) is served from the JIR/hub cache and its
-    # imports are never re-resolved. Called from `compile`/`parse_str` when
-    # `_track_dependencies` is on. No-op for non-`.jac` modules.
     def record_module_dependencies(self: JacProgram, mod: uni.Module) -> None;
     def transitive_dependents(self: JacProgram, target_path: str) -> set[str];
-    # Coordinated eviction across hub, type-cache, native cache, and the
-    # rdep stamps. Invariant: after `invalidate_module(p)`, no consumer of
-    # the program's caches references the prior IR for `p`. This is the
-    # only safe entry point for in-place cache busting.
     def invalidate_module(self: JacProgram, resolved_path: str) -> None;
-    # Single source of truth for "the compiled module at <path>". A file is
-    # routed by `_resolve_program` to either this program or the compiler's
-    # internal program (jaclang-bundled files, e.g. `jac ai --ui`, land in the
-    # latter), so a consumer holding only a path must not assume which hub owns
-    # it. `find_module` spans both (with cross-platform path normalization) and
-    # never recompiles.
     def _search_hubs(self: JacProgram) -> list[dict];
     def find_module(self: JacProgram, path: str) -> (uni.Module | None);
     def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);

@@ -1,10 +1,5 @@
-"""Implementation of dependency management for Jac projects."""
-
 import from jaclang.cli.console { console }
 
-# ===============================================================================
-# DependencyInstaller Implementation
-# ===============================================================================
 impl DependencyInstaller.postinit -> None {
     import from jaclang.project.config { get_config }
     if self.config is None {
@@ -41,7 +36,6 @@ impl DependencyInstaller.ensure_venv -> None {
         }
     }
     if self.venv_dir.exists() {
-        # Validate the venv is not corrupted by checking for pyvenv.cfg and python binary
         pyvenv_cfg = self.venv_dir / "pyvenv.cfg";
         if sys.platform == "win32" {
             python_path = self.venv_dir / "Scripts" / "python.exe";
@@ -49,7 +43,6 @@ impl DependencyInstaller.ensure_venv -> None {
             python_path = self.venv_dir / "bin" / "python";
         }
         if not pyvenv_cfg.exists() or not python_path.exists() {
-            # Corrupted venv - recreate
             import shutil;
             if self.verbose {
                 console.print(f"Recreating corrupted venv at {self.venv_dir}");
@@ -58,21 +51,19 @@ impl DependencyInstaller.ensure_venv -> None {
             _create_venv(self.venv_dir);
         }
     } else {
-        # Create new venv
         if self.verbose {
             console.print(f"Creating venv at {self.venv_dir}");
         }
         self.venv_dir.parent.mkdir(parents=True, exist_ok=True);
         _create_venv(self.venv_dir);
     }
-    # Add venv site-packages to sys.path
+
     site_packages = str(get_venv_site_packages(self.venv_dir));
     if site_packages not in sys.path {
         sys.path.insert(0, site_packages);
     }
 }
 
-"""Flags that pip accepts but uv pip does not support, mapped to their uv equivalent or None if dropped."""
 glob _UV_FLAG_MAP: dict[str, str | None] = {
          "-y": None,
          "--force-reinstall": "--reinstall",
@@ -82,7 +73,6 @@ glob _UV_FLAG_MAP: dict[str, str | None] = {
 
      };
 
-"""Translate pip-only flags to their `uv pip` equivalents, dropping any without a counterpart."""
 def _pip_flags_for_uv(args: list[str]) -> list[str] {
     translated: list[str] = [];
     for arg in args {
@@ -105,10 +95,9 @@ impl pip_command(
     warn_fn: (Callable[[str], None] | None) = None
 ) -> list[str] {
     import shutil;
-    # Prefer uv's pip-compatible interface (much faster resolver/installer);
-    # fall back to the interpreter's own pip when uv isn't on PATH or disabled.
+
     uv_path = shutil.which("uv") if use_uv else None;
-    # `and args` guards against an empty args list to avoid IndexError on args[0].
+
     if uv_path and args {
         subcommand = args[0];
         rest = args[1:];
@@ -126,19 +115,18 @@ impl pip_command(
             rest
         );
     }
-    return [python, "-m", "pip"] + args;
 }
 
 impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     import subprocess;
     import sys;
-    # Use the venv's own Python to run pip
+
     if sys.platform == "win32" {
         venv_python = str(self.venv_dir / "Scripts" / "python.exe");
     } else {
         venv_python = str(self.venv_dir / "bin" / "python");
     }
-    # Warn once per installer instance when a flag is silently dropped by uv.
+
     def _warn_once(msg: str) {
         if not self._warned_uv_flag_drop {
             self._warned_uv_flag_drop = True;
@@ -229,7 +217,37 @@ impl DependencyInstaller.get_extra_package_specs(groups: list[str]) -> list[str]
     return [self._make_pip_spec(name, ver) for (name, ver) in resolved.items()];
 }
 
-"""Create pip spec from package name and version."""
+impl capability_specs_for_install(
+    config: JacConfig, installer: DependencyInstaller, scale: bool = False
+) -> list[str] {
+    import from jaclang.project.kinds { plan_project_run }
+    import from jaclang.project.capabilities {
+        resolve_config_closures,
+        RUNTIME,
+        DEPLOY
+    }
+    proj_root = str(config.project_root) if config.project_root else ".";
+    plan = plan_project_run(config, proj_root);
+    action = plan.action if plan else "execute";
+    closures = resolve_config_closures(config, action, scale);
+    closure = closures[DEPLOY] if scale else closures[RUNTIME];
+    return installer.get_capability_specs(closure);
+}
+
+impl DependencyInstaller.get_capability_specs(closure: CapabilityClosure) -> list[str] {
+    return [
+        self._make_pip_spec(name, ver) for (name, ver) in sorted(closure.deps.items())
+    ];
+}
+
+impl DependencyInstaller.sync_capabilities(closure: CapabilityClosure) -> bool {
+    specs = self.get_capability_specs(closure);
+    if not specs {
+        return True;
+    }
+    return self.install_package(specs);
+}
+
 impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
     if not version or version in ("*", "latest") {
         return name;
@@ -260,7 +278,6 @@ impl DependencyInstaller._snapshot_installed -> tuple[bool, set[tuple]] {
     return (False, set());
 }
 
-"""Install packages given a list of pip specs."""
 impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     if not specs {
         return True;
@@ -275,8 +292,6 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     );
     if returncode == 0 {
         if is_dry_run {
-            # uv writes to stderr, pip to stdout; pick whichever is non-empty
-            # so the fallback to pip (when uv is not on PATH) is also covered.
             preview = stderr or stdout;
             if preview {
                 console.print(preview, style="dim");
@@ -311,8 +326,7 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
         return False;
     }
     console.print(f"Uninstalling {name}...");
-    # Check presence first so we get consistent behaviour across backends:
-    # pip exits non-zero for a missing package, uv exits 0 with a warning.
+
     if not self.is_installed(name) {
         if self.verbose {
             console.print(f"  {name} was not installed");
@@ -345,7 +359,7 @@ impl DependencyInstaller.get_installed_version(name: str) -> str | None {
     if returncode != 0 {
         return None;
     }
-    # Parse 'pip show' output to extract version
+
     for line in stdout.splitlines() {
         line = line.strip();
         if line.startswith("Version:") {
@@ -367,7 +381,7 @@ impl DependencyInstaller.list_installed -> list[str] {
     }
     try {
         packages_data = json.loads(stdout);
-        # Filter out venv infrastructure packages
+
         infrastructure = {"pip", "setuptools", "wheel"};
         return sorted(
             [
@@ -381,9 +395,6 @@ impl DependencyInstaller.list_installed -> list[str] {
     }
 }
 
-# ===============================================================================
-# DependencyResolver Implementation
-# ===============================================================================
 impl DependencyResolver.postinit -> None {
     import from jaclang.project.config { get_config }
     if self.config is None {
@@ -397,24 +408,24 @@ impl DependencyResolver.postinit -> None {
 impl DependencyResolver.parse_spec(spec: str) -> tuple[str, str] {
     import re;
     spec = spec.strip();
-    # Handle npm scoped packages: @scope/name@version
+
     npm_scoped_m = re.match(r"^(@[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+)@(.+)$", spec);
     if npm_scoped_m {
         return (npm_scoped_m.group(1), npm_scoped_m.group(2));
     }
-    # Handle npm style: name@version
+
     npm_m = re.match(r"^([a-zA-Z0-9_-]+)@(.+)$", spec);
     if npm_m {
         return (npm_m.group(1), npm_m.group(2));
     }
-    # Handle Python style: name>=version, name~=version, etc.
+
     py_m = re.match(r"^([a-zA-Z0-9_-]+)\s*([<>=!~]+.+)?$", spec);
     if py_m {
         name = py_m.group(1);
         version = py_m.group(2) or "";
         return (name, version);
     }
-    # Handle scoped packages without version: @scope/name
+
     if spec.startswith("@") and "/" in spec {
         return (spec, "");
     }
@@ -445,10 +456,6 @@ impl DependencyResolver.resolve(include_dev: bool = False) -> list[ResolvedDepen
     return resolved;
 }
 
-# ===============================================================================
-# Venv Site-Packages Helper
-# ===============================================================================
-"""Return 'major.minor' from pyvenv.cfg, or empty string if unavailable."""
 def _venv_python_version_tag(venv_dir: Path) -> str {
     pyvenv_cfg = venv_dir / "pyvenv.cfg";
     if not pyvenv_cfg.exists() {
@@ -467,7 +474,6 @@ def _venv_python_version_tag(venv_dir: Path) -> str {
     return "";
 }
 
-"""Discover lib/pythonX.Y/site-packages under a venv (Unix)."""
 def _discover_venv_site_packages(venv_dir: Path) -> Path | None {
     lib_dir = venv_dir / "lib";
     if not lib_dir.is_dir() {
@@ -505,7 +511,7 @@ impl get_venv_site_packages(venv_dir: Path) -> Path {
     if discovered is not None {
         return discovered;
     }
-    # Fallback for venvs not yet created (path used before site-packages exists)
+
     if version_tag {
         return venv_dir / "lib" / f"python{version_tag}" / "site-packages";
     }
@@ -514,9 +520,6 @@ impl get_venv_site_packages(venv_dir: Path) -> Path {
     );
 }
 
-# ===============================================================================
-# Venv Path Management Implementation
-# ===============================================================================
 impl add_venv_to_path(config: JacConfig | None = None) -> None {
     import os;
     import sys;
@@ -533,17 +536,16 @@ impl add_venv_to_path(config: JacConfig | None = None) -> None {
     if site_packages.exists() and site_str not in sys.path {
         sys.path.insert(0, site_str);
     }
-    # Also add venv bin directory to PATH for subprocess calls (e.g., jac mcp)
+
     if sys.platform == "win32" {
         bin_dir = venv_dir / "Scripts";
     } else {
         bin_dir = venv_dir / "bin";
     }
     if bin_dir.exists() {
-        # Resolve and normalize path to handle symlinks consistently
         bin_str = os.path.normpath(str(bin_dir.resolve()));
         current_path = os.environ.get("PATH", "");
-        # Normalize existing paths for comparison
+
         path_parts = [
             os.path.normpath(p)
             for p in current_path.split(os.pathsep)
@@ -571,19 +573,19 @@ impl remove_venv_from_path(config: JacConfig | None = None) -> None {
     if site_str in sys.path {
         sys.path.remove(site_str);
     }
-    # Also remove venv bin directory from PATH
+
     if sys.platform == "win32" {
         bin_dir = venv_dir / "Scripts";
     } else {
         bin_dir = venv_dir / "bin";
     }
-    # Resolve and normalize path to match how it was added
+
     bin_str = os.path.normpath(str(bin_dir.resolve()))
         if bin_dir.exists()
         else str(bin_dir);
     current_path = os.environ.get("PATH", "");
     path_parts = current_path.split(os.pathsep);
-    # Filter out the bin path (comparing normalized versions)
+
     new_parts = [
         p
         for p in path_parts

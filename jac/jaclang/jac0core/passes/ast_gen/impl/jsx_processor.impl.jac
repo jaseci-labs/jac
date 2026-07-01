@@ -1,29 +1,14 @@
-"""Implementation for jsx_processor constructs."""
-
 impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
     self.pass_ref = pass_ref;
     import from jaclang.compiler.passes.ecmascript { estree as es }
     self.es = es;
-    # Memoizes each element's built `ViewElement` by node id, so a parent's
-    # `ElementChild` can carry its child's neutral tree (rather than splicing the
-    # child's already-lowered expression, which would freeze the child to the
-    # backend that lowered it first and break a future per-backend `lower_view`).
+
     self._view_by_node = {};
 }
 
-"""Build the neutral View IR tree for a JSX element, then lower it.
-
-Replaces the former direct ESTree-call construction: this resolves the tag
-(host / component / fragment / dynamic) and classifies the attributes and
-children ONCE into a framework-neutral `ViewElement`, then hands it to the
-active backend's `lower_view`. The JS-family backends rebuild the same
-`__jacJsx(tag, props, [children])` call from the tree (Solid additionally
-thunks dynamic positions); a future Svelte backend lowers it to template text.
-The dynamic-position thunk is no longer pre-applied here (contract §4.2 view
-seam moved into `lower_view`)."""
 impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression {
     es = self.es;
-    # Deferred runtime import — see the type-only note in `jsx_processor.jac`.
+
     import from jaclang.compiler.passes.ecmascript.view_ir {
         ViewElement,
         HostTag,
@@ -36,10 +21,8 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
         ElementChild,
         SlotChild
     }
-    # --- tag, resolved once ---
+
     if nd.dynamic_tag is not None {
-        # Dynamic tag `<@expr ...>` — the tag is the expression's value
-        # (a host-tag string, a view reference, or a `str | type`).
         dyn_expr: Expression = cast(
             'Expression',
             nd.dynamic_tag.gen.es_ast
@@ -51,9 +34,6 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     } else {
         parts = nd.name.parts or [];
         first_val = parts[0].value if parts else None;
-        # Mirror `element_name`'s rule: a single lowercase part is a host tag
-        # (`<div>` → string literal); dotted names and Capitalized names are
-        # component references (the `Identifier`/member chain already built).
         is_host = bool(parts)
         and (len(parts) == 1)
         and bool(first_val)
@@ -69,7 +49,7 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
             tag = ComponentTag(ref=ref, jac_node=nd.name);
         }
     }
-    # --- attributes, classified once (in source order) ---
+
     attrs = [];
     for attr in (nd.attributes or []) {
         if isinstance(attr, uni.JsxSpreadAttribute) {
@@ -85,18 +65,13 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
             attrs.append(self.normal_attribute(attr));
         }
     }
-    # --- children, in source order (structural whitespace + comments dropped) ---
+
     children = [];
     for child in (nd.children or []) {
-        # Drop JsxText nodes whose normalized text is empty (structural
-        # whitespace such as the newline+indent between `}` and the next
-        # `{`). Same-line whitespace ` ` between adjacent expressions is
-        # NOT empty after normalization and is preserved as a child.
         if isinstance(child, uni.JsxText) and not child.get_normalized_text() {
             continue;
         }
-        # JsxComment nodes render nothing — they exist only so the formatter
-        # can round-trip `{#* ... *#}` source.
+
         if isinstance(child, uni.JsxComment) {
             continue;
         }
@@ -105,10 +80,6 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
                 TextChild(value=cast('Expression', child.gen.es_ast), jac_node=child)
             );
         } elif isinstance(child, uni.JsxExpression) {
-            # Lift the idiomatic, provably-pure control-flow shapes (view-shaped
-            # ternaries, keyed/filtered comprehensions) to neutral `IfChild`/
-            # `EachChild` so Solid can render `<Show>`/`<For>`; everything else
-            # stays the raw, un-thunked expression that `lower_view` wraps.
             lifted = self._lift_control_flow(child);
             if lifted is not None {
                 children.append(lifted);
@@ -120,18 +91,10 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
                 );
             }
         } elif isinstance(child, uni.JsxElement) {
-            # Carry the child's neutral tree, not its already-lowered expression.
-            # The exit pass is post-order, so the child element's `element()` ran
-            # first and memoized its `ViewElement`; a missing entry means that
-            # invariant broke and the child would otherwise silently vanish from
-            # the output. Fail loudly instead of dropping it.
             child_ve = self._view_by_node.get(id(child));
             assert child_ve is not None , "child JsxElement has no memoized ViewElement (post-order invariant broken)";
             children.append(ElementChild(element=child_ve, jac_node=child));
         } else {
-            # A statement-form slot (or any other pre-lowered child): its value
-            # is an already-built expression (the accumulator IIFE) emitted
-            # verbatim — never thunked. A list-valued child expands in place.
             child_expr = child.gen.es_ast;
             if (child_expr is None) {
                 continue;
@@ -155,19 +118,11 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     return self.pass_ref.backend.lower_view(view, self.pass_ref.sync_loc);
 }
 
-"""Lift a control-flow JSX expression child to a neutral node, or `None`.
-
-Detection runs on the **Jac AST** (where a comprehension and a ternary are
-unambiguous — after lowering, a `for` and a `.map` blur together). Only the
-idiomatic, provably-pure shapes lift; the `&&` short-form is intentionally left
-as a `DynamicChild` (its falsy-value rendering would silently change under a
-`{#if}`-style backend)."""
 impl EsJsxProcessor._lift_control_flow(
     self: EsJsxProcessor, child: uni.JsxExpression
 ) -> (IfChild | EachChild | None) {
     expr = child.expr;
-    # `ListCompr` covers list/set/generator comprehensions (`GenCompr`/`SetCompr`
-    # subclass it) — i.e. both the `[<li> for …]` and `{{ <li> for … }}` forms.
+
     if isinstance(expr, uni.ListCompr) {
         return self._lift_each(child, expr);
     }
@@ -177,14 +132,6 @@ impl EsJsxProcessor._lift_control_flow(
     return None;
 }
 
-"""Lift `{[<el key={…}> for item in coll if pred]}` to an `EachChild`.
-
-Conservative: only a *single*-clause comprehension whose loop variable is a plain
-name and whose output is a JSX element lifts; anything else returns `None` (stays
-a `DynamicChild`, rendered by the comprehension's own `.map()` lowering). Filters
-fold into `items` as `coll.filter(item => pred)` (Svelte's `{#each}` has no filter
-clause; Solid's `<For>` takes the filtered iterable directly), the authored `key=`
-lifts onto `EachChild.key`, and the body element is carried with `key` removed."""
 impl EsJsxProcessor._lift_each(
     self: EsJsxProcessor, child: uni.JsxExpression, compr: uni.ListCompr
 ) -> (EachChild | None) {
@@ -195,8 +142,6 @@ impl EsJsxProcessor._lift_each(
         EachChild
     }
     if len(compr.compr) != 1 {
-        # Nested `for`s (`for a in A for b in B`) would need nested `EachChild`s;
-        # not yet recognised — fall back to the `.map()` lowering.
         return None;
     }
     inner = compr.compr[0];
@@ -252,19 +197,12 @@ impl EsJsxProcessor._lift_each(
     );
 }
 
-"""Lift `{<A/> if cond else <B/>}` (a view-shaped ternary) to an `IfChild`.
-
-Lifts only when the consequent is a JSX element and the alternate is either a JSX
-element (→ fallback) or the literal `None` (→ no fallback); an arbitrary-expression
-alternate returns `None` so it stays a `DynamicChild` (the ternary renders as-is).
-The `js_fallback` is the already-built `ConditionalExpression`, so a JS-family
-backend emits the identical `?:`."""
 impl EsJsxProcessor._lift_if(
     self: EsJsxProcessor, child: uni.JsxExpression, ternary: uni.IfElseExpr
 ) -> (IfChild | None) {
     es = self.es;
     import from jaclang.compiler.passes.ecmascript.view_ir { IfChild }
-    # The arms are wrapped in `CfgExpr`; unwrap to the authored expression.
+
     cons_inner = ternary.value.expr;
     alt_inner = ternary.else_value.expr;
     if not isinstance(cons_inner, uni.JsxElement) {
@@ -280,9 +218,6 @@ impl EsJsxProcessor._lift_if(
             return None;
         }
     } else {
-        # A non-JSX alternate lifts only when it is the literal `None`
-        # (`… else None` → a `<Show>` with no fallback). Any other expression is
-        # not view-shaped, so leave the whole ternary as a `DynamicChild`.
         alt_es = alt_inner.gen.es_ast;
         if isinstance(alt_es, es.Literal) and alt_es.value is None {
             alternate = None;
@@ -303,7 +238,6 @@ impl EsJsxProcessor._lift_if(
     );
 }
 
-"""The neutral child list for a ternary/comprehension arm that is a JSX element."""
 impl EsJsxProcessor._view_arm(
     self: EsJsxProcessor, nd: uni.JsxElement
 ) -> (list | None) {
@@ -315,7 +249,6 @@ impl EsJsxProcessor._view_arm(
     return [ElementChild(element=ve, jac_node=nd)];
 }
 
-"""Split a list element's authored `key=` off its attributes."""
 impl EsJsxProcessor._split_key(self: EsJsxProcessor, ve: ViewElement) -> tuple {
     import from jaclang.compiler.passes.ecmascript.view_ir { StaticAttr, DynamicAttr }
     key_expr = None;
@@ -330,7 +263,6 @@ impl EsJsxProcessor._split_key(self: EsJsxProcessor, ve: ViewElement) -> tuple {
     return (key_expr, kept);
 }
 
-"""Process JSX element name."""
 impl EsJsxProcessor.element_name(
     self: EsJsxProcessor, nd: uni.JsxElementName
 ) -> Expression {
@@ -369,7 +301,6 @@ impl EsJsxProcessor.element_name(
     return expr;
 }
 
-"""Process JSX spread attribute."""
 impl EsJsxProcessor.spread_attribute(
     self: EsJsxProcessor, nd: uni.JsxSpreadAttribute
 ) -> Expression {
@@ -381,22 +312,11 @@ impl EsJsxProcessor.spread_attribute(
     return expr;
 }
 
-"""Classify a JSX normal attribute into a neutral View IR attribute.
-
-Resolves the attribute kind ONCE (the classification the backends used to
-re-sniff): a value-less attribute and a string literal are `StaticAttr` (string
-literals are HTML-unescaped, and `className`/`class` tokens rewritten against the
-module's scoped `.style.css` annex); `on[A-Z]…` is an `EventAttr` (the React DOM
-convention — `onClick`, `onInput`); `ref` is a `RefAttr` (an imperative element
-hook); everything else is a `DynamicAttr`. The dynamic-position thunk (contract
-§4.2) is NOT applied here — `lower_view` owns it (no-op on hooks backends, a
-`() => expr` thunk on signals backends), keying off the attribute kind rather
-than re-deriving the fragile `on[A-Z]`/`ref` heuristic per backend."""
 impl EsJsxProcessor.normal_attribute(
     self: EsJsxProcessor, nd: uni.JsxNormalAttribute
 ) -> (StaticAttr | DynamicAttr | EventAttr | RefAttr) {
     es = self.es;
-    # Deferred runtime import — see the type-only note in `jsx_processor.jac`.
+
     import from jaclang.compiler.passes.ecmascript.view_ir {
         StaticAttr,
         DynamicAttr,
@@ -410,9 +330,6 @@ impl EsJsxProcessor.normal_attribute(
     } elif isinstance(nd.value, uni.String) {
         import html;
         attr_value = html.unescape(nd.value.lit_value);
-        # Rewrite `className`/`class` literals against the module's scoped
-        # `.style.css` annex (if any): declared class tokens are hashed to
-        # match the rewritten CSS selectors.
         sheet = self.pass_ref.scoped_styles;
         if (sheet is not None and attr_name in ('className', 'class')) {
             attr_value = sheet.rewrite_class_value(attr_value);
@@ -425,9 +342,7 @@ impl EsJsxProcessor.normal_attribute(
     value_expr = nd.value.gen.es_ast
     or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.value);
     value_expr = cast('Expression', value_expr);
-    # NOTE the event heuristic's fragility (contract §4.2): it keys on an
-    # uppercase third char, so a lowercase custom prop like `onfoo` is NOT
-    # recognized as a handler and falls through to `DynamicAttr` (and is thunked).
+
     is_event = attr_name.startswith('on')
     and len(attr_name) > 2
     and attr_name[2].isupper();
@@ -440,7 +355,6 @@ impl EsJsxProcessor.normal_attribute(
     return DynamicAttr(name=attr_name, value=value_expr, jac_node=nd);
 }
 
-"""Process JSX text node."""
 impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
     import html;
     es = self.es;
@@ -451,12 +365,6 @@ impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
     return expr;
 }
 
-"""Process JSX expression child `{expr}` — store the raw, un-thunked expression.
-
-The View IR seam moved the dynamic-position thunk into `lower_view` (contract
-§4.2), so this only resolves the embedded expression; `element` wraps it in a
-`DynamicChild` and the backend thunks it (no-op on hooks, `() => expr` on
-signals) when lowering."""
 impl EsJsxProcessor.expression(
     self: EsJsxProcessor, nd: uni.JsxExpression
 ) -> Expression {
@@ -472,7 +380,6 @@ impl PyJsxProcessor.init(self: PyJsxProcessor, pass_ref: PyastGenPass) -> None {
     self.pass_ref = pass_ref;
 }
 
-"""Generate Python AST for JSX elements."""
 impl PyJsxProcessor.element(
     self: PyJsxProcessor, nd: uni.JsxElement
 ) -> list[ast3.AST] {
@@ -519,10 +426,6 @@ impl PyJsxProcessor.element(
         attrs_expr = self.pass_ref.sync(ast3.Dict(keys=keys, values=values), nd);
     }
     if nd.children {
-        # Drop JsxText nodes whose normalized text is empty (structural
-        # whitespace) and JsxComment nodes (Jac-native JSX block comments
-        # render nothing), matching the client-side codegen behavior so
-        # server-rendered JSX produces the same children list.
         kept_children = [
             c
             for c in nd.children
@@ -551,7 +454,6 @@ impl PyJsxProcessor.element(
     return nd.gen.py_ast;
 }
 
-"""Generate Python AST for JSX element names."""
 impl PyJsxProcessor.element_name(
     self: PyJsxProcessor, nd: uni.JsxElementName
 ) -> list[ast3.AST] {
@@ -566,7 +468,6 @@ impl PyJsxProcessor.element_name(
     return nd.gen.py_ast;
 }
 
-"""Generate Python AST for JSX spread attributes."""
 impl PyJsxProcessor.spread_attribute(
     self: PyJsxProcessor, nd: uni.JsxSpreadAttribute
 ) -> list[ast3.AST] {
@@ -574,7 +475,6 @@ impl PyJsxProcessor.spread_attribute(
     return nd.gen.py_ast;
 }
 
-"""Generate Python AST for JSX normal attributes."""
 impl PyJsxProcessor.normal_attribute(
     self: PyJsxProcessor, nd: uni.JsxNormalAttribute
 ) -> list[ast3.AST] {
@@ -600,7 +500,6 @@ impl PyJsxProcessor.normal_attribute(
     return nd.gen.py_ast;
 }
 
-"""Generate Python AST for JSX text nodes."""
 impl PyJsxProcessor.text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST] {
     import html;
     expr = self.pass_ref.sync(
@@ -610,7 +509,6 @@ impl PyJsxProcessor.text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST
     return nd.gen.py_ast;
 }
 
-"""Generate Python AST for JSX expression children."""
 impl PyJsxProcessor.expression(
     self: PyJsxProcessor, nd: uni.JsxExpression
 ) -> list[ast3.AST] {

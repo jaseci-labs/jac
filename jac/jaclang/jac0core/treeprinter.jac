@@ -1,4 +1,3 @@
-"""Tree Printing Helpers for Jac."""
 import ast as ast3;
 import builtins;
 import html;
@@ -128,7 +127,6 @@ glob id_bag: dict = {},
          'Semi': '#f1cfc4'
      };
 
-"""Recursively generate ast tree in dot format."""
 def printgraph_ast_tree(
     root_node: UniNode, dot_lines: (list[str] | None) = None
 ) -> str {
@@ -186,7 +184,6 @@ def printgraph_ast_tree(
     return ' ';
 }
 
-"""Recursively print ast tree."""
 def print_ast_tree(
     root_node: (UniNode | ast3.AST),
     marker: str = '+-- ',
@@ -217,7 +214,6 @@ def print_ast_tree(
             name_str = nd.name.sym_name
                 if isinstance(nd.name, uni.Name)
                 else nd.name.value;
-            # Resolve the path dynamically using the new resolve_relative_path method
             try {
                 resolved_path = nd.resolve_relative_path();
             } except Exception {
@@ -226,7 +222,6 @@ def print_ast_tree(
             out = f"{nd.__class__.__name__} - {name_str} - abs_path: {resolved_path}";
             return out;
         } elif isinstance(nd, uni.ModulePath) {
-            # Resolve the path dynamically
             try {
                 resolved_path = nd.resolve_relative_path();
             } except Exception {
@@ -353,9 +348,7 @@ def print_ast_tree(
     return tree_str;
 }
 
-"""Symbol Tree Node."""
 class SymbolTree {
-    """Initialize Symbol Tree Node."""
     def init(
         self: SymbolTree,
         node_name: str,
@@ -412,7 +405,6 @@ def _build_symbol_tree_common(
     return root_node;
 }
 
-"""Recursively print symbol table tree."""
 def print_symtab_tree(
     root_node: UniScopeNode,
     marker: str = '+-- ',
@@ -425,7 +417,6 @@ def print_symtab_tree(
     );
 }
 
-"""Recursively print symbol table tree."""
 def get_symtab_tree_str(
     root_node: SymbolTree,
     marker: str = '+-- ',
@@ -466,7 +457,6 @@ def get_symtab_tree_str(
     );
 }
 
-"""Generate DOT graph representation of a symbol table tree."""
 def printgraph_symtab_tree(nd: UniScopeNode) -> str {
     dot_lines = [];
     id_map = {};

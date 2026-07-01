@@ -1,7 +1,3 @@
-# --- Public API forwarders to the framework-agnostic core -------------------
-# Thin pass-throughs so `@jac/runtime` exposes the core auth/nav/spawn surface
-# as typed functions (the bodies live in `client_runtime_core`). See the typed
-# re-export note in `client_runtime.cl.jac`.
 impl navigate(path: str) -> None {
     _navigate(path);
 }
@@ -54,18 +50,10 @@ impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     }
     reactChildren = [];
     for child in childrenArray {
-        # Skip both `null` and `undefined`: a missing prop or omitted slot
-        # surfaces as `undefined` in the compiled bundle, and accessing
-        # `.__jacUnsafeHtml` on it would TypeError.
         if child == None or child == undefined {
             continue;
         }
-        # `unsafe_html(...)` sentinel: wrap in a <span dangerouslySetInnerHTML>
-        # so the raw markup renders inline with surrounding siblings. Property
-        # access on primitives (string / number / boolean) returns `undefined`
-        # in JS, so the check naturally rejects non-marker children -- no
-        # `typeof` / `__isObject` guard needed. Both `null` and `undefined`
-        # children were filtered above, so this access is safe.
+
         if child.__jacUnsafeHtml != undefined {
             reactChildren.append(
                 React.createElement(
@@ -102,8 +90,6 @@ impl useRouter -> dict {
     };
 }
 
-"""Auth guard component for file-based routing. Renders child routes if
-authenticated, otherwise redirects to the login path."""
 impl AuthGuard(redirect: str = "/login") -> JsxElement {
     if jacIsLoggedIn() {
         return <ReactRouterOutlet/>;
@@ -111,13 +97,6 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
     return <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-# Thin wrapper over React.Suspense for the `awaiting` template clause.
-# When a child throws a Promise (the React Suspense protocol), the
-# `fallback` element renders until the Promise settles. `flow`/`wait`
-# don't throw Promises today, so the fallback only appears when the
-# try-body itself opts into a Suspense-aware primitive (e.g. `use()`,
-# a fetcher that suspends). The wrapper is still useful as the named
-# integration point so the language-level lowering stays stable.
 impl JacAwaiting(props: dict) -> JsxElement {
     return React.createElement(
         React.Suspense, {"fallback": props.fallback}, props.children
@@ -125,8 +104,6 @@ impl JacAwaiting(props: dict) -> JsxElement {
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
-    # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
-    # which is the only place React exposes `info.componentStack`.
     return
         <div
             role="alert"
@@ -302,11 +279,6 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     } elif form_mode == "onBlur" {
         validators["onBlur"] = schema;
     } elif form_mode == "onTouched" {
-        # onChange-only (same as Solid): errors are always fresh when values change.
-        # isTouched gate in renderError ensures errors show only after first blur.
-        # Wiring both onChange+onBlur leaves stale onBlur entries in other fields'
-        # errorMap after cross-field interaction (TanStack #1784), keeping
-        # isValid=false even after those fields have been corrected.
         validators["onChange"] = schema;
     } else {
         console.warn(f"Unknown validateMode '{form_mode}'; falling back to onBlur");
@@ -350,7 +322,7 @@ impl JacForm(props: dict) -> JsxElement {
         if depth >= maxDepth {
             return schema;
         }
-        # Prefer public Zod methods (optional/nullable expose .unwrap())
+
         try {
             if schema.unwrap {
                 return unwrapZodSchema(schema.unwrap(), depth + 1);
@@ -386,15 +358,15 @@ impl JacForm(props: dict) -> JsxElement {
     }
     def getEnumOptions(fieldSchema: any) -> list {
         unwrapped = unwrapZodSchema(fieldSchema);
-        # Public Zod v3/v4 API: z.enum() exposes .options array
+
         if unwrapped.options and Array.isArray(unwrapped.options) {
             return unwrapped.options;
         }
-        # Public Zod v3 API: z.nativeEnum() exposes .enum object
+
         if unwrapped.enum {
             return Object.keys(unwrapped.enum);
         }
-        # Fallback: Zod v4 internal _def.entries / def.entries
+
         if unwrapped._def and unwrapped._def.entries {
             return Object.keys(unwrapped._def.entries);
         }
@@ -668,8 +640,6 @@ impl JacForm(props: dict) -> JsxElement {
                 }; }}
             >
                 {lambda fs: JsxElement {
-                    # onTouched: treat form as valid before any field is touched so the
-                    # eager onChange validator does not disable the button prematurely.
                     btnEffectiveIsValid = (
                         True
                             if (validateMode == "onTouched" and not fs.isTouched)
@@ -699,16 +669,11 @@ impl JacForm(props: dict) -> JsxElement {
 }
 
 
-# ============================================================================
-# Client Error Reporting
-# ============================================================================
 impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
         message = error.message if error else "Unknown error";
         stack = error.stack if error else "";
         componentStack = info.componentStack if info else "";
         __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
-    } except Exception {
-    # Silent: error reporting from a React lifecycle must never throw.
-    }
+    } except Exception { }
 }

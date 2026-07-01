@@ -1,9 +1,3 @@
-"""Implementation blocks for the Jac lexer.
-
-This file contains the method implementations for the Lexer class.
-The signatures are defined in lexer.jac.
-"""
-
 impl Lexer.push_mode(mode: LexerMode) {
     self.mode_stack.append(mode);
 }
@@ -22,34 +16,16 @@ impl Lexer.current_mode -> LexerMode {
     return LexerMode.NORMAL;
 }
 
-impl Lexer.in_fstring -> bool {
-    mode = self.current_mode();
-    return mode in [
-        LexerMode.FSTRING_DQ,
-        LexerMode.FSTRING_SQ,
-        LexerMode.FSTRING_TDQ,
-        LexerMode.FSTRING_TSQ,
-        LexerMode.FSTRING_EXPR
-    ];
-}
-
 impl Lexer.in_jsx -> bool {
     mode = self.current_mode();
     return mode in [LexerMode.JSX_TAG, LexerMode.JSX_CONTENT];
 }
 
 impl Lexer.in_view_body -> bool {
-    # True when the lexer cursor is lexically inside a JSX `{...}` slot body.
-    # Inside a slot the template is statement-based, so a `<Tag` that
-    # follows a `}` (end of a control-flow block) or a sibling JSX close
-    # tag must open a JSX element rather than be read as a `<` comparison.
     return len(self._view_body_depths) > 0;
 }
 
 impl Lexer._track_view_context(tok: Token) {
-    # Track brace depths so JSX `{...}` slot tracking (pushed by
-    # `scan_jsx_content` when the slot's LBRACE is emitted) pops on the
-    # matching slot RBRACE.
     k = tok.kind;
     if k == TokenKind.LPAREN {
         self._paren_depth += 1;
@@ -77,8 +53,6 @@ impl Lexer._track_view_context(tok: Token) {
 }
 
 impl Lexer.prev_is_value -> bool {
-    # Returns True when the previous token ends a value-producing expression.
-    # Used to disambiguate `<` as comparison (after values) vs JSX tag opener.
     return self.prev_token_kind in [
         TokenKind.NAME,
         TokenKind.KWESC_NAME,
@@ -108,15 +82,7 @@ impl Lexer.prev_is_value -> bool {
     ];
 }
 
-# --- UTF-8 byte-offset cursor (rune-aware) -------------------------------
-# `pos`/`_source_len` are byte offsets into the UTF-8 source. For pure-ASCII
-# source (`_ascii`) byte offset == code-point index, so these stay on the
-# plain `str` path (no encode/decode work). For source containing non-ASCII
-# code points they decode runes out of the cached `_enc` byte view. Both
-# branches are portable: they produce identical results in the Python and
-# native backends (where `str` is code-point-indexed vs UTF-8 i8* respectively).
 impl Lexer._width_of(lead: int) -> int {
-    # UTF-8 byte width from a lead byte value.
     if lead < 0x80 {
         return 1;
     }
@@ -130,15 +96,10 @@ impl Lexer._width_of(lead: int) -> int {
 }
 
 impl Lexer._rune_width(byte_idx: int) -> int {
-    # Byte width of the UTF-8 code point whose lead byte is at byte_idx.
     return self._width_of(int.from_bytes(self._enc[byte_idx:byte_idx + 1], "big"));
 }
 
 impl Lexer._char_at(byte_idx: int) -> str {
-    # The single code point starting at byte offset byte_idx, or "" if out of
-    # range or if byte_idx lands on a continuation byte (mid-rune — only the
-    # ASCII-prefix backscan steps one byte at a time, where a mid-rune hit is
-    # simply treated as non-alnum and stops the scan).
     if byte_idx < 0 or byte_idx >= self._source_len {
         return "";
     }
@@ -148,19 +109,16 @@ impl Lexer._char_at(byte_idx: int) -> str {
     one = self._enc[byte_idx:byte_idx + 1];
     lead = int.from_bytes(one, "big");
     if lead < 0x80 {
-        # ASCII byte — the overwhelming majority even in a non-ASCII file;
-        # decode the single byte directly and skip the width computation.
         return one.decode("utf-8");
     }
     if lead < 0xC0 {
-        return "";  # continuation byte: mid-rune
+        return "";
     }
     w = self._width_of(lead);
     return self._enc[byte_idx:byte_idx + w].decode("utf-8", errors="replace");
 }
 
 impl Lexer._slice(a: int, c: int) -> str {
-    # Decode the byte range [a, c) to a string.
     if self._ascii {
         return self.source[a:c];
     }
@@ -168,9 +126,6 @@ impl Lexer._slice(a: int, c: int) -> str {
 }
 
 impl Lexer.current -> str {
-    # Hot path: inline the ASCII case (called once per character) so the
-    # common pure-ASCII source pays only a single extra branch vs. the
-    # pre-UTF-8 lexer.
     if self.pos >= self._source_len {
         return "";
     }
@@ -188,7 +143,7 @@ impl Lexer.peek(offset: int = 1) -> str {
         }
         return self.source[idx];
     }
-    # Walk `offset` code points forward from the current byte position.
+
     bi = self.pos;
     k = 0;
     while k < offset and bi < self._source_len {
@@ -210,8 +165,7 @@ impl Lexer.advance -> str {
         self.pos += 1;
         return ch;
     }
-    # Non-ASCII path: read the lead byte once to derive both the code point
-    # and its width (avoids a second byte read via current()+_rune_width()).
+
     if self.pos >= self._source_len {
         return "";
     }
@@ -248,7 +202,6 @@ impl Lexer.match_char(expected: str) -> bool {
 
 impl Lexer.match_string(expected: str) -> bool {
     if self._ascii {
-        # Fast path: byte == code point, so slice the str directly.
         if self.source[self.pos:self.pos + len(expected)] == expected {
             for _ in range(len(expected)) {
                 self.advance();
@@ -257,10 +210,7 @@ impl Lexer.match_string(expected: str) -> bool {
         }
         return False;
     }
-    # `expected` is ASCII (operators/keywords). Compare raw bytes so a probe
-    # that straddles a multi-byte rune boundary never decodes a partial rune;
-    # ASCII bytes (<0x80) are never part of a multi-byte sequence, so a byte
-    # match is exact. Advance one code point per char of `expected`.
+
     exp = expected.encode("utf-8");
     exp_bytes = len(exp);
     if self.pos + exp_bytes <= self._source_len
@@ -372,13 +322,13 @@ impl Lexer.skip_block_comment -> bool {
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
-    # Skip the opening #*
-    self.advance();  # #
-    self.advance();  # *
+
+    self.advance();
+    self.advance();
     while not self.at_end() {
         if self.current() == "*" and self.peek() == "#" {
-            self.advance();  # *
-            self.advance();  # #
+            self.advance();
+            self.advance();
             comment_text = self._slice(start_pos, self.pos);
             self.comments.append(
                 CommentData(
@@ -428,65 +378,63 @@ impl Lexer.scan_identifier -> Token {
     while not self.at_end() and self.is_alnum(self.current()) {
         value += self.advance();
     }
-    # Check for multi-word keywords: "not in" and "is not"
+
     if value == "not" {
-        # Save state for potential rollback
         saved_pos = self.pos;
         saved_line = self.line;
         saved_col = self.col;
-        # Skip whitespace (but not newlines for safety)
+
         while not self.at_end() and (self.current() == " " or self.current() == "\t") {
             self.advance();
         }
-        # Check for "in" - making it "not in"
+
         if not self.at_end() and self.current() == "i" {
             if self._slice(self.pos, self.pos + 2) == "in"
             and (
                 self.pos + 2 >= self._source_len
                 or not self.is_alnum(self._char_at(self.pos + 2))
             ) {
-                self.advance();  # i
-                self.advance();  # n
+                self.advance();
+                self.advance();
                 return self.make_token(
                     TokenKind.KW_NIN, "not in", start_line, start_col, start_pos
                 );
             }
         }
-        # Rollback if not "not in"
+
         self.pos = saved_pos;
         self.line = saved_line;
         self.col = saved_col;
     }
     if value == "is" {
-        # Save state for potential rollback
         saved_pos = self.pos;
         saved_line = self.line;
         saved_col = self.col;
-        # Skip whitespace (but not newlines for safety)
+
         while not self.at_end() and (self.current() == " " or self.current() == "\t") {
             self.advance();
         }
-        # Check for "not" - making it "is not"
+
         if not self.at_end() and self.current() == "n" {
             if self._slice(self.pos, self.pos + 3) == "not"
             and (
                 self.pos + 3 >= self._source_len
                 or not self.is_alnum(self._char_at(self.pos + 3))
             ) {
-                self.advance();  # n
-                self.advance();  # o
-                self.advance();  # t
+                self.advance();
+                self.advance();
+                self.advance();
                 return self.make_token(
                     TokenKind.KW_ISN, "is not", start_line, start_col, start_pos
                 );
             }
         }
-        # Rollback if not "is not"
+
         self.pos = saved_pos;
         self.line = saved_line;
         self.col = saved_col;
     }
-    # Check for keyword
+
     kind = lookup_keyword(value);
     if kind is not None {
         return self.make_token(kind, value, start_line, start_col, start_pos);
@@ -495,12 +443,11 @@ impl Lexer.scan_identifier -> Token {
 }
 
 impl Lexer.scan_kwesc_name -> Token {
-    # Scan keyword-escaped name: KWESC_NAME token (backtick prefix)
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
-    # Skip the backtick prefix
-    self.advance();  # `
+
+    self.advance();
     value = "`";
     while not self.at_end() and self.is_alnum(self.current()) {
         value += self.advance();
@@ -516,7 +463,7 @@ impl Lexer.scan_number -> Token {
     start_pos = self.pos;
     value = "";
     kind = TokenKind.INT;
-    # Check for hex, binary, or octal prefix
+
     if self.current() == "0" {
         value += self.advance();
         if self.current() == "x" or self.current() == "X" {
@@ -549,21 +496,21 @@ impl Lexer.scan_number -> Token {
             return self.make_token(kind, value, start_line, start_col, start_pos);
         }
     }
-    # Scan integer part (with underscore separators)
+
     while not self.at_end()
     and (self.is_digit(self.current()) or self.current() == "_") {
         value += self.advance();
     }
-    # Check for decimal point
+
     if self.current() == "." and self.is_digit(self.peek()) {
         kind = TokenKind.FLOAT;
-        value += self.advance();  # .
+        value += self.advance();
         while not self.at_end()
         and (self.is_digit(self.current()) or self.current() == "_") {
             value += self.advance();
         }
     }
-    # Check for exponent
+
     if self.current() == "e" or self.current() == "E" {
         kind = TokenKind.FLOAT;
         value += self.advance();
@@ -582,12 +529,12 @@ impl Lexer.scan_leading_dot_float -> Token {
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
-    value = self.advance();  # consume the '.'
+    value = self.advance();
     while not self.at_end()
     and (self.is_digit(self.current()) or self.current() == "_") {
         value += self.advance();
     }
-    # Check for exponent
+
     if not self.at_end() and (self.current() == "e" or self.current() == "E") {
         value += self.advance();
         if not self.at_end() and (self.current() == "+" or self.current() == "-") {
@@ -606,9 +553,7 @@ impl Lexer.scan_string(quote: str) -> Token {
     start_col = self.col;
     start_pos = self.pos;
     value = "";
-    # A leading r/R prefix sits in the source just before the opening quote
-    # (the lexer emits it as a separate name token). A raw string keeps
-    # backslashes literal, so an unknown escape there is intentional.
+
     prefix = "";
     pp = start_pos - 1;
     while pp >= 0 and self.is_alnum(self._char_at(pp)) {
@@ -617,14 +562,14 @@ impl Lexer.scan_string(quote: str) -> Token {
     }
     is_raw = prefix.lower() in ["r", "rb", "br"];
     triple = False;
-    # Check for triple-quoted string
+
     if self.peek() == quote and self.peek(2) == quote {
         triple = True;
-        value += self.advance();  # First quote
-        value += self.advance();  # Second quote
-        value += self.advance();  # Third quote
+        value += self.advance();
+        value += self.advance();
+        value += self.advance();
     } else {
-        value += self.advance();  # Opening quote
+        value += self.advance();
     }
     while not self.at_end() {
         ch = self.current();
@@ -659,18 +604,15 @@ impl Lexer.scan_string(quote: str) -> Token {
             }
         }
 
-        # Handle escape sequences
         if ch == "\\" {
             esc_line = self.line;
             esc_col = self.col;
             esc_pos = self.pos;
-            value += self.advance();  # consume the backslash
+            value += self.advance();
             if not self.at_end() {
                 esc = self.current();
-                value += self.advance();  # consume the escaped character
-                # Flag escapes Python does not recognize: the compiler decodes
-                # the literal through Python, which would otherwise leak a bare
-                # SyntaxWarning with no source location. Raw strings are exempt.
+                value += self.advance();
+
                 if (
                     not is_raw
                     and esc not in "nrtbfva01234567xNuU"
@@ -708,7 +650,7 @@ impl Lexer.scan_fstring(prefix: str) -> Token {
     start_col = self.col;
     start_pos = self.pos;
     value = prefix;
-    # Determine quote style
+
     quote = self.current();
     triple = self.peek() == quote and self.peek(2) == quote;
     if triple {
@@ -777,18 +719,15 @@ impl Lexer.scan_fstring_content -> Token {
     while not self.at_end() {
         ch = self.current();
 
-        # Check for closing quote(s)
         if is_triple {
             if ch == quote and self.peek() == quote and self.peek(2) == quote {
-                # End of f-string
                 if len(value) > 0 {
-                    # Return accumulated text first
                     text_kind = self.get_fstring_text_kind(mode);
                     return self.make_token(
                         text_kind, value, start_line, start_col, start_pos
                     );
                 }
-                # Return end token
+
                 self.advance();
                 self.advance();
                 self.advance();
@@ -814,7 +753,6 @@ impl Lexer.scan_fstring_content -> Token {
                     end_kind, quote, start_line, start_col, start_pos
                 );
             }
-            # Non-triple f-strings can't have newlines
             if ch == "\n" {
                 self.error(
                     "Unterminated f-string",
@@ -829,7 +767,6 @@ impl Lexer.scan_fstring_content -> Token {
             }
         }
 
-        # Check for escaped brace {{ or }}
         if ch == "{" and self.peek() == "{" {
             if len(value) > 0 {
                 text_kind = self.get_fstring_text_kind(mode);
@@ -857,7 +794,6 @@ impl Lexer.scan_fstring_content -> Token {
             );
         }
 
-        # Check for expression start
         if ch == "{" {
             if len(value) > 0 {
                 text_kind = self.get_fstring_text_kind(mode);
@@ -874,7 +810,6 @@ impl Lexer.scan_fstring_content -> Token {
             );
         }
 
-        # Handle escape sequences (for non-raw f-strings)
         if ch == "\\" {
             value += self.advance();
             if not self.at_end() {
@@ -905,7 +840,7 @@ impl Lexer.get_fstring_text_kind(mode: LexerMode) -> TokenKind {
             return TokenKind.F_TEXT_TSQ;
 
         default:
-            return TokenKind.F_TEXT_DQ;  # Fallback
+            return TokenKind.F_TEXT_DQ;
 
     }
 }
@@ -925,7 +860,7 @@ impl Lexer.get_fstring_end_kind(mode: LexerMode) -> TokenKind {
             return TokenKind.F_TSQ_END;
 
         default:
-            return TokenKind.F_DQ_END;  # Fallback
+            return TokenKind.F_DQ_END;
 
     }
 }
@@ -936,7 +871,7 @@ impl Lexer.scan_fstring_expr_token -> Token {
     start_col = self.col;
     start_pos = self.pos;
     ch = self.current();
-    # Track brace depth
+
     if ch == "{" {
         self.fstring_brace_depth += 1;
         self.advance();
@@ -946,16 +881,15 @@ impl Lexer.scan_fstring_expr_token -> Token {
         self.fstring_brace_depth -= 1;
         self.advance();
         if self.fstring_brace_depth == 0 {
-            # End of f-string expression, pop back to f-string content mode
             self.pop_mode();
-            # Restore previous fstring_brace_depth from stack
+
             if self.fstring_brace_depth_stack {
                 self.fstring_brace_depth = self.fstring_brace_depth_stack.pop();
             }
         }
         return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
     }
-    # Check for conversion specifier !s, !r, !a
+
     if ch == "!" and self.peek() in ["s", "r", "a", "S", "R", "A"] {
         self.advance();
         conv = self.advance();
@@ -963,21 +897,20 @@ impl Lexer.scan_fstring_expr_token -> Token {
             TokenKind.CONV, "!" + conv, start_line, start_col, start_pos
         );
     }
-    # Check for format spec colon (but not walrus := operator)
+
     if ch == ":" and self.peek() != "=" {
         self.advance();
         return self.make_token(TokenKind.COLON, ":", start_line, start_col, start_pos);
     }
-    # Otherwise, scan a regular token
+
     return self.scan_regular_token();
 }
 
-"""Scan JSX opening tag start: consume < and enter tag mode."""
 impl Lexer.scan_jsx_open_start -> Token {
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
-    self.advance();  # consume <
+    self.advance();
     self.jsx_depth += 1;
     self.push_mode(LexerMode.JSX_TAG);
     return self.make_token(
@@ -985,14 +918,13 @@ impl Lexer.scan_jsx_open_start -> Token {
     );
 }
 
-"""Scan the next token inside a JSX tag (name, attribute, =, >, />)."""
 impl Lexer.scan_jsx_tag_token -> Token {
     self.skip_whitespace_and_comments();
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
     ch = self.current();
-    # Self-closing: />
+
     if ch == "/" and self.peek() == ">" {
         self.advance();
         self.advance();
@@ -1002,32 +934,29 @@ impl Lexer.scan_jsx_tag_token -> Token {
             TokenKind.JSX_SELF_CLOSE, "/>", start_line, start_col, start_pos
         );
     }
-    # Tag end: > - switch to JSX_CONTENT mode or finish closing tag
+
     if ch == ">" {
         self.advance();
-        self.pop_mode();  # Pop JSX_TAG
+        self.pop_mode();
         if self.jsx_closing_tag {
-            # End of closing tag - decrement depth and return to parent context
             self.jsx_closing_tag = False;
             self.jsx_depth -= 1;
-            # Don't push JSX_CONTENT - we're done with this element
         } else {
-            # End of opening tag - switch to content mode
             self.push_mode(LexerMode.JSX_CONTENT);
         }
         return self.make_token(
             TokenKind.JSX_TAG_END, ">", start_line, start_col, start_pos
         );
     }
-    # Opening brace for expression attribute: {expr}
+
     if ch == "{" {
         self.advance();
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
-        self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
+        self.push_mode(LexerMode.NORMAL);
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
-    # Attribute name (JSX identifiers can contain hyphens)
+
     if self.is_alpha(ch) {
         value = "";
         while self.is_alnum(self.current())
@@ -1039,28 +968,28 @@ impl Lexer.scan_jsx_tag_token -> Token {
             TokenKind.JSX_NAME, value, start_line, start_col, start_pos
         );
     }
-    # Equals sign for attribute
+
     if ch == "=" {
         self.advance();
         return self.make_token(TokenKind.EQ, "=", start_line, start_col, start_pos);
     }
-    # String attribute value
+
     if ch == "\"" or ch == "'" {
         return self.scan_string(ch);
     }
-    # Dot for namespaced JSX names like <UI.Button />
+
     if ch == "." {
         self.advance();
         return self.make_token(TokenKind.DOT, ".", start_line, start_col, start_pos);
     }
-    # `@` introduces a dynamic-tag expression: <@expr ...> / </@expr>
+
     if ch == "@" {
         self.advance();
         return self.make_token(
             TokenKind.DECOR_OP, "@", start_line, start_col, start_pos
         );
     }
-    # Unknown - return error token
+
     self.error(
         f"Unexpected character in JSX tag: '{ch}'",
         start_line,
@@ -1072,12 +1001,7 @@ impl Lexer.scan_jsx_tag_token -> Token {
     return self.make_token(TokenKind.ERROR, ch, start_line, start_col, start_pos);
 }
 
-"""Scan JSX content between tags."""
 impl Lexer.scan_jsx_content -> Token {
-    # Do NOT skip whitespace here — whitespace in JSX content is significant
-    # for same-line spacing (e.g., "{expr}  text"). Whitespace normalization
-    # is handled downstream by JsxText.get_normalized_text(). Whitespace-only
-    # text nodes are filtered by the parser.
     if self.at_end() {
         self.error(
             "Unexpected end of JSX content",
@@ -1092,103 +1016,87 @@ impl Lexer.scan_jsx_content -> Token {
     start_col = self.col;
     start_pos = self.pos;
     ch = self.current();
-    # Check for JSX fragment close: </> (must come before </identifier check)
+
     if ch == "<" and self.peek() == "/" and self.peek(2) == ">" {
         self.advance();
         self.advance();
         self.advance();
         self.jsx_depth -= 1;
-        self.pop_mode();  # Pop JSX_CONTENT pushed by matching <>
+        self.pop_mode();
         return self.make_token(
             TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
         );
     }
-    # Check for closing tag: </
+
     if ch == "<" and self.peek() == "/" {
         self.advance();
         self.advance();
-        self.pop_mode();  # Pop JSX_CONTENT
-        self.push_mode(LexerMode.JSX_TAG);  # For scanning closing tag name
-        self.jsx_closing_tag = True;  # Mark that we're in a closing tag
+        self.pop_mode();
+        self.push_mode(LexerMode.JSX_TAG);
+        self.jsx_closing_tag = True;
         return self.make_token(
             TokenKind.JSX_CLOSE_START, "</", start_line, start_col, start_pos
         );
     }
-    # Check for nested JSX element: <identifier (or a dynamic tag <@expr)
+
     if ch == "<" and (self.is_alpha(self.peek()) or self.peek() == "@") {
-        self.advance();  # consume <
+        self.advance();
         self.jsx_depth += 1;
-        # Push JSX_TAG on top of current JSX_CONTENT
+
         self.push_mode(LexerMode.JSX_TAG);
         return self.make_token(
             TokenKind.JSX_OPEN_START, "<", start_line, start_col, start_pos
         );
     }
-    # Check for JSX fragment: <>
+
     if ch == "<" and self.peek() == ">" {
         self.advance();
         self.advance();
         self.jsx_depth += 1;
-        self.push_mode(LexerMode.JSX_CONTENT);  # Fragment content mode (popped by </>)
+        self.push_mode(LexerMode.JSX_CONTENT);
         return self.make_token(
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
         );
     }
-    # Opening brace for expression: {expr}
+
     if ch == "{" {
-        # JSX block-comment slot: `{#* ... *#}` is a Jac-native JSX comment
-        # that renders nothing. Look ahead from `{` over whitespace; if we
-        # find a `#*` block comment and the slot closes at `}` after it,
-        # emit a single JSX_COMMENT token spanning the whole `{...}` range.
-        # If anything else appears, restore and fall through to the regular
-        # LBRACE path so normal expression scanning takes over.
         saved_pos = self.pos;
         saved_line = self.line;
         saved_col = self.col;
         saved_comments_len = len(self.comments);
-        self.advance();  # consume {
+        self.advance();
         self.skip_whitespace();
         is_comment_slot = False;
         if (not self.at_end() and self.current() == "#" and self.peek() == "*") {
             if self.skip_block_comment() {
                 self.skip_whitespace();
                 if not self.at_end() and self.current() == "}" {
-                    self.advance();  # consume }
+                    self.advance();
                     is_comment_slot = True;
                 }
             }
         }
         if is_comment_slot {
-            # Drop the comment we just recorded into self.comments — the
-            # JsxComment AST node owns it now, so leaving it in the sidecar
-            # would cause CommentInjectionPass to emit it twice on reformat.
             self.comments = self.comments[:saved_comments_len];
             value = self._slice(start_pos, self.pos);
             return self.make_token(
                 TokenKind.JSX_COMMENT, value, start_line, start_col, start_pos
             );
         }
-        # Not a comment-only slot — restore and emit LBRACE as normal.
+
         self.pos = saved_pos;
         self.line = saved_line;
         self.col = saved_col;
         self.comments = self.comments[:saved_comments_len];
-        self.advance();  # consume {
+        self.advance();
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
-        self.push_mode(LexerMode.NORMAL);  # Parse slot body in normal mode
-        # Track the slot's brace depth so any nested JSX inside the slot
-        # body (statement-position JSX after a `}` close of a control-flow
-        # arm) is still lexed as JSX. The +1 anticipates the increment
-        # `_track_view_context` will apply on this LBRACE.
+        self.push_mode(LexerMode.NORMAL);
+
         self._view_body_depths.append(self._brace_depth + 1);
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
-    # Text content - collect until we hit a meaningful JSX delimiter or end.
-    # Only break on `<` when it starts a valid JSX construct (tag, closing
-    # tag, or fragment).  A bare `<` (e.g. `<--`) is consumed as text,
-    # matching TSX behaviour where bare `<` in content is invalid and must
-    # be written as `{"<"}`.
+
     value = "";
     while not self.at_end() {
         ch = self.current();
@@ -1197,18 +1105,12 @@ impl Lexer.scan_jsx_content -> Token {
         }
         if ch == "<" {
             nxt = self.peek();
-            # Only break when `<` begins a real JSX token:
-            #   </  (closing tag / fragment close)
-            #   <>  (fragment open)
-            #   <A  (nested element — alpha means tag name)
-            #   <@  (dynamic-tag element)
+
             if nxt == "/" or nxt == ">" or nxt == "@" or self.is_alpha(nxt) {
                 break;
             }
         }
-        # Note: # is NOT treated as a comment inside JSX children.
-        # JSX text content is like HTML — # is a regular text character.
-        # Use {#* ... *#} style in JSX expressions for comments if needed.
+
         value += self.advance();
     }
     if len(value) > 0 {
@@ -1216,7 +1118,7 @@ impl Lexer.scan_jsx_content -> Token {
             TokenKind.JSX_TEXT, value, start_line, start_col, start_pos
         );
     }
-    # Empty - shouldn't happen
+
     self.error(
         "Unexpected end of JSX content",
         start_line,
@@ -1225,36 +1127,6 @@ impl Lexer.scan_jsx_content -> Token {
         code_str="E0104"
     );
     return self.make_token(TokenKind.ERROR, "", start_line, start_col, start_pos);
-}
-
-"""Scan next token inside a JSX expression ({expr}), tracking brace depth."""
-impl Lexer.scan_jsx_expr_token -> Token {
-    # Normal token scanning applies, but we track brace depth
-    # to know when to return to JSX content mode
-    self.skip_whitespace_and_comments();
-    start_line = self.line;
-    start_col = self.col;
-    start_pos = self.pos;
-    ch = self.current();
-    if ch == "{" {
-        self.jsx_brace_depth += 1;
-        self.advance();
-        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
-    }
-    if ch == "}" {
-        self.jsx_brace_depth -= 1;
-        self.advance();
-        if self.jsx_brace_depth == 0 {
-            # End of JSX expression, pop back to previous mode
-            self.pop_mode();
-            # Restore previous jsx_brace_depth from stack
-            if self.jsx_brace_depth_stack {
-                self.jsx_brace_depth = self.jsx_brace_depth_stack.pop();
-            }
-        }
-        return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
-    }
-    return self.scan_regular_token();
 }
 
 impl Lexer.scan_regular_token -> Token {
@@ -1275,9 +1147,8 @@ impl Lexer.scan_regular_token -> Token {
         );
     }
     ch = self.current();
-    # Identifier or keyword
+
     if self.is_alpha(ch) {
-        # Check for f-string prefix
         if ch == "f" and (self.peek() == "\"" or self.peek() == "'") {
             self.advance();
             return self.scan_fstring("f");
@@ -1291,19 +1162,19 @@ impl Lexer.scan_regular_token -> Token {
         }
         return self.scan_identifier();
     }
-    # Number
+
     if self.is_digit(ch) {
         return self.scan_number();
     }
-    # Leading-dot float (e.g. .5, .435e-2)
+
     if ch == "." and not self.at_end() and self.is_digit(self.peek()) {
         return self.scan_leading_dot_float();
     }
-    # String
+
     if ch == "\"" or ch == "'" {
         return self.scan_string(ch);
     }
-    # Check for inline Python block ::py::
+
     if ch == ":"
     and self.peek() == ":"
     and self.peek(2) == "p"
@@ -1312,11 +1183,11 @@ impl Lexer.scan_regular_token -> Token {
     and self.peek(5) == ":" {
         return self.scan_pynline();
     }
-    # Check for keyword-escaped name: `identifier (backtick prefix)
+
     if ch == "`" and self.is_alpha(self.peek()) {
         return self.scan_kwesc_name();
     }
-    # Operators and delimiters
+
     return self.scan_operator();
 }
 
@@ -1324,11 +1195,11 @@ impl Lexer.scan_pynline -> Token {
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
-    # Skip opening ::py::
+
     for _ in range(6) {
         self.advance();
     }
-    # Collect all content until closing ::py::
+
     code = "";
     while not self.at_end() {
         if self.current() == ":"
@@ -1337,7 +1208,6 @@ impl Lexer.scan_pynline -> Token {
         and self.peek(3) == "y"
         and self.peek(4) == ":"
         and self.peek(5) == ":" {
-            # Skip closing ::py::
             for _ in range(6) {
                 self.advance();
             }
@@ -1362,9 +1232,7 @@ impl Lexer.scan_operator -> Token {
     start_col = self.col;
     start_pos = self.pos;
     ch = self.current();
-    # Try multi-character operators first (longest match)
 
-    # 4-character operators
     if self.match_string("<-->") {
         return self.make_token(
             TokenKind.ARROW_BI, "<-->", start_line, start_col, start_pos
@@ -1380,7 +1248,7 @@ impl Lexer.scan_operator -> Token {
             TokenKind.NONLOCAL_OP, ":nl:", start_line, start_col, start_pos
         );
     }
-    # 3-character operators
+
     if self.match_string("<--") {
         return self.make_token(
             TokenKind.ARROW_L, "<--", start_line, start_col, start_pos
@@ -1411,12 +1279,7 @@ impl Lexer.scan_operator -> Token {
             TokenKind.ARROW_R_P2, ":->", start_line, start_col, start_pos
         );
     }
-    # `->:` MUST be matched before `->` (which lives in the 2-char block
-    # below). Without this, the right-arrow typed-edge opener `->:` would
-    # be split into RETURN_HINT (`->`) + COLON, breaking `[a->:Type:->]`.
-    # All other typed-edge tokens (`<-:`, `:->`, `:<-`, `+>:`, `:+>`,
-    # `<+:`, `:<+`) already lex as single tokens because they're in
-    # earlier blocks or have no shorter prefix to compete with.
+
     if self.match_string("->:") {
         return self.make_token(
             TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
@@ -1469,12 +1332,12 @@ impl Lexer.scan_operator -> Token {
     }
     if self.match_string("</>") {
         self.jsx_depth -= 1;
-        self.pop_mode();  # Pop JSX_CONTENT pushed by matching <>
+        self.pop_mode();
         return self.make_token(
             TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
         );
     }
-    # 2-character operators
+
     if self.match_string("**") {
         return self.make_token(
             TokenKind.STAR_POW, "**", start_line, start_col, start_pos
@@ -1605,7 +1468,7 @@ impl Lexer.scan_operator -> Token {
             TokenKind.MATMUL_EQ, "@=", start_line, start_col, start_pos
         );
     }
-    # `->:` is matched in the 3-char block above so it wins over `->`.
+
     if self.match_string(":<-") {
         return self.make_token(
             TokenKind.ARROW_L_P2, ":<-", start_line, start_col, start_pos
@@ -1638,9 +1501,7 @@ impl Lexer.scan_operator -> Token {
             TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
         );
     }
-    # Only match {{ and }} as single tokens in JSX content mode
-    # where they represent literal brace escape sequences.
-    # In normal code, }} should be two separate RBRACE tokens.
+
     if self.in_jsx() and self.jsx_brace_depth == 0 {
         if self.match_string("{{") {
             return self.make_token(
@@ -1653,7 +1514,7 @@ impl Lexer.scan_operator -> Token {
             );
         }
     }
-    # Single-character operators and delimiters
+
     self.advance();
     switch ch {
         case "(":
@@ -1667,7 +1528,6 @@ impl Lexer.scan_operator -> Token {
             );
 
         case "{":
-            # Track nested braces inside JSX expressions
             if self.jsx_brace_depth > 0 {
                 self.jsx_brace_depth += 1;
             }
@@ -1676,13 +1536,11 @@ impl Lexer.scan_operator -> Token {
             );
 
         case "}":
-            # Check if we're closing a JSX expression
             if self.jsx_brace_depth > 0 {
                 self.jsx_brace_depth -= 1;
                 if self.jsx_brace_depth == 0 {
-                    # End of JSX expression, pop back to previous JSX mode
                     self.pop_mode();
-                    # Restore previous jsx_brace_depth from stack
+
                     if self.jsx_brace_depth_stack {
                         self.jsx_brace_depth = self.jsx_brace_depth_stack.pop();
                     }
@@ -1782,7 +1640,7 @@ impl Lexer.scan_operator -> Token {
             );
 
     }
-    # Unknown character
+
     self.error(
         f"Unexpected character: '{ch}'",
         start_line,
@@ -1795,7 +1653,7 @@ impl Lexer.scan_operator -> Token {
 
 impl Lexer.next_token -> Token {
     mode = self.current_mode();
-    # Handle f-string modes
+
     if mode in [
         LexerMode.FSTRING_DQ,
         LexerMode.FSTRING_SQ,
@@ -1806,13 +1664,13 @@ impl Lexer.next_token -> Token {
     } elif mode == LexerMode.FSTRING_EXPR {
         return self.scan_fstring_expr_token();
     }
-    # Handle JSX modes
+
     if mode == LexerMode.JSX_TAG {
         return self.scan_jsx_tag_token();
     } elif mode == LexerMode.JSX_CONTENT {
         return self.scan_jsx_content();
     }
-    # Normal mode - continue to regular scanning
+
     self.skip_whitespace_and_comments();
     if self.at_end() {
         return Token(
@@ -1830,15 +1688,11 @@ impl Lexer.next_token -> Token {
         );
     }
     ch = self.current();
-    # Check for keyword-escaped name: `identifier (backtick prefix)
+
     if ch == "`" and self.is_alpha(self.peek()) {
         return self.scan_kwesc_name();
     }
-    # Check for JSX opening tag: <identifier (or a dynamic tag <@expr).
-    # Only if the previous token is NOT a value (otherwise < is a comparison operator).
-    # Inside a `view` body the template is statement-based, so a `<Tag` that
-    # immediately follows a block close `}` or a sibling JSX close tag still
-    # opens a JSX element even though those tokens are "value"-ending.
+
     if ch == "<" and (self.is_alpha(self.peek()) or self.peek() == "@") {
         if not self.prev_is_value() {
             return self.scan_jsx_open_start();
@@ -1853,35 +1707,34 @@ impl Lexer.next_token -> Token {
             return self.scan_jsx_open_start();
         }
     }
-    # Identifier or keyword
+
     if self.is_alpha(ch) {
-        # Check for f-string prefix
         if ch == "f" and (self.peek() == "\"" or self.peek() == "'") {
-            self.advance();  # Skip 'f'
+            self.advance();
             return self.scan_fstring("f");
         }
         if ch == "r"
         and self.peek() == "f"
         and (self.peek(2) == "\"" or self.peek(2) == "'") {
-            self.advance();  # Skip 'r'
-            self.advance();  # Skip 'f'
+            self.advance();
+            self.advance();
             return self.scan_fstring("rf");
         }
         return self.scan_identifier();
     }
-    # Number
+
     if self.is_digit(ch) {
         return self.scan_number();
     }
-    # Leading-dot float (e.g. .5, .435e-2)
+
     if ch == "." and not self.at_end() and self.is_digit(self.peek()) {
         return self.scan_leading_dot_float();
     }
-    # String
+
     if ch == "\"" or ch == "'" {
         return self.scan_string(ch);
     }
-    # Check for inline Python block ::py::
+
     if ch == ":"
     and self.peek() == ":"
     and self.peek(2) == "p"
@@ -1890,13 +1743,11 @@ impl Lexer.next_token -> Token {
     and self.peek(5) == ":" {
         return self.scan_pynline();
     }
-    # Operators and delimiters
+
     return self.scan_operator();
 }
 
 impl Lexer.tokenize -> list[Token] {
-    # Set up the UTF-8 byte view. `pos`/`_source_len` are byte offsets; the
-    # ASCII fast-path keeps scanning on the plain `str` (byte == code point).
     self._enc = self.source.encode("utf-8");
     self._source_len = len(self._enc);
     self._ascii = self.source.isascii();
@@ -1910,9 +1761,7 @@ impl Lexer.tokenize -> list[Token] {
         if token.kind == TokenKind.EOF {
             break;
         }
-        # Stuck detector: catch infinite loops when EOF is hit inside
-        # non-NORMAL modes (JSX_CONTENT, JSX_TAG, f-string) that return
-        # ERROR tokens without producing EOF or advancing the position.
+
         if self.pos == last_pos or self.pos > self._source_len {
             mode = self.current_mode();
             self.error(
@@ -1942,8 +1791,4 @@ impl Lexer.tokenize -> list[Token] {
         last_pos = self.pos;
     }
     return tokens;
-}
-
-impl Lexer.has_errors -> bool {
-    return self.error_count > 0;
 }

@@ -1,13 +1,3 @@
-"""AST Validation Pass - structural validity checks after parsing.
-
-Validates AST invariants that the parser deliberately does not enforce,
-following the modern compiler philosophy of 'parse permissively, validate later'.
-This keeps the parser focused on tree construction while this pass provides
-precise, context-rich error messages for structural violations.
-
-Runs immediately after parsing, before SymTabBuildPass. Requires no symbol
-table or type information - only the raw AST structure.
-"""
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
@@ -44,7 +34,6 @@ import from jaclang.jac0core.diagnostics {
     W2021
 }
 
-"""Validates structural AST invariants after parsing."""
 class ASTValidationPass(UniPass) {
     def enter_try_stmt(self: ASTValidationPass, nd: uni.TryStmt) -> None;
     def enter_match_stmt(self: ASTValidationPass, nd: uni.MatchStmt) -> None;
@@ -57,36 +46,28 @@ class ASTValidationPass(UniPass) {
     def enter_enum(self: ASTValidationPass, nd: uni.Enum) -> None;
     def enter_switch_stmt(self: ASTValidationPass, nd: uni.SwitchStmt) -> None;
     def enter_assignment(self: ASTValidationPass, nd: uni.Assignment) -> None;
-    # Type annotation checks
+    def enter_in_for_stmt(self: ASTValidationPass, nd: uni.InForStmt) -> None;
+    def enter_inner_compr(self: ASTValidationPass, nd: uni.InnerCompr) -> None;
+    def enter_has_var(self: ASTValidationPass, nd: uni.HasVar) -> None;
+    def enter_expr_as_item(self: ASTValidationPass, nd: uni.ExprAsItem) -> None;
+    def enter_delete_stmt(self: ASTValidationPass, nd: uni.DeleteStmt) -> None;
+    def _reject_non_bindable(self: ASTValidationPass, target: object) -> None;
     def enter_param_var(self: ASTValidationPass, nd: uni.ParamVar) -> None;
-    # Context validity checks
     def enter_yield_expr(self: ASTValidationPass, nd: uni.YieldExpr) -> None;
     def enter_ctrl_stmt(self: ASTValidationPass, nd: uni.CtrlStmt) -> None;
     def enter_non_local_stmt(self: ASTValidationPass, nd: uni.NonLocalStmt) -> None;
     def enter_global_vars(self: ASTValidationPass, nd: uni.GlobalVars) -> None;
     def enter_func_call(self: ASTValidationPass, nd: uni.FuncCall) -> None;
     def enter_archetype(self: ASTValidationPass, nd: uni.Archetype) -> None;
-    # ----- JSX `{...}` slot body rules ------------------------------------
-    """Validate a JSX statement-form slot body (E2019-E2024, W2019-W2021)."""
     def enter_jsx_slot(self: ASTValidationPass, nd: uni.JsxSlot) -> None;
-
-    """Walk a slot body emitting view-body rule diagnostics.
-
-    `in_loop` is True inside a template `for`/`while`; `loop_kw` names it.
-    Nested `def` handlers are not descended into — their `return`s are
-    their own."""
     def _check_slot_body(
         self: ASTValidationPass, stmts: list, in_loop: bool, loop_kw: str
     ) -> None;
 
-    """Recurse slot-body checks into an optional `else`/`elif` clause."""
     def _check_slot_else(
         self: ASTValidationPass, else_body: object, in_loop: bool, loop_kw: str
     ) -> None;
 
-    """True when `stmts` (recursively) render a JSX element with no `key`."""
     def _slot_emits_keyless_jsx(self: ASTValidationPass, stmts: list) -> bool;
-
-    """True when a JSX element carries a `key=` attribute."""
     def _slot_has_key_attr(self: ASTValidationPass, el: uni.JsxElement) -> bool;
 }

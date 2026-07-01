@@ -7,7 +7,7 @@ Two guarantees beyond bare conflict detection:
      committing the child/edge it had already staged -- so a lost race leaves
      the store byte-for-byte unchanged, *no orphan*. (Mongo, which has no
      cross-document rollback, prevents the orphan with an apply()-time version
-     precheck and falls back to fsck for the residual; covered in jac-scale.)
+     precheck and falls back to fsck for the residual; covered by the scale backend.)
 
   2. `fsck` reclaims a *half-linked* edge -- one cited by only one of its two
      endpoints -- and the node it strands. That is the residual orphan

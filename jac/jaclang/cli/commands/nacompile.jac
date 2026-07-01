@@ -1,17 +1,8 @@
-"""Native compile command: compile .na.jac files to standalone binaries.
-
-Produces a runnable native executable from a .na.jac file using the in-tree
-code generator and a pure Python linker. No external compiler or linker
-required. Supports ELF (Linux) and Mach-O (macOS) with automatic platform
-detection. Includes ad-hoc code signing for arm64 macOS.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Compile a .jac or .na.jac file to a standalone native binary."""
 @registry.command(
     name="nacompile",
     help="Compile a Jac file to a standalone native binary",
@@ -41,13 +32,13 @@ glob registry = get_registry();
         Arg.create(
             "shared",
             kind=ArgKind.FLAG,
-            short="",  # suppress auto `-s` (taken by --scrub); long form only
+            short="",
             help="Build a C-ABI shared library (.so/.dylib/.dll) exporting `:pub` symbols instead of an executable"
         ),
         Arg.create(
             "debug",
             kind=ArgKind.FLAG,
-            short="g",  # conventional `-g`, mirrors cc/clang
+            short="g",
             help="Emit DWARF debug info + symbol table so the binary is debuggable with gdb/lldb"
         ),
 

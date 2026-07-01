@@ -12,21 +12,8 @@ on:
         type: choice
         default: skip
         options: [skip, patch, minor, major]
-      jac-byllm:
-        description: "jac-byllm bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
-      jac-scale:
-        description: "jac-scale bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
-      jac-mcp:
-        description: "jac-mcp bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
+      # byLLM folded into jaclang (jaclang.byllm) and no longer releases
+      # separately to PyPI -- same as the earlier scale fold-in.
 
 permissions: {}
 
@@ -53,19 +40,13 @@ jobs:
       - name: Validate versions against PyPI
         run: |
           jac run scripts/validate_release.jac \
-            --jaclang "${{ inputs.jaclang }}" \
-            --jac-byllm "${{ inputs.jac-byllm }}" \
-            --jac-scale "${{ inputs.jac-scale }}" \
-            --jac-mcp "${{ inputs.jac-mcp }}"
+            --jaclang "${{ inputs.jaclang }}"
 
       - name: Bump versions
         id: release
         run: |
           jac run scripts/release.jac \
-            --jaclang "${{ inputs.jaclang }}" \
-            --jac-byllm "${{ inputs.jac-byllm }}" \
-            --jac-scale "${{ inputs.jac-scale }}" \
-            --jac-mcp "${{ inputs.jac-mcp }}"
+            --jaclang "${{ inputs.jaclang }}"
 
       - name: Configure git
         run: |

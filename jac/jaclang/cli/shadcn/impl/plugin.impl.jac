@@ -1,5 +1,3 @@
-"""Implementation of jac-shadcn CLI hooks."""
-
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, HookContext }
 import from pathlib { Path }
@@ -34,7 +32,6 @@ impl JacShadcnPlugin.create_cmd -> None {
         source="jac-shadcn"
     );
 
-    # Theme options for `jac create --use jac-shadcn` (consumed in post_create).
     registry.extend_command(
         command_name="create",
         args=[
@@ -91,13 +88,9 @@ impl JacShadcnPlugin.create_cmd -> None {
         pre_hook=_handle_create_theme,
         source="jac-shadcn"
     );
-    # The jac-shadcn template is contributed via the aggregating
-    # `register_project_template` hook (below) -- every plugin's templates are
-    # collected, so no direct registry registration is needed here.
 }
 
 impl _handle_create_theme(ctx: HookContext) -> None {
-    # Only act when scaffolding the jac-shadcn template.
     if ctx.get_arg("use", "default") != "jac-shadcn" {
         return;
     }
@@ -116,7 +109,7 @@ impl _handle_create_theme(ctx: HookContext) -> None {
             overrides[key] = val;
         }
     }
-    # Stash for _shadcn_post_create (same process). Mutate in place (glob is read-only to rebind).
+
     _PENDING_THEME.clear();
     _PENDING_THEME.update(overrides);
 }
@@ -222,13 +215,10 @@ impl _build_shadcn_template_info -> dict[str, any] | None {
     import from jaclang.project.template_loader { load_template_from_directory }
     import from jaclang.cli.console { console }
 
-    # Find template directory relative to this module
-    # plugin.impl.jac is in jaclang/cli/shadcn/impl/, so .parent.parent = jaclang/cli/shadcn/
-    module_dir = Path(__file__).parent.parent;  # jaclang/cli/shadcn directory
+    module_dir = Path(__file__).parent.parent;
     template_dir = module_dir / "templates" / "jac-shadcn";
 
     if not template_dir.exists() {
-        # Fallback: look in installed package location
         import from importlib.resources { files }
         try {
             package_root = str(files("jaclang.cli.shadcn"));
@@ -246,13 +236,10 @@ impl _build_shadcn_template_info -> dict[str, any] | None {
     try {
         template = load_template_from_directory(template_dir);
         info = template.to_dict();
-        # jac-shadcn is a non-default variant of the `fullstack` kind: `jac
-        # create --use jac-shadcn` selects it, while `--kind fullstack` keeps
-        # the plain jac-client fullstack template. (Also declared in the
-        # template's jac.toml; set here too so it holds regardless of loader.)
-        info["kind"] = "fullstack";
+
+        info["kind"] = "web-app";
         info["is_default_for_kind"] = False;
-        # Generate the themed starter (global.css, components, main.jac) after scaffold.
+
         info["post_create"] = _shadcn_post_create;
         return info;
     } except Exception as e {
@@ -261,9 +248,6 @@ impl _build_shadcn_template_info -> dict[str, any] | None {
     }
 }
 
-# `register_project_template` is an aggregating hook: jac-shadcn's template is
-# collected alongside every other plugin's, so this contributes the variant
-# without competing with jac-client's kind templates.
 impl JacShadcnPlugin.register_project_template -> dict[str, any] | None {
     return _build_shadcn_template_info();
 }

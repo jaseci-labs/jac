@@ -1,5 +1,3 @@
-"""Implementation for semantic_analysis_pass constructs."""
-
 impl SemanticAnalysisPass.enter_archetype(
     self: SemanticAnalysisPass, nd: uni.Archetype
 ) -> None {
@@ -23,7 +21,6 @@ impl SemanticAnalysisPass.enter_archetype(
     self._check_archetype(nd);
 }
 
-"""Check a single archetype for issues with attributes and methods."""
 impl SemanticAnalysisPass._check_archetype(
     self: SemanticAnalysisPass, nd: uni.Archetype
 ) -> None {
@@ -35,7 +32,7 @@ impl SemanticAnalysisPass._check_archetype(
             }
             for var in stmnt.vars {
                 if var.accessors {
-                    continue;  # property declarations aren't dataclass fields
+                    continue;
                 }
                 if ((var.value is not None) or var.defer) {
                     found_default_init = True;
@@ -140,7 +137,6 @@ impl SemanticAnalysisPass.enter_inner_compr(
     self._update_ctx(nd.target);
 }
 
-"""Mark final element in trailer chain as a Store context."""
 impl SemanticAnalysisPass._change_atom_trailer_ctx(
     self: SemanticAnalysisPass, nd: uni.AtomTrailer
 ) -> None {

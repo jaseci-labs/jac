@@ -1,8 +1,3 @@
-"""Hot Module Replacement implementation.
-
-Handles file change events and coordinates module reloading.
-"""
-
 import logging;
 import os;
 import sys;
@@ -15,21 +10,19 @@ import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__);
 
-"""Start the hot reloader and begin watching for changes."""
 impl HotReloader.start -> None {
     if self._running {
         return;
     }
-    # Register our callback with the watcher
+
     self.watcher.add_callback(self.on_file_change);
-    # Start watching
+
     self.watcher.start();
     self._running = True;
     HotReloader._active = self;
     logger.debug(f"Hot reloader started for module: {self.module_name}");
 }
 
-"""Stop the hot reloader and file watcher."""
 impl HotReloader.stop -> None {
     if not self._running {
         return;
@@ -38,12 +31,11 @@ impl HotReloader.stop -> None {
     if HotReloader._active is self {
         HotReloader._active = None;
     }
-    # Stop the watcher
+
     self.watcher.stop();
     logger.debug("Hot reloader stopped");
 }
 
-"""Build-health snapshot served over HTTP (see get_build_status)."""
 impl HotReloader.build_status -> dict {
     with HotReloader._build_lock {
         error = {"file": self._build_error_file, "message": self._build_error}
@@ -53,7 +45,6 @@ impl HotReloader.build_status -> dict {
     }
 }
 
-"""Mark the build healthy and clear any recorded error."""
 impl HotReloader.record_ok -> None {
     with HotReloader._build_lock {
         self._build_status = BuildStatus.OK;
@@ -62,7 +53,6 @@ impl HotReloader.record_ok -> None {
     }
 }
 
-"""Mark the build broken with the failing file and message."""
 impl HotReloader.record_error(file_path: str, message: str) -> None {
     with HotReloader._build_lock {
         self._build_status = BuildStatus.ERROR;
@@ -79,16 +69,14 @@ impl get_build_status -> dict {
     return reloader.build_status();
 }
 
-"""Callback for file change events from the watcher."""
 impl HotReloader.on_file_change(event: any) -> None {
     if not self._running {
         return;
     }
-    # Process the change
+
     self._process_change(event.path);
 }
 
-"""Process a file change, tracking build health across the rebuild."""
 impl HotReloader._process_change(file_path: str) -> None {
     with HotReloader._build_lock {
         self._build_status = BuildStatus.COMPILING;
@@ -96,19 +84,16 @@ impl HotReloader._process_change(file_path: str) -> None {
     try {
         self._dispatch_change(file_path);
     } except Exception as e {
-        # An uncaught dispatch failure must not leave the status stuck at COMPILING.
         self.record_error(file_path, f"{type(e).__name__}: {e}");
         raise;
     }
-    # Still COMPILING means no error path fired -> the build is good.
+
     if self._build_status is BuildStatus.COMPILING {
         self.record_ok();
     }
 }
 
-"""Classify the changed file's declarations and take the matching action."""
 impl HotReloader._dispatch_change(file_path: str) -> None {
-    # Check if this is a frontend file
     if file_path.endswith(
         tuple(
             p[1:] if p.startswith("*") else p for p in self.watcher.additional_patterns
@@ -117,7 +102,7 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
         self._copy_frontend_files(file_path);
         return;
     }
-    # Resolve annex files (.impl.jac) to their base file
+
     import from jaclang.jac0core.ext_registry { is_impl }
     target_path = file_path;
     if is_impl(file_path) {
@@ -126,33 +111,32 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
             target_path = base;
         }
     }
-    # Check if file has client and/or server declarations
+
     (has_client, has_server) = self._classify_declarations(target_path);
-    # Handle server declarations - reload in sys.modules
+
     if has_server {
         self._reload_server_module(target_path);
     }
-    # Handle client declarations - recompile to JS and recursively compile
+
     if has_client {
         visited: set = set();
         self._recompile_client_code(target_path, visited);
     }
 }
 
-"""Reload server-side module in sys.modules."""
 impl HotReloader._reload_server_module(file_path: str) -> None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    # Remove all project modules from sys.modules to refresh the full import chain
+
     sys.modules.pop(self.module_name, None);
     for key in list(Jac.program.mod.hub.keys()) {
         sys.modules.pop(self._path_to_module(key), None);
     }
-    # Also remove from the program's module hub
+
     try {
         if file_path in Jac.program.mod.hub {
             del Jac.program.mod.hub[file_path];
         }
-        # Also try with resolved path
+
         resolved_path = str(Path(file_path).resolve());
         if resolved_path in Jac.program.mod.hub {
             del Jac.program.mod.hub[resolved_path];
@@ -160,18 +144,17 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     } except Exception as e {
         console.warning(f"Could not clear module hub: {e}");
     }
-    # Re-import with force reload
+
     try {
         Jac.jac_import(
             target=self.module_name, base_path=self.base_path, reload_module=True
         );
         console.print(f"[HMR] Reloaded: {file_path}");
-        # If there were previous errors, update the entry point to clear error overlays
+
         if self._overlay_entry {
             self._update_entry_point();
         }
     } except SyntaxError as e {
-        # Syntax error during reload
         line_info = f":{e.lineno}" if e?.lineno and e.lineno else "";
         console.error(
             f"Syntax error in {file_path}{line_info}: {e?.msg or str(e)}",
@@ -179,12 +162,10 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
         );
         self.record_error(file_path, f"Syntax error{line_info}: {e?.msg or str(e)}");
     } except ImportError as e {
-        # Import error (missing dependency, etc.)
         console.error(f"Import error in {file_path}: {e}");
         self._emit_client_error_overlay(file_path, str(e));
         self.record_error(file_path, f"Import error: {e}");
     } except Exception as e {
-        # Other errors
         error_type = type(e).__name__;
         console.error(f"{error_type} in {file_path}: {e}");
         self._emit_client_error_overlay(file_path, str(e));
@@ -192,7 +173,6 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     }
 }
 
-"""Recompile client declarations to JavaScript."""
 impl HotReloader._recompile_client_code(
     file_path: str, visited: set | None = None, force: bool = True
 ) -> None {
@@ -201,7 +181,6 @@ impl HotReloader._recompile_client_code(
         source_path = Path(file_path).resolve();
         source_key = str(source_path);
 
-        # Avoid cycles by tracking visited files
         if visited is None {
             visited = set();
         }
@@ -213,7 +192,6 @@ impl HotReloader._recompile_client_code(
         base_dir = Path(self.base_path).resolve();
         output_base = Path(self.base_path) / self._client_output_dir;
 
-        # Compute output path
         try {
             rel_dir = source_path.parent.relative_to(base_dir);
         } except ValueError {
@@ -223,7 +201,6 @@ impl HotReloader._recompile_client_code(
         js_filename = self._get_js_filename(file_path);
         output_path = output_dir / js_filename;
 
-        # For dependencies (force=False), skip if JS already exists
         if not force and output_path.exists() {
             return;
         }
@@ -231,18 +208,14 @@ impl HotReloader._recompile_client_code(
             return;
         }
 
-        # Clear any stale errors from previous compilations
         Jac.program.errors_had.clear();
 
-        # Clear existing module from hub to force recompilation
         if source_key in Jac.program.mod.hub {
             del Jac.program.mod.hub[source_key];
         }
 
-        # Compile the file (this generates JS as part of the compilation)
         mod = Jac.program.compile(source_key);
 
-        # Check for compilation errors
         if Jac.program.errors_had {
             if force {
                 base_prefix = str(base_dir) + '/';
@@ -259,12 +232,10 @@ impl HotReloader._recompile_client_code(
             return;
         }
 
-        # If there were previous errors, restore the entry point
         if force and self._overlay_entry {
             self._update_entry_point();
         }
 
-        # Get the generated JS code
         js_code = mod.gen.js or '';
         if not js_code {
             if force {
@@ -273,12 +244,9 @@ impl HotReloader._recompile_client_code(
             return;
         }
 
-        # Prepend the runtime-global import the compiler relies on (shared with
-        # the jac2js build, eject, and the cl test harness).
         import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
         js_code = prepend_active_runtime_globals(js_code);
 
-        # Recursively compile missing dependencies BEFORE writing this file's JS to ensure all dependencies are up to date
         manifest = mod.gen.client_manifest if mod else None;
         if manifest and manifest.imports {
             for (import_key, import_path) in manifest.imports.items() {
@@ -310,32 +278,22 @@ impl HotReloader._recompile_client_code(
     }
 }
 
-"""Convert a .jac file path to a .js filename."""
 impl HotReloader._get_js_filename(file_path: str) -> str {
     import from jaclang.jac0core.ext_registry { base_stem }
     path = Path(file_path);
-    # Collapse any Jac suffix to the bare stem via the shared matcher; a
-    # non-Jac name is returned unchanged, matching the previous fallthrough.
+
     return base_stem(path.name) + ".js";
 }
 
-"""Get client and server declarations from a file.
-
-Returns (has_client_decls, has_server_decls).
-"""
 impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.unitree { ClientBlock, ServerBlock }
     has_client = False;
     has_server = False;
     try {
-        # Parse the file to get AST
         prog = JacProgram();
         mod = prog.compile(file_path, no_cgen=True);
 
-        # Check top-level declarations in module body for code_context.
-        # ClientBlock/ServerBlock nodes (from cl{}/sv{} blocks) don't have a
-        # code_context attribute themselves, so check by type first.
         for nd in mod.body {
             if isinstance(nd, ClientBlock) {
                 has_client = True;
@@ -350,18 +308,15 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
             }
         }
 
-        # If no explicit client declarations found, assume server code
         if not has_client and not has_server {
             has_server = True;
         }
     } except SyntaxError as e {
-        # Syntax error - provide detailed location info
         line_info = f" at line {e.lineno}" if e?.lineno and e.lineno else "";
         console.error(f"Syntax error in {file_path}{line_info}: {e?.msg or str(e)}");
-        # Still try to reload - the error will be shown again during actual reload
+
         has_server = True;
     } except Exception as e {
-        # Other parse errors - still try to reload
         error_type = type(e).__name__;
         console.error(f"{error_type} in {file_path}: {e}");
         has_server = True;
@@ -369,20 +324,17 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
     return (has_client, has_server);
 }
 
-"""Convert file path to module name."""
 impl HotReloader._path_to_module(file_path: str) -> str {
     import from jaclang.jac0core.ext_registry { base_stem }
-    # Get relative path from base_path
+
     path = Path(file_path);
     base = Path(self.base_path).resolve();
     try {
         rel_path = path.relative_to(base);
     } except ValueError {
-        # File not under base_path, use filename
         rel_path = path;
     }
-    # Strip any Jac suffix from each path component and join with dots; the
-    # shared matcher leaves non-Jac directory parts untouched.
+
     module_parts = [];
     for part in rel_path.parts {
         module_parts.append(base_stem(part));
@@ -390,7 +342,6 @@ impl HotReloader._path_to_module(file_path: str) -> str {
     return ".".join(module_parts);
 }
 
-"""Emit a client-side error overlay for compilation errors."""
 impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
     output_base = Path(self.base_path) / self._client_output_dir;
     output_dir = output_base;
@@ -398,14 +349,13 @@ impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None
     js_filename = "_entry.js";
     output_path = output_dir / js_filename;
     entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
-    # Update the entry point to show the error overlay
+
     output_path.write_text(entry_content, encoding='utf-8');
-    # Mark that have an overlay entry
+
     self._overlay_entry = True;
     return;
 }
 
-"""Copy frontend files to compiled directory."""
 impl HotReloader._copy_frontend_files(file_path: str) -> None {
     try {
         source_path = Path(file_path).resolve();
@@ -418,9 +368,7 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
         output_base = Path(self.base_path) / self._client_output_dir;
         output_path = output_base / rel_path;
 
-        # Check if source file exists (handle deletion)
         if not source_path.exists() {
-            # File was deleted - remove from build directory
             if output_path.exists() {
                 output_path.unlink();
                 console.warning(f"Removed deleted frontend file: {rel_path}");
@@ -430,7 +378,6 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
             return;
         }
         try {
-            # If there were previous errors, we need to update the entry point
             if self._overlay_entry {
                 self._update_entry_point();
             }
@@ -444,7 +391,6 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
     }
 }
 
-"""Update the entry point to reflect changes in modules."""
 impl HotReloader._update_entry_point -> None {
     import from jaclang.compiler.passes.ecmascript.backends.registry {
         resolve_active_backend
@@ -453,8 +399,7 @@ impl HotReloader._update_entry_point -> None {
     output_base = Path(self.base_path) / self._client_output_dir;
     output_base.mkdir(parents=True, exist_ok=True);
     output_path = output_base / "_entry.js";
-    # Skip __jacInstallErrorHandlers — handlers were bound to window during the
-    # initial mount and persist across HMR re-renders.
+
     entry_content = backend.build_entry_script(
         self.module_name, install_global_handlers=False
     );

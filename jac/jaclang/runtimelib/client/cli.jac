@@ -1,13 +1,3 @@
-"""Command line interface tool for the Jac Client.
-
-This module extends core CLI commands to add the --npm flag for
-client-side (frontend) package management:
-- `jac add --npm`: Add npm dependencies
-- `jac remove --npm`: Remove npm dependencies
-
-For creating client projects, use: `jac create --kind fullstack`
-"""
-
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, HookContext }
 import from jaclang.project.config { JacConfig }
@@ -20,8 +10,6 @@ import os;
 
 glob registry = get_registry();
 
-# Register targets when module loads
-# Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
 import from jaclang.runtimelib.client.targets.web_target { WebTarget }
 import from jaclang.runtimelib.client.targets.mobile_target { MobileTarget }
 import from jaclang.runtimelib.client.targets.register {
@@ -31,7 +19,6 @@ import from jaclang.runtimelib.client.targets.register {
 import from jaclang.runtimelib.client.targets.registry { ClientTarget }
 import from pathlib { Path }
 
-"""Register 'build' command at module level."""
 @registry.command(
     name="build",
     help="Build a Jac application for a specific target",
@@ -51,7 +38,7 @@ import from pathlib { Path }
                 "Choices reflect installed targets (desktop builds a native webview app)."
             ),
             choices=["web", "pwa", "mobile"],
-            short=""  # Disable auto-generated -t (may conflict with other plugins)
+            short=""
         ),
         Arg.create(
             "platform",
@@ -59,7 +46,7 @@ import from pathlib { Path }
             default=None,
             help="Platform for desktop/mobile builds (windows, macos, linux, all, android, ios)",
             choices=["windows", "macos", "linux", "all", "android", "ios"],
-            short="p"  # Use -p for platform
+            short="p"
         ),
 
     ],
@@ -78,17 +65,9 @@ import from pathlib { Path }
 def build(
     filename: str = "main.jac", target: str = "web", platform: str | None = None
 ) -> int {
-    # This will be handled by the pre_hook
     return 0;
 }
 
-"""Register 'setup' command at module level.
-
-Note: --platform is wired in via extend_command (see create_cmd) so it survives
-when a higher-priority plugin (e.g. jac-scale) replaces this spec - primary
-args on a spec are spec-local, but extension args are preserved across
-priority replacement by the registry.
-"""
 @registry.command(
     name="setup",
     help="Setup a build target (one-time initialization)",
@@ -107,23 +86,15 @@ priority replacement by the registry.
     source="jac-client"
 )
 def setup(target: str, platform: str | None = None) -> int {
-    # This will be handled by the pre_hook
     return 0;
 }
 
-"""Jac CLI extensions for client-side development."""
 class JacClientCmd {
-    """Create Jac CLI cmds.
-
-    Extends core commands (create/add/remove/start/build/setup) with client-side
-    behavior; see ``create_cmd`` implementation.
-    """
     @hookimpl
     static def create_cmd {
         register_targets();
         registry = get_registry();
 
-        # Extend the core 'create' command with --skip flag for client template
         registry.extend_command(
             command_name="create",
             args=[
@@ -131,7 +102,7 @@ class JacClientCmd {
                     "skip",
                     typ=bool,
                     default=False,
-                    help="Skip npm package installation (when creating client kinds: fullstack/client/mobile)"
+                    help="Skip npm package installation (when creating client kinds: web-app/web-static/mobile)"
                 ),
 
             ],
@@ -139,7 +110,6 @@ class JacClientCmd {
             source="jac-client"
         );
 
-        # Extend the core 'add' command with --npm flag
         registry.extend_command(
             command_name="add",
             args=[
@@ -155,7 +125,6 @@ class JacClientCmd {
             source="jac-client"
         );
 
-        # Extend the core 'remove' command with --npm flag
         registry.extend_command(
             command_name="remove",
             args=[
@@ -171,16 +140,10 @@ class JacClientCmd {
             source="jac-client"
         );
 
-        # Add pre-hook to build command (command is registered at module level)
         registry.extend_command(
             command_name="build", pre_hook=_handle_build_target, source="jac-client"
         );
 
-        # Add pre-hook + --platform to setup command. Registering --platform via
-        # extend_command (instead of inline on the @registry.command above) keeps
-        # the arg attached when a higher-priority plugin re-registers `setup`
-        # (e.g. jac-scale's microservice handler). See registry.impl.jac for the
-        # corresponding extra_args preservation logic.
         registry.extend_command(
             command_name="setup",
             args=[
@@ -198,14 +161,12 @@ class JacClientCmd {
             source="jac-client"
         );
 
-        # Extend 'start' command with --client flag
-        # Note: jac-scale also uses --client, so we use --client to avoid conflict
         if registry.has_command("start") {
             registry.extend_command(
                 command_name="start",
                 args=[
                     Arg.create(
-                        "client",  # Use client to avoid conflict with jac-scale's --client
+                        "client",
                         typ=str,
                         default="web",
                         help=(
@@ -213,7 +174,7 @@ class JacClientCmd {
                             "Choices reflect installed targets (desktop builds a native webview app)."
                         ),
                         choices=["web", "pwa", "mobile"],
-                        short=""  # Disable auto-generated short flag
+                        short=""
                     ),
                     Arg.create(
                         "host",
@@ -247,23 +208,16 @@ class JacClientCmd {
     }
 }
 
-"""Pre-hook to handle --skip flag for create command."""
 def _handle_create_skip(ctx: HookContext) {
-    # Check if --skip flag is set
     skip_flag = ctx.get_arg("skip", False);
     if skip_flag {
-        # Set environment variable to skip npm installation
         os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
     }
-    # Let core create command run normally
 }
 
-"""Pre-hook to handle --npm flag for adding npm dependencies."""
 def _handle_npm_add(ctx: HookContext) -> None {
-    # Check if --npm flag is set
     npm_flag = ctx.get_arg("npm", False);
     if not npm_flag {
-        # Let core add command run normally
         return;
     }
 
@@ -297,7 +251,6 @@ def _handle_npm_add(ctx: HookContext) -> None {
     packages = ctx.get_arg("packages", []);
     dev = ctx.get_arg("dev", False);
 
-    # If no packages specified, install all npm packages from jac.toml
     if not packages {
         if dep_type.install_all_handler is None {
             console.error(f"No install_all handler registered for {dep_type.name}");
@@ -326,7 +279,6 @@ def _handle_npm_add(ctx: HookContext) -> None {
         return;
     }
 
-    # Install specific packages
     try {
         resolver = DependencyResolver(config=config);
         console.print(
@@ -350,16 +302,6 @@ def _handle_npm_add(ctx: HookContext) -> None {
     }
 }
 
-"""Pick the client target, auto-routing a client-only project to `static`.
-
-When the caller did not request a specific target (still the `web` default),
-a project that declares `kind = "client"` (a browser-only app with no server)
-is routed to the `static` target so `jac build` / `jac start` produce a
-portable dist and a minimal static serve without the user passing
-`--client static`. An explicit non-web `--client` (e.g. `--client pwa`) always
-wins; `--client web` is indistinguishable from the default, so it does not
-override the client-kind routing.
-"""
 def _auto_client_target(config: JacConfig, requested: str, project_dir: Path) -> str {
     if requested != "web" {
         return requested;
@@ -367,17 +309,15 @@ def _auto_client_target(config: JacConfig, requested: str, project_dir: Path) ->
     import from jaclang.project.kinds { resolve_entry, resolve_project_kind }
     try {
         entry = resolve_entry(config, str(project_dir));
-        if resolve_project_kind(config, entry) == "client" {
+        if resolve_project_kind(config, entry) == "web-static" {
             return "static";
         }
     } except Exception {
-        # Kind resolution is best-effort; fall back to the requested target.
         return requested;
     }
     return requested;
 }
 
-"""Return True when a setup-required target has not been initialized yet."""
 def _target_setup_missing(
     target_name: str, target: ClientTarget, project_dir: Path
 ) -> bool {
@@ -391,14 +331,9 @@ def _target_setup_missing(
         return not android_dir.exists() and not ios_dir.exists();
     }
 
-    # Fallback for future targets that may implement custom setup semantics.
     return False;
 }
 
-"""Pre-hook to handle --client flag for build command.
-
-Uses TargetFactory for lazy loading and polymorphic dispatch.
-"""
 def _handle_build_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jaclang.runtimelib.client.targets.registry { get_target_factory }
@@ -408,7 +343,6 @@ def _handle_build_target(ctx: HookContext) -> None {
     target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
 
-    # Get config and project_dir first (needed for factory)
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -419,10 +353,8 @@ def _handle_build_target(ctx: HookContext) -> None {
 
     project_dir = config.project_root or Path.cwd();
 
-    # Auto-route a client-only (kind = "client") project to the static target.
     target_name = _auto_client_target(config, target_name, project_dir);
 
-    # Use factory to create target (lazy loading for non-web targets)
     factory = get_target_factory();
     try {
         target = factory.create(target_name, project_dir);
@@ -437,18 +369,15 @@ def _handle_build_target(ctx: HookContext) -> None {
         return;
     }
 
-    # Store target info in context for use by build handler
     ctx.set_data("build_target", target);
     ctx.set_data("build_platform", platform);
 
-    # Warn only when setup is actually missing (avoid false positive warnings).
     if _target_setup_missing(target_name, target, project_dir) {
         console.warning(
             f"Target '{target_name}' requires setup. Run 'jac setup {target_name}' first."
         );
     }
 
-    # Build using target's build method (polymorphic dispatch)
     try {
         entry_file = ctx.get_arg("filename", None);
         if not entry_file {
@@ -466,7 +395,6 @@ def _handle_build_target(ctx: HookContext) -> None {
             entry_path = project_dir / entry_path;
         }
 
-        # Polymorphic call - each target handles its own build logic
         bundle_path = target.build(entry_path, project_dir, platform);
 
         console.success(f"Build complete: {bundle_path}");
@@ -484,7 +412,6 @@ def _handle_build_target(ctx: HookContext) -> None {
     }
 }
 
-"""Extract config, entry path, and project dir from context. Returns None on error."""
 def _get_start_context(ctx: HookContext) -> tuple | None {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -518,11 +445,6 @@ def _get_start_context(ctx: HookContext) -> tuple | None {
     return (config, entry_path, project_dir);
 }
 
-"""Pre-hook to handle --client flag for start command.
-
-Uses TargetFactory for lazy loading and polymorphic dispatch.
-Web target falls through to core jac start, others use target.dev()/start().
-"""
 def _handle_start_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jaclang.runtimelib.client.targets.registry { get_target_factory }
@@ -531,17 +453,14 @@ def _handle_start_target(ctx: HookContext) -> None {
 
     target_name = ctx.get_arg("client", "web");
 
-    # Get context for all targets (need project_dir for factory)
     start_ctx = _get_start_context(ctx);
     if not start_ctx {
         return;
     }
     (config, entry_path, project_dir) = start_ctx;
 
-    # Auto-route a client-only (kind = "client") project to the static target.
     target_name = _auto_client_target(config, target_name, project_dir);
 
-    # Warn about debug mode in production
     dev_mode = ctx.get_arg("dev", False);
     if not dev_mode and is_debug_mode(config) {
         console.warning(
@@ -549,7 +468,6 @@ def _handle_start_target(ctx: HookContext) -> None {
         );
     }
 
-    # Use factory to create target (lazy loading for non-web targets)
     factory = get_target_factory();
     try {
         target = factory.create(target_name, project_dir);
@@ -564,11 +482,8 @@ def _handle_start_target(ctx: HookContext) -> None {
         return;
     }
 
-    # Store target info in context
     ctx.set_data("start_client_target", target);
 
-    # Match core `jac start`: in --dev, `port` is the Vite (frontend) port and `api_port` is
-    # the API port (0 = use port+1). In non-dev, `port` is the single server port (API / preview).
     start_port = ctx.get_arg("port", 8000);
     if start_port is None {
         start_port = 8000;
@@ -578,9 +493,7 @@ def _handle_start_target(ctx: HookContext) -> None {
         start_api = 0;
     }
 
-    # Handle non-web targets (desktop, pwa) - they override dev/start behavior
     if target_name != "web" {
-        # Check if target setup is actually missing
         if _target_setup_missing(target_name, target, project_dir) {
             console.error(
                 f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
@@ -599,12 +512,11 @@ def _handle_start_target(ctx: HookContext) -> None {
                 if target_name == "mobile" {
                     os.environ["JAC_MOBILE_DEV_HOST"] = str(ctx.get_arg("host", ""));
                 }
-                # Use target's dev() method (polymorphic dispatch)
+
                 target.dev(
                     entry_path, project_dir, port=start_port, api_port=start_api
                 );
             } else {
-                # Use target's start() method (polymorphic dispatch)
                 target.start(entry_path, project_dir, api_port=start_port);
             }
             ctx.set_data("cancel_execution", True);
@@ -618,14 +530,8 @@ def _handle_start_target(ctx: HookContext) -> None {
         }
         return;
     }
-    # Web target: let existing core jac start command handle it
-    # (no cancellation - falls through to default behavior with HMR support)
 }
 
-"""Pre-hook to handle setup command.
-
-Uses TargetFactory for lazy loading and polymorphic dispatch.
-"""
 def _handle_setup_target(ctx: HookContext) -> None {
     import from jaclang.cli.console { console }
     import from jaclang.runtimelib.client.targets.registry { get_target_factory }
@@ -634,14 +540,9 @@ def _handle_setup_target(ctx: HookContext) -> None {
 
     factory = get_target_factory();
 
-    # `target` is jac-client's positional; `subcommand` is what jac-scale's
-    # higher-priority `setup` spec exposes. Reading both keeps us routable no
-    # matter which plugin wins the surface registration.
     target_name = ctx.get_arg("target", None) or ctx.get_arg("subcommand", None);
     available_targets = factory.get_available_target_names();
     if target_name and target_name not in available_targets {
-        # Unknown to us - let another plugin's handler claim it (e.g. jac-scale's
-        # `jac setup microservice`). Do NOT cancel.
         return;
     }
     if not target_name {
@@ -654,7 +555,6 @@ def _handle_setup_target(ctx: HookContext) -> None {
         return;
     }
 
-    # Get config and project_dir first
     config = get_config();
     if not config {
         console.error("No jac.toml found. Run 'jac create' to create a project.");
@@ -665,7 +565,6 @@ def _handle_setup_target(ctx: HookContext) -> None {
 
     project_dir = config.project_root or Path.cwd();
 
-    # Use factory to create target (lazy loading)
     try {
         target = factory.create(target_name, project_dir);
     } except ValueError as e {
@@ -679,8 +578,6 @@ def _handle_setup_target(ctx: HookContext) -> None {
         return;
     }
 
-    # Setup using target's setup method (polymorphic dispatch).
-    # JAC_MOBILE_SETUP_PLATFORM is set/restored in mobile_setup_env (swap/restore).
     setup_platform = ctx.get_arg("platform", None);
     prev_setup_platform_env = None;
     if target_name == "mobile" and setup_platform {
@@ -692,7 +589,6 @@ def _handle_setup_target(ctx: HookContext) -> None {
         );
         target.setup(project_dir);
 
-        # Verify setup completed successfully
         if target_name == "pwa" {
             pwa_icons_dir = project_dir / "pwa_icons";
             if not pwa_icons_dir.exists() {
@@ -729,12 +625,9 @@ def _handle_setup_target(ctx: HookContext) -> None {
     }
 }
 
-"""Pre-hook to handle --npm flag for removing npm dependencies."""
 def _handle_npm_remove(ctx: HookContext) -> None {
-    # Check if --npm flag is set
     npm_flag = ctx.get_arg("npm", False);
     if not npm_flag {
-        # Let core remove command run normally
         return;
     }
 

@@ -20,7 +20,6 @@ class PackageInfo(NamedTuple) {
     has release_notes: str = "";
     has notes_display: str = "";
     has submodules: bool = False;
-    has precompile: bool = False;
     has extra_build_cmd: str = "";
     has needs_nodejs: bool = False;
     has extra_build_deps: str = "";
@@ -41,51 +40,18 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              release_notes="docs/docs/community/release_notes/jaclang.md",
              notes_display="jaclang",
              submodules=True,
-             precompile=True,
              publish_pypi=False,
              is_anchor=True
-         ),
-         "jac-byllm": PackageInfo(
-             dir="jac-byllm",
-             pypi="byllm",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/byllm.md",
-             notes_display="byllm",
-             submodules=True,
-             precompile=True
-         ),
-         "jac-scale": PackageInfo(
-             dir="jac-scale",
-             pypi="jac-scale",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/jac-scale.md",
-             notes_display="jac-scale",
-             submodules=True,
-             precompile=True,
-             extra_build_cmd="jac run scripts/build_admin_ui.jac",
-             needs_nodejs=True
-         ),
-         "jac-mcp": PackageInfo(
-             dir="jac-mcp",
-             pypi="jac-mcp",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/jac-mcp.md",
-             notes_display="jac-mcp",
-             submodules=True,
-             precompile=True,
-             extra_build_cmd="jac run scripts/bundle_docs.jac"
          )
+         # byLLM was Tier 2 (published to PyPI as `byllm`); it is now folded into
+         # jaclang (jaclang.byllm) and ships inside the binary, so it no longer
+         # releases separately -- same as the earlier scale fold-in.
      },
      # Internal version pins between released packages. Plugins consume jaclang
      # as a host dependency (provided by the binary), not a PyPI pin, and no
      # longer depend on each other now that the jaseci meta-package is gone, so
      # there are no cross-package version pins to sync.
-     INTERNAL_DEPS: dict[(str, list[str])] = {
-         "jaclang": [],
-         "byllm": [],
-         "jac-scale": [],
-         "jac-mcp": []
-     },
+     INTERNAL_DEPS: dict[(str, list[str])] = {"jaclang": []},
      DEPENDENTS: dict[(str, list[str])] = {};
 
 with entry {

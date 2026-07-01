@@ -43,7 +43,7 @@ curl -X POST http://localhost:8002/function/sum_list \
 1. **Test client** - `sv_client.register_test_client(module, client)` routes calls in-process for tests (`import from jaclang.runtimelib { sv_client }`; call `clear_test_clients()` between tests).
 2. **Registered URL** - `sv_client.register(module, url)` programmatically.
 3. **`JAC_SV_<UPPERCASED_MODULE>_URL` env var** - the production knob. Module name = exactly what follows `sv import from`, upper-cased (hyphens→underscores): `JAC_SV_MATH_SERVICE_URL=http://localhost:8001`.
-4. **Auto-spawn** - jac-scale starts the provider as a sibling at `jac start` time.
+4. **Auto-spawn** - the built-in scale subsystem starts the provider as a sibling at `jac start` time.
 
 Auto-spawn rules: siblings bind **127.0.0.1 only** (single-host mode - unreachable from other machines); ports **18000-18999 are reserved** for them (pick your own `--port` outside that range); the provider `.jac` must sit in the directory you ran `jac start` from; a `jac.toml` must exist in the cwd; transitive deps come up too (A→B→C). Startup is **fail-fast**: any provider that can't come up (missing file, syntax error, slow health check) crashes the consumer at startup, not at first request.
 

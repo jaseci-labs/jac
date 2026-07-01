@@ -1,9 +1,3 @@
-"""Hot Module Replacement handler for jac start.
-
-Coordinates file watching and module reloading for development workflow.
-Uses AST-based classification to determine client vs server declarations.
-"""
-
 import threading;
 import from enum { StrEnum }
 import from pathlib { Path }
@@ -14,7 +8,6 @@ import type from jaclang.runtimelib.watcher {
     ChangeType
 }
 
-"""Dev-server build health, served over HTTP via get_build_status()."""
 enum BuildStatus(StrEnum) {
     OK = "ok",
     COMPILING = "compiling",
@@ -22,11 +15,10 @@ enum BuildStatus(StrEnum) {
     UNAVAILABLE = "unavailable"
 }
 
-"""Handles hot reloading of Jac modules."""
 obj HotReloader {
     has base_path: str,
         module_name: str,
-        watcher: any,  # JacFileWatcher - using Any to avoid circular import
+        watcher: any,
         _client_output_dir: str = ".jac/client/compiled",
         _running: bool = False,
         _overlay_entry: bool = False,
@@ -34,17 +26,12 @@ obj HotReloader {
         _build_error_file: str = "",
         _build_error: str = "";
 
-    # The running reloader (so servers can serve build status without wiring)
     static has _active: any = None,
         _build_lock: any = threading.Lock();
 
     def start -> None;
     def stop -> None;
-    def on_file_change(
-        event: any
-    ) -> None;  # FileChangeEvent - using Any to avoid circular import
-
-
+    def on_file_change(event: any) -> None;
     def build_status -> dict;
     def record_ok -> None;
     def record_error(file_path: str, message: str) -> None;
@@ -63,6 +50,4 @@ obj HotReloader {
     def _update_entry_point -> None;
 }
 
-"""Active reloader's build health: ok | compiling | error (with file and
-message) | unavailable (no reloader running, i.e. non-dev mode)."""
 def get_build_status -> dict;

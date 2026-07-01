@@ -42,7 +42,7 @@ def:pub Button(props: any) -> JsxElement {
     asChild = props["asChild"] or False;
 
     restProps = {};
-    for key in Object.keys(props) {  # jac:ignore[W6001]
+    for key in Object.keys(props) {
         if key not in _buttonExcludeKeys {
             restProps[key] = props[key];
         }

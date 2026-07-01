@@ -1,8 +1,10 @@
 name: K8s Microservice Real E2E
 
-# Real-app e2e: builds the fixture image, deploys via the microservice
-# K8s pipeline against microk8s, verifies pods + gateway routing,
-# rolling-restart + hammer-for-non-2xx.
+# Real-app e2e (no-Docker): deploys the fixture with `jac start --scale
+# --experimental` semantics - a host-built self-contained jac binary +
+# precompiled plugin source ship over a PVC (no image build), jac is installed
+# at pod startup. Verifies pods + gateway routing, rolling-restart +
+# hammer-for-non-2xx.
 
 on:
   workflow_dispatch:
@@ -13,7 +15,6 @@ on:
     # it won't leave a PR waiting on a check that never reports.
     paths:
       - 'jac/**'
-      - 'jac-scale/**'
       - '.github/workflows/k8s-microservice-real-e2e.yml'
 
 # Cancel superseded PR runs; never cancel a run for a commit on main.
@@ -28,7 +29,10 @@ jobs:
     # (matches the test-scale-k8s gate in test-jaseci.yml).
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 25
+    # No-Docker path: a cold run also builds the shipped `.ship-out` binary
+    # (payload precompile) + precompiles the plugin JIRs. Both are cached
+    # (below), so warm runs are fast; the higher ceiling covers a cold build.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -39,12 +43,30 @@ jobs:
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
-      - name: Install jac-scale[deploy] (global so the e2e app can import it)
-        run: jac install -e jac-scale --extras deploy --global
+      - name: Install scale deploy deps (global; scale ships with jaclang)
+        # Scale is built into jaclang (jaclang.scale); install its deploy + data
+        # + serve closure so the e2e app can import it. Pins mirror
+        # jac/jaclang/project/capabilities.jac.
+        run: |
+          jac install \
+            "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
+            "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
+            "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
+            "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
+            "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
+            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
+            --global
 
       - name: Set up microk8s
         run: |
           sudo snap install microk8s --classic --channel=1.30/stable
+          sudo microk8s status --wait-ready --timeout 180
+          # hostpath-storage provides the default StorageClass. Without it the
+          # bundle PVC (nil storageClassName -> needs a default SC) never binds
+          # and the bundle-loader pod hangs Pending. Its provisioner also binds
+          # the ReadWriteMany bundle PVC on a single node.
+          sudo microk8s enable hostpath-storage
           sudo microk8s status --wait-ready --timeout 180
           sudo usermod -aG microk8s "$USER"
           mkdir -p "$HOME/.kube"
@@ -68,17 +90,48 @@ jobs:
               --selector=name=nginx-ingress-microk8s --timeout=180s \
               || echo "WARN: ingress controller not ready; K10 path will skip"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Zig 0.16.0
+        # BinaryInjector shells out to `zig build --prefix .ship-out` to produce
+        # the self-contained binary shipped to pods. setup-jac only installs zig
+        # on a binary-cache MISS, so add it unconditionally here.
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
 
-      - name: Restore BuildKit cache (pip wheels + apt downloads)
-        # Exact-key only. Broad restore-keys (`buildkit-${os}-`) can pull
-        # stale layer cache from other PRs and BuildKit reuses the cached
-        # COPY layer even when the new source tree disagrees.
+      - name: Restore binary build deps (LLVM + pbs + bun)
+        # Same keys/paths as setup-jac so the `.ship-out` payload build reuses
+        # the already-fetched LLVM/CPython/bun trees instead of re-downloading.
         uses: actions/cache@v4
         with:
-          path: /tmp/buildkit-cache
-          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/jac.toml', 'jac-scale/jac.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
+          path: |
+            jac/.llvm-build
+            jac/.pbs-build
+            jac/.bun-build
+          key: shipout-deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+
+      - name: Cache shipped binary + zig build cache (.ship-out)
+        # The host-built binary is keyed on the content that goes into it; a hit
+        # makes `zig build --prefix .ship-out` a near-noop. Exact-key only so a
+        # source change rebuilds rather than shipping a stale binary.
+        uses: actions/cache@v4
+        with:
+          path: |
+            jac/.ship-out
+            jac/.zig-cache
+          key: shipout-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/launcher/**', 'jac/build.zig') }}
+
+      - name: Cache precompiled plugin JIRs (_precompiled)
+        # precompile_plugins() is idempotent (skips JIRs that still validate), so
+        # restoring the bundle turns the host precompile into fast key-checks.
+        # Scale and byLLM are built into jaclang now (jaclang.scale,
+        # jaclang.byllm), so their JIRs precompile as part of jac and are keyed
+        # via 'jac/jaclang/**'.
+        uses: actions/cache@v4
+        with:
+          path: |
+            jac/jaclang/byllm/_precompiled
+          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
 
       - name: Show cluster info
         run: |
@@ -90,10 +143,9 @@ jobs:
       - name: Run K8s microservice real-app e2e
         env:
           CLUSTER_TYPE: microk8s
-          BUILDX_CACHE_DIR: /tmp/buildkit-cache
         run: |
-          bash jac-scale/scripts/k8s_microservice_real_e2e.sh \
-              jac-scale/jac_scale/tests/fixtures/k8s_e2e
+          bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
+              jac/jaclang/scale/tests/fixtures/k8s_e2e
 
       - name: Dump kubectl state on failure
         if: failure()

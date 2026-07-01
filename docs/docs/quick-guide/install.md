@@ -43,21 +43,23 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ## Installing Plugins
 
-The `jac` binary is the language core. Add plugins -- AI integration, deployment, the MCP server -- with the binary's own installer once `jac` is on your PATH:
+The `jac` binary is the language core. Add plugins -- AI integration, deployment -- with the binary's own installer once `jac` is on your PATH:
 
 ```bash
 # AI/LLM integration
 jac install byllm
 
-# Production deployment & scaling
-jac install jac-scale              # core only (lightweight)
-jac install 'jac-scale[all]'       # all features
-
-# MCP server for AI-assisted Jac development
-jac install jac-mcp
+# The MCP server and the production deployment & scaling subsystem ship built
+# into the jac binary (no install): run `jac mcp`, and use `jac start` /
+# `jac start --scale`. Scale's optional deps install per-project via jac.toml.
 ```
 
+The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](agent-skills-and-mcp.md)).
+
 `jac install` resolves plugins from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See the [CLI reference](../reference/cli/index.md#jac-install) for all options.
+
+!!! note "Deployment & scaling is built in"
+    Production serving and Kubernetes deployment (`jac start`, `jac start --scale`) ship inside the `jac` binary as the built-in `scale` subsystem -- there is no separate `jac-scale` package to install. Scale's optional heavier dependencies (MongoDB, Redis, Kubernetes, Prometheus, ...) are pulled into your project on demand: declare the matching `[scale.*]` config in `jac.toml`, then run `jac install` to resolve them into `.jac/venv`.
 
 ---
 
@@ -151,7 +153,7 @@ You should see `Hello from Jac!` printed to the console.
 The full-stack client framework ships with `jaclang` core, so you can scaffold a complete full-stack project in one command:
 
 ```bash
-jac create example --use fullstack
+jac create example --use web-app
 cd example
 jac install
 jac start
@@ -205,7 +207,7 @@ To upgrade a plugin, reinstall it:
 
 ```bash
 jac install --force-reinstall byllm
-jac install --force-reinstall jac-scale
+jac install --force-reinstall jac-mcp
 ```
 
 ---
@@ -215,17 +217,17 @@ jac install --force-reinstall jac-scale
 Use `jac create` to scaffold a new project:
 
 ```bash
-# Full-stack web app (frontend + backend)
-jac create my-app --use client
+# Client-only web app (no backend, runs in the browser)
+jac create my-app --use web-static
 
 # Start the development server
 cd my-app
 jac start
 ```
 
-The `--use client` template sets up a complete project with:
+The `--use web-static` template sets up a complete project with:
 
-- `main.jac` -- Entry point with server and client code
+- `main.jac` -- Entry point with client code
 - `jac.toml` -- Project configuration
 - `styles.css` -- Default stylesheet
 - Bundled frontend dependencies (via Bun)
@@ -234,8 +236,8 @@ Available templates:
 
 | Template | Command | What It Creates |
 |----------|---------|-----------------|
-| Client | `--use client` | Full-stack web app with frontend and backend |
-| Fullstack | `--use fullstack` | Alias for `--use client` |
+| Web app | `--use web-app` | Full-stack web app with frontend and backend |
+| Web static | `--use web-static` | Client-only app that runs in the browser (no backend) |
 
 You can also use community templates (Jacpacks):
 

@@ -16,7 +16,7 @@ build trivial: the launcher links only libc, with **zero Python at build time**.
 | File | Role |
 |---|---|
 | `launcher.zig` | Process entry. Materializes the payload, `dlopen`s the bundled libpython, `dlsym`s ~6 `Py_*` functions, runs the jaclang boot dance. No `@cImport`, no Python headers. |
-| `runtime.zig` | Pure-Zig payload materialization: trailer parse, cache resolution, gzip+tar extract into `~/.cache/jac/rt/<hash16>`, stale GC. Unit-tested (`zig build test`). |
+| `runtime.zig` | Pure-Zig payload materialization: trailer parse, cache resolution, gzip+tar extract into `~/.cache/jac/rt/<hash16>-<pathhash>` (path-folded so co-located checkouts don't collide), stale GC. Unit-tested (`zig build test`). |
 | `pack.zig` | Build-time tool: `[stub][payload.tar.gz][trailer]` -> final `jac`. |
 | `payload.zig` | Build-time payload tool (pure std): `fetch-pbs` (HTTP + verify + zstd-extract a python-build-standalone tree), `fetch-typeshed` (HTTP tarball + sha256-verify the stdlib stubs), `mkpayload` (stage CPython + jaclang site, tar+gzip). Shells out only to the fetched pbs python for pip + JIR precompile. Replaces the old bash/curl/git/zstd/tar scripts. |
 | `tests/fixture.zig` | base64 tar.gz fixture for the materialize unit test. |
@@ -28,7 +28,9 @@ jac = [ launcher stub (links libc only) ][ runtime.tar.gz ][ trailer ]
 trailer = "JACBIN01" | payload_len(u64 LE) | sha256_hex(64)   (80 bytes, at EOF)
 ```
 
-Payload, materialized to `<cache>/rt/<hash16>/` on first run:
+Payload, materialized to `<cache>/rt/<hash16>-<pathhash>/` on first run (the
+`<pathhash>` folds in the binary's own path so two co-located checkouts with
+identical payloads get distinct trees):
 
 ```
 python/lib/libpython3.14.{dylib,so}   <- dlopened (RTLD_NOW|RTLD_GLOBAL)

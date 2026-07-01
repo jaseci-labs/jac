@@ -9,6 +9,12 @@ on:
     paths:
       - "scripts/install.sh"
       - ".github/workflows/test-installer.yml"
+  # Daily run against the LIVE latest release. install.sh breakage is usually
+  # caused by release/tag changes elsewhere (not edits to install.sh), so a
+  # path-filtered PR trigger alone never catches it -- the schedule exercises the
+  # real `curl ... | bash` path on a cadence and fails if it regresses.
+  schedule:
+    - cron: "17 8 * * *"
   workflow_dispatch:
 
 # Cancel superseded PR runs; never cancel a run for a commit on main.
@@ -38,49 +44,44 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # The installer downloads from the latest published release. Until a
-      # release carries the native `jac-<ver>-<platform>` binary asset (the
-      # first release after the binary clean break), skip gracefully instead of
-      # failing -- there is nothing for the installer to fetch yet.
-      - name: Check for a native binary asset on the latest release
-        id: gate
+      # The latest GitHub Release MUST carry this platform's native binary: the
+      # release pipeline guarantees it (plugin-only releases don't cut a Release,
+      # so the latest Release always has the binaries install.sh fetches). A
+      # missing asset is a release regression that breaks `curl ... | bash`, not
+      # a flaky test -- fail loudly here instead of silently skipping (the old
+      # behavior, which let real breakage pass green throughout the binary
+      # clean-break window).
+      - name: Require a native binary asset on the latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if gh release view --repo "$GITHUB_REPOSITORY" \
+          if ! gh release view --repo "$GITHUB_REPOSITORY" \
                --json assets --jq '.assets[].name' 2>/dev/null \
                | grep -q "jac-.*-${{ matrix.platform }}$"; then
-            echo "has_asset=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_asset=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No jac-*-${{ matrix.platform }} asset on the latest release yet; skipping the download test."
+            echo "::error::Latest GitHub Release has no jac-*-${{ matrix.platform }} asset; 'curl ... | bash' is broken for this platform."
+            exit 1
           fi
 
       - name: "install: download + run the binary"
-        if: steps.gate.outputs.has_asset == 'true'
         run: bash scripts/install.sh
 
       - name: "install: verify jac"
-        if: steps.gate.outputs.has_asset == 'true'
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           which jac
           jac --version
 
       - name: "install: run a test program"
-        if: steps.gate.outputs.has_asset == 'true'
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           echo 'with entry { print("hello from the jac binary"); }' > /tmp/test_install.jac
           jac /tmp/test_install.jac
 
       - name: "install: uninstall"
-        if: steps.gate.outputs.has_asset == 'true'
         run: bash scripts/install.sh --uninstall
 
       - name: "install: verify removal"
-        if: steps.gate.outputs.has_asset == 'true'
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           if command -v jac &>/dev/null; then
