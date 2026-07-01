@@ -64,4 +64,15 @@ obj MTIRGenPass(Transform[uni.Module, uni.Module]) {
     ) -> list[FunctionInfo];
 
     def _process_ability(nd: uni.Ability) -> None;
+    def _collect_routing_archetypes(ir_in: uni.Module) -> list[uni.Archetype];
+    def _archetype_from_event(ab: uni.Ability | None) -> uni.Archetype | None;
+    def _archetype_of_type_expr(
+        type_expr: uni.Expr, scope: uni.UniScopeNode
+    ) -> uni.Archetype | None;
+
+    def _traversal_candidate_archetypes(
+        expr: uni.Expr, scope: uni.UniScopeNode
+    ) -> tuple;
+
+    def _register_archetype_light(nd: uni.Archetype) -> None;
 }

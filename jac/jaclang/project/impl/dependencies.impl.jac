@@ -156,6 +156,37 @@ impl DependencyInstaller.get_extra_package_specs(groups: list[str]) -> list[str]
     return [self._make_pip_spec(name, ver) for (name, ver) in resolved.items()];
 }
 
+impl capability_specs_for_install(
+    config: JacConfig, installer: DependencyInstaller, scale: bool = False
+) -> list[str] {
+    import from jaclang.project.kinds { plan_project_run }
+    import from jaclang.project.capabilities {
+        resolve_config_closures,
+        RUNTIME,
+        DEPLOY
+    }
+    proj_root = str(config.project_root) if config.project_root else ".";
+    plan = plan_project_run(config, proj_root);
+    action = plan.action if plan else "execute";
+    closures = resolve_config_closures(config, action, scale);
+    closure = closures[DEPLOY] if scale else closures[RUNTIME];
+    return installer.get_capability_specs(closure);
+}
+
+impl DependencyInstaller.get_capability_specs(closure: CapabilityClosure) -> list[str] {
+    return [
+        self._make_pip_spec(name, ver) for (name, ver) in sorted(closure.deps.items())
+    ];
+}
+
+impl DependencyInstaller.sync_capabilities(closure: CapabilityClosure) -> bool {
+    specs = self.get_capability_specs(closure);
+    if not specs {
+        return True;
+    }
+    return self.install_package(specs);
+}
+
 impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
     if not version or version in ("*", "latest") {
         return name;

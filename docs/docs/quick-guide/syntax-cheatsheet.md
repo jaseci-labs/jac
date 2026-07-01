@@ -1221,7 +1221,7 @@ sem support_agent = "Answer customer questions about our products.";
 # Multimodal AI
 # ============================================================
 
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 def describe_image(image: Image) -> str by llm;
 

@@ -597,7 +597,7 @@ curl -X POST http://localhost:8000/walker/add_todo \
   -d '{"title": "Learn OSP"}'
 ```
 
-Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and [jac-scale Reference](../plugins/jac-scale.md) for full API documentation.
+Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
 
 ### 7 Walker Inheritance
 

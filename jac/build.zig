@@ -172,6 +172,24 @@ pub fn build(b: *std.Build) void {
             .dependOn(&fetch_bun.step);
     }
 
+    // Standalone: harvest a static-musl runtime (libc.a + libzigc.a + compiler-rt
+    // + crt) from the bundled Zig toolchain into .pbs-build/<osarch>/musl/lib, so
+    // `jac nacompile` can fully static-link Linux executables against musl with
+    // NO external toolchain at compile time (the libpython-floor vendoring model,
+    // but produced from Zig's own musl instead of a download -- via the payload
+    // tool's `build-musl`, same plumbing as fetch-pbs/fetch-bun). Idempotent;
+    // only meaningful for Linux. Editable/source checkouts and the test suite
+    // resolve it straight from .pbs-build via _musl_lib_dir.
+    if (osArchString(b.graph.host.result)) |host_osarch| {
+        if (std.mem.startsWith(u8, host_osarch, "linux-")) {
+            const vendor_musl = b.addRunArtifact(tool);
+            vendor_musl.addArgs(&.{ "build-musl", host_osarch, b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{host_osarch})), b.graph.zig_exe });
+            vendor_musl.has_side_effects = true;
+            b.step("vendor-musl", "Harvest a static-musl runtime from Zig into .pbs-build/<osarch>/musl/lib")
+                .dependOn(&vendor_musl.step);
+        }
+    }
+
     const osarch = osArchString(target.result) orelse {
         // Unsupported target for a full binary; stub + test steps still work.
         return;
@@ -271,6 +289,20 @@ pub fn build(b: *std.Build) void {
             fetch_bun.has_side_effects = true;
             mk.step.dependOn(&fetch_bun.step);
             mk.addArg(b.fmt("--bun={s}/{s}", .{ bun_dir, bun_basename }));
+        }
+
+        // Linux: harvest a static-musl runtime for the target from the bundled
+        // Zig (payload tool's `build-musl`) and bundle it so the shipped binary
+        // can fully static-link Linux executables against musl at nacompile time
+        // -- no glibc/loader dep. Mirrors the fetch-bun pattern; the payload
+        // tool's stageMusl places it under python/floor/<osarch>/musl.
+        if (link_dir == null and std.mem.startsWith(u8, osarch, "linux-")) {
+            const musl_lib = b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{osarch}));
+            const vendor_musl = b.addRunArtifact(tool);
+            vendor_musl.addArgs(&.{ "build-musl", osarch, musl_lib, b.graph.zig_exe });
+            vendor_musl.has_side_effects = true;
+            mk.step.dependOn(&vendor_musl.step);
+            mk.addArg(b.fmt("--musl={s}", .{musl_lib}));
         }
 
         // Track the payload's real inputs so it repacks when any source changes.

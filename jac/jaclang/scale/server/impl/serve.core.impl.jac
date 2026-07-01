@@ -1,0 +1,722 @@
+import socket;
+
+impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -> int {
+    current_port = start_port;
+    for _ in range(max_retries) {
+        try {
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+                s.bind(('0.0.0.0', current_port));
+            }
+            return current_port;
+        } except OSError as e {
+            if e.errno in (ERRNO_ADDR_IN_USE_LINUX, ERRNO_ADDR_IN_USE_WINDOWS)
+            or "Address already in use" in str(e) {
+                current_port += 1;
+            } else {
+                raise;
+            }
+        }
+    }
+    raise OSError(
+        f"Could not find an available port after trying {start_port}-{current_port}"
+    );
+}
+
+impl _get_network_ips -> list[str] {
+    ips: list[str] = [];
+    try {
+        hostname = socket.gethostname();
+        for addr in socket.getaddrinfo(hostname, None) {
+            ip = addr[4][0];
+
+            if not ip.startswith('127.') and ':' not in ip {
+                if ip not in ips {
+                    ips.append(ip);
+                }
+            }
+        }
+    } except Exception { }
+    return ips;
+}
+
+impl JacAPIServerCore.postinit -> None {
+    super.postinit();
+
+    if self.server is None {
+        import from jaclang.scale.jserver.jfast_api { JFastApiServer }
+        self.server = JFastApiServer();
+    }
+    self.server.set_user_manager(self.user_manager);
+    self._api_key_manager = ApiKeyManager();
+    self.server.app.add_middleware(
+        CORSMiddleware,
+        allow_origins=['*'],
+        allow_credentials=True,
+        allow_methods=['*'],
+        allow_headers=['*']
+    );
+
+    import from jaclang.project.config { JacConfig }
+    import from starlette.middleware.base { BaseHTTPMiddleware }
+    import from pathlib { Path }
+
+    start_path = Path(self.base_path) if self.base_path else None;
+    config = JacConfig.discover(start_path);
+    custom_headers: dict = {};
+    if config
+    and config.environments
+    and "response" in config.environments
+    and "headers" in config.environments["response"] {
+        custom_headers = config.environments["response"]["headers"];
+    }
+    if custom_headers {
+        class CustomHeadersMiddleware(BaseHTTPMiddleware) {
+            async def dispatch(
+                self: CustomHeadersMiddleware, request: any, call_next: any
+            ) -> any {
+                response = await call_next(request);
+                for (header_name, header_value) in custom_headers.items() {
+                    response.headers[header_name] = header_value;
+                }
+                return response;
+            }
+        }
+        self.server.app.add_middleware(CustomHeadersMiddleware);
+    }
+
+    import from jaclang.scale.observability.factory { UtilityFactory }
+    metrics_config = get_scale_config().get_monitoring_config();
+    self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
+    if self._metrics.is_enabled() {
+        metrics_collector = self._metrics;
+        metrics_endpoint = metrics_config.get('endpoint', '/metrics');
+
+        class MetricsMiddleware(BaseHTTPMiddleware) {
+            async def dispatch(
+                self: MetricsMiddleware, request: any, call_next: any
+            ) -> any {
+                if request.url.path == metrics_endpoint {
+                    return await call_next(request);
+                }
+
+                metrics_collector.request_started();
+                start_time = time.perf_counter();
+
+                try {
+                    response = await call_next(request);
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method, request.url.path, response.status_code, duration
+                    );
+                    return response;
+                } except Exception as e {
+                    duration = time.perf_counter() - start_time;
+                    metrics_collector.record_request(
+                        request.method, request.url.path, 500, duration
+                    );
+                    raise;
+                } finally {
+                    metrics_collector.request_finished();
+                }
+            }
+        }
+        self.server.app.add_middleware(MetricsMiddleware);
+
+        metrics_handler = self._create_admin_metrics_handler(
+            self._metrics.get_endpoint_handler()
+        );
+        self.server.add_endpoint(
+            JEndPoint(
+                method=HTTPMethod.GET,
+                path=metrics_endpoint,
+                callback=metrics_handler,
+                parameters=[],
+                response_model=None,
+                tags=['Monitoring'],
+                summary='Prometheus metrics (Admin only)',
+                description='Exposes application metrics in Prometheus format for scraping. Requires admin authentication.'
+            )
+        );
+        logger.info(f"Prometheus metrics enabled at {metrics_endpoint} (admin-only)");
+    }
+}
+
+impl JacAPIServerCore._setup_events -> None {
+    import from jaclang.scale.events.publisher { set_broker }
+    import from jaclang.scale.events.subscriber { get_subscriptions }
+    import from jaclang.scale._optdeps.optional_deps { is_optional_available }
+    import atexit;
+
+    cfg = get_scale_config().get_events_config();
+    if not cfg.get('enabled', False) {
+        return;
+    }
+
+    db_cfg = get_scale_config().get_database_config();
+    url = cfg.get('url') or db_cfg.get('redis_url');
+
+    if url and is_optional_available('redis') {
+        import from jaclang.scale.events.streams.redis { RedisEventStream }
+        broker_cfg = dict(cfg);
+        broker_cfg['url'] = url;
+        self._broker = RedisEventStream(config=broker_cfg);
+        broker_kind = "redis";
+    } else {
+        import from jaclang.scale.events.streams.local { LocalEventStream }
+        self._broker = LocalEventStream(config=cfg);
+        broker_kind = "local";
+        if url is None {
+            logger.warning(
+                "events enabled with no redis url; using LocalEventStream "
+                "(in-memory, single-pod). Set events.url or database.redis_url "
+                "for cross-pod streaming via Redis."
+            );
+        } else {
+            logger.warning(
+                "events enabled and url set, but `redis` extra is not installed; "
+                "using LocalEventStream. Enable the 'data.redis' capability to use Redis."
+            );
+        }
+    }
+
+    set_broker(self._broker);
+    self._broker.start();
+
+    subs = get_subscriptions();
+    for entry in subs {
+        try {
+            self._broker.register_handler(
+                entry.topic,
+                entry.handler,
+                group=entry.group,
+                retry=entry.retry,
+                start_from=entry.start_from
+            );
+        } except Exception as e {
+            logger.error(f"Failed to register handler for '{entry.topic}': {e}");
+        }
+    }
+
+    atexit.register(self._broker.stop);
+    logger.info(
+        f"Events broker enabled " f"(kind={broker_kind}, subscriptions={len(subs)})"
+    );
+}
+
+impl JacAPIServerCore.start(
+    dev: bool = False,
+    no_client: bool = False,
+    on_ready: Callable[..., None] | None = None
+) -> None {
+    self.introspector.load();
+    self._ensure_sv_siblings();
+
+    if not dev and not no_client {
+        client_exports = self.introspector._client_manifest.get('exports', []);
+        if client_exports {
+            import sys;
+            import from jaclang.project.config { get_config }
+            config = get_config();
+            dist_dir = config.get_client_dir() / 'dist' if config else None;
+            is_pwa = dist_dir and (dist_dir / 'manifest.json').exists();
+            if is_pwa {
+                console.print("  ✔ PWA bundle already built", style="success");
+            } else {
+                start_time = time.time();
+                try {
+                    with console.status(
+                        "Building client bundle...", spinner="dots"
+                    ) as status {
+                        self.introspector.ensure_bundle();
+                    }
+                    elapsed = time.time() - start_time;
+                    console.print(
+                        f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
+                    );
+                } except Exception as e {
+                    error_output = str(e);
+                    project_dir = config.project_root if config else Path.cwd();
+                    formatted_error = Jac.format_build_error(
+                        error_output=error_output,
+                        project_dir=project_dir,
+                        config=config
+                    );
+                    console.warning("Failed to build client bundle");
+                    console.print(file=sys.stderr);
+                    console.print(formatted_error, file=sys.stderr);
+                    console.warning(
+                        'Client pages will not be available until this is fixed.',
+                        emoji=True
+                    );
+                    console.print(file=sys.stderr);
+                    console.info(
+                        'Try again after running: jac clean --all', emoji=True
+                    );
+                    console.info(
+                        f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
+                        emoji=True
+                    );
+                }
+            }
+        }
+    }
+    server_config = get_scale_config().get_server_config();
+    if not server_config.get('docs_enabled', True) {
+        self.server.app.docs_url = None;
+        self.server.app.openapi_url = None;
+        self.server.app.redoc_url = None;
+    }
+    self._register_endpoints();
+    if dev {
+        import from starlette.requests { Request as StarletteRequest }
+        import from starlette.responses { Response as StarletteResponse }
+        _self = self;
+        @self.server.app.middleware("http")
+        async def hmr_refresh_middleware(
+            request: StarletteRequest, call_next: any
+        ) -> StarletteResponse {
+            if _self._hmr_pending {
+                _self._refresh_dev_endpoints();
+            }
+            return await call_next(request);
+        }
+    }
+    self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
+
+    _um = self.user_manager;
+    def _shared_root_id -> (str | None) {
+        return _um.get_root_id(Con.GUEST.value);
+    }
+    Jac.set_shared_root_resolver(_shared_root_id);
+    self.setup_emailer();
+    self._setup_scheduler();
+    self._setup_events();
+
+    if self.server?._prebound_listen_socket is None {
+        original_port = self.port;
+        self.port = _find_available_port(self.port);
+        if self.port != original_port {
+            console.print(
+                f"  Port {original_port} is in use, using port {self.port} instead",
+                style="warning"
+            );
+        }
+    }
+
+    self._print_startup_banner(dev, no_client);
+
+    if on_ready {
+        on_ready(self.port);
+    }
+    self.server.run_server(port=self.port);
+}
+
+impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {
+    import from importlib.metadata { version as pkg_version }
+
+    if dev and not no_client {
+        return;
+    }
+
+    try {
+        version = pkg_version('jaclang');
+        console.print(f"\n  JAC DEV SERVER v{version}\n", style="bold cyan");
+    } except Exception {
+        console.print(f"\n  JAC DEV SERVER\n", style="bold cyan");
+    }
+
+    urls: list[tuple[str, str]] = [];
+    urls.append(("Local", f"http://localhost:{self.port}/"));
+    for ip in _get_network_ips() {
+        urls.append(("Network", f"http://{ip}:{self.port}/"));
+    }
+
+    console.print_urls(urls);
+    console.print();
+    console.print("  🚀 Server ready", style="bold green");
+}
+
+impl JacAPIServerCore._configure_openapi_security -> None {
+    import from fastapi.openapi.utils { get_openapi }
+    def custom_openapi -> dict[str, any] {
+        if self.server.app.openapi_schema {
+            return self.server.app.openapi_schema;
+        }
+        openapi_schema = get_openapi(
+            title=self.server.app.title,
+            version=self.server.app.version,
+            routes=self.server.app.routes
+        );
+        openapi_schema['components'] = openapi_schema.get('components', {});
+        openapi_schema['components']['securitySchemes'] = {
+            'BearerAuth': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+                'description': "Enter your JWT token (without 'Bearer ' prefix)"
+            }
+        };
+        for (path, path_item) in openapi_schema.get('paths', {}).items() {
+            if path.startswith('/walker/') {
+                path_parts = path.split('/');
+                if (len(path_parts) >= 3) {
+                    walker_name = path_parts[2].split('{')[0].rstrip('/');
+                    if (
+                        (walker_name in self.get_walkers())
+                        and self.introspector.is_auth_required_for_walker(walker_name)
+                    ) {
+                        for method in path_item {
+                            if (method in ['get', 'post', 'put', 'patch', 'delete']) {
+                                path_item[method]['security'] = [{'BearerAuth': []}];
+                            }
+                        }
+                    }
+                }
+            } elif path.startswith('/function/') {
+                path_parts = path.split('/');
+                if (len(path_parts) >= 3) {
+                    func_name = path_parts[2];
+                    if (
+                        (func_name in self.get_functions())
+                        and self.introspector.is_auth_required_for_function(func_name)
+                    ) {
+                        for method in path_item {
+                            if (method in ['get', 'post', 'put', 'patch', 'delete']) {
+                                path_item[method]['security'] = [{'BearerAuth': []}];
+                            }
+                        }
+                    }
+                }
+            } elif path in ['/user/username', '/user/password'] {
+                for method in path_item {
+                    if (method in ['put', 'patch']) {
+                        path_item[method]['security'] = [{'BearerAuth': []}];
+                    }
+                }
+            } elif path == '/graph/data' {
+                for method in path_item {
+                    if (method in ['get', 'post', 'put', 'patch', 'delete']) {
+                        path_item[method]['security'] = [{'BearerAuth': []}, {}];
+                    }
+                }
+            }
+        }
+        self.server.app.openapi_schema = openapi_schema;
+        return openapi_schema;
+    }
+    self.server.app.openapi = custom_openapi;
+}
+
+impl JacAPIServerCore.register_health_endpoint -> None {
+    import from fastapi.responses { JSONResponse }
+    import from jaclang.scale.runtime.lifecycle.drain { is_draining }
+
+    async def health_live -> dict {
+        return {"status": "alive"};
+    }
+    async def health_ready -> JSONResponse {
+        if is_draining() {
+            return JSONResponse(
+                status_code=503, content={"status": "draining", "ready": False}
+            );
+        }
+        return JSONResponse(status_code=200, content={"status": "ready"});
+    }
+
+    async def health_legacy -> dict {
+        return {"status": "ok"};
+    }
+
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz/live',
+            callback=health_live,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Liveness check',
+            description=(
+                'Returns 200 if the server process is alive. Used by '
+                'Kubernetes livenessProbe to gate pod restarts.'
+            )
+        )
+    );
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz/ready',
+            callback=health_ready,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Readiness check',
+            description=(
+                'Returns 200 when ready to serve traffic, 503 during '
+                'graceful shutdown drain. Used by Kubernetes readinessProbe '
+                'to gate Endpoints membership.'
+            )
+        )
+    );
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz',
+            callback=health_legacy,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Liveness check (legacy)',
+            description='Back-compat alias; returns 200 if the server is running.'
+        )
+    );
+}
+
+impl JacAPIServerCore.register_build_status_endpoint -> None {
+    async def build_status -> dict {
+        import from jaclang.runtimelib.hmr { get_build_status }
+        return get_build_status();
+    }
+
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/__build_status',
+            callback=build_status,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Dev build health',
+            description=(
+                'Hot-reload build status: "ok", "compiling", or "error" '
+                '(with the failing file and message); "unavailable" when '
+                'not running in dev mode.'
+            )
+        )
+    );
+}
+
+impl JacAPIServerCore._register_client_error_endpoint -> None {
+    import from fastapi { Request }
+    import from fastapi.responses { JSONResponse }
+    async def client_error_handler(request: Request) -> JSONResponse {
+        try {
+            data = await request.json();
+        } except Exception {
+            return JSONResponse(status_code=400, content={"error": "Invalid JSON"});
+        }
+        message = data.get('message', '');
+        if not message {
+            return JSONResponse(
+                status_code=400, content={"error": "Missing required field: message"}
+            );
+        }
+
+        import from jaclang.runtimelib.source_mapping {
+            _error_rate_limiter,
+            resolve_client_error_stacks,
+            format_client_error_log
+        }
+        import from jaclang.project.config { get_config }
+
+        if not _error_rate_limiter.should_log(message) {
+            return JSONResponse(
+                status_code=200, content={"ok": True, "throttled": True}
+            );
+        }
+        cfg = get_config();
+        verbose = cfg.client_errors.verbose if cfg else False;
+        (stack, component_stack) = resolve_client_error_stacks(
+            self.base_path,
+            data.get('stack', ''),
+            data.get('componentStack', ''),
+            verbose=verbose
+        );
+        log_parts = format_client_error_log(
+            message,
+            stack=stack,
+            component_stack=component_stack,
+            url=data.get('url', ''),
+            source=data.get('source', '')
+        );
+        logger.error('\n'.join(log_parts));
+        console.error(f"[Client] {message}");
+        if stack {
+            for line in stack.split('\n') {
+                console.print(f"    {line}");
+            }
+        }
+        if component_stack {
+            console.print(f"  Component stack:");
+            for line in component_stack.split('\n') {
+                console.print(f"    {line}");
+            }
+        }
+        return JSONResponse(status_code=200, content={"ok": True});
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.POST,
+            path='/cl/__error__',
+            callback=client_error_handler,
+            parameters=[],
+            response_model=None,
+            tags=['Client'],
+            summary='Report client-side error',
+            description='Receives client-side JavaScript errors for server-side logging.'
+        )
+    );
+}
+
+impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
+    self._hot_reloader = hot_reloader;
+
+    def on_change(event: any) {
+        self._hmr_pending = True;
+        logger.debug(f"Change detected: {event.path}");
+    }
+
+    hot_reloader.watcher.add_callback(on_change);
+    logger.debug("Dynamic routing enabled for jac-scale");
+}
+
+impl JacAPIServerCore._register_endpoints -> None {
+    self.register_health_endpoint();
+    self.register_build_status_endpoint();
+    self.register_auth_endpoints();
+    self.register_page_endpoint();
+    self.register_client_js_endpoint();
+    self.register_static_file_endpoint();
+    self.register_graph_endpoint();
+    self.register_admin_endpoints();
+    self.register_llm_telemetry_endpoints();
+    self.register_workloads_endpoints();
+    self.register_logs_endpoints();
+    self.register_traces_endpoints();
+    self.register_ops_endpoints();
+    self.register_deploy_health_endpoints();
+    self.register_network_endpoints();
+    self.register_podenv_endpoints();
+
+    self.register_walkers_endpoints();
+    self.register_functions_endpoints();
+    self.register_webhook_endpoints();
+    self.register_websocket_endpoints();
+
+    self.register_scheduler_endpoints();
+    self.register_root_asset_endpoint();
+    self._register_client_error_endpoint();
+    self._configure_openapi_security();
+}
+
+impl JacAPIServerCore._refresh_dev_endpoints -> None {
+    self._hmr_pending = False;
+    self.introspector.load(force_reload=True);
+
+    self.server._endpoints[:] = [];
+    self.server.app.routes.clear();
+    self.server.app.setup();
+    self._register_endpoints();
+    self.server.execute();
+    self.server.app.openapi_schema = None;
+}
+
+impl JacAPIServerCore._setup_scheduler -> None {
+    logger.info("Initializing scheduler subsystem");
+    scheduler_cfg = get_scale_config().get_scheduler_config();
+    try {
+        self.user_manager.create_internal_user(
+            '__system__',
+            scheduler_cfg.get('system_user_password', '__no_login__'),
+            role='system'
+        );
+    } except Exception { }
+    system_user = self.user_manager.get_user('__system__');
+    if system_user is None {
+        logger.error("Scheduler: __system__ user not found; using sentinel id");
+    }
+    system_user_id = system_user.get('user_id', '__system__')
+        if system_user
+        else '__system__';
+
+    jac_scheduler = JacScaleScheduler.instance();
+    jac_scheduler.setup(system_user_id=system_user_id, server=self);
+
+    jac_scheduler.register_static_tasks(
+        self.introspector._walkers or {}, self.introspector._functions or {}, self
+    );
+
+    jac_scheduler.register_dynamic_tasks_from_db();
+
+    jac_scheduler.start();
+    logger.info("Scheduler subsystem ready");
+
+    timeout_sec = int(scheduler_cfg.get('shutdown_timeout', 10));
+    async def _shutdown_scheduler {
+        import asyncio;
+        try {
+            await asyncio.wait_for(
+                asyncio.to_thread(JacScaleScheduler.instance().stop, drain=True),
+                timeout=float(timeout_sec)
+            );
+        } except asyncio.TimeoutError {
+            logger.warning(
+                f"Scheduler drain exceeded {timeout_sec}s - forcing shutdown"
+            );
+            JacScaleScheduler.instance().stop(drain=False);
+        }
+    }
+    # Starlette removed the `add_event_handler` method; append to the underlying
+    # on_shutdown list directly (present across old and new Starlette).
+    self.server.app.router.on_shutdown.append(_shutdown_scheduler);
+}
+
+impl JacAPIServerCore._create_admin_metrics_handler(
+    original_handler: Callable[..., any]
+) -> Callable[..., any] {
+    import from fastapi { Request }
+    import from fastapi.responses { Response, JSONResponse }
+    import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    import dataclasses;
+    import base64;
+
+    monitoring_config = get_scale_config().get_monitoring_config();
+    prometheus_password = monitoring_config.get('prometheus_admin_password', '');
+    admin_config = get_scale_config().get_admin_config();
+    admin_username = admin_config.get('username', 'admin');
+
+    async def admin_metrics_handler(request: Request) -> Response {
+        authorization = request.headers.get('Authorization');
+
+        authed = False;
+        if authorization {
+            if authorization.startswith('Bearer ') {
+                authed = self.validate_admin_token(authorization) is not None;
+            } elif authorization.startswith('Basic ') and prometheus_password {
+                try {
+                    decoded = base64.b64decode(authorization[6:]).decode('utf-8');
+                    parts = decoded.split(':', 1);
+                    authed = parts[0] == admin_username
+                    and parts[1] == prometheus_password;
+                } except Exception {
+                    authed = False;
+                }
+            }
+        }
+        if not authed {
+            return JSONResponse(
+                status_code=403,
+                content=dataclasses.asdict(
+                    TransportResponse.fail(
+                        code='FORBIDDEN',
+                        message='Admin access required',
+                        meta=Meta(extra={'http_status': 403})
+                    )
+                )
+            );
+        }
+        return original_handler();
+    }
+    return admin_metrics_handler;
+}

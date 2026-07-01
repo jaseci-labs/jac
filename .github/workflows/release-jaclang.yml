@@ -32,10 +32,15 @@ jobs:
         # self-contained; build.zig fetches the per-target python-build-standalone
         # and (for the native backend) the per-target LLVM release.
         include:
+          # zig_target pins each Linux binary's glibc floor (2.34) regardless of
+          # the runner's glibc, so the asset runs on glibc 2.34+ (e.g. Ubuntu
+          # 22.04). macOS omits it and builds host-native.
           - os: ubuntu-latest
             platform: linux-x86_64
+            zig_target: x86_64-linux-gnu.2.34
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
+            zig_target: aarch64-linux-gnu.2.34
           # No macos-x86_64 (Intel) leg: the native (na) backend statically links
           # a pinned LLVM release, and LLVM ships no macOS-x64 prebuilt for 20.1.8
           # (only Linux-X64/ARM64 + macOS-ARM64). Apple Silicon is covered by
@@ -74,11 +79,12 @@ jobs:
       # cached here, matching this workflow's fresh-each-release policy.
       - name: Fetch LLVM for the jacllvm shim
         working-directory: jac
-        run: zig build fetch-llvm --summary all
+        # zig_target -> -Dtarget=... on Linux legs; empty (host-native) on macOS.
+        run: zig build fetch-llvm ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
-        run: zig build --summary all
+        run: zig build ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
 
       - name: Smoke test (no system Python)
         working-directory: jac

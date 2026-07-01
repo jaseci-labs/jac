@@ -1,6 +1,7 @@
 import from collections.abc { Sequence }
 import from pathlib { Path }
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.mtp {
@@ -22,6 +23,9 @@ impl MTIRGenPass.postinit -> None {
 impl MTIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     for nd in UniPass.get_all_sub_nodes(ir_in, uni.Ability) {
         self._process_ability(nd);
+    }
+    for arch in self._collect_routing_archetypes(ir_in) {
+        self._register_archetype_light(arch);
     }
     return ir_in;
 }
@@ -442,4 +446,146 @@ impl MTIRGenPass._process_ability(nd: uni.Ability) -> None {
     }
     scope = self._get_scope_str(nd);
     Jac.add_mtir_to_map(scope, func_info);
+}
+
+impl MTIRGenPass._collect_routing_archetypes(ir_in: uni.Module) -> list[uni.Archetype] {
+    scoped: dict = {};
+    widen_all = False;
+    saw_routing = False;
+    for vs in UniPass.get_all_sub_nodes(ir_in, uni.VisitStmt) {
+        tgt = vs.target;
+        if not (
+            isinstance(tgt, uni.BinaryExpr) and tgt?.op and (tgt.op.name == Tok.KW_BY)
+        ) {
+            continue;
+        }
+        saw_routing = True;
+        scope_node = vs.find_parent_of_type(uni.Ability) or ir_in;
+        walker_arch = vs.find_parent_of_type(uni.Archetype);
+        if walker_arch is not None {
+            scoped[id(walker_arch)] = walker_arch;
+        }
+        here_arch = self._archetype_from_event(vs.find_parent_of_type(uni.Ability));
+        if here_arch is not None {
+            scoped[id(here_arch)] = here_arch;
+        }
+        (cands, bare) = self._traversal_candidate_archetypes(tgt.left, scope_node);
+        for c in cands {
+            scoped[id(c)] = c;
+        }
+        if bare {
+            widen_all = True;
+        }
+    }
+    if not saw_routing {
+        return [];
+    }
+    if widen_all {
+        for arch in UniPass.get_all_sub_nodes(ir_in, uni.Archetype) {
+            if arch.arch_kind in ('node', 'edge') {
+                scoped[id(arch)] = arch;
+            }
+        }
+    }
+    return list(scoped.values());
+}
+
+impl MTIRGenPass._archetype_from_event(ab: uni.Ability | None) -> uni.Archetype | None {
+    if ab is None {
+        return None;
+    }
+    sig = ab.signature;
+    if not (isinstance(sig, uni.EventSignature) and sig?.arch_tag_info) {
+        return None;
+    }
+    return self._archetype_of_type_expr(sig.arch_tag_info, ab);
+}
+
+impl MTIRGenPass._archetype_of_type_expr(
+    type_expr: uni.Expr, scope: uni.UniScopeNode
+) -> uni.Archetype | None {
+    sym = self._extract_type_symbol(type_expr, scope);
+    if sym
+    and sym?.decl
+    and sym.decl?.name_of
+    and isinstance(sym.decl.name_of, uni.Archetype) {
+        return sym.decl.name_of;
+    }
+    return None;
+}
+
+impl MTIRGenPass._traversal_candidate_archetypes(
+    expr: uni.Expr, scope: uni.UniScopeNode
+) -> tuple {
+    cands: list[uni.Archetype] = [];
+    bare = False;
+    if not isinstance(expr, uni.EdgeRefTrailer) {
+        return ([], True);
+    }
+    for item in expr.chain {
+        if isinstance(item, uni.FilterCompr) {
+            if item?.f_type {
+                node_arch = self._archetype_of_type_expr(item.f_type, scope);
+                if node_arch is not None {
+                    cands.append(node_arch);
+                } else {
+                    bare = True;
+                }
+            }
+        } elif isinstance(item, uni.EdgeOpRef) {
+            fc = item.filter_cond;
+            if fc and fc?.f_type {
+                edge_arch = self._archetype_of_type_expr(fc.f_type, scope);
+                if edge_arch is not None {
+                    cands.append(edge_arch);
+                    found_ep = False;
+                    for ep in [edge_arch.src_endpoint, edge_arch.tgt_endpoint] {
+                        if ep is not None {
+                            ep_arch = self._archetype_of_type_expr(ep, scope);
+                            if ep_arch is not None {
+                                cands.append(ep_arch);
+                                found_ep = True;
+                            }
+                        }
+                    }
+                    if not found_ep {
+                        bare = True;
+                    }
+                } else {
+                    bare = True;
+                }
+            } else {
+                bare = True;
+            }
+        }
+    }
+    return (cands, bare);
+}
+
+impl MTIRGenPass._register_archetype_light(nd: uni.Archetype) -> None {
+    class_sym = nd.name?.sym;
+    if not class_sym {
+        return;
+    }
+
+    fields: list[FieldInfo] = [];
+    for var in nd.get_has_vars() {
+        fsem = var.sym.semstr if (var?.sym and var.sym) else None;
+        fields.append(
+            FieldInfo(name=var.name.value, semstr=fsem or None, type_info=None)
+        );
+    }
+    methods: list[MethodInfo] = [];
+    for method in nd.get_methods() {
+        msem = method.sym.semstr if (method?.sym and method.sym) else None;
+        methods.append(MethodInfo(name=method.py_resolve_name(), semstr=msem or None));
+    }
+    class_info = ClassInfo(
+        name=nd.name.value,
+        semstr=class_sym.semstr or (nd.doc.lit_value if nd?.doc else None),
+        fields=fields,
+        base_classes=[],
+        methods=methods
+    );
+    Jac.add_mtir_to_map(self._get_scope_str(nd), class_info);
 }

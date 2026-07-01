@@ -72,7 +72,7 @@ def find_jac_files(package_dir: str) -> list[str] {
     return result;
 }
 
-def compile_and_extract(jac_path: str) -> bytes | None {
+def precompile_unit(jac_path: str, pkg_root: str) -> bytes | None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.program { JacProgram }
 
@@ -80,10 +80,17 @@ def compile_and_extract(jac_path: str) -> bytes | None {
 
     program = JacProgram();
     code = compiler.get_bytecode(full_target=jac_path, target_program=program);
+    compiler.internal_program.release_compile_closure();
+    program.release_compile_closure();
     if code is None {
         return None;
     }
-    return marshal.dumps(code);
+    patched = patch_co_filenames_bytes(
+        marshal.dumps(code), pkg_root, PRECOMPILE_SENTINEL
+    );
+    return write_precompiled_jir(
+        patched, compute_module_key(jac_path), FLAG_PRECOMPILED
+    );
 }
 
 def main {
@@ -94,7 +101,7 @@ def main {
         );
         console.print("\nExamples:");
         console.print("  jac run utils/precompile_bytecode.jac./jac");
-        console.print("  jac run utils/precompile_bytecode.jac./jac-scale");
+        console.print("  jac run utils/precompile_bytecode.jac./jac/jaclang/scale");
         sys.exit(1);
     }
 
@@ -137,19 +144,12 @@ def main {
         sys.stderr.flush();
 
         try {
-            bytecode = compile_and_extract(jac_path);
-            if bytecode is None {
+            jir_bytes = precompile_unit(jac_path, package_dir);
+            if jir_bytes is None {
                 console.print(f"  SKIP (no bytecode): {rel}");
                 failed += 1;
                 continue;
             }
-
-            patched = patch_co_filenames_bytes(
-                bytecode, package_dir, PRECOMPILE_SENTINEL
-            );
-            jir_bytes = write_precompiled_jir(
-                patched, compute_module_key(jac_path), FLAG_PRECOMPILED
-            );
 
             jir_path.parent.mkdir(parents=True, exist_ok=True);
             jir_path.write_bytes(jir_bytes);
@@ -170,6 +170,6 @@ def main {
     console.print(f"  Python version: {pyver}");
 }
 
-with entry {
+with entry:__main__ {
     main();
 }

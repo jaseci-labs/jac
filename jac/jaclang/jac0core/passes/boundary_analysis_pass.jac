@@ -19,6 +19,7 @@ class BoundaryAnalysisPass(UniPass) {
         self: BoundaryAnalysisPass, module_name: str
     ) -> (str | None);
 
+    def _in_native_module(self: BoundaryAnalysisPass) -> bool;
     def enter_import(self: BoundaryAnalysisPass, nd: uni.Import) -> None;
     def _register_sv_import(
         self: BoundaryAnalysisPass,
