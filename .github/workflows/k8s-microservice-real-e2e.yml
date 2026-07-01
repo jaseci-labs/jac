@@ -124,13 +124,14 @@ jobs:
       - name: Cache precompiled plugin JIRs (_precompiled)
         # precompile_plugins() is idempotent (skips JIRs that still validate), so
         # restoring the bundle turns the host precompile into fast key-checks.
-        # Scale is built into jaclang now (jaclang.scale), so its JIRs precompile
-        # as part of jac and are keyed via 'jac/jaclang/**'.
+        # Scale and byLLM are built into jaclang now (jaclang.scale,
+        # jaclang.byllm), so their JIRs precompile as part of jac and are keyed
+        # via 'jac/jaclang/**'.
         uses: actions/cache@v4
         with:
           path: |
-            jac-byllm/byllm/_precompiled
-          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac-byllm/byllm/**') }}
+            jac/jaclang/byllm/_precompiled
+          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
 
       - name: Show cluster info
         run: |

@@ -1,6 +1,7 @@
 import from typing { Callable }
-import from byllm.lib { Model }
-import from byllm.parallel { mark_serialize }
+import from jaclang.jac0core.archetype { Root }
+import from jaclang.byllm.lib { Model }
+import from jaclang.byllm.parallel { mark_serialize }
 
 obj AgentConfig {
     has yolo_mode: bool = True,

@@ -122,7 +122,7 @@ Most projects do this and nothing else: set the default once, and every `by llm(
 When a single file needs a different model -- most often when composing a [`ModelPool`](#modelpool), calling a fine-tuned endpoint, or pinning a specific provider for that module -- redeclare `llm` as a module-level glob:
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob llm = Model(model_name="gpt-4o");
 
@@ -134,7 +134,7 @@ The glob shadows the project default **for this module only**. Other files keep 
 The name `llm` is just convention -- `by <name>()` accepts any module-level glob whose value is a `Model` (or `ModelPool`). Use whatever name reads best at the call site, especially when one file talks to multiple models:
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob fast_model    = Model(model_name="gpt-4o-mini");
 glob smart_model   = Model(model_name="gpt-4o");
@@ -390,7 +390,7 @@ jac model rm gemma-4-e4b         # delete cached weights for an alias
 `ModelPool` is a drop-in replacement for `Model` that wraps a LiteLLM `Router` running in-process (no subprocess, no proxy server). It handles fallback, retries, and load-distribution across a list of `Model` instances. Use `by pool()` exactly like `by llm()` - no other call-site changes needed.
 
 ```jac
-import from byllm.lib { Model, ModelPool }
+import from jaclang.byllm.lib { Model, ModelPool }
 
 glob llm = ModelPool(models=[...], strategy="fallback");
 
@@ -402,7 +402,7 @@ def answer(question: str) -> str by llm();
 When the primary model fails, `ModelPool` automatically tries the next model in the list. The `"fallback"` strategy uses ordered priority - each model is attempted in sequence, moving to the next only on failure:
 
 ```jac
-import from byllm.lib { Model, ModelPool }
+import from jaclang.byllm.lib { Model, ModelPool }
 
 glob llm = ModelPool(
     models=[
@@ -421,7 +421,7 @@ Any `by llm()` call in the file uses the pool automatically.
 For free-tier key rotation or spreading load across multiple API keys for the same model, use the `"simple-shuffle"` strategy. Each call picks a random deployment from the pool:
 
 ```jac
-import from byllm.lib { Model, ModelPool }
+import from jaclang.byllm.lib { Model, ModelPool }
 import os;
 
 glob llm = ModelPool(
@@ -614,7 +614,7 @@ def respond(msg: str) -> str by llm(
 For custom or self-hosted models, configure HTTP client in the Model constructor:
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob llm = Model(
     model_name="custom-model",
@@ -1008,7 +1008,7 @@ obj Calculator {
 Use `on_iteration` to control the loop from outside - stop buttons, token budgets, or doom-loop detection:
 
 ```jac
-import from byllm.types { IterationAction, IterationContext }
+import from jaclang.byllm.types { IterationAction, IterationContext }
 
 def my_hook(ctx: IterationContext) -> IterationAction {
     # Stop after 5 iterations
@@ -1113,7 +1113,7 @@ When parallel is active, byLLM automatically helps the LLM make smart batching d
 ### Example
 
 ```jac
-import from byllm.lib { Model, mark_serialize }
+import from jaclang.byllm.lib { Model, mark_serialize }
 
 glob llm = Model(model_name="gpt-5.2");
 
@@ -1306,7 +1306,7 @@ with entry {
 Add `logging=True` alongside `stream=True` to get `StreamEvent` objects that expose every intermediate step -- tool calls, tool results, reasoning thoughts -- in real time:
 
 ```jac
-import from byllm.lib { StreamEvent }
+import from jaclang.byllm.lib { StreamEvent }
 
 def get_weather(city: str) -> str {
     return f"Weather in {city}: Sunny, 22°C";
@@ -1377,12 +1377,12 @@ With `logging=True`, the user sees the first `tool_call` event after just one LL
 
 === "Jac"
     ```jac
-    import from byllm.lib { StreamEvent }
+    import from jaclang.byllm.lib { StreamEvent }
     ```
 
 === "Python"
     ```python
-    from byllm.lib import StreamEvent
+    from jaclang.byllm.lib import StreamEvent
     ```
 
 ### Usage Tracking
@@ -1421,7 +1421,7 @@ byLLM supports image and video inputs through the `Image` and `Video` types. The
 Import and use the `Image` type for image inputs:
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 """Describe what you see in this image."""
 def describe_image(img: Image) -> str by llm();
@@ -1451,7 +1451,7 @@ The `Image` constructor accepts multiple formats:
 #### In-Memory Usage
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 import io;
 import from PIL { Image as PILImage }
 
@@ -1476,7 +1476,7 @@ with entry {
 Image inputs combine with all return types -- primitives, enums, objects, and lists:
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 obj LineItem {
     has description: str;
@@ -1509,7 +1509,7 @@ with entry {
 The `Video` type processes videos by extracting frames at a configurable rate:
 
 ```jac
-import from byllm.lib { Video }
+import from jaclang.byllm.lib { Video }
 
 """Describe what happens in this video."""
 def explain_video(video: Video) -> str by llm();
@@ -1536,7 +1536,7 @@ Lower `fps` values extract fewer frames, reducing token usage. Higher values pro
 #### Structured Output from Videos
 
 ```jac
-import from byllm.lib { Video }
+import from jaclang.byllm.lib { Video }
 
 obj VideoAnalysis {
     has summary: str;
@@ -1554,7 +1554,7 @@ def analyze_video(video: Video) -> VideoAnalysis by llm();
 Image and video inputs work with tool calling:
 
 ```jac
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 """Search for products matching the description."""
 def search_products(query: str) -> list[str] {
@@ -1577,7 +1577,7 @@ with entry {
 Multimodal works in both Python integration modes:
 
 ```python
-from byllm.lib import Model, Image, by
+from jaclang.byllm.lib import Model, Image, by
 
 llm = Model(model_name="gpt-4o")
 
@@ -1636,7 +1636,7 @@ obj Article {
 byLLM works in Python with the `@by` decorator:
 
 ```python
-from byllm.lib import Model, by
+from jaclang.byllm.lib import Model, by
 from dataclasses import dataclass
 from enum import Enum
 
@@ -1757,7 +1757,7 @@ All exceptions are importable from `byllm.lib`.
 
 === "Jac"
     ```jac
-    import from byllm.lib {
+    import from jaclang.byllm.lib {
         ByLLMError,
         AuthenticationError,
         RateLimitError,
@@ -1771,7 +1771,7 @@ All exceptions are importable from `byllm.lib`.
 
 === "Python"
     ```python
-    from byllm.lib import (
+    from jaclang.byllm.lib import (
         ByLLMError,
         AuthenticationError,
         RateLimitError,
@@ -1786,7 +1786,7 @@ All exceptions are importable from `byllm.lib`.
 ### Catching All byLLM Errors
 
 ```jac
-import from byllm.lib { ByLLMError }
+import from jaclang.byllm.lib { ByLLMError }
 
 with entry {
     try {
@@ -1801,7 +1801,7 @@ with entry {
 ### Catching Specific Errors
 
 ```jac
-import from byllm.lib {
+import from jaclang.byllm.lib {
     AuthenticationError,
     RateLimitError,
     ModelNotFoundError,
@@ -1829,7 +1829,7 @@ with entry {
 When the LLM returns a value that cannot be converted to the function's declared return type, `OutputConversionError` is raised and the original LLM string is attached as `raw_output`:
 
 ```jac
-import from byllm.lib { OutputConversionError }
+import from jaclang.byllm.lib { OutputConversionError }
 
 obj Product {
     has name: str;
@@ -1853,7 +1853,7 @@ with entry {
 Raised when auto-compaction fires on two consecutive iterations without reducing the context size. This prevents an infinite compaction loop:
 
 ```jac
-import from byllm.lib { CompactionNotEffectiveError }
+import from jaclang.byllm.lib { CompactionNotEffectiveError }
 
 with entry {
     try {
@@ -1874,7 +1874,7 @@ with entry {
 Raised immediately (before any API call) when `by llm()` is used in a way that byLLM cannot support:
 
 ```jac
-import from byllm.lib { ConfigurationError }
+import from jaclang.byllm.lib { ConfigurationError }
 
 # This will raise ConfigurationError at call time:
 # streaming is only supported for str return types.
@@ -1888,7 +1888,7 @@ def get_product(prompt: str) -> Product by llm(stream=True);
 Use `MockLLM` for deterministic testing without API calls. Mock responses are returned sequentially from the `outputs` list:
 
 ```jac
-import from byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM }
 
 glob llm = MockLLM(
     model_name="mockllm",
@@ -1922,7 +1922,7 @@ test "summarize returns second mock" {
 Each entry in `outputs` may be a `(payload, usage_dict)` tuple to inject token-usage metadata. This lets you test threshold-based auto-compaction without a real model:
 
 ```jac
-import from byllm.lib { MockLLM, MockToolCall }
+import from jaclang.byllm.lib { MockLLM, MockToolCall }
 
 def step_a -> str { return "a"; }
 def finish_tool(final_output: str) -> str { return final_output; }
@@ -1950,7 +1950,7 @@ A plain string or a pre-built typed instance in `outputs` is returned verbatim, 
 - **`MockLLM.seen_prompts`** records the prompt (joined message contents) seen on each dispatch, so a test can assert how many attempts ran and inspect the corrective feedback between them.
 
 ```jac
-import from byllm.lib { MockLLM, MockRawResponse }
+import from jaclang.byllm.lib { MockLLM, MockRawResponse }
 
 obj Person {
     has name: str,
@@ -2048,7 +2048,7 @@ This is a **publish-only** mechanism: byLLM does not store any telemetry data. Y
 
 === "Jac"
     ```jac
-    import from byllm.telemetry { register_agent_callback }
+    import from jaclang.byllm.telemetry { register_agent_callback }
 
     glob telemetry_log: list = [];
 
@@ -2086,7 +2086,7 @@ For full observability (tokens, cost, per-call breakdowns), combine the byLLM ag
 ```jac
 import litellm;
 import from litellm.integrations.custom_logger { CustomLogger }
-import from byllm.telemetry { register_agent_callback }
+import from jaclang.byllm.telemetry { register_agent_callback }
 
 glob llm_call_records: list = [],
      agent_records: list = [];
@@ -2132,7 +2132,7 @@ with entry {
 ```jac
 import litellm;
 import from litellm.integrations.custom_logger { CustomLogger }
-import from byllm.telemetry { register_agent_callback }
+import from jaclang.byllm.telemetry { register_agent_callback }
 
 glob llm_call_records: list = [],
      agent_records: list = [];
@@ -2197,7 +2197,7 @@ byLLM can connect to a [LiteLLM proxy server](https://docs.litellm.ai/docs/simpl
 2. Connect byLLM to the proxy:
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob llm = Model(
     model_name="gpt-4o",
@@ -2207,7 +2207,7 @@ glob llm = Model(
 ```
 
 ```python
-from byllm.lib import Model
+from jaclang.byllm.lib import Model
 
 llm = Model(
     model_name="gpt-4o",
@@ -2251,7 +2251,7 @@ For self-hosted models or custom APIs not supported by LiteLLM, create a custom 
 
 === "Python"
     ```python
-    from byllm.llm import BaseLLM
+    from jaclang.byllm.llm import BaseLLM
     from openai import OpenAI
 
     class MyCustomModel(BaseLLM):
@@ -2274,7 +2274,7 @@ For self-hosted models or custom APIs not supported by LiteLLM, create a custom 
 
 === "Jac"
     ```jac
-    import from byllm.llm { BaseLLM }
+    import from jaclang.byllm.llm { BaseLLM }
     import from openai { OpenAI }
 
     obj MyCustomModel(BaseLLM) {
@@ -2328,7 +2328,7 @@ Import byLLM directly in Python using the `@by` decorator:
 
 ```python
 from dataclasses import dataclass
-from byllm.lib import Model, Image, by
+from jaclang.byllm.lib import Model, Image, by
 
 llm = Model(model_name="gpt-4o")
 
@@ -2353,7 +2353,7 @@ Implement AI features in Jac and import seamlessly into Python:
 
 === "ai.jac"
     ```jac
-    import from byllm.lib { Image }
+    import from jaclang.byllm.lib { Image }
 
     obj Person {
         has full_name: str;
@@ -2383,7 +2383,7 @@ Use the `@Jac.sem` decorator for semantic strings in Python:
 ```python
 from jaclang import JacRuntimeInterface as Jac
 from dataclasses import dataclass
-from byllm.lib import Model, by
+from jaclang.byllm.lib import Model, by
 
 llm = Model(model_name="gpt-4o")
 
@@ -2530,7 +2530,7 @@ walker explorer {
 Agents combine LLM reasoning with tool functions. The LLM decides which tools to call and in what order (ReAct loop):
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob llm = Model(model_name="gpt-4o");
 

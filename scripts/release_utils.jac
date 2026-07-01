@@ -42,21 +42,16 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              submodules=True,
              publish_pypi=False,
              is_anchor=True
-         ),
-         "jac-byllm": PackageInfo(
-             dir="jac-byllm",
-             pypi="byllm",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/byllm.md",
-             notes_display="byllm",
-             submodules=True
          )
+         # byLLM was Tier 2 (published to PyPI as `byllm`); it is now folded into
+         # jaclang (jaclang.byllm) and ships inside the binary, so it no longer
+         # releases separately -- same as the earlier scale fold-in.
      },
      # Internal version pins between released packages. Plugins consume jaclang
      # as a host dependency (provided by the binary), not a PyPI pin, and no
      # longer depend on each other now that the jaseci meta-package is gone, so
      # there are no cross-package version pins to sync.
-     INTERNAL_DEPS: dict[(str, list[str])] = {"jaclang": [], "byllm": []},
+     INTERNAL_DEPS: dict[(str, list[str])] = {"jaclang": []},
      DEPENDENTS: dict[(str, list[str])] = {};
 
 with entry {

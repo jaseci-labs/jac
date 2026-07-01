@@ -7,6 +7,20 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### jac-byllm folded into `jaclang` core
+
+`jac-byllm` is no longer a separate PyPI package or plugin. The `by llm()` feature is now built into `jaclang` core and importable as `jaclang.byllm` (was `byllm`). This is a **clean break** -- there is no backward-compatible `byllm` package or import shim.
+
+**Impact:**
+
+- There is no more `pip install byllm` / `jac install -e jac-byllm`. byLLM ships inside the `jac` binary.
+- Code that did `import from byllm...` must change to `import from jaclang.byllm...` (e.g. `import from byllm.lib { Model }` becomes `import from jaclang.byllm.lib { Model }`; `import from byllm.llm { Model }` becomes `import from jaclang.byllm.llm { Model }`).
+- byLLM's third-party dependencies (litellm, pillow, ...) are no longer installed via the `byllm` package. Instead they form the `llm` capability: declare `[plugins.byllm]` in `jac.toml` and run `jac install`; the capability registry resolves litellm + pillow into the project's `.jac/venv`. Optional runtimes are separate capabilities -- `llm.local` (llama-cpp-python, huggingface_hub), `llm.mcp` (mcp), `llm.video` (opencv). Using a real model without the `llm` capability raises an actionable "run `jac install`" error.
+
+**Unchanged from a user's perspective:** the `by llm()` syntax, `[plugins.byllm.*]` config, and the `jac model` CLI behave exactly as before -- only the packaging and import path changed.
+
+---
+
 ### jac-scale folded into `jaclang` core
 
 `jac-scale` is no longer a separate PyPI package or plugin. Its serving and deployment subsystem is now built into `jaclang` core and importable as `jaclang.scale` (was `jac_scale`). This is a **clean break** -- there is no backward-compatible `jac-scale` package or `jac_scale` import shim.

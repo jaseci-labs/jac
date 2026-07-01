@@ -1124,12 +1124,12 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
     You can also initialize the model from Jac source, which is useful when you want the choice of model to be visible in the code itself or vary by file:
 
     ```jac
-    import from byllm.lib { Model }
+    import from jaclang.byllm.lib { Model }
 
     glob llm = Model(model_name="local:gemma-4-e4b");
     ```
 
-    `import from byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
+    `import from jaclang.byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
 
 **Enums as Output Constraints**
 

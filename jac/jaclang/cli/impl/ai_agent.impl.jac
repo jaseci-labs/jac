@@ -8,8 +8,8 @@ import threading;
 import webbrowser;
 import from pathlib { Path }
 
-import from byllm.lib { Model, IterationAction }
-import from byllm.config_loader { get_byllm_config }
+import from jaclang.byllm.lib { Model, IterationAction }
+import from jaclang.byllm.config_loader { get_byllm_config }
 
 import from jaclang.compiler.code_intel { CodeIntelligence }
 import from jaclang.cli.console { console }
@@ -1190,7 +1190,7 @@ impl AgentEventBus.set_convo_tools(tools: list[Callable]) -> None {
         return;
     }
     import json;
-    import from byllm.types { Tool }
+    import from jaclang.byllm.types { Tool }
     recs: list[dict] = [];
     for fn in tools {
         name = str(getattr(fn, "__name__", "?") or "?");
