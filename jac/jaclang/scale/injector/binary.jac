@@ -14,6 +14,7 @@ import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 glob BINARY_ARCNAME: str = "bin/jac",
      OVERLAY_SUBDIR: str = "jaclang-src",
      _HTTP_TIMEOUT: int = 60,
+     _SUBPROCESS_TIMEOUT: int = 300,
      _JASECI_REPO: str = "https://github.com/jaseci-labs/jaseci",
      _SKIP_DIRS: set[str] = {"__pycache__", ".git", "node_modules", ".jac"};
 
@@ -122,7 +123,8 @@ def _clone_jac_source(repo: str, branch: str) -> tuple[Path, Path] {
                 repo,
                 str(dest)
             ],
-            check=True
+            check=True,
+            timeout=_SUBPROCESS_TIMEOUT
         );
         jacdir = dest / "jac";
         if not (jacdir / "jaclang").is_dir() {
@@ -185,7 +187,9 @@ def precompile_overlay(binary_bytes: bytes, source_root: Path, arch: str) -> boo
         tmpbin.write_bytes(binary_bytes);
         tmpbin.chmod(0o755);
         subprocess.run(
-            [str(tmpbin), "run", str(util), str(source_root / "jaclang")], check=True
+            [str(tmpbin), "run", str(util), str(source_root / "jaclang")],
+            check=True,
+            timeout=_SUBPROCESS_TIMEOUT
         );
         return True;
     } except Exception {
