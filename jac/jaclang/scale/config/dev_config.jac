@@ -34,11 +34,6 @@ obj DevDeploy {
         jaclang_source: str = "";
 
     def overlays_source -> bool {
-        # Overlay jaclang source on the downloaded binary ONLY when a custom
-        # source is requested (repo/branch or a local jaclang_source). A bare
-        # `[dev]` ships the dev prerelease binary as-is - it is already built from
-        # main HEAD, so cloning main to overlay the same code would be redundant.
-        # STABLE never overlays.
         return self.channel == CHANNEL_DEV
         and (self.repo != "" or self.jaclang_source != "");
     }
@@ -66,11 +61,6 @@ def resolve_dev_deploy(project_dir: str) -> DevDeploy {
         return DevDeploy();
     }
     raw = toml.read_bytes();
-    # Cheap guard: skip the tomllib parse unless the word `dev` appears at all.
-    # Deliberately loose (a substring, not `[dev]`) so no table spelling - bare
-    # `[dev]`, whitespace `[ dev ]`, or dotted `[dev.x]` - is ever missed; the
-    # real decision is `data.get("dev")` below, so false positives only cost a
-    # parse, never a wrong channel.
     if b"dev" not in raw {
         return DevDeploy();
     }
@@ -83,7 +73,6 @@ def resolve_dev_deploy(project_dir: str) -> DevDeploy {
     repo = str(section.get("repo", "") or "");
     branch = str(section.get("branch", "") or "");
     jaclang_source = str(section.get("jaclang_source", "") or "");
-    # A `[dev]` table with a repo but no branch defaults to main.
     if repo and not branch {
         branch = "main";
     }

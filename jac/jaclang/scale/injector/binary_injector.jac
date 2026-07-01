@@ -16,11 +16,6 @@ glob logger = logging.getLogger(__name__);
 
 
 obj BinaryInjector(PvcInjector) {
-    # Ships a prebuilt, downloaded `jac` binary into pods over the bundle PVC, on
-    # top of the app source PvcInjector already seeds. When a custom source is
-    # requested (DEV with repo/branch or a local jaclang_source) it also ships a
-    # jaclang source tree to overlay on the binary via the editable dev loop; the
-    # pod compiles it on first import (no host precompile).
     has dev: DevDeploy = DevDeploy(),
         _toolchain_object_key: str = "",
         _toolchain_bytes: bytes = b"";
@@ -79,8 +74,6 @@ def _blurb(dev: DevDeploy) -> str {
 def select_injector(
     dev: DevDeploy, storage_class: str, app_name: str, namespace: str, project_dir: str
 ) -> tuple[PvcInjector, str] {
-    # Always ships a prebuilt binary; a custom-source DEV also overlays jaclang
-    # source. Never builds jac (host or in-pod). Returns (injector, toolchain_key).
     import from jaclang.cli.console { console }
     try {
         console.print(f"Preparing the '{dev.channel}' jac runtime for pods.");

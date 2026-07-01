@@ -1,21 +1,6 @@
 #!/usr/bin/env bash
 # Real-app K8s e2e for jac-scale microservice mode (NO-DOCKER path).
 #
-# Deploys the fixture via the DEV [dev] channel: a prebuilt `jac` binary is
-# downloaded and this checkout's jaclang source is overlaid on top (the
-# editable dev loop), shipped into the cluster over a ReadWriteMany PVC (no image
-# build, no host/in-pod build), so the e2e exercises the branch under test. jac
-# is installed at pod startup, then KubernetesMicroserviceTarget rolls out the
-# gateway + per-service deployments. Verifies rollout -> gateway /health ->
-# per-service routing -> observability stack -> rolling-restart zero-downtime.
-#
-# Usage: bash k8s_microservice_real_e2e.sh <PROJECT_DIR>
-#
-# Env: CLUSTER_TYPE (minikube | microk8s; default microk8s; only affects the
-# Ingress IP probe), ROLLOUT_TIMEOUT (default 600s).
-#
-# Requires: `jac` on PATH (with jac-scale importable) and network access to the
-# jaseci-labs releases (to download the prebuilt binary). No zig / no build.
 
 set -euo pipefail
 
@@ -31,14 +16,7 @@ if [ ! -f "${PROJECT_DIR}/jac.toml" ]; then
 fi
 
 NAMESPACE="${NAMESPACE:-jac-e2e}"
-# microk8s (host containerd) or minikube; affects the Ingress IP probe and the
-# bundle PVC's storage class.
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
-# The bundle PVC is ReadWriteMany. Single-node dev clusters have no RWX class by
-# default, so pin the provisioner that binds RWX on one node: microk8s ships
-# `microk8s-hostpath` (via `enable hostpath-storage`), minikube ships
-# `standard`. Override with BUNDLE_STORAGE_CLASS for other clusters ("" lets a
-# cluster-default RWX class take over).
 case "${CLUSTER_TYPE}" in
     microk8s) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-microk8s-hostpath}" ;;
     minikube) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-standard}" ;;
@@ -52,9 +30,6 @@ DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 # levels up.
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 
-# The DEV channel overlays this checkout's jaclang source on the downloaded
-# binary, so PR-time CI exercises the branch under test rather than only a
-# published release.
 if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/plugin.jac" ]; then
     echo "FAIL: jaclang.scale source not found under ${REPO_ROOT}" >&2
     exit 1
@@ -69,10 +44,6 @@ cleanup() {
     if [ -n "${LOKI_PORT_FORWARD_PID:-}" ]; then
         kill "${LOKI_PORT_FORWARD_PID}" 2>/dev/null || true
     fi
-    # On failure, KEEP the namespace so the caller (CI's failure-dump step, or a
-    # human) can read pod + init-container state. An EXIT trap that always deletes
-    # wipes the evidence before anything can inspect it - a failed run then looks
-    # like "No resources found". Set E2E_KEEP_NS_ON_FAIL=0 to force teardown.
     if [ "${rc}" != "0" ] && [ "${E2E_KEEP_NS_ON_FAIL:-1}" = "1" ]; then
         echo "=== e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
         return
@@ -101,11 +72,6 @@ from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesC
 from jaclang.scale.config.app_config import AppConfig
 from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_DEV
 
-# Guard: the host jac MUST run this checkout's jaclang, not a bundled/downloaded
-# copy - otherwise the smoke test would validate the wrong deploy code and pass
-# green. A -Ddev binary reaches it via a baked source marker; a downloaded binary
-# reaches it via the editable dev loop ([dev] jaclang_source in the nearest
-# jac.toml). Either way jaclang.__file__ must resolve under \${REPO_ROOT}/jac.
 _want = os.path.realpath("${REPO_ROOT}/jac")
 _got = os.path.realpath(os.path.dirname(os.path.dirname(jaclang.__file__)))
 if _got != _want:
@@ -133,10 +99,6 @@ class StderrLogger:
         pass
 
 # No python_image override: the default base (python:3.12-slim) is a plain
-# runtime. The app source + a prebuilt, downloaded self-contained jac binary
-# ship over the bundle PVC; jac is installed at pod startup. No image build, no
-# registry, no host or in-pod build - the DEV channel just downloads the rolling
-# dev binary and overlays this checkout's jaclang source on top.
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
@@ -150,9 +112,6 @@ result = target.deploy(
     AppConfig(
         code_folder=".",
         app_name="jac-e2e",
-        # DEV channel: download the rolling dev binary and overlay this checkout's
-        # jaclang source on top, so the e2e exercises the branch under test. The
-        # pod compiles the overlay once on first boot (no host precompile).
         dev=DevDeploy(channel=CHANNEL_DEV, jaclang_source="${REPO_ROOT}/jac"),
     )
 )

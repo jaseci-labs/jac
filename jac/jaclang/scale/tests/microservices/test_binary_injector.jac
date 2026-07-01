@@ -37,7 +37,6 @@ def _write_toml(body: str) -> str {
 }
 
 
-# ---- channel + overlay resolution -------------------------------------------
 test "no [dev] stanza resolves to the stable channel, no overlay" {
     d = _write_toml("[project]\nname = \"app\"\n");
     dev = resolve_dev_deploy(d);
@@ -52,7 +51,6 @@ test "bare [dev] is the dev channel but ships bare (no redundant main overlay)" 
     assert dev.channel == CHANNEL_DEV;
     assert dev.repo == "";
     assert dev.jaclang_source == "";
-    # the dev binary IS main HEAD, so a bare [dev] overlays nothing.
     assert not dev.overlays_source();
 }
 
@@ -92,7 +90,6 @@ test "[dev] jaclang_source overlays the local checkout" {
 }
 
 
-# ---- bootstrap command wiring -----------------------------------------------
 test "no-overlay bootstrap installs the shipped binary; no [dev], no build" {
     cmds = build_runtime_install_commands(KubernetesConfig(), False);
     joined = " && ".join(cmds);
@@ -110,10 +107,7 @@ test "overlay bootstrap injects [dev] jaclang_source; pod compiles on boot" {
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
     assert "[dev]" in joined;
     assert overlay_pod_path() in joined;
-    # The [dev] append is guarded so multi-replica / rolling-update pods sharing
-    # the RWX jac.toml don't stack duplicate [dev] tables (tomllib rejects them).
     assert "grep -q" in joined and r"[dev\]" in joined;
-    # precompile was removed - no JAC_NO_PRECOMPILE wiring.
     assert "JAC_NO_PRECOMPILE" not in joined;
 }
 
@@ -126,7 +120,6 @@ test "runtime_container_env exposes HOME + PATH, no JAC_NO_PRECOMPILE" {
 }
 
 
-# ---- packing + arch ---------------------------------------------------------
 test "node_arch defaults to the host arch and honors JAC_NODE_ARCH" {
     saved = os.environ.pop("JAC_NODE_ARCH", None);
     try {
@@ -173,12 +166,10 @@ test "resolve_overlay_source prefers a local jaclang_source dir, no cleanup" {
     (proj / "jac" / "jaclang").mkdir(parents=True);
     (resolved, cleanup) = resolve_overlay_source("", "", "jac", str(proj));
     assert resolved == (proj / "jac").resolve();
-    # a local checkout must be kept (not a throwaway clone).
     assert cleanup is None;
 }
 
 
-# ---- injector seeding -------------------------------------------------------
 test "BinaryInjector unpacks AND seeds both the source and the toolchain bundle" {
     injector = BinaryInjector();
     injector._object_key = "bundles/orders/aaa.tar.gz";

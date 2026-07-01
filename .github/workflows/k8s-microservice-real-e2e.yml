@@ -1,10 +1,5 @@
 name: K8s Microservice Real E2E
 
-# Real-app e2e (no-Docker): deploys the fixture driven by the `[dev]` jac.toml
-# stanza - a prebuilt self-contained jac binary is downloaded from jaseci-labs
-# releases and ships over a PVC (no image build) with this checkout's jaclang
-# source overlaid; jac is installed at pod startup and compiles the overlay once.
-# Verifies pods + gateway routing, rolling-restart + hammer-for-non-2xx.
 
 on:
   workflow_dispatch:
@@ -29,11 +24,6 @@ jobs:
     # (matches the test-scale-k8s gate in test-jaseci.yml).
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: ubuntu-24.04
-    # No-Docker, no-build path: both the pod runtime AND the host deploy driver
-    # are prebuilt `jac` binaries DOWNLOADED from jaseci-labs releases. The host
-    # binary runs THIS checkout's jaclang via the editable dev loop (the deploy
-    # asserts the overlay took effect), so no host build, no in-pod build. The
-    # ceiling covers microk8s bring-up + the rolling-restart hammer.
     timeout-minutes: 45
 
     steps:
@@ -43,10 +33,6 @@ jobs:
           submodules: true
 
       - name: Download the prebuilt dev jac binary (host deploy driver)
-        # The host `jac` that drives the deploy is the SAME prebuilt binary the
-        # pods get - downloaded, not built. It runs main-HEAD's bundled jaclang;
-        # the overlay step below reroutes it to this checkout's source so the
-        # deploy exercises the PR's own scale code (the deploy asserts this).
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -60,12 +46,6 @@ jobs:
           "$HOME/.local/bin/jac" --version
 
       - name: Overlay this checkout's jaclang onto the downloaded binary
-        # Add a [dev] stanza to the fixture jac.toml - the nearest jac.toml when
-        # the deploy runs from the app dir - so the editable dev loop reroutes
-        # `import jaclang` to THIS checkout. Absolute path so it resolves
-        # regardless of cwd. The deploy's PYEOF hard-asserts the overlay activated
-        # (else it would silently validate main-HEAD and pass green). The bundle
-        # sanitizer strips this [dev] before shipping to pods.
         run: |
           printf '\n[dev]\njaclang_source = "%s/jac"\n' "$GITHUB_WORKSPACE" \
             >> jac/jaclang/scale/tests/fixtures/k8s_e2e/jac.toml
@@ -89,11 +69,6 @@ jobs:
         run: |
           sudo snap install microk8s --classic --channel=1.30/stable
           sudo microk8s status --wait-ready --timeout 180
-          # DNS (coredns) with explicit upstreams. The pod bootstrap apt-get's
-          # git/curl/unzip from deb.debian.org and curls bun.sh, so pods MUST
-          # resolve external names; relying on the host's resolv.conf upstream
-          # has failed on the runner ('Temporary failure resolving deb.debian.org'
-          # -> jac-bootstrap exit 127 -> the whole fleet never becomes ready).
           sudo microk8s enable dns:8.8.8.8,1.1.1.1
           # hostpath-storage provides the default StorageClass. Without it the
           # bundle PVC (nil storageClassName -> needs a default SC) never binds
@@ -106,25 +81,13 @@ jobs:
           sudo microk8s config | sudo tee "$HOME/.kube/config" >/dev/null
           sudo chown "$USER" "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
-          # calico-node's felix reports 503 (never Ready) on this runner because
-          # its default first-found IP autodetection picks a non-egress interface
-          # (the node comes up on 192.168.x, not the route-to-internet NIC), so
-          # pod traffic isn't routed and every pod loses DNS. Pin autodetection to
-          # the interface that can reach the internet, then restart calico.
           kubectl -n kube-system set env daemonset/calico-node IP_AUTODETECTION_METHOD=can-reach=8.8.8.8
           kubectl -n kube-system rollout restart daemonset/calico-node
-          # Wait for the CNI (calico) + coredns to be Ready BEFORE deploying. If
-          # the deploy races ahead while calico's felix is still 503, app pods get
-          # no network, can't resolve DNS, and jac-bootstrap crash-loops.
           kubectl -n kube-system rollout status daemonset/calico-node --timeout=240s || true
           kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=calico-node --timeout=240s || echo "WARN: calico-node not Ready"
           kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=kube-dns --timeout=120s || echo "WARN: coredns not Ready"
 
       - name: Verify pod DNS + egress (fail fast)
-        # A throwaway pod that must resolve AND reach deb.debian.org - exactly what
-        # every app pod's jac-bootstrap needs. If this fails, pod networking on the
-        # runner is broken (CNI/DNS/egress), NOT the deploy: surface it in ~1 min
-        # instead of letting the deploy burn its 1200s fleet-ready timeout.
         run: |
           kubectl run netcheck --image=busybox:1.36 --restart=Never --command -- \
             sh -c 'nslookup deb.debian.org && wget -q --spider http://deb.debian.org/ && echo NETCHECK_OK'
@@ -171,12 +134,6 @@ jobs:
 
       - name: Dump kubectl state on failure
         if: failure()
-        # The e2e script keeps the jac-e2e namespace on failure (see cleanup /
-        # E2E_KEEP_NS_ON_FAIL), so this can actually read pod state. Pods that
-        # never go Ready are almost always stuck in an INIT container (download
-        # binary, jac-bootstrap, jac install, first-boot compile), whose logs the
-        # main-container `kubectl logs` misses - so dump every init + main
-        # container per pod, current and previous.
         env:
           NS: jac-e2e
         run: |

@@ -3,8 +3,6 @@ import math;
 import logging;
 
 glob logger = logging.getLogger(__name__),
-     # Keys already warned about, so a repeated condition (e.g. requests missing on a
-     # polling path) logs once instead of on every call.
      _warned_once: set = set();
 
 
@@ -32,8 +30,6 @@ def query(promql: str, timeout: float = 3.0) -> list[any] | None {
     if not base {
         return None;
     }
-    # requests is not in the base serve closure; import it lazily so the serve
-    # mixins that pull this module in do not eager-import an uninstalled dep.
     try {
         import requests;
         import from requests.exceptions { RequestException }

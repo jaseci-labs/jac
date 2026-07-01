@@ -597,10 +597,6 @@ class JacScalePlugin {
             import from .server.serve { JacAPIServer }
         } except ImportError as e {
             import logging;
-            # Do not swallow silently: log which module was missing so the
-            # otherwise-cryptic fallback to the core stdlib server is diagnosable.
-            # debug (not warning) because declining when the serve closure is
-            # simply absent is the normal non-scale path.
             logging.getLogger(__name__).debug(
                 "scale API server unavailable, falling back to core server: "
                 f"missing module '{e?.name or ''}' ({e})"

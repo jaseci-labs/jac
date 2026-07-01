@@ -78,11 +78,6 @@ def prepare_inprocess_runtime(
     if "scale" not in registered_names {
         plugin_manager.register(JacCmd(), name="scale");
     }
-    # The scale runtime hooks (get_user_manager, get_api_server_class, ...) live
-    # on JacScalePlugin, not JacCmd. In a fresh test process it is not always
-    # auto-registered, so register it explicitly; otherwise the in-process scale
-    # server falls back to the core base UserManager (no sso_initiate /
-    # create_internal_user) and crashes at boot.
     if not any([type(p).__name__ == "JacScalePlugin" for (_n, p) in registered]) {
         plugin_manager.register(JacScalePlugin());
     }

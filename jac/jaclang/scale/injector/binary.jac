@@ -29,18 +29,11 @@ def host_arch -> str {
 
 
 def node_arch -> str {
-    # The pods run linux; the asset arch must match the *node*, not necessarily
-    # the deploy host. Default to the host arch (the common single-machine and
-    # homogeneous-cluster case) and let JAC_NODE_ARCH override for cross-arch
-    # deploys (e.g. an x86_64 laptop deploying to aarch64 nodes).
     return os.environ.get("JAC_NODE_ARCH", "") or host_arch();
 }
 
 
 def _http_get_bytes(url: str) -> bytes {
-    # timeout bounds inactivity (no bytes for _HTTP_TIMEOUT s), not total
-    # download time, so a slow but progressing large-binary fetch is fine while a
-    # stalled connection fails fast instead of hanging the deploy forever.
     resp = urlopen(url, timeout=_HTTP_TIMEOUT);
     try {
         return bytes(resp.read());
@@ -51,10 +44,6 @@ def _http_get_bytes(url: str) -> bytes {
 
 
 def download_release_binary(channel: str, arch: str) -> bytes {
-    # Fetch a prebuilt, self-contained `jac` binary from jaseci-labs releases:
-    #   stable -> the latest published release (jac-<ver>-linux-<arch>)
-    #   dev    -> the rolling `dev` prerelease, force-moved to main HEAD on every
-    #             push (jac-dev-linux-<arch>); see .github/workflows/release-dev.yml
     repo = "jaseci-labs/jaseci";
     api = (
         f"https://api.github.com/repos/{repo}/releases/tags/dev"
@@ -110,8 +99,6 @@ def download_release_binary(channel: str, arch: str) -> bytes {
 
 
 def _clone_jac_source(repo: str, branch: str) -> tuple[Path, Path] {
-    # Returns (jac_dir, tmp_root); tmp_root is the mkdtemp dir the caller must
-    # clean up once it is done with the source (see cleanup_overlay_source).
     dest = Path(tempfile.mkdtemp(prefix="jac-overlay-"));
     try {
         subprocess.run(
@@ -146,11 +133,6 @@ def _clone_jac_source(repo: str, branch: str) -> tuple[Path, Path] {
 def resolve_overlay_source(
     repo: str, branch: str, jaclang_source: str, project_dir: str
 ) -> tuple[Path, (Path | None)] {
-    # Resolve the jaclang source dir to overlay on the downloaded binary. Returns
-    # (source_root, cleanup_root): source_root is the dir CONTAINING `jaclang/`
-    # (the repo's `jac/` dir); cleanup_root is a temp clone to delete after use,
-    # or None when source_root is a local checkout that must be kept. Precedence:
-    #   explicit repo/branch  ->  local jaclang_source dir if it exists  ->  main
     if repo {
         return _clone_jac_source(repo, branch or "main");
     }
@@ -159,9 +141,6 @@ def resolve_overlay_source(
         if (local / "jaclang").is_dir() {
             return (local, None);
         }
-        # Set but unusable (typo, wrong relative path, or a dir with no jaclang/
-        # under it). Fall back to main rather than fail the deploy, but warn -
-        # otherwise the pod silently runs a different source than the user named.
         logger.warning(
             f"[dev] jaclang_source '{jaclang_source}' has no 'jaclang/' package "
             f"under {local}; overlaying a fresh {_JASECI_REPO}@main clone instead."
@@ -189,9 +168,6 @@ def _skip(path: Path) -> bool {
 
 
 def pack_binary_bytes(binary_bytes: bytes) -> bytes {
-    # Tar just the self-contained `jac` binary into the toolchain layout the
-    # pod's unpack init container expects. No source: the STABLE channel runs the
-    # binary's own bundled jaclang as-is.
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
@@ -204,9 +180,6 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 
 
 def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
-    # binary + the jaclang source tree so the pod reroutes `import jaclang` to it
-    # and compiles it once on first boot (no host precompile):
-    #   {TOOLCHAIN}/bin/jac  and  {TOOLCHAIN}/{OVERLAY_SUBDIR}/jaclang/...
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
@@ -227,8 +200,6 @@ def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
 
 
 def overlay_pod_path -> str {
-    # Where the shipped jaclang source lands in the pod (the dir CONTAINING
-    # `jaclang/`), i.e. the value the pod's `[dev] jaclang_source` must point at.
     return f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}";
 }
 

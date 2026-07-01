@@ -50,10 +50,6 @@ def build_runtime_install_commands(
     commands.append('export BUN_INSTALL="$HOME/.bun"');
     commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
-    # A self-contained `jac` binary was downloaded and shipped over the PVC.
-    # Install it on PATH and run - no clone, no build (host or in-pod), no plugin
-    # install: scale and the MCP server are built into the binary. The app's
-    # runtime capability closure is materialized by the app-level `jac install`.
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
     commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
     commands.append('export PATH="$HOME/.local/bin:$PATH"');
@@ -65,23 +61,12 @@ def build_runtime_install_commands(
     );
 
     if overlay_source {
-        # DEV channel: a jaclang source tree was shipped alongside the binary.
-        # Point the pod's editable dev loop at it so `import jaclang` reroutes to
-        # the overlaid source. The host [dev] stanza was stripped from the shipped
-        # jac.toml, so this is the only [dev] table in the pod.
         overlay_rel = overlay_pod_path();
-        # Idempotent: the jac.toml lives on the shared RWX bundle PVC, so every
-        # pod's init container sees the same file. Only the first pod appends the
-        # [dev] table; the rest skip it. An unconditional `>>` would stack
-        # duplicate [dev] tables under a multi-replica or rolling-update deploy,
-        # and tomllib rejects a redefined table (the pod would then fail to boot).
         commands.append(
             f"grep -q '^\\[dev\\]' {APP_MOUNT_PATH}/jac.toml || "
             f"printf '\\n[dev]\\njaclang_source = \"{overlay_rel}\"\\n' "
             f'>> {APP_MOUNT_PATH}/jac.toml'
         );
-        # The pod compiles the overlaid jaclang on first import (the dev loop's
-        # content-keyed cache); no shipped `_precompiled` jir to opt into.
     }
     return commands;
 }
