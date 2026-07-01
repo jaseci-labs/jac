@@ -1,0 +1,13 @@
+# Linker version script for the x86_64 zig-c++ shim link (#7082).
+#
+# Export ONLY the LLVMPY_* C ABI (ffi.jac ctypes-loads these); the shim's own
+# internals and every statically-linked LLVM/libc++ symbol stay local. This is
+# the zig-compatible equivalent of the system-c++ path's -Wl,--exclude-libs,ALL
+# (which zig's linker-arg allowlist rejects) and mirrors the macOS
+# -exported_symbol,_LLVMPY_* export list. See jac/build.zig linuxShim.
+{
+  global:
+    LLVMPY_*;
+  local:
+    *;
+};

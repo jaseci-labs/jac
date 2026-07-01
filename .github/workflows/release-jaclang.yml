@@ -45,12 +45,17 @@ jobs:
         # self-contained; build.zig fetches the per-target python-build-standalone
         # and (for the native backend) the per-target LLVM release.
         include:
-          # zig_target pins each Linux binary's glibc floor (2.34) regardless of
-          # the runner's glibc, so the asset runs on glibc 2.34+ (e.g. Ubuntu
-          # 22.04). macOS omits it and builds host-native.
+          # zig_target pins each Linux binary's glibc floor regardless of the
+          # runner's glibc, so the asset runs on that floor+. x86_64 is floored at
+          # 2.17 (matching CPython/PBS): the launcher + pyembed are zig pins, and the
+          # LLVMPY_* shim now links the libc++ LLVM slice with `zig c++` at the same
+          # 2.17 (build.zig linuxShim, #7082) -- previously the shim's host-g++ link
+          # forced GLIBC_2.38. aarch64 stays at 2.34 until an aarch64 libc++ slice
+          # lets its shim drop too (the shim, not the launcher, is the floor). macOS
+          # omits zig_target and builds host-native.
           - os: ubuntu-latest
             platform: linux-x86_64
-            zig_target: x86_64-linux-gnu.2.34
+            zig_target: x86_64-linux-gnu.2.17
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             zig_target: aarch64-linux-gnu.2.34
@@ -116,6 +121,34 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+
+      - name: Verify glibc floor (x86_64 = 2.17)
+        if: matrix.platform == 'linux-x86_64'
+        working-directory: jac
+        # Guards #7082: the shipped launcher and the LLVMPY_* shim must not reference
+        # a glibc symbol newer than the 2.17 floor. The shim used to need GLIBC_2.38
+        # because its host-g++ link ignored -Dtarget; it now links the libc++ LLVM
+        # slice with `zig c++` at this same 2.17. objdump -T lists each undefined
+        # symbol's GLIBC_x.y version tag; assert the maximum is <= 2.17.
+        run: |
+          set -euxo pipefail
+          # Materialize the shim as an install artifact if the build didn't place it.
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.so"
+          [ -f "$SHIM" ] || zig build jacllvm -Dtarget=${{ matrix.zig_target }} --summary all
+          [ -f "$SHIM" ] || SHIM="zig-out/lib/libjacllvm.so"
+          FLOOR="2.17"
+          check() {
+            local f="$1" hi
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            hi="$(objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1)"
+            : "${hi:=0}"
+            echo "$f -> max GLIBC_$hi (floor $FLOOR)"
+            if [ "$(printf '%s\n%s\n' "$FLOOR" "$hi" | sort -V | tail -1)" != "$FLOOR" ]; then
+              echo "::error::$f requires GLIBC_$hi (> $FLOOR)"; exit 1
+            fi
+          }
+          check zig-out/bin/jac
+          check "$SHIM"
 
       - name: Package asset (+ checksum, ad-hoc codesign on macOS)
         id: pkg

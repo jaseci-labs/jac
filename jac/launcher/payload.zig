@@ -92,11 +92,15 @@ const LlvmRelease = struct {
 fn llvmRelease() ?LlvmRelease {
     return switch (builtin.os.tag) {
         .linux => switch (builtin.cpu.arch) {
+            // libc++ slice (built -DLLVM_ENABLE_LIBCXX=ON with zig c++ @ 2.17): the
+            // LLVMPY_* shim links it with `zig c++` for a clean glibc 2.17 floor
+            // (#7082). The stock `x86_64-linux` slice is libstdc++ and forces a
+            // host-g++ link at ~2.38. Keep dirname in sync with build.zig.
             .x86_64 => .{
-                .dirname = "LLVM-22.1.8-Linux-X64",
-                .triple = "x86_64-linux",
-                .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
-                .zip_size = 970350875,
+                .dirname = "LLVM-22.1.8-Linux-X64-libcxx",
+                .triple = "x86_64-linux-libcxx",
+                .manifest_sha256 = "6c227bfc95829729a93b8af44eeae182489df5a2bb16fd5bb5fe9b36d8877d54",
+                .zip_size = 667452266,
             },
             .aarch64 => .{
                 .dirname = "LLVM-22.1.8-Linux-ARM64",
