@@ -448,6 +448,79 @@ test "fleet rollout still fails when a StatefulSet companion pod with no pod-tem
     assert raised , "a crash-looping StatefulSet pod (no pod-template-hash) must still fail the rollout wait, even while Deployment companions are on the current RS";
 }
 
+test "fleet rollout still fails when a companion Deployment pod outside the fleet is crash-looping" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = "svc-a";
+    target_config["namespace"] = "fleet-ns";
+    logger = UtilityFactory.create_logger("standard");
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes-microservice", target_config, logger
+    );
+
+    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+
+    current_hash = "new-hash";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": "svc-a"};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
+    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
+        status=SimpleNamespace(ready_replicas=0)
+    );
+
+    healthy_pod = unittest.mock.MagicMock();
+    healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
+    healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
+    healthy_pod.status.phase = "Running";
+
+    # Redis is provisioned separately from the fleet's own microservice
+    # Deployments (bundle["deployments"]), so "svc-a-redis" is never in
+    # `names` / fleet_app_names and its pod-template-hash was never resolved
+    # into current_hashes - it must still be checked for crashes.
+    redis_pod = unittest.mock.MagicMock();
+    redis_pod.metadata.labels = {
+        "app": "svc-a-redis",
+        "pod-template-hash": "redis-hash-not-in-current-hashes"
+    };
+    redis_pod.metadata.name = "svc-a-redis-789";
+    redis_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    redis_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [healthy_pod, redis_pod];
+
+    raised = False;
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.microservice.target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.microservice.target.client.AppsV1Api",
+            return_value=fake_apps_v1
+        ) {
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.microservice.target.client.CoreV1Api",
+                return_value=fake_core_v1
+            ) {
+                with unittest.mock.patch.object(time, "sleep") {
+                    try {
+                        deployment_target._wait_for_fleet_rollout(bundle, timeout=30);
+                    } except Exception as e {
+                        raised = True;
+                        assert "crash-looping" in str(e);
+                    }
+                }
+            }
+        }
+    }
+
+    assert raised , "a crash-looping companion Deployment pod (e.g. Redis) outside the fleet's own Deployments must still fail the rollout wait";
+}
+
 test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();

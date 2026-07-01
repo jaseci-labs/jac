@@ -139,14 +139,20 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def _scan_for_crash_loop(
-        core_v1: any, ns: str, current_hashes: set
+        core_v1: any, ns: str, current_hashes: set, fleet_app_names: set
     ) -> tuple[str, list[str]] {
+        # current_hashes only covers the fleet's own microservice Deployments
+        # (resolved from `names`); companions (Redis, Prometheus, Grafana, ...)
+        # and observability pods share this namespace but were never part of
+        # that resolution, so the hash filter must not apply to them - doing
+        # so would silently exempt a crash-looping companion from detection.
         crash = "";
         phases: list[str] = [];
         try {
             for p in core_v1.list_namespaced_pod(namespace=ns).items {
                 labels = p.metadata.labels or {};
-                if current_hashes {
+                app = str(labels.get("app", ""));
+                if current_hashes and app in fleet_app_names {
                     pod_hash = labels.get("pod-template-hash");
                     if pod_hash is not None and pod_hash not in current_hashes {
                         continue;
@@ -160,7 +166,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                         );
                     }
                 }
-                app = str(labels.get("app", ""));
                 if app {
                     phases.append(f"{app}={p.status.phase or '?'}");
                 }
@@ -191,6 +196,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         ready = 0;
 
         selector = "app in ({})".format(", ".join(names));
+        fleet_app_names: set = set(names);
         current_hashes: set = set();
         try {
             current_hashes = _resolve_current_rs_hashes(ns, selector);
@@ -223,7 +229,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 }
 
                 (crash, phases) = self._scan_for_crash_loop(
-                    core_v1, ns, current_hashes
+                    core_v1, ns, current_hashes, fleet_app_names
                 );
                 if crash {
                     # A hash set captured before the new RS's revision annotation
@@ -231,7 +237,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     # a freshly resolved set before actually failing the rollout,
                     # mirroring check_deployment_status's crash re-verification.
                     current_hashes = _refresh_rs_hashes(ns, selector, current_hashes);
-                    (crash, _) = self._scan_for_crash_loop(core_v1, ns, current_hashes);
+                    (crash, _) = self._scan_for_crash_loop(
+                        core_v1, ns, current_hashes, fleet_app_names
+                    );
                     if crash {
                         raise Exception(crash);
                     }
