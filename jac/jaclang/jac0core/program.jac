@@ -13,6 +13,7 @@ class JacProgram {
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
+    def release_compile_closure(self: JacProgram) -> None;
     def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
     def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
     def record_dependency(

@@ -49,7 +49,9 @@ impl _SetupProgress.is_active.getter -> bool {
 impl JacCompiler.internal_program.getter -> JacProgram {
     if (self._internal_program is None) {
         import from jaclang.jac0core.program { JacProgram }
-        self._internal_program = JacProgram();
+        prog = JacProgram();
+        prog._compiler = self;
+        self._internal_program = prog;
     }
     return self._internal_program;
 }
