@@ -6,8 +6,21 @@ name: Release jac native binary
 # longer published to PyPI -- the binary is the distribution.
 
 on:
+  # Called by publish-release.yml right after it cuts the release. This is the
+  # primary path: a release created with GITHUB_TOKEN does not emit a
+  # release.published event to other workflows (GitHub anti-recursion), so the
+  # publisher invokes the build directly instead of relying on the event.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Canonical release tag v<version> to upload assets to."
+        required: true
+        type: string
+  # Safety net: a release published by a real user (e.g. via the UI) does emit
+  # this event, so binaries still attach even outside the publish workflow.
   release:
     types: [published]
+  # Manual re-attach of binaries to an existing release.
   workflow_dispatch:
     inputs:
       tag:
@@ -49,7 +62,15 @@ jobs:
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
     steps:
+      # Check out the release tag, not the caller's default SHA. A reusable
+      # workflow (`uses:`) otherwise runs at the caller's ref, so a recovery
+      # dispatch after `main` advanced would build binaries from newer source
+      # and clobber them onto the old release -- source and assets would drift.
+      # On a release event this is the published tag; empty (artifact-only
+      # dispatch) falls through to the default ref.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
 
       - name: Install host tools (zstd)
         run: |
@@ -134,8 +155,29 @@ jobs:
         if: github.event_name == 'release' || inputs.tag != ''
         env:
           JAC_VER: ${{ steps.ver.outputs.version }}
+          ASSET: ${{ steps.pkg.outputs.asset }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euxo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+
+          # The GitHub API lists release assets with a few seconds of lag after an
+          # upload, and install.sh resolves the binary from that listing. Wait for
+          # this platform's asset to appear before verifying.
+          echo "Waiting for asset $ASSET to appear on release $TAG..."
+          deadline=$(( SECONDS + 120 ))
+          until gh release view "$TAG" --json assets \
+                  --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$ASSET did not appear on release $TAG within 120s"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Asset $ASSET is visible; verifying install path."
+
           HOME="$(mktemp -d)"; export HOME
           bash scripts/install.sh --version "$JAC_VER"
           BIN="$HOME/.local/bin/jac"
