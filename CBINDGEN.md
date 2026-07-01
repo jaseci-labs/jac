@@ -1,6 +1,6 @@
 # cbindgen - C-header to native-FFI binding generator
 
-> Status: P0-P3 shipped; P4 (global-variable externs) open.
+> Status: P0-P4 shipped.
 > Sibling tool to c2jac (see `PLAN.md` / `IMPLEMENTATION.md`). Where c2jac
 > transpiles a C *translation unit* into idiomatic Jac, cbindgen reads a C
 > *header* and emits a thin native-FFI binding so Jac can call into a prebuilt
@@ -104,8 +104,14 @@ share a name, two Jac module globals cannot).
   Fields resolve through the same `ffi_type` pipeline as function params. Struct
   pointers remain opaque `int` handles. `BindReport.structs` added. Struct
   blocks appear before function blocks in the output.
-- **P4 - global-variable externs:** OPEN. Candidate: `extern int errno;` and
-  similar file-scope variable declarations.
+- **P4 - global-variable externs:** DONE. `extern T name;` file-scope
+  declarations to `import from <lib> { glob name: ffi_type; }`. Only explicit
+  `extern` storage-class decls are emitted; plain definitions (`int x = 5;`)
+  are skipped. Arrays are skipped (no FFI array type). Type resolution uses the
+  same `ffi_type` pipeline as function params (`const char*` → `str`, scalar
+  buffer pointer → `bytes`, opaque → `int`). `--allow`/`--block` apply;
+  `BindReport.externs` counts bound vars. Extern vars appear in the output
+  after struct blocks and before function blocks.
 
 ## 6. Struct layout bindings (P3)
 

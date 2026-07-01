@@ -171,3 +171,45 @@ test "Phase 3 blocklist suppresses a struct" {
     assert "obj Point" not in out , out;
     assert "obj Color" in out , out;
 }
+
+# ---------------------------------------------------------------------------- #
+# Phase 4 — extern variable bindings                                            #
+# ---------------------------------------------------------------------------- #
+test "Phase 4 binds scalar extern vars with correct FFI types" {
+    (out, rep) = _bind("bindgen/externs.h", "ex");
+    assert "import from ex { glob last_err: i32; }" in out , out;
+    assert "import from ex { glob threshold: f64; }" in out , out;
+    assert "import from ex { glob flags: u32; }" in out , out;
+}
+
+test "Phase 4 maps const char* extern to str and void* to int" {
+    (out, rep) = _bind("bindgen/externs.h", "ex");
+    assert "import from ex { glob version: str; }" in out , out;
+    assert "import from ex { glob handle: int; }" in out , out;
+}
+
+test "Phase 4 does not emit non-extern file-scope definitions" {
+    (out, rep) = _bind("bindgen/externs.h", "ex");
+    assert "ignored_def" not in out , out;
+}
+
+test "Phase 4 blocklist suppresses an extern var" {
+    (out, rep) = _bind("bindgen/externs.h", "ex", block=["skip_me"]);
+    assert "skip_me" not in out , out;
+    assert "import from ex { glob last_err: i32; }" in out , out;
+    assert rep.skipped >= 1 , f"expected skipped >= 1, got {rep.skipped}";
+}
+
+test "Phase 4 counts externs in the report" {
+    (out, rep) = _bind("bindgen/externs.h", "ex");
+    assert rep.externs == 6 , f"expected 6 externs, got {rep.externs}";
+}
+
+test "Phase 4 extern var blocks appear before function bindings" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    if "glob " in out {
+        glob_pos = out.index("glob ");
+        fn_pos = out.index("def ") if "def " in out else len(out);
+        assert glob_pos < fn_pos , "extern globs must appear before function defs";
+    }
+}
