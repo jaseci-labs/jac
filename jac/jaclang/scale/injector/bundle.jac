@@ -6,8 +6,7 @@ import from pathlib { Path }
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      JAC_HOME: str = "/app/.jachome",
-     TOOLCHAIN_SUBDIR: str = ".jactoolchain",
-     JAC_ZIG_VERSION: str = "0.16.0";
+     TOOLCHAIN_SUBDIR: str = ".jactoolchain";
 
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
@@ -72,11 +71,22 @@ def _is_secret_path(name: str) -> bool {
 }
 
 
+def _is_dev_section(name: str) -> bool {
+    # The top-level [dev] stanza (and its sub-tables). Stripped from the shipped
+    # jac.toml because the pod's runtime channel is decided at deploy time and,
+    # for the dev channel, a pod-correct [dev] jaclang_source is injected by the
+    # bootstrap - a stale host [dev] here would point at a path that does not
+    # exist in the pod (or duplicate the injected table).
+    return name == "dev" or name.startswith("dev.");
+}
+
+
 def sanitized_jac_toml(base: Path) -> (str | None) {
-    # Strip only the secrets sub-table (in both [plugins.scale.secrets] and
-    # [scale.secrets] forms) from the bundled jac.toml; the rest of the scale
-    # config (database, storage, monitoring, tracing, kubernetes, ...) must
-    # survive so the pod's `jac install` can resolve the capability intents.
+    # Strip the secrets sub-table (in both [plugins.scale.secrets] and
+    # [scale.secrets] forms) and the host-side [dev] stanza from the bundled
+    # jac.toml; the rest of the scale config (database, storage, monitoring,
+    # tracing, kubernetes, ...) must survive so the pod's `jac install` can
+    # resolve the capability intents.
     #
     # Secrets are recognised in every form they can be written: a secret section
     # header, a top-level dotted secret key, and a dotted secret key nested under
@@ -89,15 +99,15 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
     }
     out: list[str] = [];
     pending: list[str] = [];
-    in_secret_section = False;
+    in_stripped_section = False;
     current_section = "";
     for line in src.read_text().splitlines() {
         stripped = line.lstrip();
         if stripped.startswith("[") {
             header = stripped.lstrip("[").split("]")[0].strip();
-            in_secret_section = _is_secret_path(header);
+            in_stripped_section = _is_secret_path(header) or _is_dev_section(header);
             current_section = header;
-            if in_secret_section {
+            if in_stripped_section {
                 pending = [];
                 continue;
             }
@@ -106,7 +116,7 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
             out.append(line);
             continue;
         }
-        if in_secret_section {
+        if in_stripped_section {
             continue;
         }
         if stripped == "" or stripped.startswith("#") {
