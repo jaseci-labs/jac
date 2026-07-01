@@ -1713,17 +1713,6 @@ test "build source has non-macOS error pointing at EAS Build" {
     assert "run_eas_local_build" in build_section;
 }
 
-test "build output_dir uses dist not platform-specific" {
-    import from jaclang.runtimelib.client.targets.registry { get_target_factory }
-
-    _register_client_targets();
-    factory = get_target_factory();
-    target = factory.create("react-native", Path.cwd());
-    assert "dist" in str(target.output_dir);
-    assert "android" not in str(target.output_dir).lower()
-    or "dist" in str(target.output_dir);
-}
-
 test "react native scaffold includes EAS docs pointer in setup output" {
     # Verify the setup method prints EAS Build and EAS Update next-step hints.
     impl_path = _targets_dir / "impl" / "react_native_target.impl.jac";

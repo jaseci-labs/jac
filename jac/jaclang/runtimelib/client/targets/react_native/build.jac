@@ -3,7 +3,6 @@ import subprocess;
 import os;
 import re;
 import from pathlib { Path }
-import from typing { Optional }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.build_common { artifact_mtime }
 import from jaclang.runtimelib.client.targets.react_native.common {
