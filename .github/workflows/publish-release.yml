@@ -1,9 +1,9 @@
 name: Publish Release
 
-# A release is exactly two things: tag v<version> and cut the GitHub Release.
-# jaclang ships as the native `jac` binary (not PyPI), so there is nothing else to
-# publish. Cutting the release fires release-jaclang.yml (on: release[published])
-# to build and attach the per-platform binaries.
+# A release is: tag v<version>, cut the GitHub Release, then build and attach the
+# native `jac` binaries. jaclang ships as that binary (not PyPI), so there is
+# nothing else to publish. The binary build is invoked directly (not via the
+# release.published event, which GITHUB_TOKEN cannot fire into other workflows).
 
 on:
   pull_request:
@@ -84,17 +84,22 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # -f moves the tag if it already exists; it always points at the merged
-      # release commit.
+      # Create the tag at this commit if it does not exist. If it already exists
+      # (a recovery re-run), leave it where it is: moving it would repoint a
+      # published release at a newer commit than its assets and notes describe.
       - name: Create and push tag
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
           VTAG="v${VERSION}"
-          echo "Tagging ${VTAG} at ${GITHUB_SHA}"
-          git tag --annotate --force --message="jaclang ${VERSION}" "$VTAG" "$GITHUB_SHA"
-          git push --force origin "refs/tags/${VTAG}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${VTAG}" >/dev/null 2>&1; then
+            echo "Tag ${VTAG} already exists; leaving it in place."
+          else
+            echo "Tagging ${VTAG} at ${GITHUB_SHA}"
+            git tag --annotate --message="jaclang ${VERSION}" "$VTAG" "$GITHUB_SHA"
+            git push origin "refs/tags/${VTAG}"
+          fi
 
       # Create the release, or update it in place if it already exists. Either
       # way it ends up published and marked latest.
@@ -130,8 +135,19 @@ jobs:
               --notes-file release_notes.md
           fi
 
-  summary:
+  # Build the per-platform binaries and attach them to the release just cut.
+  # Called directly rather than via release.published (GITHUB_TOKEN can't fire
+  # that event into another workflow).
+  build-binaries:
     needs: [resolve, tag-and-release]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-jaclang.yml
+    with:
+      tag: v${{ needs.resolve.outputs.version }}
+
+  summary:
+    needs: [resolve, tag-and-release, build-binaries]
     if: always() && needs.resolve.result == 'success'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
@@ -139,8 +155,8 @@ jobs:
       - name: Release summary
         env:
           SUMMARY: ${{ needs.resolve.outputs.summary }}
-          VERSION: ${{ needs.resolve.outputs.version }}
           RELEASE: ${{ needs.tag-and-release.result }}
+          BINARIES: ${{ needs.build-binaries.result }}
         run: |
           {
             echo "## Release: $SUMMARY"
@@ -148,11 +164,10 @@ jobs:
             echo "| Step | Status |"
             echo "|------|--------|"
             echo "| Tag + GitHub Release | $RELEASE |"
-            echo ""
-            echo "> The native \`jac\` binaries for \`v$VERSION\` are built and attached by the **Release jac native binary** workflow, which fires on release publish."
+            echo "| Native binaries | $BINARIES |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$RELEASE" != "success" ]; then
-            echo "::error::Tag/GitHub Release step did not succeed"
+          if [ "$RELEASE" != "success" ] || [ "$BINARIES" != "success" ]; then
+            echo "::error::Release did not complete (tag/release: $RELEASE, binaries: $BINARIES)"
             exit 1
           fi

@@ -6,8 +6,21 @@ name: Release jac native binary
 # longer published to PyPI -- the binary is the distribution.
 
 on:
+  # Called by publish-release.yml right after it cuts the release. This is the
+  # primary path: a release created with GITHUB_TOKEN does not emit a
+  # release.published event to other workflows (GitHub anti-recursion), so the
+  # publisher invokes the build directly instead of relying on the event.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Canonical release tag v<version> to upload assets to."
+        required: true
+        type: string
+  # Safety net: a release published by a real user (e.g. via the UI) does emit
+  # this event, so binaries still attach even outside the publish workflow.
   release:
     types: [published]
+  # Manual re-attach of binaries to an existing release.
   workflow_dispatch:
     inputs:
       tag:
