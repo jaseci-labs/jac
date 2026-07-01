@@ -452,7 +452,7 @@ def run_gradle_assemble(rn_dir: Path, release: bool = False) -> Path {
     if not gradlew.exists() {
         raise RuntimeError(
             f"gradlew wrapper not found at {gradlew}. Expo prebuild should "
-            "have written it — try deleting mobile-rn/android/ and "
+            f"have written it — try deleting {rn_dir}/android/ and "
             "re-running."
         );
     }

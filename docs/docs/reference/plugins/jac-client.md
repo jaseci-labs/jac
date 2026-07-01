@@ -1637,7 +1637,7 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac build --client desktop` | Build desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client react-native` | Build React Native app (Android/iOS, native views) |
-| `jac setup react-native` | One-time React Native scaffold (`mobile-rn/`) |
+| `jac setup react-native` | One-time React Native scaffold (`.jac/mobile-rn/`) |
 | `jac build --client pwa` | Build PWA with offline support |
 | `jac build --client static` | Build client-only app as a portable, self-contained page (opens from `file://`) |
 | `jac start --client static` | Serve a client-only app with a minimal static server |
@@ -1787,7 +1787,7 @@ jac setup mobile --platform ios
 # Setup both mobile platforms (macOS only)
 jac setup mobile --platform all
 
-# Setup React Native target (scaffolds mobile-rn/ with Expo/Metro)
+# Setup React Native target (scaffolds .jac/mobile-rn/ with Expo/Metro)
 jac setup react-native
 ```
 
@@ -1931,7 +1931,7 @@ A React Native app is a **mobUI** project: one source tree that compiles to both
 **Setup & Build:**
 
 ```bash
-# 1. One-time setup (scaffolds Expo/Metro project at mobile-rn/)
+# 1. One-time setup (scaffolds Expo/Metro project at .jac/mobile-rn/)
 jac setup react-native
 
 # 2. Development: Fast Refresh on device/emulator
@@ -1954,7 +1954,7 @@ jac build --client react-native --platform ios
 
 ```toml
 [plugins.client.react_native]
-project_dir = "mobile-rn"        # Expo project location
+project_dir = ".jac/mobile-rn"   # Expo project location (under the .jac build root; override to relocate)
 release = false                  # true for release variants
 # EAS Update (OTA) -- opt-in, see "EAS Update (OTA)" below
 eas_update = false               # true to publish an update after each build
@@ -1973,7 +1973,7 @@ client_kind = "mobui"
 
 **Notes:**
 
-- `jac setup react-native` scaffolds an Expo project at `mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`). Capacitor keeps `android/` + `ios/` -- both targets can coexist in one repo.
+- `jac setup react-native` scaffolds an Expo project at `.jac/mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). Capacitor keeps `android/` + `ios/` -- both targets can coexist in one repo.
 - Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit.
 - iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.
 - Release/debug variants via `[plugins.client.react_native].release = true`.
@@ -1989,7 +1989,7 @@ client_kind = "mobui"
 | `eas_update_branch` | str | `""` | Update branch name. Empty falls back to `production` for release builds, `preview` for debug. Legacy alias: `ota_update_branch`. |
 | `eas_update_message` | str | `""` | Commit message for the update. Empty passes `--auto` (EAS derives one from the git log). |
 
-**One-time setup** (run inside `mobile-rn/`):
+**One-time setup** (run inside `.jac/mobile-rn/`):
 
 ```bash
 # 1. Install expo-updates (resolves the SDK-matched version automatically).

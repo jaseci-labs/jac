@@ -497,7 +497,7 @@ A React Native app is a **mobUI** project: one source tree that compiles to both
 
 ```bash
 # prerequisites: Node.js; Android: JDK + Android SDK; iOS (macOS): Xcode
-jac setup react-native              # one-time scaffold (mobile-rn/)
+jac setup react-native              # one-time scaffold (.jac/mobile-rn/)
 
 jac start main.jac --client react-native --dev   # Fast Refresh on device/emulator
 jac build --client react-native --platform android

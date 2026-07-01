@@ -263,7 +263,7 @@ From your project root:
 jac setup react-native
 ```
 
-This scaffolds an Expo/Metro project at `mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`), adds a `[plugins.client.react_native]` section to `jac.toml`, and prints next steps.
+This scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree), adds a `[plugins.client.react_native]` section to `jac.toml`, and prints next steps.
 
 Then opt in to the mobUI project kind in `jac.toml`:
 
@@ -333,7 +333,7 @@ Android produces an APK via `gradlew assembleDebug`. iOS produces an `.ipa` via 
 
 `jac setup react-native` scaffolds a baseline `eas.json` (with `preview` and `production` profiles). To push OTA updates after each build:
 
-1. **One-time** (inside `mobile-rn/`): install the updates module and link your EAS project:
+1. **One-time** (inside `.jac/mobile-rn/`): install the updates module and link your EAS project:
 
    ```bash
    npx expo install expo-updates

@@ -1568,10 +1568,10 @@ test "resolve_rn_project_dir honors project_dir config override" {
 
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp);
-        # Default: no config → mobile-rn/
+        # Default: no config → .jac/mobile-rn/ (centralized build root)
         default_dir = resolve_rn_project_dir(project_dir);
-        assert default_dir == project_dir / "mobile-rn" , (
-            f"Expected mobile-rn, got {default_dir}"
+        assert default_dir == project_dir / ".jac" / "mobile-rn" , (
+            f"Expected .jac/mobile-rn, got {default_dir}"
         );
         # Custom relative path.
         toml_content = (
@@ -1792,7 +1792,7 @@ test "e2e: react-native android build produces APK" {
             f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         );
         # Step 2: verify the APK artifact was produced.
-        rn_project = project_dir / "mobile-rn";
+        rn_project = project_dir / ".jac" / "mobile-rn";
         apk_outputs = rn_project / "android" / "app" / "build" / "outputs" / "apk" / "debug";
         assert apk_outputs.exists() , (f"Expected Gradle output dir at {apk_outputs}");
         apks = list(apk_outputs.glob("*.apk"));

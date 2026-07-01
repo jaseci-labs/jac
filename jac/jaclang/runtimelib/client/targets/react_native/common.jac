@@ -6,9 +6,7 @@ import from jaclang.runtimelib.client.targets.node_tooling_common {
     resolve_npx_or_bunx as _node_resolve_npx_or_bunx,
     run_manifest_install as _node_run_manifest_install
 }
-import from jaclang.runtimelib.client.targets.react_native.config {
-    _load_react_native_config
-}
+import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
 glob DEFAULT_PROJECT_DIR_NAME = "mobile-rn",
      DEFAULT_APP_NAME = "main",
@@ -28,8 +26,9 @@ def run_manifest_install(project_dir: Path) {
 }
 
 def resolve_rn_project_dir(project_dir: Path) -> Path {
-    cfg = _load_react_native_config(project_dir);
-    custom = str(cfg.get("project_dir", "") or "").strip();
+    client_cfg = JacClientConfig(project_dir);
+    rn_cfg = client_cfg.get_react_native_config();
+    custom = str(rn_cfg.get("project_dir", "") or "").strip();
     if custom {
         p = Path(custom);
         if not p.is_absolute() {
@@ -37,7 +36,7 @@ def resolve_rn_project_dir(project_dir: Path) -> Path {
         }
         return p;
     }
-    return project_dir / DEFAULT_PROJECT_DIR_NAME;
+    return client_cfg.get_jac_config().get_build_dir() / DEFAULT_PROJECT_DIR_NAME;
 }
 
 def normalize_rn_platform(platform: str | None = None) -> str {
