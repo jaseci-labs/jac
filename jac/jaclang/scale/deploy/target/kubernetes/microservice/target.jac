@@ -15,7 +15,8 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
     get_cluster_provider,
-    _resolve_current_rs_hashes
+    _resolve_current_rs_hashes,
+    _refresh_rs_hashes
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -137,6 +138,39 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return DeploymentResult(success=True, message=success_msg, details=bundle);
     }
 
+    def _scan_for_crash_loop(
+        core_v1: any, ns: str, current_hashes: set
+    ) -> tuple[str, list[str]] {
+        crash = "";
+        phases: list[str] = [];
+        try {
+            for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                labels = p.metadata.labels or {};
+                if current_hashes {
+                    pod_hash = labels.get("pod-template-hash");
+                    if pod_hash is not None and pod_hash not in current_hashes {
+                        continue;
+                    }
+                }
+                for cs in (p.status.container_statuses or []) {
+                    if (cs.restart_count or 0) >= 3 {
+                        crash = (
+                            f"pod '{p.metadata.name}' crash-looping "
+                            f"({cs.restart_count} restarts)"
+                        );
+                    }
+                }
+                app = str(labels.get("app", ""));
+                if app {
+                    phases.append(f"{app}={p.status.phase or '?'}");
+                }
+            }
+        } except Exception {
+            _ = 0;
+        }
+        return (crash, phases);
+    }
+
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
         import time;
         import from kubernetes { client }
@@ -156,11 +190,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         elapsed = 0;
         ready = 0;
 
+        selector = "app in ({})".format(", ".join(names));
         current_hashes: set = set();
         try {
-            current_hashes = _resolve_current_rs_hashes(
-                ns, "app in ({})".format(", ".join(names))
-            );
+            current_hashes = _resolve_current_rs_hashes(ns, selector);
         } except Exception as exc {
             console.print(
                 f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
@@ -189,36 +222,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     return;
                 }
 
-                crash = "";
-                phases: list[str] = [];
-                try {
-                    for p in core_v1.list_namespaced_pod(namespace=ns).items {
-                        labels = p.metadata.labels or {};
-                        if current_hashes {
-                            pod_hash = labels.get("pod-template-hash");
-                            if pod_hash is not None
-                            and pod_hash not in current_hashes {
-                                continue;
-                            }
-                        }
-                        for cs in (p.status.container_statuses or []) {
-                            if (cs.restart_count or 0) >= 3 {
-                                crash = (
-                                    f"pod '{p.metadata.name}' crash-looping "
-                                    f"({cs.restart_count} restarts)"
-                                );
-                            }
-                        }
-                        app = str(labels.get("app", ""));
-                        if app {
-                            phases.append(f"{app}={p.status.phase or '?'}");
-                        }
-                    }
-                } except Exception {
-                    _ = 0;
-                }
+                (crash, phases) = self._scan_for_crash_loop(
+                    core_v1, ns, current_hashes
+                );
                 if crash {
-                    raise Exception(crash);
+                    # A hash set captured before the new RS's revision annotation
+                    # was stamped can still point at the old RS; re-verify against
+                    # a freshly resolved set before actually failing the rollout,
+                    # mirroring check_deployment_status's crash re-verification.
+                    current_hashes = _refresh_rs_hashes(ns, selector, current_hashes);
+                    (crash, _) = self._scan_for_crash_loop(core_v1, ns, current_hashes);
+                    if crash {
+                        raise Exception(crash);
+                    }
                 }
                 detail = ", ".join(phases) if phases else "scheduling pods";
                 st.update(
