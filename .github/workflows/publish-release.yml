@@ -51,11 +51,13 @@ jobs:
           echo "summary=jaclang $VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved release version: $VERSION"
 
-  # One-click approval gate before anything outward-facing happens.
+  # One-click approval gate before anything outward-facing happens. The
+  # environment exists only for its required-reviewers protection; nothing is
+  # deployed to it (and nothing is published to PyPI anywhere in this repo).
   approve:
     needs: resolve
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    environment: pypi
+    environment: release-approval
     timeout-minutes: 60
     steps:
       - name: Approval granted
