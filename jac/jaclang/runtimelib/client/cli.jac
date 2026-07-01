@@ -1,7 +1,6 @@
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, HookContext }
 import from jaclang.project.config { JacConfig }
-import from jaclang.jac0core.runtime { hookimpl }
 import from jaclang.runtimelib.client.mobile_setup_env {
     mobile_setup_platform_env_restore,
     mobile_setup_platform_env_swap
@@ -90,7 +89,6 @@ def setup(target: str, platform: str | None = None) -> int {
 }
 
 class JacClientCmd {
-    @hookimpl
     static def create_cmd {
         register_targets();
         registry = get_registry();
@@ -191,7 +189,7 @@ class JacClientCmd {
                         typ=str,
                         default="auto",
                         help=(
-                            "Mobile start/dev: android or ios (auto = use [plugins.client.mobile] "
+                            "Mobile start/dev: android or ios (auto = use [client.mobile] "
                             "default_platform or android)"
                         ),
                         choices=["auto", "android", "ios"],
@@ -464,7 +462,7 @@ def _handle_start_target(ctx: HookContext) -> None {
     dev_mode = ctx.get_arg("dev", False);
     if not dev_mode and is_debug_mode(config) {
         console.warning(
-            "Debug mode is enabled. For production, consider setting debug=false in [plugins.client] section of jac.toml"
+            "Debug mode is enabled. For production, consider setting debug=false in [client] section of jac.toml"
         );
     }
 

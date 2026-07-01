@@ -102,7 +102,7 @@ def:pub PodEnvPage -> JsxElement {
             >
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
                 <span className="text-muted">
-                    Other pods unavailable: {detail}. Showing this pod only. Enable [plugins.scale.kubernetes].ops_console for the rest.
+                    Other pods unavailable: {detail}. Showing this pod only. Enable [scale.kubernetes].ops_console for the rest.
                 </span>
             </div>
                 if (loadedOnce and not available)

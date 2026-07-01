@@ -132,7 +132,7 @@ def build_runtime_install_commands(
             f'if ! command -v jac >/dev/null 2>&1; then '
             f'echo "[jac-scale] FATAL: jac was not installed (requested '
             f'jaclang={jaclang_v}). The GitHub release lookup did not resolve. '
-            f'Pin [plugins.scale.kubernetes].plugin_versions.jaclang to a '
+            f'Pin [scale.kubernetes].plugin_versions.jaclang to a '
             f'published release, or deploy with --experimental to build jac from '
             f'source in-pod." >&2; exit 1; fi'
         );

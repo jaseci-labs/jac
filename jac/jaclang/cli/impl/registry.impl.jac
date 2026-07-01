@@ -310,3 +310,22 @@ impl get_registry -> CommandRegistry {
     }
     return _registry;
 }
+
+impl extend_builtin_commands -> None {
+    try {
+        import from jaclang.runtimelib.client.cli { JacClientCmd }
+        JacClientCmd.create_cmd();
+    } except ImportError { }
+    try {
+        import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
+        JacShadcnPlugin.create_cmd();
+    } except ImportError { }
+    try {
+        import from jaclang.scale.plugin { JacCmd as _ScaleCmd }
+        _ScaleCmd.create_cmd();
+    } except ImportError { }
+    try {
+        import from jaclang.byllm.cli { JacCmd as _ByllmCmd }
+        _ByllmCmd.create_cmd();
+    } except ImportError { }
+}

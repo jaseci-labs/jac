@@ -633,7 +633,7 @@ def _emit_main_py(
 
     if sql {
         lines += [
-            'from jaclang.jac0core.runtime import hookimpl, plugin_manager',
+            'from jaclang.jac0core.runtime import JacRuntime as _Jac',
             'from _jac_sqldb import SqlAlchemyMemory',
             '',
             '_DB_URL = os.environ.get("JAC_DB_URL") or (',
@@ -643,13 +643,9 @@ def _emit_main_py(
             ')',
             '',
             '',
-            'class _EjectSqlPlugin:',
-            '    @hookimpl',
-            '    def get_persistent_memory(self, config):',
-            '        return SqlAlchemyMemory(_DB_URL)',
-            '',
-            '',
-            'plugin_manager.register(_EjectSqlPlugin())'
+            '_Jac.set_persistent_memory_provider(',
+            '    lambda config: SqlAlchemyMemory(_DB_URL)',
+            ')'
         ];
     }
 

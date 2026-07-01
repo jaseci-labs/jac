@@ -70,7 +70,7 @@ nav:
       - Developer Workflow:
           - CLI Commands: "reference/cli/index.md"
           - MCP Server: "reference/mcp.md"
-          - Plugin Authoring: "reference/plugin-authoring.md"
+          - Plugins (Removed): "reference/plugin-authoring.md"
           - Configuration: "reference/config/index.md"
           - Publishing Packages: "reference/publishing.md"
           - Persistence & Schema Migration: "reference/persistence.md"

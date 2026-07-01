@@ -113,7 +113,7 @@ def:pub DeployPage -> JsxElement {
             >
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
                 <span className="text-muted">
-                    Cluster view unavailable: {detail}. Set [plugins.scale.kubernetes].ops_console = true and redeploy so the read-only Role is bound to the gateway ServiceAccount.
+                    Cluster view unavailable: {detail}. Set [scale.kubernetes].ops_console = true and redeploy so the read-only Role is bound to the gateway ServiceAccount.
                 </span>
             </div>
                 if (loadedOnce and not available)

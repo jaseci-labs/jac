@@ -71,21 +71,17 @@ impl get_dependency_registry -> DependencyRegistry {
 }
 
 impl initialize_dependency_registry -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_dependency_registry();
 
-    results = JacRuntime.register_dependency_type();
-    if results is None {
+    # Formerly the register_dependency_type plugin hook; only the built-in
+    # client framework contributes a dependency type (npm).
+    try {
+        import from jaclang.runtimelib.client.plugin_config { JacClientPluginConfig }
+    } except Exception {
         return;
     }
-
-    if isinstance(results, dict) {
-        registry.register(results);
-    } elif isinstance(results, list) {
-        for result in results {
-            if result and isinstance(result, dict) {
-                registry.register(result);
-            }
-        }
+    result = JacClientPluginConfig.register_dependency_type();
+    if result and isinstance(result, dict) {
+        registry.register(result);
     }
 }

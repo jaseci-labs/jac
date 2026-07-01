@@ -68,12 +68,13 @@ test "mobile_dev_host helper module exists" {
     assert "8.8.8.8" in d;
 }
 
-test "JacClientCmd create_cmd has hookimpl on create_cmd" {
-    # Regression: @hookimpl must decorate static def create_cmd (not a docstring).
-    # Otherwise pluggy never registers the hook, extend_command never runs, and
-    # jac setup / jac build / jac start client integration silently no-op.
+test "JacClientCmd defines create_cmd" {
+    # Regression: create_cmd must be a real static def (not swallowed by a
+    # docstring). extend_builtin_commands() calls it directly to register the
+    # client CLI flags; if it were missing, jac setup / jac build / jac start
+    # client integration would silently no-op.
     cli = (_client_dir / "cli.jac").read_text().replace("\r\n", "\n");
-    assert "@hookimpl\n    static def create_cmd" in cli;
+    assert "static def create_cmd" in cli;
 }
 
 test "cli exposes mobile dev flags and cap live-reload" {

@@ -72,11 +72,6 @@ def _has_client(config: JacConfig) -> bool {
         return True;
     }
 
-    for ident in config.plugins_config.enabled {
-        if ident == "jac-client" or ident.startswith("jac-client:") {
-            return True;
-        }
-    }
     return False;
 }
 

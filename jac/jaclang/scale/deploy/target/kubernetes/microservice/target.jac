@@ -308,7 +308,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception as e {
             if self.logger {
                 self.logger.warn(
-                    f"Could not read [plugins.scale.microservices.logs] - "
+                    f"Could not read [scale.microservices.logs] - "
                     f"observability stack will not be deployed: {e}"
                 );
             }
@@ -323,7 +323,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception as e {
             if self.logger {
                 self.logger.warn(
-                    f"Could not read [plugins.scale.microservices.tracing] - "
+                    f"Could not read [scale.microservices.tracing] - "
                     f"tracing stack will not be deployed: {e}"
                 );
             }
@@ -433,7 +433,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
             if self.logger {
                 self.logger.info(
-                    f"Applied Secret for user-defined [plugins.scale.secrets] "
+                    f"Applied Secret for user-defined [scale.secrets] "
                     f"({len(user_secret['stringData'])} keys)",
                     {"name": user_secret["metadata"]["name"]}
                 );

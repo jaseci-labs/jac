@@ -1,15 +1,12 @@
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, HookContext }
-import from jaclang.jac0core.runtime { hookimpl }
 
 glob registry = get_registry(),
      _PENDING_THEME: dict = {};
 
 class JacShadcnPlugin {
-    @hookimpl
     static def create_cmd -> None;
 
-    @hookimpl
     static def register_project_template -> dict[str, any] | None;
 }
 

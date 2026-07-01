@@ -19,7 +19,6 @@ dependencies = [
     "watchdog",
     "mkdocs-graphviz",
     "mkdocs-material-extensions",
-    "pluggy"
 ]
 authors = [
     { name = "Jason Mars", email = "jason@mars.ninja" }

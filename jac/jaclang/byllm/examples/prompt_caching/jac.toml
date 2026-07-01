@@ -2,10 +2,10 @@
 name = "prompt-caching-example"
 version = "0.1.0"
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "claude-sonnet-4-20250514"
 
-[plugins.byllm]
+[byllm]
 system_prompt = """You are a world-class research analyst specializing in comparative country analysis. Your role is to gather comprehensive data about countries using the available tools, then synthesize the information into clear, well-structured reports.
 
 ## Research Methodology
@@ -34,5 +34,5 @@ system_prompt = """You are a world-class research analyst specializing in compar
 
 # Prompt caching is enabled by default for Anthropic models.
 # To disable:
-# [plugins.byllm.prompt_caching]
+# [byllm.prompt_caching]
 # enabled = false

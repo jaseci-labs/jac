@@ -29,7 +29,7 @@ def _assert_mobile_port_available(port: int, role: str) {
             "deterministic ports so adb reverse and capacitor.config.json "
             "match what the server actually binds. Stop the conflicting "
             f"process, choose a different port (e.g. --port {port + 100}), "
-            f"or set [plugins.client].vite.server.port in jac.toml."
+            f"or set [client].vite.server.port in jac.toml."
         );
     } finally {
         s.close();
@@ -42,7 +42,7 @@ def _warn_mobile_dev_api_url(project_dir: Path) {
         if ("localhost" in base.lower()) or ("127.0.0.1" in base) {
             console.warning(
                 "  Physical devices cannot reach localhost on your PC. "
-                "Clear [plugins.client.api] base_url for same-origin dev proxy, "
+                "Clear [client.api] base_url for same-origin dev proxy, "
                 "or set base_url to your machine's LAN URL."
             );
         }

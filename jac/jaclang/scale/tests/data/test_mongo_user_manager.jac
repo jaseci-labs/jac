@@ -14,18 +14,18 @@ test "mongodb user operations" {
 name = "test-mongo-user-manager"
 version = "1.0.0"
 
-[plugins.scale.database]
+[scale.database]
 # MongoDB URI will be set via environment variable
 
-[plugins.scale.jwt]
+[scale.jwt]
 secret = "test_secret"
 algorithm = "HS256"
 exp_delta_days = 1
 
-[plugins.scale.sso]
+[scale.sso]
 host = "http://localhost:8000/sso"
 
-[plugins.scale.admin]
+[scale.admin]
 username = "admin"
 default_password = "admin123"
 require_password_reset = true
@@ -203,9 +203,9 @@ test "legacy user migration and progressive rehashing" {
             with open(toml_path, 'w') as f {
                 f.write(
                     "[project]\nname = \"test-migration\"\nversion = \"1.0.0\"\n"
-                    "[plugins.scale.jwt]\nsecret = \"test_secret\"\n"
-                    "[plugins.scale.sso]\nhost = \"http://localhost:8000\"\n"
-                    "[plugins.scale.admin]\nenabled = false\n"
+                    "[scale.jwt]\nsecret = \"test_secret\"\n"
+                    "[scale.sso]\nhost = \"http://localhost:8000\"\n"
+                    "[scale.admin]\nenabled = false\n"
                 );
             }
             client = MongoClient(mongo_uri);

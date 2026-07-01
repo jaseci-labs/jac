@@ -74,13 +74,13 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
         stripped = line.lstrip();
         if stripped.startswith("[") {
             header = stripped.lstrip("[").split("]")[0].strip();
-            in_scale_section = header == "plugins.scale"
-            or header.startswith("plugins.scale.");
+            in_scale_section = header == "scale"
+            or header.startswith("scale.");
             at_top_level = False;
             if in_scale_section {
                 continue;
             }
-        } elif at_top_level and stripped.startswith("plugins.scale.") {
+        } elif at_top_level and stripped.startswith("scale.") {
             continue;
         }
         if not in_scale_section {

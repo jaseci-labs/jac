@@ -6,7 +6,7 @@ import from jaclang.scale.injector.bundle { pack_source }
 import from jaclang.scale.injector.pvc_injector { PvcInjector, build_bundle_pvc }
 
 
-test "pack_source keeps app files but drops secrets and strips plugins.scale" {
+test "pack_source keeps app files but drops secrets and strips scale" {
     with tempfile.TemporaryDirectory() as project {
         with open(os.path.join(project, "app.jac"), "w") as handle {
             handle.write("walker Main {}");
@@ -19,7 +19,7 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
         }
         with open(os.path.join(project, "jac.toml"), "w") as handle {
             handle.write(
-                "plugins.scale.jwt.secret = \"topsecret\"\n" + "[project]\nname = \"x\"\n" + "[plugins.scale] # deploy creds\nimage_registry = \"creds\"\n" + "[plugins.scale.kubernetes]\nmongodb_uri = \"mongodb://u:p@h\"\n"
+                "scale.jwt.secret = \"topsecret\"\n" + "[project]\nname = \"x\"\n" + "[scale] # deploy creds\nimage_registry = \"creds\"\n" + "[scale.kubernetes]\nmongodb_uri = \"mongodb://u:p@h\"\n"
             );
         }
         raw = pack_source(project);
@@ -33,7 +33,7 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
         assert ".env" not in names;
         assert "tls.key" not in names;
         assert "[project]" in toml_text;
-        assert "plugins.scale" not in toml_text;
+        assert "scale" not in toml_text;
         assert "topsecret" not in toml_text;
         assert "creds" not in toml_text;
         assert "mongodb" not in toml_text;

@@ -5,6 +5,11 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
+# Built-in feature config sections are the top-level jac.toml tables byllm,
+# scale, client, mcp, and desktop. These were formerly nested under
+# [plugins.<name>]; they are now first-class top-level sections collected into
+# JacConfig.plugins for feature config access via get_plugin_config(<name>).
+
 obj PersonConfig {
     has name: str = "",
         email: str = "";
@@ -105,12 +110,6 @@ obj CacheConfig {
         dir: str = "cache";
 }
 
-obj PluginsConfig {
-    has discovery: str = "auto",
-        enabled: list[str] = [],
-        disabled: list[str] = [];
-}
-
 obj StorageConfig {
     has storage_type: str = "local",
         base_path: str = "./storage",
@@ -161,7 +160,6 @@ obj JacConfig {
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
         storage: StorageConfig = StorageConfig(),
-        plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),

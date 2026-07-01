@@ -27,7 +27,7 @@ test "register_targets registers the desktop targets" {
     assert cef.name == "cef" , "CEF target name should be 'cef'";
 }
 
-"""Window geometry is read from [plugins.desktop.window]."""
+"""Window geometry is read from [desktop.window]."""
 test "desktop window config loads from jac.toml" {
     import from jaclang.runtimelib.client.desktop_config {
         get_desktop_config,
@@ -41,7 +41,7 @@ test "desktop window config loads from jac.toml" {
         with open(Path(d) / "jac.toml", "w") as f {
             f.write(
                 '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
-                '[plugins.desktop.window]\ntitle = "Hi"\nwidth = 640\nheight = 480\n'
+                '[desktop.window]\ntitle = "Hi"\nwidth = 640\nheight = 480\n'
             );
         }
         cfg = get_desktop_config(project_dir=Path(d));
@@ -76,7 +76,7 @@ test "desktop engine config defaults to native" {
     }
 }
 
-"""In-process dispatch tuning is read from [plugins.desktop.dispatch], with
+"""In-process dispatch tuning is read from [desktop.dispatch], with
 sensible defaults when the section is absent (P1-A, issue #6596)."""
 test "desktop dispatch config loads from jac.toml" {
     import from jaclang.runtimelib.client.desktop_config {
@@ -88,7 +88,7 @@ test "desktop dispatch config loads from jac.toml" {
 
     with tempfile.TemporaryDirectory() as d {
         reset_desktop_config();
-        # No [plugins.desktop.dispatch] -> documented defaults.
+        # No [desktop.dispatch] -> documented defaults.
         with open(Path(d) / "jac.toml", "w") as f {
             f.write(
                 '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
@@ -105,7 +105,7 @@ test "desktop dispatch config loads from jac.toml" {
         with open(Path(d) / "jac.toml", "w") as f {
             f.write(
                 '[project]\nname = "t"\nversion = "1.0.0"\nentry-point = "main.jac"\n'
-                '[plugins.desktop.dispatch]\ntimeout_s = 5.0\nmax_queue = 16\ndebug = true\n'
+                '[desktop.dispatch]\ntimeout_s = 5.0\nmax_queue = 16\ndebug = true\n'
             );
         }
         cfg2 = get_desktop_config(project_dir=Path(d));

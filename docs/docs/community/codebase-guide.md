@@ -202,7 +202,7 @@ Registration happens in `pyproject.toml`:
 
 (The MCP server -- `jac mcp`, exposing the Jac project to AI coding assistants -- is built into core, not a plugin. See [its source](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp) and the [MCP reference](../reference/mcp.md).)
 
-For the full how-to on writing your own plugin -- CLI extension, runtime hook overrides, jac.toml schemas, project templates, and the entry-point setup -- see the [Plugin Authoring Guide](../reference/plugin-authoring.md).
+Jaclang no longer has a plugin system; the former built-in providers are now called directly by core. See [Plugins (Removed)](../reference/plugin-authoring.md) for details.
 
 ---
 

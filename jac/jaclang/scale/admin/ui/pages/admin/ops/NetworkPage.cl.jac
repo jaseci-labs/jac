@@ -108,7 +108,7 @@ def:pub NetworkPage -> JsxElement {
             >
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
                 <span className="text-muted">
-                    Cluster view unavailable: {detail}. Enable [plugins.scale.kubernetes].ops_console and redeploy.
+                    Cluster view unavailable: {detail}. Enable [scale.kubernetes].ops_console and redeploy.
                 </span>
             </div>
                 if (loadedOnce and not available)

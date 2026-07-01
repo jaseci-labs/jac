@@ -391,7 +391,7 @@ test "request model includes fields inherited from a base walker" {
 
 
 # ==================== [eject.db] SQLAlchemy persistence ====================
-test "[eject.db] sqlalchemy emits the backend, hook, and SQLAlchemy dep" {
+test "[eject.db] sqlalchemy emits the backend, provider wiring, and SQLAlchemy dep" {
     with TemporaryDirectory() as td {
         src = Path(td) / "dbapp";
         _write_project(src, "dbapp");
@@ -403,7 +403,7 @@ test "[eject.db] sqlalchemy emits the backend, hook, and SQLAlchemy dep" {
         assert _backend(src, "_jac_sqldb.py").exists();
         main_py = _backend(src, "main.py").read_text();
         assert "from _jac_sqldb import SqlAlchemyMemory" in main_py;
-        assert "def get_persistent_memory" in main_py;
+        assert "set_persistent_memory_provider" in main_py;
         assert "JAC_DB_URL" in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
         assert "SQLAlchemy" in reqs;

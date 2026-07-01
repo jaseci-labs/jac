@@ -1,7 +1,7 @@
 import os;
 import sys;
 
-import from jaclang { JacRuntime as Jac, plugin_manager }
+import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.ext_registry { base_stem }
 import from jaclang.scale.server.serve { JacAPIServer }
@@ -65,17 +65,11 @@ def prepare_inprocess_runtime(
     transport_kind: str = "testclient"
 ) -> PreparedInProcessRuntime {
     import from starlette.testclient { TestClient }
-    import from jaclang.scale.plugin { JacCmd }
 
     if transport_kind != "testclient" {
         raise NotImplementedError(
             "transport_kind='" + str(transport_kind) + "' is not implemented; " + "only 'testclient' (in-process, single serialized worker) is " + "supported today. 'asgi' / 'isolated_worker' are reserved for the " + "execution-isolation choice recorded in #6596 P0-0."
         );
-    }
-
-    registered_names = [nm for (nm, _p) in plugin_manager.list_name_plugin()];
-    if "scale" not in registered_names {
-        plugin_manager.register(JacCmd(), name="scale");
     }
 
     (base, _) = os.path.split(jac_file);

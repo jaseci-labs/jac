@@ -210,4 +210,4 @@ jac install -e /path/to/cloned/lib
 - [`jac bundle`](cli/index.md#jac-bundle) -- command reference (`--target wheel|npm|all|npm-runtime`)
 - [`jac install`](cli/index.md#jac-install) -- installing dependencies and editable installs
 - [Configuration Reference](config/index.md#project) -- every `jac.toml` field
-- [Plugin Authoring](plugin-authoring.md) -- building distributable Jac plugins
+- [Plugins (Removed)](plugin-authoring.md) -- why Jac no longer has a plugin system

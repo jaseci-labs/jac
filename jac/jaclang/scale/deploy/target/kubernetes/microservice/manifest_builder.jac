@@ -139,7 +139,7 @@ obj MicroserviceManifestBuilder {
         } elif getattr(self.k8s_config, "ops_console_mutations", False) {
             if self.logger {
                 self.logger.warning(
-                    "[plugins.scale.kubernetes].ops_console_mutations is set but "
+                    "[scale.kubernetes].ops_console_mutations is set but "
                     "ops_console is false; no Ops Console RBAC will be provisioned. "
                     "Set ops_console = true to enable it."
                 );
@@ -158,10 +158,10 @@ obj MicroserviceManifestBuilder {
 
         if not routes {
             raise ValueError(
-                "[plugins.scale.microservices.routes] is empty in jac.toml. "
+                "[scale.microservices.routes] is empty in jac.toml. "
                 "Microservice mode needs at least one declared service.\n"
                 "Add to your jac.toml:\n"
-                "  [plugins.scale.microservices.routes]\n"
+                "  [scale.microservices.routes]\n"
                 "  my_service = \"/my\"\n"
                 "where 'my_service' is the name of a .jac file in the "
                 "project root and '/my' is the URL prefix the gateway "
