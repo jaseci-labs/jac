@@ -201,7 +201,15 @@ def _compile_runtime_module(pkg_root: Path, path: Path) -> str | None {
         }
         return None;
     }
-    return ir.gen.py or "";
+    py_out = str(ir.gen.py or "");
+    if not py_out.strip() {
+        console.error(
+            f"  runtime vendor: {path.name}: compiler produced no Python "
+            "output (and reported no errors); aborting."
+        );
+        return None;
+    }
+    return py_out;
 }
 
 
