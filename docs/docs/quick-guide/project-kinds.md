@@ -19,19 +19,22 @@ Jac gives you three runtime targets -- server (`sv`), client (`cl`), and native 
 
 Jac is also batteries-included -- it bundles LLVM, ships its own native linker, runs its own server, and auto-installs the JS runtime (`bun`) on demand. The only recipes needing an external toolchain are the ones wrapping a native OS shell, called out in the last column.
 
+Each recipe name links to its guided **"I like to build…" track** -- a 5-minute quick win plus a curated path through the tutorials and reference. The detailed inline recipe for each is in the sections further down this page.
+
 | Recipe | sv | cl | na | served | packaged | shell | requires |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|---|
-| [CLI tool](#cli-tool) | ● | | | | | | -- |
-| [Native binary](#native-binary) | | | ● | | | | -- |
-| [API service](#api-service) | ● | | | ● | | | -- |
-| [Microservices](#microservices) | ● ×N | | | ● | | | -- |
-| [Python package (PyPI)](#python-package-pypi) | ● | | | | wheel | | twine¹ |
-| [npm package (npmjs.com)](#npm-package) | | ● | | | npm | | npm³ |
-| [Shared library (C ABI)](#shared-library-c-abi) | | | ● | | .so/.dll | | -- |
-| [Full-stack app](#full-stack-app) | ● | ● | | ● | | | -- |
-| [In-browser native (wasm)](#in-browser-native-wasm) | | ● | ● | ● | | | -- |
-| [Desktop app](#desktop-app) | ● | ● | | ● | | desktop | WebKit² |
-| [Mobile app (webview)](#mobile-app-webview) | ◐ | ● | | | | mobile | Android SDK / Xcode |
+| [CLI tool](../build/cli-and-native.md#cli) | ● | | | | | | -- |
+| [Native CLI tool](../build/cli-and-native.md#cli-native) | | | ● | | | | -- |
+| [Native binary](../build/cli-and-native.md#native-binary) | | | ● | | | | -- |
+| [API service](../build/backend-apis.md#service) | ● | | | ● | | | -- |
+| [Microservices](../build/backend-apis.md#service-mesh) | ● ×N | | | ● | | | -- |
+| [Python package (PyPI)](../build/libraries.md#py-package) | ● | | | | wheel | | twine¹ |
+| [npm package (npmjs.com)](../build/libraries.md#js-package) | | ● | | | npm | | npm³ |
+| [Shared library (C ABI)](../build/libraries.md#native-lib) | | | ● | | .so/.dll | | -- |
+| [Full-stack app](../build/fullstack-web.md#web-app) | ● | ● | | ● | | | -- |
+| [Static / in-browser app](../build/fullstack-web.md#web-static) | | ● | ● | ● | | | -- |
+| [Desktop app](../build/desktop-mobile.md#desktop) | ● | ● | | ● | | desktop | WebKit² |
+| [Mobile app (webview)](../build/desktop-mobile.md#mobile) | ◐ | ● | | | | mobile | Android SDK / Xcode |
 | [Full-stack package](#on-the-roadmap) 🚧 | ● | ● | | | attach | | -- |
 | [Mobile app (React Native)](#on-the-roadmap) 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
 

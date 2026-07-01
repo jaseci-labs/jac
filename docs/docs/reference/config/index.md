@@ -417,7 +417,7 @@ create_dirs = true           # Auto-create directories
 
 Configuration priority: `jac.toml` > environment variables > defaults.
 
-See [Storage Reference](../plugins/jac-scale.md#storage) for the full storage API.
+See [Storage Reference](../plugins/jac-scale-persistence.md#storage) for the full storage API.
 
 ---
 
@@ -452,11 +452,11 @@ signature_header = "X-Webhook-Signature"
 verify_signature = true
 api_key_expiry_days = 365
 
-# Kubernetes version pinning (scale) -- scale and the client/desktop framework
-# ship inside the `jac` binary, so only the separate plugins are pinned here.
+# Kubernetes version pinning (scale) -- scale, byLLM, the MCP server, and the
+# client/desktop framework all ship inside the `jac` binary, so they need no
+# pinning. Use this only to pin a genuine third-party PyPI plugin for the pod image.
 [plugins.scale.kubernetes.plugin_versions]
-jac_byllm = "none"           # Use "none" to skip installation
-jac_mcp = "latest"
+my_plugin = "1.2.3"          # pin a version, or "none" to skip, "latest" to track
 ```
 
 **Prometheus Metrics (scale):**
@@ -469,7 +469,7 @@ namespace = "myapp"
 walker_metrics = true
 ```
 
-See [Prometheus Metrics](../plugins/jac-scale.md#prometheus-metrics) for details.
+See [Prometheus Metrics](../plugins/jac-scale-kubernetes.md#prometheus-metrics) for details.
 
 **Kubernetes Secrets (scale):**
 
@@ -479,9 +479,9 @@ OPENAI_API_KEY = "${OPENAI_API_KEY}"
 DATABASE_PASSWORD = "${DB_PASS}"
 ```
 
-See [Kubernetes Secrets](../plugins/jac-scale.md#kubernetes-secrets) for details.
+See [Kubernetes Secrets](../plugins/jac-scale-kubernetes.md#kubernetes-secrets) for details.
 
-See also [Scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
+See also [Scale Webhooks](../plugins/jac-scale-http.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale-kubernetes.md#kubernetes-deployment) for more options.
 
 **Built-in Local Models (byllm):**
 
