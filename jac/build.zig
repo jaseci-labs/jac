@@ -35,7 +35,10 @@ const LLVM_CACHE_BASE = ".llvm-build";
 fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
     const dirname = switch (target.result.os.tag) {
         .linux => switch (target.result.cpu.arch) {
-            .x86_64 => "LLVM-22.1.8-Linux-X64",
+            // x86_64 uses the libc++ slice (zig-c++-linkable, glibc 2.17 floor);
+            // keep in sync with payload.zig llvmRelease. aarch64 stays on the stock
+            // libstdc++ slice until an aarch64 libc++ slice exists (#7082).
+            .x86_64 => "LLVM-22.1.8-Linux-X64-libcxx",
             .aarch64 => "LLVM-22.1.8-Linux-ARM64",
             else => return null,
         },
@@ -408,7 +411,7 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     const bin: std.Build.LazyPath = if (target.result.os.tag == .macos)
         macosShim(b, target, optimize, &dir, llvm_dir, libdir, &shim_srcs, &shim_flags)
     else
-        linuxShim(b, optimize, &dir, llvm_dir, libdir, &shim_srcs, &shim_flags);
+        linuxShim(b, target, optimize, &dir, llvm_dir, libdir, &shim_srcs, &shim_flags);
 
     // Also write the built shim back into the source tree (gitignored) so the
     // editable dev loop -- which runs jaclang from source, not from the binary's
@@ -429,16 +432,27 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     return .{ .bin = bin, .place = &place.step };
 }
 
-/// Linux link path for the LLVMPY_* shim. The official LLVM 22 Linux release is
-/// built against GNU libstdc++ (LLVM 20 used libc++), so the shim must be compiled
-/// + linked with the system g++/libstdc++ to match the archives' `std::__cxx11::*`
-/// ABI -- a Zig `link_libcpp` (libc++) build leaves LLVM's API calls unresolved.
-/// `-static-libstdc++ -static-libgcc` bundles the C++ runtime so the shipped shim
-/// stays self-contained (no host libstdc++.so dependency, same as the old libc++
-/// build). The Linux release archives are native ELF objects (not ThinLTO bitcode
-/// like macOS), so no libLTO dance is needed. Returns the emitted .so as a LazyPath.
+/// Linux link path for the LLVMPY_* shim.
+///
+/// x86_64 links with `zig c++` against the libc++ LLVM slice (jaseci-labs/llvm-slice
+/// `*-linux-libcxx`, a stock LLVM built `-DLLVM_ENABLE_LIBCXX=ON`). `zig c++` uses
+/// libc++, so its `std::__1::*` ABI matches the slice's archives, and `-target
+/// <triple>` pins BOTH the C++ runtime and the glibc floor (e.g. 2.17 via -Dtarget)
+/// for the shim's own TUs -- the slice's archives are already floored at the same
+/// 2.17 by the identical zig pin used to build them. zig links libc++/compiler-rt
+/// statically (no -static-libstdc++ needed), and the libc++ slice is configured with
+/// zlib/zstd/libxml2 OFF, so the shim references only the libc trio. This is what
+/// drops libjacllvm.so from requiring GLIBC_2.38 to a clean 2.17 floor (#7082).
+///
+/// aarch64 has no libc++ slice yet, so it stays on the system g++/libstdc++ path
+/// against the stock `aarch64-linux` slice: it must be compiled + linked with g++ to
+/// match the archives' `std::__cxx11::*` ABI (a libc++ build leaves LLVM's API calls
+/// unresolved), `-static-libstdc++ -static-libgcc` bundles the C++ runtime, and the
+/// stock archives still reference zlib/zstd/libxml2. Lowering aarch64 to 2.17 is a
+/// follow-up gated on an aarch64 libc++ slice. Returns the emitted .so as a LazyPath.
 fn linuxShim(
     b: *std.Build,
+    target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     dir: *std.Io.Dir,
     llvm_dir: []const u8,
@@ -447,7 +461,20 @@ fn linuxShim(
     shim_flags: []const []const u8,
 ) std.Build.LazyPath {
     const io = b.graph.io;
-    const cc = b.addSystemCommand(&.{"c++"});
+    // x86_64 links with `zig c++` (libc++ ABI + glibc floor from -Dtarget); aarch64
+    // stays on the system g++/libstdc++ path until an aarch64 libc++ slice lands.
+    const use_zig = target.result.cpu.arch == .x86_64;
+    const cc = if (use_zig)
+        b.addSystemCommand(&.{ b.graph.zig_exe, "c++" })
+    else
+        b.addSystemCommand(&.{"c++"});
+    if (use_zig) {
+        // One flag pins both the C++ runtime (zig's libc++, matching the libc++
+        // slice's std::__1::*) and the glibc floor (e.g. x86_64-linux-gnu.2.17),
+        // exactly the same `-target` the slice itself was built with.
+        const triple = target.query.zigTriple(b.allocator) catch @panic("jacllvm: zigTriple failed");
+        cc.addArgs(&.{ "-target", triple });
+    }
     cc.addArgs(&.{ "-shared", "-fPIC" });
     cc.addArg(switch (optimize) {
         .Debug => "-O0",
@@ -457,13 +484,19 @@ fn linuxShim(
     });
     // Hide everything; the LLVMPY_* API is annotated default-visibility (native/
     // core.h API_EXPORT) so it stays exported. --exclude-libs,ALL keeps the static
-    // LLVM/libstdc++ symbols out of the dynamic table (no clash with a host LLVM).
+    // LLVM + C++ runtime symbols out of the dynamic table (no clash with a host LLVM).
     cc.addArgs(&.{ "-fvisibility=hidden", "-fvisibility-inlines-hidden" });
     cc.addArgs(shim_flags); // -std=c++17 -fno-rtti -fno-exceptions -DNDEBUG
-    cc.addArgs(&.{ "-static-libstdc++", "-static-libgcc" });
+    // zig links its libc++/compiler-rt statically already; the system path needs the
+    // GNU runtime bundled explicitly so the shipped shim has no host libstdc++.so dep.
+    if (!use_zig) cc.addArgs(&.{ "-static-libstdc++", "-static-libgcc" });
     cc.addArg(b.fmt("-I{s}/include", .{llvm_dir}));
     // Shim sources passed directly (not as a .a) so their LLVMPY_* symbols survive.
     for (shim_srcs) |f| cc.addFileArg(b.path(b.fmt("native/{s}", .{f})));
+    // x86_64/2.17 only: fold in the glibc-floor compat TU (weak rseq descriptors)
+    // so the libc++ LLVM archives' newer-glibc refs resolve without raising the
+    // floor above 2.17 (#7082). Harmless if unreferenced (weak, hidden).
+    if (use_zig) cc.addFileArg(b.path("native/glibc_compat.cpp"));
     // Link every LLVM static archive inside a group (their refs are circular); the
     // linker drops what the shim never references.
     cc.addArg("-Wl,--start-group");
@@ -475,9 +508,20 @@ fn linuxShim(
         }
     }
     cc.addArg("-Wl,--end-group");
-    // LLVM's system deps (dynamic): zlib, libxml2, zstd, plus the usual pthread/dl/m.
-    cc.addArgs(&.{ "-lz", "-lxml2", "-lzstd", "-lpthread", "-ldl", "-lm" });
-    cc.addArg("-Wl,--exclude-libs,ALL");
+    // LLVM's system deps. The libc++ slice is built with zlib/zstd/libxml2 OFF, so the
+    // zig path needs only the libc trio; the stock slice still references them.
+    if (use_zig)
+        cc.addArgs(&.{ "-lpthread", "-ldl", "-lm" })
+    else
+        cc.addArgs(&.{ "-lz", "-lxml2", "-lzstd", "-lpthread", "-ldl", "-lm" });
+    // Keep the static LLVM/C++ symbols out of the dynamic table. zig's linker-arg
+    // allowlist rejects -Wl,--exclude-libs, so the zig path uses a version script
+    // that exports only the LLVMPY_* C ABI (matching the macOS -exported_symbol
+    // path); the system-c++ path keeps --exclude-libs,ALL.
+    if (use_zig)
+        cc.addPrefixedFileArg("-Wl,--version-script,", b.path("native/jacllvm.exports"))
+    else
+        cc.addArg("-Wl,--exclude-libs,ALL");
     cc.addArg("-o");
     return cc.addOutputFileArg("libjacllvm.so");
 }
