@@ -6,6 +6,34 @@ The CLI is extensible through plugins, and several capabilities are built into c
 
 > **💡 Enhanced Output**: All CLI commands render beautiful, colorful Rich-style output out of the box -- themes, panels, and spinners are built into jaclang by default, with no extra install needed.
 
+## I want to…
+
+A task-first index into the commands below. The full alphabetical list follows in [Quick Reference](#quick-reference).
+
+| I want to… | Command(s) |
+|---|---|
+| Run a program | `jac run` (no filename → runs the project by its `kind`) · `jac enter` |
+| Start a web/API server | `jac start` |
+| Deploy to Kubernetes | `jac start --scale` · `jac status` · `jac destroy` |
+| Create a new project | `jac create` |
+| Set up / build a client target (web, desktop, mobile) | `jac setup` · `jac build` |
+| Compile a native binary or C-ABI shared library | `jac nacompile` |
+| Build a distributable package | `jac bundle` (wheel/npm) |
+| Add, remove, or update dependencies | `jac add` · `jac remove` · `jac update` |
+| Install project dependencies | `jac install` |
+| Run an installed CLI tool under Jac | `jac x` |
+| Type-check, format, or lint | `jac check` · `jac format` · `jac lint` · `jac precommit` |
+| Run tests | `jac test` |
+| Debug or visualize a graph | `jac debug` · `jac dot` · `jac browse` |
+| Inspect or recover the persistence DB | `jac db` |
+| Manage config, plugins, or profiles | `jac config` · `jac plugins` |
+| Manage byLLM local models | `jac model` |
+| Use Jac from an AI assistant | `jac guide` · `jac mcp` |
+| Convert between Python, Jac, and JS | `jac py2jac` · `jac jac2py` · `jac jac2js` |
+| Clean caches / artifacts | `jac clean` · `jac purge` |
+
+---
+
 ## Quick Reference
 
 | Command | Description |
