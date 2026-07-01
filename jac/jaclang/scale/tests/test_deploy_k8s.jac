@@ -249,6 +249,191 @@ test "deployment target methods" {
     }
 }
 
+test "fleet rollout ignores crash-looping pod from a stale replica set" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = "svc-a";
+    target_config["namespace"] = "fleet-ns";
+    logger = UtilityFactory.create_logger("standard");
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes-microservice", target_config, logger
+    );
+
+    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+
+    current_hash = "new-hash";
+    stale_hash = "old-hash";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": "svc-a"};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    stale_rs = unittest.mock.MagicMock();
+    stale_rs.metadata.labels = {"pod-template-hash": stale_hash, "app": "svc-a"};
+    stale_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "1"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [
+        stale_rs,
+        current_rs
+    ];
+    fake_apps_v1.read_namespaced_deployment.side_effect = [
+        SimpleNamespace(status=SimpleNamespace(ready_replicas=0)),
+        SimpleNamespace(status=SimpleNamespace(ready_replicas=1)),
+
+    ];
+
+    healthy_pod = unittest.mock.MagicMock();
+    healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
+    healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
+    healthy_pod.status.phase = "Running";
+
+    stale_pod = unittest.mock.MagicMock();
+    stale_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": stale_hash};
+    stale_pod.metadata.name = "svc-a-stale-crash";
+    stale_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    stale_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [stale_pod, healthy_pod];
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.microservice.target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.microservice.target.client.AppsV1Api",
+            return_value=fake_apps_v1
+        ) {
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.microservice.target.client.CoreV1Api",
+                return_value=fake_core_v1
+            ) {
+                with unittest.mock.patch.object(time, "sleep") {
+                    deployment_target._wait_for_fleet_rollout(bundle, timeout=30);
+                }
+            }
+        }
+    }
+
+    assert fake_apps_v1.read_namespaced_deployment.call_count == 2 , "stale crash-looping pod must not block the wait; fleet must reach ready on the next poll";
+}
+
+test "fleet rollout still fails when a current replica set pod is crash-looping" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = "svc-a";
+    target_config["namespace"] = "fleet-ns";
+    logger = UtilityFactory.create_logger("standard");
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes-microservice", target_config, logger
+    );
+
+    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+
+    current_hash = "new-hash";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": "svc-a"};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
+    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
+        status=SimpleNamespace(ready_replicas=0)
+    );
+
+    crash_pod = unittest.mock.MagicMock();
+    crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
+    crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    crash_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [crash_pod];
+
+    raised = False;
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.microservice.target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.microservice.target.client.AppsV1Api",
+            return_value=fake_apps_v1
+        ) {
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.microservice.target.client.CoreV1Api",
+                return_value=fake_core_v1
+            ) {
+                with unittest.mock.patch.object(time, "sleep") {
+                    try {
+                        deployment_target._wait_for_fleet_rollout(bundle, timeout=30);
+                    } except Exception as e {
+                        raised = True;
+                        assert "crash-looping" in str(e);
+                    }
+                }
+            }
+        }
+    }
+
+    assert raised , "a crash-looping pod from the current RS must still fail the rollout wait";
+}
+
+test "fleet rollout falls back to broad pod scan when RS lookup fails" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = "svc-a";
+    target_config["namespace"] = "fleet-ns";
+    logger = UtilityFactory.create_logger("standard");
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes-microservice", target_config, logger
+    );
+
+    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.side_effect = Exception(
+        "RS API unavailable"
+    );
+    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
+        status=SimpleNamespace(ready_replicas=0)
+    );
+
+    crash_pod = unittest.mock.MagicMock();
+    crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": "whatever-hash"};
+    crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    crash_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [crash_pod];
+
+    raised = False;
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.microservice.target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.microservice.target.client.AppsV1Api",
+            return_value=fake_apps_v1
+        ) {
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.microservice.target.client.CoreV1Api",
+                return_value=fake_core_v1
+            ) {
+                with unittest.mock.patch.object(time, "sleep") {
+                    try {
+                        deployment_target._wait_for_fleet_rollout(bundle, timeout=30);
+                    } except Exception {
+                        raised = True;
+                    }
+                }
+            }
+        }
+    }
+
+    assert raised , "crash must still be detected via broad scan when RS lookup fails";
+}
+
 test "redis template file in package" {
     try {
         import jaclang.scale;
