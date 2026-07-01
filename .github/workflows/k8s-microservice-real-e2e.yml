@@ -29,10 +29,11 @@ jobs:
     # (matches the test-scale-k8s gate in test-jaseci.yml).
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    # No-Docker path: the pod runtime is a prebuilt binary DOWNLOADED from
-    # jaseci-labs releases (no host build-to-ship, no in-pod build). The only
-    # build here is the host `jac` used to drive the deploy, which setup-jac
-    # caches; the higher ceiling covers a cold host build + microk8s bring-up.
+    # No-Docker, no-build path: both the pod runtime AND the host deploy driver
+    # are prebuilt `jac` binaries DOWNLOADED from jaseci-labs releases. The host
+    # binary runs THIS checkout's jaclang via the editable dev loop (the deploy
+    # asserts the overlay took effect), so no host build, no in-pod build. The
+    # ceiling covers microk8s bring-up + the rolling-restart hammer.
     timeout-minutes: 45
 
     steps:
@@ -41,8 +42,33 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up jac (build the binary)
-        uses: ./.github/actions/setup-jac
+      - name: Download the prebuilt dev jac binary (host deploy driver)
+        # The host `jac` that drives the deploy is the SAME prebuilt binary the
+        # pods get - downloaded, not built. It runs main-HEAD's bundled jaclang;
+        # the overlay step below reroutes it to this checkout's source so the
+        # deploy exercises the PR's own scale code (the deploy asserts this).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          arch="$(uname -m)"   # x86_64 on this runner
+          mkdir -p "$HOME/.local/bin"
+          gh release download dev --repo jaseci-labs/jaseci \
+            --pattern "jac-dev-linux-${arch}" \
+            --output "$HOME/.local/bin/jac" --clobber
+          chmod +x "$HOME/.local/bin/jac"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/jac" --version
+
+      - name: Overlay this checkout's jaclang onto the downloaded binary
+        # Add a [dev] stanza to the fixture jac.toml - the nearest jac.toml when
+        # the deploy runs from the app dir - so the editable dev loop reroutes
+        # `import jaclang` to THIS checkout. Absolute path so it resolves
+        # regardless of cwd. The deploy's PYEOF hard-asserts the overlay activated
+        # (else it would silently validate main-HEAD and pass green). The bundle
+        # sanitizer strips this [dev] before shipping to pods.
+        run: |
+          printf '\n[dev]\njaclang_source = "%s/jac"\n' "$GITHUB_WORKSPACE" \
+            >> jac/jaclang/scale/tests/fixtures/k8s_e2e/jac.toml
 
       - name: Install scale deploy deps (global; scale ships with jaclang)
         # Scale is built into jaclang (jaclang.scale); install its deploy + data

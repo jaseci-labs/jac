@@ -86,11 +86,29 @@ kubectl label namespace "${NAMESPACE}" \
 
 cd "${PROJECT_DIR}"
 jac - <<PYEOF
-import logging, sys, jaclang  # noqa: F401
+import logging, os, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
 from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_DEV
+
+# Guard: the host jac MUST run this checkout's jaclang, not a bundled/downloaded
+# copy - otherwise the smoke test would validate the wrong deploy code and pass
+# green. A -Ddev binary reaches it via a baked source marker; a downloaded binary
+# reaches it via the editable dev loop ([dev] jaclang_source in the nearest
+# jac.toml). Either way jaclang.__file__ must resolve under \${REPO_ROOT}/jac.
+_want = os.path.realpath("${REPO_ROOT}/jac")
+_got = os.path.realpath(os.path.dirname(os.path.dirname(jaclang.__file__)))
+if _got != _want:
+    print(
+        f"FATAL: host jac is running jaclang from {_got}, not the checkout at "
+        f"{_want}. The editable dev overlay did not activate, so this run would "
+        f"validate the wrong code. Set [dev] jaclang_source (or use a -Ddev "
+        f"binary) before running.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+print(f"host jaclang overlay active: {_got}", file=sys.stderr)
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
