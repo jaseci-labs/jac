@@ -106,11 +106,18 @@ jobs:
           sudo microk8s config | sudo tee "$HOME/.kube/config" >/dev/null
           sudo chown "$USER" "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
+          # calico-node's felix reports 503 (never Ready) on this runner because
+          # its default first-found IP autodetection picks a non-egress interface
+          # (the node comes up on 192.168.x, not the route-to-internet NIC), so
+          # pod traffic isn't routed and every pod loses DNS. Pin autodetection to
+          # the interface that can reach the internet, then restart calico.
+          kubectl -n kube-system set env daemonset/calico-node IP_AUTODETECTION_METHOD=can-reach=8.8.8.8
+          kubectl -n kube-system rollout restart daemonset/calico-node
           # Wait for the CNI (calico) + coredns to be Ready BEFORE deploying. If
           # the deploy races ahead while calico's felix is still 503, app pods get
           # no network, can't resolve DNS, and jac-bootstrap crash-loops.
-          kubectl -n kube-system rollout status daemonset/calico-node --timeout=180s || true
-          kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=calico-node --timeout=180s || echo "WARN: calico-node not Ready"
+          kubectl -n kube-system rollout status daemonset/calico-node --timeout=240s || true
+          kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=calico-node --timeout=240s || echo "WARN: calico-node not Ready"
           kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=kube-dns --timeout=120s || echo "WARN: coredns not Ready"
 
       - name: Verify pod DNS + egress (fail fast)
