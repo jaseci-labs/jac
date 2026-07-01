@@ -95,7 +95,7 @@ with entry:__main__ { increment(); }   # only when run directly (= Python __main
 ```
 import os;                              # module - takes `;`
 import numpy as np;                     # aliased - full PyPI access (see jac-python-interop)
-import from byllm.lib { Model }         # selective - NO `;`
+import from jaclang.byllm.lib { Model }         # selective - NO `;`
 import type from billing { Invoice }    # annotation-only - breaks circular imports (see jac-types)
 import ".styles/global.css";            # file - takes `;`
 ```

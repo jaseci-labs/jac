@@ -40,7 +40,7 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Improve the formatter/linter | `jac/jaclang/compiler/passes/tool/` |
 | Improve IDE support | `jac/jaclang/lsp/` + `langserve/` |
 | Work on the scale subsystem | `jac/jaclang/scale/` (built-in deployment provider) |
-| Work on a plugin | `jac-byllm/`, `jac-mcp/`, etc. |
+| Work on a built-in subsystem | `jac/jaclang/byllm/`, `jac/jaclang/cli/mcp/`, `jac/jaclang/scale/`, etc. |
 | Write or fix docs | `docs/docs/reference/` (most features go here) |
 | Add a test | `jac/tests/` (mirror the directory of the code you're testing) |
 
@@ -48,13 +48,13 @@ Here's a quick map from contribution type to the right part of the codebase:
 
 ## Repository Layout
 
-The repo is a **monorepo** with the core language and a family of plugins:
+The repo is a **monorepo**; the core language and all first-party subsystems live under `jac/`:
 
 ```
 jaseci/
-├── jac/                  # Core language: compiler, runtime, CLI, LSP, MCP server, full-stack client/desktop framework, built-in scale subsystem (jaclang/scale/)
-├── jac-byllm/            # Plugin: LLM integration (Meaning Typed Programming)
-├── jac-plugins/          # Additional community plugins
+├── jac/                  # Core language + built-in subsystems: compiler, runtime, CLI, LSP,
+│                         #   MCP server (jaclang/cli/mcp/), byLLM (jaclang/byllm/),
+│                         #   full-stack client/desktop framework, scale subsystem (jaclang/scale/)
 ├── docs/                 # MkDocs documentation site
 └── scripts/              # Release, CI, and utility scripts
 ```
@@ -195,9 +195,9 @@ Registration happens in `pyproject.toml`:
 <feature> = "<module>:<Class>"
 ```
 
-| Plugin | What it adds |
+| Subsystem | What it adds |
 |--------|-------------|
-| `jac-byllm` | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Depends on `litellm`. |
+| `byllm` (built into core, `jac/jaclang/byllm/`) | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Ships inside `jaclang`; `litellm` and other model deps are optional, pulled per-project via `[plugins.byllm]` config + `jac install`. |
 | `scale` (built into core, `jac/jaclang/scale/`) | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. Ships inside `jaclang`; its optional deps are pulled per-project via `[scale.*]` config + `jac install`. |
 
 (The MCP server -- `jac mcp`, exposing the Jac project to AI coding assistants -- is built into core, not a plugin. See [its source](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp) and the [MCP reference](../reference/mcp.md).)

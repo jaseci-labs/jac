@@ -95,3 +95,8 @@ CLAUDE.local.md
 jactastic/**
 .mcp.json
 .gstack/
+
+# Docs "Build Anything" track pages live under docs/docs/build/ — the bare
+# `build` rule above would otherwise ignore them. Keep this content tracked.
+!docs/docs/build/
+!docs/docs/build/**

@@ -80,16 +80,18 @@ obj ElfLinker {
     static def link(
         obj_bytes: bytes,
         output_path: str,
-        needed_libs: list[str] = ["libc.so.6"],
+        needed_libs: list[str] = [],
         crt_objects: list[bytes] = [],
         shared: bool = False,
         export_symbols: list[str] = [],
         init_funcs: list[str] = [],
         soname: str = "",
-        archive_members: list[bytes] = []
+        archive_members: list[bytes] = [],
+        static_link: bool = False
     ) -> bool;
 
     def parse_object -> bool;
     def build_executable -> bytes;
+    def build_static_executable -> bytes;
     def build_shared_object -> bytes;
 }

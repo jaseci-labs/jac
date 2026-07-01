@@ -70,9 +70,14 @@ jobs:
             "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
             "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
             "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" \
-            "firebase-admin>=6.0.0,<8.0.0" \
+            "firebase-admin>=6.0.0,<8.0.0" "requests>=2.32.0,<3.0.0" \
             --global
-          jac install -e ./jac-byllm
+          # byLLM is a built-in plugin in jaclang now (jaclang.byllm); install its
+          # `llm` capability deps so `jac check` can resolve byllm's imports.
+          jac install \
+            "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+            --global
 
       - name: Warm up compiler cache
         run: jac --version
