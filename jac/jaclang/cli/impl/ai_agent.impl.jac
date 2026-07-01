@@ -1785,6 +1785,7 @@ impl AgentRuntime.postinit -> None {
     self.files.cfg = self.cfg;
     self.proc.ws = self.ws;
     self.semantic.ws = self.ws;
+    self.subagent.ws = self.ws;
 
     self.bus._lock = threading.Lock();
 }
@@ -1800,6 +1801,17 @@ impl AgentRuntime.note(text: str) -> str {
     }
     return "(no active session to note onto)";
 }
+
+sem SubagentTools.spawn_subagent = "Spawn a focused read-only sub-agent to handle one self-contained research or inspection task. The sub-agent runs concurrently in a background thread and returns its findings as text. Non-serialized: call spawn_subagent several times in one step and the sub-agents run in parallel. Sub-agents cannot write files or run commands.";
+sem SubagentTools.spawn_subagent.task = "The self-contained task for the sub-agent (e.g. 'list all walker definitions in src/ and describe their entry points'). Must be independent of other concurrent sub-tasks.";
+
+impl SubagentTools.spawn_subagent(task: str) -> str {
+    fut = flow root spawn SubAgent(task=task) ;
+    done: SubAgent = wait fut ;
+    return done.result or "(sub-agent returned no result)";
+}
+
+sem SubAgent.investigate = "Research the given task by reading project files, searching symbols, and consulting the bundled guides. Return a concise, factual summary of the findings.";
 
 impl PhaseState.tools -> list {
     return [t.fn for t in [self->:Exposes:->]];
@@ -2158,7 +2170,7 @@ impl verify_and_continue(max_rounds: int = 3) {
 }
 
 impl run_agent(req: object) -> int {
-    global agent_model;
+    global agent_model,_subagent_model;
 
     r: any = req;
 
@@ -2178,6 +2190,7 @@ impl run_agent(req: object) -> int {
 
     if r.model or r.n_ctx > 0 {
         agent_model = build_model(str(r.model), int(r.n_ctx));
+        _subagent_model = build_model(str(r.model), int(r.n_ctx));
     }
     agent.view.print_banner();
     reset_session();
@@ -2267,7 +2280,7 @@ impl run_agent(req: object) -> int {
 }
 
 impl ui_configure -> None {
-    global agent_model;
+    global agent_model,_subagent_model;
 
     proj = os.environ.get("JAC_AI_UI_PROJECT") or os.getcwd();
     agent.ws.cwd = os.path.normpath(proj);
@@ -2288,6 +2301,7 @@ impl ui_configure -> None {
     agent.cfg.n_ctx = n_ctx;
     try {
         agent_model = build_model(model_flag, n_ctx);
+        _subagent_model = build_model(model_flag, n_ctx);
         agent.bus.emit(
             "system",
             {"text": f"Connected to {agent.ws.cwd} using {agent_model.model_name}."}
@@ -2562,7 +2576,7 @@ impl ui_settings -> dict {
 impl ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
 ) -> dict {
-    global agent_model;
+    global agent_model,_subagent_model;
 
     if agent.bus.status == "running" or agent.bus.status == "stopping" {
         return {
@@ -2596,6 +2610,7 @@ impl ui_apply_settings(
     }
     try {
         agent_model = build_model(model.strip(), nctx);
+        _subagent_model = build_model(model.strip(), nctx);
         if temp_override is not None {
             agent.cfg.temperature = temp_override;
         }
