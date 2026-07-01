@@ -52,21 +52,11 @@ def _package_dir(plugin_dir: Path) -> (Path | None) {
 
 
 def precompile_plugins(repo_root: Path) -> int {
-    import marshal;
-    import from jaclang.jac0core.compiler { patch_co_filenames_bytes }
-    import from jaclang.jac0core.jir {
-        write_precompiled_jir,
-        FLAG_PRECOMPILED,
-        compute_module_key,
-        jir_matches_source,
-        PRECOMPILE_SENTINEL
-    }
-    import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    import from jaclang.jac0core.program { JacProgram }
-
     import sys;
+    import from jaclang.jac0core.jir { jir_matches_source }
+    import from jaclang.utils.precompile_bytecode { precompile_unit }
+
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
-    compiler = Jac.get_compiler();
     written = 0;
     for name in _PLUGIN_DIRS {
         pkg = _package_dir(repo_root / name) if (repo_root / name).is_dir() else None;
@@ -86,18 +76,10 @@ def precompile_plugins(repo_root: Path) -> int {
                 continue;
             }
             try {
-                code = compiler.get_bytecode(
-                    full_target=str(jac_path), target_program=JacProgram()
-                );
-                if code is None {
+                jir = precompile_unit(str(jac_path), str(pkg));
+                if jir is None {
                     continue;
                 }
-                patched = patch_co_filenames_bytes(
-                    marshal.dumps(code), str(pkg), PRECOMPILE_SENTINEL
-                );
-                jir = write_precompiled_jir(
-                    patched, compute_module_key(str(jac_path)), FLAG_PRECOMPILED
-                );
                 dest.parent.mkdir(parents=True, exist_ok=True);
                 dest.write_bytes(jir);
                 written += 1;
