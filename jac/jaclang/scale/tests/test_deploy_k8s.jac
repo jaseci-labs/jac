@@ -379,6 +379,75 @@ test "fleet rollout still fails when a current replica set pod is crash-looping"
     assert raised , "a crash-looping pod from the current RS must still fail the rollout wait";
 }
 
+test "fleet rollout still fails when a StatefulSet companion pod with no pod-template-hash is crash-looping" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = "svc-a";
+    target_config["namespace"] = "fleet-ns";
+    logger = UtilityFactory.create_logger("standard");
+    deployment_target = DeploymentTargetFactory.create(
+        "kubernetes-microservice", target_config, logger
+    );
+
+    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+
+    current_hash = "new-hash";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": "svc-a"};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
+    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
+        status=SimpleNamespace(ready_replicas=0)
+    );
+
+    healthy_pod = unittest.mock.MagicMock();
+    healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
+    healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
+    healthy_pod.status.phase = "Running";
+
+    mongodb_pod = unittest.mock.MagicMock();
+    mongodb_pod.metadata.labels = {
+        "app": "svc-a-mongodb",
+        "controller-revision-hash": "mongodb-abc123"
+    };
+    mongodb_pod.metadata.name = "svc-a-mongodb-0";
+    mongodb_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    mongodb_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [healthy_pod, mongodb_pod];
+
+    raised = False;
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.microservice.target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.microservice.target.client.AppsV1Api",
+            return_value=fake_apps_v1
+        ) {
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.microservice.target.client.CoreV1Api",
+                return_value=fake_core_v1
+            ) {
+                with unittest.mock.patch.object(time, "sleep") {
+                    try {
+                        deployment_target._wait_for_fleet_rollout(bundle, timeout=30);
+                    } except Exception as e {
+                        raised = True;
+                        assert "crash-looping" in str(e);
+                    }
+                }
+            }
+        }
+    }
+
+    assert raised , "a crash-looping StatefulSet pod (no pod-template-hash) must still fail the rollout wait, even while Deployment companions are on the current RS";
+}
+
 test "fleet rollout falls back to broad pod scan when RS lookup fails" {
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();

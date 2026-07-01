@@ -196,7 +196,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                         labels = p.metadata.labels or {};
                         if current_hashes {
                             pod_hash = labels.get("pod-template-hash");
-                            if pod_hash not in current_hashes {
+                            if pod_hash is not None
+                            and pod_hash not in current_hashes {
                                 continue;
                             }
                         }
