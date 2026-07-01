@@ -186,8 +186,12 @@ def precompile_overlay(binary_bytes: bytes, source_root: Path, arch: str) -> boo
     try {
         tmpbin.write_bytes(binary_bytes);
         tmpbin.chmod(0o755);
+        # Hand precompile_bytecode the dir CONTAINING `jaclang/` (source_root), not
+        # `source_root/jaclang` - its find_package_dir descends to the first child
+        # package, so passing the jaclang dir would only precompile a single
+        # sub-package (e.g. byllm) instead of jaclang itself.
         subprocess.run(
-            [str(tmpbin), "run", str(util), str(source_root / "jaclang")],
+            [str(tmpbin), "run", str(util), str(source_root)],
             check=True,
             timeout=_SUBPROCESS_TIMEOUT
         );
