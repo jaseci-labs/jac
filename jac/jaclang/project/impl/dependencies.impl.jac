@@ -115,6 +115,7 @@ impl pip_command(
             rest
         );
     }
+    return [python, "-m", "pip"] + args;
 }
 
 impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
