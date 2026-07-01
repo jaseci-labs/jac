@@ -131,8 +131,8 @@ impl collect_source_files(
     if not result {
         pkg_name = config.project.name.replace("-", "_");
         for pattern in global_patterns {
-            effective = _make_recursive(pattern);
-            for file_path in sorted(proj_root.glob(effective)) {
+            top_level = pattern[3:] if pattern.startswith("**/") else pattern;
+            for file_path in sorted(proj_root.glob(top_level)) {
                 if not file_path.is_file() {
                     continue;
                 }
