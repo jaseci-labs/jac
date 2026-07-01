@@ -14,7 +14,8 @@ import from jaclang.scale._optdeps.kubernetes {
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
-    get_cluster_provider
+    get_cluster_provider,
+    _resolve_current_rs_hashes
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -155,6 +156,17 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         elapsed = 0;
         ready = 0;
 
+        current_hashes: set = set();
+        try {
+            current_hashes = _resolve_current_rs_hashes(
+                ns, "app in ({})".format(", ".join(names))
+            );
+        } except Exception as exc {
+            console.print(
+                f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
+            );
+        }
+
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
                 ready = 0;
@@ -181,6 +193,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 phases: list[str] = [];
                 try {
                     for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                        labels = p.metadata.labels or {};
+                        if current_hashes {
+                            pod_hash = labels.get("pod-template-hash");
+                            if pod_hash not in current_hashes {
+                                continue;
+                            }
+                        }
                         for cs in (p.status.container_statuses or []) {
                             if (cs.restart_count or 0) >= 3 {
                                 crash = (
@@ -189,7 +208,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                                 );
                             }
                         }
-                        labels = p.metadata.labels or {};
                         app = str(labels.get("app", ""));
                         if app {
                             phases.append(f"{app}={p.status.phase or '?'}");
