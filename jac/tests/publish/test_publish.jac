@@ -265,7 +265,8 @@ test "WheelBuilder.build produces a valid whl with required dist-info files" {
             assert f"{di}/METADATA" in names;
             assert f"{di}/WHEEL" in names;
             assert f"{di}/RECORD" in names;
-            assert any(n.endswith(".jac") for n in names);
+            assert any(n.endswith(".py") for n in names);
+            assert not any(n.endswith(".jac") for n in names);
             assert "Name: mypkg" in zf.read(f"{di}/METADATA").decode();
         }
     } finally {
@@ -415,7 +416,8 @@ test "WheelBuilder.build_sdist contains required files and valid PKG-INFO" {
             assert any(n.endswith("/PKG-INFO") for n in names);
             assert any(n.endswith("/pyproject.toml") for n in names);
             assert any(n.endswith("/_jac_build.py") for n in names);
-            assert any(n.endswith(".jac") for n in names);
+            assert any(n.endswith(".py") for n in names);
+            assert not any(n.endswith(".jac") for n in names);
             tf.extractall(path=str(extract_dir), filter="data");
         }
         pkg_info_files = list(extract_dir.rglob("PKG-INFO"));
