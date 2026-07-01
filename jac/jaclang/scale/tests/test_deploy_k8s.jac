@@ -259,7 +259,13 @@ test "fleet rollout ignores crash-looping pod from a stale replica set" {
         "kubernetes-microservice", target_config, logger
     );
 
-    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+    bundle = {
+        "deployments": {
+            "svc-a": {
+                "metadata": {"name": "svc-a-deployment", "labels": {"app": "svc-a"}}
+            }
+        }
+    };
 
     current_hash = "new-hash";
     stale_hash = "old-hash";
@@ -329,7 +335,13 @@ test "fleet rollout still fails when a current replica set pod is crash-looping"
         "kubernetes-microservice", target_config, logger
     );
 
-    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+    bundle = {
+        "deployments": {
+            "svc-a": {
+                "metadata": {"name": "svc-a-deployment", "labels": {"app": "svc-a"}}
+            }
+        }
+    };
 
     current_hash = "new-hash";
 
@@ -389,7 +401,13 @@ test "fleet rollout still fails when a StatefulSet companion pod with no pod-tem
         "kubernetes-microservice", target_config, logger
     );
 
-    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+    bundle = {
+        "deployments": {
+            "svc-a": {
+                "metadata": {"name": "svc-a-deployment", "labels": {"app": "svc-a"}}
+            }
+        }
+    };
 
     current_hash = "new-hash";
 
@@ -458,7 +476,13 @@ test "fleet rollout still fails when a companion Deployment pod outside the flee
         "kubernetes-microservice", target_config, logger
     );
 
-    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+    bundle = {
+        "deployments": {
+            "svc-a": {
+                "metadata": {"name": "svc-a-deployment", "labels": {"app": "svc-a"}}
+            }
+        }
+    };
 
     current_hash = "new-hash";
 
@@ -531,7 +555,13 @@ test "fleet rollout falls back to broad pod scan when RS lookup fails" {
         "kubernetes-microservice", target_config, logger
     );
 
-    bundle = {"deployments": {"svc-a": {"metadata": {"name": "svc-a"}}}};
+    bundle = {
+        "deployments": {
+            "svc-a": {
+                "metadata": {"name": "svc-a-deployment", "labels": {"app": "svc-a"}}
+            }
+        }
+    };
 
     fake_apps_v1 = unittest.mock.MagicMock();
     fake_apps_v1.list_namespaced_replica_set.side_effect = Exception(

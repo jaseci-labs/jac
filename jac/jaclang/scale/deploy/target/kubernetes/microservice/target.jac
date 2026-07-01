@@ -195,8 +195,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         elapsed = 0;
         ready = 0;
 
-        selector = "app in ({})".format(", ".join(names));
-        fleet_app_names: set = set(names);
+        app_names = [
+            (dep["metadata"]["labels"] or {}).get("app")
+            for dep in bundle.get("deployments", {}).values()
+        ];
+        selector = "app in ({})".format(", ".join(app_names));
+        fleet_app_names: set = set(app_names);
         current_hashes: set = set();
         try {
             current_hashes = _resolve_current_rs_hashes(ns, selector);
