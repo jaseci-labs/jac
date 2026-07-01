@@ -135,6 +135,26 @@ test "empty or non-dict intent yields only command caps" {
     assert derive_capabilities({}, None) == set();
 }
 
+test "scale serve defaults to the mongo user-store when no [database] is set" {
+    # A scale app (non-empty [plugins.scale.*] intent) that serves but names no
+    # database still needs pymongo for the runtime user manager, else its pods
+    # crash-loop on first request. The default is pulled in automatically.
+    caps = derive_capabilities(
+        {"microservices": {"enabled": True}}, command_capabilities("serve", scale=True)
+    );
+    assert "data.mongo" in caps;
+    # A declared backend wins - no redundant mongo default layered on top.
+    redis_caps = derive_capabilities(
+        {"database": {"type": "redis"}}, command_capabilities("serve", scale=True)
+    );
+    assert "data.redis" in redis_caps;
+    assert "data.mongo" not in redis_caps;
+    # Not serving (no "serve" command cap) -> nothing to persist -> no default.
+    assert "data.mongo" not in derive_capabilities(
+        {"microservices": {"enabled": True}}, []
+    );
+}
+
 # ===== command_capabilities =====
 test "command_capabilities maps action and scale flag" {
     assert command_capabilities("serve") == ["serve"];
