@@ -134,8 +134,29 @@ jobs:
         if: github.event_name == 'release' || inputs.tag != ''
         env:
           JAC_VER: ${{ steps.ver.outputs.version }}
+          ASSET: ${{ steps.pkg.outputs.asset }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euxo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+
+          # The GitHub API lists release assets with a few seconds of lag after an
+          # upload, and install.sh resolves the binary from that listing. Wait for
+          # this platform's asset to appear before verifying.
+          echo "Waiting for asset $ASSET to appear on release $TAG..."
+          deadline=$(( SECONDS + 120 ))
+          until gh release view "$TAG" --json assets \
+                  --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$ASSET did not appear on release $TAG within 120s"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Asset $ASSET is visible; verifying install path."
+
           HOME="$(mktemp -d)"; export HOME
           bash scripts/install.sh --version "$JAC_VER"
           BIN="$HOME/.local/bin/jac"
