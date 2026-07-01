@@ -218,27 +218,32 @@ test "guardrail: field access on an untyped (any) node-ref element is rejected w
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)
 # ─────────────────────────────────────────────────────────────────────
-# Native compilation cannot import arbitrary Python modules: the import is
-# dropped, then `json.dumps(...)` lowers to nothing and the binary prints empty
-# output. That silent-wrong result is the worst failure mode -- reject it.
-# (`math`/`time`/`sys`/`os`/`random` are now lowered; `json` is still
-# unsupported per the #6404 roadmap, so it stays a valid rejection example.)
+# Native compilation cannot import an ARBITRARY Python module: the import is
+# dropped, then `collections.OrderedDict(...)` lowers to nothing and the binary
+# prints empty output. That silent-wrong result is the worst failure mode --
+# reject it. (`math`/`time`/`sys`/`os`/`random` are lowered builtins, and the
+# bundled `na_stdlib` modules -- `hashlib`/`json`/`os.path`/... -- are now
+# whole-module-importable per #6978; so the rejection example must be a module
+# that is neither, i.e. a pure-Python one like `collections` that will never be
+# an FFI-floor target.)
 test "guardrail: Python module import is rejected" {
     prog = compile_na_inline(
-        "py_import_json",
-        "import json;\n" "with entry { print(json.dumps({\"a\": 1})); }\n"
+        "py_import_collections",
+        "import collections;\n" "with entry { print(collections.OrderedDict()); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'json', got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'collections', got: {fmt_errors(
         prog
     )}";
 }
 
-# A dotted Python import (`import os.path;`) is equally unsupported.
+# A dotted non-bundled Python import (`import collections.abc;`) is equally
+# unsupported (a dotted bundled name like `os.path` now resolves, #6978).
 test "guardrail: dotted Python module import is rejected" {
     prog = compile_na_inline(
-        "py_import_dotted", "import os.path;\n" "with entry { print(\"hi\"); }\n"
+        "py_import_dotted",
+        "import collections.abc;\n" "with entry { print(\"hi\"); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'os.path', got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'collections.abc', got: {fmt_errors(
         prog
     )}";
 }
@@ -522,7 +527,7 @@ test "nacompile surfaces native E5090 help text, not just the generic message" {
     with tempfile.TemporaryDirectory() as td {
         src = os.path.join(td, "bad_import.na.jac");
         with open(src, "w") as f {
-            f.write("import json;\nwith entry { print(0); }\n");
+            f.write("import collections;\nwith entry { print(0); }\n");
         }
         buf = io.StringIO();
         with contextlib.redirect_stdout(buf) {
@@ -672,6 +677,53 @@ test "native object field with an unknown type names the type, not '<Unknown>'" 
         }
     }
     assert named , f"E2018 should name 'uint32_t', not '<Unknown>': {fmt_errors(prog)}";
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# open() builtin vs. the POSIX open(path, flags_int) extern (issue #7010)
+# ─────────────────────────────────────────────────────────────────────
+# `open` is a native builtin lowering to fopen(path, mode_str) (a File). The
+# POSIX `open(path, flags_int) -> fd` syscall shares the name but is a libc
+# extern callers import. When such an extern is NOT in scope (e.g. a standalone
+# precompile of a native module whose libc imports live in a sibling file), an
+# integer second argument used to be forced through fopen(i8*, i8*), raising a
+# raw `TypeError: Type of #2 arg mismatch: i8* != i64` straight out of the IR
+# builder — an internal compiler crash, not a diagnostic. It must surface the
+# same clean E5090 every other unlowerable native call gets. A regression
+# re-raises the TypeError, failing this test with an error (not an assertion).
+test "guardrail: open() with a non-string (POSIX flags) mode is a clean E5090, not an ICE" {
+    prog = compile_na_inline(
+        "posix_open_flags",
+        "def parse_argc(path: str) -> i32 {\n"
+        "    fd: i32 = open(path, 0);\n"
+        "    if fd >= 0 { return fd; }\n"
+        "    return -1;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for POSIX open(path, flags), got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Positive control: with the libc `open(path, flags) -> i32` extern in scope
+# (the real native-build case, where cef_dispatch.na.jac declares it), the call
+# resolves to the POSIX extern rather than the file-open builtin — no crash and
+# no E5090. This is what lets the spliced CEF native modules compile.
+test "declared libc open(path, flags) extern resolves without the file-open builtin" {
+    prog = compile_na_inline(
+        "posix_open_extern",
+        "import from \"libc.so.6\" {\n"
+        "    def open(path: str, flags: i32) -> i32;  def close(fd: i32) -> i32;\n"
+        "}\n"
+        "def use_fd(path: str) -> i32 {\n"
+        "    fd: i32 = open(path, 0);\n"
+        "    if fd >= 0 { close(fd); }\n"
+        "    return fd;\n"
+        "}\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"Declared POSIX open extern triggered E5090: {fmt_errors(
+        prog
+    )}";
 }
 
 # Negative control: known clib types must compile without E2018/E5090.

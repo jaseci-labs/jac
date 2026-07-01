@@ -1,4 +1,3 @@
-import contextlib;
 import functools;
 import from jaclang.compiler.passes.native.llvm.ir { instructions, types, values }
 with entry {
@@ -40,120 +39,6 @@ def _binop(opname: Any, cls: Any = instructions.Instruction) -> object {
     }
     return wrap;
 }
-def _binop_with_overflow(opname: Any, cls: Any = instructions.Instruction) -> object {
-    def wrap(fn: Any) -> object {
-        @functools.wraps(fn)
-        def wrapped(self: Any, lhs: Any, rhs: Any, name: Any = '') -> object {
-            if (lhs.type != rhs.type) {
-                raise ValueError(
-                    (
-                        "Operands must be the same type, got (%s, %s)" % (
-                            lhs.type,
-                            rhs.type
-                        )
-                    )
-                );
-            }
-            ty = lhs.type;
-            if not isinstance(ty, types.IntType) {
-                raise TypeError(("expected an integer type, got %s" % (ty, )));
-            }
-            bool_ty = types.IntType(1);
-            mod = self.module;
-            fnty = types.FunctionType(types.LiteralStructType([ty, bool_ty]), [ty, ty]);
-            fn = mod.declare_intrinsic(
-                ("llvm.%s.with.overflow" % (opname, )), [ty], fnty
-            );
-            ret = self.call(fn, [lhs, rhs], name=name);
-            return ret;
-        }
-        return wrapped;
-    }
-    return wrap;
-}
-def _uniop(opname: Any, cls: Any = instructions.Instruction) -> object {
-    def wrap(fn: Any) -> object {
-        @functools.wraps(fn)
-        def wrapped(self: Any, operand: Any, name: Any = '') -> object {
-            instr = cls(self.block, operand.type, opname, [operand], name);
-            self._insert(instr);
-            return instr;
-        }
-        return wrapped;
-    }
-    return wrap;
-}
-def _uniop_intrinsic_int(opname: Any) -> object {
-    def wrap(fn: Any) -> object {
-        @functools.wraps(fn)
-        def wrapped(self: Any, operand: Any, name: Any = '') -> object {
-            if not isinstance(operand.type, types.IntType) {
-                raise TypeError(("expected an integer type, got %s" % operand.type));
-            }
-            fn = self.module.declare_intrinsic(opname, [operand.type]);
-            return self.call(fn, [operand], name);
-        }
-        return wrapped;
-    }
-    return wrap;
-}
-def _uniop_intrinsic_float(opname: Any) -> object {
-    def wrap(fn: Any) -> object {
-        @functools.wraps(fn)
-        def wrapped(self: Any, operand: Any, name: Any = '') -> object {
-            if not isinstance(operand.type, (types.FloatType, types.DoubleType)) {
-                raise TypeError(("expected a float type, got %s" % operand.type));
-            }
-            fn = self.module.declare_intrinsic(opname, [operand.type]);
-            return self.call(fn, [operand], name);
-        }
-        return wrapped;
-    }
-    return wrap;
-}
-def _uniop_intrinsic_with_flag(opname: Any) -> object {
-    def wrap(fn: Any) -> object {
-        @functools.wraps(fn)
-        def wrapped(self: Any, operand: Any, flag: Any, name: Any = '') -> object {
-            if not isinstance(operand.type, types.IntType) {
-                raise TypeError(("expected an integer type, got %s" % operand.type));
-            }
-            if not (isinstance(flag.type, types.IntType) and (flag.type.width == 1)) {
-                raise TypeError(("expected an i1 type, got %s" % flag.type));
-            }
-            fn = self.module.declare_intrinsic(opname, [operand.type, flag.type]);
-            return self.call(fn, [operand, flag], name);
-        }
-        return wrapped;
-    }
-    return wrap;
-}
-def _triop_intrinsic(opname: Any) -> object {
-    def wrap(fn: Any) -> object {
-        @functools.wraps(fn)
-        def wrapped(self: Any, a: Any, b: Any, c: Any, name: Any = '') -> object {
-            if ((a.type != b.type) or (b.type != c.type)) {
-                raise TypeError(
-                    (
-                        "expected types to be the same, got %s, %s, %s" % (
-                            a.type,
-                            b.type,
-                            c.type
-                        )
-                    )
-                );
-            } elif not isinstance(
-                a.type, (types.HalfType, types.FloatType, types.DoubleType)
-            ) {
-                raise TypeError(("expected an floating point type, got %s" % a.type));
-            }
-            fn = self.module.declare_intrinsic(opname, [a.type, b.type, c.type]);
-            return self.call(fn, [a, b, c], name);
-        }
-        return wrapped;
-    }
-    return wrap;
-}
 def _castop(opname: Any, cls: Any = instructions.CastInstr) -> object {
     def wrap(fn: Any) -> object {
         @functools.wraps(fn)
@@ -168,22 +53,6 @@ def _castop(opname: Any, cls: Any = instructions.CastInstr) -> object {
         return wrapped;
     }
     return wrap;
-}
-"""Returns (label + suffix) or a truncated version if it's too long.
-    Parameters
-    ----------
-    label : str
-        Label name
-    suffix : str
-        Label suffix
-    """
-def _label_suffix(label: Any, suffix: Any) -> object {
-    if (len(label) > 50) {
-        nhead = 25;
-        return ''.join([label[:nhead], '..', suffix]);
-    } else {
-        return (label + suffix);
-    }
 }
 
 class IRBuilder(object) {
@@ -272,98 +141,6 @@ class IRBuilder(object) {
         if (self._anchor > idx) {
             self._anchor -= 1;
         }
-    }
-    """
-        A context manager which temporarily positions the builder at the end
-        of basic block *bb* (but before any terminator).
-        """
-    @contextlib.contextmanager
-    def goto_block(self: IRBuilder, block: Any) -> object {
-        old_block = self.basic_block;
-        term = block.terminator;
-        if (term is not None) {
-            self.position_before(term);
-        } else {
-            self.position_at_end(block);
-        }
-        try {
-            yield ;
-        } finally {
-            self.position_at_end(old_block);
-        }
-    }
-
-    """
-        A context manager which temporarily positions the builder at the
-        end of the function's entry block.
-        """
-    @contextlib.contextmanager
-    def goto_entry_block(self: IRBuilder) -> object {
-        with self.goto_block(self.function.entry_basic_block) {
-            yield ;
-        }
-    }
-
-    @contextlib.contextmanager
-    def _branch_helper(self: IRBuilder, bbenter: Any, bbexit: Any) -> object {
-        self.position_at_end(bbenter);
-        yield bbexit;
-        if (self.basic_block.terminator is None) {
-            self.branch(bbexit);
-        }
-    }
-    """
-        A context manager which sets up a conditional basic block based
-        on the given predicate (a i1 value).  If the conditional block
-        is not explicitly terminated, a branch will be added to the next
-        block.
-        If *likely* is given, its boolean value indicates whether the
-        predicate is likely to be true or not, and metadata is issued
-        for LLVM's optimizers to account for that.
-        """
-    @contextlib.contextmanager
-    def if_then(self: IRBuilder, pred: Any, likely: Any = None) -> object {
-        bb = self.basic_block;
-        bbif = self.append_basic_block(name=_label_suffix(bb.name, '.if'));
-        bbend = self.append_basic_block(name=_label_suffix(bb.name, '.endif'));
-        br = self.cbranch(pred, bbif, bbend);
-        if (likely is not None) {
-            br.set_weights([99, 1] if likely else [1, 99]);
-        }
-        with self._branch_helper(bbif, bbend) {
-            yield bbend;
-        }
-        self.position_at_end(bbend);
-    }
-
-    """
-        A context manager which sets up two conditional basic blocks based
-        on the given predicate (a i1 value).
-        A tuple of context managers is yield'ed.  Each context manager
-        acts as a if_then() block.
-        *likely* has the same meaning as in if_then().
-
-        Typical use::
-            with builder.if_else(pred) as (then, otherwise):
-                with then:
-                    # emit instructions for when the predicate is true
-                with otherwise:
-                    # emit instructions for when the predicate is false
-        """
-    @contextlib.contextmanager
-    def if_else(self: IRBuilder, pred: Any, likely: Any = None) -> object {
-        bb = self.basic_block;
-        bbif = self.append_basic_block(name=_label_suffix(bb.name, '.if'));
-        bbelse = self.append_basic_block(name=_label_suffix(bb.name, '.else'));
-        bbend = self.append_basic_block(name=_label_suffix(bb.name, '.endif'));
-        br = self.cbranch(pred, bbif, bbelse);
-        if (likely is not None) {
-            br.set_weights([99, 1] if likely else [1, 99]);
-        }
-        then = self._branch_helper(bbif, bbend);
-        otherwise = self._branch_helper(bbelse, bbend);
-        yield (then, otherwise);
-        self.position_at_end(bbend);
     }
 
     def _insert(self: IRBuilder, instr: Any) -> object {
@@ -505,59 +282,6 @@ class IRBuilder(object) {
     @_binop('xor')
     def xor(self: IRBuilder, lhs: Any, rhs: Any, name: Any = '') -> object { }
 
-    """
-        Signed integer addition with overflow:
-            name = {result, overflow bit} = lhs + rhs
-        """
-    @_binop_with_overflow('sadd')
-    def sadd_with_overflow(
-        self: IRBuilder, lhs: Any, rhs: Any, name: Any = ''
-    ) -> object { }
-
-    """
-        Signed integer multiplication with overflow:
-            name = {result, overflow bit} = lhs * rhs
-        """
-    @_binop_with_overflow('smul')
-    def smul_with_overflow(
-        self: IRBuilder, lhs: Any, rhs: Any, name: Any = ''
-    ) -> object { }
-
-    """
-        Signed integer subtraction with overflow:
-            name = {result, overflow bit} = lhs - rhs
-        """
-    @_binop_with_overflow('ssub')
-    def ssub_with_overflow(
-        self: IRBuilder, lhs: Any, rhs: Any, name: Any = ''
-    ) -> object { }
-
-    """
-        Unsigned integer addition with overflow:
-            name = {result, overflow bit} = lhs + rhs
-        """
-    @_binop_with_overflow('uadd')
-    def uadd_with_overflow(
-        self: IRBuilder, lhs: Any, rhs: Any, name: Any = ''
-    ) -> object { }
-
-    """
-        Unsigned integer multiplication with overflow:
-            name = {result, overflow bit} = lhs * rhs
-        """
-    @_binop_with_overflow('umul')
-    def umul_with_overflow(
-        self: IRBuilder, lhs: Any, rhs: Any, name: Any = ''
-    ) -> object { }
-
-    """
-        Unsigned integer subtraction with overflow:
-            name = {result, overflow bit} = lhs - rhs
-        """
-    @_binop_with_overflow('usub')
-    def usub_with_overflow(
-        self: IRBuilder, lhs: Any, rhs: Any, name: Any = ''
-    ) -> object { }
 
     """
         Bitwise integer complement:
@@ -829,58 +553,6 @@ class IRBuilder(object) {
         return st;
     }
 
-    """
-        Load value from pointer, with optional guaranteed alignment:
-            name = *ptr
-        """
-    def load_atomic(
-        self: IRBuilder,
-        ptr: Any,
-        ordering: Any,
-        align: Any,
-        name: Any = '',
-        typ: Any = None
-    ) -> object {
-        if not isinstance(ptr.type, types.PointerType) {
-            msg = "cannot load from value of type %s (%r): not a pointer";
-            raise TypeError((msg % (ptr.type, str(ptr))));
-        }
-        ld = instructions.LoadAtomicInstr(
-            self.block, ptr, ordering, align, name, typ=typ
-        );
-        self._insert(ld);
-        return ld;
-    }
-
-    """
-        Store value to pointer, with optional guaranteed alignment:
-            *ptr = name
-        """
-    def store_atomic(
-        self: IRBuilder, value: Any, ptr: Any, ordering: Any, align: Any
-    ) -> object {
-        if not isinstance(ptr.type, types.PointerType) {
-            msg = "cannot store to value of type %s (%r): not a pointer";
-            raise TypeError((msg % (ptr.type, str(ptr))));
-        }
-        if (ptr.type.pointee != value.type) {
-            raise TypeError(
-                ("cannot store %s to %s: mismatching types" % (value.type, ptr.type))
-            );
-        }
-        st = instructions.StoreAtomicInstr(self.block, value, ptr, ordering, align);
-        self._insert(st);
-        return st;
-    }
-
-    """
-        Create a switch-case with a single *default* target.
-        """
-    def `switch(self: IRBuilder, value: Any, `default: Any) -> object {
-        swt = instructions.SwitchInstr(self.block, 'switch', value, `default);
-        self._set_terminator(swt);
-        return swt;
-    }
 
     """
         Unconditional branch to *target*.
@@ -923,14 +595,6 @@ class IRBuilder(object) {
         return self._set_terminator(instructions.Ret(self.block, "ret", value));
     }
 
-    """
-        Resume an in-flight exception.
-        """
-    def resume(self: IRBuilder, landingpad: Any) -> object {
-        br = instructions.Branch(self.block, "resume", [landingpad]);
-        self._set_terminator(br);
-        return br;
-    }
 
     """
         Call function *fn* with *args*:
@@ -979,56 +643,6 @@ class IRBuilder(object) {
     }
 
     """
-        Load a register value into an LLVM value.
-          Example: v = load_reg(IntType(32), "eax")
-        """
-    def load_reg(
-        self: IRBuilder, reg_type: Any, reg_name: Any, name: Any = ''
-    ) -> object {
-        ftype = types.FunctionType(reg_type, []);
-        return self.asm(ftype, "", ("={%s}" % reg_name), [], False, name);
-    }
-
-    """
-        Store an LLVM value inside a register
-        Example:
-          store_reg(Constant(IntType(32), 0xAAAAAAAA), IntType(32), "eax")
-        """
-    def store_reg(
-        self: IRBuilder, value: Any, reg_type: Any, reg_name: Any, name: Any = ''
-    ) -> object {
-        ftype = types.FunctionType(types.VoidType(), [reg_type]);
-        return self.asm(ftype, "", ("{%s}" % reg_name), [value], True, name);
-    }
-
-    def invoke(
-        self: IRBuilder,
-        fn: Any,
-        args: Any,
-        normal_to: Any,
-        unwind_to: Any,
-        name: Any = '',
-        cconv: Any = None,
-        fastmath: Any = (),
-        attrs: Any = (),
-        arg_attrs: Any = None
-    ) -> object {
-        inst = instructions.InvokeInstr(
-            self.block,
-            fn,
-            args,
-            normal_to,
-            unwind_to,
-            name=name,
-            cconv=cconv,
-            fastmath=fastmath,
-            attrs=attrs,
-            arg_attrs=arg_attrs
-        );
-        self._set_terminator(inst);
-        return inst;
-    }
-    """
         Compute effective address (getelementptr):
             name = getelementptr ptr, <indices...>
         """
@@ -1052,16 +666,6 @@ class IRBuilder(object) {
         return instr;
     }
 
-    """
-        Returns the value at position idx.
-        """
-    def extract_element(
-        self: IRBuilder, vector: Any, idx: Any, name: Any = ''
-    ) -> object {
-        instr = instructions.ExtractElement(self.block, vector, idx, name=name);
-        self._insert(instr);
-        return instr;
-    }
 
     """
         Returns vector with vector[idx] replaced by value.
@@ -1075,22 +679,6 @@ class IRBuilder(object) {
         return instr;
     }
 
-    """
-        Constructs a permutation of elements from *vector1* and *vector2*.
-        Returns a new vector in the same length of *mask*.
-
-        * *vector1* and *vector2* must have the same element type.
-        * *mask* must be a constant vector of integer types.
-        """
-    def shuffle_vector(
-        self: IRBuilder, vector1: Any, vector2: Any, mask: Any, name: Any = ''
-    ) -> object {
-        instr = instructions.ShuffleVector(
-            self.block, vector1, vector2, mask, name=name
-        );
-        self._insert(instr);
-        return instr;
-    }
 
     """
         Extract member number *idx* from aggregate.
@@ -1135,140 +723,5 @@ class IRBuilder(object) {
         self._insert(inst);
         return inst;
     }
-    """
-        Atomic compared-and-set:
-            atomic {
-                old = *ptr
-                success = (old == cmp)
-                if (success)
-                    *ptr = val
-                }
-            name = { old, success }
-
-        If failordering is `None`, the value of `ordering` is used.
-        """
-    def cmpxchg(
-        self: IRBuilder,
-        ptr: Any,
-        cmp: Any,
-        val: Any,
-        ordering: Any,
-        failordering: Any = None,
-        name: Any = ''
-    ) -> object {
-        failordering = ordering if (failordering is None) else failordering;
-        inst = instructions.CmpXchg(
-            self.block, ptr, cmp, val, ordering, failordering, name=name
-        );
-        self._insert(inst);
-        return inst;
-    }
-
-    def landingpad(
-        self: IRBuilder, typ: Any, name: Any = '', cleanup: Any = False
-    ) -> object {
-        inst = instructions.LandingPadInstr(self.block, typ, name, cleanup);
-        self._insert(inst);
-        return inst;
-    }
-    """
-        Optimizer hint: assume *cond* is always true.
-        """
-    def assume(self: IRBuilder, cond: Any) -> object {
-        fn = self.module.declare_intrinsic("llvm.assume");
-        return self.call(fn, [cond]);
-    }
-
-    """
-        Add a memory barrier, preventing certain reorderings of load and/or
-        store accesses with
-        respect to other processors and devices.
-        """
-    def fence(
-        self: IRBuilder, ordering: Any, targetscope: Any = None, name: Any = ''
-    ) -> object {
-        inst = instructions.Fence(self.block, ordering, targetscope, name=name);
-        self._insert(inst);
-        return inst;
-    }
-
-    """
-        Puts a single-line comment into the generated IR. This will be ignored
-        by LLVM, but can be useful for debugging the output of a compiler. Adds
-        a comment to the source file.
-
-        * *text* is a string that does not contain new line characters.
-        """
-    def comment(self: IRBuilder, text: Any) -> object {
-        inst = instructions.Comment(self.block, text);
-        self._insert(inst);
-        return inst;
-    }
-
-    """
-        Used to byte swap integer values with an even number of bytes (positive
-        multiple of 16 bits)
-        """
-    @_uniop_intrinsic_int("llvm.bswap")
-    def bswap(self: IRBuilder, cond: Any) -> object { }
-
-    """
-        Reverse the bitpattern of an integer value; for example 0b10110110
-        becomes 0b01101101.
-        """
-    @_uniop_intrinsic_int("llvm.bitreverse")
-    def bitreverse(self: IRBuilder, cond: Any) -> object { }
-
-    """
-        Counts the number of bits set in a value.
-        """
-    @_uniop_intrinsic_int("llvm.ctpop")
-    def ctpop(self: IRBuilder, cond: Any) -> object { }
-
-    """
-        Counts leading zero bits in *value*. Boolean *flag* indicates whether
-        the result is defined for ``0``.
-        """
-    @_uniop_intrinsic_with_flag("llvm.ctlz")
-    def ctlz(self: IRBuilder, cond: Any, flag: Any) -> object { }
-
-    """
-        Counts trailing zero bits in *value*. Boolean *flag* indicates whether
-        the result is defined for ``0``.
-        """
-    @_uniop_intrinsic_with_flag("llvm.cttz")
-    def cttz(self: IRBuilder, cond: Any, flag: Any) -> object { }
-
-    """
-        Perform the fused multiply-add operation.
-        """
-    @_triop_intrinsic("llvm.fma")
-    def fma(self: IRBuilder, a: Any, b: Any, c: Any) -> object { }
-
-    """
-        Convert from an i16 to the given FP type
-        """
-    def convert_from_fp16(
-        self: IRBuilder, a: Any, `to: Any = None, name: Any = ''
-    ) -> object {
-        if not `to {
-            raise TypeError("expected a float return type");
-        }
-        if not isinstance(`to, (types.FloatType, types.DoubleType)) {
-            raise TypeError(("expected a float type, got %s" % `to));
-        }
-        if not (isinstance(a.type, types.IntType) and (a.type.width == 16)) {
-            raise TypeError(("expected an i16 type, got %s" % a.type));
-        }
-        opname = 'llvm.convert.from.fp16';
-        fn = self.module.declare_intrinsic(opname, [`to]);
-        return self.call(fn, [a], name);
-    }
-
-    """
-        Convert the given FP number to an i16
-        """
-    @_uniop_intrinsic_float("llvm.convert.to.fp16")
-    def convert_to_fp16(self: IRBuilder, a: Any) -> object { }
 }
 

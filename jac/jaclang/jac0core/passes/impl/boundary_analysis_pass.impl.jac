@@ -1,17 +1,14 @@
-"""Implementation for boundary_analysis_pass constructs."""
-
-"""Initialize function-definition tracking and effect accumulators."""
 impl BoundaryAnalysisPass.before_pass(self: BoundaryAnalysisPass) -> None {
     self._func_defs: dict[(str, tuple[(InteropContext, uni.Ability)])] = {};
     self._imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = {};
-    # Per-classification accumulators for endpoint graph effects (reset for
-    # each endpoint body by _classify).
+
+    self._imported_native_modules: dict[(str, tuple[(str, InteropContext)])] = {};
+
     self._is_writer: bool = False;
     self._touches: set[str] = set();
     self._visited: set[int] = set();
 }
 
-"""Determine the codespace context of a node."""
 impl BoundaryAnalysisPass._get_context(
     self: BoundaryAnalysisPass, nd: uni.UniNode
 ) -> InteropContext {
@@ -24,7 +21,6 @@ impl BoundaryAnalysisPass._get_context(
     return InteropContext.SERVER;
 }
 
-"""Extract a type name string from a type annotation expression."""
 impl BoundaryAnalysisPass._extract_type_name(
     self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
 ) -> str {
@@ -37,15 +33,14 @@ impl BoundaryAnalysisPass._extract_type_name(
     if isinstance(expr, uni.Token) {
         return expr.value;
     }
-    # Handle BuiltinType (list, dict, set, etc.)
+
     if isinstance(expr, uni.BuiltinType) {
         return expr?.sym_name or str(getattr(expr, 'value', 'int'));
     }
-    # Handle subscript types like list[Todo]
+
     if isinstance(expr, uni.AtomTrailer) {
         target_name = self._extract_type_name(expr.target);
         if expr.right {
-            # Right is typically IndexSlice -> Slice -> ListVal -> [types]
             inner = self._extract_subscript_inner(expr.right);
             if inner {
                 return f"{target_name}[{inner}]";
@@ -53,7 +48,7 @@ impl BoundaryAnalysisPass._extract_type_name(
         }
         return target_name;
     }
-    # Handle union types like Todo | None -> "Todo | None"
+
     if isinstance(expr, uni.BinaryExpr) {
         left = self._extract_type_name(expr.left);
         right = self._extract_type_name(expr.right);
@@ -62,11 +57,6 @@ impl BoundaryAnalysisPass._extract_type_name(
     return 'int';
 }
 
-"""Check if a module name refers to a .na.jac file and return the path suffix.
-
-Delegates to the shared resolve_native_module() in codeinfo to ensure
-consistent resolution across the compiler.
-"""
 impl BoundaryAnalysisPass._resolve_native_module(
     self: BoundaryAnalysisPass, module_name: str
 ) -> (str | None) {
@@ -80,15 +70,33 @@ impl BoundaryAnalysisPass._resolve_native_module(
     return src_mod_str;
 }
 
-"""Track imports from .na.jac modules and sv-to-sv microservice imports."""
+impl BoundaryAnalysisPass._in_native_module(self: BoundaryAnalysisPass) -> bool {
+    import os;
+    import from jaclang.jac0core.ext_registry { is_native_module }
+    if not (self.ir_in and self.ir_in.loc) {
+        return False;
+    }
+    mod_path = self.ir_in.loc.mod_path;
+    if mod_path and is_native_module(mod_path) {
+        return True;
+    }
+    if (
+        self.prog
+        and self.prog._auto_promote_native
+        and self.prog._auto_promote_target
+        and mod_path
+    ) {
+        return os.path.realpath(mod_path) == os.path.realpath(
+            self.prog._auto_promote_target
+        );
+    }
+    return False;
+}
+
 impl BoundaryAnalysisPass.enter_import(
     self: BoundaryAnalysisPass, nd: uni.Import
 ) -> None {
-    import from jaclang.jac0core.ext_registry {
-        is_server_module,
-        is_client_module,
-        is_native_module
-    }
+    import from jaclang.jac0core.ext_registry { is_server_module, is_client_module }
     import_context = self._get_context(nd);
     if (nd.from_loc and isinstance(nd.from_loc, uni.ModulePath)) {
         module_name = nd.from_loc?.dot_path_str;
@@ -99,17 +107,12 @@ impl BoundaryAnalysisPass.enter_import(
         }
         if module_name {
             native_path = self._resolve_native_module(module_name);
-            # sv-to-sv microservice import detection: triggered when the user
-            # explicitly wrote `sv import from ...` (we detect via the sv
-            # token, not code_context which defaults to SERVER for all nodes).
+
             mod_path_str = self.ir_in.loc.mod_path
                 if (self.ir_in and self.ir_in.loc)
                 else '';
             in_server_module = is_server_module(mod_path_str);
-            # A `sv import` inside a client module is the client->server RPC
-            # edge (the #6221 case). Because this pass now runs in the shared
-            # front-end on .cl.jac modules too, we record that binding here from
-            # resolved symbols instead of leaving EsastGen to re-resolve it.
+
             in_client_module = (
                 is_client_module(mod_path_str)
                 or (nd?.in_client_context and nd.in_client_context())
@@ -119,10 +122,6 @@ impl BoundaryAnalysisPass.enter_import(
                 else None;
             has_sv_prefix = sv_token is not None and sv_token.name == Tok.KW_SERVER;
             if (has_sv_prefix and not native_path and nd.items) {
-                # Key the binding on the bare module name (no leading relative
-                # dots) so it matches what PyastGen / the runtime use to find
-                # the provider; `.analytics` and `analytics` must register
-                # identically (#6507).
                 sv_module_name = nd.from_loc.base_module_name;
                 if in_server_module {
                     self._register_sv_import(nd, sv_module_name, InteropContext.SERVER);
@@ -139,17 +138,10 @@ impl BoundaryAnalysisPass.enter_import(
                             native_path,
                             import_context
                         );
-                        # For native-to-native imports, create binding immediately
-                        # so NativeCompilePass can link the module. This avoids
-                        # relying on enter_func_call which may not visit annex bodies.
-                        # Check both explicit na {} context and .na.jac file context.
+
                         is_native_ctx = (
                             import_context == InteropContext.NATIVE
-                            or (
-                                self.ir_in
-                                and self.ir_in.loc
-                                and is_native_module(self.ir_in.loc.mod_path)
-                            )
+                            or self._in_native_module()
                         );
                         if (is_native_ctx and func_name not in manifest.bindings) {
                             binding = InteropBinding(
@@ -170,27 +162,32 @@ impl BoundaryAnalysisPass.enter_import(
             }
         }
     }
+
+    if (not nd.from_loc) and nd.items and (not nd.clib_decls) {
+        import from jaclang.jac0core.codeinfo { is_bundled_native_module }
+        for item in nd.items {
+            if isinstance(item, uni.ModulePath) and item.path {
+                whole_name = '.'.join(getattr(p, 'value', str(p)) for p in item.path);
+                if whole_name and is_bundled_native_module(whole_name) {
+                    native_path = self._resolve_native_module(whole_name);
+                    if native_path {
+                        self._imported_native_modules[whole_name] = (
+                            native_path,
+                            import_context
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
 
-"""Register an sv import edge: create InteropBindings for each item.
-
-`caller_ctx` is the codespace doing the importing — SERVER for an sv->sv
-microservice import, CLIENT for a `sv import` inside a .cl.jac (the
-client->server RPC edge). The provider is always SERVER. For each item we
-look up the source module's symbol table to extract param names, types,
-and return type; these bindings drive HTTP client-stub codegen (Python
-and JS) and inform boundary type collection.
-"""
 impl BoundaryAnalysisPass._register_sv_import(
     self: BoundaryAnalysisPass,
     nd: uni.Import,
     module_name: str,
     caller_ctx: InteropContext
 ) -> None {
-    # Resolve the source module. If it's not yet in the program hub, parse
-    # it standalone (no semantic analysis) so we can extract function
-    # signatures via AST walk. This only triggers for actual sv imports
-    # (we use the sv token check), not for every import.
     source_mod: (uni.Module | None) = None;
     if nd.from_loc {
         try {
@@ -213,13 +210,7 @@ impl BoundaryAnalysisPass._register_sv_import(
             }
         }
     }
-    # Build name -> AST-node maps by walking the source module's AST. We
-    # keep functions and walkers separate because their wire shapes (and
-    # therefore stub-generation paths) differ: functions go through
-    # /function/<name> with a signature derived from `def` params,
-    # walkers go through /walker/<name> with params derived from `has`
-    # fields. The walker map only contains `walker:pub` archetypes since
-    # private walkers are not exposed at the HTTP boundary.
+
     source_abilities: dict[str, any] = {};
     source_walkers: dict[str, any] = {};
     if source_mod {
@@ -251,10 +242,6 @@ impl BoundaryAnalysisPass._register_sv_import(
                 route=[caller_ctx, InteropContext.SERVER],
                 source_module=module_name,
                 kind='walker'
-                # The wire returns a walker instance whose Python-side
-                # type is the walker class itself, so the return type
-                # name and the symbol name are the same. Stub codegen
-                # uses this to rehydrate via `<Walker>._from_wire(...)`.
             );
             manifest.bindings[local_name] = binding;
             continue;
@@ -295,7 +282,6 @@ impl BoundaryAnalysisPass._register_sv_import(
     }
 }
 
-"""Walk a module AST collecting Ability nodes by name."""
 impl BoundaryAnalysisPass._collect_abilities(
     self: BoundaryAnalysisPass, nd: any, out: dict[str, any]
 ) -> None {
@@ -309,7 +295,6 @@ impl BoundaryAnalysisPass._collect_abilities(
     }
 }
 
-"""Walk a module AST collecting public walker Archetype nodes by name."""
 impl BoundaryAnalysisPass._collect_pub_walkers(
     self: BoundaryAnalysisPass, nd: any, out: dict[str, any]
 ) -> None {
@@ -336,13 +321,6 @@ impl BoundaryAnalysisPass._collect_pub_walkers(
     }
 }
 
-"""Extract `has` field (name, type-name) pairs from a walker archetype.
-
-Walks the walker's body for `ArchHas` containers and bare `HasVar`
-declarations, mirroring how `_collect_boundary_type` reads Archetype
-field shape. Type annotations are extracted with `_extract_type_name`
-so generics, unions, and boundary-typed defaults survive intact.
-"""
 impl BoundaryAnalysisPass._extract_walker_has_fields(
     self: BoundaryAnalysisPass, walker_nd: any
 ) -> tuple[list[str], list[str]] {
@@ -386,15 +364,6 @@ impl BoundaryAnalysisPass._extract_walker_has_fields(
     return (names, types);
 }
 
-"""Parse a source file standalone (no semantic analysis).
-
-Used by sv import detection to extract function signatures from a provider
-module that is not yet in the program hub. We parse into a *throwaway*
-JacProgram (never `self.prog`) so a symtab-less parse-only module can never
-poison the shared hub — downstream resolvers (EsastGen `_resolve_source_module`)
-must still find/compile the real provider themselves. We only walk the
-returned AST for `def`/walker signatures, which needs no symbol table.
-"""
 impl BoundaryAnalysisPass._parse_only_source_module(
     self: BoundaryAnalysisPass, file_path: str
 ) -> any {
@@ -412,7 +381,6 @@ impl BoundaryAnalysisPass._parse_only_source_module(
     }
 }
 
-"""Find an Archetype or Enum node by name via AST walk."""
 impl BoundaryAnalysisPass._find_archetype(
     self: BoundaryAnalysisPass, nd: any, target: str
 ) -> any {
@@ -430,13 +398,6 @@ impl BoundaryAnalysisPass._find_archetype(
     return None;
 }
 
-"""Record a function's definition context and, for a public server-context
-module-level `def`, classify it as an RPC endpoint (graph effects).
-
-Methods (walker/node abilities) are skipped for effects — captured by the
-owning archetype. Client functions are never RPC-called; non-public helpers
-are followed *into* when a public endpoint calls them, not keyed as endpoints.
-"""
 impl BoundaryAnalysisPass.enter_ability(
     self: BoundaryAnalysisPass, nd: uni.Ability
 ) -> None {
@@ -451,7 +412,7 @@ impl BoundaryAnalysisPass.enter_ability(
         }
         self._func_defs[nd.sym_name] = (ctx, nd);
     }
-    # Endpoint graph-effect classification (formerly WalkerEffectsPass).
+
     if (
         not nd.is_method
         and not nd.in_client_context()
@@ -465,7 +426,6 @@ impl BoundaryAnalysisPass.enter_ability(
     }
 }
 
-"""Check if a function call crosses context boundaries."""
 impl BoundaryAnalysisPass.enter_func_call(
     self: BoundaryAnalysisPass, nd: uni.FuncCall
 ) -> None {
@@ -475,17 +435,45 @@ impl BoundaryAnalysisPass.enter_func_call(
     } elif isinstance(nd.target, uni.NameAtom) {
         func_name = nd.target.sym_name;
     } elif isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
-        # Static-method call on an imported class: `Class.method(...)` (#6951).
-        # Bind on the base class name so a bundled/cross-module class used only
-        # via its statics still pulls its defining module into the native link
-        # set (instance calls on locals miss the `_imported_native_funcs` gate
-        # below, so this never disturbs ordinary `obj.method()` dispatch).
         base = nd.target.target;
+        base_name = None;
         if isinstance(base, uni.Name) {
-            func_name = base.value;
+            base_name = base.value;
         } elif isinstance(base, uni.NameAtom) {
-            func_name = base.sym_name;
+            base_name = base.sym_name;
         }
+        if base_name is not None and base_name in self._imported_native_modules {
+            right_name = nd.target.right?.sym_name;
+            if not right_name {
+                right_name = nd.target.right?.value;
+            }
+
+            _is_native_ctx = (
+                self._get_context(nd) == InteropContext.NATIVE
+                or self._in_native_module()
+            );
+            if right_name and _is_native_ctx {
+                (mod_path, _ctx) = self._imported_native_modules[base_name];
+                _mfst = self.ir_in.gen.interop_manifest;
+                if right_name not in _mfst.bindings {
+                    _mfst.bindings[right_name] = InteropBinding(
+                        name=right_name,
+                        source_context=InteropContext.NATIVE,
+                        callers={InteropContext.NATIVE},
+                        ret_type='int',
+                        param_types=[],
+                        param_names=[],
+                        ast_node=None,
+                        route=[InteropContext.NATIVE, InteropContext.NATIVE],
+                        source_module=mod_path
+                    );
+                } else {
+                    _mfst.bindings[right_name].callers.add(InteropContext.NATIVE);
+                }
+            }
+            return;
+        }
+        func_name = base_name;
     }
     if not func_name {
         return;
@@ -494,7 +482,7 @@ impl BoundaryAnalysisPass.enter_func_call(
     manifest = self.ir_in.gen.interop_manifest;
     if (func_name in self._imported_native_funcs) {
         (source_module, import_ctx) = self._imported_native_funcs[func_name];
-        if (caller_ctx == InteropContext.NATIVE) {
+        if (caller_ctx == InteropContext.NATIVE or self._in_native_module()) {
             if (func_name not in manifest.bindings) {
                 binding = InteropBinding(
                     name=func_name,
@@ -551,21 +539,20 @@ impl BoundaryAnalysisPass.enter_func_call(
     }
 }
 
-"""Extract the inner type name from a subscript (IndexSlice/Slice/ListVal)."""
 impl BoundaryAnalysisPass._extract_subscript_inner(
     self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
 ) -> str {
     if expr is None {
         return '';
     }
-    # Direct Name or Token
+
     if isinstance(expr, uni.Name) {
         return expr.value;
     }
     if isinstance(expr, uni.Token) {
         return expr.value;
     }
-    # IndexSlice -> walk children to find Slice/ListVal
+
     if isinstance(expr, uni.IndexSlice) {
         for k in expr.kid {
             result = self._extract_subscript_inner(k);
@@ -574,7 +561,7 @@ impl BoundaryAnalysisPass._extract_subscript_inner(
             }
         }
     }
-    # Slice -> walk children
+
     if isinstance(expr, uni.Slice) {
         for k in expr.kid {
             result = self._extract_subscript_inner(k);
@@ -583,7 +570,7 @@ impl BoundaryAnalysisPass._extract_subscript_inner(
             }
         }
     }
-    # ListVal/TupleVal -> extract all type params (e.g. dict[str, Metric] -> "str, Metric")
+
     if isinstance(expr, (uni.ListVal, uni.TupleVal)) {
         if expr.values {
             parts = [self._extract_type_name(v) for v in expr.values];
@@ -597,7 +584,6 @@ impl BoundaryAnalysisPass._extract_subscript_inner(
     return '';
 }
 
-"""Extract all user-defined type names from a subscript (IndexSlice tree)."""
 impl BoundaryAnalysisPass._extract_all_subscript_types(
     self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
 ) -> list[str] {
@@ -615,7 +601,7 @@ impl BoundaryAnalysisPass._extract_all_subscript_types(
         }
         return result;
     }
-    # Walk children for IndexSlice, Slice, etc.
+
     if hasattr(expr, 'kid') {
         for k in expr.kid {
             result.extend(self._extract_all_subscript_types(k));
@@ -624,7 +610,6 @@ impl BoundaryAnalysisPass._extract_all_subscript_types(
     return result;
 }
 
-"""Extract all user-defined type names from a type annotation expression."""
 impl BoundaryAnalysisPass._extract_all_type_names(
     self: BoundaryAnalysisPass, expr: (uni.UniNode | None)
 ) -> list[str] {
@@ -660,11 +645,11 @@ impl BoundaryAnalysisPass._extract_all_type_names(
         }
         return [];
     }
-    # BuiltinType (list, dict, etc.) — not user-defined
+
     if isinstance(expr, uni.BuiltinType) {
         return [];
     }
-    # Subscript: list[Todo] -> extract inner types (walk into IndexSlice/Slice/ListVal)
+
     if isinstance(expr, uni.AtomTrailer) {
         result: list[str] = [];
         result.extend(self._extract_all_type_names(expr.target));
@@ -673,7 +658,7 @@ impl BoundaryAnalysisPass._extract_all_type_names(
         }
         return result;
     }
-    # Union: Todo | None -> extract both sides
+
     if isinstance(expr, uni.BinaryExpr) {
         result: list[str] = [];
         result.extend(self._extract_all_type_names(expr.left));
@@ -683,7 +668,6 @@ impl BoundaryAnalysisPass._extract_all_type_names(
     return [];
 }
 
-"""Collect a type that crosses the codespace boundary into the manifest."""
 impl BoundaryAnalysisPass._collect_boundary_type(
     self: BoundaryAnalysisPass, type_name: str, source_mod: (uni.Module | None)
 ) -> None {
@@ -711,7 +695,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     if type_name in manifest.boundary_types {
         return;
     }
-    # Look up the type in the source module or current module
+
     search_mods = [];
     if source_mod {
         search_mods.append(source_mod);
@@ -725,25 +709,14 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             if isinstance(candidate, uni.NameAtom) and candidate.parent {
                 candidate = candidate.parent;
             }
-            # Only accept a symbol that actually resolves to a type
-            # definition. An `sv import`ed type name resolves, in the
-            # consumer's own symtab, to the import binding (a NameAtom/Token)
-            # rather than the Archetype -- accepting that would set arch_node
-            # to a non-type node, short-circuit the AST-walk fallback below,
-            # and leave the type uncollected. The return value of the sv->sv
-            # call then never gets a `_from_wire` stub and arrives as a raw
-            # `_jac_type` dict (#6710). Keep looking past such bindings so the
-            # fallback can find the real definition in the provider module.
+
             if isinstance(candidate, (uni.Archetype, uni.Enum)) {
                 arch_node = candidate;
                 break;
             }
         }
     }
-    # AST-walk fallback for modules without a built sym_tab (e.g., a source
-    # module that's already in prog.mod.hub but for which boundary type
-    # collection runs before symtab build), or whose only matching symbol was
-    # a non-type binding rejected above.
+
     if arch_node is None {
         for mod in search_mods {
             try {
@@ -759,15 +732,13 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     if arch_node is None {
         return;
     }
-    # Handle Archetype (obj, node, walker)
+
     if isinstance(arch_node, uni.Archetype) {
-        # Edge archetypes intentionally fall back to "obj" here -- this
-        # manifest only distinguishes node/walker shapes.
         _ak = arch_node.arch_kind;
         kind = _ak if _ak in ("node", "walker") else "obj";
         fields: list[tuple[(str, str)]] = [];
         nested: list[str] = [];
-        # Extract has declarations (walk through ArchHas -> HasVar)
+
         if arch_node.body {
             body_items = arch_node.body
                 if isinstance(arch_node.body, list)
@@ -777,7 +748,6 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                 if isinstance(item, uni.HasVar) {
                     has_vars = [item];
                 } elif isinstance(item, uni.ArchHas) {
-                    # ArchHas contains HasVar nodes as children
                     has_vars = [
                         k
                         for k in item.kid
@@ -805,13 +775,13 @@ impl BoundaryAnalysisPass._collect_boundary_type(
             name=type_name, kind=kind, fields=fields, nested_types=nested
         );
         manifest.boundary_types[type_name] = info;
-        # Recursively collect nested types
+
         for nt in nested {
             self._collect_boundary_type(nt, source_mod);
         }
         return;
     }
-    # Handle Enum
+
     if isinstance(arch_node, uni.Enum) {
         members: list[tuple[(str, Any)]] = [];
         if arch_node.body {
@@ -820,7 +790,6 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                 else [arch_node.body];
             for item in body_items {
                 if isinstance(item, uni.Assignment) {
-                    # Enum member: NAME = value
                     member_name = '';
                     member_val = None;
                     if isinstance(item.target, uni.Name) {
@@ -828,7 +797,6 @@ impl BoundaryAnalysisPass._collect_boundary_type(
                     }
                     if item.value {
                         if isinstance(item.value, uni.MultiString) {
-                            # String literal — extract from first string token
                             if item.value.strings {
                                 s = item.value.strings[0];
                                 raw = getattr(s, 'value', str(s));
@@ -854,11 +822,9 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     }
 }
 
-"""After all nodes visited, collect boundary types from SV->CL bindings
-and server-side archetypes that may cross the boundary."""
 impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
     manifest = self.ir_in.gen.interop_manifest;
-    # Collect types from explicit SV->CL function bindings
+
     for binding in manifest.server_exports_to_client {
         if binding.ast_node and isinstance(binding.ast_node, uni.Ability) {
             sig = binding.ast_node.signature;
@@ -878,9 +844,7 @@ impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
             }
         }
     }
-    # Collect types from SV->SV (microservice) bindings. The source module
-    # holds the canonical type definition; walk up from the ast_node to
-    # find the containing Module.
+
     for binding in manifest.server_exports_to_server {
         source_mod_obj: (uni.Module | None) = None;
         if (binding.ast_node and isinstance(binding.ast_node, uni.Ability)) {
@@ -909,9 +873,7 @@ impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
             }
         }
     }
-    # Collect all server-side archetypes (obj, node, walker, enum) as potential
-    # boundary types — they may be passed via walker reports/spawn fields.
-    # Only collect types defined outside of CL context.
+
     has_client = False;
     if self.ir_in and self.ir_in.body {
         for item in self.ir_in.body {
@@ -933,14 +895,6 @@ impl BoundaryAnalysisPass.after_pass(self: BoundaryAnalysisPass) -> None {
     self._record_access_levels(manifest);
 }
 
-"""Record compile-time auth requirement for this module's own top-level
-endpoints (def abilities and walker archetypes).
-
-`func_access`/`walker_access` map name -> True when auth is required
-(secure-by-default: anything not explicitly `pub` requires auth). Because
-this pass runs on every module, each records its own symbols; the serve
-runtime aggregates across the program hub instead of re-walking ASTs at
-request time (replacing ModuleIntrospector._extract_access_levels)."""
 impl BoundaryAnalysisPass._record_access_levels(
     self: BoundaryAnalysisPass, manifest: any
 ) -> None {
@@ -961,7 +915,6 @@ impl BoundaryAnalysisPass._record_access_levels(
     }
 }
 
-"""Classify a walker archetype by the effects in its (impl-resolved) body."""
 impl BoundaryAnalysisPass.enter_archetype(
     self: BoundaryAnalysisPass, nd: uni.Archetype
 ) -> None {
@@ -976,9 +929,6 @@ impl BoundaryAnalysisPass.enter_archetype(
     );
 }
 
-"""Run the effect scan over a flat statement body, returning the manifest entry.
-The single definition of the `["*"]`-when-empty conservative default for
-`touches` lives here."""
 impl BoundaryAnalysisPass._classify(
     self: BoundaryAnalysisPass, body_nodes: list
 ) -> dict {
@@ -992,21 +942,17 @@ impl BoundaryAnalysisPass._classify(
     return {"is_writer": self._is_writer, "touches": touches_list};
 }
 
-"""Recursively classify a node and its descendants for graph effects. The two
-context-dependent operations -- recognizing a node/edge constructor and
-following a call into its callee -- both go through resolved symbols, so there is
-no syntactic fallback."""
 impl BoundaryAnalysisPass._scan(
     self: BoundaryAnalysisPass, nd: (uni.UniNode | None)
 ) -> None {
     if nd is None {
         return;
     }
-    # Edge create / delete, or sub-walker spawn.
+
     if isinstance(nd, uni.BinaryExpr) {
         if isinstance(nd.op, uni.ConnectOp) {
             self._is_writer = True;
-            # ++>, <++, <++> may carry an explicit edge type to record.
+
             if nd.op.conn_type and isinstance(nd.op.conn_type, uni.Name) {
                 self._touches.add(nd.op.conn_type.sym_name);
             }
@@ -1016,12 +962,11 @@ impl BoundaryAnalysisPass._scan(
             self._is_writer = True;
         }
     }
-    # Node / edge deletion.
+
     if isinstance(nd, uni.DeleteStmt) {
         self._is_writer = True;
     }
-    # Field mutation on a non-self target: `n.attr = ...`. `self.x` is
-    # walker-local state, not a graph write, so it is excluded.
+
     if isinstance(nd, uni.Assignment) and nd.target {
         for tgt in nd.target {
             if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
@@ -1039,8 +984,7 @@ impl BoundaryAnalysisPass._scan(
             }
         }
     }
-    # FuncCall: arch construction (a write + a touch) and interprocedural follow
-    # into the callee body.
+
     if isinstance(nd, uni.FuncCall) {
         arch_sym = self._call_target_symbol(nd);
         if arch_sym
@@ -1048,9 +992,7 @@ impl BoundaryAnalysisPass._scan(
             self._is_writer = True;
             self._touches.add(arch_sym.sym_name);
         }
-        # The id()-based visited guard makes mutual / self recursion terminate;
-        # `_callee_body` returns [] when the call can't be resolved to an
-        # ability.
+
         if id(nd) not in self._visited {
             self._visited.add(id(nd));
             for stmt in self._callee_body(nd) {
@@ -1058,12 +1000,11 @@ impl BoundaryAnalysisPass._scan(
             }
         }
     }
-    # Node types from an EventSignature: `can foo with NodeType entry`.
+
     if isinstance(nd, uni.EventSignature) and nd.arch_tag_info {
         if isinstance(nd.arch_tag_info, uni.Name) {
             self._touches.add(nd.arch_tag_info.sym_name);
         } elif isinstance(nd.arch_tag_info, uni.BoolExpr) {
-            # Union type: NodeA | NodeB
             for val in nd.arch_tag_info.values {
                 if isinstance(val, uni.Name) {
                     self._touches.add(val.sym_name);
@@ -1071,7 +1012,7 @@ impl BoundaryAnalysisPass._scan(
             }
         }
     }
-    # Recurse into children.
+
     for child in nd.kid {
         if child {
             self._scan(child);
@@ -1079,7 +1020,6 @@ impl BoundaryAnalysisPass._scan(
     }
 }
 
-"""Resolve a call's target to its symbol (resolved, with a scope lookup)."""
 impl BoundaryAnalysisPass._call_target_symbol(
     self: BoundaryAnalysisPass, call: uni.FuncCall
 ) -> (uni.Symbol | None) {
@@ -1090,7 +1030,7 @@ impl BoundaryAnalysisPass._call_target_symbol(
         }
         return sym;
     }
-    # Dotted attribute chain (a.b.c): the call targets the last attribute.
+
     if isinstance(call.target, uni.AtomTrailer) {
         attrs = call.target.as_attr_list;
         if attrs {
@@ -1103,8 +1043,6 @@ impl BoundaryAnalysisPass._call_target_symbol(
     return None;
 }
 
-"""The callee ability's impl-resolved body, or [] if the call can't be
-statically resolved to an ability."""
 impl BoundaryAnalysisPass._callee_body(
     self: BoundaryAnalysisPass, call: uni.FuncCall
 ) -> list {
@@ -1125,8 +1063,6 @@ impl BoundaryAnalysisPass._callee_body(
     return [];
 }
 
-"""Flatten an archetype / ability body to a list of statements, resolving a
-separate `impl` block when the declaration and body are split."""
 impl BoundaryAnalysisPass._resolved_body(
     self: BoundaryAnalysisPass, owner: uni.UniNode
 ) -> list {

@@ -1,20 +1,3 @@
-"""Shell plugin for the Jac desktop IPC system.
-
-Runs subprocess commands with a deny-all default. Commands must be explicitly
-allowed in jac.toml via glob patterns:
-
-  [plugins.desktop.plugins.shell]
-  allow = ["git *", "jac *"]
-
-Each pattern token is matched against the corresponding argv token. A trailing
-"*" in a pattern means "any remaining args." For example:
-  "git log"   -> ONLY git log (exact match)
-  "git log *" -> git log with any args
-  "git *"     -> any git invocation
-Commands run without a shell to prevent operator injection.
-
-Transpiled to dependency-free Python at build time.
-"""
 import fnmatch;
 import shlex;
 import subprocess;
@@ -22,15 +5,8 @@ import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-"""True iff argv is permitted by a single pattern's token list.
-
-Each pattern token is matched against the corresponding argv token via
-fnmatch. A trailing "*" in the pattern means "accept any remaining args."
-Without a trailing wildcard, argv must match the pattern's length exactly.
-"""
 def _pattern_matches(pattern_argv: list, argv: list) -> bool {
     for (i, ptok) in enumerate(pattern_argv) {
-        # Trailing "*" allows any remaining args.
         if ptok == "*" and i == len(pattern_argv) - 1 {
             return True;
         }
@@ -41,12 +17,11 @@ def _pattern_matches(pattern_argv: list, argv: list) -> bool {
             return False;
         }
     }
-    # Pattern exhausted with no trailing wildcard: argv must match exactly.
+
     return len(argv) == len(pattern_argv);
 }
 
 
-"""True iff argv is permitted by any pattern in the allow list."""
 def _is_allowed(allow: list, argv: list) -> bool {
     for pattern in allow {
         pattern_argv = shlex.split(pattern);
@@ -61,7 +36,6 @@ def _is_allowed(allow: list, argv: list) -> bool {
 }
 
 
-"""Shell command execution with glob-based allow-list."""
 obj ShellPlugin(DesktopPlugin) {
     has _allow: list = [];
 
@@ -81,7 +55,7 @@ obj ShellPlugin(DesktopPlugin) {
 
     def init(config: dict) {
         self.plugin_name = "jac.shell";
-        # Normalize non-dict config (e.g. `shell = true`) to empty dict.
+
         if not isinstance(config, dict) {
             config = {};
         }

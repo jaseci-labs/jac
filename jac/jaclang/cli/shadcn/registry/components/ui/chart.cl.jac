@@ -25,7 +25,7 @@ def getPayloadConfig(config: any, payload: any, key: any) -> any {
 
 def buildChartStyle(config: any) -> any {
     styleObj = {};
-    for k in Object.keys(config) {  # jac:ignore[W6001]
+    for k in Object.keys(config) {
         ic: any = config[k];
         color = ic.color if ic else None;
         if color {

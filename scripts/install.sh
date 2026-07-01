@@ -13,9 +13,10 @@
 #   --uninstall   Remove Jac
 #   --help        Print usage
 #
-# Plugins (byllm, jac-scale, jac-mcp) are installed separately once `jac` is on
-# PATH:
-#   jac install byllm jac-scale jac-mcp
+# Scale and the MCP server ship built into jac (the jaclang.scale /
+# jaclang.cli.mcp plugins); only scale's third-party deps install on demand.
+# Other plugins (byllm) install separately once `jac` is on PATH:
+#   jac install byllm
 #
 # Examples:
 #   curl -fsSL ... | bash                          # Latest jac binary
@@ -84,8 +85,10 @@ EXAMPLES:
     curl -fsSL ... | bash -s -- --version 2.3.1
 
 PLUGINS:
-    Once 'jac' is on PATH, install plugins with the binary's own installer:
-        jac install byllm jac-scale jac-mcp
+    Scale and the MCP server ship built into jac (jaclang.scale /
+    jaclang.cli.mcp). Once 'jac' is on PATH, install the other plugins with the
+    binary's own installer:
+        jac install byllm
 EOF
 }
 
@@ -264,10 +267,12 @@ install_binary() {
     # Create install directory
     mkdir -p "$INSTALL_DIR"
 
-    # Download to temp location
-    local tmpdir
+    # Download to temp location. `tmpdir` is intentionally NOT `local`: the EXIT
+    # trap below fires after install_binary returns, so a function-local would be
+    # out of scope and trip `set -u` ("unbound variable") during cleanup. The
+    # `${tmpdir:-}` guard keeps the trap safe if we exit before it is assigned.
     tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
+    trap 'rm -rf "${tmpdir:-}"' EXIT
 
     info "Downloading ${asset}..."
     if ! curl -fsSL -o "${tmpdir}/${asset}" "$download_url"; then
@@ -321,8 +326,8 @@ install_binary() {
         info "Get started:"
         info "  jac --help"
         info ""
-        info "Add plugins (AI, deployment, MCP) when you need them:"
-        info "  jac install byllm jac-scale jac-mcp"
+        info "Scale (deployment) and the MCP server ship built in; add other plugins when needed:"
+        info "  jac install byllm"
         info ""
     else
         warn "Binary installed to ${INSTALL_DIR}/jac but 'jac' is not on PATH."

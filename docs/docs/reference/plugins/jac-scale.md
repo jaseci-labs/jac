@@ -1,56 +1,38 @@
-# jac-scale Reference
+# Scale Reference
 
-jac-scale generates REST endpoints from your Jac walkers and functions. Running `jac start` with this plugin turns every `:pub` or `:priv` walker into an API endpoint backed by FastAPI, with automatic Swagger docs, SQLite persistence, and built-in authentication.
+Scale generates REST endpoints from your Jac walkers and functions. Running `jac start` turns every `:pub` or `:priv` walker into an API endpoint backed by FastAPI, with automatic Swagger docs, SQLite persistence, and built-in authentication.
 
 For production, the `--scale` flag automates Docker image builds and Kubernetes deployment -- generating Dockerfiles, manifests, and service configurations from your code. This reference covers server startup options, endpoint generation, authentication, database persistence, Kubernetes deployment, and the CLI flags for each mode.
 
+Scale ships **built into `jaclang` core** as the `scale` subsystem (importable as `jaclang.scale`) -- there is no separate `jac-scale` package to install. The serving and deployment machinery is always present; only the heavier optional third-party libraries it can use (MongoDB, Redis, Kubernetes, Prometheus, ...) are pulled in per-project, on demand.
+
 ---
 
-## Installation
+## Optional dependencies
 
-jac-scale is lightweight by default. Install only the extras you need:
-
-```bash
-# Core only - FastAPI server, auth, CLI (no heavy dependencies)
-jac install jac-scale
-
-# Add MongoDB + Redis for persistent storage and distributed cache
-jac install 'jac-scale[data]'
-
-# Add Prometheus metrics and observability
-jac install 'jac-scale[monitoring]'
-
-# Add APScheduler for cron and background task scheduling
-jac install 'jac-scale[scheduler]'
-
-# Add Kubernetes + Docker for deployment and image building
-jac install 'jac-scale[deploy]'
-
-# Everything - recommended for production or if unsure
-jac install 'jac-scale[all]'
-```
-
-Groups are combinable: `jac install 'jac-scale[data,monitoring]'`
-
-After installing, enable the plugin:
+Scale's core path -- the FastAPI server, JWT auth, and CLI flags -- works out of the box with nothing extra to install. Heavier capabilities (Mongo/Redis storage, Kubernetes deploys, Prometheus metrics, scheduling) rely on third-party libraries that are **not** bundled into the `jac` binary. You enable them per-project by declaring the matching `[scale.*]` config in `jac.toml` and running `jac install`, which resolves the libraries that intent requires into the project's `.jac/venv`.
 
 ```bash
-jac plugins enable scale
+# After configuring the capabilities you need in jac.toml, install the
+# resolved dependencies into this project's .jac/venv:
+jac install
 ```
+
+For example, configuring a Mongo database under `[scale.database]` makes `jac install` pull in `pymongo`/`redis`; configuring `[scale.kubernetes]` (or using `jac start --scale`) pulls in `kubernetes`/`docker`; enabling `[scale.monitoring]` pulls in `prometheus-client`.
 
 !!! note
-    When a feature is used without its dependency installed, you get a clear error with the exact install command:
-    `ImportError: 'pymongo' is required for this feature. Install it with: jac install 'jac-scale[data]'`
+    When a feature is used without its dependency present, you get a clear error telling you to declare the relevant `[scale.*]` config and run `jac install`:
+    `ImportError: 'pymongo' is required for this feature. Configure '[scale.database]' and run 'jac install'.`
 
-| Group | What it adds | When you need it |
+| Capability | What it needs | When you need it |
 |-------|-------------|-----------------|
-| _(core)_ | FastAPI, uvicorn, JWT auth, CLI | Always included |
-| `[data]` | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with database config) |
-| `[aws]` | boto3 | Using S3-compatible cloud storage |
-| `[monitoring]` | prometheus-client | Prometheus `/metrics` endpoint |
-| `[scheduler]` | apscheduler | `@schedule(trigger=...)` on walkers/functions |
-| `[deploy]` | kubernetes, docker | `jac start --scale` or `jac start --build` |
-| `[all]` | All of the above | Production, or when you want everything |
+| _(core serving)_ | FastAPI, uvicorn, JWT auth | Always available -- ships with `jaclang` |
+| Mongo/Redis storage | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with `[scale.database]`) |
+| Firestore | google-cloud-firestore | Using Firestore with `kvstore(db_type='firestore')` |
+| Cloud object storage | boto3 | Using S3-compatible cloud storage |
+| Monitoring | prometheus-client | Prometheus `/metrics` endpoint |
+| Scheduling | apscheduler | `@schedule(trigger=...)` on walkers/functions |
+| Deployment | kubernetes, docker | `jac start --scale` or `jac start --build` |
 
 ---
 
@@ -967,7 +949,7 @@ Errors: `400 INVALID_TOKEN`.
 
 ## Emailer
 
-jac-scale's `Emailer` is a thin abstraction (`jac_scale.abstractions.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
+jac-scale's `Emailer` is a thin abstraction (`jaclang.scale.emailer.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
 
 ### Configuration
 
@@ -1025,7 +1007,7 @@ Subclass `Emailer` and point `provider` at your class. The factory imports it dy
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jaclang.scale.emailer.emailer import Emailer
 import os, sendgrid
 
 class SendGridEmailer(Emailer):
@@ -1109,7 +1091,7 @@ Use this when you want SendGrid's REST API instead of SMTP (better deliverabilit
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jaclang.scale.emailer.emailer import Emailer
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import os, logging
@@ -1977,7 +1959,7 @@ Configuration priority: environment variables > `jac.toml` > defaults.
 For advanced use cases, you can use `StorageFactory` directly instead of the `store()` builtin:
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
+import from jaclang.scale.storage.factory { StorageFactory }
 
 # Create with explicit type and config
 glob config = {"base_path": "./my-files", "create_dirs": True};
@@ -2043,18 +2025,37 @@ walker async_processor {
 
 ## Direct Database Access (kvstore)
 
-Direct database operations without graph layer abstraction. Supports MongoDB (document queries) and Redis (key-value with TTL/atomic ops).
+Direct database operations without graph layer abstraction. Supports MongoDB (document queries), Firestore (Firebase-style document CRUD), and Redis (key-value with TTL/atomic ops).
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 with entry {
     mongo_db = kvstore(db_name='my_app', db_type='mongodb');
+    firestore_db = kvstore(db_name='my_app', db_type='firestore');
     redis_db = kvstore(db_name='cache', db_type='redis');
 }
 ```
 
-**Parameters:** `db_name` (str), `db_type` ('mongodb'|'redis'), `uri` (str|None - priority: explicit → `MONGODB_URI`/`REDIS_URL` env vars → jac.toml)
+**Parameters:** `db_name` (str), `db_type` ('mongodb'|'firestore'|'redis'), `uri` (str|None - priority: explicit → env vars → jac.toml)
+
+### Firestore Configuration
+
+```toml
+[plugins.scale.database]
+type = "firestore"
+project_id = "my-firebase-project"
+```
+
+Or via environment variable:
+
+```bash
+export FIREBASE_PROJECT_ID="my-firebase-project"
+# Subsystem override (optional):
+# export FIRESTORE_PROJECT_ID="my-firebase-project"
+```
+
+`FIREBASE_PROJECT_ID` is the shared fallback for Auth SSO, Firestore, and Storage. Subsystem-specific vars override it when set.
 
 ---
 
@@ -2066,7 +2067,7 @@ with entry {
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 with entry {
     db = kvstore(db_name='my_app', db_type='mongodb');
@@ -2101,6 +2102,42 @@ with entry{
 
 ---
 
+## Firestore Operations
+
+**Common Methods:** `get()`, `set()`, `delete()`, `exists()`
+**Query Methods:** `find_one()`, `find()`, `insert_one()`, `insert_many()`, `update_one()`, `update_many()`, `delete_one()`, `delete_many()`, `find_by_id()`, `update_by_id()`, `delete_by_id()`
+
+**Example:**
+
+```jac
+import from jaclang.scale.lib { kvstore }
+
+with entry {
+    db = kvstore(db_name='my_app', db_type='firestore');
+
+    db.insert_one('users', {'name': 'Alice', 'role': 'admin', 'age': 30});
+    db.insert_one('users', {'name': 'Bob', 'role': 'user', 'age': 25});
+
+    alice = db.find_one('users', {'name': 'Alice'});
+    admins = list(db.find('users', {'role': 'admin'}));
+    older = list(db.find('users', {'age': {'$gte': 25}}));
+
+    todo = db.insert_one('todos', {'title': 'Buy milk', 'done': False});
+    db.update_by_id('todos', todo.inserted_id, {'$set': {'done': True}});
+    done_todos = list(db.find('todos', {'done': True}));
+}
+```
+
+**Supported filter operators:** `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$and`
+
+**Notes:**
+
+- Firestore collections are namespaced internally as `{db_name}__{col_name}`.
+- Querying by `_id` inside `find()` / `find_one()` is not supported; use `get()`, `find_by_id()`, `update_by_id()`, or `delete_by_id()`.
+- `find_nodes()` is intentionally not available for Firestore; Jac graph persistence remains on SQLite / MongoDB.
+
+---
+
 ## Redis Operations
 
 **Common Methods:** `get()`, `set()`, `delete()`, `exists()`
@@ -2109,7 +2146,7 @@ with entry{
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 with entry {
     cache = kvstore(db_name='cache', db_type='redis');
@@ -2150,7 +2187,7 @@ Pair `delete_if_equals` with `set_nx_with_ttl` and a unique fence token: a slow 
 import os;
 import time;
 import from uuid { uuid4 }
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 glob _kv = kvstore(db_name='myapp', db_type='redis');
 
@@ -2241,13 +2278,13 @@ backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
 ```
 
-To use Redis Streams you need the `[data]` extra: `jac install 'jac-scale[data]'`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
+To use Redis Streams you need `redis` in the project venv -- configure `[scale.database]` (Redis) and run `jac install`. Without it, scale silently uses `LocalEventStream` and logs a warning at startup.
 
 ### Publishing
 
 ```jac
-import from jac_scale.events.publisher { publish }
-import from jac_scale.events.broker { Event }
+import from jaclang.scale.events.publisher { publish }
+import from jaclang.scale.events.broker { Event }
 
 walker place_order {
     has order_id: int;
@@ -2267,8 +2304,8 @@ walker place_order {
 ### Subscribing (push)
 
 ```jac
-import from jac_scale.events.subscriber { subscribe }
-import from jac_scale.events.broker { Event }
+import from jaclang.scale.events.subscriber { subscribe }
+import from jaclang.scale.events.broker { Event }
 
 @subscribe("orders.placed")
 def on_order_placed(event: Event) -> None {
@@ -2290,7 +2327,7 @@ def replay_all(event: Event) -> None {
 ### Consuming (pull)
 
 ```jac
-import from jac_scale.events.broker { EventStreamBroker }
+import from jaclang.scale.events.broker { EventStreamBroker }
 
 def drain(broker: EventStreamBroker) -> int {
     batch = broker.consume(
@@ -3009,7 +3046,7 @@ Packages are installed at pod startup before the application starts. For frequen
 
 ### Jaseci Source Pinning (Experimental)
 
-When using `--experimental` mode, the Jaseci plugin packages (jac-scale and friends) are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds. (The jaclang runtime itself always comes from the pod's `jac` binary base image -- it is never installed from PyPI in either mode.)
+When using `--experimental` mode, the Jaseci plugin packages (byllm and friends) are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds. (The jaclang runtime itself -- which includes the `scale` subsystem -- always comes from the pod's `jac` binary base image, so it is never installed from PyPI in either mode.)
 
 **Defaults:**
 
@@ -3033,7 +3070,7 @@ jaseci_commit = "a1b2c3d4"
 
 Pin specific PyPI versions for the Jaseci plugin packages installed inside the pod. Use `"none"` to skip a package entirely.
 
-> The pod's base image provides the `jac` binary, which is the jaclang runtime -- so jaclang is host-provided and is never pinned or `pip install`ed here. Only the plugins below are installed into the pod.
+> The pod's base image provides the `jac` binary, which is the jaclang runtime -- so jaclang (and the built-in `scale` subsystem) is host-provided and is never pinned or `pip install`ed here. Only the separate plugins below are installed into the pod.
 >
 > **Note:** `jaclang` is no longer on PyPI, so the pod image must install the `jac` binary (e.g. via the install script). The cluster deploy code is being migrated to this model; until then, deploys that expect a PyPI `jaclang` will not resolve.
 
@@ -3043,24 +3080,22 @@ Pin specific PyPI versions for the Jaseci plugin packages installed inside the p
 
 ```toml
 [plugins.scale.kubernetes.plugin_versions]
-jac_scale = "latest"   # Latest from PyPI (default)
-jac_client = "0.1.0"   # Specific version
 jac_byllm = "none"     # Skip installation entirely
 jac_mcp = "latest"     # Optional MCP server plugin
 ```
 
 | Package | Description |
 |---------|-------------|
-| `jac_scale` | This scaling plugin |
-| `jac_client` | Frontend/client support |
 | `jac_byllm` | LLM integration (set to `"none"` to exclude) |
 | `jac_mcp` | MCP server plugin (set to `"none"` to exclude) |
+
+> Scale itself is part of `jaclang` core and arrives with the `jac` binary in the pod image, so there is no `jac_scale` package to pin here. The frontend/client framework is likewise built into core.
 
 ---
 
 ### Monitoring Stack
 
-jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Grafana Alloy for log aggregation) into the same namespace as your application.
+Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Grafana Alloy for log aggregation) into the same namespace as your application.
 
 | Component | Purpose |
 |-----------|---------|
@@ -3770,7 +3805,7 @@ Configuration priority: environment variables > `jac.toml` > defaults.
 Use `SandboxFactory` to create and manage sandboxes in your Jac code:
 
 ```jac
-import from jac_scale.factories.sandbox_factory { SandboxFactory }
+import from jaclang.scale.factories.sandbox_factory { SandboxFactory }
 
 # Create sandbox using jac.toml config
 glob sandbox = SandboxFactory.get_default();
@@ -4127,16 +4162,17 @@ Browser → Load Balancer → Wildcard Ingress (*.preview.example.com) → Proxy
 - `service.yaml` -- ClusterIP Service on port 8080
 - `ingress.yaml` -- Wildcard Ingress (replace `*.example.com` with your domain)
 
-The proxy itself is a Jac application. Build it with a Dockerfile that installs the self-contained `jac` binary (which provides the jaclang runtime), then layers in the plugins:
+The proxy itself is a Jac application. Build it with a Dockerfile that installs the self-contained `jac` binary (which provides the jaclang runtime, including the built-in `scale` subsystem), then layers in the extra deps it needs:
 
 ```dockerfile
 FROM python:3.12-slim
-# Install the `jac` binary -- no PyPI jaclang; the binary provides the runtime.
+# Install the `jac` binary -- no PyPI jaclang; the binary provides the runtime
+# (and scale, which is built into core).
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"
-RUN jac install aiohttp kubernetes_asyncio "jac-scale[all]"
+RUN jac install aiohttp kubernetes_asyncio docker
 COPY sandbox_proxy.jac /app/sandbox_proxy.jac
 WORKDIR /app
 EXPOSE 8080

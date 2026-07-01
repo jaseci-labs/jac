@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.
 
 !!! tip "`jac run` is kind-aware"
-    Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's codespace), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `native-app`), **serve** server kinds (`api-service`, `fullstack`, ...), or **build** artifact kinds (`native-binary`, `shared-library`, `pypi-package`, `npm-package`). `jac run --show` prints the resolved plan and the equivalent primitive command without running it. The explicit verbs shown in each recipe below are those primitives.
+    Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's codespace), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `cli-native`), **serve** server kinds (`service`, `web-app`, ...), or **build** artifact kinds (`native-binary`, `native-lib`, `py-package`, `js-package`). `jac run --show` prints the resolved plan and the equivalent primitive command without running it. The explicit verbs shown in each recipe below are those primitives.
 
 ## The recipes at a glance
 
@@ -35,7 +35,7 @@ Jac is also batteries-included -- it bundles LLVM, ships its own native linker, 
 | [Full-stack package](#on-the-roadmap) 🚧 | ● | ● | | | attach | | -- |
 | [Mobile app (React Native)](#on-the-roadmap) 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
 
-**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the `jac-scale` plugin (which installs through the Jac ecosystem) and the full-stack client/desktop framework (which ships with `jaclang` core).
+**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the built-in `scale` subsystem (which ships with `jaclang` core; its optional deploy deps are pulled per-project via `[scale.*]` config + `jac install`) and the full-stack client/desktop framework (which also ships with `jaclang` core).
 
 <small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm.</small>
 
@@ -435,7 +435,7 @@ cl {
 
 It uses the same `jac.toml` as the [full-stack app](#full-stack-app) (React deps + `[plugins.client]`).
 
-Set `kind = "client"` in `jac.toml` so the toolchain treats it as a client-only app (no backend):
+Set `kind = "web-static"` in `jac.toml` so the toolchain treats it as a client-only app (no backend):
 
 ```bash
 jac start          # builds the cl bundle + na->wasm, serves on http://localhost:8000

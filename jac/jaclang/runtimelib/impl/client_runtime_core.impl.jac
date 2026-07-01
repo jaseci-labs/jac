@@ -1,10 +1,3 @@
-"""Implementations for the framework-agnostic client runtime core.
-
-
-Moved verbatim from client_runtime.impl.jac. Uses only ambient JS globals
-(window, globalThis, fetch, JSON, Date, Reflect, ...) — no framework imports.
-"""
-
 impl navigate(path: str) -> None {
     window.history.pushState({}, "", path);
     window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
@@ -12,35 +5,26 @@ impl navigate(path: str) -> None {
 
 impl __createJacSchema(zodLib: any) -> any {
     handler = {
-        "apply": lambda target: any , thisArg: any , argumentsList: any -> any {
-        # When called as JacSchema({...}), call z.object({...})
-        return zodLib.object.apply(zodLib, argumentsList); },
-        "get": lambda target: any , prop: any , receiver: any -> any {
-        # When accessing properties like JacSchema.string(), forward to z
-        return zodLib[prop]; }
+        "apply": lambda target: any , thisArg: any , argumentsList: any -> any { return zodLib.object.apply(
+            zodLib, argumentsList
+        ); },
+        "get": lambda target: any , prop: any , receiver: any -> any { return zodLib[
+            prop
+        ]; }
     };
-    # Create a dummy function as the proxy target
+
     dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
 impl __getApiBaseUrl -> str {
-    # globalThis.__JAC_API_BASE_URL__ is replaced by Vite's define at build time.
-    # Falls back to empty string (same-origin) when not configured.
     return globalThis.__JAC_API_BASE_URL__ || "";
 }
 
-# ============================================================================
-# AUTO-CACHE INFRASTRUCTURE
-# ============================================================================
-
-# Read compiler-provided endpoint effects from __jac_init__ JSON
 impl __getEndpointEffects -> dict {
     if not globalThis.__jacEndpointEffects__ {
         initEl = None;
-        # Bare `document` throws ReferenceError outside the browser (Node test
-        # harness), and `except Exception` does not catch JS errors - probe via
-        # globalThis instead.
+
         if globalThis.document {
             try {
                 initEl = document.getElementById("__jac_init__");
@@ -66,7 +50,6 @@ impl __getEndpointEffects -> dict {
     return globalThis.__jacEndpointEffects__;
 }
 
-# Get or initialize cache state on globalThis
 impl __getCacheState -> dict {
     if not globalThis.__jacCacheState__ {
         globalThis.__jacCacheState__ = {
@@ -79,7 +62,6 @@ impl __getCacheState -> dict {
     return globalThis.__jacCacheState__;
 }
 
-# Check if a cache entry is still fresh
 impl __isFresh(`entry: dict) -> bool {
     if not `entry {
         return False;
@@ -88,14 +70,13 @@ impl __isFresh(`entry: dict) -> bool {
     return age < `entry["ttl"];
 }
 
-# Get a cache entry and promote it in LRU order
 impl __cacheGet(key: str) -> dict {
     state = __getCacheState();
     entry = state["cache"][key];
     if not entry {
         return None;
     }
-    # Move to end (most recently used)
+
     idx = state["order"].indexOf(key);
     if idx > -1 {
         state["order"].splice(idx, 1);
@@ -104,17 +85,16 @@ impl __cacheGet(key: str) -> dict {
     return entry;
 }
 
-# Store an entry in the cache with LRU eviction
 impl __cacheSet(key: str, data: any, ttl: int) -> None {
     state = __getCacheState();
-    # Remove existing entry if present
+
     if state["cache"][key] {
         idx = state["order"].indexOf(key);
         if idx > -1 {
             state["order"].splice(idx, 1);
         }
     }
-    # Evict oldest if at capacity
+
     while len(state["order"]) >= state["config"]["maxEntries"] {
         __evictOldest();
     }
@@ -122,7 +102,6 @@ impl __cacheSet(key: str, data: any, ttl: int) -> None {
     state["order"].push(key);
 }
 
-# Evict the oldest cache entry
 impl __evictOldest -> None {
     state = __getCacheState();
     if len(state["order"]) > 0 {
@@ -133,7 +112,6 @@ impl __evictOldest -> None {
     }
 }
 
-# Check if two lists share any element
 impl __overlaps(list1: list, list2: list) -> bool {
     for item in list1 {
         if list2.includes(item) {
@@ -143,7 +121,6 @@ impl __overlaps(list1: list, list2: list) -> bool {
     return False;
 }
 
-# Invalidate all cache entries for a given endpoint key prefix
 impl __invalidateEndpoint(endpoint_key: str) -> None {
     state = __getCacheState();
     keys_to_delete = [];
@@ -161,12 +138,38 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
     }
 }
 
-# ============================================================================
-# RAW FETCH HELPERS (no caching, just HTTP)
-# ============================================================================
+async def __nativeInvoke(kind: str, name: str, `node: str, fields: dict) -> any {
+    token = __getLocalStorage("jac_token") or "";
+    payload = {
+        "kind": kind,
+        "name": name,
+        "node": `node,
+        "fields": fields,
+        "token": token
+    };
+    return await globalThis.__jac_invoke(JSON.stringify(payload));
+}
 
-# Direct walker fetch (POST /walker/<name>[/<nodeId>])
+def __nativeErrorMsg(response: any) -> str {
+    try {
+        return response["body"]["error"]["message"];
+    } except Exception { }
+    return "Unknown error";
+}
+
 impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
+    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+        response = await __nativeInvoke("walker", `walker, nodeId, fields);
+        if not response["ok"] {
+            if response["status"] == 401 {
+                __removeLocalStorage("jac_token");
+                window.location.reload();
+                return {};
+            }
+            raise Exception(f"Walker {`walker} failed: {__nativeErrorMsg(response)}");
+        }
+        return response["body"]["data"] if response["body"]["data"] else {};
+    }
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     url = f"{base_url}/walker/{`walker}";
@@ -194,8 +197,25 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
     return payload["data"] if payload["data"] else {};
 }
 
-# Direct function fetch (POST /function/<name>)
 impl __doFuncFetch(function_name: str, args: dict) -> any {
+    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+        response = await __nativeInvoke("function", function_name, "", args);
+        if not response["ok"] {
+            raise Exception(
+                f"Function {function_name} failed: {__nativeErrorMsg(response)}"
+            );
+        }
+        result = None;
+        try {
+            data = response["body"]["data"];
+            if data and "result" in data {
+                result = data["result"];
+            }
+        } except Exception as e {
+            console.warn(f"Failed to extract result for {function_name} (native):", e);
+        }
+        return result;
+    }
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     headers = {"Content-Type": "application/json"};
@@ -212,12 +232,12 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     }
     payload = await response.json();
     if not payload["ok"] {
-        error_msg = payload["error"] if payload["error"] else "Unknown error";
+        error_msg = __errorMessage(payload["error"]) or "Unknown error";
         raise Exception(f"Function {function_name} failed: {error_msg}");
     }
     result = None;
     try {
-        if payload["data"] and payload["data"]["result"] {
+        if payload["data"] and "result" in payload["data"] {
             result = payload["data"]["result"];
         }
     } except Exception as e {
@@ -226,20 +246,17 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     return result;
 }
 
-# ============================================================================
-# AUTO-CACHE DISPATCH - shared by __jacSpawn and __jacCallFunction
-# ============================================================================
 impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
-    # If endpoint is a known READER, check cache first
+
     if info and not info["is_writer"] {
         cached = __cacheGet(args_key);
         if cached and __isFresh(cached) {
             return cached["data"];
         }
-        # Dedup concurrent identical requests
+
         if state["pending"][args_key] {
             return await state["pending"][args_key];
         }
@@ -253,7 +270,7 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
             Reflect.deleteProperty(state["pending"], args_key);
         }
     }
-    # If endpoint is a known WRITER, fetch then auto-invalidate readers
+
     if info and info["is_writer"] {
         data = await fetch_fn();
         writer_touches = info["touches"];
@@ -268,15 +285,11 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
         }
         return data;
     }
-    # Unknown endpoint (no metadata) - direct fetch, no caching
+
     return await fetch_fn();
 }
 
-# ============================================================================
-# PUBLIC API - __jacSpawn and __jacCallFunction with auto-caching
-# ============================================================================
 impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
-    # Auth walkers always skip cache
     if left == "login"
     or left == "signup"
     or left == "logout"
@@ -318,6 +331,16 @@ impl __normalizeCredential(x: any) -> dict {
         return x;
     }
     return {"type": "password", "password": x};
+}
+
+impl __errorMessage(err: any) -> str {
+    if err == None {
+        return "";
+    }
+    if Object.prototype.toString.call(err) == "[object Object]" {
+        return err["message"] if err["message"] else "";
+    }
+    return String(err);
 }
 
 impl jacSignup(
@@ -363,12 +386,8 @@ impl jacSignup(
         error_text = await response.text();
         try {
             error_data = JSON.parse(error_text);
-            return {
-                "success": False,
-                "error": error_data["error"]
-                    if error_data["error"] != None
-                    else "Signup failed"
-            };
+            message = __errorMessage(error_data["error"]);
+            return {"success": False, "error": message or "Signup failed"};
         } except Exception {
             return {"success": False, "error": error_text};
         }
@@ -412,10 +431,6 @@ impl jacLogout -> None {
     __removeLocalStorage("jac_token");
     broker = __jacDesktopBroker();
     if broker {
-        # Desktop: also drop the broker's *persisted* (on-disk) session so a
-        # later login can't poll up this user's token. Best-effort and
-        # non-blocking -- logout must not hang on the loopback server, and the
-        # next login's `oauth/start` clears it again regardless.
         try {
             fetch(f"{broker}/session", {"method": "DELETE"}).catch(
                 lambda e: any { console.warn(
@@ -434,8 +449,6 @@ impl jacIsLoggedIn -> bool {
 }
 
 impl __jacClearCache -> None {
-    # Drop every cached walker/function response; an auth change makes them
-    # belong to a different principal.
     state = __getCacheState();
     for key in Object.keys(state["cache"]) {
         Reflect.deleteProperty(state["cache"], key);
@@ -449,8 +462,6 @@ impl jacSetToken(token: str) -> None {
 }
 
 impl __jacDesktopBroker -> str {
-    # Set by the desktop host's document-start bootstrap (see
-    # native_desktop_target). Absent in a normal web build, so this is "".
     if window.__JAC_DESKTOP__ and window.__JAC_BROKER__ {
         return window.__JAC_BROKER__;
     }
@@ -476,8 +487,6 @@ impl __jacPollBrokerSession(broker: str, timeout_ms: int, interval_ms: int) -> s
                 }
             }
         } except e {
-            # Catch-all (incl. a native fetch TypeError): the browser may still be
-            # open or the server momentarily busy -- keep polling, don't abort.
             console.warn("[jac-client] session poll failed:", e);
         }
         await __jacSleep(interval_ms);
@@ -489,9 +498,6 @@ impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") ->
     base = api_base or __getApiBaseUrl();
     broker = __jacDesktopBroker();
     if broker {
-        # Desktop: the broker opens the *system* browser (OAuth providers refuse
-        # embedded webviews) and the server redirects the token back to the
-        # broker's loopback callback; we poll the broker session store for it.
         start_url = (
             f"{broker}/oauth/start?platform={encodeURIComponent(platform)}" + f"&operation={encodeURIComponent(
                 operation
@@ -509,8 +515,7 @@ impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") ->
         }
         return False;
     }
-    # Web: hand off to the server's SSO endpoint; it redirects back to the SPA's
-    # configured callback route with `?token=...` (handled by the callback page).
+
     window.location.href = f"{base}/sso/{encodeURIComponent(platform)}/{encodeURIComponent(
         operation
     )}";
@@ -562,21 +567,15 @@ impl __jacReportError(
                 )
             }
         );
-    } except Exception {
-    # Intentionally silent - error reporting must never throw, as that
-    # could cause infinite loops or mask the original error.
-    }
+    } except Exception { }
 }
 
-"""Install global error handlers to catch unhandled JS errors and rejections.
-Called once during app initialization.
-"""
 impl __jacInstallErrorHandlers -> None {
     if window.__jacErrorHandlersInstalled {
         return;
     }
     window.__jacErrorHandlersInstalled = True;
-    # Catch synchronous errors (e.g., TypeError, ReferenceError)
+
     window.addEventListener(
         "error",
         lambda event: any { __jacReportError(
@@ -586,7 +585,7 @@ impl __jacInstallErrorHandlers -> None {
             "window.onerror"
         ); }
     );
-    # Catch unhandled promise rejections (e.g., failed fetch, async errors)
+
     window.addEventListener(
         "unhandledrejection",
         lambda event: any {

@@ -30,7 +30,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
     ??? question "What's the difference between Jac, Jaclang, and Jaseci?"
         - Jac: The language
         - Jaclang: The compiler/runtime, shipped as the self-contained `jac` binary
-        - Jaseci: The broader framework and ecosystem, including plugins (byllm, jac-scale, etc.) installed via `jac install`
+        - Jaseci: The broader framework and ecosystem. Some capabilities ship built into `jaclang` core (like `scale` for serving and deployment); others are separate plugins (byllm, etc.) installed via `jac install`
 
     ??? question "Do I need to know graph theory to use Jaseci?"
         No. Learn OSP: [OSP Guide](https://docs.jaseci.org/tutorials/language/osp/)
@@ -100,10 +100,10 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         - [Local Deployment](https://docs.jaseci.org/tutorials/production/local/): `jac start` creates an HTTP API server.
         - [Kubernetes Deployment](https://docs.jaseci.org/tutorials/production/kubernetes/): Deploy with a single command.
 
-    ??? question "Do I need Docker/Kubernetes knowledge to use jac-scale?"
-        No. jac-scale handles containerization and orchestration automatically.
+    ??? question "Do I need Docker/Kubernetes knowledge to deploy with scale?"
+        No. Scale (built into `jaclang`) handles containerization and orchestration automatically.
 
-    ??? question "What does jac-scale do automatically?"
+    ??? question "What does scale do automatically?"
         - Containerizes Jac application
         - Sets up Kubernetes deployment
         - Manages scaling and load balancing
@@ -129,8 +129,8 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         return {"id": jid(task), "title": task.title, "done": task.done};
         ```
 
-    ??? question "`jac create --use client` fails or asks about Bun."
-        The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+    ??? question "`jac create --use web-static` fails or asks about Bun."
+        The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
 
 ??? "Debugging & Support"
 

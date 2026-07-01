@@ -366,6 +366,29 @@ test "enums loops ternary" {
     assert f(0) == -10;
 }
 
+# Regression for #6987: a ternary whose two branches need a numeric coercion
+# (int<->float, or differing int widths) used to emit the cast into the merge
+# block ahead of the phi, so the LLVM verifier rejected the module with "PHI
+# nodes not grouped at top of basic block" and native compilation failed. The
+# cast now lands in the predecessor block before its branch, leaving the phi at
+# the top of the merge block. If the fix regresses, compile_native here fails
+# (no native engine) rather than asserting a wrong value.
+test "mixed-type ternary coerces in predecessor block (#6987)" {
+    (eng, _) = compile_native("enums_loops.na.jac");
+    # float "then" + int "else": int branch promoted to double.
+    f1 = get_func(eng, "ternary_int_float_test", ctypes.c_double, ctypes.c_int64);
+    assert f1(1) == 1.5;
+    assert f1(0) == 2.0;
+    # int "then" + float "else": the other predecessor side.
+    f2 = get_func(eng, "ternary_float_int_test", ctypes.c_double, ctypes.c_int64);
+    assert f2(1) == 2.0;
+    assert f2(0) == 1.5;
+    # bool "then" (i1) + int "else" (i64): the int-width zext path.
+    f3 = get_func(eng, "ternary_widen_test", ctypes.c_int64, ctypes.c_int64);
+    assert f3(1) == 1;
+    assert f3(0) == 5;
+}
+
 # --- TestNativeStrings ---
 test "strings greet" {
     (eng, _) = compile_native("strings.na.jac");
@@ -2727,6 +2750,23 @@ test "default params omitted trailing defaults" {
     assert free_f() == 142;  # 42 + 100 (bias default)
 }
 
+test "keyword arguments bind to their named parameters (issue #7026)" {
+    (eng, _) = compile_native("kwargs_call.na.jac");
+    cases = {
+        "test_positional": 305,
+        "test_keyword": 407,
+        "test_keyword_partial": 201,
+        "test_keyword_reordered": 509,
+        "test_mixed_pos_kw": 304,
+        "test_method_keyword": 1206,
+        "test_xmod_keyword": 508
+    };
+    for (name, expected) in cases.items() {
+        f = get_func(eng, name, ctypes.c_int64);
+        assert f() == expected , f"{name}() == {f()}, expected {expected}";
+    }
+}
+
 # --- Auto-Promotion Tests ---
 glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
@@ -2794,6 +2834,49 @@ test "auto promote chess.jac runs via cli" {
     assert "executed natively" in combined , (
         "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
+}
+
+test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Finding 2)" {
+    # A regular `.jac` (no `na {}` block) that imports a bundled na_stdlib module
+    # is auto-promoted by `jac nacompile`. The entry point emits a call to each
+    # imported module's `__jac_glob_init_<safe>` (driven by
+    # native_transitive_sources), so the cross-module merge MUST link those
+    # modules' definitions. Before the fix, BoundaryAnalysisPass only classified
+    # the imports as native cross-module when the main file was a `.na.jac` or the
+    # import sat in a `na {}` block, so the auto-promote case left
+    # native_cross_module_imports empty: the merge was skipped, the glob-init
+    # symbol stayed `declare`-only, and the loader aborted with
+    # `undefined symbol: __jac_glob_init_zlib_na_*`. The `.na.jac` form already
+    # worked; this pins the auto-promote (plain `.jac`) form on Linux/ELF.
+    import platform;
+    fixture = str(os.path.join(FIXTURES, "autopromote_bundled_zlib.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out = os.path.join(tmpdir, "autopromote_bundled_zlib");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out],
+            capture_output=True,
+            text=True,
+            timeout=180
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stdout: {comp.stdout[-600:]}\nstderr: {comp.stderr[-600:]}"
+        );
+        assert os.path.exists(out) , "nacompile produced no binary";
+        # Only a Linux x86_64 host can execute the produced ELF. A missing merge
+        # leaves `__jac_glob_init_zlib_na_*` an undefined symbol, so the loader
+        # aborts before `main` -- a clean run with the right CRC proves the merge.
+        if sys.platform.startswith("linux") and ("x86_64" in platform.machine()) {
+            res = subprocess.run([out], capture_output=True, text=True, timeout=30);
+            assert res.returncode == 0 , (
+                f"binary aborted (bundled module not linked): exit={res.returncode}\n"
+                f"stdout: {res.stdout[-400:]}\nstderr: {res.stderr[-400:]}"
+            );
+            assert "crc32: 3421780262" in res.stdout , (
+                f"unexpected output: stdout={res.stdout!r} stderr={res.stderr!r}"
+            );
+        }
+    }
 }
 
 # --- Native sys Module Tests ---
@@ -4889,4 +4972,27 @@ test "isinstance mixed tuple unsupported type errors" {
     assert "E5090" in codes , (
         f"expected E5090 for mixed-tuple isinstance, got {codes}"
     );
+}
+
+# ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
+# Before the fix, buf[i] on a clib struct pointer emitted E5090.
+# Fix: a struct-typed param/local (`buf: Color`) lowers to a StructName*, so
+# NaIRGenPass emits a single-index GEP (one index advances a whole struct) for
+# buf[i], and a struct load + store into the element pointer for buf[i] = val.
+test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "ptr_subscript.na.jac")));
+    e5090 = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code and e.code.code == "E5090"
+    ];
+    assert not e5090 , f"Unexpected E5090 errors: {e5090}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # Read path (#6708): single-index GEP on the StructName* base yields the
+    # element pointer, which is returned as-is (aliases the buffer, no copy).
+    assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";
+    # Write path (#6707): GEP the element, load the source struct value, store.
+    assert "arr.val.struct" in s , "Expected struct load for write (arr.val.struct)";
 }

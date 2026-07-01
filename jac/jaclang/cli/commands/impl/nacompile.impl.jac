@@ -1,52 +1,44 @@
-"""Implementation of the nacompile command.
-
-Compiles a .na.jac file to a standalone native binary:
-1. Compile .na.jac through Jac pipeline to get LLVM IR
-2. Inject main() (+ _start on Linux, _jac_win_start on Windows) as pure LLVM IR
-3. Emit object code via the LLVMPY_* shim
-4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS,
-   PE/COFF .exe on Windows)
-"""
-
 import os;
 import sys;
 
 import from jaclang.cli.console { console }
 
 
-"""Inject main() and _start into the LLVM IR for ELF (Linux).
-
-main() stores argc/argv into globals, calls jac_entry(), and returns 0.
-_start is the ELF entry point. It uses the naked attribute with
-@llvm.stacksave() to read the raw stack pointer without a prologue,
-then loads argc and argv from the kernel-placed stack layout:
-[sp]=argc, [sp+8..]=argv array. No inline assembly needed.
-"""
 def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
-    # Declare __jac_argc/__jac_argv only if the IR gen pass didn't already
     has_jac_argc = "__jac_argc" in llvm_ir_str;
     globals_ir = ""
         if has_jac_argc
         else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
-    # Only declare exit() if sys.exit() didn't already declare it
-    # llvmlite quotes the name as @"exit", so check both forms
+
+    initarr_ir = ""
+        if "__jac_init_array" in llvm_ir_str
+        else (
+            '@__jac_init_array = global ptr null\n' + '@__jac_init_count = global i64 0\n\n'
+        );
+
     has_exit = "@exit" in llvm_ir_str or '@"exit"' in llvm_ir_str;
     exit_decl = "" if has_exit else 'declare void @exit(i32) noreturn\n\n';
+
+    lsm_decl = ""
+        if "@__libc_start_main" in llvm_ir_str
+        else 'declare i32 @__libc_start_main(ptr, i32, ptr, ptr, ptr, ptr, ptr)\n\n';
+
+    dso_def = ""
+        if "@__dso_handle" in llvm_ir_str
+        else '@__dso_handle = global i8 0\n\n';
+    atexit_def = ""
+        if ("@atexit(" in llvm_ir_str or '@"atexit"' in llvm_ir_str)
+        else (
+            'declare i32 @__cxa_atexit(ptr, ptr, ptr)\n' + 'define i32 @atexit(ptr %atx_fn) {\nentry:\n' + '    %atx_r = call i32 @__cxa_atexit(ptr %atx_fn, ptr null, ptr @__dso_handle)\n' + '    ret i32 %atx_r\n}\n\n'
+        );
     ir = (
-        '\n; --- injected entry point ---\n' + globals_ir + exit_decl + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    %ret = call i32 @main(i32 %argc, ptr %argv)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n'
+        '\n; --- injected entry point ---\n' + globals_ir + initarr_ir + exit_decl + lsm_decl + dso_def + atexit_def + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    %ia = load ptr, ptr @__jac_init_array\n' + '    %ic = load i64, ptr @__jac_init_count\n' + '    br label %ia.cond\n' + 'ia.cond:\n' + '    %i = phi i64 [ 0, %entry ], [ %inext, %ia.body ]\n' + '    %more = icmp ult i64 %i, %ic\n' + '    br i1 %more, label %ia.body, label %ia.done\n' + 'ia.body:\n' + '    %slot = getelementptr ptr, ptr %ia, i64 %i\n' + '    %fn = load ptr, ptr %slot\n' + '    call void %fn()\n' + '    %inext = add i64 %i, 1\n' + '    br label %ia.cond\n' + 'ia.done:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    call void @_jac_boot(i32 %argc, ptr %argv, ptr %sp)\n' + '    unreachable\n' + '}\n\n' + 'define internal void @_jac_boot(i32 %bargc, ptr %bargv, ptr %bstack) noreturn {\n' + 'entry:\n' + '    %r = call i32 @__libc_start_main(ptr @main, i32 %bargc, ptr %bargv, ptr null, ptr null, ptr null, ptr %bstack)\n' + '    unreachable\n' + '}\n'
     );
     return llvm_ir_str + ir;
 }
 
 
-"""Inject main() into the LLVM IR for Mach-O (macOS).
-
-Only main() is needed - dyld handles entry via LC_MAIN, and the
-system CRT manages _start. No exit() declaration needed since
-returning from main() is handled by dyld.
-"""
 def _inject_entry_macho(llvm_ir_str: str) -> str {
-    # Declare __jac_argc/__jac_argv only if the IR gen pass didn't already
     has_jac_argc = "__jac_argc" in llvm_ir_str;
     globals_ir = ""
         if has_jac_argc
@@ -56,15 +48,23 @@ def _inject_entry_macho(llvm_ir_str: str) -> str {
 }
 
 
-"""Inject main() and _jac_win_start into the LLVM IR for PE (Windows).
+def _inject_entry_elf_static(llvm_ir_str: str) -> str {
+    has_jac_argc = "__jac_argc" in llvm_ir_str;
+    globals_ir = ""
+        if has_jac_argc
+        else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    initarr_ir = ""
+        if "__jac_init_array" in llvm_ir_str
+        else (
+            '@__jac_init_array = global ptr null\n' + '@__jac_init_count = global i64 0\n\n'
+        );
+    ir = (
+        '\n; --- injected entry point (musl static) ---\n' + globals_ir + initarr_ir + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    %ia = load ptr, ptr @__jac_init_array\n' + '    %ic = load i64, ptr @__jac_init_count\n' + '    br label %ia.cond\n' + 'ia.cond:\n' + '    %i = phi i64 [ 0, %entry ], [ %inext, %ia.body ]\n' + '    %more = icmp ult i64 %i, %ic\n' + '    br i1 %more, label %ia.body, label %ia.done\n' + 'ia.body:\n' + '    %slot = getelementptr ptr, ptr %ia, i64 %i\n' + '    %fn = load ptr, ptr %slot\n' + '    call void %fn()\n' + '    %inext = add i64 %i, 1\n' + '    br label %ia.cond\n' + 'ia.done:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n'
+    );
+    return llvm_ir_str + ir;
+}
 
-_jac_win_start is the PE entry point (AddressOfEntryPoint). Unlike the ELF
-_start, the Windows loader calls the entry as an ordinary function (no
-argc/argv on the stack), so we recover them via msvcrt's __getmainargs and
-forward to main(), then exit() cleanly. _fltused is defined locally because
-it is an MSVC CRT marker symbol (not exported by msvcrt); defining it keeps
-the backend's floating-point-use reference from becoming a failed import.
-"""
+
 def _inject_entry_pe(llvm_ir_str: str) -> str {
     has_jac_argc = "__jac_argc" in llvm_ir_str;
     globals_ir = ""
@@ -80,29 +80,11 @@ def _inject_entry_pe(llvm_ir_str: str) -> str {
 }
 
 
-"""Inject __jac_shared_init() and the public RC wrappers for a shared library.
-
-A .so/.dylib/.dll has no jac_entry; instead the platform loader runs
-__jac_shared_init via the init mechanism (ELF DT_INIT_ARRAY, Mach-O
-__mod_init_func, PE DllMain) on load. It calls this module's
-__jac_glob_init() and each imported module's __jac_glob_init_<safe>()
-(dependency order, mirroring jac_entry) so every global is initialised before
-any export is called. We also export jac_retain/jac_release as public wrappers
-over the private reference-counting primitives, so a C host can manage the
-lifetime of Jac object/string handles that cross the boundary.
-
-Returns (new_ir, extra_export_names).
-"""
 def _inject_shared_init(
     llvm_ir_str: str, transitive_sources: list[str]
 ) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
-    # This module's own glob-init (NaIRGenPass always emits it when present).
-    # LLVM quotes the symbol ("define void @\"__jac_glob_init\"()") because the
-    # name is not a bare IR identifier, so check both the quoted and unquoted
-    # forms -- matching the transitive-source branch below. Checking only the
-    # unquoted form let `__jac_shared_init` be emitted empty, leaving global
-    # clib structs uninitialized (NULL) and segfaulting on first field access.
+
     if ('@"__jac_glob_init"' in llvm_ir_str) or ("@__jac_glob_init(" in llvm_ir_str) {
         init_calls.append("  call void @__jac_glob_init()");
     }
@@ -113,9 +95,7 @@ def _inject_shared_init(
             continue;
         }
         _seen.add(_src);
-        # Unique per-module suffix; centralized in codeinfo.native_safe_sym so
-        # the emit side, this AOT shared-init emitter, and the JIT runtime
-        # lookup (native_marshal.init_native_globals) all agree on the name.
+
         _safe = native_safe_sym(_src);
         _nm = f"__jac_glob_init_{_safe}";
         if (f'@"{_nm}"' in llvm_ir_str) or (f"@{_nm}(" in llvm_ir_str) {
@@ -128,7 +108,7 @@ def _inject_shared_init(
         "define void @__jac_shared_init() {\nentry:\n" + _body + "  ret void\n}"
     );
     extra_exports: list[str] = [];
-    # Public retain/release over the private RC primitives, when RC is in use.
+
     if "__rc_retain" in llvm_ir_str {
         parts.append(
             "define void @jac_retain(ptr %p) {\nentry:\n"
@@ -147,7 +127,6 @@ def _inject_shared_init(
 }
 
 
-"""Compile a .na.jac file to a standalone native binary."""
 impl nacompile(
     filename: str,
     output: str = "",
@@ -157,18 +136,12 @@ impl nacompile(
     debug: bool = False
 ) -> int {
     import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
-    # Validate input
+
     if not is_jac(filename) {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
 
-    # -g/--debug: emit DWARF line tables, DISubprograms and a .symtab so the
-    # ELF linker preserves them into a section-header table (gated on the IR
-    # carrying debug metadata). NaIRGenPass and the linker both gate on this
-    # env var, so set it before compiling. The metadata only appears on a fresh
-    # compile, so imply --scrub: a cached non-debug build would otherwise be
-    # reused and silently yield a binary GDB can't read.
     _prev_native_debug = os.environ.get("JAC_NATIVE_DEBUG") if debug else None;
     if debug {
         os.environ["JAC_NATIVE_DEBUG"] = "1";
@@ -179,20 +152,11 @@ impl nacompile(
         return 1;
     }
 
-    # wasm32 target: emit a browser-loadable wasm module instead of a host binary.
-    # The native LLVM backend already targets wasm32; we set the triple before
-    # compiling so NaIRGenPass picks it up (data layout + ABI), then link the
-    # single relocatable object into a module with the pure-Jac wasm linker.
     is_wasm = target in ["wasm", "wasm32", "wasm32-unknown-unknown"];
     if is_wasm {
         os.environ["JAC_NATIVE_TARGET"] = "wasm32-unknown-unknown";
     }
 
-    # windows target: emit a PE/COFF .exe instead of a host binary. Set the
-    # triple before compiling so NaIRGenPass picks it up (data layout + ABI),
-    # then link the COFF object with the pure-Jac PE linker. Mirrors is_wasm.
-    # A bare alias ("windows"/"win64") maps to the msvc triple; a full triple
-    # the user passed ("x86_64-pc-windows-gnu") is used verbatim.
     is_windows = (sys.platform == "win32")
     or ("windows" in target)
     or (target in ["win", "win64", "mingw"]);
@@ -202,10 +166,6 @@ impl nacompile(
         );
     }
 
-    # macos/darwin target: emit a Mach-O binary (and, with --shared, a .dylib)
-    # via the pure-Jac Mach-O linker. Lets a non-macOS host cross-build a dylib;
-    # on a macOS host the default path already routes through MachOLinker. A bare
-    # alias maps to arm64-apple-darwin; a full triple is used verbatim.
     is_macos_target = (target in ["macos", "darwin", "osx", "macosx"])
     or ("apple" in target)
     or ("darwin" in target);
@@ -215,7 +175,15 @@ impl nacompile(
         );
     }
 
-    # Scrub: wipe cached compilation artifacts under the source tree
+    is_linux_target = (target in ["linux", "elf"])
+    or ("linux-gnu" in target)
+    or ("linux-musl" in target);
+    if is_linux_target {
+        os.environ["JAC_NATIVE_TARGET"] = (
+            target if "-" in target else "x86_64-unknown-linux-gnu"
+        );
+    }
+
     if scrub {
         import from jaclang.jac0core.jir { scrub_cache_dirs }
         src_root = os.path.dirname(os.path.abspath(filename)) or ".";
@@ -227,14 +195,12 @@ impl nacompile(
 
     auto_promote = is_jac(filename) and not is_native_module(filename);
 
-    # Detect platform (host darwin, or an explicit macOS cross-target)
-    is_macos = (sys.platform == "darwin") or is_macos_target;
+    is_macos = ((sys.platform == "darwin") and not is_windows and not is_linux_target)
+    or is_macos_target;
 
-    # Determine output path
     if not output {
         output = base_stem(filename);
         if shared {
-            # Conventional shared-library name: lib<stem>.<ext> per platform.
             _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");
             output = "lib" + output + _so_ext;
         } elif is_wasm {
@@ -246,7 +212,6 @@ impl nacompile(
 
     console.print(f"Compiling {filename} to native binary...");
 
-    # Step 1: Compile through Jac pipeline to get LLVM IR
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.compile_options { CompileOptions }
 
@@ -256,18 +221,7 @@ impl nacompile(
             prog._auto_promote_native = True;
             prog._auto_promote_target = os.path.abspath(filename);
         }
-        # aot_mode=True: NativeCompilePass links all cross-module imports at IR
-        # level and runs the optimization pipeline, but skips MCJIT engine
-        # creation (which would consume the module). The resulting linked+optimised
-        # module is stored in ir_module.gen.llvm_ir for us to emit as object code.
-        #
-        # type_check=False: native compilation has its own type discipline (the
-        # backend treats `int`, `str`, function refs and `obj` instances as
-        # 64-bit pointers), so the strict Jac type checker produces false
-        # positives that would otherwise abort the build at the errors_had
-        # gate below. This matches the JIT native path (`prog.compile` without
-        # options also defaults type_check off); `jac check` remains the way to
-        # type-check a native module strictly.
+
         options = CompileOptions(aot_mode=True, type_check=False);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
@@ -276,11 +230,6 @@ impl nacompile(
         traceback.print_exc();
         return 1;
     } finally {
-        # Contain the JAC_NATIVE_DEBUG side-effect: restore the prior value once the
-        # IR is generated (NaIRGenPass only reads the env var during compile; the
-        # ELF linker keys off the .debug_* sections already baked into the IR). This
-        # keeps a later same-process nacompile() call without -g byte-identical to a
-        # standalone non-debug build.
         if debug {
             if _prev_native_debug is None {
                 os.environ.pop("JAC_NATIVE_DEBUG", None);
@@ -290,16 +239,8 @@ impl nacompile(
         }
     }
 
-    # Abort immediately if the pass infrastructure recorded any ERROR-level
-    # diagnostics (e.g. E5020 from a failing imported .na.jac module).
-    # Without this check, nacompile would silently link stale cached IR and
-    # write a broken binary while printing no error.
     if prog.errors_had {
         for _err in prog.errors_had {
-            # `pretty_print` (not `str`) renders the source-location span AND
-            # the diagnostic's `help_text` — the same renderer `jac check` /
-            # `jac run` use. `str(_err)` drops help, so native E5090 guidance
-            # (unsupported import / cross-module OSP) never reached the user.
             console.print(_err.pretty_print());
         }
         return 1;
@@ -328,14 +269,7 @@ impl nacompile(
         console.print("  Auto-promoted to native compilation.");
     }
 
-    # wasm32 path: emit one relocatable object and link it into a module.
-    # Undefined externs (raylib, malloc/free/memcpy, __multi3, ...) stay as wasm
-    # imports for the JS host. No entry injection / DT_NEEDED - JS calls the
-    # exported functions directly.
     if is_wasm {
-        # Emit one relocatable wasm object and link it into a module. Undefined
-        # externs (raylib, malloc/free/memcpy, __multi3, ...) stay as wasm
-        # imports for the JS host; no entry injection / DT_NEEDED.
         import from jaclang.compiler.passes.native.wasm_build { emit_wasm_from_ir }
         try {
             wasm_bytes = emit_wasm_from_ir(str(ir_module.gen.llvm_ir));
@@ -353,7 +287,6 @@ impl nacompile(
         return 0;
     }
 
-    # Step 2: Check for Python/server interop (can't compile standalone)
     manifest = ir_module.gen.interop_manifest;
     if manifest and manifest.native_imports {
         console.error(
@@ -368,9 +301,6 @@ impl nacompile(
 
     llvm_ir_str = str(ir_module.gen.llvm_ir);
 
-    # Check that jac_entry exists (requires with entry {} block). A shared
-    # library has no entry point — it exports `:pub` symbols instead — so this
-    # requirement is skipped under --shared.
     if not shared and "jac_entry" not in llvm_ir_str {
         console.error(
             "No entry point found. "
@@ -381,7 +311,6 @@ impl nacompile(
 
     console.print("  LLVM IR generated successfully.");
 
-    # Step 3: Initialize llvmlite
     import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
@@ -389,9 +318,49 @@ impl nacompile(
     triple = os.environ.get("JAC_NATIVE_TARGET", "") or llvm.get_default_triple();
     console.print(f"  Target: {triple}");
 
-    # Step 4: Inject entry point (executable) or the shared-library init.
     export_symbols: list[str] = [];
     init_funcs: list[str] = [];
+
+    clib_paths = ir_module.gen._clib_paths;
+    (archive_members, _floor_handled) = _collect_floor_archives(
+        clib_paths or [], ir_module.gen._clib_symbol_lib, triple, is_macos
+    );
+    if archive_members {
+        console.print(
+            f"  Static-linking {len(archive_members)} floor archive member(s)."
+        );
+    }
+
+    if is_windows {
+        needed_libs: list[str] = ["msvcrt.dll"];
+    } elif is_macos {
+        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
+    } else {
+        needed_libs: list[str] = [];
+    }
+    _lib_norm: dict[str, str] = {};
+    if clib_paths {
+        for lib_path in clib_paths {
+            if lib_path in _floor_handled {
+                continue;
+            }
+            _needed = lib_path;
+            if (not os.path.isabs(lib_path))
+            and (not lib_path.startswith("$"))
+            and (not lib_path.startswith("@"))
+            and ("/" in lib_path or "\\" in lib_path) {
+                _needed = os.path.basename(lib_path);
+            }
+            if _needed not in needed_libs {
+                needed_libs.append(_needed);
+            }
+            _lib_norm[lib_path] = _needed;
+        }
+    }
+
+    _is_linux_exec = (not shared) and (not is_windows) and (not is_macos);
+    _static_musl = _is_linux_exec and (len(needed_libs) == 0);
+
     if shared {
         _transitive: list[str] = [];
         _mf = ir_module.gen.interop_manifest;
@@ -400,8 +369,6 @@ impl nacompile(
         }
         (llvm_ir_str, _extra_exports) = _inject_shared_init(llvm_ir_str, _transitive);
         init_funcs = ["__jac_shared_init"];
-        # Export set: `:pub` symbols recorded during IR gen (root module +
-        # AOT-propagated imports) plus the injected runtime wrappers.
         for _s in ir_module.gen._exported_symbols {
             if _s not in export_symbols {
                 export_symbols.append(_s);
@@ -428,68 +395,15 @@ impl nacompile(
         llvm_ir_str = _inject_entry_pe(llvm_ir_str);
     } elif is_macos {
         llvm_ir_str = _inject_entry_macho(llvm_ir_str);
+    } elif _static_musl {
+        llvm_ir_str = _inject_entry_elf_static(llvm_ir_str);
     } else {
         llvm_ir_str = _inject_entry_elf(llvm_ir_str, triple);
     }
 
-    # Step 5: Determine needed libraries
-    # Note: libgc (Boehm GC) no longer needed - using reference counting
-    if is_windows {
-        # msvcrt.dll ships on every Windows and exports the classic C runtime
-        # (printf, malloc, free, memcpy, math, ...). Undefined externals bind
-        # here unless symbol_lib_map names a different DLL (e.g. a clib import).
-        needed_libs: list[str] = ["msvcrt.dll"];
-    } elif is_macos {
-        # libm is part of libSystem on macOS.
-        needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
-    } else {
-        # User-specified libraries are appended below; libc/libm are added last
-        # so they appear AFTER user imports in NEEDED. This matters for libraries
-        # like libcef.so whose .init_array calls dlsym(RTLD_NEXT, "close") etc.:
-        # RTLD_NEXT searches the link map AFTER the calling library, so libc must
-        # be after libcef.so in the map for those lookups to resolve (issue #6572).
-        needed_libs: list[str] = [];
-    }
-
-    # Add C shared libraries discovered during compilation (e.g. libuv.so.1)
-    # These come from `import from "/path/to/lib.so" { ... }` declarations
-    # in the compiled module and its transitive dependencies.
-    # _clib_paths is accumulated by _compile_and_link_native_imports.
-    clib_paths = ir_module.gen._clib_paths;
-    # Maps a raw clib path to the soname actually recorded in needed_libs, so
-    # the per-symbol library attribution below lines up with the linker's
-    # LC_LOAD_DYLIB ordinals.
-    _lib_norm: dict[str, str] = {};
-    if clib_paths {
-        for lib_path in clib_paths {
-            # A relative path with a directory component (e.g. "./libfoo.so")
-            # names a library shipped beside the binary. Record only its soname
-            # so the linker's DT_RUNPATH=$ORIGIN entry resolves it relative to
-            # the executable rather than the launch directory. Absolute paths
-            # (system libraries) and bare sonames are recorded verbatim.
-            #
-            # A name that already carries a loader token ($ORIGIN/... on ELF,
-            # @loader_path/... on Mach-O) is a per-platform logical import
-            # resolved by the native backend (issue #6387): keep it verbatim so
-            # the sub-directory and origin-relative semantics survive.
-            _needed = lib_path;
-            if (not os.path.isabs(lib_path))
-            and (not lib_path.startswith("$"))
-            and (not lib_path.startswith("@"))
-            and ("/" in lib_path or "\\" in lib_path) {
-                _needed = os.path.basename(lib_path);
-            }
-            if _needed not in needed_libs {
-                needed_libs.append(_needed);
-            }
-            _lib_norm[lib_path] = _needed;
-        }
-    }
-
-    # Append libc/libm after all user-specified libraries so the dynamic
-    # linker's link map puts libc AFTER any user library that needs RTLD_NEXT
-    # to resolve libc symbols from its .init_array (issue #6572).
-    if not is_macos and not is_windows {
+    if (shared or (_is_linux_exec and not _static_musl))
+    and not is_macos
+    and not is_windows {
         if "libc.so.6" not in needed_libs {
             needed_libs.append("libc.so.6");
         }
@@ -498,15 +412,14 @@ impl nacompile(
         }
     }
 
-    # Build the symbol -> soname map the Mach-O linker uses to emit two-level
-    # dylib ordinals (e.g. "InitWindow" -> "libraylib.dylib"). On ELF this is
-    # unused (the loader searches all DT_NEEDED libs flatly).
     symbol_lib_map: dict[str, str] = {};
     for (_sym, _raw) in ir_module.gen._clib_symbol_lib.items() {
+        if _raw in _floor_handled {
+            continue;
+        }
         symbol_lib_map[_sym] = _lib_norm.get(_raw, _raw);
     }
 
-    # Step 6: Emit object code via llvmlite
     try {
         mod = llvm.parse_assembly(llvm_ir_str);
         mod.verify();
@@ -515,37 +428,21 @@ impl nacompile(
         return 1;
     }
 
-    # JAC_NATIVE_TARGET cross-compiles for another triple; the parsed module
-    # already carries that triple/data layout from NaIRGenPass.postinit, so the
-    # emitted object matches. The pure-Python linker selects ELF arch from the
-    # object's e_machine, so the resulting binary targets the requested ISA.
     _target_ovr = os.environ.get("JAC_NATIVE_TARGET", "");
     if _target_ovr {
         target = llvm.Target.from_triple(_target_ovr);
     } else {
         target = llvm.Target.from_default_triple();
     }
-    # A shared library must be position-independent so the loader can map it at
-    # any base address; an executable keeps the default (fixed-base) model. The
-    # small code model keeps code/GOT references PC-relative (no .ltext /
-    # GOTPC64 large-model relocations), which the pure-Python linker resolves.
+
     if shared {
         target_machine = target.create_target_machine(
             opt=2, reloc="pic", codemodel="small"
         );
     } else {
-        # codemodel="large" (not the default "jitdefault"): llvmlite appends
-        # "-elf" to the triple when os.name == "nt" and codemodel ==
-        # "jitdefault", making a Windows host emit an ELF object for a COFF
-        # target (the format guard below then trips). Pass an explicit code
-        # model so the requested triple stays intact. "large" is used (not
-        # "small") because "jitdefault" resolves to the large model on x86_64,
-        # which emits the absolute relocations the pure-Jac ELF linker handles;
-        # the small/medium models emit R_X86_64_32 absolutes it cannot resolve.
         target_machine = target.create_target_machine(opt=2, codemodel="large");
     }
 
-    # Read native build settings from jac.toml [build.native] (env vars as fallback)
     import from jaclang.project { get_config, NativeBuildConfig }
     _native_cfg = NativeBuildConfig();
     _jac_config = get_config();
@@ -555,11 +452,6 @@ impl nacompile(
     _opt_level = int(os.environ.get("JAC_OPT_LEVEL", str(_native_cfg.opt_level)));
     _dump_path = os.environ.get("JAC_DUMP_IR", _native_cfg.dump_ir);
 
-    # Run LLVM optimization pipeline before emitting object code.
-    # Internalize pass marks non-entry functions as internal so LLVM
-    # can aggressively inline them (jac_entry/main/_start are preserved).
-    # In --shared mode we must NOT internalize: the exported `:pub` symbols and
-    # the RC wrappers have to survive as externally-visible definitions.
     if _opt_level > 0 {
         pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
         pb = llvm.create_pass_builder(target_machine, pto);
@@ -570,7 +462,6 @@ impl nacompile(
         opt_mpm.run(mod, pb);
     }
 
-    # Debug: dump optimized IR
     if _dump_path {
         with open(_dump_path, "w") as _df {
             _df.write(str(mod));
@@ -580,7 +471,6 @@ impl nacompile(
     obj_bytes = target_machine.emit_object(mod);
     console.print(f"  Object code emitted ({len(obj_bytes)} bytes).");
 
-    # Step 7: Link into native executable (platform-specific)
     if is_windows {
         import from jaclang.compiler.passes.native.pe_linker { PeLinker }
 
@@ -617,7 +507,8 @@ impl nacompile(
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
-                soname=os.path.basename(output)
+                soname=os.path.basename(output),
+                archive_members=archive_members
             );
         } except Exception as e {
             console.error(f"Mach-O linking failed: {e}");
@@ -631,15 +522,36 @@ impl nacompile(
         }
     } else {
         import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
+        _crt_objects: list[bytes] = [];
+        if _static_musl {
+            _musl = _collect_musl_static(obj_bytes, triple);
+            if _musl is None {
+                console.error(
+                    "Static musl runtime not found. Expected a vendored musl "
+                    "libc.a under .pbs-build/<arch>/musl/lib (run `zig build "
+                    "vendor-musl`) or set JAC_NATIVE_MUSL_DIR."
+                );
+                return 1;
+            }
+            (_musl_members, _crt_objects) = _musl;
+            archive_members = archive_members + _musl_members;
+            console.print(
+                f"  Static-linking musl: {len(_musl_members)} libc member(s) + "
+                f"{len(_crt_objects)} crt object(s)."
+            );
+        }
         try {
             success = ElfLinker.link(
                 obj_bytes=obj_bytes,
                 output_path=output,
                 needed_libs=needed_libs,
+                crt_objects=_crt_objects,
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
-                soname=os.path.basename(output)
+                soname=os.path.basename(output),
+                archive_members=archive_members,
+                static_link=_static_musl
             );
         } except Exception as e {
             console.error(f"ELF linking failed: {e}");
@@ -665,4 +577,278 @@ impl nacompile(
         console.print(f"  Run with: ./{output}");
     }
     return 0;
+}
+
+
+def _resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
+    import os;
+    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+
+    pbs = os.path.join(pkg_root, ".pbs-build");
+    if os.path.isdir(pbs) {
+        fallback: (str | None) = None;
+        for d in sorted(os.listdir(pbs)) {
+            libdir = os.path.join(pbs, d, "python", "build", "lib");
+            if os.path.isdir(libdir) {
+                if fallback is None {
+                    fallback = libdir;
+                }
+                if want in d {
+                    return libdir;
+                }
+            }
+        }
+        if fallback is not None {
+            return fallback;
+        }
+    }
+
+    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
+    if os.path.isdir(floor) {
+        for d in sorted(os.listdir(floor)) {
+            cand = os.path.join(floor, d);
+            if os.path.isdir(cand) and (want in d) {
+                return cand;
+            }
+        }
+    }
+    return None;
+}
+
+
+def _floor_lib_dir(triple: str) -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_FLOOR_DIR", "");
+    if env and os.path.isdir(env) {
+        return env;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    return _resolve_floor_dir(pkg_root, triple);
+}
+
+
+def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
+    import os;
+
+    cand = os.path.join(os.path.dirname(pkg_root), "python", "floor", "cacert.pem");
+    if os.path.isfile(cand) {
+        return cand;
+    }
+
+    import glob;
+    hits = sorted(
+        glob.glob(
+            os.path.join(
+                pkg_root,
+                ".pbs-build",
+                "*",
+                "python",
+                "install",
+                "lib",
+                "python*",
+                "site-packages",
+                "pip",
+                "_vendor",
+                "certifi",
+                "cacert.pem"
+            )
+        )
+    );
+    return hits[0] if hits else None;
+}
+
+
+def _floor_ca_bundle -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_CA_BUNDLE", "");
+    if env and os.path.isfile(env) {
+        return env;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    return _resolve_ca_bundle(pkg_root);
+}
+
+
+def _clib_to_archive_name(clib_path: str) -> str {
+    import os;
+    return os.path.basename(clib_path).split(".")[0] + ".a";
+}
+
+
+def _collect_floor_archives(
+    clib_paths: list, clib_symbol_lib: dict, triple: str, is_macos: bool
+) -> tuple {
+    import os;
+    import from jaclang.compiler.passes.native.linker_common { select_ar_members }
+    member_bytes: list = [];
+    handled: set = set();
+
+    tl = triple.lower();
+    is_pe = ("windows" in tl) or ("win32" in tl) or ("msvc" in tl) or ("mingw" in tl);
+    if is_pe or not clib_paths {
+        return (member_bytes, handled);
+    }
+    lib_dir = _floor_lib_dir(triple);
+    if lib_dir is None {
+        return (member_bytes, handled);
+    }
+
+    syms_by_lib: dict = {};
+    for (sym, raw) in clib_symbol_lib.items() {
+        syms_by_lib.setdefault(raw, []).append(sym);
+    }
+
+    roots_by_archive: dict = {};
+    paths_by_archive: dict = {};
+    for clib_path in clib_paths {
+        arch_file = os.path.join(lib_dir, _clib_to_archive_name(clib_path));
+        if not os.path.isfile(arch_file) {
+            continue;
+        }
+        paths_by_archive.setdefault(arch_file, []).append(clib_path);
+        for s in syms_by_lib.get(clib_path, []) {
+            roots_by_archive.setdefault(arch_file, []).append(
+                ("_" + s) if is_macos else s
+            );
+        }
+    }
+    for (arch_file, roots) in roots_by_archive.items() {
+        if not roots {
+            continue;
+        }
+        with open(arch_file, "rb") as _f {
+            data = _f.read();
+        }
+        members = select_ar_members(data, roots);
+        if not members {
+            continue;
+        }
+        for m in members {
+            member_bytes.append(m.data);
+        }
+        for p in paths_by_archive.get(arch_file, []) {
+            handled.add(p);
+        }
+    }
+    return (member_bytes, handled);
+}
+
+
+def _musl_lib_dir(triple: str) -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
+    if env and os.path.isdir(env) {
+        return env;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+    pbs = os.path.join(pkg_root, ".pbs-build");
+    if os.path.isdir(pbs) {
+        for d in sorted(os.listdir(pbs)) {
+            libdir = os.path.join(pbs, d, "musl", "lib");
+            if os.path.isdir(libdir)
+            and os.path.isfile(os.path.join(libdir, "libc.a"))
+            and (want in d) {
+                return libdir;
+            }
+        }
+    }
+
+    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
+    if os.path.isdir(floor) {
+        for d in sorted(os.listdir(floor)) {
+            cand = os.path.join(floor, d, "musl");
+            if os.path.isdir(cand)
+            and os.path.isfile(os.path.join(cand, "libc.a"))
+            and (want in d) {
+                return cand;
+            }
+        }
+    }
+    return None;
+}
+
+
+def _collect_musl_static(obj_bytes: bytes, triple: str) -> (tuple | None) {
+    import os;
+    import from jaclang.compiler.passes.native.linker_common {
+        select_ar_members,
+        _ar_member_undefs
+    }
+    lib_dir = _musl_lib_dir(triple);
+    if lib_dir is None {
+        return None;
+    }
+    libc_a = os.path.join(lib_dir, "libc.a");
+    if not os.path.isfile(libc_a) {
+        return None;
+    }
+
+    crt_objects: list[bytes] = [];
+    _have_crt1 = False;
+    for crt_name in ["crt1.o", "crti.o", "crtn.o"] {
+        p = os.path.join(lib_dir, crt_name);
+        if os.path.isfile(p) {
+            with open(p, "rb") as _cf {
+                crt_objects.append(_cf.read());
+            }
+            if crt_name == "crt1.o" {
+                _have_crt1 = True;
+            }
+        }
+    }
+    if not _have_crt1 {
+        return None;
+    }
+
+    archives_data: list[bytes] = [];
+    for af in ["libc.a", "libzigc.a", "libcompiler_rt.a"] {
+        p = os.path.join(lib_dir, af);
+        if os.path.isfile(p) {
+            with open(p, "rb") as _af {
+                archives_data.append(_af.read());
+            }
+        }
+    }
+
+    work_roots: list[str] = [];
+    known: set[str] = set();
+    for blob in [obj_bytes] + crt_objects {
+        for u in _ar_member_undefs(blob) {
+            if u not in known {
+                known.add(u);
+                work_roots.append(u);
+            }
+        }
+    }
+
+    import hashlib;
+    member_bytes: list[bytes] = [];
+    seen_members: set[bytes] = set();
+    changed = True;
+    while changed {
+        changed = False;
+        for data in archives_data {
+            for m in select_ar_members(data, work_roots) {
+                key = hashlib.sha256(m.data).digest();
+                if key in seen_members {
+                    continue;
+                }
+                seen_members.add(key);
+                member_bytes.append(m.data);
+                changed = True;
+                for u in _ar_member_undefs(m.data) {
+                    if u not in known {
+                        known.add(u);
+                        work_roots.append(u);
+                    }
+                }
+            }
+        }
+    }
+
+    return (member_bytes, crt_objects);
 }

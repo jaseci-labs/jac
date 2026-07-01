@@ -1,26 +1,22 @@
-"""Dictionary type codegen and operations."""
-"""Integer power operation using loop-based exponentiation."""
 impl NaIRGenPass._codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value {
-    # Simple loop-based integer exponentiation
-    # result = 1; for i in range(exp): result *= base
     i64 = ir.IntType(64);
     func = self.builder.function;
-    # Allocate result and counter
+
     result_alloca = self._entry_alloca(i64, "pow.result");
     counter_alloca = self._entry_alloca(i64, "pow.counter");
     self.builder.store(ir.Constant(i64, 1), result_alloca);
     self.builder.store(ir.Constant(i64, 0), counter_alloca);
-    # Basic blocks
+
     cond_bb = func.append_basic_block(name="pow.cond");
     body_bb = func.append_basic_block(name="pow.body");
     end_bb = func.append_basic_block(name="pow.end");
     self.builder.branch(cond_bb);
-    # Condition: counter < exp
+
     self.builder.position_at_end(cond_bb);
     counter = self.builder.load(counter_alloca, name="pow.i");
     cmp = self.builder.icmp_signed("<", counter, exp, name="pow.cmp");
     self.builder.cbranch(cmp, body_bb, end_bb);
-    # Body: result *= base; counter++
+
     self.builder.position_at_end(body_bb);
     cur_result = self.builder.load(result_alloca, name="pow.cur");
     new_result = self.builder.mul(cur_result, base, name="pow.mul");
@@ -29,17 +25,11 @@ impl NaIRGenPass._codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value {
     next_counter = self.builder.add(cur_counter, ir.Constant(i64, 1), name="pow.inc");
     self.builder.store(next_counter, counter_alloca);
     self.builder.branch(cond_bb);
-    # End: return result
+
     self.builder.position_at_end(end_bb);
     return self.builder.load(result_alloca, name="pow.final");
 }
 
-"""LLVM key type -> (dict/set registry name, key byte size).
-
-Single source of truth for the key-spec ladder so dict creation and lookup
-agree on the name. bytes keys must be named 'bytes' (not the generic 'ptr',
-which would fall back to pointer-identity comparison) so #6749 key lookups
-match by value. f64/tuple/ptr/i64 mirror the prior inline ladders."""
 impl NaIRGenPass._dict_key_spec(key_type: ir.Type) -> tuple {
     if isinstance(key_type, ir.DoubleType) {
         return ("f64", 0);
@@ -57,11 +47,6 @@ impl NaIRGenPass._dict_key_spec(key_type: ir.Type) -> tuple {
     return ("i64", 0);
 }
 
-"""Emit LLVM IR helper functions for a dictionary with given key/value types.
-
-Uses a simple linear-search dictionary: {len, cap, keys*, vals*}
-This is O(n) for lookups but sufficient for small dictionaries.
-"""
 impl NaIRGenPass._emit_dict_helpers(
     key_type_name: str,
     val_type_name: str,
@@ -73,7 +58,7 @@ impl NaIRGenPass._emit_dict_helpers(
     if dict_key in self.dict_helpers {
         return;
     }
-    # Auto-detect key_size for tuple/struct pointer keys
+
     _key_sz: int = int(key_size);
     if _key_sz == 0 and isinstance(key_type, ir.PointerType) {
         _pointee = key_type?.pointee;
@@ -81,7 +66,7 @@ impl NaIRGenPass._emit_dict_helpers(
             _key_sz = self._get_struct_size(_pointee);
         }
     }
-    # Create dict struct type: { i64 len, i64 cap, key_type* keys, val_type* vals }
+
     dict_struct = self.llvm_module.context.get_identified_type(
         f"Dict.{key_type_name}.{val_type_name}"
     );
@@ -96,7 +81,7 @@ impl NaIRGenPass._emit_dict_helpers(
     malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
-    # --- Forward-declare __rc_release_dict_K_V so new_fn can store its address as dtor_fn_ptr.
+
     _rel_fn_name_d = f"__rc_release_dict_{dict_key.replace(':', '_')}";
     _rel_fnty_d = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
     try {
@@ -107,14 +92,14 @@ impl NaIRGenPass._emit_dict_helpers(
         );
         _rel_fn_decl_d.linkage = "private";
     }
-    # --- __dict_new: create an empty dict with capacity 8 ---
+
     new_fn = self._emit_container_new_fn(
         f"__dict_new_{key_type_name}_{val_type_name}",
         dict_ptr_type,
         [key_type, val_type],
         dtor_fn=_rel_fn_decl_d
     );
-    # --- __dict_set: set key=value (linear search, grow if needed) ---
+
     set_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type, key_type, val_type]);
     set_fn = ir.Function(
         self.llvm_module, set_fnty, name=f"__dict_set_{key_type_name}_{val_type_name}"
@@ -128,7 +113,7 @@ impl NaIRGenPass._emit_dict_helpers(
     d_arg = set_fn.args[0];
     k_arg = set_fn.args[1];
     v_arg = set_fn.args[2];
-    # Load len, cap, keys, vals
+
     len_p2 = b.gep(d_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr");
     cap_p2 = b.gep(d_arg, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="cap.ptr");
     keys_p2 = b.gep(d_arg, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="keys.ptr");
@@ -136,14 +121,14 @@ impl NaIRGenPass._emit_dict_helpers(
     cur_len = b.load(len_p2, name="len");
     keys_arr = b.load(keys_p2, name="keys");
     vals_arr = b.load(vals_p2, name="vals");
-    # Search for existing key
+
     (found_b, not_found_b, idx_alloca) = self._emit_linear_search_loop(
         set_fn, b, k_arg, keys_arr, cur_len, key_type, _key_sz
     );
-    # Found: update existing value
+
     idx_found = found_b.load(idx_alloca, name="idx.found");
     val_ptr_found = found_b.gep(vals_arr, [idx_found], name="val.ptr.found");
-    # retain-new, release-old for pointer value types
+
     if isinstance(val_type, ir.PointerType) {
         if self.rc_retain_fn is None {
             self._emit_rc_helpers();
@@ -159,18 +144,18 @@ impl NaIRGenPass._emit_dict_helpers(
         found_b.store(v_arg, val_ptr_found);
     }
     found_b.ret_void();
-    # Not found: check capacity and append
+
     grow_bb = set_fn.append_basic_block("grow");
     append_bb = set_fn.append_basic_block("append");
     cur_cap = not_found_b.load(cap_p2, name="cap");
     need_grow = not_found_b.icmp_unsigned(">=", cur_len, cur_cap, name="need.grow");
     not_found_b.cbranch(need_grow, grow_bb, append_bb);
-    # Grow block: grow both keys and vals arrays
+
     b = ir.IRBuilder(grow_bb);
     self._emit_grow_array(b, keys_p2, key_type, cur_len, cap_p2, cur_cap);
-    # Reload cap after first grow (cap_p2 was updated)
+
     new_cap = b.load(cap_p2, name="new.cap.reload");
-    # Grow vals -- pass new_cap directly via a manual grow since cap is already doubled
+
     val_null2 = ir.Constant(val_type.as_pointer(), None);
     val_gep2 = b.gep(val_null2, [ir.Constant(i32, 1)], name="val.sizeof");
     val_sz = b.ptrtoint(val_gep2, i64, name="val.size");
@@ -188,14 +173,14 @@ impl NaIRGenPass._emit_dict_helpers(
     b.call(self.rc_safe_free_fn, [old_vals_i8]);
     b.store(new_vals, vals_p2);
     b.branch(append_bb);
-    # Append block
+
     b = ir.IRBuilder(append_bb);
     keys_arr_app = b.load(keys_p2, name="keys.app");
     vals_arr_app = b.load(vals_p2, name="vals.app");
     cur_len_app = b.load(len_p2, name="len.app");
     key_slot = b.gep(keys_arr_app, [cur_len_app], name="key.slot");
     val_slot = b.gep(vals_arr_app, [cur_len_app], name="val.slot");
-    # retain key and val before storing (new dict entry)
+
     _i8pd2 = ir.IntType(8).as_pointer();
     if isinstance(key_type, ir.PointerType) {
         if self.rc_retain_fn is None {
@@ -216,7 +201,7 @@ impl NaIRGenPass._emit_dict_helpers(
     new_len = b.add(cur_len_app, ir.Constant(i64, 1), name="new.len");
     b.store(new_len, len_p2);
     b.ret_void();
-    # --- __dict_get: return value for key (linear search) ---
+
     get_fnty = ir.FunctionType(val_type, [dict_ptr_type, key_type]);
     get_fn = ir.Function(
         self.llvm_module, get_fnty, name=f"__dict_get_{key_type_name}_{val_type_name}"
@@ -241,26 +226,25 @@ impl NaIRGenPass._emit_dict_helpers(
     (found_b_g, not_found_b_g, idx_alloca_g) = self._emit_linear_search_loop(
         get_fn, b, k_arg_g, keys_g, len_g, key_type, _key_sz
     );
-    # Found: return value at index
+
     idx_fg = found_b_g.load(idx_alloca_g, name="idx.found");
     val_ptr_fg = found_b_g.gep(vals_g, [idx_fg], name="val.ptr");
     result_g = found_b_g.load(val_ptr_fg, name="result");
     found_b_g.ret(result_g);
-    # Not found: return zero/null
+
     if isinstance(val_type, ir.PointerType) {
         not_found_b_g.ret(ir.Constant(val_type, None));
     } elif val_type?.elements and val_type.elements {
-        # Struct type (e.g. JacVal): return zeroed struct
         zero_elems = [ir.Constant(e, 0) for e in val_type.elements];
         not_found_b_g.ret(ir.Constant(val_type, zero_elems));
     } else {
         not_found_b_g.ret(ir.Constant(val_type, 0));
     }
-    # --- __dict_len: return len field ---
+
     len_fn = self._emit_container_len_fn(
         f"__dict_len_{key_type_name}_{val_type_name}", dict_ptr_type
     );
-    # --- __dict_contains: return 1 if key exists, 0 otherwise ---
+
     contains_fnty = ir.FunctionType(ir.IntType(1), [dict_ptr_type, key_type]);
     contains_fn = ir.Function(
         self.llvm_module,
@@ -285,22 +269,22 @@ impl NaIRGenPass._emit_dict_helpers(
     );
     found_b_c.ret(ir.Constant(ir.IntType(1), 1));
     not_found_b_c.ret(ir.Constant(ir.IntType(1), 0));
-    # --- __dict_get_key: return key at index i (for iteration) ---
+
     get_key_fn = self._emit_array_get_fn(
         f"__dict_get_key_{key_type_name}_{val_type_name}", dict_ptr_type, key_type, 2
     );
-    # --- __dict_get_val: return val at index i (for .items() iteration) ---
+
     get_val_fn = self._emit_array_get_fn(
         f"__dict_get_val_{key_type_name}_{val_type_name}", dict_ptr_type, val_type, 3
     );
-    # --- __rc_release_dict_K_V: type-specific destructor ---
+
     release_fn = self._emit_container_release_fn(
         f"__rc_release_dict_{dict_key.replace(':', '_')}",
         dict_ptr_type,
         [(2, key_type), (3, val_type)]
     );
     self.dict_release_fns[dict_key] = release_fn;
-    # Store helpers
+
     self.dict_helpers[dict_key] = {
         "new": new_fn,
         "set": set_fn,
@@ -314,32 +298,12 @@ impl NaIRGenPass._emit_dict_helpers(
     };
 }
 
-"""Box any value into a JacVal tagged union {i8 tag, i64 payload}.
-
-Tag 0 = int (i64 stored directly)
-Tag 1 = float (f64 bitcast to i64)
-Tag 2 = str (i8* ptrtoint to i64)
-Tag 3 = list pointer (any List.T* ptrtoint to i64)
-Tag 4 = dict pointer (any Dict.K:V* ptrtoint to i64)
-Tag 5 = set pointer  (any Set.T* ptrtoint to i64)
-Tag 6 = archetype/struct pointer (any %Arch* ptrtoint to i64)
-Tag 7 = bool (i1 zero-extended to i64)
-
-`bool` (tag 7) is kept distinct from `int` (tag 0) so `isinstance(x, bool)` can
-discriminate the two on an `any` operand, mirroring CPython where `bool ⊂ int`
-(`isinstance(True, bool)` and `isinstance(True, int)` are both true, but
-`isinstance(5, bool)` is false). The inverse unbox (_unbox_from_jacval) keys off
-the *target* type, not the tag, so a tag-7 payload still unboxes to i1/i64 fine.
-"""
 impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
     b = self.builder;
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    # Idempotent: an already-boxed JacVal (e.g. an `any` local, a value read out
-    # of a dict[*, any], or a tuple element unpacked as `any`) passes through
-    # unchanged. Without this it would fall into the `else` arm below and be
-    # zeroed, silently dropping the value to 0 (see #6449).
+
     if self?.jacval_type and value.type == self.jacval_type {
         return value;
     }
@@ -351,13 +315,10 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="jv.payload.ptr"
     );
     if isinstance(value.type, ir.IntType) and value.type.width == 1 {
-        # bool (i1) -> tag 7, payload zero-extended (kept distinct from int so
-        # isinstance-on-`any` can tell `bool` from `int`; see the tag table).
         b.store(ir.Constant(i8, 7), tag_ptr);
         ext = b.zext(value, i64, name="jv.bext");
         b.store(ext, payload_ptr);
     } elif isinstance(value.type, ir.IntType) {
-        # Any integer width -> zero/sign-extend to i64, tag 0
         b.store(ir.Constant(i8, 0), tag_ptr);
         if value.type.width == 64 {
             b.store(value, payload_ptr);
@@ -365,13 +326,11 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
             b.store(b.zext(value, i64, name="jv.iext"), payload_ptr);
         }
     } elif isinstance(value.type, ir.DoubleType) {
-        # float -> bitcast f64 to i64, tag 1
         b.store(ir.Constant(i8, 1), tag_ptr);
         payload = b.bitcast(value, i64, name="jv.f2i");
         b.store(payload, payload_ptr);
     } elif isinstance(value.type, ir.PointerType) {
-        # Determine whether this is a list, dict, set, or plain string pointer.
-        ptr_tag = 2;  # default: str (tag 2)
+        ptr_tag = 2;
         for (_, ltype) in self.list_types.items() {
             if value.type == ltype.as_pointer() {
                 ptr_tag = 3;
@@ -395,8 +354,6 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
             }
         }
         if ptr_tag == 2 {
-            # Archetype / struct pointer (node / walker / edge / obj instance)
-            # -> tag 6, so a struct handle can round-trip through `any`.
             for (_, structt) in self.struct_types.items() {
                 if value.type == structt.as_pointer() {
                     ptr_tag = 6;
@@ -406,11 +363,6 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         }
         payload = b.ptrtoint(value, i64, name="jv.p2i");
         if ptr_tag == 2 {
-            # A null `i8*` is `None`, not a null string: box it with the dedicated
-            # None tag (8) so `isinstance(None, str)` is False and a boxed None no
-            # longer masquerades as a str (which made str()/len()/iteration deref
-            # a null pointer). Real list/dict/set/struct pointers keep their tags;
-            # only the str/default arm can carry the `None` literal (a null i8*).
             is_null = b.icmp_unsigned(
                 "==", payload, ir.Constant(i64, 0), name="jv.isnone"
             );
@@ -423,21 +375,12 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         }
         b.store(payload, payload_ptr);
     } else {
-        # Unknown type: store zero int
         b.store(ir.Constant(i8, 0), tag_ptr);
         b.store(ir.Constant(i64, 0), payload_ptr);
     }
     return b.load(jv_alloca, name="jacval");
 }
 
-"""Unbox a JacVal tagged union back to a concrete LLVM value of target_type.
-
-Inverse of _box_to_jacval: the payload (field 1) is reinterpreted per the
-requested type -- truncated/compared for narrower ints, bit-reinterpreted for
-floats, and inttoptr'd for pointers. The tag is not re-checked here; the type
-system guarantees the target shape, so this is a representation reinterpretation
-(mirroring how gradual `any` unboxes on the server). See #6449.
-"""
 impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value {
     b = self.builder;
     i64 = ir.IntType(64);
@@ -463,42 +406,31 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
     if isinstance(target_type, ir.PointerType) {
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
-    # No faithful unbox for a by-value aggregate (complex/range/slice/...): the
-    # JacVal payload is a single i64, so the value cannot round-trip (the box
-    # side cannot represent it either). Emit a clear diagnostic instead of
-    # silently returning raw bits, which would miscompile. `any -> concrete` is
-    # supported for scalars (int/bool/float/str) and pointer-shaped types (user
-    # obj/node, list/dict/set). See #6421.
+
     self.emit(E5090, kind="expression", name=f"`any` unbox to {target_type}");
     return ir.Constant(target_type, None);
 }
 
-"""Generate code for a dict literal {k1: v1, k2: v2, ...}."""
 impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     if not nd.kv_pairs {
-        # Empty dict: the checker stamps the literal with the expected
-        # type (bidirectional inference from the assignment target or
-        # declared return type); lowering it registers the dict helpers.
         _dk = self._dict_key_of(nd);
         _helpers = self.dict_helpers.get(_dk) if _dk is not None else None;
         if _helpers is not None {
-            # Fresh allocation: ownership applied at the _codegen_expr seam.
             return self.builder.call(_helpers["new"], [], name="dict.empty");
         }
         return None;
     }
-    # Get first key-value pair to determine types
+
     first_pair = nd.kv_pairs[0];
     first_key = self._codegen_expr(first_pair.key);
     first_val = self._codegen_expr(first_pair.value);
     if first_key is None or first_val is None {
         return None;
     }
-    # Box values into JacVal when the literal's checked value type is the
-    # gradual `any` (dict[str, any]), read off the tree.
+
     _own_dk = self._dict_key_of(nd);
     use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
-    # Determine type names (bytes keys -> "bytes" for length-aware compare, #6749)
+
     key_type = first_key.type;
     (key_type_name, key_size) = self._dict_key_spec(key_type);
     if use_jacval {
@@ -514,10 +446,10 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         }
     }
     dict_key = f"{key_type_name}:{val_type_name}";
-    # Ensure helpers exist
+
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     helpers = self.dict_helpers[dict_key];
-    # Create new dict
+
     _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
@@ -527,7 +459,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     _dinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
-    # Add first pair (box if needed)
+
     first_store_val = self._box_to_jacval(first_val) if use_jacval else first_val;
     self._rc_call_with_ctx(
         helpers["set"],
@@ -535,22 +467,18 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
         op="dict_init",
         loc=_dinit_loc
     );
-    # For dict[*, any] the value is boxed into a JacVal struct stored by value,
-    # so helpers["set"] does NOT retain the inner pointer the way the typed-set
-    # path does. Retain it explicitly to mirror that contract -- otherwise the
-    # owned-release below frees a pointer the dict still references (use-after-
-    # free with two+ owned string values; issue #6404).
+
     if use_jacval and isinstance(first_val.type, ir.PointerType) {
         self._emit_rc_retain(first_val, op="dict_init", loc=_dinit_loc);
     }
-    # release owned refs (fresh allocs/fn-call results) after set retained them
+
     if isinstance(first_key.type, ir.PointerType) and self._is_owned(first_key) {
         self._emit_rc_release_simple(first_key, op="dict_init", loc=_dinit_loc);
     }
     if isinstance(first_val.type, ir.PointerType) and self._is_owned(first_val) {
         self._emit_rc_release_simple(first_val, op="dict_init", loc=_dinit_loc);
     }
-    # Add remaining pairs
+
     for i in range(1, len(nd.kv_pairs)) {
         pair = nd.kv_pairs[i];
         k = self._codegen_expr(pair.key);
@@ -567,12 +495,11 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             self._rc_call_with_ctx(
                 helpers["set"], [dict_val, k, v], op="dict_init", loc=_dinit_loc
             );
-            # Retain the inner pointer for boxed (dict[*, any]) values -- see the
-            # first-pair note above; balances the owned-release below (#6404).
+
             if use_jacval and isinstance(_orig_v.type, ir.PointerType) {
                 self._emit_rc_retain(_orig_v, op="dict_init", loc=_dinit_loc);
             }
-            # release owned refs after set retained them
+
             if isinstance(_orig_k.type, ir.PointerType) and self._is_owned(_orig_k) {
                 self._emit_rc_release_simple(_orig_k, op="dict_init", loc=_dinit_loc);
             }
@@ -581,11 +508,10 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             }
         }
     }
-    # Fresh allocation: ownership applied at the _codegen_expr seam.
+
     return dict_val;
 }
 
-"""Get value from dictionary by key (with KeyError check)."""
 impl NaIRGenPass._codegen_dict_access(
     target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str
 ) -> (ir.Value | None) {
@@ -596,7 +522,7 @@ impl NaIRGenPass._codegen_dict_access(
     }
     key_type = helpers["key_type"];
     key_val = self._coerce_type(key_val, key_type);
-    # KeyError: check if key exists before accessing
+
     key_exists = self.builder.call(
         helpers["contains"], [target_val, key_val], name="dict.has"
     );
@@ -605,7 +531,6 @@ impl NaIRGenPass._codegen_dict_access(
     return self.builder.call(helpers["get"], [target_val, key_val], name="dict.get");
 }
 
-"""Set value in dictionary by key."""
 impl NaIRGenPass._codegen_dict_set(
     target_val: ir.Value,
     key_val: ir.Value,
@@ -620,7 +545,7 @@ impl NaIRGenPass._codegen_dict_set(
     }
     key_type = helpers["key_type"];
     val_type = helpers["val_type"];
-    _orig_value = value;  # Save BEFORE potential coerce
+    _orig_value = value;
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
     _dset_ctx_loc = getattr(
@@ -629,7 +554,7 @@ impl NaIRGenPass._codegen_dict_set(
     self._rc_call_with_ctx(
         helpers["set"], [target_val, key_val, value], op="dict_set", loc=_dset_ctx_loc
     );
-    # release owned value ref after __dict_set_KV retained it
+
     if isinstance(val_type, ir.PointerType) and self._is_owned(_orig_value) {
         _dset_loc = getattr(
             _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"

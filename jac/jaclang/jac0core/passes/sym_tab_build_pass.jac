@@ -1,42 +1,16 @@
-"""Symbol Table Construction Pass for the Jac compiler.
-
-This pass builds the hierarchical symbol table structure for the entire program by:
-
-1. Creating symbol tables for each scope in the program (modules, archetypes, abilities, blocks)
-2. Establishing parent-child relationships between nested scopes
-3. Registering symbols for various language constructs:
-   - Global variables and imports
-   - Archetypes (objects, nodes, edges, walkers) and their members
-   - Abilities (methods and functions) and their parameters
-   - Enums and their values
-   - Local variables in various block scopes
-
-4. Adding special symbols like 'self' and 'super' in appropriate contexts
-5. Maintaining scope boundaries for proper symbol resolution
-
-The symbol table is a fundamental data structure that enables name resolution,
-type checking, and semantic analysis throughout the compilation process.
-"""
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { SymbolAccess, Tokens }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from jaclang.jac0core.diagnostics { E0077 }
 
-"""Jac Symbol table build pass."""
 class SymTabBuildPass(UniPass) {
-    """Before pass."""
     def before_pass(self: SymTabBuildPass) -> None;
-
-    """Push scope."""
     def push_scope_and_link(self: SymTabBuildPass, key_node: uni.UniScopeNode) -> None;
-
-    """Pop scope."""
     def pop_scope(self: SymTabBuildPass) -> UniScopeNode;
 
     has cur_scope: UniScopeNode { getter; }
 
-    """Create symbols for Name nodes in a module path."""
     def _bind_import_path_symbols(
         self: SymTabBuildPass, module_path: uni.ModulePath
     ) -> None;
@@ -48,12 +22,8 @@ class SymTabBuildPass(UniPass) {
     def enter_type_param(self: SymTabBuildPass, nd: uni.TypeParam) -> None;
     def exit_global_vars(self: SymTabBuildPass, nd: uni.GlobalVars) -> None;
     def exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None;
-    """Handle walrus operator (:=) assignments."""
     def exit_binary_expr(self: SymTabBuildPass, nd: uni.BinaryExpr) -> None;
-
-    """Bind `global x;` so subsequent assignments to `x` rebind the global."""
     def enter_global_stmt(self: SymTabBuildPass, nd: uni.GlobalStmt) -> None;
-
     def enter_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def exit_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def _exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) -> None;
@@ -71,12 +41,8 @@ class SymTabBuildPass(UniPass) {
     def enter_enum(self: SymTabBuildPass, nd: uni.Enum) -> None;
     def enter_has_var(self: SymTabBuildPass, nd: uni.HasVar) -> None;
     def enter_param_var(self: SymTabBuildPass, nd: uni.ParamVar) -> None;
-    """Handle attribute access for self member assignments."""
     def exit_atom_trailer(self: SymTabBuildPass, nd: uni.AtomTrailer) -> None;
-
-    """Check if the node represents a simple `self.attr = value` assignment."""
     def _is_self_member_assignment(self: SymTabBuildPass, nd: uni.AtomTrailer) -> bool;
-
     def exit_enum(self: SymTabBuildPass, nd: uni.Enum) -> None;
     def enter_typed_ctx_block(self: SymTabBuildPass, nd: uni.TypedCtxBlock) -> None;
     def exit_typed_ctx_block(self: SymTabBuildPass, nd: uni.TypedCtxBlock) -> None;
@@ -119,49 +85,12 @@ class SymTabBuildPass(UniPass) {
     def exit_switch_case(self: SymTabBuildPass, nd: uni.SwitchCase) -> None;
 }
 
-"""Walk up ancestors to find the nearest Python-scoping node.
-
-Module-level helper so both SymTabBuildPass and DeclImplMatchPass can use it
-without taking a pass-instance reference."""
 def find_python_scope_node_of(nd: uni.UniNode) -> (UniScopeNode | None);
 
-"""Recursively define symbols in unpacking expressions.
-
-Module-level helper — the unpacking semantics are identical whether the
-assignment is encountered during SymTabBuildPass or rebound later by
-DeclImplMatchPass once an impl body has been connected to its decl.
-
-Two unpacking contexts:
-- `for (k, v) in d.items()` iterator binds `k`, `v` as iterator locals in
-  the for-statement's scope (no rebind).
-- `(x, y) = f()` as a statement must rebind an existing local when one is
-  in scope, otherwise bind in the nearest Python scope — same
-  Python-semantics path that plain assignments use. Without this, unpack
-  targets shadow the parameter they should be writing.
-
-`rebind_in_python_scope=True` selects the second behavior."""
 def def_insert_unpacking(
     nd: uni.Expr, sym_tab: UniScopeNode, rebind_in_python_scope: bool = False
 ) -> None;
 
-"""Bind the target Names of an assignment to symbols.
-
-Single source of truth for the "what does assigning to bare `x = ...` mean"
-decision: existing local → reuse; unannotated assignment with a reactive
-`has` var in an ancestor Ability scope → rebind that HasVar; otherwise
-introduce a local in the nearest Python scope. Used both during
-SymTabBuildPass and, for impl bodies, re-run after DeclImplMatchPass has
-connected the body to its declaration so decl-scope HasVars are reachable."""
 def bind_assignment_targets(nd: uni.Assignment) -> None;
 
-"""Pull the module-level symbols named by a `global x;` statement into the
-enclosing Python scope so a subsequent `x = ...` rebinds the global instead of
-shadowing it with a fresh inferred local (which would drop the global's
-declared type).
-
-The global lives in the module that owns the *declaration*. For an inline body
-that is the enclosing module; for an impl body it is the decl module reached
-via `decl_link`. `decl_link` is unset during SymTabBuildPass, so this is a
-no-op for impl bodies there and is re-run by DeclImplMatchPass.connect_impls
-once the link is wired."""
 def bind_global_stmt(nd: uni.GlobalStmt) -> None;

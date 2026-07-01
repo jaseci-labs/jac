@@ -72,14 +72,15 @@ flat `import os`, not bundled here (see
   (ELF/Mach-O/PE/WASM). Preferred. Example: `os/path.na.jac`.
 - **A**: compiler intrinsics over libm/libc/syscalls (`math`, `time`, `os`,
   `random`, `struct`); native-host only.
-- **F**: thin FFI wrappers over a system C library; native-host only. Example:
-  `urllib/request.na.jac` -- `urlopen` over the libcurl floor (issue #6940
-  Phase 3), pinned sv<->na congruent by `test_urllib_equivalence.jac` against a
-  loopback HTTP server. An F module declares its C entry points with
-  `import from <lib> { def ...; }`; a trailing `*rest` param marks a C *variadic*
-  function (e.g. `curl_easy_setopt(handle, option, *rest)`) so the backend emits
-  the `var_arg` declaration the platform psABI requires. The future `zlib` over
-  libz lands the same way.
+- **F**: thin FFI wrappers over a system C library; native-host only. Examples:
+  `_ssl_native.na.jac` -- the floor the verifying TLS client `ssl` is built on,
+  over OpenSSL `libssl`/`libcrypto` (issue #6978 Phase 1); `_socket_native.na.jac`
+  over libc BSD sockets; `_hashlib_native.na.jac` over the bundled `libcrypto`.
+  An F module declares its C entry points with `import from <lib> { def ...; }`.
+  `urllib/request.na.jac` (`urlopen`) is a pure-Jac surface over the `socket` +
+  `ssl` floors -- it links no foreign C beyond libc/libssl/libcrypto (no
+  libcurl) -- pinned sv<->na congruent by `test_urllib_equivalence.jac` against a
+  loopback HTTP server.
 
 Functions that need a syscall (`os.path.realpath`, `exists`, ...) stay as
 Mechanism-A intercepts, not here.

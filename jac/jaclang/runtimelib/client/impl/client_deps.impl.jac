@@ -1,20 +1,15 @@
-"""Implementation of client dependency checker utility."""
-
-"""Check if client npm dependencies are configured, prompt to install if missing."""
 impl ensure_client_deps(config_loader: object) -> bool {
     package_config = config_loader.get_package_config();
     dependencies = package_config.get('dependencies', {});
     dev_dependencies = package_config.get('devDependencies', {});
-    # If either deps or devDeps has entries, assume configured
+
     if dependencies or dev_dependencies {
         return True;
     }
-    # No deps configured - prompt the user
+
     return prompt_install_client_deps(config_loader);
 }
 
-"""Resolve the configured client framework (`[client] framework`), defaulting to
-`"react"` when config is absent or unreadable."""
 def _resolve_client_framework -> str {
     try {
         import from jaclang.project.config { get_config }
@@ -22,17 +17,10 @@ def _resolve_client_framework -> str {
         if cfg and cfg.client {
             return cfg.client.framework;
         }
-    } except Exception {
-    # Fall through to the default on any config error.
-    }
+    } except Exception { }
     return "react";
 }
 
-"""Return the (runtime_deps, dev_deps) default npm package sets for a framework.
-
-Both Solid and React use TanStack Form (`@tanstack/solid-form` /
-`@tanstack/react-form`), which share `@tanstack/form-core` and consume Standard
-Schema natively — no resolver packages needed on either side."""
 def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]] {
     if framework == "solid" {
         runtime_deps: dict[str, str] = {
@@ -41,8 +29,7 @@ def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]
             '@tanstack/solid-form': '^1.33.0',
             'zod': '^4.3.6'
         };
-        # `vite-plugin-solid` wraps `babel-plugin-jsx-dom-expressions` (the same
-        # transform the jsdom harness applies via `babel-preset-solid`).
+
         dev_deps: dict[str, str] = {
             'vite': '^6.4.1',
             'vite-plugin-solid': '^0.5.0',
@@ -50,7 +37,7 @@ def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]
         };
         return (runtime_deps, dev_deps);
     }
-    # React / Preact (Preact reuses the React runtime via a Vite alias).
+
     runtime_deps: dict[str, str] = {
         'react': '^18.2.0',
         'react-dom': '^18.2.0',
@@ -69,7 +56,6 @@ def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]
     return (runtime_deps, dev_deps);
 }
 
-"""Prompt user to install default jac-client npm dependencies."""
 def prompt_install_client_deps(config_loader: object) -> bool {
     import sys;
     import from jaclang.cli.console { console }
@@ -91,7 +77,7 @@ def prompt_install_client_deps(config_loader: object) -> bool {
         console.error(
             "\n  To configure manually, add [dependencies.npm] to your jac.toml."
         );
-        console.error("  Or create a new project with: jac create --kind fullstack\n");
+        console.error("  Or create a new project with: jac create --kind web-app\n");
         return False;
     }
     (default_deps, default_dev_deps) = _default_client_deps(framework);

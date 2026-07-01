@@ -53,8 +53,31 @@ jobs:
 
       - name: Install plugins (deps into project venvs; jaclang is host-provided)
         run: |
-          jac install -e ./jac-scale --extras all
-          jac install -e ./jac-byllm
+          # Scale is a built-in plugin in jaclang now (jaclang.scale); only its
+          # third-party deps need installing so `jac check` can resolve scale's
+          # imports. Pins mirror jac/jaclang/project/capabilities.jac. --global
+          # puts them in the binary's own site (host jaclang imports scale).
+          jac install \
+            "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
+            "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
+            "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
+            "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
+            "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
+            "prometheus-client>=0.21.0,<1.0.0" \
+            "opentelemetry-sdk>=1.27.0,<2.0.0" \
+            "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
+            "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
+            "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
+            "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" \
+            "firebase-admin>=6.0.0,<8.0.0" "requests>=2.32.0,<3.0.0" \
+            --global
+          # byLLM is a built-in plugin in jaclang now (jaclang.byllm); install its
+          # `llm` capability deps so `jac check` can resolve byllm's imports.
+          jac install \
+            "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+            "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+            --global
 
       - name: Warm up compiler cache
         run: jac --version

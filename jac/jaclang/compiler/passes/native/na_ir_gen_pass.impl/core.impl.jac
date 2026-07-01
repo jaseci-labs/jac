@@ -1,20 +1,12 @@
-"""Core initialization and transform logic for native IR generation."""
-"""Initialize the native IR generation pass."""
 impl NaIRGenPass.postinit -> None {
-    # Use the source file name as the LLVM module ID so GDB shows it.
     import os as _ni_os;
-    # Phase R2: gate debug-only RC machinery (live-list, ctx attribution,
-    # leak dump) on JAC_RC_DEBUG_CODEGEN. Default OFF so production binaries
-    # don't pay the per-allocation malloc(LIVE_NODE_SIZE) overhead.
+
     self._rc_debug_codegen = bool(_ni_os.environ.get("JAC_RC_DEBUG_CODEGEN", ""));
     _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
     import jaclang.compiler.passes.native.llvm.binding as _llvm_bind;
-    # JAC_NATIVE_TARGET cross-compiles for another triple (e.g.
-    # aarch64-unknown-linux-gnu). The triple drives both the data layout and
-    # the platform ABI classification, so it must be set on the module here;
-    # NativeCompilePass and nacompile read the same env var when emitting code.
+
     _ni_target_ovr = _ni_os.environ.get("JAC_NATIVE_TARGET", "");
     if _ni_target_ovr {
         _llvm_bind.initialize_all_targets();
@@ -24,19 +16,11 @@ impl NaIRGenPass.postinit -> None {
         _llvm_bind.initialize_native_target();
         _target = _llvm_bind.Target.from_default_triple();
     }
-    # codemodel="large" (not the default "jitdefault"): llvmlite appends
-    # "-elf" to the triple when os.name == "nt" and codemodel == "jitdefault",
-    # which would stamp a bogus "...-windows-msvc-elf" triple onto the module
-    # on a Windows host. This site only reads the triple/data layout, so any
-    # non-"jitdefault" model keeps the triple intact (the code model does not
-    # otherwise affect it here). "large" mirrors nacompile's executable branch;
-    # its shared branch uses "small", but the data layout is identical across
-    # code models on x86_64, so the stamped module metadata stays valid for
-    # either emit path. The relocation-model coupling lives at that emit site.
+
     _tm = _target.create_target_machine(codemodel="large");
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
-    # DWARF debug metadata — populated below when JAC_NATIVE_DEBUG=1
+
     if _ni_src and _ni_os.environ.get("JAC_NATIVE_DEBUG", "") {
         _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));
         try {
@@ -62,7 +46,6 @@ impl NaIRGenPass.postinit -> None {
         }
     }
 
-    # Build type_map from the centralized type registry
     _spec_map: dict[str, ir.Type] = {
         "i8": ir.IntType(8),
         "i16": ir.IntType(16),
@@ -80,18 +63,14 @@ impl NaIRGenPass.postinit -> None {
             self.type_map[_name] = _spec_map[_spec];
         }
     } except ImportError {
-        # Bootstrap: type_registry not yet compiled; use inline defaults
         self.type_map["int"] = _spec_map["i64"];
         self.type_map["float"] = _spec_map["f64"];
         self.type_map["bool"] = _spec_map["i1"];
         self.type_map["str"] = _spec_map["i8*"];
     }
-    # `LiteralString` (the checker's type for string literals) is `str` at
-    # runtime — alias it so literal-typed values lower like any other string
-    # (e.g. the element of `iter("hi")` -> Iterator[LiteralString]).
+
     self.type_map["LiteralString"] = self.type_map.get("str", _spec_map["i8*"]);
 
-    # Initialize LLVM struct types that depend on llvm_module.context
     self.complex_struct_type = self.llvm_module.context.get_identified_type(
         "JacComplex"
     );
@@ -109,10 +88,7 @@ impl NaIRGenPass.postinit -> None {
     super.postinit();
 }
 
-# ─── Main Pass Logic ─────────────────────────────────────────
-"""Forward-declare, codegen native abilities/entries, and store the LLVM module."""
 impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
-    # Auto-promote a compatible .jac module to native context when requested
     if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
         mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
         main_target = self.prog._auto_promote_target;
@@ -126,12 +102,7 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             _coerce_native_module(self.ir_in);
         }
     }
-    # Phase 9: declaratively-unsupported constructs (disqualifier nodes,
-    # structural match patterns, non-allowlisted Python imports) are
-    # rejected by the central capability authority BEFORE emission starts.
-    # This point is post-auto-promotion, so coerced modules are covered.
-    # Codegen-time E5090s below remain only for value- and shape-conditional
-    # gaps the emitter discovers (plus safety-net fallbacks).
+
     import from jaclang.compiler.passes.main.capability_check_pass {
         native_capability_violations
     }
@@ -142,30 +113,22 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         );
     }
     if _viols {
-        # No emission for a module the capability authority rejected: a
-        # partial binary would be silently wrong.
         return self.ir_in;
     }
-    # Emit reference counting helper functions (must be first)
+
     self._emit_rc_helpers();
-    # Process C library imports: import from "libname" { def ...; }
+
     self._process_clib_imports(self.ir_in);
-    # Phase 0: Forward declarations (enums, archetypes, free functions, globals)
+
     self._register_enums(self.ir_in);
-    # Pre-register archetype names as opaque struct types so globals can reference them
+
     self._forward_declare_archetype_names(self.ir_in);
-    # Register struct types from imported .na.jac modules (must be after local forward-declares)
+
     self._register_imported_struct_types();
     self._register_globals(self.ir_in);
-    # _register_archetypes also registers the OSP kernel + emits __osp_setup
-    # internally (before archetype method bodies are codegen'd), so spawn
-    # lowering inside abilities can reference the runtime (issue #6146).
+
     self._register_archetypes(self.ir_in);
-    # Phase 1: Codegen native abilities and entry blocks
-    # Collect every module-level `with entry { ... }` block (in source order)
-    # so they can be concatenated into a single jac_entry function below,
-    # mirroring the Python target (issue #6660). Emitting one jac_entry per
-    # ModuleCode would re-register the function name and crash llvmlite.
+
     _entry_nodes: list = [];
     for stmt in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {
         if (
@@ -181,15 +144,13 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         }
     }
     self._codegen_entry(_entry_nodes);
-    # Store LLVM module on AST
+
     if self.has_native_code {
-        # Ensure __jac_glob_init is always defined, even for modules that have
-        # no `with entry` block.
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }
         self.ir_in.gen.llvm_ir = self.llvm_module;
-        # Debug: dump IR to file
+
         import os;
         _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
         if _ir_dump_path {
@@ -197,13 +158,12 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
                 _f.write(str(self.llvm_module));
             }
         }
-        # Export native layout metadata for auto-marshalling
+
         self._export_native_layout();
     }
     return self.ir_in;
 }
 
-"""Convert an LLVM IR type to a string descriptor for ctypes marshalling."""
 impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
     if isinstance(ty, ir.IntType) {
         if ty.width == 64 {
@@ -231,23 +191,22 @@ impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
     }
     if isinstance(ty, ir.PointerType) {
         if ty?.pointee {
-            # Check for i8* (string)
             if isinstance(ty.pointee, ir.IntType) and ty.pointee.width == 8 {
                 return "i8*";
             }
-            # Check for known struct type
+
             for (sname, stype) in self.struct_types.items() {
                 if ty.pointee == stype {
                     return f"{sname}*";
                 }
             }
-            # Check for list type
+
             for (ename, ltype) in self.list_types.items() {
                 if ty.pointee == ltype {
                     return f"List.{ename}*";
                 }
             }
-            # Check for tuple type
+
             for (tkey, ttype) in self.tuple_types.items() {
                 if ty.pointee == ttype {
                     return f"Tuple*";
@@ -259,7 +218,6 @@ impl NaIRGenPass._llvm_type_str(ty: ir.Type) -> str {
     return "i64";
 }
 
-"""Export struct/enum/function layout metadata to CodeGenTarget."""
 impl NaIRGenPass._export_native_layout -> None {
     import from jaclang.jac0core.codeinfo {
         NativeModuleLayout,
@@ -271,7 +229,7 @@ impl NaIRGenPass._export_native_layout -> None {
         NativeTestLayout
     }
     layout = NativeModuleLayout();
-    # Structs
+
     for (arch_name, field_indices) in self.struct_field_indices.items() {
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
@@ -279,7 +237,7 @@ impl NaIRGenPass._export_native_layout -> None {
         for (fname, idx) in sorted(field_indices.items(), key=lambda x : x[1]) {
             ftype = field_types.get(fname);
             llvm_t = self._llvm_type_str(ftype) if ftype is not None else "i64";
-            # Detect function pointer fields
+
             is_fn_ptr = False;
             fn_param_types: (list[str] | None) = None;
             fn_ret_type: (str | None) = None;
@@ -308,13 +266,13 @@ impl NaIRGenPass._export_native_layout -> None {
             name=arch_name, fields=fields, has_vtable=self._arch_has_vtable(arch_name)
         );
     }
-    # Enums
+
     for (enum_name, entries) in self.enum_string_values.items() {
         layout.enums[enum_name] = NativeEnumLayout(
             name=enum_name, is_string_valued=True, members=list(entries)
         );
     }
-    # Tuples
+
     for (tkey, ttype) in self.tuple_types.items() {
         elem_types = [self._llvm_type_str(e) for e in ttype.elements];
         layout.tuples[tkey] = NativeTupleLayout(
@@ -323,7 +281,7 @@ impl NaIRGenPass._export_native_layout -> None {
             element_struct_hints=[None] * len(elem_types)
         );
     }
-    # Free functions (exclude methods which are also in func_symtab)
+
     method_names = set(self.method_funcs.keys());
     for (fname, func) in self.func_symtab.items() {
         if fname.startswith("__") or fname == "jac_entry" or fname in method_names {
@@ -341,7 +299,7 @@ impl NaIRGenPass._export_native_layout -> None {
                     break;
                 }
             }
-            # Match tuple return type and extract struct hints from AST
+
             if ret_type.startswith("Tuple") {
                 for (tkey, ttype) in self.tuple_types.items() {
                     if func.function_type.return_type.pointee == ttype {
@@ -362,9 +320,7 @@ impl NaIRGenPass._export_native_layout -> None {
                 }
             }
         }
-        # Enum returns lower to i64 (with a -1 sentinel for `T | None`);
-        # recover the enum name from the declaration-time return fact so the
-        # marshaller maps the ordinal back to the Python enum member.
+
         ret_enum: (str | None) = None;
         if ret_type == "i64" {
             _rname = self.func_ret_ann_name.get(fname);
@@ -382,7 +338,7 @@ impl NaIRGenPass._export_native_layout -> None {
             ret_enum_type=ret_enum
         );
     }
-    # Methods
+
     for (mname, func) in self.method_funcs.items() {
         param_types = [self._llvm_type_str(a) for a in func.function_type.args];
         param_names = [a.name for a in func.args];
@@ -404,11 +360,11 @@ impl NaIRGenPass._export_native_layout -> None {
             ret_struct_name=ret_struct
         );
     }
-    # List element types
+
     for (ename, ltype) in self.list_types.items() {
         layout.list_elem_types[f"List.{ename}"] = ename;
     }
-    # Test blocks
+
     for (tname, tsymbol, tdesc, tline) in self.native_tests {
         layout.tests.append(
             NativeTestLayout(name=tname, symbol=tsymbol, description=tdesc, line=tline)
@@ -417,23 +373,17 @@ impl NaIRGenPass._export_native_layout -> None {
     self.ir_in.gen.native_layout = layout;
 }
 
-"""Extract struct hints from a tuple return type AST node.
-
-Walks the return type annotation (e.g. tuple[list[Token], list[LexerError]])
-to extract struct names for each tuple element that contains struct pointers.
-Returns a list of (struct_name | None) for each element.
-"""
 impl NaIRGenPass._extract_tuple_struct_hints(type_node: object) -> list {
     hints: list = [];
     if not isinstance(type_node, uni.Expr) {
         return hints;
     }
-    # Walk slices of tuple[...] annotation
+
     if type_node?.right and type_node.right?.slices {
         slices = type_node.right.slices or [];
         for s in slices {
             inner = s.start if s?.start else s;
-            # Handle TupleVal wrapping: tuple[(T1, T2)] parses as TupleVal
+
             if isinstance(inner, uni.TupleVal) {
                 for tv in inner.values {
                     hints.append(self._extract_elem_struct_hint(tv));
@@ -446,20 +396,18 @@ impl NaIRGenPass._extract_tuple_struct_hints(type_node: object) -> list {
     return hints;
 }
 
-"""Extract a struct hint from a single type element (e.g. list[Token] -> 'Token')."""
 impl NaIRGenPass._extract_elem_struct_hint(type_node: object) -> (str | None) {
     if not isinstance(type_node, uni.Expr) {
         return None;
     }
-    # For AtomTrailer nodes (e.g. list[Token]), get the base name from kid[0]
+
     name = self._get_name(type_node);
     if name is None and isinstance(type_node, uni.AtomTrailer) {
-        # AtomTrailer has kid[0] = Name("list"), kid[1] = IndexSlice
         if type_node.kid {
             name = self._get_name(type_node.kid[0]);
         }
     }
-    # Check if this is list[StructName] or similar container
+
     if name == "list" and type_node?.right and type_node.right?.slices {
         inner_slices = type_node.right.slices or [];
         for is_ in inner_slices {
@@ -470,46 +418,47 @@ impl NaIRGenPass._extract_elem_struct_hint(type_node: object) -> (str | None) {
             }
         }
     }
-    # Direct struct name
+
     if name is not None and name in self.struct_types {
         return name;
     }
     return None;
 }
 
-# ─── Imported Struct Type Registration ────────────────────────
-"""Register struct types from imported .na.jac modules.
-
-Walks the current module's import statements, resolves each imported
-.na.jac module via the module hub, and registers any archetypes found
-in the imported module. This enables the importing module to use
-imported struct types in function signatures, instantiate them,
-and access their fields.
-"""
 impl NaIRGenPass._register_imported_struct_types -> None {
     import os;
-    import from jaclang.jac0core.codeinfo { resolve_native_module }
-    # ── DFS work queue: collect ALL transitive .na.jac imports ───────────────
-    # Uses the shared resolve_native_module() from codeinfo to resolve paths,
-    # ensuring consistency with InteropAnalysisPass.
+    import from jaclang.jac0core.codeinfo {
+        resolve_native_module,
+        is_bundled_native_module
+    }
+
     processed_modules: set[str] = set();
-    imported_mods: list = [];  # list of (source_module_str, module_ast)
+    imported_mods: list = [];
     manifest = self.ir_in.gen.interop_manifest;
 
-    # Seed work queue with entry module's import statements.
     entry_base = os.path.dirname(os.path.abspath(self.ir_in.loc.mod_path))
         if (self.ir_in?.loc)
         else os.getcwd();
-    wq: list = [];  # list of (module_name_str, base_dir)
+
+    _has_native_code: bool = any(
+        True
+        for _s in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE)
+    );
+    wq: list = [];
     for imp in [
         s
         for s in ModuleCodegenPass.iter_context_stmts(self.ir_in)
         if isinstance(s, uni.Import)
     ] {
         mod_name = self._extract_import_module_name(imp);
-        if mod_name {
-            wq.append((mod_name, entry_base));
+        if not mod_name {
+            continue;
         }
+        if (not imp.from_loc)
+        and ((not _has_native_code) or (not is_bundled_native_module(mod_name))) {
+            continue;
+        }
+        wq.append((mod_name, entry_base));
     }
 
     qi = 0;
@@ -524,21 +473,12 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         if abs_key in processed_modules {
             continue;
         }
-        # Look up the imported module in the hub (try both relative and absolute)
+
         imported_mod = self.prog.mod.hub.get(full_path);
         if imported_mod is None {
             imported_mod = self.prog.mod.hub.get(abs_key);
         }
-        # Not pre-loaded into the hub by the entry module's type-check (e.g.
-        # an import whose symbols the checker never resolved). Pull it in
-        # through the program pipeline rather than a raw parse: a .na.jac
-        # compile runs the implicit native type-check (see JacCompiler.compile),
-        # so the module's annotations land with `.type` populated and resolve
-        # via the unified `_lower_type` path -- a raw rd_parse would leave
-        # `.type = None` and silently fall back to name-based resolution.
-        # A nested compile overwrites prog._compile_options; save and restore
-        # it so the remaining native codegen still reads our skip_native_engine
-        # / aot_mode settings (mirrors the re-pin in JacCompiler.compile).
+
         if imported_mod is None and os.path.isfile(full_path) {
             _saved_opts = self.prog._compile_options;
             try {
@@ -556,7 +496,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
         processed_modules.add(abs_key);
         imported_mods.append((src_mod_str, imported_mod));
-        # Enqueue this module's own imports for transitive DFS
+
         sub_base = os.path.dirname(os.path.abspath(full_path));
         for sub_imp in [
             s
@@ -570,9 +510,6 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
 
-    # Store transitive source strings on the manifest so _codegen_entry can
-    # emit __jac_glob_init_<safe_name>() calls for ALL linked modules.
-    # Hand the module universe to the foreign declaration model (Phase 8).
     self._foreign_modules = [m for (_s, m) in imported_mods];
 
     for (src_mod_str, _) in imported_mods {
@@ -581,50 +518,42 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
 
-    # ── Phase 0: process clib imports from all imported modules ─────────────
     for (_, imported_mod) in imported_mods {
         self._process_clib_imports(imported_mod);
     }
 
-    # ── Phase 1a: register ALL struct names (empty identified types) ─────────
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_type_names(imported_mod);
     }
-    # ── Phase 1a.4: import each module's archetype hierarchy (issue #6659) ────
-    # Copy class_parents / MRO from each imported module's registry so the
-    # consumer can flatten an imported subtype's inherited fields (a consumer's
-    # own registry never sees imported archetypes' base classes).
+
     for (_, imported_mod) in imported_mods {
         self._register_imported_hierarchy(imported_mod);
     }
-    # Imported OSP archetypes need no separate registration: their ASTs are
-    # already in `arch_ast_map` (Phase 1a), OSP-ness is read straight off each
-    # archetype (`arch.arch_kind`) where layout reserves the header, and
-    # `_compute_osp_model` folds them into the single OSP store with their
-    # globally-stable content-hash tags so a library and any importer agree
-    # (#6642 Blocker 2, #6659).
-    # ── Phase 1b: fill ALL struct bodies, enums, globals ─────────────────────
+
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
     }
-    # ── Phase 2: forward-declare ALL abilities from ALL modules ──────────────
+
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_abilities(imported_mod);
     }
 }
 
-"""Extract the module name string from an Import node, or None if not applicable.
-
-Skips clib imports (from "libname") and non-module imports."""
 impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
-    if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
+    if imp.clib_decls {
         return None;
     }
-    # A native C-FFI import (`import from raylib { def ...; }`) is a shared
-    # library, not a cross-module native Jac import: its symbols come from the
-    # clib_decls and its from-path is a logical/explicit library name. Excluding
-    # it here keeps a bare-name clib path from being resolved as a .na.jac module
-    # (issue #6387) — mirroring the existing skip for an explicit string path.
+    if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
+        if imp.items {
+            for it in imp.items {
+                if isinstance(it, uni.ModulePath) and it.path {
+                    return '.'.join(getattr(p, 'value', str(p)) for p in it.path);
+                }
+            }
+        }
+        return None;
+    }
+
     if imp.clib_decls {
         return None;
     }
@@ -638,7 +567,6 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     return mod_name;
 }
 
-"""Phase-1a walk: register struct names only (empty identified types, no bodies)."""
 impl NaIRGenPass._walk_imported_module_type_names(imported_mod: uni.Module) -> None {
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
@@ -657,7 +585,6 @@ impl NaIRGenPass._walk_imported_module_type_names(imported_mod: uni.Module) -> N
     }
 }
 
-"""Phase-1b walk: fill struct bodies, register enums and globals."""
 impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
@@ -668,11 +595,7 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
         }
         if isinstance(stmt, uni.Archetype) {
             self._register_imported_archetype(stmt);
-            # Record imported OSP archetypes (walker/node/edge) so spawn /
-            # connect / edge-ref lowering can E5090 with help naming the
-            # defining module — cross-module OSP materialization is #6146
-            # Phases 3-4 territory; until then it must fail loudly and
-            # diagnosably rather than as a generic unsupported-op (#6636).
+
             _aname = stmt.name.value if stmt.name else None;
             if (_aname is not None) and (stmt.arch_kind is not None) {
                 self.imported_osp_archs[_aname] = (stmt.arch_kind, imported_mod.name);
@@ -686,11 +609,7 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
     }
 }
 
-"""Phase-2 walk: forward-declare imported abilities (all struct types already registered)."""
 impl NaIRGenPass._walk_imported_module_abilities(imported_mod: uni.Module) -> None {
-    # First: forward-declare methods on all imported archetypes.
-    # Must happen before module-level abilities so that method-call resolution
-    # finds every struct method in self.method_funcs.
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
             isinstance(stmt, uni.ContextAwareNode)
@@ -702,7 +621,7 @@ impl NaIRGenPass._walk_imported_module_abilities(imported_mod: uni.Module) -> No
             self._forward_declare_archetype_methods(stmt);
         }
     }
-    # Second: forward-declare module-level functions.
+
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
             isinstance(stmt, uni.ContextAwareNode)
@@ -716,9 +635,6 @@ impl NaIRGenPass._walk_imported_module_abilities(imported_mod: uni.Module) -> No
     }
 }
 
-"""Forward-declare all methods of a single imported archetype.
-Called during Phase 2 so all struct types from all modules are already registered.
-"""
 impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None {
     aname = arch.name.value if arch.name else None;
     if aname is None or arch.body is None {
@@ -731,11 +647,6 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
                 self._forward_declare_method(aname, stmt);
             } elif isinstance(stmt.signature, uni.EventSignature)
             and (arch.arch_kind is not None) {
-                # An imported OSP event ability (`can ... with T entry`): the
-                # body is linked from the defining module, but the consumer must
-                # forward-declare it and build its kernel dispatch thunk so its
-                # descriptor can route to it across the module boundary (issue
-                # #6642 Blocker 2). Mirrors the local Pass-3 handling.
                 self._forward_declare_event_method(aname, stmt);
                 self._emit_osp_thunk(aname, stmt);
             }
@@ -743,19 +654,6 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
     }
 }
 
-"""Make the consumer's LayoutRegistry aware of an imported module's archetype
-hierarchy, and record every imported archetype's AST in `arch_ast_map`.
-
-A module's LayoutRegistry is built from that module's OWN sub-nodes, so a
-consumer never sees an imported archetype's base classes -- `_mro_of` returns a
-single-element MRO and `_codegen_archetype` flattens NO inherited fields, making
-an inherited field of an imported subtype invisible (read returns null, write
-raised E5090; issue #6659 Bug 2). The defining module already computed the
-correct hierarchy + C3 MRO in its own registry, so copy those entries across
-(never overwriting a local archetype's). Field layouts are NOT copied -- the
-consumer rebuilds LLVM struct bodies itself in `_codegen_archetype` -- only the
-parent/MRO relations the layout flatten needs. Must run before imported struct
-bodies are filled (Phase 1b)."""
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
     import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
     _imp_reg = get_layout_registry(imported_mod, self.prog);
@@ -770,9 +668,7 @@ impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None 
             _cons_reg.mro_order[_name] = _mro;
         }
     }
-    # arch_ast_map for every imported archetype (any kind) so the ancestor-first
-    # layout in _register_imported_archetype can reach an imported base's AST,
-    # even one defined in a different imported module.
+
     for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
         if (
             isinstance(stmt, uni.ContextAwareNode)
@@ -789,31 +685,21 @@ impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None 
     }
 }
 
-"""Register a single imported archetype: create struct type and define field layout only.
-Method forward-declarations are deferred to Phase 2 (_forward_declare_archetype_methods)
-so that param types from other imported modules are already in self.struct_types.
-"""
 impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     aname = arch.name.value if arch.name else None;
     if aname is None {
         return;
     }
-    # Ensure the identified struct type exists (Phase 1a may have pre-created it).
+
     if aname not in self.struct_types {
         struct_type = self.llvm_module.context.get_identified_type(aname);
         self.struct_types[aname] = struct_type;
     }
-    # Guard: skip body fill if already done (e.g., called twice due to multiple
-    # import paths, or after Phase 1a + Phase 1b sequencing).
+
     if aname in self._struct_bodies_done {
         return;
     }
-    # Lay out imported ANCESTORS before this subtype: _codegen_archetype flattens
-    # an ancestor's fields by reading its already-built field indices, so an
-    # imported base must be emitted first regardless of source order across
-    # modules. The MRO is now correct (see _register_imported_hierarchy); recurse
-    # into any ancestor whose AST we imported and have not yet laid out. The
-    # _struct_bodies_done guard makes this safe against re-entry (issue #6659).
+
     for _anc in self._mro_of(aname) {
         if (
             _anc != aname
@@ -830,11 +716,10 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
         return;
     }
     self._struct_bodies_done.add(aname);
-    # Fill struct body with full field layout.
+
     self._codegen_archetype(arch);
 }
 
-"""Register imported global variables with external linkage (resolved at link time)."""
 impl NaIRGenPass._register_imported_globals(
     nd: uni.GlobalVars, source_path: str = ""
 ) -> None {
@@ -855,7 +740,7 @@ impl NaIRGenPass._register_imported_globals(
             global_var.linkage = "external";
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
-            # Record origin so dup-error messages can name the source module
+
             if source_path {
                 self._global_origins[var_name] = source_path;
             }
@@ -864,96 +749,71 @@ impl NaIRGenPass._register_imported_globals(
     }
 }
 
-"""Forward-declare an imported function (resolved at link time).
-
-Delegates to _maybe_declare_ability which handles all type resolution correctly.
-"""
 impl NaIRGenPass._forward_declare_imported_ability(nd: uni.Ability) -> None {
     name = nd.name_ref.sym_name if nd.name_ref else None;
     if name is None or name in self.func_symtab {
         return;
     }
-    # Only forward-declare concrete function definitions (with body + signature)
+
     if nd.body is None {
         return;
     }
     self._maybe_declare_ability(nd);
 }
 
-# ─── C Library Import Processing ──────────────────────────────
-"""Process import from "libname" { def ...; } statements.
-
-Extracts library paths for loading and forward-declares
-extern symbols from the clib declarations.
-"""
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
-    # Collect imports from top-level and inside na {} blocks
     imports = [
         s
         for s in ModuleCodegenPass.iter_context_stmts(module)
         if isinstance(s, uni.Import)
     ];
     for stmt in imports {
-        # Recognize natively-supported stdlib imports (e.g. `import sys;`)
         if not stmt.clib_decls {
             if stmt.items {
                 for item in stmt.items {
-                    # Legality is the capability authority's call (Phase 9):
-                    # native_capability_violations rejects non-allowlisted
-                    # Python imports before emission ever starts (issue
-                    # #6357), so by the time this runs every plain import is
-                    # either supported or non-native. Track the supported
-                    # ones so member intercepts know they were imported -
-                    # grows with the Python-congruent stdlib roadmap (#6404).
                     import from jaclang.compiler.passes.main.capability_check_pass {
                         classify_native_import
                     }
+                    import from jaclang.jac0core.codeinfo { is_bundled_native_module }
                     (mod_name, _supported) = classify_native_import(item);
                     if _supported {
                         self._native_stdlib_modules.add(mod_name);
+                    } elif mod_name is not None
+                    and is_bundled_native_module(mod_name) {
+                        self._native_module_imports.add(mod_name);
                     }
                 }
             }
             continue;
         }
-        # Extract the library reference from from_loc. Two surface forms:
-        #   import from "./libfoo.so" { ... }   -- explicit path, used verbatim
-        #   import from foo { ... }              -- logical name (issue #6387),
-        #   import from .foo { ... }                resolved to the platform-correct
-        #   import from libs.foo { ... }            filename per the target triple.
-        # Remember where this import's lib path(s) land in _clib_paths so each
-        # of its function symbols can be mapped back to the library it imports
-        # from (needed for Mach-O two-level-namespace dylib ordinals).
+
         _paths_before = len(self._clib_paths);
         if stmt.from_loc is not None and stmt.from_loc.path {
             _name_components: list[str] = [];
             for path_part in stmt.from_loc.path {
                 if isinstance(path_part, uni.String) {
                     raw = path_part.value;
-                    # Strip quotes
+
                     if (len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'") {
                         raw = raw[1:-1];
                     }
-                    # Explicit path: store verbatim for the linker / loader.
+
                     self._clib_paths.append(raw);
                 } elif isinstance(path_part, uni.Name) {
                     _name_components.append(path_part.value);
                 }
             }
             if _name_components {
-                # Dotted/extensionless logical name -> per-platform filename.
                 self._clib_paths.append(
                     self._resolve_clib_lib_name(_name_components, stmt.from_loc.level)
                 );
             }
         }
-        # The library this import block binds against (last path it added, if
-        # any). Each function symbol below is attributed to it.
+
         _cur_lib = self._clib_paths[-1]
             if len(self._clib_paths) > _paths_before
             else None;
-        # Three-pass processing of clib declarations:
-        # Pass 1: Register struct types (opaque, for forward refs)
+
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Archetype) {
                 arch_name = decl.name.value if decl.name else None;
@@ -967,13 +827,13 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 }
             }
         }
-        # Pass 1.5: Define struct bodies (field layout)
+
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Archetype) {
                 arch_name = decl.name.value if decl.name else None;
                 if arch_name is not None and arch_name in self.struct_types {
                     self._codegen_archetype(decl);
-                    # Compute ABI integer type for small structs (C ABI coercion)
+
                     stype = self.struct_types[arch_name];
                     if stype?.elements and stype.elements {
                         total_bits = 0;
@@ -987,7 +847,6 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                             }
                         }
                         if all_int and 0 < total_bits <= 64 {
-                            # Round up to nearest power-of-2 byte size
                             abi_bits = 8;
                             while abi_bits < total_bits {
                                 abi_bits *= 2;
@@ -1000,17 +859,13 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 }
             }
         }
-        # Pass 1.75: record vtable structs (fn-ptr slots) so stores into
-        # them route through C→Jac callback trampolines (issue #6570).
+
         self._clib_detect_vtable_structs();
-        # Pass 2: Forward-declare extern functions (with value types for clib structs)
+
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
-                # A `;`-terminated clib decl parses with body=None, but later
-                # passes (e.g. decl/impl matching) can normalise it to `[]`.
-                # Treat an empty body list as no body — only a non-empty body
-                # is a true error.
+
                 _is_empty_list = isinstance(decl.body, list) and not decl.body;
                 if decl.body is not None and not _is_empty_list {
                     self.emit(E5060, name=fn_name);
@@ -1025,7 +880,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                 }
             }
         }
-        # Store clib paths on module gen for compile pass
+
         if self._clib_paths {
             module.gen._clib_paths = self._clib_paths;
             module.gen._clib_symbol_lib = self._clib_symbol_lib;
@@ -1034,22 +889,6 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
     }
 }
 
-"""Resolve a dotted/extensionless native-import name to a platform filename.
-
-Mirrors what a linker/loader does for `-lfoo`, keyed off the target triple
-(JAC_NATIVE_TARGET or the host default, already on `self.llvm_module.triple`):
-
-  - the last dotted component is the library stem; leading components are a
-    sub-directory (Python-style, `libs.foo` -> `libs/`).
-  - extension by OS: ELF/Linux `.so`, Mach-O/macOS `.dylib`, PE/Windows `.dll`.
-  - `lib` prefix on ELF/Mach-O, omitted on PE.
-  - a bare single name (no sub-dir, no leading dot) becomes a bare soname so the
-    loader searches both the system cache and the `$ORIGIN`/`@loader_path`
-    runpath emitted by #6380.
-  - a leading `.` (source-relative) or a sub-dir pins the lookup to the binary's
-    directory via the loader token (`$ORIGIN/...` on ELF, `@loader_path/...` on
-    Mach-O), composing with #6380.
-"""
 impl NaIRGenPass._resolve_clib_lib_name(components: list[str], level: int) -> str {
     triple = str(self.llvm_module.triple or "").lower();
     if ("darwin" in triple)
@@ -1065,13 +904,8 @@ impl NaIRGenPass._resolve_clib_lib_name(components: list[str], level: int) -> st
     or ("msvc" in triple) {
         prefix = "";
         ext = ".dll";
-        # PE has no $ORIGIN/@loader_path runpath; a bare DLL name is searched
-        # next to the executable first by the Windows loader, so a sub-dir is
-        # the only case that needs an explicit relative prefix.
         origin_token = ".";
     } else {
-        # ELF (Linux and the default) -- also the host fallback when the triple
-        # carries no recognizable OS field.
         prefix = "lib";
         ext = ".so";
         origin_token = "$ORIGIN";
@@ -1080,16 +914,13 @@ impl NaIRGenPass._resolve_clib_lib_name(components: list[str], level: int) -> st
     subdir_parts = components[:-1];
     filename = prefix + stem + ext;
     if subdir_parts or level > 0 {
-        # Source/binary-relative: pin to the loader's origin directory.
         rel = "/".join(subdir_parts + [filename]) if subdir_parts else filename;
         return origin_token + "/" + rel;
     }
-    # Bare soname: system search + $ORIGIN/@loader_path runpath (#6380).
+
     return filename;
 }
 
-# ─── Primitive Emitter Dispatch ────────────────────────────────
-"""Lazily initialize primitive emitter singletons."""
 impl NaIRGenPass._ensure_emitters -> None {
     if self._native_emitters is not None {
         return;
@@ -1107,14 +938,6 @@ impl NaIRGenPass._ensure_emitters -> None {
     self._native_emit_ctx_class = _pn.NativeEmitCtx;
 }
 
-"""Named (non-operator) instance methods a primitive emitter implements.
-
-The emitter (whose contract lives in primitives.jac) is the single source of
-truth for which methods a primitive supports, so dispatch keys off this instead
-of hardcoded method-name lists. Operators (emit_op_*) and static methods like
-from_bytes/fromhex (which take no target and are dispatched separately) are
-excluded. Cached per type name.
-"""
 impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
     import inspect;
     self._ensure_emitters();
@@ -1131,7 +954,7 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
         for _n in dir(_emitter) {
             if _n.startswith("emit_") and not _n.startswith("emit_op_") {
                 _fn = getattr(_emitter, _n);
-                # Instance methods take (ctx, target, args); static ones (ctx, args).
+
                 if len(inspect.signature(_fn).parameters) >= 3 {
                     _names.add(_n.removeprefix("emit_"));
                 }
@@ -1142,7 +965,6 @@ impl NaIRGenPass._primitive_method_names(type_name: str) -> set[str] {
     return _names;
 }
 
-"""Dispatch a primitive type method call through the emitter layer."""
 impl NaIRGenPass._dispatch_primitive_method(
     type_name: str,
     method_name: str,
@@ -1163,7 +985,6 @@ impl NaIRGenPass._dispatch_primitive_method(
     return _emit_fn(_ctx, target, args);
 }
 
-"""Dispatch a builtin function call through the emitter layer."""
 impl NaIRGenPass._dispatch_builtin(
     func_name: str, args: list[ir.Value]
 ) -> (ir.Value | None) {

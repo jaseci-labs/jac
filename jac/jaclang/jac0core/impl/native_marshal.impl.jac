@@ -1,11 +1,8 @@
-"""Implementation for NativeStructView and NativeListView."""
-
 import ctypes;
 
 impl NativeStructView.postinit -> None {
-    # from_address: NO copy -- creates view over C memory
     self._native = self.ct_cls.from_address(self.addr);
-    # Build field metadata lookup (name -> NativeFieldInfo)
+
     if (self.layout and hasattr(self.layout, "structs")) {
         sl = self.layout.structs.get(self.struct_name);
         if sl {
@@ -32,7 +29,7 @@ impl NativeStructView._resolve(name: str, raw: any) -> any {
         return raw;
     }
     lt = finfo.llvm_type;
-    # Function pointer: wrap raw address as callable ctypes function
+
     if finfo.is_func_ptr {
         if (raw is None or raw == 0) {
             return None;
@@ -40,14 +37,14 @@ impl NativeStructView._resolve(name: str, raw: any) -> any {
         fn_type = _build_cfunctype(finfo);
         return fn_type(raw);
     }
-    # String: decode from raw pointer on demand
+
     if lt == "i8*" {
         if (raw is None or raw == 0) {
             return "";
         }
         return ctypes.string_at(raw).decode("utf-8", errors="replace");
     }
-    # Enum field: ordinal -> enum value
+
     if (lt in ("i64", "i32") and finfo.enum_type) {
         val = int(raw);
         emap = self.enum_maps.get(finfo.enum_type);
@@ -56,7 +53,7 @@ impl NativeStructView._resolve(name: str, raw: any) -> any {
         }
         return val;
     }
-    # Nested struct pointer
+
     if (lt.endswith("*") and not lt.startswith("List.") and lt != "i8*") {
         sname = lt[:-1];
         if (raw and raw != 0) {
@@ -69,7 +66,7 @@ impl NativeStructView._resolve(name: str, raw: any) -> any {
         }
         return None;
     }
-    # List pointer
+
     if (lt.startswith("List.") and lt.endswith("*")) {
         if (raw and raw != 0) {
             elem_key = lt[5:-1];
@@ -113,20 +110,17 @@ impl NativeListView.postinit -> None {
     nl = NativeList.from_address(self.list_ptr);
     self._count = nl.len if (nl.len > 0 and nl.data) else 0;
 
-    # Resolve struct class for ptr elements
     self._struct_name = self.struct_hint;
     if (self.elem_key == "ptr" and self._struct_name) {
         self._ct_cls = self.ctypes_classes.get(self._struct_name);
     }
 
-    # Create array view over data -- zero-copy via from_address
     if self._count > 0 {
         if self.elem_key == "i64" {
             self._arr = (ctypes.c_int64 * self._count).from_address(nl.data);
         } elif self.elem_key == "f64" {
             self._arr = (ctypes.c_double * self._count).from_address(nl.data);
         } else {
-            # 'ptr' and others
             self._arr = (ctypes.c_void_p * self._count).from_address(nl.data);
         }
     }
@@ -153,7 +147,7 @@ impl NativeListView.__getitem__(index: any) -> any {
     if self.elem_key == "f64" {
         return float(raw);
     }
-    # Struct pointer element
+
     if (self._ct_cls and raw and raw != 0) {
         return NativeStructView(
             raw,

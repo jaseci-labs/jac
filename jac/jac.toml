@@ -2,7 +2,7 @@
 # the build reads version/metadata here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.30.1"
+version = "0.30.3"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"
@@ -27,3 +27,33 @@ jaclang_source = "."
 # `jac test` discovers the suite here (mirrors pytest's testpaths).
 [test]
 directory = "tests"
+
+# Mirrors the root jac.toml's [check.lint] verbatim. Config resolves to the
+# NEAREST jac.toml (no inheritance from ancestors today), so without this block
+# `jac format --lintfix` / `jac precommit` run from inside `jac/` would silently
+# skip the opt-in deslop rules (W3050/W3051) and the excludes. Keep in sync with
+# the root until config resolution gains ancestor inheritance, after which this
+# duplicate can be removed.
+[check.lint]
+select = ["all", "strip-comments", "strip-docstrings"]
+exclude = [
+    "docs/*",
+    "*/examples/*",
+    "*/tests/*",
+    # Folded-in scale subsystem: large self-contained subsystem whose inline
+    # comments (k8s/deploy/observability logic) are kept, not deslopped. This is
+    # the config that governs jac/jaclang/scale/** (nearest jac.toml wins).
+    "*/scale/*",
+    # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale
+    # -- a large self-contained subsystem whose inline comments are kept.
+    "*/byllm/*",
+    "console.impl.jac",
+    "cli_boot.jac",
+    # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:
+    #  - jir_registry.jac is generated (jac gen-jir-registry) and must match its
+    #    commented output;
+    #  - plugin_bridge.na.jac carries functional `# --- BRIDGE ... ---` markers the
+    #    native bridge extractor reads.
+    "jir_registry.jac",
+    "plugin_bridge.na.jac",
+]

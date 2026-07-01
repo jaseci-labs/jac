@@ -14,14 +14,14 @@ the entry-point in the right codespace, and produces a project whose bare
 
 ```
 jac create myapp                        # cli kind (default): a runnable script
-jac create myapp --kind api-service     # headless server walkers (serve)
+jac create myapp --kind service     # headless server walkers (serve)
 jac create myapp --kind native-binary   # natively-compiled binary (build dist/)
-jac create myapp --kind fullstack       # server + client UI    (built into jaclang)
+jac create myapp --kind web-app       # server + client UI    (built into jaclang)
 jac create myapp --kind desktop         # OS-webview app         (built into jaclang)
 jac create myapp --use ./my-template/   # from a local template DIRECTORY
 jac create myapp --use ./local.jacpack  # from a local jacpack archive
 jac create --use https://.../t.jacpack  # from a URL
-jac create --use jac-shadcn             # shadcn variant of fullstack (built into jaclang)
+jac create --use jac-shadcn             # shadcn variant of web-app (built into jaclang)
 jac create --list_jacpacks              # list available kinds and named variants
 jac create myapp --force                # overwrite an existing dir / reinit
 ```
@@ -39,15 +39,15 @@ Without a project name, `jac create` initializes the **current directory** and n
 | `--kind` | Provider | `jac run` does | Entry-point |
 |---|---|---|---|
 | `cli` *(default)* | core | execute the script | `main.jac` |
-| `native-app` | core | native-compile + run (JIT) | `main.na.jac` |
+| `cli-native` | core | native-compile + run (JIT) | `main.na.jac` |
 | `native-binary` | core | build a binary into `dist/` | `main.na.jac` |
-| `shared-library` | core | build a `.so`/`.dylib`/`.dll` | `main.na.jac` |
-| `api-service` | core | serve headless API (no client) | `main.sv.jac` |
-| `microservices` | core | serve microservice | `main.sv.jac` |
-| `pypi-package` | core | build a wheel into `dist/` | `lib.jac` |
-| `npm-package` | core | build an npm tarball into `dist/` | `lib.jac` |
-| `fullstack` | core | serve app (dev mode) | `main.jac` + `.sv`/`.cl` |
-| `wasm` | core | serve client-only page | `main.jac` |
+| `native-lib` | core | build a `.so`/`.dylib`/`.dll` | `main.na.jac` |
+| `service` | core | serve headless API (no client) | `main.sv.jac` |
+| `service-mesh` | core | serve microservice | `main.sv.jac` |
+| `py-package` | core | build a wheel into `dist/` | `lib.jac` |
+| `js-package` | core | build an npm tarball into `dist/` | `lib.jac` |
+| `web-app` | core | serve app (dev mode) | `main.jac` + `.sv`/`.cl` |
+| `web-static` | core | serve client-only page | `main.jac` |
 | `mobile` | core | build the mobile app | `main.jac` |
 | `desktop` | core | run the OS-webview app | `main.jac` |
 
@@ -55,15 +55,15 @@ Named variants (selected with `--use`, not `--kind`) layer on a kind:
 
 | `--use <variant>` | Kind | Provider | What it adds |
 |---|---|---|---|
-| `jac-shadcn` | fullstack | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
+| `jac-shadcn` | web-app | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
 
-The `cli` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; use `--kind api-service` for a server, or add `node`/`walker:pub` declarations yourself (see `jac-sv-endpoints`).
+The `cli` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; use `--kind service` for a server, or add `node`/`walker:pub` declarations yourself (see `jac-sv-endpoints`).
 
 ## Choosing a UI method
 
 | Method | When to use | How to scaffold |
 |---|---|---|
-| Standard (plain Jac JSX + Tailwind) | Full control, no pre-built primitives, research spikes | `--kind fullstack` (or `--kind wasm` for client-only) |
+| Standard (plain Jac JSX + Tailwind) | Full control, no pre-built primitives, research spikes | `--kind web-app` (or `--kind web-static` for client-only) |
 | jac-shadcn | Production UI with 53 accessible primitives, fast iteration | `--use jac-shadcn` |
 
 Detect from an existing project: check `jac.toml` for a `[jac-shadcn]` section, or look for a `components/ui/` directory. **Do NOT mix methods** - raw HTML form elements in a shadcn project ignore available primitives; importing `components/ui/` primitives in a non-shadcn project fails with unresolved module errors.
@@ -90,7 +90,7 @@ After `jac create`:
 2. Add any additional npm deps to `jac.toml` (see `jac-npm-packages` skill for format)
 3. `jac install` - run after all jac.toml changes are final
 4. **Verify the scaffold compiles**: `jac check .` (then `jac run main.jac` for backend projects)
-5. **Run the project**: a bare `jac run` (no filename) dispatches on the project's `kind` in `jac.toml` - execute / serve / build as appropriate (`jac run --show` prints the plan first). For fullstack, `jac start --dev` runs the server with hot reload. NOT `jac serve` (deprecated).
+5. **Run the project**: a bare `jac run` (no filename) dispatches on the project's `kind` in `jac.toml` - execute / serve / build as appropriate (`jac run --show` prints the plan first). For web-app, `jac start --dev` runs the server with hot reload. NOT `jac serve` (deprecated).
 6. QA in a headless browser with `jac browse`: `jac browse open localhost:8000`, `jac browse snapshot`, `jac browse click @e5`, `jac browse close`. See `jac-fullstack-patterns` for the full loop.
 
 ## Make your own template
@@ -116,7 +116,7 @@ All non-`[jacpack]` sections of the template's `jac.toml` become the created pro
 ## Pitfalls
 
 - **Generate `jac.toml` via `jac create`, then edit specific sections as needed** - load `jac-config` for the full section map (`[serve]`, `[scripts]`, `[check.lint]`, ...) before hand-editing.
-- **Match the template to the user's actual need.** Picking `fullstack` for a UI-only spike adds unused server scaffolding; picking `client` for an app that needs persistence forces a later migration.
+- **Match the template to the user's actual need.** Picking `web-app` for a UI-only spike adds unused server scaffolding; picking `web-static` for an app that needs persistence forces a later migration.
 - **Don't scaffold into a non-empty workspace.** The named form inside an existing project nests silently (see above); inspect the workspace first and extend an existing project instead.
-- **Setting `JAC_CLIENT_SKIP_NPM_INSTALL=1` for `--kind fullstack`/`wasm`/`mobile`** skips the Bun/npm install - convenient for offline scaffolding, but you'll need `jac install` before running.
+- **Setting `JAC_CLIENT_SKIP_NPM_INSTALL=1` for `--kind web-app`/`web-static`/`mobile`** skips the Bun/npm install - convenient for offline scaffolding, but you'll need `jac install` before running.
 - **Project-name argument is optional.** Omit it to scaffold in cwd; pass a name to create `cwd/<name>/`.

@@ -38,7 +38,6 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
 const zstd = std.compress.zstd;
-const xz = std.compress.xz;
 const Dir = Io.Dir;
 const runtime = @import("runtime.zig");
 
@@ -56,34 +55,36 @@ const PBS_WINDOW = 1 << 27; // 128 MiB
 const TYPESHED_TARBALL_BASE = "https://codeload.github.com/python/typeshed/tar.gz";
 const TYPESHED_VENDOR = "jaclang/vendor/typeshed";
 
+// Pinned bun version -- keep in lockstep with bun_installer.jac `BUN_VERSION`
+// (the Jac-side single source of truth for the resolver/dev-download). bun is
+// bundled, contained, inside the client package (see mkpayload's --bun staging)
+// and resolved by absolute path at runtime -- never placed on the user's PATH.
+const BUN_VERSION = "1.3.11";
+const BUN_BASE = "https://github.com/oven-sh/bun/releases/download";
+
 const MAX_PATH = Dir.max_path_bytes;
 
-const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", mkpayload, @"typeshed-sha" };
+const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", mkpayload, @"typeshed-sha" };
 
 // LLVM release whose static archives the LLVMPY_* shim (jac/native) links
 // against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
-const LLVM_TAG = "llvmorg-22.1.8";
 const LLVM_VER = "22.1.8";
-const LLVM_BASE = "https://github.com/llvm/llvm-project/releases/download";
 
 // jaseci-labs/llvm-slice repackages the official LLVM release into a per-member,
 // HTTP-range-fetchable zip. fetchLlvmSlice pulls only the ~84 MB the shim needs
 // (lib/libLLVM*.a + include/llvm[-c], +macOS lib/libLTO.dylib) out of the ~970 MB
 // "dev" zip -- skipping the slow xz tarball download+decompress entirely. The
 // pinned `manifest_sha256` anchors a hash chain (verified manifest -> per-archive
-// sha256), preserving the tarball path's "no swapped asset slips through" guarantee
-// for the archives that get linked into the shipped shim.
+// sha256), so no swapped asset slips into the archives linked into the shipped shim.
 const SLICE_BASE = "https://github.com/jaseci-labs/llvm-slice/releases/download";
 const SLICE_TAG = "v" ++ LLVM_VER;
 
-// The release is selected per host. `dirname` is the tarball's top-level dir (also
-// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync). `sha256` is
-// the upstream .tar.xz digest, used only by the JAC_LLVM_FULL_TARBALL fallback.
-// `triple`/`manifest_sha256`/`zip_size` drive the default slice fetch. Add a row
-// to support another host platform.
+// The release is selected per host. `dirname` is the release's top-level dir (also
+// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync).
+// `triple`/`manifest_sha256`/`zip_size` drive the slice fetch. Add a row to
+// support another host platform.
 const LlvmRelease = struct {
     dirname: []const u8,
-    sha256: []const u8,
     triple: []const u8,
     manifest_sha256: []const u8,
     zip_size: u64,
@@ -93,14 +94,12 @@ fn llvmRelease() ?LlvmRelease {
         .linux => switch (builtin.cpu.arch) {
             .x86_64 => .{
                 .dirname = "LLVM-22.1.8-Linux-X64",
-                .sha256 = "df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384",
                 .triple = "x86_64-linux",
                 .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
                 .zip_size = 970350875,
             },
             .aarch64 => .{
                 .dirname = "LLVM-22.1.8-Linux-ARM64",
-                .sha256 = "805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34",
                 .triple = "aarch64-linux",
                 .manifest_sha256 = "b1aae9c16de5feff6fd4441f0bf32671b27c6dda98382ee389d305db6351e598",
                 .zip_size = 932506999,
@@ -110,7 +109,6 @@ fn llvmRelease() ?LlvmRelease {
         .macos => switch (builtin.cpu.arch) {
             .aarch64 => .{
                 .dirname = "LLVM-22.1.8-macOS-ARM64",
-                .sha256 = "f260f4f7c0d430828a81ae8a3826a1d63fc0963ec2459489308cc23b1f7eab4f",
                 .triple = "aarch64-apple-darwin",
                 .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
                 .zip_size = 743879473,
@@ -152,7 +150,15 @@ pub fn main(init: std.process.Init) !void {
         },
         .@"fetch-llvm" => {
             if (n < 3) die("usage: payload fetch-llvm <dest-dir>", .{});
-            try fetchLlvm(io, gpa, a, init.environ_map, argv[2]);
+            try fetchLlvm(io, gpa, a, argv[2]);
+        },
+        .@"fetch-bun" => {
+            if (n < 4) die("usage: payload fetch-bun <os-arch> <dest-dir>", .{});
+            try fetchBun(io, gpa, a, argv[2], argv[3]);
+        },
+        .@"build-musl" => {
+            if (n < 5) die("usage: payload build-musl <os-arch> <dest-dir> <zig-exe>", .{});
+            try buildMusl(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4]);
         },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
@@ -162,20 +168,29 @@ pub fn main(init: std.process.Init) !void {
             if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
+            var pyembed_so: ?[]const u8 = null;
+            var bun_bin: ?[]const u8 = null;
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
+            var musl_dir: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
                 const arg = argv[i];
                 if (std.mem.startsWith(u8, arg, "--shim=")) {
                     shim_so = arg["--shim=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--pyembed=")) {
+                    pyembed_so = arg["--pyembed=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--bun=")) {
+                    bun_bin = arg["--bun=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
                     link_source = arg["--link-source=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--musl=")) {
+                    musl_dir = arg["--musl=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, skip_precompile, link_source);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -253,11 +268,10 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 
 /// fetch-llvm: materialize the LLVM headers + static archives the LLVMPY_* shim
 /// links, into <dest>/LLVM-...; build.zig points -Dllvm-dir there. Idempotent
-/// (skips when the marker archive is already present). The default path is
-/// fetchLlvmSlice -- range-fetch only the ~84 MB subset the shim needs from the
-/// llvm-slice repackaged zip (no xz, no clang/tools). Set JAC_LLVM_FULL_TARBALL=1
-/// (or JAC_LLVM_TARBALL=<path>) to use the full ~1 GB upstream .tar.xz instead.
-fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8) !void {
+/// (skips when the marker archive is already present). fetchLlvmSlice range-fetches
+/// only the ~84 MB subset the shim needs from the llvm-slice repackaged zip (no xz,
+/// no clang/tools).
+fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, dest: []const u8) !void {
     const rel = llvmRelease() orelse
         die("fetch-llvm: no pinned LLVM release for this host ({s}-{s}); add a row to llvmRelease().", .{ @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
     // Presence marker / success check. On macOS the shim link needs the release's
@@ -271,95 +285,10 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
     }
     try Dir.cwd().createDirPath(io, dest);
 
-    if (env.get("JAC_LLVM_FULL_TARBALL") != null or env.get("JAC_LLVM_TARBALL") != null) {
-        try fetchLlvmTarball(io, gpa, a, env, dest, rel, marker);
-    } else {
-        try fetchLlvmSlice(io, gpa, a, dest, rel);
-    }
+    try fetchLlvmSlice(io, gpa, a, dest, rel);
 
     if (!fileExists(io, marker)) die("fetch-llvm: fetch produced no {s}", .{marker_lib});
     log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
-}
-
-/// Full-tarball fallback (JAC_LLVM_FULL_TARBALL / JAC_LLVM_TARBALL): download the
-/// upstream .tar.xz, sha256-verify the whole asset, xz-extract the include/ +
-/// libLLVM*.a (+macOS libLTO) subset. For offline/air-gapped builds, or if the
-/// slice repo is unavailable.
-fn fetchLlvmTarball(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8, rel: LlvmRelease, marker: []const u8) !void {
-    const asset = try std.fmt.allocPrint(a, "{s}.tar.xz", .{rel.dirname});
-    const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ LLVM_BASE, LLVM_TAG, asset });
-    // JAC_LLVM_TARBALL points at a pre-downloaded release (offline/CI/air-gapped).
-    const tarxz = if (env.get("JAC_LLVM_TARBALL")) |path| blk: {
-        log("fetch-llvm: using local tarball {s}", .{path});
-        break :blk try Dir.cwd().readFileAlloc(io, path, gpa, .unlimited);
-    } else blk: {
-        log("fetch-llvm: downloading {s} (~1 GB, one-time)", .{asset});
-        break :blk try httpGetAlloc(io, gpa, url);
-    };
-    defer gpa.free(tarxz);
-
-    // The static archives become host LLVM linked into the shipped shim, so a
-    // swapped/MITM'd asset must not slip through.
-    const actual = sha256Hex(tarxz);
-    if (!std.mem.eql(u8, &actual, rel.sha256))
-        die("fetch-llvm: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ asset, rel.sha256, &actual });
-
-    var ddir = try Dir.cwd().openDir(io, dest, .{});
-    defer ddir.close(io);
-    var src = Io.Reader.fixed(tarxz);
-    const buf = try gpa.alloc(u8, 1 << 20);
-    var dx = xz.Decompress.init(&src, gpa, buf) catch |err|
-        die("fetch-llvm: xz init failed: {s}", .{@errorName(err)});
-    // xz.Decompress took ownership of `buf` (and may resize it); free via deinit.
-    defer dx.deinit();
-    // The xz/tar stream can report a benign tail error (trailing padding/index)
-    // after every kept entry is written, so judge success by the marker.
-    extractLlvmSubset(io, ddir, &dx.reader) catch |err| {
-        if (!fileExists(io, marker)) die("fetch-llvm: extract failed: {s}", .{@errorName(err)});
-        log("fetch-llvm: tolerated benign post-extract error: {s}", .{@errorName(err)});
-    };
-}
-
-/// Stream a decompressed LLVM release tar and write only the entries the shim
-/// needs -- `*/include/**` headers, `*/lib/libLLVM*.a` static archives, and
-/// `*/lib/libLTO.dylib` (the macOS shim link lowers the release's ThinLTO bitcode
-/// archives to native code through this libLTO; see build.zig macosShim, #6938) --
-/// skipping everything else (bin/ clang+tools, clang/LTO .a). Unkept entries are
-/// discarded by the iterator, so we never materialize the ~10 GB we drop.
-fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
-    var name_buf: [Dir.max_path_bytes]u8 = undefined;
-    var link_buf: [Dir.max_path_bytes]u8 = undefined;
-    var content_buf: [64 * 1024]u8 = undefined;
-    var discard_buf: [64 * 1024]u8 = undefined;
-    var discarding: Io.Writer.Discarding = .init(&discard_buf);
-    var it = std.tar.Iterator.init(reader, .{ .file_name_buffer = &name_buf, .link_name_buffer = &link_buf });
-    while (try it.next()) |file| {
-        const keep = file.kind == .file and
-            (std.mem.indexOf(u8, file.name, "/include/") != null or
-                (std.mem.indexOf(u8, file.name, "/lib/libLLVM") != null and std.mem.endsWith(u8, file.name, ".a")) or
-                std.mem.endsWith(u8, file.name, "/lib/libLTO.dylib"));
-        if (!keep) {
-            // Read+discard ANY unwanted content (file, hard link, ...) via a
-            // discarding writer. The iterator's own skip path calls
-            // reader.discard, which the xz decompressor doesn't implement
-            // (@panic("TODO")) in this Zig; streaming uses the read path instead.
-            if (file.size > 0) try it.streamRemaining(file, &discarding.writer);
-            continue;
-        }
-        // Overwrite rather than fail on an existing file, so re-extracting over a
-        // stale tree (e.g. an older cache that predates keeping libLTO.dylib) is
-        // idempotent instead of dying with PathAlreadyExists.
-        const fs_file = dir.createFile(io, file.name, .{}) catch |err| blk: {
-            if (err != error.FileNotFound) return err;
-            const parent = std.fs.path.dirname(file.name) orelse return err;
-            try dir.createDirPath(io, parent);
-            break :blk try dir.createFile(io, file.name, .{});
-        };
-        defer fs_file.close(io);
-        var fw = fs_file.writer(io, &content_buf);
-        try it.streamRemaining(file, &fw.interface);
-        try fw.interface.flush();
-    }
 }
 
 // ------------------------------------------------------ slice (range) fetch ---
@@ -427,9 +356,9 @@ fn inflateMember(gpa: Allocator, method: u16, data: []const u8) ![]u8 {
     return list.toOwnedSlice(gpa);
 }
 
-/// Default fetch path: range-fetch only the shim's subset from the llvm-slice zip.
+/// Range-fetch only the shim's subset from the llvm-slice zip.
 /// Writes into <dest>/<rel.dirname>/{include,lib} (the slice members carry no
-/// top-level dir, unlike the tarball, so we root them under rel.dirname).
+/// top-level dir, unlike the upstream tarball, so we root them under rel.dirname).
 fn fetchLlvmSlice(io: Io, gpa: Allocator, a: Allocator, dest: []const u8, rel: LlvmRelease) !void {
     const zip_url = try std.fmt.allocPrint(a, "{s}/{s}/llvm-{s}-{s}-dev.zip", .{ SLICE_BASE, SLICE_TAG, LLVM_VER, rel.triple });
     const man_url = try std.fmt.allocPrint(a, "{s}/{s}/llvm-{s}-{s}-manifest.json", .{ SLICE_BASE, SLICE_TAG, LLVM_VER, rel.triple });
@@ -573,6 +502,197 @@ fn fetchLlvmSlice(io: Io, gpa: Allocator, a: Allocator, dest: []const u8, rel: L
     log("fetch-llvm: slice extracted {d} members", .{written});
 }
 
+// ================================================================ fetch-bun ===
+
+/// Map a build `<os>-<arch>` key (the fetch-pbs / osArchString form) to bun's
+/// release asset basename. Mirrors bun_installer.jac's _PLATFORM_MAP.
+fn bunAssetName(osarch: []const u8) ?[]const u8 {
+    const m = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "macos-aarch64", "bun-darwin-aarch64" },
+        .{ "macos-x86_64", "bun-darwin-x64" },
+        .{ "linux-x86_64", "bun-linux-x64" },
+        .{ "linux-aarch64", "bun-linux-aarch64" },
+        .{ "windows-x86_64", "bun-windows-x64" },
+    });
+    return m.get(osarch);
+}
+
+/// fetch-bun: download + sha256-verify + extract the pinned bun binary for
+/// `osarch` into `<dest>/bun` (or bun.exe). Idempotent (no-op if already
+/// present). The binary is bundled into every distributed jac, so the asset is
+/// verified against the release SHASUMS256.txt before it is trusted. The exec
+/// bit is (re)applied at runtime by get_bun() -- the materialized payload tar is
+/// extracted mode-agnostically -- so this just writes the bytes.
+fn fetchBun(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []const u8) !void {
+    const is_windows = std.mem.startsWith(u8, osarch, "windows");
+    const bun_name = if (is_windows) "bun.exe" else "bun";
+    const out_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, bun_name });
+    if (fileExists(io, out_path)) {
+        log("fetch-bun: already present at {s}", .{out_path});
+        return;
+    }
+
+    const asset = bunAssetName(osarch) orelse die("fetch-bun: unsupported platform '{s}'", .{osarch});
+    const zip_name = try std.fmt.allocPrint(a, "{s}.zip", .{asset});
+    const url = try std.fmt.allocPrint(a, "{s}/bun-v{s}/{s}", .{ BUN_BASE, BUN_VERSION, zip_name });
+
+    log("fetch-bun: downloading {s}", .{zip_name});
+    const zip = try httpGetAlloc(io, gpa, url);
+    defer gpa.free(zip);
+
+    // Verify against the release SHASUMS256.txt (`<hex>  <filename>` lines, the
+    // same format as pbs's SHA256SUMS). A swapped/MITM'd asset must not slip
+    // into the binary shipped to every user.
+    const sums_url = try std.fmt.allocPrint(a, "{s}/bun-v{s}/SHASUMS256.txt", .{ BUN_BASE, BUN_VERSION });
+    const sums = try httpGetAlloc(io, gpa, sums_url);
+    defer gpa.free(sums);
+    const expected = findSumLine(sums, zip_name) orelse die("fetch-bun: no checksum for {s} in SHASUMS256.txt", .{zip_name});
+    const actual = sha256Hex(zip);
+    if (!std.mem.eql(u8, &actual, expected))
+        die("fetch-bun: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ zip_name, expected, &actual });
+
+    // bun zips store the binary at `bun-<platform>/<bun_name>`.
+    const suffix = try std.fmt.allocPrint(a, "/{s}", .{bun_name});
+    const bun_bytes = try unzipMemberBySuffix(gpa, zip, suffix);
+    defer gpa.free(bun_bytes);
+
+    try Dir.cwd().createDirPath(io, dest);
+    {
+        var fh = try Dir.cwd().createFile(io, out_path, .{ .truncate = true });
+        defer fh.close(io);
+        var wbuf: [64 * 1024]u8 = undefined;
+        var fw = fh.writer(io, &wbuf);
+        try fw.interface.writeAll(bun_bytes);
+        try fw.interface.flush();
+    }
+    if (!fileExists(io, out_path)) die("fetch-bun: extract produced no {s}", .{bun_name});
+    log("fetch-bun: ready at {s} ({d} MiB)", .{ out_path, bun_bytes.len >> 20 });
+}
+
+// =============================================================== build-musl ===
+
+/// Harvest a complete static-musl runtime (libc.a + libzigc.a + compiler-rt +
+/// crt) into `dest`, so `jac nacompile` can fully static-link Linux executables
+/// against musl with no toolchain at compile time. Unlike the other vendored
+/// deps this is BUILT, not downloaded: the bundled Zig already ships musl, so we
+/// link a tiny stub for the target (which materializes the archives into an
+/// isolated Zig cache) and copy the artifacts out. Idempotent; only meaningful
+/// for Linux targets.
+fn buildMusl(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, osarch: []const u8, dest: []const u8, zig_exe: []const u8) !void {
+    const ztarget = if (std.mem.eql(u8, osarch, "linux-x86_64"))
+        "x86_64-linux-musl"
+    else if (std.mem.eql(u8, osarch, "linux-aarch64"))
+        "aarch64-linux-musl"
+    else
+        die("build-musl: unsupported osarch '{s}' (need linux-x86_64|linux-aarch64)", .{osarch});
+
+    // crt1 + libc.a + libzigc.a are mandatory; compiler-rt + crti/crtn optional
+    // (musl's modern startup uses init-array, not legacy _init).
+    const ARTIFACTS = [_][]const u8{
+        "libc.a", "libzigc.a", "libcompiler_rt.a", "crt1.o", "crti.o", "crtn.o",
+    };
+
+    try Dir.cwd().createDirPath(io, dest);
+    // Idempotent: a complete set already present -> nothing to do.
+    // Skip only when the MANDATORY set is present. A generic count can pass with
+    // the optional artifacts (compiler-rt + crti/crtn) while libc.a/libzigc.a are
+    // missing, leaving an unusable runtime.
+    const MANDATORY = [_][]const u8{ "libc.a", "libzigc.a", "crt1.o" };
+    var have_all = true;
+    for (MANDATORY) |name| {
+        if (!fileExists(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, name }))) have_all = false;
+    }
+    if (have_all) {
+        log("==> musl runtime already vendored in {s}; skipping", .{dest});
+        return;
+    }
+
+    // Isolated scratch: a stub + a private Zig cache, so the harvest grabs only
+    // the artifacts THIS link produced (never a stale global-cache copy).
+    const work = try std.fmt.allocPrint(a, "{s}.musl-work", .{dest});
+    Dir.cwd().deleteTree(io, work) catch {};
+    defer Dir.cwd().deleteTree(io, work) catch {};
+    const cache = try std.fmt.allocPrint(a, "{s}/cache", .{work});
+    try Dir.cwd().createDirPath(io, cache);
+    const stub = try std.fmt.allocPrint(a, "{s}/stub.c", .{work});
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = stub,
+        // Touch a spread of subsystems so Zig materializes the full musl, its
+        // helper archive (libzigc), and compiler-rt.
+        .data = "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <math.h>\nint main(int c, char **v){char b[8];snprintf(b,sizeof b,\"%d\",c);void*p=malloc(8);free(p);return (int)(strncmp(b,\"x\",1)+(long)sin((double)v[0][0]));}\n",
+    });
+    const stub_out = try std.fmt.allocPrint(a, "{s}/stub", .{work});
+
+    var env = try cloneEnv(gpa, parent_env);
+    defer env.deinit();
+    try env.put("ZIG_GLOBAL_CACHE_DIR", cache);
+    log("==> building static musl ({s}) via {s} ...", .{ ztarget, zig_exe });
+    if (!runChild(io, &.{ zig_exe, "cc", "-target", ztarget, "-static", "-o", stub_out, stub }, &env, false))
+        die("build-musl: `zig cc -target {s} -static` failed", .{ztarget});
+
+    // Harvest: walk the isolated cache and pick out the named artifacts.
+    var found = std.StringHashMap([]const u8).init(gpa);
+    defer found.deinit();
+    {
+        var cdir = Dir.cwd().openDir(io, cache, .{ .iterate = true }) catch
+            die("build-musl: zig cache dir missing at {s}", .{cache});
+        defer cdir.close(io);
+        var walker = cdir.walk(gpa) catch die("build-musl: cache walk failed", .{});
+        defer walker.deinit();
+        while (walker.next(io) catch null) |entry| {
+            if (entry.kind != .file) continue;
+            const base = std.fs.path.basename(entry.path);
+            for (ARTIFACTS) |name| {
+                if (std.mem.eql(u8, base, name) and !found.contains(name))
+                    found.put(name, try std.fmt.allocPrint(a, "{s}/{s}", .{ cache, entry.path })) catch {};
+            }
+        }
+    }
+
+    var staged: usize = 0;
+    for (ARTIFACTS) |name| {
+        const src = found.get(name) orelse continue;
+        try Dir.cwd().copyFile(src, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, name }), io, .{});
+        staged += 1;
+    }
+    log("==> staged {d} musl artifact(s) -> {s}", .{ staged, dest });
+    if (staged < 4) die("build-musl: incomplete harvest ({d}/6 artifacts)", .{staged});
+}
+
+/// Extract the single zip member whose name ends with `suffix` from an in-memory
+/// zip, returning its decompressed bytes (caller frees). Reuses the central-
+/// directory parsing helpers from the llvm-slice path; bun's zips are small so
+/// the whole archive is already in memory (no range fetch needed).
+fn unzipMemberBySuffix(gpa: Allocator, zip: []const u8, suffix: []const u8) ![]u8 {
+    if (zip.len < 22) die("fetch-bun: zip too small", .{});
+    const eocd = std.mem.lastIndexOf(u8, zip, "PK\x05\x06") orelse die("fetch-bun: no zip EOCD found", .{});
+    const cd_size = rdU32(zip, eocd + 12);
+    const cd_off = rdU32(zip, eocd + 16);
+    if (@as(usize, cd_off) + cd_size > zip.len) die("fetch-bun: central directory out of range", .{});
+    const cd_end: usize = @as(usize, cd_off) + cd_size;
+    var p: usize = cd_off;
+    while (p + 46 <= cd_end and std.mem.eql(u8, zip[p..][0..4], "PK\x01\x02")) {
+        const method = rdU16(zip, p + 10);
+        const csize = rdU32(zip, p + 20);
+        const nlen = rdU16(zip, p + 28);
+        const elen = rdU16(zip, p + 30);
+        const clen = rdU16(zip, p + 32);
+        const lho = rdU32(zip, p + 42);
+        const name = zip[p + 46 ..][0..nlen];
+        if (std.mem.endsWith(u8, name, suffix)) {
+            if (@as(usize, lho) + 30 > zip.len or !std.mem.eql(u8, zip[lho..][0..4], "PK\x03\x04"))
+                die("fetch-bun: bad local header for {s}", .{name});
+            const l_nlen = rdU16(zip, lho + 26);
+            const l_elen = rdU16(zip, lho + 28);
+            const data_off: usize = @as(usize, lho) + 30 + l_nlen + l_elen;
+            if (data_off + csize > zip.len) die("fetch-bun: member data out of range for {s}", .{name});
+            return inflateMember(gpa, method, zip[data_off..][0..csize]);
+        }
+        p += 46 + nlen + elen + clen;
+    }
+    die("fetch-bun: no member ending in '{s}' found in zip", .{suffix});
+}
+
 fn pbsPlatform(osarch: []const u8) ?[]const u8 {
     const m = std.StaticStringMap([]const u8).initComptime(.{
         .{ "macos-aarch64", "aarch64-apple-darwin" },
@@ -681,6 +801,16 @@ fn mkPayload(
     repo_root: []const u8,
     out: []const u8,
     shim_so: ?[]const u8,
+    // The Zig-built libjacpyembed shim (launcher/pyembed.zig): the na desktop
+    // host DT_NEEDEDs it to bring up THIS fused runtime instead of the build
+    // machine's libpython. Bundled beside the desktop native assets so the host
+    // build can stage it $ORIGIN-adjacent. Null only in unusual standalone packs.
+    pyembed_so: ?[]const u8,
+    // The pinned bun binary (fetch-bun output) to bundle inside the client
+    // package at jaclang/runtimelib/client/_bun/<bun>. get_bun() resolves it
+    // there by absolute path -- contained in the jac ecosystem, never on PATH.
+    // Null in linked-source / standalone packs (dev uses an on-demand copy).
+    bun_bin: ?[]const u8,
     skip_precompile: bool,
     // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
     // set, the compiler is NOT bundled -- the payload ships only CPython + the
@@ -688,6 +818,11 @@ fn mkPayload(
     // marker reroutes `import jaclang` to this dir at startup (see _jac_finder.py
     // apply_dev_source_override). Implies skip_precompile and a tiny, fast build.
     link_source: ?[]const u8,
+    // The vendored static-musl runtime dir (scripts/vendor_musl.sh output:
+    // libc.a + libzigc.a + compiler-rt + crt). Bundled so an installed binary can
+    // fully static-link Linux executables against musl at `nacompile` time, with
+    // no toolchain. Null for mac/windows builds (musl is Linux-only).
+    musl_dir: ?[]const u8,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -780,6 +915,39 @@ fn mkPayload(
         try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, shim_base }), io, .{});
     }
 
+    // Native desktop: bundle the Zig-built libjacpyembed shim next to the desktop
+    // native assets. The na desktop host DT_NEEDEDs it (logical name `jacpyembed`)
+    // and the desktop build copies it $ORIGIN-adjacent; jac_engine_boot() then
+    // brings up THIS fused runtime in the app process. Platform-correct basename
+    // (libjacpyembed.so / .dylib / jacpyembed.dll) is preserved -- build.zig emits
+    // the right one per OS. Skipped in linked-source mode (build.zig's `place`
+    // step writes it into the linked source tree instead, mirroring the LLVM shim).
+    if (link_source == null) {
+        if (pyembed_so) |pso| {
+            const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/runtimelib/client/targets/desktop/native", .{site});
+            try Dir.cwd().createDirPath(io, dst_dir);
+            const pso_base = std.fs.path.basename(pso);
+            log("==> bundling libjacpyembed shim ({s})", .{pso});
+            try Dir.cwd().copyFile(pso, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, pso_base }), io, .{});
+        }
+    }
+
+    // Contained bun runtime: bundle the fetched bun inside the client package at
+    // jaclang/runtimelib/client/_bun/<bun>. get_bun() resolves it relative to
+    // the package (mirroring the native shims) and always invokes it by absolute
+    // path -- it is never placed on the user's PATH. Skipped in linked-source
+    // mode (dev resolves an on-demand .jac/bin copy instead). skipJaclang drops
+    // any source-tree `_bun/`, so this staged copy is the only one shipped.
+    if (link_source == null) {
+        if (bun_bin) |bb| {
+            const bun_base = std.fs.path.basename(bb);
+            const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/runtimelib/client/_bun", .{site});
+            try Dir.cwd().createDirPath(io, dst_dir);
+            log("==> bundling contained bun runtime ({s})", .{bb});
+            try Dir.cwd().copyFile(bb, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, bun_base }), io, .{});
+        }
+    }
+
     // Linked-source mode implies skip-precompile: the compiler lives in the
     // linked tree and the dev override sets JAC_NO_PRECOMPILE, so a bundled JIR
     // cache would never be consulted anyway.
@@ -797,7 +965,7 @@ fn mkPayload(
     Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/__pycache__", .{site})) catch {};
     _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "--target", site }, null, false);
 
-    try stageTree(io, gpa, a, pbs_py_dir, site, stage);
+    try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir);
 
     log("==> packing tar | gzip", .{});
     try tarGzDir(io, gpa, a, stage, out);
@@ -846,6 +1014,15 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
     try env.put("PYTHONDONTWRITEBYTECODE", "1");
     try env.put("HOME", site);
     try env.put("PATH", "/usr/bin:/bin");
+    // Pin the precompiler to the bundled (staged-site) jaclang, NOT a dev-source
+    // tree. The build runs inside the repo whose jac.toml carries
+    // [dev] jaclang_source, so _jac_finder's apply_dev_source_override would
+    // otherwise reroute `import jaclang` to the source tree and stamp every JIR's
+    // module key with the source's (often stale) egg-info version. The shipped
+    // binary reports jac.toml's version, so a dev-source stamp makes the whole
+    // bundle fail validation at runtime and every module recompiles on first run.
+    // JAC_NO_DEV_SOURCE keeps pkg_version reading the staged dist-info we ship.
+    try env.put("JAC_NO_DEV_SOURCE", "1");
 
     _ = runChild(io, &.{ py, "-S", boot }, &env, true); // non-zero exit is by design
 
@@ -872,7 +1049,7 @@ fn countJir(io: Io, gpa: Allocator, dir_path: []const u8) usize {
 }
 
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
-fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8) !void {
+fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
     const lib_dst = try std.fmt.allocPrint(a, "{s}/python/lib", .{stage});
     try Dir.cwd().createDirPath(io, lib_dst);
@@ -927,6 +1104,117 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     }
     // The LLVMPY_* shim statically links LLVM (~130 MiB); strip it (best-effort).
     stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/compiler/passes/native/llvm/{s}", .{ stage, shimFileName() }));
+
+    // Static C-floor archives + CA bundle so an installed binary can static-link
+    // a bundled C floor at `nacompile` time, not just dev builds (#6978 0.2).
+    try stageFloor(io, gpa, a, pbs_py_dir, stage);
+
+    // Vendored static-musl runtime, so an installed binary can fully static-link
+    // Linux executables against musl at `nacompile` time (no glibc/loader dep).
+    if (musl_dir) |md| try stageMusl(io, a, md, stage);
+}
+
+/// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names
+/// (`linux-x86_64`, `macos-aarch64`, ...). The payload tool builds for and runs
+/// on the host, so `builtin` is the source of truth. Used to arch-key the staged
+/// floor archives so a cross-`--target` nacompile never links the wrong arch.
+fn hostOsArch() []const u8 {
+    const os_name = switch (builtin.os.tag) {
+        .linux => "linux",
+        .macos => "macos",
+        .windows => "windows",
+        else => @compileError("floor staging: unsupported host OS"),
+    };
+    const arch_name = switch (builtin.cpu.arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+        else => @compileError("floor staging: unsupported host arch"),
+    };
+    return os_name ++ "-" ++ arch_name;
+}
+
+/// Stage the static C-floor archives + a CA bundle into the payload so an
+/// installed (non-dev) binary can static-link a bundled C floor at `nacompile`
+/// time -- the dev path reads the same archives straight from `.pbs-build`, this
+/// is the shipped-binary counterpart (#6978 Phase 0.2). Archives land arch-keyed
+/// under `python/floor/<osarch>/` (so a cross-`--target` build never grabs the
+/// host's wrong-arch archives) and the CA bundle at `python/floor/cacert.pem`
+/// (arch-independent). Best-effort per file: pbs's `build/lib/` set differs by
+/// platform (no `libz.a` on macOS, which uses the system zlib), so a missing
+/// member is skipped rather than fatal.
+fn stageFloor(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, stage: []const u8) !void {
+    const osarch = hostOsArch();
+    const floor_dst = try std.fmt.allocPrint(a, "{s}/python/floor/{s}", .{ stage, osarch });
+    try Dir.cwd().createDirPath(io, floor_dst);
+    const src_lib = try std.fmt.allocPrint(a, "{s}/build/lib", .{pbs_py_dir});
+
+    // The bundled-C floor set the na stdlib roadmap (#6978 §12) targets -- the
+    // exact archives CPython's own C extensions link. Everything else in
+    // build/lib/ (libX11, libedit, libncursesw, tcl/tk stubs, ...) is not a floor
+    // target and stays out, to bound the binary size.
+    const FLOOR = [_][]const u8{
+        "libssl.a", "libcrypto.a", "libsqlite3.a", "libmpdec.a", "liblzma.a",
+        "libbz2.a", "libexpat.a",  "libz.a",       "libzstd.a",
+    };
+    var staged: usize = 0;
+    for (FLOOR) |name| {
+        const src = try std.fmt.allocPrint(a, "{s}/{s}", .{ src_lib, name });
+        if (!fileExists(io, src)) continue; // not present for this platform
+        try Dir.cwd().copyFile(src, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ floor_dst, name }), io, .{});
+        staged += 1;
+    }
+    log("==> staged {d} C-floor archive(s) -> python/floor/{s}", .{ staged, osarch });
+
+    // CA bundle (certifi's cacert.pem, vendored in pbs's pip) -> a stable,
+    // pip-layout-independent path the ssl floor (Phase 1) reads.
+    if (try findCaBundle(io, gpa, a, pbs_py_dir)) |ca| {
+        try Dir.cwd().copyFile(ca, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/python/floor/cacert.pem", .{stage}), io, .{});
+        log("==> staged CA bundle -> python/floor/cacert.pem", .{});
+    } else {
+        log("   no CA bundle found under pbs site-packages; ssl floor will fall back to a system bundle", .{});
+    }
+}
+
+/// Stage the vendored static-musl runtime into the payload so an installed
+/// (non-dev) binary can fully static-link Linux executables against musl at
+/// `nacompile` time -- no glibc/loader dependency, runs on Alpine/scratch/any
+/// glibc. Mirrors stageFloor: artifacts land arch-keyed under
+/// `python/floor/<osarch>/musl/`, exactly where nacompile's _musl_lib_dir looks
+/// in a shipped binary. Best-effort per file (compiler-rt + crti/crtn are
+/// optional); the dev/source path reads the same set straight from `.pbs-build`.
+fn stageMusl(io: Io, a: Allocator, musl_dir: []const u8, stage: []const u8) !void {
+    const osarch = hostOsArch();
+    const dst = try std.fmt.allocPrint(a, "{s}/python/floor/{s}/musl", .{ stage, osarch });
+    try Dir.cwd().createDirPath(io, dst);
+    const ARTIFACTS = [_][]const u8{
+        "libc.a", "libzigc.a", "libcompiler_rt.a", "crt1.o", "crti.o", "crtn.o",
+    };
+    var staged: usize = 0;
+    for (ARTIFACTS) |name| {
+        const src = try std.fmt.allocPrint(a, "{s}/{s}", .{ musl_dir, name });
+        if (!fileExists(io, src)) continue;
+        try Dir.cwd().copyFile(src, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst, name }), io, .{});
+        staged += 1;
+    }
+    log("==> staged {d} musl runtime artifact(s) -> python/floor/{s}/musl", .{ staged, osarch });
+}
+
+/// Locate certifi's `cacert.pem` in the pbs tree (pip vendors it). Tries the
+/// canonical pip path first, then a bounded walk of site-packages for any
+/// `certifi/cacert.pem` (so a pip layout shift still resolves). Null if absent.
+fn findCaBundle(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8) !?[]const u8 {
+    const direct = try std.fmt.allocPrint(a, "{s}/install/lib/python{s}/site-packages/pip/_vendor/certifi/cacert.pem", .{ pbs_py_dir, py_ver });
+    if (fileExists(io, direct)) return direct;
+    const sp = try std.fmt.allocPrint(a, "{s}/install/lib/python{s}/site-packages", .{ pbs_py_dir, py_ver });
+    var dir = Dir.cwd().openDir(io, sp, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
+    var walker = dir.walk(gpa) catch return null;
+    defer walker.deinit();
+    while (walker.next(io) catch null) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.path, "certifi/cacert.pem"))
+            return try std.fmt.allocPrint(a, "{s}/{s}", .{ sp, entry.path });
+    }
+    return null;
 }
 
 /// The host's LLVMPY_* shim filename, matching build.zig's emitted name and
@@ -1095,6 +1383,12 @@ fn skipJaclang(p: []const u8) bool {
         // The LLVMPY_* shim is placed fresh via --shim, not copied from the
         // (gitignored, build-placed) source-tree artifact -- skip it here.
         std.mem.indexOf(u8, p, "libjacllvm.") != null or
+        // Same for the libjacpyembed desktop shim (placed via --pyembed).
+        std.mem.indexOf(u8, p, "libjacpyembed.") != null or
+        std.mem.indexOf(u8, p, "jacpyembed.dll") != null or
+        // The contained bun runtime is staged fresh via --bun, not copied from
+        // any (gitignored) source-tree placement -- skip it here.
+        std.mem.indexOf(u8, p, "client/_bun") != null or
         std.mem.endsWith(u8, p, ".pyc");
 }
 
@@ -1181,4 +1475,54 @@ fn tarGzDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []cons
 
     try comp.finish();
     try fw.interface.flush();
+}
+
+// ----------------------------------------------------------------- tests
+
+const testing = std.testing;
+
+test "stageFloor stages the floor allow-list + CA bundle, skips non-floor archives" {
+    const io = testing.io;
+    const gpa = testing.allocator;
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var base_buf: [MAX_PATH]u8 = undefined;
+    const base = base_buf[0..try tmp.dir.realPath(io, &base_buf)];
+
+    // A fake pbs tree: two floor archives, one NON-floor archive (must be left
+    // behind), and certifi's CA bundle at the canonical pip path.
+    const pbs = try std.fmt.allocPrint(a, "{s}/pbs", .{base});
+    const lib = try std.fmt.allocPrint(a, "{s}/build/lib", .{pbs});
+    try Dir.cwd().createDirPath(io, lib);
+    for ([_][]const u8{ "libz.a", "libssl.a", "libX11.a" }) |n| {
+        try Dir.cwd().writeFile(io, .{
+            .sub_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ lib, n }),
+            .data = "!<arch>\n",
+        });
+    }
+    const certdir = try std.fmt.allocPrint(a, "{s}/install/lib/python{s}/site-packages/pip/_vendor/certifi", .{ pbs, py_ver });
+    try Dir.cwd().createDirPath(io, certdir);
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/cacert.pem", .{certdir}),
+        .data = "# ca\n",
+    });
+
+    const stage = try std.fmt.allocPrint(a, "{s}/stage", .{base});
+    try stageFloor(io, gpa, a, pbs, stage);
+
+    const osarch = hostOsArch();
+    const exp = struct {
+        fn p(al: Allocator, st: []const u8, rest: []const u8) []const u8 {
+            return std.fmt.allocPrint(al, "{s}/python/floor/{s}", .{ st, rest }) catch unreachable;
+        }
+    }.p;
+    try testing.expect(fileExists(io, exp(a, stage, try std.fmt.allocPrint(a, "{s}/libz.a", .{osarch}))));
+    try testing.expect(fileExists(io, exp(a, stage, try std.fmt.allocPrint(a, "{s}/libssl.a", .{osarch}))));
+    try testing.expect(fileExists(io, exp(a, stage, "cacert.pem")));
+    // The non-floor archive present in build/lib must NOT be staged.
+    try testing.expect(!fileExists(io, exp(a, stage, try std.fmt.allocPrint(a, "{s}/libX11.a", .{osarch}))));
 }

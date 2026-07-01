@@ -1,15 +1,10 @@
-"""Implementation of Jac project configuration module."""
-
-# ===============================================================================
-# Environment Variable Interpolation Implementation
-# ===============================================================================
 impl interpolate_env_vars(value: str) -> str {
     import os;
     import re;
     if not isinstance(value, str) {
         return value;
     }
-    # Pattern to match ${VAR}, ${VAR:-default}, ${VAR:?error}
+
     pattern = r"\$\{([^}:]+)(?:(:[-?])([^}]*))?\}";
     def replace_env_var(`match: re.Match) -> str {
         var_name = `match.group(1);
@@ -33,54 +28,33 @@ impl interpolate_env_vars(value: str) -> str {
     return re.sub(pattern, replace_env_var, value);
 }
 
-# ===============================================================================
-# Project Discovery Implementation
-# ===============================================================================
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from pathlib { Path }
-    if start is None {
-        start = Path.cwd();
-    }
-    current = start.resolve();
-    while current != current.parent {
-        toml_path = current / "jac.toml";
-        if toml_path.exists() {
-            return (current, toml_path);
-        }
-        current = current.parent;
-    }
-    toml_path = current / "jac.toml";
-    if toml_path.exists() {
-        return (current, toml_path);
-    }
-    return None;
+    import from jaclang.jac0core.modresolver { find_project_root as _find_project_root }
+    return _find_project_root(start);
 }
 
 impl is_in_project -> bool {
     return find_project_root() is not None;
 }
 
-# ===============================================================================
-# Multi-File Config Discovery
-# ===============================================================================
 impl discover_config_files(
     project_root: Path, profile: str | None = None
 ) -> list[Path] {
     import from pathlib { Path }
     files: list[Path] = [];
-    # 1. Base config (always)
+
     base = project_root / "jac.toml";
     if base.exists() {
         files.append(base);
     }
-    # 2. Profile-specific file (only when profile is set)
+
     if profile {
         profile_path = project_root / f"jac.{profile}.toml";
         if profile_path.exists() {
             files.append(profile_path);
         }
     }
-    # 3. Local overrides (always, if present)
+
     local_path = project_root / "jac.local.toml";
     if local_path.exists() {
         files.append(local_path);
@@ -88,9 +62,6 @@ impl discover_config_files(
     return files;
 }
 
-# ===============================================================================
-# JacConfig Implementation
-# ===============================================================================
 impl JacConfig.discover(
     start_path: Path | None = None, profile: str | None = None
 ) -> JacConfig | None {
@@ -101,8 +72,7 @@ impl JacConfig.discover(
     }
     (project_root, toml_path) = result;
     config = JacConfig.load(toml_path);
-    # Record whether discovery had to climb out of the starting directory, so
-    # a later write can warn before modifying an ancestor project's jac.toml.
+
     base = start_path if start_path is not None else Path.cwd();
     config.discovered_from_ancestor = project_root.resolve() != base.resolve();
     if profile {
@@ -138,34 +108,6 @@ impl JacConfig.apply_env_interpolation -> None {
     self.environments = _interpolate_recursive(self.environments);
 }
 
-impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
-    if args.get("session") {
-        self.run.session = args["session"];
-    }
-    if "main" in args {
-        self.run.main = args["main"];
-    }
-    if "cache" in args {
-        self.run.cache = args["cache"];
-    }
-    if args.get("port") {
-        self.serve.port = args["port"];
-    }
-    if args.get("directory") {
-        self.test.directory = args["directory"];
-    }
-    if "verbose" in args {
-        self.test.verbose = args["verbose"];
-    }
-    if args.get("xit") {
-        self.test.fail_fast = args["xit"];
-    }
-    if args.get("maxfail") {
-        self.test.max_failures = args["maxfail"];
-    }
-}
-
-"""Deep merge two dicts: recursively merges nested dicts, overwrites scalars."""
 def _deep_merge(base: dict, `override: dict) -> dict {
     result = base.copy();
     for (key, value) in `override.items() {
@@ -184,7 +126,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
     if profile_name not in self.environments {
         return;
     }
-    # Cycle detection
+
     if _visited is None {
         _visited = set();
     }
@@ -193,14 +135,14 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
     }
     _visited.add(profile_name);
     profile = self.environments[profile_name];
-    # Handle inheritance first
+
     if "inherits" in profile {
         parent_name = profile["inherits"];
         if parent_name in self.environments {
             self.apply_profile(parent_name, _visited=_visited);
         }
     }
-    # Generic sections: setattr loop
+
     section_map: dict = {
         "run": self.run,
         "build": self.build,
@@ -221,7 +163,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Special case: project (kebab-case -> snake_case)
+
     if "project" in profile {
         for (key, value) in profile["project"].items() {
             attr = key.replace("-", "_");
@@ -230,7 +172,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Special case: check (nested lint)
+
     if "check" in profile {
         check_data = profile["check"];
         for (key, value) in check_data.items() {
@@ -245,7 +187,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Special case: storage (type -> storage_type)
+
     if "storage" in profile {
         storage_data = profile["storage"];
         for (key, value) in storage_data.items() {
@@ -256,11 +198,11 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
-    # Plugins: deep merge
+
     if "plugins" in profile {
         self.plugins = _deep_merge(self.plugins, profile["plugins"]);
     }
-    # Dict sections: merge
+
     if "dependencies" in profile {
         for (key, value) in profile["dependencies"].items() {
             if isinstance(value, str) {
@@ -280,26 +222,18 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
     }
 }
 
-"""Apply profile overlay files on top of the base config.
-
-Handles the full multi-file merge sequence in correct priority order:
-  1. jac.<profile>.toml (if profile is set and file exists)
-  2. [environments.<profile>] in-file overrides (if profile is set)
-  3. jac.local.toml (always, if present — highest file priority)
-"""
 impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
     if self.project_root is None {
         return;
     }
     if profile_name {
-        # Step 1: Merge profile-specific file (e.g. jac.prod.toml)
         profile_path = self.project_root / f"jac.{profile_name}.toml";
         self.merge_from_toml_file(profile_path);
-        # Step 2: Apply in-file [environments.<profile>] overrides
+
         self.apply_profile(profile_name);
         self.active_profile = profile_name;
     }
-    # Step 3: Merge local overrides (always highest file priority)
+
     local_path = self.project_root / "jac.local.toml";
     self.merge_from_toml_file(local_path);
 }
@@ -346,7 +280,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    # Check section with nested lint
+
     if "check" in data {
         check_data = data["check"];
         for (key, value) in check_data.items() {
@@ -361,7 +295,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    # Storage section with type -> storage_type mapping
+
     if "storage" in data {
         storage_data = data["storage"];
         for (key, value) in storage_data.items() {
@@ -393,7 +327,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    # Dict sections: merge rather than replace
+
     if "dependencies" in data {
         deps = data["dependencies"];
         for (key, value) in deps.items() {
@@ -439,7 +373,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     if toml_path not in self.config_files {
         self.config_files.append(toml_path);
     }
-    # Merge raw data for _is_explicitly_set checks
+
     for (key, value) in data.items() {
         if key in self._raw_data
         and isinstance(self._raw_data[key], dict)
@@ -453,7 +387,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
 
 impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, any] {
     deps = self.plugin_dependencies.get(dep_type, {});
-    # Filter out the "dev" key which holds dev dependencies
+
     return {
         k: v
         for (k, v) in deps.items()
@@ -465,34 +399,29 @@ impl JacConfig.get_plugin_config(plugin_name: str) -> dict[str, any] {
     return self.plugins.get(plugin_name, {});
 }
 
-"""Get the base build directory for all artifacts."""
+impl JacConfig.get_section(name: str) -> dict[str, any] | None {
+    section = self._raw_data.get(name) if isinstance(self._raw_data, dict) else None;
+    return section if isinstance(section, dict) else None;
+}
+
 impl JacConfig.get_build_dir -> Path {
     import from pathlib { Path }
     base = self.project_root or Path.cwd();
     return base / self.build.dir;
 }
 
-"""Get the cache directory ([build].dir / [cache].dir, default .jac/cache).
-
-The `[cache] dir` subdirectory name is honored here (defaulting to "cache"),
-so an absolute override relocates the cache wholesale while a relative one
-nests it under the build dir.
-"""
 impl JacConfig.get_cache_dir -> Path {
     return self.get_build_dir() / self.cache.dir;
 }
 
-"""Get the virtual environment directory (.jac/venv)."""
 impl JacConfig.get_venv_dir -> Path {
     return self.get_build_dir() / "venv";
 }
 
-"""Get the data directory for runtime artifacts (.jac/data)."""
 impl JacConfig.get_data_dir -> Path {
     return self.get_build_dir() / "data";
 }
 
-"""Get the client build directory (.jac/client)."""
 impl JacConfig.get_client_dir -> Path {
     return self.get_build_dir() / "client";
 }
@@ -505,15 +434,14 @@ impl JacConfig.save -> None {
     if self.toml_path is None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
-    # Load existing data or start fresh
+
     if self.toml_path.exists() {
         import from jaclang.jac0core.helpers { read_toml_with_encoding }
         doc = read_toml_with_encoding(str(self.toml_path));
     } else {
         doc = {};
     }
-    # Replace Python dependencies (use replace to handle removals)
-    # Preserve sub-tables (git, npm, etc.) that live under [dependencies]
+
     old_deps = doc.get("dependencies", {});
     sub_tables = {
         k: v
@@ -521,49 +449,42 @@ impl JacConfig.save -> None {
         if isinstance(v, dict)
     };
     doc["dependencies"] = dict(self.dependencies);
-    # Restore sub-tables
+
     for (k, v) in sub_tables.items() {
         doc["dependencies"][k] = v;
     }
-    # Replace git dependencies under [dependencies.git]
+
     if self.git_dependencies {
         doc["dependencies"]["git"] = dict(self.git_dependencies);
     } elif "git" in doc.get("dependencies", {}) {
         del doc["dependencies"]["git"];
     }
-    # Replace dev-dependencies (use replace to handle removals)
+
     if self.dev_dependencies {
         doc["dev-dependencies"] = dict(self.dev_dependencies);
     } elif "dev-dependencies" in doc {
         doc["dev-dependencies"] = {};
     }
-    # Update plugin dependencies (npm, etc.)
-    # Replace the entire plugin dep section to handle removals
+
     for (dep_type, deps) in self.plugin_dependencies.items() {
         if dep_type not in doc["dependencies"] {
             doc["dependencies"][dep_type] = {};
         }
-        # Handle dev deps separately
+
         dev_deps = deps.get("dev", {}) if isinstance(deps.get("dev"), dict) else {};
         regular_deps = {
             k: v
             for (k, v) in deps.items()
             if k != "dev"
         };
-        # Replace the entire section (to handle removals)
+
         doc["dependencies"][dep_type] = regular_deps.copy();
         if dev_deps {
             doc["dependencies"][dep_type]["dev"] = dev_deps;
         }
     }
-    # Update plugins configuration
-    # IMPORTANT: We must preserve raw values (e.g. ${VAR}) from the original file,
-    # so we only update the disabled list, not the entire plugin configs.
-    # Plugin configs are updated via plugin-specific save methods when needed.
+
     if self.plugins_config.disabled is not None {
-        # Persist disabled plugins list - handle both setting and clearing.
-        # Only materialize the [plugins] table when there is something to
-        # write, so an empty disabled list never leaves a stray empty table.
         if self.plugins_config.disabled {
             if "plugins" not in doc {
                 doc["plugins"] = {};
@@ -572,21 +493,14 @@ impl JacConfig.save -> None {
         } elif "disabled" in doc.get("plugins", {}) {
             del doc["plugins"]["disabled"];
             if not doc["plugins"] {
-                del doc["plugins"];  # Drop the table if it is now empty
+                del doc["plugins"];
             }
         }
     }
-    # Route the write through the single chokepoint (handles the ancestor warning).
+
     self.persist_doc(doc);
 }
 
-"""Serialize `doc` to `self.toml_path` -- the one jac.toml write chokepoint.
-
-Every code path that persists jac.toml (JacConfig.save and the `jac config`
-set/unset helpers) goes through here, so the ancestor-directory guard cannot be
-silently skipped by a future mutating command: warn once, here, whenever this
-config was discovered by climbing out of the current directory.
-"""
 impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
     if self.toml_path is None {
         raise ValueError("No toml_path set, cannot save configuration");
@@ -607,13 +521,11 @@ impl JacConfig.persist_doc(doc: dict[str, any]) -> None {
     }
 }
 
-# Check if a TOML key needs quoting (bare keys can only contain A-Za-z0-9_-)
 def _needs_quoting(key: str) -> bool {
     import re;
     return not bool(re.match(r'^[A-Za-z0-9_-]+$', key));
 }
 
-# Quote a TOML key if necessary
 def _quote_key(key: str) -> str {
     if _needs_quoting(key) {
         escaped = key.replace("\\", "\\\\").replace('"', '\\"');
@@ -622,16 +534,12 @@ def _quote_key(key: str) -> str {
     return key;
 }
 
-# Simple TOML serializer (does not preserve comments). This is the single
-# canonical writer -- callers that need dict-to-TOML use this, never a copy.
 impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     lines: list[str] = [];
     tables: list[tuple[str, dict]] = [];
 
-    # First pass: write simple key-value pairs
     for (key, value) in data.items() {
         if isinstance(value, dict) {
-            # Collect tables for later - quote the key NOW before building path
             quoted_key = _quote_key(key);
             table_key = f"{prefix}{quoted_key}" if prefix else quoted_key;
             tables.append((table_key, value));
@@ -640,17 +548,13 @@ impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
         }
     }
 
-    # Add blank line before tables if we had values
     if lines and tables {
         lines.append("");
     }
 
-    # Second pass: write tables
     for (table_key, table_data) in tables {
-        # Check if this is a nested table or has nested tables
         has_nested = any(isinstance(v, dict) for v in table_data.values());
         if has_nested {
-            # Write nested tables with dotted keys
             simple_values: list[tuple[str, any]] = [];
             nested_tables: list[tuple[str, dict]] = [];
             for (k, v) in table_data.items() {
@@ -685,10 +589,8 @@ impl serialize_toml(data: dict[str, any], prefix: str = "") -> str {
     return "\n".join(lines);
 }
 
-# Convert a Python value to its TOML literal representation.
 impl toml_value(value: any) -> str {
     if value is None {
-        # TOML has no null literal; mirror the legacy writer and use "".
         return '""';
     } elif isinstance(value, bool) {
         return "true" if value else "false";
@@ -697,21 +599,18 @@ impl toml_value(value: any) -> str {
     } elif isinstance(value, float) {
         return str(value);
     } elif isinstance(value, str) {
-        # Escape quotes and backslashes
         escaped = value.replace("\\", "\\\\").replace('"', '\\"');
         return f'"{escaped}"';
     } elif isinstance(value, list) {
         items = [toml_value(item) for item in value];
         return f"[{', '.join(items)}]";
     } elif isinstance(value, dict) {
-        # Inline table, e.g. authors/maintainers entries: { key = value, ... }
         if not value {
             return "{}";
         }
         pairs = [f"{_quote_key(k)} = {toml_value(v)}" for (k, v) in value.items()];
         return "{ " + ", ".join(pairs) + " }";
     } else {
-        # Fallback: convert to string
         return f'"{value}"';
     }
 }
@@ -774,9 +673,6 @@ impl JacConfig.remove_dependency(
     return False;
 }
 
-# ===============================================================================
-# Helper Functions Implementation
-# ===============================================================================
 impl _parse_persons(raw: list[any]) -> list[PersonConfig] {
     result: list[PersonConfig] = [];
     for item in raw {
@@ -848,7 +744,6 @@ impl _parse_toml_data(
             if isinstance(value, str) {
                 config.dev_dependencies[key] = value;
             } elif isinstance(value, dict) {
-                # Handle plugin dev dependencies like [dev-dependencies.npm]
                 if key not in config.plugin_dependencies {
                     config.plugin_dependencies[key] = {};
                 }
@@ -886,10 +781,7 @@ impl _parse_toml_data(
     }
     if "serve" in data {
         serve_data = data["serve"];
-        # Normalize + validate the OCC policy: only "retry"/"fail" are meaningful
-        # (anything else is treated as "retry" downstream). Catch a typo'd value
-        # here so a mis-set `on_conflict = "Fail"` does not silently disable
-        # fail-fast; warn once at load and fall back to the safe default.
+
         on_conflict = str(serve_data.get("on_conflict", "retry")).strip().lower();
         if on_conflict not in ("retry", "fail") {
             import from jaclang.cli.console { console }
@@ -975,8 +867,7 @@ impl _parse_toml_data(
     }
     if "dev" in data {
         dev_data = data["dev"];
-        # test_jobs accepts a bare int in TOML (e.g. test_jobs = 4 or 0); coerce
-        # to str so it can flow straight into pytest's `-n <jobs>` / serial check.
+
         config.dev = DevConfig(
             jaclang_source=str(dev_data.get("jaclang_source", "")),
             test_jobs=str(dev_data.get("test_jobs", "auto"))
@@ -1039,20 +930,49 @@ impl _interpolate_recursive(`obj: any) -> any {
     return `obj;
 }
 
-# ===============================================================================
-# Global Configuration Singleton Implementation
-# ===============================================================================
 impl get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    global _config;
+    global _config,_config_explicit,_config_by_root;
     if _config is None or force_discover {
         _config = JacConfig.discover(start_path=start_path);
+
+        _config_explicit = False;
+
+        if force_discover {
+            _config_by_root = {};
+        }
     }
     return _config;
 }
 
 impl set_config(config: JacConfig) -> None {
-    global _config;
+    global _config,_config_explicit,_config_by_root;
     _config = config;
+
+    _config_explicit = config is not None;
+
+    _config_by_root = {};
+}
+
+impl get_explicit_config -> JacConfig | None {
+    return _config if _config_explicit else None;
+}
+
+impl get_config_for_path(start_path: Path) -> JacConfig | None {
+    global _config_by_root;
+    explicit = get_explicit_config();
+    if explicit is not None {
+        return explicit;
+    }
+    result = find_project_root(start_path);
+    if result is None {
+        return None;
+    }
+    (project_root, _) = result;
+    key = str(project_root);
+    if key not in _config_by_root {
+        _config_by_root[key] = JacConfig.discover(start_path=project_root);
+    }
+    return _config_by_root[key];
 }

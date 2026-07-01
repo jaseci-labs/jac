@@ -16,12 +16,11 @@
 # runner (pytest + xdist), so `jac test` needs no system Python. For a fully
 # self-contained release binary instead, run a plain `cd jac && zig build`.
 #
-# Plugins (byllm/scale/mcp) are still ordinary Python packages. We install them
-# with `--global` so their source + deps land in the binary's own jac-owned site
-# (never the host) and are importable from any directory -- including each
-# plugin's own dir when you `cd jac-mcp && jac test .`. Without --global an
-# editable install would target the current project's .jac/venv only, invisible
-# from the plugin dirs. jaclang itself is provided by the binary, never installed.
+# scale, byLLM, and the MCP server are all built into the jac binary now
+# (jaclang.scale / jaclang.byllm / jaclang.cli.mcp), so there are no separate
+# plugin packages to install -- jaclang itself is provided by the binary. byLLM's
+# heavy deps arrive per-project via the `llm` capability (`jac install`); install
+# them globally below only if you want to run byLLM end-to-end from a fresh env.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -32,6 +31,12 @@ cd "$(git rev-parse --show-toplevel)"
 # shim from it and places it into jac/jaclang/compiler/passes/native/llvm/ where
 # the linked compiler loads it.
 ( cd jac && zig build fetch-llvm )
+
+# Place the pinned, contained bun runtime into the source tree
+# (jac/jaclang/runtimelib/client/_bun) so the -Ddev linked binary below can
+# resolve it for client/cl work via get_bun(). Release binaries bundle bun into
+# the payload instead; this is the editable/source-checkout equivalent.
+( cd jac && zig build fetch-bun )
 
 # Build the dev binary (needs zig 0.16.0 + network; no zstd/curl/git -- payload.zig
 # does it all in std). zig build fetches the pinned typeshed stdlib stubs itself
@@ -44,10 +49,13 @@ echo "Built: $JAC_BIN"
 echo "Add it to PATH, e.g.:  export PATH=\"$PWD/jac/zig-out/bin:\$PATH\""
 export PATH="$PWD/jac/zig-out/bin:$PATH"
 
-# Plugins (editable, global): importable from anywhere, including each plugin dir.
-jac install -e jac-byllm --global
-jac install -e jac-scale --global
-jac install -e jac-mcp --global
+# byLLM's `llm` capability deps (global so they're importable from anywhere).
+# Pins mirror jac/jaclang/project/capabilities.jac. Optional: drop this line if
+# you don't need to run `by llm()` flows in this env.
+jac install \
+  "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+  "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+  --global
 
 # pre-commit is a standalone contributor tool (not part of the jac toolchain).
 # Its jac hooks shell out to the `jac` binary on PATH, so all it needs is the

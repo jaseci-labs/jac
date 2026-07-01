@@ -1,5 +1,3 @@
-"""JacConfig and related types for jac.toml project configuration."""
-
 import os;
 import re;
 import sys;
@@ -7,24 +5,16 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
-"""Author or maintainer contact info."""
 obj PersonConfig {
     has name: str = "",
         email: str = "";
 }
 
-"""File inclusion rules from [project.include]."""
 obj PackageIncludeConfig {
     has packages: list[str] = [],
         data: dict[str, list[str]] = {};
 }
 
-"""Project metadata from [project] section.
-
-Runtime fields (entry_point, jac_version) are used by jac run/serve.
-Publishing fields (authors, maintainers, keywords, requires_python, include)
-are used by jac bundle. All publishing fields are optional.
-"""
 obj ProjectConfig {
     has name: str = "",
         version: str = "0.1.0",
@@ -38,48 +28,31 @@ obj ProjectConfig {
         requires_python: str = "",
         jac_version: str = "",
         entry_point: str = "main.jac",
-        # Project kind drives `jac run` dispatch (execute vs serve vs build).
-        # Empty = inferred from the entry-point codespace. See jaclang.project.kinds.
         kind: str = "",
         urls: dict[str, str] = {},
         include: PackageIncludeConfig = PackageIncludeConfig();
 }
 
-"""Run command defaults from [run] section."""
 obj RunConfig {
     has session: str = "",
         main: bool = True,
         cache: bool = True,
-        # Deferred native acceleration. When true, `import jaclang` schedules a
-        # best-effort background compile of the bootstrap `.na.jac` modules
-        # (lexer/tokens) through the native pipeline and hot-swaps the matching
-        # Python functions with native-backed wrappers (see
-        # jaclang.jac0core.native_accel). It is fail-safe: any compile/lowering
-        # failure silently keeps the Python implementation, and the parser is
-        # written to use whichever lexer is installed. Off by default because the
-        # bootstrap lexer is not yet fully lowerable, so today it only adds
-        # background compile cost; flip to true (here or via the `--autonative`
-        # CLI flag) to opt in. This same key also enables `jac run`'s
-        # auto-promotion of the entry module to native JIT.
         autonative: bool = False,
         topology_index: bool = True,
-        diagnostics: str = "error";  # "error" | "all" | "none"
+        diagnostics: str = "error";
 }
 
-"""Native compilation settings from [build.native] section."""
 obj NativeBuildConfig {
-    has opt_level: int = 2,  # LLVM optimization level (0-3)
-        dump_ir: str = "";  # Path to dump optimized IR (empty = disabled)
+    has opt_level: int = 2,
+        dump_ir: str = "";
 }
 
-"""Build command defaults and artifact directories from [build] section."""
 obj BuildConfig {
     has typecheck: bool = False,
-        dir: str = ".jac",  # Base directory for all build artifacts
+        dir: str = ".jac",
         native: NativeBuildConfig = NativeBuildConfig();
 }
 
-"""Test command defaults from [test] section."""
 obj TestConfig {
     has directory: str = "",
         filter: str = "",
@@ -88,67 +61,36 @@ obj TestConfig {
         max_failures: int = 0;
 }
 
-"""Serve command defaults from [serve] section."""
 obj ServeConfig {
     has port: int = 8000,
         session: str = "",
         main: bool = True,
         cl_route_prefix: str = "cl",
         base_route_app: str = "",
-        # Optimistic-concurrency policy for check-then-create races (#6266).
-        # "retry": the request boundary aborts + replays so the loser converges
-        # on the winner; "fail": no replay, return a typed 409 immediately.
         on_conflict: str = "retry",
-        # Max walker/function attempts under "retry" (1 = effectively fail-fast).
         conflict_max_attempts: int = 5,
-        # Linear backoff between replay attempts (0 = none).
         conflict_backoff_ms: int = 0;
 }
 
-"""Format command defaults from [format] section."""
 obj FormatConfig {
     has outfile: str = "";
 }
 
-"""Lint rule configuration from [check.lint] section.
-
-Rules use a select/ignore/exclude model:
-- select: list of rule names to enable
-  - "default": code-transforming rules only
-  - "all": every rule including warning-only rules
-  - individual rule names or W3xxx codes can be listed explicitly
-- ignore: list of rule names to skip even if selected
-- exclude: list of glob patterns for files to skip linting entirely
-
-Rule names are kebab-case (e.g. "no-print", "combine-has") or
-diagnostic codes (e.g. "W3001", "E3012"). See LINT_ALIASES in
-diagnostics.jac for the full mapping.
-"""
 obj LintConfig {
     has select: list[str] = ["default"],
         ignore: list[str] = [],
         exclude: list[str] = [];
 }
 
-"""Check command defaults from [check] section."""
 obj CheckConfig {
     has print_errs: bool = True,
         lint: LintConfig = LintConfig(),
         suppress: list[str] = [],
         suppress_categories: list[str] = [],
-        # When True, access-modifier violations (private/protected member access,
-        # cross-module/cross-project visibility) are reported as hard errors
-        # instead of the default warnings. See AccessCheckPass.
         enforce_access: bool = False,
-        # When True (default), the native backend prints a terminal warning each
-        # time it demotes an un-lowerable method to its Python implementation
-        # (workstream A4, #6930), so a silent native fallback is visible during a
-        # build. Set False for quiet builds. JAC_NATIVE_DEBUG forces it on
-        # regardless. See NaIRGenPass._demote_method_if_unlowerable.
         warn_native_seams: bool = True;
 }
 
-"""Dot/graph visualization defaults from [dot] section."""
 obj DotConfig {
     has depth: int = -1,
         traverse: bool = False,
@@ -158,99 +100,56 @@ obj DotConfig {
         format: str = "dot";
 }
 
-"""Cache settings from [cache] section.
-
-`dir` is the cache subdirectory name resolved under the build dir by
-`JacConfig.get_cache_dir` (e.g. `.jac/cache`); an absolute path relocates it.
-"""
 obj CacheConfig {
     has enabled: bool = True,
         dir: str = "cache";
 }
 
-"""Plugin settings from [plugins] section."""
 obj PluginsConfig {
     has discovery: str = "auto",
         enabled: list[str] = [],
-        disabled: list[str] = [];  # Plugins temporarily bypassed by user
+        disabled: list[str] = [];
 }
 
-"""Storage settings from [storage] section."""
 obj StorageConfig {
-    has storage_type: str = "local",  # local, s3, gcs, azure
+    has storage_type: str = "local",
         base_path: str = "./storage",
         create_dirs: bool = True,
-        # S3 specific configuration
         bucket: str = "",
         prefix: str = "",
         region: str = "us-east-1",
         endpoint_url: (str | None) = None,
+        project_id: str = "",
         public_read: bool = False;
 }
 
-"""Environment configuration from [environment] section."""
 obj EnvironmentConfig {
     has default_profile: str = "";
 }
 
-"""Client error reporting settings from [client_errors] section.
-
-Tunes the behavior of the /cl/__error__ endpoint and the source-mapped
-stack traces it logs.
-"""
 obj ClientErrorsConfig {
-    # When False (default), source-mapped stack frames whose resolved file is
-    # a build artifact (a `.js` under `.jac/`) are dropped from the log; the
-    # frames are auto-generated and not user-actionable. Set True to keep
-    # them, e.g. when diagnosing a broken or stale per-file source map.
     has verbose: bool = False;
 }
 
-"""Client-side compilation settings from [client] section."""
 obj ClientConfig {
     has framework: str = "react";
 }
 
-"""Editable dev-loop settings from [dev] section.
-
-`jaclang_source` (the in-repo source dir the editable dev loop reroutes
-`import jaclang` to) is read independently by the binary's standalone
-`_jac_finder` at startup -- before jaclang loads -- so it is mirrored here only
-so a parsed config round-trips faithfully. `test_jobs` is the default xdist
-worker count for `jac test` when the JAC_TEST_JOBS env var is unset
-("auto" = one worker per core, "0" = serial); the env var overrides it.
-"""
 obj DevConfig {
     has jaclang_source: str = "",
         test_jobs: str = "auto";
 }
 
-# Interpolate environment variables in a string value.
-# Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
 
-# Find project root by looking for jac.toml.
 def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 
-# Check if currently in a Jac project.
 def is_in_project -> bool;
 
-# Serialize a config dict to TOML text. Hand-rolled; does not preserve comments.
-# This is the single canonical TOML writer -- do not reintroduce ad-hoc copies.
 def serialize_toml(data: dict[str, any], prefix: str = "") -> str;
 
-# Render a single Python value as a TOML value literal.
 def toml_value(value: any) -> str;
 
-"""Central configuration class for Jac projects.
-
-This class manages all configuration from jac.toml files, including:
-- Project metadata
-- Dependencies (Python/Jac, git, npm)
-- Command defaults (run, build, test, etc.)
-- Plugin configuration
-- Environment profiles
-"""
 obj JacConfig {
     has project: ProjectConfig = ProjectConfig(),
         run: RunConfig = RunConfig(),
@@ -267,7 +166,6 @@ obj JacConfig {
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),
         dev: DevConfig = DevConfig(),
-        # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},
         git_dependencies: dict[str, dict[str, str]] = {},
@@ -282,8 +180,6 @@ obj JacConfig {
         _raw_data: dict[str, any] = {},
         entrypoints: dict[str, dict[str, str]] = {},
         optional_dependencies: dict[str, dict[str, str]] = {},
-        # True when this config was discovered by climbing into a parent
-        # directory (no jac.toml in the cwd). Used to warn before writes.
         discovered_from_ancestor: bool = False;
 
     static def discover(
@@ -296,11 +192,11 @@ obj JacConfig {
     ) -> JacConfig;
 
     def apply_env_interpolation -> None;
-    def apply_cli_overrides(args: dict[(str, Any)]) -> None;
     def apply_profile(profile_name: str, _visited: set | None = None) -> None;
     def apply_profile_overlay(profile_name: str | None = None) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, any];
     def get_plugin_config(plugin_name: str) -> dict[str, any];
+    def get_section(name: str) -> dict[str, any] | None;
     def get_build_dir -> Path;
     def get_cache_dir -> Path;
     def get_venv_dir -> Path;
@@ -308,7 +204,6 @@ obj JacConfig {
     def get_client_dir -> Path;
     def is_valid -> bool;
     def save -> None;
-    # Serialize `doc` to self.toml_path; the single jac.toml write chokepoint.
     def persist_doc(doc: dict[str, any]) -> None;
     def add_dependency(
         name: str, version: str, dev: bool = False, dep_type: str = "python"
@@ -321,32 +216,28 @@ obj JacConfig {
     def merge_from_toml_file(toml_path: Path) -> None;
 }
 
-# Discover config files for a project in load order.
-# Returns list of paths: [jac.toml, jac.<profile>.toml?, jac.local.toml?]
 def discover_config_files(
     project_root: Path, profile: str | None = None
 ) -> list[Path];
 
-# Parse TOML data into JacConfig object
 def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> JacConfig;
 
-# Parse a raw list of author/maintainer entries (dicts or strings) into PersonConfig objects.
 def _parse_persons(raw: list[any]) -> list[PersonConfig];
 
-# Parse a raw include dict into a PackageIncludeConfig.
 def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
-# Recursively apply environment variable interpolation
 def _interpolate_recursive(`obj: any) -> any;
 
-glob _config: JacConfig | None = None;
+glob _config: JacConfig | None = None,
+     _config_explicit: bool = False,
+     _config_by_root: dict = {};
 
-# Get the global configuration, discovering it if necessary.
-# If start_path is provided, config will be discovered from that path
-# instead of the current working directory.
 def get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None;
 
-# Set the global configuration
 def set_config(config: JacConfig) -> None;
+
+def get_explicit_config -> JacConfig | None;
+
+def get_config_for_path(start_path: Path) -> JacConfig | None;

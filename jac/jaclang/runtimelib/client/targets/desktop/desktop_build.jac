@@ -1,19 +1,82 @@
-"""Shared build helpers for native and CEF desktop targets."""
 import os;
 import json;
 import shutil;
 import hashlib;
 import subprocess;
 import sys;
-import sysconfig;
 import tarfile;
 import platform;
 import from urllib.request { urlopen, urlretrieve }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.runtimelib.client.targets.desktop._dev_launch { desktop_launch_env }
 
-"""Locate a shipped native/ asset dir (webview, cef, …) inside jac_desktop."""
+def _jaclang_src_roots -> list[Path] {
+    roots: list[Path] = [];
+    jac_src = os.environ.get("JAC_DESKTOP_JAC_SRC");
+    if jac_src {
+        roots.append(Path(jac_src));
+    }
+    try {
+        import jaclang;
+        jl = jaclang?.__file__;
+        if jl {
+            roots.append(Path(str(jl)).resolve().parent.parent);
+        }
+    } except Exception {
+        pass;
+    }
+    return roots;
+}
+
+def _find_desktop_native_dir -> Path {
+    for src in _jaclang_src_roots() {
+        native = (
+            src / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native"
+        );
+        if (
+            (native / "oauth_broker.jac").is_file()
+            and (native / "inprocess_dispatch.jac").is_file()
+            and (native / "webview" / "webview.na.jac").is_file()
+        ) {
+            return native;
+        }
+    }
+    here = Path(os.path.abspath(__file__)).parent;
+    candidates = [here.parent / "native", here / "native"];
+    p = here;
+    for _ in range(6) {
+        candidates.append(p / "native");
+        p = p.parent;
+    }
+    for cand in candidates {
+        if (
+            (cand / "oauth_broker.jac").is_file()
+            and (cand / "inprocess_dispatch.jac").is_file()
+            and (cand / "webview" / "webview.na.jac").is_file()
+        ) {
+            return cand;
+        }
+    }
+    raise RuntimeError(
+        "jac-desktop: desktop/native assets incomplete -- need "
+        "oauth_broker.jac, inprocess_dispatch.jac, and webview/webview.na.jac. "
+        "Rebuild the jac binary (zig build) or set JAC_DESKTOP_JAC_SRC."
+    );
+}
+
 def _find_native_asset_dir(subdir: str, marker: str) -> Path {
+    if subdir == "webview" and marker == "webview.na.jac" {
+        return _find_desktop_native_dir() / "webview";
+    }
+    for src in _jaclang_src_roots() {
+        dev = (
+            src / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native" / subdir
+        );
+        if (dev / marker).exists() {
+            return dev;
+        }
+    }
     here = Path(os.path.abspath(__file__)).parent;
     candidates = [here.parent / "native" / subdir, here / "native" / subdir];
     p = here;
@@ -32,18 +95,17 @@ def _find_native_asset_dir(subdir: str, marker: str) -> Path {
 }
 
 def _find_webview_dir -> Path {
-    return _find_native_asset_dir("webview", "webview.na.jac");
+    return _find_desktop_native_dir() / "webview";
 }
 
 def _find_cef_dir -> Path {
     return _find_native_asset_dir("cef", "cef.na.jac");
 }
 
-"""Set an ELF RUNPATH on a binary via patchelf; warn (don't fail) if absent.
+def _jac_subprocess_env -> dict[str, str] {
+    return desktop_launch_env();
+}
 
-Single place that shells out to patchelf for every desktop artifact -- the host
-binary (`$ORIGIN:LIBDIR` for libpython) and the CEF native pieces (`$ORIGIN` for
-the sibling libcef.so). Returns whether the rpath was set."""
 def _patchelf_rpath(binary: Path, rpath: str) -> bool {
     patchelf = shutil.which("patchelf");
     if not patchelf {
@@ -62,16 +124,55 @@ def _patchelf_rpath(binary: Path, rpath: str) -> bool {
     return True;
 }
 
-"""Add $ORIGIN + libpython LIBDIR to the host ELF RUNPATH."""
-def _patch_host_rpath(binary: Path) -> None {
-    libdir = sysconfig.get_config_var("LIBDIR") or "";
-    if not libdir {
-        return;
-    }
-    _patchelf_rpath(binary, f"$ORIGIN:{libdir}");
+def _patch_host_rpath(binary: Path) {
+    _patchelf_rpath(binary, "$ORIGIN");
 }
 
-"""Resolve the jac CLI for nacompile."""
+
+def _pyembed_shim_name -> str {
+    if sys.platform == "darwin" {
+        return "libjacpyembed.dylib";
+    }
+    if sys.platform.startswith("win") {
+        return "jacpyembed.dll";
+    }
+    return "libjacpyembed.so";
+}
+
+
+def _stage_pyembed_shim(out_dir: Path) {
+    name = _pyembed_shim_name();
+    src = _find_desktop_native_dir() / name;
+    if not src.exists() {
+        raise RuntimeError(
+            f"jac-desktop: {name} not found in the fused runtime ({src}). "
+            "Rebuild the jac binary (zig build) so the payload carries the "
+            "libjacpyembed shim."
+        );
+    }
+    shutil.copy2(src, out_dir / name);
+}
+
+
+def _bundle_runtime(host_binary: Path) {
+    jac_bin = Path(os.path.realpath(os.sys.executable));
+    data = jac_bin.read_bytes();
+    magic = b"JACBIN01";
+    trailer_len = 8 + 8 + 64;
+    if len(data) < trailer_len or data[-trailer_len:-trailer_len + 8] != magic {
+        raise RuntimeError(
+            "jac-desktop: the running jac binary carries no fused-runtime trailer "
+            f"({jac_bin}); a desktop app needs a fused `jac` built via `zig build`. "
+            "(A bare pip/source jaclang install has no embeddable runtime.)"
+        );
+    }
+    payload_len = int.from_bytes(data[-trailer_len + 8:-trailer_len + 16], "little");
+    suffix = data[-(trailer_len + payload_len):];
+    with open(str(host_binary), "ab") as f {
+        f.write(suffix);
+    }
+}
+
 def _jac_bin -> str {
     cand = Path(os.path.dirname(os.sys.executable)) / "jac";
     if cand.exists() {
@@ -84,50 +185,30 @@ def _jac_bin -> str {
     raise RuntimeError("jac CLI not found on PATH.");
 }
 
-"""Libpython soname for clib import in generated host.na.jac."""
-def _libpython_soname -> str {
-    return str(
-        sysconfig.get_config_var("INSTSONAME")
-        or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0"
-    );
-}
-
-"""Embedded-Python loopback server source (oauth_broker + stable origin port).
-
-`plugin_bootstrap` (from `_plugin_bootstrap_py`) is spliced in after the broker
-module loads but before `make_handler`, so it can define `_host`/`_dispatch_fn`.
-When `dispatch_arg` is set (e.g. ", dispatch=_dispatch_fn") the broker server
-routes `POST /__jac/invoke` straight into the plugin host -- the CEF target's
-JS->plugin bridge, since CEF's render process cannot bind into the host
-in-process the way the single-process webview target does."""
 def _loopback_serve_py(
     app_name: str,
     plugin_bootstrap: str = "",
     dispatch_arg: str = "",
-    threaded: bool = False
+    threaded: bool = False,
+    sv_arg: str = ""
 ) -> str {
     pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-    # The CEF target needs a threaded server: /__jac/events holds the SSE
-    # connection open for its lifetime, which would otherwise block every other
-    # request (including /__jac/invoke) on a single-threaded TCPServer.
+
     srv_setup = (
         "_S = socketserver.ThreadingTCPServer\n_S.daemon_threads = True\n"
             if threaded
             else "_S = socketserver.TCPServer\n"
     );
     return (
-        "import os, sys, socketserver, threading, importlib.util\n" + srv_setup + "if os.path.isfile('/proc/self/exe'):\n"
+        "import os, sys, socketserver, threading\n" + srv_setup + "if os.path.isfile('/proc/self/exe'):\n"
         "    _exe = os.path.realpath('/proc/self/exe')\n"
         "else:\n"
         "    _exe = os.path.abspath(sys.argv[0])\n"
         "_root = os.path.dirname(_exe)\n"
         "_dir = os.path.join(_root, 'dist')\n"
-        "_spec = importlib.util.spec_from_file_location("
-        "'oauth_broker', os.path.join(_root, 'oauth_broker.py'))\n"
-        "_broker = importlib.util.module_from_spec(_spec)\n"
-        "_spec.loader.exec_module(_broker)\n" + plugin_bootstrap + "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
+        "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker as _broker\n" + plugin_bootstrap + "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
         "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n" + "_H = _broker.make_handler(_dir, _store" + dispatch_arg + ")\n" + "_S.allow_reuse_address = True\n"
+        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n" + "_H = _broker.make_handler(_dir, _store" + dispatch_arg + sv_arg + ")\n" + "_S.allow_reuse_address = True\n"
         f"_pref = {pref_port}\n"
         "_srv = None; _port = None\n"
         "for _i in range(64):\n"
@@ -144,87 +225,7 @@ def _loopback_serve_py(
     );
 }
 
-"""Transpile oauth_broker.jac and stage oauth_broker.py beside the binary."""
-def _stage_oauth_broker(out_dir: Path) {
-    webview_dir = _find_webview_dir();
-    broker_src = webview_dir.parent / "oauth_broker.jac";
-    console.print(
-        "  Transpiling oauth_broker.jac -> oauth_broker.py...", style="muted"
-    );
-    broker_res = subprocess.run(
-        [_jac_bin(), "jac2py", str(broker_src)], capture_output=True, text=True
-    );
-    if broker_res.returncode != 0 {
-        raise RuntimeError("oauth_broker transpile failed:\n" + broker_res.stderr);
-    }
-    (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
-}
 
-"""Build the embedded-CPython plugin bootstrap source.
-
-Imports the plugin modules via importlib (in `_plugin_mods` load order), bakes
-`plugin_configs`, then calls `registry.bootstrap_plugins(...)` to produce `_host`
-and `_dispatch_fn`. Runs in the embedded interpreter with only the transpiled
-plugin .py files on disk (no jaclang). Shared by both desktop targets.
-
-`registry` imports every `built_in.*` plugin at module scope, so it MUST load
-last: in the embedded CPython `built_in` is a bare ModuleType (not a real
-package), so `from built_in.x import Y` only resolves once `built_in.x` is
-already in sys.modules. This list owns the *module load order*; it cannot be
-derived from registry.BUILTIN_PLUGINS (which is not importable yet), so every
-`built_in.*` entry here must match a BUILTIN_PLUGINS entry by hand."""
-def _plugin_bootstrap_py(plugin_configs: dict = {}) -> str {
-    _plugin_mods = [
-        "manifest",
-        "desktop_plugin",
-        "webview_lib",
-        "plugin_host",
-        "built_in.path_plugin",
-        "built_in.window_plugin",
-        "built_in.fs_plugin",
-        "built_in.notification_plugin",
-        "built_in.clipboard_plugin",
-        "built_in.dialog_plugin",
-        "built_in.shell_plugin",
-        "registry"
-    ];
-    plugin_py = (
-        "import sys, importlib.util, types\n"
-        "if _root not in sys.path:\n"
-        "    sys.path.insert(0, _root)\n"
-        "if 'built_in' not in sys.modules:\n"
-        "    sys.modules['built_in'] = types.ModuleType('built_in')\n"
-    );
-    for _mod in _plugin_mods {
-        _py_rel = _mod.replace(".", "/") + ".py";
-        plugin_py += (
-            "_spec = importlib.util.spec_from_file_location(\n" + json.dumps(_mod) + ", os.path.join(_root, " + json.dumps(
-                _py_rel
-            ) + "))\n" "_m = importlib.util.module_from_spec(_spec)\n" "sys.modules[" + json.dumps(
-                _mod
-            ) + "] = _m\n" "_spec.loader.exec_module(_m)\n"
-        );
-        if _mod.startswith("built_in.") {
-            _child = _mod.split(".", 1)[1];
-            plugin_py += (
-                "setattr(sys.modules['built_in'], " + json.dumps(_child) + ", _m)\n"
-            );
-        }
-    }
-    _pc = plugin_configs;  # baked at build time
-    plugin_py += f"_pc = {repr(_pc)}\n";
-    plugin_py += (
-        "_host = sys.modules['registry'].bootstrap_plugins(_pc, sys.modules)\n"
-        "_dispatch_fn = _host.dispatch\n"
-    );
-    return plugin_py;
-}
-
-"""Read the canonical BOOTSTRAP_JS glob value out of cef_dispatch.na.jac.
-
-That glob is the single source of truth for the desktop JS bootstrap. It is a
-one-line native string literal with no embedded double-quotes, so the value is
-everything between the first `"` after the assignment and the closing `";`."""
 def _cef_bootstrap_js -> str {
     src = (_find_cef_dir() / "cef_dispatch.na.jac").read_text();
     anchor = "glob BOOTSTRAP_JS: str = \"";
@@ -240,18 +241,6 @@ def _cef_bootstrap_js -> str {
     return src[start:end];
 }
 
-"""JS SDK injected at document start: window.__jac.invoke()/on()/__emit__().
-
-`invoke` delegates to the native `window.__jac_invoke(p,c,a)` primitive, which
-each target provides differently (webview bind vs. CEF fetch shim) but with the
-same contract: returns a promise of the dispatch JSON (string or object).
-
-Single-sourced from `cef_dispatch.na.jac`'s BOOTSTRAP_JS glob, which is
-[CEF fetch shim] + [this SDK] + [EventSource pump]; we slice out the shared SDK
-between its IIFE boundary and the EventSource pump. The native target relies on
-the same extraction (see native_desktop_target's plugin-bridge `_read_between`),
-so the webview bind and the CEF fetch transport can never drift. A boundary that
-moves fails loudly here at build time rather than silently shipping two SDKs."""
 def _jac_sdk_js -> str {
     boot = _cef_bootstrap_js();
     start = boot.find("(function(){var _l={}");
@@ -265,102 +254,41 @@ def _jac_sdk_js -> str {
     return boot[start:end];
 }
 
-"""Transpile every plugin/**/*.jac -> .py into out_dir for the embedded CPython.
-
-Embedded CPython has no jaclang, so prefer jac0 (stdlib-only output) and fall
-back to `jac jac2py`. Shared by both desktop targets."""
-def _stage_plugins(out_dir: Path) {
-    webview_dir = _find_webview_dir();
-    plugin_src_dir = webview_dir.parent.parent / "plugin";
-    if not plugin_src_dir.exists() {
-        return;
-    }
-    console.print("  Transpiling plugin IPC modules...", style="muted");
-    for jac_file in plugin_src_dir.rglob("*.jac") {
-        # rglob("*.jac") also matches directories named ".jac" (build cache).
-        if not jac_file.is_file() {
-            continue;
+def _top_level_import_boundary(lines: list[str]) -> int {
+    depth = 0;
+    idx = 0;
+    for line in lines {
+        stripped = line.strip();
+        if (
+            depth == 0
+            and stripped != ""
+            and (not stripped.startswith("#"))
+            and (not stripped.startswith("import"))
+        ) {
+            return idx;
         }
-        rel = jac_file.relative_to(plugin_src_dir);
-        py_name = str(rel.with_suffix(".py"));
-        console.print(f"    {rel} -> {py_name}", style="muted");
-        import jaclang.jac0 as jac0;
-        res_stdout = "";
-        try {
-            res_stdout = jac0.compile_jac(jac_file.read_text());
-            if not res_stdout or not res_stdout.strip() {
-                raise RuntimeError("jac0 produced empty output");
-            }
-        } except Exception as jac0_err {
-            res = subprocess.run(
-                [_jac_bin(), "jac2py", str(jac_file)], capture_output=True, text=True
-            );
-            if res.returncode != 0 or not res.stdout.strip() {
-                raise RuntimeError(
-                    f"Plugin transpile failed: {rel} "
-                    f"(jac0 and jac2py failed)\n"
-                    f"jac0 error: {jac0_err}\n"
-                    f"jac2py stderr: {res.stderr or '(empty)'}"
-                );
-            }
-            console.print(
-                f"    ⚠ jac0 failed for {rel}, using jac2py fallback", style="yellow"
-            );
-            res_stdout = res.stdout;
-        }
-        target = out_dir / py_name;
-        target.parent.mkdir(parents=True, exist_ok=True);
-        target.write_text(res_stdout);
+        depth += line.count("{") - line.count("}");
+        idx += 1;
     }
+    return len(lines);
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CEF native build (in-Jac replacement for the retired build_cef_*.sh /
-# fetch_libcef.sh scripts; see native/cef/build.jac for the runnable entry).
-# ─────────────────────────────────────────────────────────────────────────────
-"""Splice the shared cef_platform fragment into a host source at `# PLATFORM`.
-
-Faithful in-Jac replacement for the awk splice the build_cef_*.sh scripts ran: a
-line that is exactly `# PLATFORM` is replaced by the full cef_platform.na.jac
-text, and (when drop_entry is set, for the subprocess build) a line that is
-exactly `# ENTRY` is dropped. Output is byte-identical to the old awk pass."""
-def _splice_platform(host_src: str, platform_src: str, drop_entry: bool) -> str {
-    # awk re-adds one newline per spliced line via print; the fragment text
-    # already ends in one, so drop a single trailing newline to avoid a blank.
+def _inject_platform(host_src: str, platform_src: str) -> str {
     plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
-    out: list[str] = [];
-    for line in host_src.split("\n") {
-        if line == "# PLATFORM" {
-            out.append(plat);
-            continue;
-        }
-        if drop_entry and line == "# ENTRY" {
-            continue;
-        }
-        out.append(line);
-    }
-    return "\n".join(out);
+    lines = host_src.split("\n");
+    at = _top_level_import_boundary(lines);
+    return "\n".join(lines[:at] + [plat] + lines[at:]);
 }
 
-"""Splice + `jac nacompile` a CEF source, then set its $ORIGIN rpath.
-
-Shared by the dispatch shared-library build and the subprocess binary build:
-writes the spliced source under cef_dir/.build/ (gitignored), compiles it, and
-fails loudly if the expected artifact is missing."""
 def _nacompile_cef(
-    cef_dir: Path,
-    source_name: str,
-    build_name: str,
-    output: Path,
-    drop_entry: bool,
-    shared: bool,
+    cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
 ) -> Path {
     build_dir = cef_dir / ".build";
     build_dir.mkdir(parents=True, exist_ok=True);
     build_src = build_dir / build_name;
     host_src = (cef_dir / source_name).read_text();
     platform_src = (cef_dir / "cef_platform.na.jac").read_text();
-    build_src.write_text(_splice_platform(host_src, platform_src, drop_entry));
+    build_src.write_text(_inject_platform(host_src, platform_src));
     cmd = [_jac_bin(), "nacompile"];
     if shared {
         cmd.append("--shared");
@@ -376,31 +304,26 @@ def _nacompile_cef(
     return output;
 }
 
-"""Build libcef_dispatch.so (vtables/callbacks/lifecycle) from cef_dispatch.na.jac."""
 def build_cef_dispatch(cef_dir: Path) -> Path {
     return _nacompile_cef(
         cef_dir,
         "cef_dispatch.na.jac",
         "cef_dispatch_build.na.jac",
         cef_dir / "libcef_dispatch.so",
-        False,
         True,
     );
 }
 
-"""Build the cef-subprocess helper binary from cef_subprocess.na.jac."""
 def build_cef_subprocess(cef_dir: Path) -> Path {
     return _nacompile_cef(
         cef_dir,
         "cef_subprocess.na.jac",
         "cef_subprocess_build.na.jac",
         cef_dir / "cef-subprocess",
-        True,
         False,
     );
 }
 
-"""Pinned CEF version from the `# version:` directive in cef_sums.lock."""
 def _cef_locked_version(sums_lock: Path) -> str {
     for line in sums_lock.read_text().split("\n") {
         s = line.strip();
@@ -411,7 +334,6 @@ def _cef_locked_version(sums_lock: Path) -> str {
     return "";
 }
 
-"""SHA-1 the cef_sums.lock pins for an archive filename (empty if unpinned)."""
 def _cef_expected_sha1(sums_lock: Path, archive: str) -> str {
     for line in sums_lock.read_text().split("\n") {
         s = line.strip();
@@ -426,7 +348,6 @@ def _cef_expected_sha1(sums_lock: Path, archive: str) -> str {
     return "";
 }
 
-"""CEF CDN platform tag for the current machine (linux64 / linuxarm64)."""
 def _cef_plat_tag -> str {
     arch = platform.machine();
     if arch == "x86_64" {
@@ -438,10 +359,6 @@ def _cef_plat_tag -> str {
     raise RuntimeError(f"unsupported architecture for CEF: {arch}");
 }
 
-"""Best-effort SHA-1 the live Spotify index advertises for an archive.
-
-A secondary cross-check against the in-tree pin; returns "" on any failure so a
-missing index never blocks a build whose bytes already match the pinned digest."""
 def _cef_index_sha1(plat_tag: str, archive: str) -> str {
     try {
         with urlopen(
@@ -463,7 +380,6 @@ def _cef_index_sha1(plat_tag: str, archive: str) -> str {
     return "";
 }
 
-"""Streaming SHA-1 of a (large) file."""
 def _sha1_file(path: Path) -> str {
     h = hashlib.sha1();
     with open(str(path), "rb") as f {
@@ -478,7 +394,6 @@ def _sha1_file(path: Path) -> str {
     return h.hexdigest();
 }
 
-"""Extract the CEF SDK headers (include/** subtree) into headers_dir."""
 def _extract_cef_headers(tarball: Path, headers_dir: Path) {
     if headers_dir.exists() {
         shutil.rmtree(headers_dir);
@@ -508,10 +423,6 @@ def _extract_cef_headers(tarball: Path, headers_dir: Path) {
     }
 }
 
-"""Extract the CEF runtime files flat into dist_dir.
-
-Mirrors fetch_libcef.sh: pulls the libs, ICU data, V8 snapshots, every .pak, and
-the locales/ tree, flattening the Release/ and Resources/ tarball prefixes."""
 def _extract_cef_runtime(tarball: Path, dist_dir: Path) {
     need = {
         "libcef.so",
@@ -562,14 +473,6 @@ def _extract_cef_runtime(tarball: Path, dist_dir: Path) {
     }
 }
 
-"""Download + stage the pinned CEF prebuilt distribution into cef_dir.
-
-In-Jac replacement for fetch_libcef.sh. cef_sums.lock is the trust anchor: the
-exact version is read from its `# version:` directive and the archive bytes are
-verified against the pinned SHA-1 (fail closed). The live Spotify index is a
-secondary cross-check that surfaces a stale/tampered pin. Idempotent: reuses a
-cached tarball and skips extraction when the staged version already matches. Set
-headers_only to stage just the SDK headers."""
 def fetch_cef_dist(cef_dir: Path, headers_only: bool = False) -> Path {
     sums_lock = cef_dir / "cef_sums.lock";
     if not sums_lock.exists() {

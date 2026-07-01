@@ -47,7 +47,6 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       scale: ${{ steps.filter.outputs.scale }}
       byllm: ${{ steps.filter.outputs.byllm }}
-      mcp: ${{ steps.filter.outputs.mcp }}
       docs: ${{ steps.filter.outputs.docs }}
       desktop: ${{ steps.filter.outputs.desktop }}
     steps:
@@ -62,15 +61,13 @@ jobs:
               - 'jac/**'
               - '.github/workflows/test-jaseci.yml'
             scale:
-              - 'jac-scale/**'
+              - 'jac/jaclang/scale/**'
             byllm:
-              - 'jac-byllm/**'
-            mcp:
-              - 'jac-mcp/**'
+              - 'jac/jaclang/byllm/**'
             docs:
               - 'docs/**'
             desktop:
-              - 'jac-desktop/**'
+              - 'jac/jaclang/runtimelib/client/targets/desktop/**'
 
   test-solid-jsdom:
     # Runtime exec of the Solid framework backend: compile a Solid component +
@@ -127,7 +124,22 @@ jobs:
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests
-      run: jac test jac/tests/runtimelib/client
+      # In-process sv dispatch needs scale's serve deps; run it in the step below.
+      run: jac test jac/tests/runtimelib/client --ignore jac/tests/runtimelib/client/test_inprocess_dispatch.jac
+
+    - name: Re-run in-process sv dispatch against the built-in scale backend
+      # Scale ships with jaclang (jaclang.scale); only its serve-closure deps
+      # need installing for the in-process backend to import. Pins mirror
+      # jac/jaclang/project/capabilities.jac.
+      run: |
+        jac install \
+          "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
+          "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
+          "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
+          "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
+          "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          --global
+        jac test -vv jac/tests/runtimelib/client/test_inprocess_dispatch.jac
 
   test-packages-and-docs:
     needs: changes
@@ -144,15 +156,20 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-byllm (global so its tests, run from jac-byllm/, can import it)
-      run: jac install -e jac-byllm --global
+    - name: Install byllm deps + test deps (global; byllm ships with jaclang)
+      # byLLM is built into jaclang (jaclang.byllm); install its `llm` capability
+      # closure directly. Pins mirror jac/jaclang/project/capabilities.jac.
+      run: |
+        jac install \
+          "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+          "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+          --global
 
     - name: Set environment for testing
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      working-directory: jac-byllm
-      run: jac test .
+      run: jac test jac/jaclang/byllm/tests
 
     - name: Install docs dependencies
       run: jac install -e docs --global
@@ -189,7 +206,7 @@ jobs:
     # pathway - NO WebKitGTK, no libpython-dev, no display/Xvfb. The webview /
     # embedded-Python *runtime* behavior is covered by a separate, gated tier.
     needs: changes
-    # Not a required check. Skip on PRs that touch neither jac core nor jac-desktop; always run on push/dispatch.
+    # Not a required check. Skip on PRs that touch neither jac core nor the desktop target; always run on push/dispatch.
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.desktop == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -262,41 +279,22 @@ jobs:
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
       run: |
         # The Jac native linker emits DT_RUNPATH (readelf prints "RUNPATH"),
-        # not the legacy DT_RPATH — so match either.
+        # not the legacy DT_RPATH -- so match either.
         readelf -d libcef_dispatch.so | grep -qE '(RUN)?PATH.*\$ORIGIN'
 
     - name: ldd audit (no missing deps against libc + libcef stub)
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
       run: |
-        # With libcef.so absent, ldd will report it missing — that is expected.
+        # With libcef.so absent, ldd will report it missing -- that is expected.
         # The audit checks that no *other* unexpected dep is missing.
         # grep exits non-zero when it matches nothing (the expected/good case);
         # the trailing `|| true` keeps `set -e` from aborting the step there.
         MISSING=$(ldd libcef_dispatch.so 2>&1 | grep 'not found' | grep -v libcef || true)
         [ -z "$MISSING" ] || (echo "Unexpected missing deps: $MISSING" && exit 1)
 
-  test-mcp:
-    needs: changes
-    # Not a required check. Skip on PRs that touch neither jac core nor jac-mcp; always run on push/dispatch.
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.mcp == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
-
-    - name: Install jac-mcp (global so its tests, run from jac-mcp/, can import it)
-      run: jac install -e jac-mcp --global
-
-    - name: Run jac-mcp tests
-      # cwd = plugin dir; the plugin + deps live in the binary's global site
-      # (installed above), on sys.path alongside the host jaclang.
-      working-directory: jac-mcp
-      run: jac test .
+  # The MCP server is now built into jaclang core (jaclang.cli.mcp); its tests
+  # live at jac/tests/cli/test_mcp.jac and run under the core `jac test tests/`
+  # gate in test-binary.yml, so there is no longer a dedicated jac-mcp job.
 
   test-scale:
     needs: changes
@@ -319,17 +317,32 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-scale with all test extras (global, importable from jac-scale/)
-      run: jac install -e jac-scale --extras test --global
+    - name: Install scale deps + test deps (global; scale ships with jaclang)
+      # Scale is built into jaclang (jaclang.scale); install its full runtime +
+      # deploy closure plus test-only deps directly. Pins mirror
+      # jac/jaclang/project/capabilities.jac.
+      run: |
+        jac install \
+          "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
+          "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
+          "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
+          "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
+          "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
+          "prometheus-client>=0.21.0,<1.0.0" \
+          "opentelemetry-sdk>=1.27.0,<2.0.0" \
+          "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0" \
+          "apscheduler>=3.11.2,<4.0.0" "kubernetes>=34.1.0,<35.0.0" \
+          "docker>=7.1.0,<8.0.0" "boto3>=1.40.0,<2.0.0" \
+          requests "testcontainers[mongodb,redis]" "moto[s3]>=5.0.0" \
+          --global
 
     - name: Run ${{ matrix.group }} tests
-      # cwd = plugin dir so jac auto-loads jac-scale/.jac/venv (its deps).
-      working-directory: jac-scale
       run: |
         set +e
         failed=""
         # One process per file: the suite relies on per-file isolation.
-        for f in jac_scale/tests/${{ matrix.group }}/test_*.jac; do
+        for f in jac/jaclang/scale/tests/${{ matrix.group }}/test_*.jac; do
           echo "::group::$f"
           JAC_TEST_JOBS=0 jac test "$f" || failed="$failed $f"
           echo "::endgroup::"
@@ -338,6 +351,24 @@ jobs:
           echo "::error::Failed ${{ matrix.group }} test files:$failed"
           exit 1
         fi
+
+    - name: Install scale firebase deps
+      if: matrix.group == 'data'
+      # Firebase storage closure (pins mirror capabilities.jac storage.firebase).
+      run: jac install "google-cloud-firestore>=2.21.0,<3.0.0" "google-cloud-storage>=2.19.0,<3.0.0" "firebase-admin>=6.0.0,<8.0.0" --global
+
+    - name: Run Firebase storage / Firestore / Auth SSO tests
+      if: matrix.group == 'data'
+      # Each file in its own process to avoid importlib double-load pollution.
+      # test_firestore_e2e is omitted: needs FIRESTORE_EMULATOR_HOST.
+      # Serial (JAC_TEST_JOBS=0): these tests share one relative shelf_db_path,
+      # so xdist workers contend on the same SQLite file ("database is locked").
+      env:
+        JAC_TEST_JOBS: "0"
+      run: |
+        jac test jac/jaclang/scale/tests/test_gcs_storage.jac -x
+        jac test jac/jaclang/scale/tests/test_firestore_db.jac -x
+        jac test jac/jaclang/scale/tests/test_firebase_auth_sso.jac -x
 
   test-scale-k8s:
     needs: changes
@@ -362,47 +393,58 @@ jobs:
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
-      - name: Install Jaseci scale package (global, importable from jac-scale/)
-        run: jac install -e jac-scale --extras deploy --global
-
-      - name: Write kind config
+      - name: Install scale deploy deps (global; scale ships with jaclang)
+        # Deploy closure + data + serve base. Pins mirror capabilities.jac
+        # (deploy.k8s, data.*, serve).
         run: |
-          cat <<EOF > /tmp/kind-config.yaml
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          nodes:
-          - role: control-plane
-            extraPortMappings:
-            - containerPort: 30080
-              hostPort: 30080
-              protocol: TCP
-          EOF
+          jac install \
+            "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
+            "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
+            "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
+            "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
+            "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
+            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
+            --global
 
-      - name: Create kind cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: jaseci-test
-          wait: 120s
-          config: /tmp/kind-config.yaml
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      # MicroK8s instead of kind: its hostpath-storage provisioner binds
+      # ReadWriteMany PVCs (kind's default local-path only does ReadWriteOnce),
+      # which the bundle-injection path requires. Single node, so the loader and
+      # app pods share the RWX bundle PVC on one host.
+      - name: Set up MicroK8s (RWX-capable hostpath storage)
+        run: |
+          set -euxo pipefail
+          sudo snap install microk8s --classic --channel=1.31/stable
+          sudo microk8s status --wait-ready
+          sudo microk8s enable hostpath-storage dns
+          sudo microk8s kubectl -n kube-system rollout status deploy/coredns --timeout=180s
+          sudo microk8s kubectl -n kube-system rollout status deploy/hostpath-provisioner --timeout=180s || true
+          # Admin kubeconfig for the python kubernetes client + kubectl binary
+          mkdir -p "$HOME/.kube"
+          sudo microk8s config > "$HOME/.kube/config"
+          sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          kubectl get storageclass
+          kubectl get nodes -o wide
 
       - name: Run K8 tests (deploy-core)
         if: matrix.group == 'deploy-core'
-        working-directory: jac-scale
         env:
           JAC_TEST_JOBS: "0"
         run: |
-          jac test jac_scale/tests/test_image_build.jac -x
-          jac test jac_scale/tests/test_pod_env.jac -x
-          jac test jac_scale/tests/test_k8s_utils.jac -x
-          jac test jac_scale/tests/test_deploy_k8s.jac -x -f "not (early and exit)"
+          jac test jac/jaclang/scale/tests/test_pod_env.jac -x
+          jac test jac/jaclang/scale/tests/test_k8s_utils.jac -x
+          jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x -f "not (early and exit)"
 
       - name: Run K8 tests (failure-path)
         if: matrix.group == 'failure-path'
-        working-directory: jac-scale
         env:
           JAC_TEST_JOBS: "0"
         run: |
-          jac test jac_scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
+          jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
 
   test-pypi-build:
     needs: changes
@@ -439,35 +481,15 @@ jobs:
       uses: ./.github/actions/setup-jac
 
     - name: Precompile all packages
+      # Scale and byLLM are both built into jaclang now (jaclang.scale,
+      # jaclang.byllm), so they precompile as part of ./jac; no separate trees
+      # and no separate plugin wheels to build.
       run: |
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
-        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-scale
-        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-byllm
-
-    - name: Pre-build admin dashboard UI
-      run: |
-        jac install -e jac-scale --extras all --global
-        cd jac-scale && jac run scripts/build_admin_ui.jac
-
-    - name: Uninstall editable packages
-      run: |
-        jac -m pip uninstall -y jac-scale
 
     - name: Clean egg-info to simulate fresh build (like publish-release)
       run: |
         rm -rf jac/jaclang.egg-info
-        rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
-        rm -rf jac-byllm/*.egg-info
-
-    - name: Build plugin wheels (jaclang itself ships as the binary, not a wheel)
-      run: |
-        (cd jac-scale && jac bundle)
-        (cd jac-byllm && jac bundle)
-        # Install the freshly built wheels INTO the binary's runtime (not system
-        # Python -- jaclang is host-provided by the binary, so the plugins must
-        # be importable by it). pytest ships in the binary, so no pip pytest.
-        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && jac install "${SCALE_WHL}" --global
-        jac install jac-byllm/dist/byllm-*.whl --global
 
     - name: Verify cold start with precompiled bytecode
       run: |
@@ -477,8 +499,31 @@ jobs:
     - name: Verify bundled guides print from the built wheel
       run: bash scripts/check-guide.sh jac
 
+    - name: Install scale serve deps (for the integration admin-server test)
+      # Scale ships with jaclang (jaclang.scale); the integration suite's admin
+      # prebuild test starts `jac start`, which needs the serve closure. Pins
+      # mirror jac/jaclang/project/capabilities.jac.
+      run: |
+        jac install \
+          "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
+          "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
+          "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
+          "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
+          "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+          "requests>=2.32.0,<3.0.0" \
+          --global
+
     - name: Run integration tests
       run: jac run scripts/integration_tests.jac
+
+    - name: Install byllm deps (for the built-package byllm test)
+      # byLLM ships with jaclang (jaclang.byllm); its `llm` capability closure is
+      # installed directly. Pins mirror jac/jaclang/project/capabilities.jac.
+      run: |
+        jac install \
+          "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+          "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+          --global
 
     - name: Run tests on built packages
       run: |
@@ -488,7 +533,7 @@ jobs:
         # gate and the jacpack smokes below, so it is not duplicated here.
         # Serial (JAC_TEST_JOBS=0): these byllm tests share a SQLite mock-LLM
         # cache that can't take xdist's parallel writers ("database is locked").
-        JAC_TEST_JOBS=0 jac test jac-byllm/tests/test_byllm.jac
+        JAC_TEST_JOBS=0 jac test jac/jaclang/byllm/tests/test_byllm.jac
 
     # ========== jac-gpt test ==========
     - name: Create jac-gpt from jacpack
@@ -646,7 +691,7 @@ jobs:
     # install and serve HTTP. Codegen unit tests live in test_eject.jac.
     - name: Create fullstack project and eject it
       run: |
-        jac create --use fullstack fs-smoke
+        jac create --use web-app fs-smoke
         jac eject fs-smoke
 
     - name: Install ejected backend and start it

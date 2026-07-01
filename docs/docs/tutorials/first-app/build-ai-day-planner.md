@@ -4,7 +4,7 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), all packages are already included -- skip to the version check below. Otherwise install the toolchain:
+**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework and the built-in `scale` deployment subsystem) plus the **byllm** plugin for AI. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
@@ -18,13 +18,11 @@ Verify your installation meets the minimum requirements:
 jac --version
 ```
 
-The `jac --version` output lists all installed plugins and their versions. Check that the following minimums are met:
+The `jac --version` output lists the binary version and any installed plugins. Check that the following minimums are met (the full-stack client framework and the `scale` subsystem ship inside `jaclang`, so there are no separate versions for them):
 
 | Package | Minimum Version |
 |---------|----------------|
 | jaclang | 0.11.0 |
-| jac-client | 0.3.0 |
-| jac-scale | 0.2.0 |
 | byllm | 0.5.0 |
 
 **Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
@@ -497,12 +495,12 @@ With the fundamentals of Jac syntax and graph data in place, you're now ready to
 **Create the Project**
 
 ```bash
-jac create day-planner --use client
+jac create day-planner --use web-static
 cd day-planner
 ```
 
 !!! note "Bun required"
-    The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
+    The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
 
 You can delete the scaffolded `main.jac` and the `components/` directory -- you'll replace them with the code below. Also create an empty `styles.css` file next to `main.jac` (we'll fill it in Part 4).
 
@@ -1126,12 +1124,12 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
     You can also initialize the model from Jac source, which is useful when you want the choice of model to be visible in the code itself or vary by file:
 
     ```jac
-    import from byllm.lib { Model }
+    import from jaclang.byllm.lib { Model }
 
     glob llm = Model(model_name="local:gemma-4-e4b");
     ```
 
-    `import from byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
+    `import from jaclang.byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
 
 **Enums as Output Constraints**
 
@@ -2158,7 +2156,7 @@ When `isLoggedIn` flips from `False` to `True`, this ability fires automatically
 Create a new project for the authenticated version:
 
 ```bash
-jac create day-planner-auth --use client
+jac create day-planner-auth --use web-static
 cd day-planner-auth
 ```
 
@@ -3181,7 +3179,7 @@ When you use `walker:priv`, the walker runs on the authenticated user's **own pr
 To try the walker-based version, create a new project:
 
 ```bash
-jac create day-planner-v2 --use client
+jac create day-planner-v2 --use web-static
 cd day-planner-v2
 ```
 
@@ -3649,7 +3647,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 Now that you have a solid foundation, here are some directions to deepen your understanding:
 
-- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac-scale` to take your app to production
+- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac start --scale` (the built-in scale subsystem) to take your app to production
 - **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns like recursive traversals and multi-hop queries
 - **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for building tool-using agents
 - **Examples** -- Explore [community examples](https://github.com/Jaseci-Labs/jaseci/tree/main/examples) for inspiration on what to build next
