@@ -50,16 +50,47 @@ obj MicroserviceManifestBuilder {
     def _prepare_injector(app_config: AppConfig) -> PvcInjector {
         import from jaclang.scale.injector.binary_injector { select_injector }
         import from jaclang.scale.injector.pvc_injector { PvcInjector }
+        proj = self.project_dir or app_config.code_folder;
+        self._build_client_bundle(proj);
         selection = select_injector(
             self.dev,
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
-            self.project_dir or app_config.code_folder
+            proj
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
         return injector;
+    }
+
+    def _build_client_bundle(project_dir: str) {
+        import os;
+        import subprocess;
+        import from jaclang.cli.console { console }
+        client_entry = self._client_entry();
+        if not client_entry {
+            return;
+        }
+        entry_abs = os.path.join(project_dir, client_entry);
+        if not os.path.isfile(entry_abs) {
+            return;
+        }
+        dist = os.path.join(project_dir, ".jac", "client", "dist");
+        console.print(f"Building the client bundle on the host ({client_entry}).");
+        try {
+            subprocess.run(
+                ["jac", "build", client_entry], cwd=project_dir, check=True, timeout=900
+            );
+            if os.path.isfile(os.path.join(dist, "index.html")) {
+                console.print("Client bundle built; shipping it to the gateway pod.");
+            }
+        } except Exception as exc {
+            console.print(
+                f"Host client build did not complete ({exc}); the gateway pod "
+                f"will build it on boot instead."
+            );
+        }
     }
 
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
@@ -728,8 +759,10 @@ obj MicroserviceManifestBuilder {
         client_entry = self._client_entry();
         if client_entry {
             gw_prefix = (
+                f'if [ ! -f .jac/client/dist/index.html ]; then '
                 f'jac build "{client_entry}" '
                 f'|| echo "[jac-scale] client build failed; / will 404"; '
+                f'fi; '
             );
         }
         return {
@@ -800,8 +833,6 @@ obj MicroserviceManifestBuilder {
         spec["volumes"] = list(shared_vols);
         spec["initContainers"] = list(self.deploy_context.init_containers);
 
-        # Every channel ships a self-contained binary over the PVC, so the pod
-        # spec always mutates via the BinaryInjector (which unpacks the toolchain).
         import from jaclang.scale.injector.binary_injector { BinaryInjector }
         injector: BinaryInjector = BinaryInjector(
             storage_class=self.k8s_config.bundle_storage_class

@@ -42,7 +42,16 @@ glob _EXCLUDE_SUFFIXES: tuple = (
 
 
 def is_excluded(rel: Path) -> bool {
-    for part in rel.parts {
+    parts = rel.parts;
+    if (
+        len(parts) >= 3
+        and parts[0] == ".jac"
+        and parts[1] == "client"
+        and parts[2] == "dist"
+    ) {
+        return False;
+    }
+    for part in parts {
         if part in _EXCLUDE_DIRS {
             return True;
         }
@@ -62,8 +71,6 @@ def is_excluded(rel: Path) -> bool {
 
 
 def _is_secret_path(name: str) -> bool {
-    # The secrets sub-table in either supported config form
-    # ([plugins.scale.secrets] or [scale.secrets]) and any of its nested tables.
     return name == "plugins.scale.secrets"
     or name.startswith("plugins.scale.secrets.")
     or name == "scale.secrets"
@@ -72,27 +79,11 @@ def _is_secret_path(name: str) -> bool {
 
 
 def _is_dev_section(name: str) -> bool {
-    # The top-level [dev] stanza (and its sub-tables). Stripped from the shipped
-    # jac.toml because the pod's runtime channel is decided at deploy time and,
-    # for the dev channel, a pod-correct [dev] jaclang_source is injected by the
-    # bootstrap - a stale host [dev] here would point at a path that does not
-    # exist in the pod (or duplicate the injected table).
     return name == "dev" or name.startswith("dev.");
 }
 
 
 def sanitized_jac_toml(base: Path) -> (str | None) {
-    # Strip the secrets sub-table (in both [plugins.scale.secrets] and
-    # [scale.secrets] forms) and the host-side [dev] stanza from the bundled
-    # jac.toml; the rest of the scale config (database, storage, monitoring,
-    # tracing, kubernetes, ...) must survive so the pod's `jac install` can
-    # resolve the capability intents.
-    #
-    # Secrets are recognised in every form they can be written: a secret section
-    # header, a top-level dotted secret key, and a dotted secret key nested under
-    # a parent section (`secrets.x = ...` under `[plugins.scale]`). Comment/blank
-    # lines are buffered and only committed once the following line is kept, so a
-    # comment annotating a stripped secret does not leak into the bundle.
     src = base / "jac.toml";
     if not src.is_file() {
         return None;
