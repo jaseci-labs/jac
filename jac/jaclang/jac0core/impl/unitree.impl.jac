@@ -716,7 +716,16 @@ impl LoopExitNode.postinit -> None {
 }
 
 impl LoopExitNode.resolve_tok_range -> tuple[(Token, Token)] {
-    return (self.loop.loc.first_tok, self.loop.loc.last_tok);
+    loop = self?.loop;
+    if loop is not None {
+        try {
+            return (loop.loc.first_tok, loop.loc.last_tok);
+        } except Exception {
+            ;
+        }
+    }
+    tok = self.gen_token(Tok.EOF);
+    return (tok, tok);
 }
 
 impl CfgExpr.postinit -> None {
