@@ -447,13 +447,29 @@ impl _resolve_current_rs_hashes(namespace: str, selector: str) -> set {
     return pending;
 }
 
-impl check_pods_restarted(
-    namespace: str, app_name: str, _rs_hashes: (set | None) = None
-) -> bool {
+impl _refresh_rs_hashes(
+    namespace: str, selector: str, current: (set | None)
+) -> (set | None) {
     try {
-        config.load_kube_config();
-    } except ConfigException {
-        config.load_incluster_config();
+        return _resolve_current_rs_hashes(namespace, selector);
+    } except Exception as exc {
+        console.print(f"[warn] RS hash refresh failed, keeping prior hash set: {exc}");
+        return current;
+    }
+}
+
+impl check_pods_restarted(
+    namespace: str,
+    app_name: str,
+    _rs_hashes: (set | None) = None,
+    _skip_config_load: bool = False
+) -> bool {
+    if not _skip_config_load {
+        try {
+            config.load_kube_config();
+        } except ConfigException {
+            config.load_incluster_config();
+        }
     }
     v1 = client.CoreV1Api();
     app_labels = [app_name + d[0] for d in COMPANION_DEFS];
@@ -476,7 +492,7 @@ impl check_pods_restarted(
     for pod in pods.items {
         if current_hashes {
             pod_hash = (pod.metadata.labels or {}).get("pod-template-hash");
-            if pod_hash not in current_hashes {
+            if pod_hash is not None and pod_hash not in current_hashes {
                 continue;
             }
         }
@@ -595,9 +611,12 @@ impl check_deployment_status(
             f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
         );
     }
-    # rs_hashes is stable for a single rollout window; a concurrent second deploy
-    # would introduce a new RS hash not captured here, but that scenario is outside
-    # the scope of a single check_deployment_status call.
+    # rs_hashes is resolved once up front so we don't hit AppsV1 on every retry.
+    # If it was captured before the new RS's revision annotation was stamped,
+    # the old RS would win the highest-revision comparison and this hoisted
+    # read would stay wrong for the whole loop. To avoid that sticking, a
+    # detected crash is re-verified against a freshly resolved hash set
+    # before the deploy is actually failed (see _refresh_rs_hashes below).
     for attempt in range(1, (max_retries + 1)) {
         try {
             response = requests.get(url, timeout=10);
@@ -605,12 +624,18 @@ impl check_deployment_status(
                 return (True, "Successful");
             }
 
-            if check_pods_restarted(namespace, app_name, rs_hashes) {
-                return (False, "Containers restarted");
+            if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                rs_hashes = _refresh_rs_hashes(namespace, _selector, rs_hashes);
+                if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                    return (False, "Containers restarted");
+                }
             }
         } except RequestException as e {
-            if check_pods_restarted(namespace, app_name, rs_hashes) {
-                return (False, "Containers restarted");
+            if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                rs_hashes = _refresh_rs_hashes(namespace, _selector, rs_hashes);
+                if check_pods_restarted(namespace, app_name, rs_hashes, True) {
+                    return (False, "Containers restarted");
+                }
             }
 
             if (attempt == max_retries) {
@@ -622,11 +647,6 @@ impl check_deployment_status(
         }
     }
 
-    try {
-        config.load_kube_config();
-    } except ConfigException {
-        config.load_incluster_config();
-    }
     diag_v1 = client.CoreV1Api();
     diag_labels = [app_name + d[0] for d in COMPANION_DEFS];
     diag_selector = "app in ({})".format(", ".join(diag_labels));
