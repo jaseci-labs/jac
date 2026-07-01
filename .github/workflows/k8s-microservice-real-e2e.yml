@@ -28,7 +28,7 @@ jobs:
     # Escape hatch: add the 'skip-k8s' label to a PR to skip this job too
     # (matches the test-scale-k8s gate in test-jaseci.yml).
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     # No-Docker, no-build path: both the pod runtime AND the host deploy driver
     # are prebuilt `jac` binaries DOWNLOADED from jaseci-labs releases. The host
     # binary runs THIS checkout's jaclang via the editable dev loop (the deploy
