@@ -20,17 +20,19 @@ sem Ingredient.cost = "Estimated cost in USD";
 def plan_shopping(recipe: str) -> list[Ingredient] by llm();
 ```
 
-Enable byLLM and pick a model in `jac.toml`, then run any program that calls these:
+Enable byLLM with the bundled local model -- **no API key, no account, no config**:
 
 ```bash
-jac install byllm
-export ANTHROPIC_API_KEY="your-key-here"   # or any LiteLLM-compatible provider
+jac install 'byllm[local]'
 ```
 
-```toml
-[plugins.byllm.model]
-default_model = "claude-sonnet-4-20250514"   # gemini/gemini-2.5-flash for a free option
+That's the whole setup. With no key and no model configured, `by llm()` runs the bundled `local:gemma-4-e4b` model in-process (weights download on first call, ~5 GB; `local:gemma-4-e2b` is a ~2.5 GB alternative). When you want a hosted model, set a provider key and pick one in `jac.toml`:
+
+```bash
+export ANTHROPIC_API_KEY="your-key-here"   # or OPENAI_API_KEY, GEMINI_API_KEY, ...
 ```
+
+--8<-- "snippets/model-config.md"
 
 For **agentic** workflows, give the LLM tools and let it decide which to call:
 
@@ -42,7 +44,7 @@ def answer_question(question: str) -> str
 ## Your learning path
 
 - **Concepts you need** → [Core Concepts](../quick-guide/what-makes-jac-different.md) -- how `by`/`sem` turn prompting into a compiler problem
-- **Build it for real** → [Your First AI Function](../tutorials/ai/quickstart.md) · [Structured Outputs](../tutorials/ai/structured-outputs.md) · [Agentic AI](../tutorials/ai/agentic.md) · [Multimodal](../tutorials/ai/multimodal.md)
+- **Build it for real** → [Your First AI Function](../tutorials/ai/quickstart.md) · [Structured Outputs](../tutorials/ai/structured-outputs.md) · [Agentic AI](../tutorials/ai/agentic.md) · [Multimodal](../tutorials/ai/multimodal.md) · [AI-Assisted Development (MCP)](../tutorials/ai/mcp-quickstart.md)
 - **Look it up** → [byLLM reference](../reference/plugins/byllm.md) · [Agentic patterns](../reference/plugins/byllm.md#agentic-ai-patterns)
 - **Local models** → [Built-in local models](../reference/plugins/byllm.md#built-in-local-models)
 
@@ -51,3 +53,4 @@ def answer_question(question: str) -> str
 - An AI CLI tool → [CLI tools & native binaries](cli-and-native.md)
 - An AI backend → [Backend APIs & services](backend-apis.md)
 - An AI full-stack app → [Full-stack web apps](fullstack-web.md) (see the AI Day Planner)
+- Let AI build *for* you → [Agent Skills & MCP](../quick-guide/agent-skills-and-mcp.md) -- Jac's built-in coding agent (`jac ai`), MCP server, and agent-facing tooling

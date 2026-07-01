@@ -7,6 +7,27 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Project kinds renamed to deliverable-oriented names
+
+The `jac create --kind` / `[project] kind` taxonomy was renamed to describe **what you ship**. The old names are **not** accepted as aliases -- `jac create --kind pypi-package` and a `jac.toml` carrying `kind = "fullstack"` both fail with `Unknown project kind`.
+
+| Old | New |
+|---|---|
+| `native-app` | `cli-native` |
+| `shared-library` | `native-lib` |
+| `api-service` | `service` |
+| `microservices` | `service-mesh` |
+| `pypi-package` | `py-package` |
+| `npm-package` | `js-package` |
+| `fullstack` | `web-app` |
+| `client` | `web-static` |
+
+`cli`, `native-binary`, `desktop`, and `mobile` are unchanged.
+
+**Impact:** update the `kind` value in existing `jac.toml` files and any scripts calling `jac create --kind` with an old name. Behavior of each kind is unchanged -- see the [Build Anything grid](../quick-guide/project-kinds.md) for the current taxonomy.
+
+---
+
 ### jac-byllm folded into `jaclang` core
 
 `jac-byllm` is no longer a separate PyPI package or plugin. The `by llm()` feature is now built into `jaclang` core and importable as `jaclang.byllm` (was `byllm`). This is a **clean break** -- there is no backward-compatible `byllm` package or import shim.
