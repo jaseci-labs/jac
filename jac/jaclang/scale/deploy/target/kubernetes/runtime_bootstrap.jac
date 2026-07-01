@@ -70,7 +70,13 @@ def build_runtime_install_commands(
         # the overlaid source. The host [dev] stanza was stripped from the shipped
         # jac.toml, so this is the only [dev] table in the pod.
         overlay_rel = overlay_pod_path();
+        # Idempotent: the jac.toml lives on the shared RWX bundle PVC, so every
+        # pod's init container sees the same file. Only the first pod appends the
+        # [dev] table; the rest skip it. An unconditional `>>` would stack
+        # duplicate [dev] tables under a multi-replica or rolling-update deploy,
+        # and tomllib rejects a redefined table (the pod would then fail to boot).
         commands.append(
+            f"grep -q '^\\[dev\\]' {APP_MOUNT_PATH}/jac.toml || "
             f"printf '\\n[dev]\\njaclang_source = \"{overlay_rel}\"\\n' "
             f'>> {APP_MOUNT_PATH}/jac.toml'
         );

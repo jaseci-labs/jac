@@ -3,6 +3,7 @@ import os;
 import json;
 import shutil;
 import hashlib;
+import logging;
 import platform;
 import subprocess;
 import tarfile;
@@ -10,6 +11,8 @@ import tempfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
+
+glob logger = logging.getLogger(__name__);
 
 glob BINARY_ARCNAME: str = "bin/jac",
      OVERLAY_SUBDIR: str = "jaclang-src",
@@ -156,6 +159,13 @@ def resolve_overlay_source(
         if (local / "jaclang").is_dir() {
             return (local, None);
         }
+        # Set but unusable (typo, wrong relative path, or a dir with no jaclang/
+        # under it). Fall back to main rather than fail the deploy, but warn -
+        # otherwise the pod silently runs a different source than the user named.
+        logger.warning(
+            f"[dev] jaclang_source '{jaclang_source}' has no 'jaclang/' package "
+            f"under {local}; overlaying a fresh {_JASECI_REPO}@main clone instead."
+        );
     }
     return _clone_jac_source(_JASECI_REPO, "main");
 }

@@ -110,6 +110,9 @@ test "overlay bootstrap injects [dev] jaclang_source; pod compiles on boot" {
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
     assert "[dev]" in joined;
     assert overlay_pod_path() in joined;
+    # The [dev] append is guarded so multi-replica / rolling-update pods sharing
+    # the RWX jac.toml don't stack duplicate [dev] tables (tomllib rejects them).
+    assert "grep -q" in joined and r"[dev\]" in joined;
     # precompile was removed - no JAC_NO_PRECOMPILE wiring.
     assert "JAC_NO_PRECOMPILE" not in joined;
 }
