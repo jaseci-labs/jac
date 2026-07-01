@@ -1,6 +1,7 @@
 import io;
 import os;
 import json;
+import shutil;
 import hashlib;
 import platform;
 import subprocess;
@@ -104,37 +105,46 @@ def download_release_binary(channel: str, arch: str) -> bytes {
 }
 
 
-def _clone_jac_source(repo: str, branch: str) -> Path {
+def _clone_jac_source(repo: str, branch: str) -> tuple[Path, Path] {
+    # Returns (jac_dir, tmp_root); tmp_root is the mkdtemp dir the caller must
+    # clean up once it is done with the source (see cleanup_overlay_source).
     dest = Path(tempfile.mkdtemp(prefix="jac-overlay-"));
-    subprocess.run(
-        [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            branch,
-            "--single-branch",
-            repo,
-            str(dest)
-        ],
-        check=True
-    );
-    jacdir = dest / "jac";
-    if not (jacdir / "jaclang").is_dir() {
-        raise RuntimeError(
-            f"{repo}@{branch} has no jac/jaclang source tree to overlay."
+    try {
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                branch,
+                "--single-branch",
+                repo,
+                str(dest)
+            ],
+            check=True
         );
+        jacdir = dest / "jac";
+        if not (jacdir / "jaclang").is_dir() {
+            raise RuntimeError(
+                f"{repo}@{branch} has no jac/jaclang source tree to overlay."
+            );
+        }
+        return (jacdir, dest);
+    } except Exception {
+        shutil.rmtree(dest, ignore_errors=True);
+        raise;
     }
-    return jacdir;
 }
 
 
 def resolve_overlay_source(
     repo: str, branch: str, jaclang_source: str, project_dir: str
-) -> Path {
+) -> tuple[Path, (Path | None)] {
     # Resolve the jaclang source dir to overlay on the downloaded binary. Returns
-    # the dir CONTAINING `jaclang/` (the repo's `jac/` dir). Precedence:
+    # (source_root, cleanup_root): source_root is the dir CONTAINING `jaclang/`
+    # (the repo's `jac/` dir); cleanup_root is a temp clone to delete after use,
+    # or None when source_root is a local checkout that must be kept. Precedence:
     #   explicit repo/branch  ->  local jaclang_source dir if it exists  ->  main
     if repo {
         return _clone_jac_source(repo, branch or "main");
@@ -142,10 +152,17 @@ def resolve_overlay_source(
     if jaclang_source {
         local = (Path(project_dir) / jaclang_source).resolve();
         if (local / "jaclang").is_dir() {
-            return local;
+            return (local, None);
         }
     }
     return _clone_jac_source(_JASECI_REPO, "main");
+}
+
+
+def cleanup_overlay_source(cleanup_root: (Path | None)) {
+    if cleanup_root is not None {
+        shutil.rmtree(cleanup_root, ignore_errors=True);
+    }
 }
 
 

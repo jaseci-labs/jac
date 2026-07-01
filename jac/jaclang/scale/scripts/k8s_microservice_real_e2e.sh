@@ -2,7 +2,7 @@
 # Real-app K8s e2e for jac-scale microservice mode (NO-DOCKER path).
 #
 # Deploys the fixture via the DEV [dev] channel: a prebuilt `jac` binary is
-# downloaded and this checkout's jaclang source is overlaid on top (Jason's
+# downloaded and this checkout's jaclang source is overlaid on top (the
 # editable dev loop), shipped into the cluster over a ReadWriteMany PVC (no image
 # build, no host/in-pod build), so the e2e exercises the branch under test. jac
 # is installed at pod startup, then KubernetesMicroserviceTarget rolls out the

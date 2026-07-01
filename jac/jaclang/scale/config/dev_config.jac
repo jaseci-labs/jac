@@ -2,7 +2,7 @@
 
 The binary shipped to pods is ALWAYS a prebuilt download - never built from
 source, on the host or in-pod. The `[dev]` table only decides which binary and
-whether to overlay jaclang source on top of it (via Jason's editable dev loop,
+whether to overlay jaclang source on top of it (via the editable dev loop,
 `jaclang_source`):
 
     (no [dev])                 -> STABLE : latest published release binary, run as-is

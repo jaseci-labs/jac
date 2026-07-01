@@ -4,6 +4,7 @@ import from jaclang.scale.injector.binary {
     download_release_binary,
     node_arch,
     resolve_overlay_source,
+    cleanup_overlay_source,
     precompile_overlay,
     pack_binary_bytes,
     pack_overlay,
@@ -18,7 +19,7 @@ glob logger = logging.getLogger(__name__);
 obj BinaryInjector(PvcInjector) {
     # Ships a prebuilt, downloaded `jac` binary into pods over the bundle PVC, on
     # top of the app source PvcInjector already seeds. For the DEV channel it also
-    # ships a jaclang source tree to overlay on the binary (Jason's editable dev
+    # ships a jaclang source tree to overlay on the binary (the editable dev
     # loop), optionally precompiled to `.jir` when the binary runs on this host.
     has dev: DevDeploy = DevDeploy(),
         _precompiled: bool = False,
@@ -30,11 +31,15 @@ obj BinaryInjector(PvcInjector) {
         arch = node_arch();
         payload = download_release_binary(self.dev.channel, arch);
         if self.dev.overlays_source() {
-            src = resolve_overlay_source(
+            (src, cleanup) = resolve_overlay_source(
                 self.dev.repo, self.dev.branch, self.dev.jaclang_source, project_dir
             );
-            self._precompiled = precompile_overlay(payload, src, arch);
-            raw = pack_overlay(payload, src);
+            try {
+                self._precompiled = precompile_overlay(payload, src, arch);
+                raw = pack_overlay(payload, src);
+            } finally {
+                cleanup_overlay_source(cleanup);
+            }
         } else {
             raw = pack_binary_bytes(payload);
         }

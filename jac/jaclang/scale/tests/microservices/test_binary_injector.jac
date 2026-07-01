@@ -174,11 +174,13 @@ test "pack_overlay tars the binary plus the jaclang source tree" {
 }
 
 
-test "resolve_overlay_source prefers an existing local jaclang_source dir" {
+test "resolve_overlay_source prefers a local jaclang_source dir, no cleanup" {
     proj = Path(tempfile.mkdtemp());
     (proj / "jac" / "jaclang").mkdir(parents=True);
-    resolved = resolve_overlay_source("", "", "jac", str(proj));
+    (resolved, cleanup) = resolve_overlay_source("", "", "jac", str(proj));
     assert resolved == (proj / "jac").resolve();
+    # a local checkout must be kept (not a throwaway clone).
+    assert cleanup is None;
 }
 
 
