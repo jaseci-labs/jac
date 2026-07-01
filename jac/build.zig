@@ -471,6 +471,17 @@ fn linuxShim(
         // exactly the same `-target` the slice itself was built with.
         const triple = target.query.zigTriple(b.allocator) catch @panic("jacllvm: zigTriple failed");
         cc.addArgs(&.{ "-target", triple });
+        // The -target triple does NOT carry the CPU: zig cc treats a host-equal
+        // triple (e.g. plain x86_64-linux-gnu when no -Dtarget is passed, as in
+        // the test-binary CI) as native and emits the BUILD machine's ISA
+        // extensions (AVX-512 on newer runners) into the shim -- which then
+        // SIGILLs when the cached binary runs on an older CPU. Pin baseline,
+        // mirroring the launcher's baseline-CPU rationale at the top of build();
+        // an explicit -Dcpu still wins.
+        switch (target.query.cpu_model) {
+            .explicit => |m| cc.addArg(b.fmt("-mcpu={s}", .{m.name})),
+            else => cc.addArg("-mcpu=baseline"),
+        }
     }
     cc.addArgs(&.{ "-shared", "-fPIC" });
     cc.addArg(switch (optimize) {
