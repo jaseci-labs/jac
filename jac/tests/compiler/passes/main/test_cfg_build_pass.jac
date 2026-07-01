@@ -12,7 +12,7 @@ glob FIXTURES = os.path.join(
 test "cfg branches and loops" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_gen.jac"));
     expected_dot = (
-        "digraph G {\n" + '  0 [label="BB0\\nx = 5 ;\\ny = 3 ;\\nif x > 3", shape=box];\n' + '  1 [label="BB1\\nz = x + y ;", shape=box];\n' + '  2 [label="BB2\\nelif x == 0", shape=box];\n' + '  3 [label="BB3\\nz = y ;", shape=box];\n' + '  4 [label="BB4\\nz = x - y ;", shape=box];\n' + '  5 [label="BB5\\nfor i in range ( 0 , 10 )", shape=box];\n' + '  6 [label="BB6\\nz = z + 1 ;", shape=box];\n' + '  7 [label="BB7\\nwhile z < 10", shape=box];\n' + '  8 [label="BB8\\nz = z + 2 ;", shape=box];\n' + '  0 -> 1 [label="T"];\n' + '  0 -> 2 [label="F"];\n' + "  1 -> 5;\n" + '  2 -> 3 [label="T"];\n' + '  2 -> 4 [label="F"];\n' + "  3 -> 5;\n" + "  4 -> 5;\n" + "  5 -> 6;\n" + "  5 -> 7;\n" + "  6 -> 5;\n" + '  7 -> 8 [label="T"];\n' + "  8 -> 7;\n" + "}\n"
+        "digraph G {\n" + '  0 [label="BB0\\nx = 5 ;\\ny = 3 ;\\nif x > 3", shape=box];\n' + '  1 [label="BB1\\nz = x + y ;", shape=box];\n' + '  2 [label="BB2\\nelif x == 0", shape=box];\n' + '  3 [label="BB3\\nz = y ;", shape=box];\n' + '  4 [label="BB4\\nz = x - y ;", shape=box];\n' + '  5 [label="BB5\\nfor i in range ( 0 , 10 )", shape=box];\n' + '  6 [label="BB6\\nz = z + 1 ;", shape=box];\n' + '  7 [label="BB7\\nloop-exit", shape=box];\n' + '  8 [label="BB8\\nwhile z < 10", shape=box];\n' + '  9 [label="BB9\\nz = z + 2 ;", shape=box];\n' + '  10 [label="BB10\\nloop-exit", shape=box];\n' + '  0 -> 1 [label="T"];\n' + '  0 -> 2 [label="F"];\n' + "  1 -> 5;\n" + '  2 -> 3 [label="T"];\n' + '  2 -> 4 [label="F"];\n' + "  3 -> 5;\n" + "  4 -> 5;\n" + "  5 -> 7;\n" + "  5 -> 6;\n" + "  6 -> 5;\n" + "  6 -> 7;\n" + "  7 -> 8;\n" + '  8 -> 9 [label="T"];\n' + "  8 -> 10;\n" + "  9 -> 8;\n" + "  9 -> 10;\n" + "}\n"
     );
     assert dot == expected_dot;
 }
@@ -70,7 +70,7 @@ test "cfg loop body if tail back-edges to header" {
         file_name=os.path.join(FIXTURES, "cfg_loop_if_backedge.jac")
     );
     expected_dot = (
-        "digraph G {\n" + '  0 [label="BB0\\ndef use( items : list ) -> str\\ntag = \\"\\" ;", shape=box];\n' + '  1 [label="BB1\\nfor item in items", shape=box];\n' + '  2 [label="BB2\\nif item == \\"x\\"", shape=box];\n' + '  3 [label="BB3\\ntag = item ;", shape=box];\n' + '  4 [label="BB4\\nreturn tag ;", shape=box];\n' + "  0 -> 1;\n" + "  1 -> 2;\n" + "  1 -> 4;\n" + '  2 -> 3 [label="T"];\n' + "  2 -> 1;\n" + "  3 -> 1;\n" + "}\n"
+        "digraph G {\n" + '  0 [label="BB0\\ndef use( items : list ) -> str\\ntag = \\"\\" ;", shape=box];\n' + '  1 [label="BB1\\nfor item in items", shape=box];\n' + '  2 [label="BB2\\nif item == \\"x\\"", shape=box];\n' + '  3 [label="BB3\\ntag = item ;", shape=box];\n' + '  4 [label="BB4\\nloop-exit", shape=box];\n' + '  5 [label="BB5\\nreturn tag ;", shape=box];\n' + "  0 -> 1;\n" + "  1 -> 4;\n" + "  1 -> 2;\n" + '  2 -> 3 [label="T"];\n' + "  2 -> 1;\n" + "  2 -> 4;\n" + "  3 -> 1;\n" + "  3 -> 4;\n" + "  4 -> 5;\n" + "}\n"
     );
     assert dot == expected_dot;
 }
@@ -102,7 +102,7 @@ test "cfg nested if" {
 test "cfg nested loops" {
     dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_nested_loop.jac"));
     expected_dot = (
-        "digraph G {\n" + '  0 [label="BB0\\nfor i in range ( 3 )", shape=box];\n' + '  1 [label="BB1\\nfor j in range ( 3 )", shape=box];\n' + '  2 [label="BB2\\nprint ( i , j ) ;", shape=box];\n' + "  0 -> 1;\n" + "  1 -> 2;\n" + "  1 -> 0;\n" + "  2 -> 1;\n" + "}\n"
+        "digraph G {\n" + '  0 [label="BB0\\nfor i in range ( 3 )", shape=box];\n' + '  1 [label="BB1\\nfor j in range ( 3 )", shape=box];\n' + '  2 [label="BB2\\nprint ( i , j ) ;", shape=box];\n' + '  3 [label="BB3\\nloop-exit", shape=box];\n' + '  4 [label="BB4\\nloop-exit", shape=box];\n' + "  0 -> 4;\n" + "  0 -> 1;\n" + "  1 -> 3;\n" + "  1 -> 2;\n" + "  1 -> 0;\n" + "  1 -> 4;\n" + "  2 -> 1;\n" + "  2 -> 3;\n" + "  3 -> 0;\n" + "  3 -> 4;\n" + "}\n"
     );
     assert dot == expected_dot;
 }

@@ -210,6 +210,7 @@ obj TypeEvaluator {
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
+        _flow_cycle_cuts: int = 0,
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},

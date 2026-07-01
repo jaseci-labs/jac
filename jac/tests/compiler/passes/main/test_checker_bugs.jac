@@ -34,6 +34,7 @@ Bug index:
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
+  #6722 - var assigned in a loop body lost its writes after the loop (no post-loop join CFG node)
 """
 
 import os;
@@ -980,6 +981,21 @@ test "bug_evolving_none_narrowing" {
     assert program.errors_had == [] , (
         "Bug #EVOLVING-NONE: `x = None; if cond { x = real_value; }; return x;` "
         "must narrow to the assigned type post-branch (Pyright evolving-locals). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #6722: a variable assigned inside a `for`/`while` body must reflect those
+# writes after the loop. Jac collapsed the loop header and post-loop join into
+# one CFG node, so the post-loop read resolved through the header (which drops
+# body back-edges) and saw only the pre-loop type — a false E1002 on the guarded
+# return. A dedicated post-loop join node now unions the entry and body types.
+test "bug_loop_exit_widen" {
+    program = compile_and_check("checker_bug_loop_exit_widen.jac");
+    assert program.errors_had == [] , (
+        "Bug #6722: a variable reassigned in a `for`/`while`/iter-for body must "
+        "widen to union(entry, body-writes) after the loop so an `is not None` "
+        "guard narrows it (covers nested loops, scope-soundness, and `+=`). "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

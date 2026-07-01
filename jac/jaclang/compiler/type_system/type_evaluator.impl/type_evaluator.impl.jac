@@ -3504,14 +3504,16 @@ impl TypeEvaluator._get_type_from_flow_node(
     }
     flow_node_id = id(flow_node);
     if flow_node_id in visited {
+        self._flow_cycle_cuts += 1;
         return None;
     }
 
     if len(visited) > 64 {
-        self._flow_node_type_cache[cache_key] = None;
+        self._flow_cycle_cuts += 1;
         return None;
     }
     visited.add(flow_node_id);
+    cuts_before = self._flow_cycle_cuts;
     if not flow_node.bb_in {
         self._flow_node_type_cache[cache_key] = None;
         visited.discard(flow_node_id);
@@ -3742,7 +3744,10 @@ impl TypeEvaluator._get_type_from_flow_node(
     } else {
         result = self._union_narrowed_types(incoming_types);
     }
-    self._flow_node_type_cache[cache_key] = result;
+
+    if self._flow_cycle_cuts == cuts_before {
+        self._flow_node_type_cache[cache_key] = result;
+    }
     visited.discard(flow_node_id);
     return result;
 }
