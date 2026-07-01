@@ -286,12 +286,12 @@ class JacFile(pytest.File):
             pkg_name = _ensure_test_package(base_dir)
             qualified_name = f"{pkg_name}.{mod_name}"
 
-            try:
-                with _scoped_syspath(base_dir):
-                    importlib.import_module(qualified_name)
-            except Exception:
-                # Import failure -- nothing to collect from this file.
-                return []
+            with _scoped_syspath(base_dir):
+                # Let import failures propagate. Pytest's collector framework
+                # turns them into a CollectReport(failed=True) with a proper
+                # traceback, so the user sees "ERROR <file>" instead of a
+                # silent zero-collection that hides genuine compile errors.
+                importlib.import_module(qualified_name)
         finally:
             sys.stdout.close()
             sys.stdout = old_stdout
