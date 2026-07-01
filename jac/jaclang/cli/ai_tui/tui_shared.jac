@@ -129,14 +129,10 @@ def _first_tty_stream -> object {
 
 def _probe_tty -> dict {
     import os;
-    import sys;
 
     stream = _first_tty_stream();
     if stream is None {
         return {"available": False, "device": ""};
-    }
-    if sys.platform == "win32" {
-        return {"available": True, "device": ""};
     }
     try {
         return {"available": True, "device": os.ttyname(stream.fileno())};
@@ -294,15 +290,13 @@ def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
 
 def _resolve_jac_build_bin(pkg_root: any) -> str | None {
     import os;
-    import sys;
 
     explicit = os.environ.get("JAC_BIN", "").strip();
     if explicit and os.path.isfile(explicit) and os.access(explicit, os.X_OK) {
         return explicit;
     }
     repo_root = os.path.normpath(os.path.join(str(pkg_root), "..", "..", ".."));
-    jac_name = "jac.exe" if sys.platform == "win32" else "jac";
-    repo_jac = os.path.join(repo_root, "jac", "zig-out", "bin", jac_name);
+    repo_jac = os.path.join(repo_root, "jac", "zig-out", "bin", "jac");
     if os.path.isfile(repo_jac) and os.access(repo_jac, os.X_OK) {
         return repo_jac;
     }
@@ -464,7 +458,6 @@ def _ensure_na_artifact(
     pkg_root: any, artifact_path: str, source_file: str, label: str
 ) -> dict {
     import os;
-    import sys;
     import subprocess;
     import from jaclang.cli.console { console }
 
@@ -480,24 +473,10 @@ def _ensure_na_artifact(
     }
     na_dir = str(pkg_root / "ai_tui_na");
     build_sh = str(pkg_root / "ai_tui_na" / "build.sh");
-    build_ps1 = str(pkg_root / "ai_tui_na" / "build.ps1");
 
-    if sys.platform == "win32" {
-        build_script = build_ps1;
-        build_cmd = [
-            "powershell",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            build_ps1,
-            "-Quick"
-        ];
-        manual_hint = f"powershell -ExecutionPolicy Bypass -File {build_ps1} -Quick";
-    } else {
-        build_script = build_sh;
-        build_cmd = ["bash", build_sh, "--quick"];
-        manual_hint = f"{build_sh} --quick";
-    }
+    build_script = build_sh;
+    build_cmd = ["bash", build_sh, "--quick"];
+    manual_hint = f"{build_sh} --quick";
 
     if not os.path.isfile(source_file) or not os.path.isfile(build_script) {
         if exists {

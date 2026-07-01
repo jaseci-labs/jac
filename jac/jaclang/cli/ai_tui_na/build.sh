@@ -56,21 +56,19 @@ else
 fi
 
 # ── select the TTY backend ───────────────────────────────────────────────────
-# Override with JAC_AI_TUI_TARGET=linux|darwin|win32 (e.g. cross-compile from
-# a Linux CI runner to produce a Windows artifact without a Windows runner).
+# Override with JAC_AI_TUI_TARGET=linux|darwin (e.g. cross-compile from
+# a Linux CI runner to produce a macOS artifact without a macOS runner).
 HOST="$(uname -s 2>/dev/null || echo "unknown")"
 case "${JAC_AI_TUI_TARGET:-}" in
     linux)  TTY=linux  ;;
     darwin) TTY=darwin ;;
-    win32)  TTY=win32  ;;
     *)
         case "$HOST" in
             Linux*)       TTY=linux  ;;
             Darwin*)      TTY=darwin ;;
-            MINGW*|MSYS*) TTY=win32  ;;
             *)
                 echo "==> Unsupported host '$HOST'." \
-                     "Set JAC_AI_TUI_TARGET=linux|darwin|win32"
+                     "Set JAC_AI_TUI_TARGET=linux|darwin"
                 exit 1
                 ;;
         esac
@@ -80,23 +78,18 @@ esac
 case "$TTY" in
     linux)  LIBNAME=libtui.so;    STAGE=tty/libc_tty.linux.na.jac  ;;
     darwin) LIBNAME=libtui.dylib; STAGE=tty/libc_tty.darwin.na.jac ;;
-    win32)  LIBNAME=tui.dll;      STAGE=tty/console.win32.na.jac    ;;
 esac
 
 BINNAME="jac-na-tui"
-if [ "$TTY" = "win32" ]; then
-    BINNAME="jac-na-tui.exe"
-fi
 
-# Cross-compile flags: win32 and darwin targets must be explicit on a foreign
-# host because nacompile derives is_windows/is_macos from --target, not from
-# sys.platform.  XFLAGS is a plain string (not an array) so bash 3.x (macOS
-# default /bin/bash) does not raise "unbound variable" on empty expansion when
+# Cross-compile flag: a darwin target must be explicit on a foreign host
+# because nacompile derives is_macos from --target, not from sys.platform.
+# XFLAGS is a plain string (not an array) so bash 3.x (macOS default
+# /bin/bash) does not raise "unbound variable" on empty expansion when
 # set -u is active — a bash 3.2 quirk that only affects empty arrays.
 XFLAGS=""
 case "$TTY" in
     darwin) [[ "$HOST" != Darwin* ]] && XFLAGS="--target darwin" ;;
-    win32)  XFLAGS="--target windows" ;;
 esac
 
 echo "==> TTY backend: $TTY  shared-lib: $LIBNAME"
@@ -125,13 +118,6 @@ echo "==> Done. Shared lib: $SCRIPT_DIR/bin/$LIBNAME"
 
 if [ "$QUICK" -eq 1 ]; then
     echo "==> Quick build complete (skipped tests)."
-    exit 0
-fi
-
-# ── skip tests for cross-compiled Windows artifacts ─────────────────────────
-if [ "$TTY" = "win32" ]; then
-    echo "==> Win32 cross-compile complete." \
-         "Run tests natively on a Windows host."
     exit 0
 fi
 

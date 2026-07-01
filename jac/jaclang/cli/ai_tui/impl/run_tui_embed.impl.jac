@@ -2,7 +2,6 @@ import from jaclang.cli.agent_api { AgentRequest }
 
 impl run_tui_embed(req: AgentRequest) -> int {
     import os;
-    import sys;
     import from pathlib { Path }
     import from jaclang.cli.console { console }
     import from jaclang.cli.ai_tui.tui_shared {
@@ -10,14 +9,6 @@ impl run_tui_embed(req: AgentRequest) -> int {
         _embed_byllm_seams,
         _ensure_embed_host,
         _require_tty
-    }
-
-    if sys.platform == "win32" {
-        console.error(
-            "jac ai --tui is not supported on Windows yet "
-            "(the embed host is built for Linux/macOS)."
-        );
-        return 1;
     }
 
     cli_root = Path(__file__).resolve().parent.parent;

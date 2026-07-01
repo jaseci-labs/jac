@@ -18,13 +18,11 @@ def main -> int {
 
     if sys.platform == "darwin" {
         lib_path = os.path.join("bin", "libtui.dylib");
-    } elif sys.platform == "win32" {
-        lib_path = os.path.join("bin", "tui.dll");
     } else {
         lib_path = os.path.join("bin", "libtui.so");
     }
 
-    build_hint = "build.ps1" if sys.platform == "win32" else "build.sh";
+    build_hint = "build.sh";
     if not os.path.exists(lib_path) {
         sys.stderr.write(f"FAIL: {lib_path} not found (build it with {build_hint})\n");
         return 1;

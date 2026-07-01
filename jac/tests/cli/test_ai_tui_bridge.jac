@@ -221,53 +221,6 @@ test "_resolve_jac_build_bin prefers JAC_BIN then repo zig-out binary" {
 }
 
 
-test "_probe_tty on win32 returns available=True with empty device and skips ttyname" {
-    import os;
-    import sys;
-    import unittest.mock;
-
-    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
-    probe_tty = getattr(shared_mod, "_probe_tty");
-
-    mock_stream = unittest.mock.MagicMock();
-    mock_stream.fileno.return_value = 3;
-
-    with unittest.mock.patch.object(sys, "platform", "win32") {
-        with unittest.mock.patch.object(
-            shared_mod, "_first_tty_stream", return_value=mock_stream
-        ) {
-            with unittest.mock.patch(
-                "os.ttyname",
-                side_effect=AssertionError("ttyname must not run on win32")
-            ) {
-                result = probe_tty();
-                assert result["available"] == True , result;
-                assert result["device"] == "" , result;
-            }
-        }
-    }
-}
-
-
-test "_probe_tty on win32 returns available=False when no stream is a tty" {
-    import sys;
-    import unittest.mock;
-
-    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
-    probe_tty = getattr(shared_mod, "_probe_tty");
-
-    with unittest.mock.patch.object(sys, "platform", "win32") {
-        with unittest.mock.patch.object(
-            shared_mod, "_first_tty_stream", return_value=None
-        ) {
-            result = probe_tty();
-            assert result["available"] == False , result;
-            assert result["device"] == "" , result;
-        }
-    }
-}
-
-
 test "_probe_tty on posix resolves ttyname from first tty stream" {
     import os;
     import sys;

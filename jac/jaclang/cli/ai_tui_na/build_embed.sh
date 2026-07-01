@@ -86,7 +86,6 @@ HOST="$(uname -s 2>/dev/null || echo "unknown")"
 case "${JAC_AI_TUI_TARGET:-}" in
     linux)  TTY=linux  ;;
     darwin) TTY=darwin ;;
-    win32)  TTY=win32  ;;
     *)
         case "$HOST" in
             Linux*)       TTY=linux  ;;
