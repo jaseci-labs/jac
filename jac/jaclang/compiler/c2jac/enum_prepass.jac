@@ -1,6 +1,6 @@
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier, Mechanism, NodeTag, TagTable }
-import from jaclang.compiler.c2jac.c_common { eval_enumerators }
+import from jaclang.compiler.c2jac.c_common { eval_enumerators, EnumPairs }
 
 glob _INT_USE_BINOPS: set[str] = {
          "|",
@@ -70,12 +70,12 @@ def _collect_int_use_names(nd: object, names: set[str]) {
 
 
 def _enum_explicit_values(enumerator_list: object) -> dict[str, int] | None {
-    (pairs, all_simple) = eval_enumerators(enumerator_list);
-    if not all_simple {
+    ep: EnumPairs = eval_enumerators(enumerator_list);
+    if not ep.all_simple {
         return None;
     }
     result: dict[str, int] = {};
-    for (nm, v) in pairs {
+    for (nm, v) in ep.pairs {
         result[nm] = v;
     }
 
@@ -117,13 +117,13 @@ def _classify_enum(
         }
         return (Idiom.ENUM_AS_CONSTS, name_map, "");
     }
-    (best_pairs, ok) = eval_enumerators(en.values);
+    ep2: EnumPairs = eval_enumerators(en.values);
     best_map: dict[str, int] = {};
-    for (nm, v) in best_pairs {
+    for (nm, v) in ep2.pairs {
         best_map[nm] = v;
     }
     collision = any(nm in seen_glob_names for nm in best_map);
-    if not ok or collision {
+    if not ep2.all_simple or collision {
         reason = "enumerator name collides with an existing module global"
             if collision
             else "enum has non-constant enumerator values";
