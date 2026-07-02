@@ -34,13 +34,11 @@ def _register_client_targets {
 test "react native target files exist" {
     target_jac = _targets_dir / "react_native_target.jac";
     target_impl = _targets_dir / "impl" / "react_native_target.impl.jac";
-    entry_jac = _client_dir / "entry_generators" / "native_entry.jac";
 
     assert target_jac.exists() , f"react_native_target.jac not found at {target_jac}";
     assert target_impl.exists() , (
         f"react_native_target.impl.jac not found at {target_impl}"
     );
-    assert entry_jac.exists() , f"native_entry.jac not found at {entry_jac}";
 
     content = target_jac.read_text();
     assert "obj ReactNativeTarget(ClientTarget)" in content , (
@@ -54,7 +52,6 @@ test "react native target files exist" {
     assert 'name: str = "react-native"' in content;
     assert "requires_setup: bool = True" in content;
     assert 'config_section: str = "react_native"' in content;
-    assert "import jaclang.runtimelib.client.entry_generators.native_entry;" not in content;
 }
 
 test "target type parser supports react-native and aliases" {
@@ -91,11 +88,6 @@ test "register.jac registers the react native target" {
     # Core's register.jac registers targets inline (no intermediate variable,
     # no secondary plugin-group indirection) — same style as the other targets.
     assert "registry.register(ReactNativeTarget())" in content;
-    # The RN build/dev paths call write_native_entry directly (see
-    # react_native/build.jac), so register.jac must NOT wire the native entry
-    # generator through the entry-generator registry.
-    assert "register_native_entry_generators" not in content;
-    assert "build_registry_native_entry_script" not in content;
 }
 
 test "target factory resolves react-native by canonical name" {
@@ -370,19 +362,19 @@ test "native route names are a stable pure function of the path, no ordinal" {
     );
 }
 
-test "JacClientCompiler accepts runtime_filename to select native runtime" {
-    # The compiler's `compile_runtime_utils` and `compile` now both accept
-    # `runtime_filename` so the React Native target can swap in the native
-    # runtime without touching any bundler glue. Source-level contract check.
+test "JacClientCompiler maps targets to platform runtimes" {
+    # The compiler derives the platform runtime from target_name via
+    # PLATFORM_RUNTIME_FILES so the React Native target needs no bundler
+    # glue. Source-level contract check.
     src_path = _client_dir / "jac_client_compiler.jac";
     impl_path = _client_dir / "impl" / "jac_client_compiler.impl.jac";
     src_content = src_path.read_text();
     impl_content = impl_path.read_text();
 
-    assert "runtime_filename" in src_content , (
-        "JacClientCompiler must declare runtime_filename parameter"
+    assert "PLATFORM_RUNTIME_FILES" in src_content , (
+        "JacClientCompiler must map target names to platform runtime files"
     );
-    assert "runtime_filename" in impl_content;
+    assert 'client_runtime_native.cl.jac' in src_content;
     assert "target_name" in src_content;
     assert "target_name" in impl_content;
     assert ".native.cl.jac" in src_content;
@@ -392,7 +384,6 @@ test "JacClientCompiler accepts runtime_filename to select native runtime" {
         "COMPOUND_EXTENSIONS must put .native.cl.jac before .cl.jac so "
         "Header.native.cl.jac maps to Header.js (not Header.native.js)."
     );
-    assert 'client_runtime.cl.jac' in src_content;
     assert "client_runtime_core.cl.jac" in impl_content , (
         "compile_runtime_utils must bundle client_runtime_core (D9)"
     );
@@ -436,23 +427,19 @@ test "react native target compile calls set target_name to react-native" {
 
 test "target selection keeps web and native entry/runtime paths separate" {
     # Invariant: target flag controls runtime + entry strategy.
-    # RN uses Expo registerRootComponent; web keeps web entry-generator wiring.
+    # RN uses Expo registerRootComponent; web keeps its own entry wiring.
     rn_build_src = _targets_dir / "react_native" / "build.jac";
     rn_impl_src = _targets_dir / "impl" / "react_native_target.impl.jac";
-    web_entry_src = _client_dir / "entry_generators" / "web_entry.jac";
     web_compiler_impl = _client_dir / "impl" / "compiler.impl.jac";
 
     rn_build_content = rn_build_src.read_text();
     rn_impl_content = rn_impl_src.read_text();
-    web_entry_content = web_entry_src.read_text();
     web_content = web_compiler_impl.read_text();
 
-    assert 'get_entry_generator("native")' not in rn_build_content;
     assert "registerRootComponent(App)" in rn_build_content;
-    assert 'runtime_filename="client_runtime_native.cl.jac"' in rn_impl_content;
-    assert 'register_entry_generator("web"' in web_entry_content;
+    assert 'target_name="react-native"' in rn_impl_content;
     # Web compile path should not force native runtime.
-    assert 'runtime_filename="client_runtime_native.cl.jac"' not in web_content;
+    assert 'target_name="react-native"' not in web_content;
 }
 
 test "react native scaffold writes Expo project files" {
@@ -943,14 +930,17 @@ test "_RNHmrHandler obj is declared and wired in target module" {
     assert "JacFileWatcher" in impl_content;
 }
 
-test "native entry generator omits web-only imports" {
-    # The whole point of the per-target generator (R2) is to keep DOM and
-    # react-router out of the native bundle. Regress-guard those.
-    import from jaclang.runtimelib.client.entry_generators.native_entry {
-        build_registry_native_entry_script
+test "native index entry omits web-only imports" {
+    # The whole point of the per-target entry (R2) is to keep DOM and
+    # react-router out of the native bundle. Regress-guard those against
+    # the production entry source that ``jac build`` writes.
+    import from jaclang.runtimelib.client.targets.react_native.build {
+        build_native_index_entry_source
     }
-    script = build_registry_native_entry_script("main");
+    script = build_native_index_entry_source();
 
+    assert "registerRootComponent" in script;
+    assert "import App from './app/App'" in script;
     forbidden = [
         "react-dom",
         "createRoot",
@@ -963,26 +953,6 @@ test "native entry generator omits web-only imports" {
             f"native entry leaked web-only symbol: {needle!r}"
         );
     }
-}
-
-test "production native index diverges from registry entry generator" {
-    # ``jac build`` writes registerRootComponent via write_native_entry;
-    # the entry-generator registry keeps an AppRegistry script for tests only.
-    import from jaclang.runtimelib.client.targets.react_native.build {
-        build_native_index_entry_source
-    }
-    import from jaclang.runtimelib.client.entry_generators.native_entry {
-        build_registry_native_entry_script
-    }
-
-    production = build_native_index_entry_source();
-    registry = build_registry_native_entry_script("main");
-    assert "registerRootComponent" in production;
-    assert "AppRegistry.registerComponent" not in production;
-    assert "AppRegistry.registerComponent" in registry;
-    assert "registerRootComponent" not in registry;
-    assert "import App from './app/App'" in production;
-    assert 'from "./main.js"' in registry;
 }
 
 test "client config supports target-scoped npm table for react native" {
@@ -1372,12 +1342,7 @@ test "compiler resolves .native.cl.jac when target is react-native" {
         compiled_dir.mkdir(parents=True, exist_ok=True);
         (_, mod, _) = jac_compiler.jac_compiler.compile_module(entry_file);
         if mod {
-            jac_compiler.compile(
-                mod,
-                entry_file,
-                runtime_filename="client_runtime_native.cl.jac",
-                target_name="react-native"
-            );
+            jac_compiler.compile(mod, entry_file, target_name="react-native");
 
             # The native variant should have been picked. Verify by checking
             # the compiled header.js for native-only content.
@@ -1405,12 +1370,7 @@ test "compiler resolves .native.cl.jac when target is react-native" {
 
             (_, mod2, _) = jac_compiler.jac_compiler.compile_module(entry_file);
             if mod2 {
-                jac_compiler.compile(
-                    mod2,
-                    entry_file,
-                    runtime_filename="client_runtime.cl.jac",
-                    target_name="web"
-                );
+                jac_compiler.compile(mod2, entry_file, target_name="web");
 
                 header_js_web = compiled_dir / "src" / "header.js";
                 if header_js_web.exists() {

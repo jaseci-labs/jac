@@ -29,24 +29,11 @@ impl make_client_bundle_builder(
     } else {
         package_json_path = generated_package_json.resolve();
     }
-    builder = ViteClientBundleBuilder(
+    return ViteClientBundleBuilder(
         vite_package_json=package_json_path,
         vite_output_dir=client_dir / 'dist',
         vite_minify=False
     );
-
-    try {
-        import importlib;
-        client_pkg = importlib.import_module("jaclang.runtimelib.client");
-        paths = list(getattr(client_pkg, "__path__", []) or []);
-        if paths {
-            runtime_path = Path(paths[0]) / "client_runtime.cl.jac";
-            if runtime_path.exists() {
-                builder.runtime_path = runtime_path;
-            }
-        }
-    } except ImportError { }
-    return builder;
 }
 
 impl ViteClientBundleBuilder.cleanup_temp_dir(self: ViteClientBundleBuilder) -> None {

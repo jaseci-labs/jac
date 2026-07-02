@@ -1,18 +1,17 @@
 """R3: renderer dispatch tests.
 
-`__jacJsx` no longer calls `React.createElement` directly; it delegates to a
-renderer object the active target registers at bundle init time. These tests
+`__jacJsx` (client_runtime_core) does not call `React.createElement`
+directly; it delegates to a renderer object the active platform registers at
+bundle init time. React Native is the production consumer of this seam
+(core + client_runtime_native), so these tests compile that pairing and
 verify:
 
 1. The compiled jac-client runtime exposes the dispatch surface
-   (`__jacRegisterRenderer`, `__jacGetRenderer`, `__jacWebCreate`).
-2. `__jacJsx`'s compiled body is a one-line delegation, not the previous
-   DOM-aware logic.
+   (`__jacRegisterRenderer`, `__jacGetRenderer`, `__jacNativeCreate`).
+2. `__jacJsx`'s compiled body is a one-line delegation, not DOM-aware logic.
 3. Behavior: registering a stub renderer routes JSX calls to that stub
    unchanged (no tag rewrites, no child wrapping).
-4. Behavior: with no registration, the web renderer auto-installs lazily and
-   continues to handle the Fragment fallback exactly as before.
-5. HMR: re-evaluating the runtime module body must not clobber a renderer
+4. HMR: re-evaluating the runtime module body must not clobber a renderer
    that has already been registered on globalThis.
 
 The substring assertions follow the same pattern as `test_client_bundle.jac`.
@@ -65,13 +64,26 @@ def _strip_runtime_core_import(js_code: str) -> str {
     return "\n".join(filtered);
 }
 
-"""Compile D9 web runtime (core + platform) the same way ``compile_runtime_utils`` does."""
+glob _compiled_runtime_js: (str | None) = None;
+
+"""Compile D9 runtime (core + native platform) the same way ``compile_runtime_utils`` does.
+
+Memoized in a module glob: five tests share this and each ``jac jac2js``
+invocation is a full CLI startup, so the cache saves 8 subprocess spawns
+per run.
+"""
 def _compile_runtime_to_js -> str {
+    global _compiled_runtime_js;
+    if _compiled_runtime_js is not None {
+        return _compiled_runtime_js;
+    }
     plugin_dir = _jac_client_plugin_dir();
     core_src = os.path.join(plugin_dir, "client_runtime_core.cl.jac");
-    web_src = os.path.join(plugin_dir, "client_runtime.cl.jac");
-    if not os.path.isfile(core_src) or not os.path.isfile(web_src) {
-        pytest.skip("client_runtime_core.cl.jac or client_runtime.cl.jac not found");
+    native_src = os.path.join(plugin_dir, "client_runtime_native.cl.jac");
+    if not os.path.isfile(core_src) or not os.path.isfile(native_src) {
+        pytest.skip(
+            "client_runtime_core.cl.jac or client_runtime_native.cl.jac not found"
+        );
     }
     jac_bin = shutil.which("jac");
     if not jac_bin {
@@ -83,17 +95,18 @@ def _compile_runtime_to_js -> str {
     if core_result.returncode != 0 {
         pytest.skip(f"jac2js core failed: {core_result.stderr}");
     }
-    web_result = subprocess.run(
-        [jac_bin, "jac2js", web_src], capture_output=True, text=True, check=False
+    native_result = subprocess.run(
+        [jac_bin, "jac2js", native_src], capture_output=True, text=True, check=False
     );
-    if web_result.returncode != 0 {
-        pytest.skip(f"jac2js web failed: {web_result.stderr}");
+    if native_result.returncode != 0 {
+        pytest.skip(f"jac2js native failed: {native_result.stderr}");
     }
-    return (
+    _compiled_runtime_js = (
         _strip_esm_export_line(core_result.stdout) + "\n" + _strip_runtime_core_import(
-            _strip_esm_export_line(web_result.stdout)
+            _strip_esm_export_line(native_result.stdout)
         )
     );
+    return _compiled_runtime_js;
 }
 
 """Find the index just past the ``}`` that closes the ``{`` at ``open_pos``.
@@ -202,21 +215,21 @@ def _find_matching_brace(js: str, open_pos: int) -> int {
     return -1;
 }
 
-"""Extract just the four renderer-related functions from compiled JS.
+"""Extract just the renderer-dispatch functions from compiled JS.
 
-The full runtime imports `react`, `react-dom/client`, etc., which Node can't
+The full runtime imports `react`, `react-native`, etc., which Node can't
 resolve in a bare TemporaryDirectory. The dispatch layer doesn't depend on
-any of those (only `globalThis`, `Array`, `React.Fragment` and
-`React.createElement` via the test's stub globals), so slicing the four
-function bodies out is enough to exercise the contract.
+any of those at definition time (the platform create function only touches
+its imports when actually invoked, and these harnesses always install a
+stub renderer first), so slicing the function bodies out is enough to
+exercise the contract.
 """
 def _slice_renderer_fns(js: str) -> str {
     parts = "";
     for marker in [
         "function __jacJsx",
         "function __jacRegisterRenderer",
-        "function __jacGetRenderer",
-        "function __jacWebCreate"
+        "function __jacGetRenderer"
     ] {
         start = js.find(marker);
         assert start >= 0 , f"compiled runtime missing {marker}";
@@ -312,8 +325,8 @@ test "compiled runtime exposes renderer dispatch surface" {
     assert "function __jacGetRenderer" in js , (
         "R3: __jacGetRenderer missing from compiled runtime"
     );
-    assert "function __jacWebCreate" in js , (
-        "R3: web renderer body should live in __jacWebCreate"
+    assert "function __jacNativeCreate" in js , (
+        "R3: native renderer body should live in __jacNativeCreate"
     );
     assert "globalThis.__jacRenderer__" in js , (
         "R3: renderer must be stored on globalThis to survive HMR reload"
@@ -351,11 +364,14 @@ test "registered renderer receives (tag, props, children) verbatim" {
     assert "OK" in out;
 }
 
-test "web renderer auto-installs when nothing is registered" {
+test "native renderer auto-installs when nothing is registered" {
+    # The native platform's __jacGetRenderer lazily installs its own create
+    # function; invoking it needs the full RN module graph, so this checks
+    # the wiring under Node with the create fn stubbed at install time.
     js = _compile_runtime_to_js();
     snippet = _slice_renderer_fns(js);
     harness = (
-        "const captured = [];\n" + "globalThis.React = {\n" + "  createElement: (...args) => { captured.push(args); return {tag: args[0]}; },\n" + "  Fragment: Symbol('Fragment'),\n" + "};\n" + snippet + "globalThis.__jacGetRenderer__ = __jacGetRenderer;\n" + "__jacJsx('div', {className: 'x'}, []);\n" + "if (captured.length === 0) {\n" + "  console.error('web renderer did not auto-install'); process.exit(1);\n" + "}\n" + "if (captured[0][0] !== 'div') {\n" + "  console.error('tag not forwarded', captured); process.exit(1);\n" + "}\n" + "__jacJsx(null, {}, []);\n" + "const lastTag = captured[captured.length - 1][0];\n" + "if (typeof lastTag !== 'symbol') {\n" + "  console.error('Fragment fallback broken, got', lastTag);\n" + "  process.exit(1);\n" + "}\n" + "console.log('OK');\n"
+        "const __jacNativeCreate = (tag, props, children) => ['native', tag];\n" + snippet + "globalThis.__jacGetRenderer__ = __jacGetRenderer;\n" + "const out = __jacJsx('div', {className: 'x'}, []);\n" + "if (!globalThis.__jacRenderer__) {\n" + "  console.error('native renderer did not auto-install'); process.exit(1);\n" + "}\n" + "if (!Array.isArray(out) || out[1] !== 'div') {\n" + "  console.error('tag not forwarded to installed create', out);\n" + "  process.exit(1);\n" + "}\n" + "console.log('OK');\n"
     );
     (rc, out, err) = _run_node(harness);
     assert rc == 0 , f"auto-install harness failed: stdout={out} stderr={err}";

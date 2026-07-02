@@ -29,6 +29,10 @@ class JacClientCompiler {
             'JacClientErrorBoundary'
         ];
         COMPOUND_EXTENSIONS = ['.native.cl.jac', '.cl.jac', '.impl.jac', '.test.jac'];
+        # Targets whose platform runtime (bundled with client_runtime_core)
+        # lives in this plugin dir. Web has no entry here: its runtime is
+        # emitted by the ViteCompiler pipeline.
+        PLATFORM_RUNTIME_FILES = {"react-native": "client_runtime_native.cl.jac"};
     }
 
     def init(
@@ -44,7 +48,7 @@ class JacClientCompiler {
     def _get_client_dir(self: JacClientCompiler) -> Path;
     def _jac_path_to_js(self: JacClientCompiler, rel_str: str) -> str;
     def compile_runtime_utils(
-        self: JacClientCompiler, runtime_filename: str = "client_runtime.cl.jac"
+        self: JacClientCompiler, runtime_filename: str
     ) -> tuple[str, list[str]];
 
     def compile_pwa_runtime(self: JacClientCompiler) -> tuple[str, list[str]];
@@ -85,7 +89,6 @@ class JacClientCompiler {
         self: JacClientCompiler,
         module: ModuleType,
         module_path: Path,
-        runtime_filename: str = "client_runtime.cl.jac",
         target_name: str = "web"
     ) -> tuple[list[str], list[str]];
 }

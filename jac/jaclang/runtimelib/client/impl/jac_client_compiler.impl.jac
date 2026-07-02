@@ -12,10 +12,6 @@ def _jac_client_plugin_dir -> Path {
     return Path(paths[0]);
 }
 
-def jac_client_runtime_path -> Path {
-    return _jac_client_plugin_dir() / "client_runtime.cl.jac";
-}
-
 impl JacClientCompiler._get_client_dir(self: JacClientCompiler) -> Path {
     try {
         import from jaclang.project.config { get_config }
@@ -42,7 +38,6 @@ impl JacClientCompiler.compile(
     self: JacClientCompiler,
     module: ModuleType,
     module_path: Path,
-    runtime_filename: str = "client_runtime.cl.jac",
     target_name: str = "web"
 ) -> tuple[list[str], list[str]] {
     (module_js, mod, module_manifest) = self.jac_compiler.compile_module(module_path);
@@ -65,7 +60,10 @@ impl JacClientCompiler.compile(
         collected_globals=collected_globals,
         target_name=target_name
     );
-    self.compile_runtime_utils(runtime_filename);
+    runtime_filename = self.PLATFORM_RUNTIME_FILES.get(target_name);
+    if runtime_filename {
+        self.compile_runtime_utils(runtime_filename);
+    }
     import from jaclang.runtimelib.client.config_loader { JacClientConfig as PwaConfig }
     pwa_config = PwaConfig(self.project_dir);
     if pwa_config.is_pwa_enabled() and target_name != "react-native" {
@@ -403,11 +401,8 @@ def _bundle_runtime_js(core_js: str, platform_js: str, export_names: list[str]) 
 }
 
 impl JacClientCompiler.compile_runtime_utils(
-    self: JacClientCompiler, runtime_filename: str = "client_runtime.cl.jac"
+    self: JacClientCompiler, runtime_filename: str
 ) -> tuple[str, list[str]] {
-    if not self.runtime_path {
-        raise ClientBundleError('Runtime path not set');
-    }
     plugin_dir = _jac_client_plugin_dir();
     core_path = plugin_dir / 'client_runtime_core.cl.jac';
     runtime_utils_path = plugin_dir / runtime_filename;
@@ -419,7 +414,7 @@ impl JacClientCompiler.compile_runtime_utils(
     if not runtime_utils_path.exists() {
         raise ClientBundleError(
             f'Runtime file not found: {runtime_utils_path}. '
-            'Expected sibling of client_runtime.cl.jac.'
+            'Expected a platform runtime beside client_runtime_core.cl.jac.'
         );
     }
     (core_js, _core_mod, core_manifest) = self.jac_compiler.compile_module(core_path);
