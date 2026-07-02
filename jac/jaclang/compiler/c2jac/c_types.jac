@@ -52,9 +52,38 @@ def user_type_name(t: object) -> str | None {
     return None;
 }
 
-def ptr_typename(ptr_decl: object) -> str {
+def walk_to_typedecl(decl_type: object) -> tuple {
+    t = decl_type;
+    while not isinstance(t, c_ast.TypeDecl) {
+        if isinstance(t, c_ast.ArrayDecl) {
+            return ("array", t);
+        }
+        if isinstance(t, c_ast.PtrDecl) {
+            return ("ptr", t);
+        }
+        if isinstance(t, c_ast.FuncDecl) {
+            t = t.type;
+            continue;
+        }
+        t = t?.type;
+        if t is None {
+            return ("none", None);
+        }
+    }
+    return ("type", t);
+}
+
+def ptr_inner_typedecl(ptr_decl: object) -> object | None {
     inner = ptr_decl.type;
     if isinstance(inner, c_ast.TypeDecl) {
+        return inner;
+    }
+    return None;
+}
+
+def ptr_typename(ptr_decl: object) -> str {
+    inner = ptr_inner_typedecl(ptr_decl);
+    if inner is not None {
         names = inner.type?.names or [];
 
         if "char" in names and jac_prim(names) == "str" {
@@ -69,30 +98,23 @@ def ptr_typename(ptr_decl: object) -> str {
 }
 
 def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
-    t = decl_type;
-    while not isinstance(t, c_ast.TypeDecl) {
-        if isinstance(t, c_ast.ArrayDecl) {
-            return "list";
-        }
-        if isinstance(t, c_ast.PtrDecl) {
-            return ptr_typename(t);
-        }
-        if isinstance(t, c_ast.FuncDecl) {
-            t = t.type;
-            continue;
-        }
-        t = t?.type;
-        if t is None {
-            return "int";
-        }
+    (kind, node) = walk_to_typedecl(decl_type);
+    if kind == "array" {
+        return "list";
+    }
+    if kind == "ptr" {
+        return ptr_typename(node);
+    }
+    if kind == "none" {
+        return "int";
     }
     if resolve_user {
-        user = user_type_name(t.type);
+        user = user_type_name(node.type);
         if user is not None {
             return user;
         }
     }
-    names = t.type?.names or ["int"];
+    names = node.type?.names or ["int"];
     return jac_prim(names);
 }
 

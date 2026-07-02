@@ -1,6 +1,6 @@
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier, Mechanism, NodeTag, TagTable }
-import from jaclang.compiler.c2jac.c_common { enumerator_value }
+import from jaclang.compiler.c2jac.c_common { eval_enumerators }
 
 glob _INT_USE_BINOPS: set[str] = {
          "|",
@@ -70,15 +70,13 @@ def _collect_int_use_names(nd: object, names: set[str]) {
 
 
 def _enum_explicit_values(enumerator_list: object) -> dict[str, int] | None {
+    (pairs, all_simple) = eval_enumerators(enumerator_list);
+    if not all_simple {
+        return None;
+    }
     result: dict[str, int] = {};
-    counter: int = 0;
-    for en in enumerator_list.enumerators {
-        (v, simple) = enumerator_value(en, counter);
-        if not simple {
-            return None;
-        }
-        result[en.name] = v;
-        counter = v + 1;
+    for (nm, v) in pairs {
+        result[nm] = v;
     }
 
     vals = list(result.values());
@@ -98,6 +96,45 @@ def _collect_enums(nd: object, results: list[object]) {
     }
 }
 
+def _classify_enum(
+    en: object, seen_glob_names: set[str], int_use_names: set[str]
+) -> tuple[Idiom, dict[str, int] | None, str] {
+    name_map = _enum_explicit_values(en.values);
+    used_as_int = name_map is not None and any(nm in int_use_names for nm in name_map);
+    if en.name is not None and name_map is not None and not used_as_int {
+        return (Idiom.ENUM_AS_ENUM, name_map, "");
+    }
+    if name_map is not None {
+        if any(nm in seen_glob_names for nm in name_map) {
+            return (
+                Idiom.TIER_B,
+                None,
+                "enumerator name collides with an existing module global"
+            );
+        }
+        for nm in name_map {
+            seen_glob_names.add(nm);
+        }
+        return (Idiom.ENUM_AS_CONSTS, name_map, "");
+    }
+    (best_pairs, ok) = eval_enumerators(en.values);
+    best_map: dict[str, int] = {};
+    for (nm, v) in best_pairs {
+        best_map[nm] = v;
+    }
+    collision = any(nm in seen_glob_names for nm in best_map);
+    if not ok or collision {
+        reason = "enumerator name collides with an existing module global"
+            if collision
+            else "enum has non-constant enumerator values";
+        return (Idiom.TIER_B, None, reason);
+    }
+    for nm in best_map {
+        seen_glob_names.add(nm);
+    }
+    return (Idiom.ENUM_AS_CONSTS, best_map, "");
+}
+
 def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdicts {
     ev = EnumVerdicts();
     enums: list[object] = [];
@@ -111,55 +148,13 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
         if en.values is None {
             continue;
         }
-        name_map = _enum_explicit_values(en.values);
-        used_as_int = name_map is not None
-        and any(nm in int_use_names for nm in name_map);
-        if en.name is not None and name_map is not None and not used_as_int {
-            ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM;
-            ev.name_map[id(en)] = name_map;
-        } elif name_map is not None {
-            collision = False;
-            for nm in name_map {
-                if nm in seen_glob_names {
-                    collision = True;
-                    break;
-                }
-            }
-            if collision {
-                ev.verdicts[id(en)] = Idiom.TIER_B;
-                ev.reasons[id(en)] = "enumerator name collides with an existing module global";
-            } else {
-                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS;
-                for nm in name_map {
-                    seen_glob_names.add(nm);
-                }
-                ev.name_map[id(en)] = name_map;
-            }
-        } else {
-            best_map: dict[str, int] = {};
-            counter = 0;
-            ok = True;
-            for enr in en.values.enumerators {
-                (v, simple) = enumerator_value(enr, counter);
-                best_map[enr.name] = v;
-                counter = v + 1;
-                if not simple {
-                    ok = False;
-                }
-            }
-            collision = any(nm in seen_glob_names for nm in best_map);
-            if not ok or collision {
-                ev.verdicts[id(en)] = Idiom.TIER_B;
-                ev.reasons[id(en)] = "enumerator name collides with an existing module global"
-                    if collision
-                    else "enum has non-constant enumerator values";
-            } else {
-                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS;
-                for nm in best_map {
-                    seen_glob_names.add(nm);
-                }
-                ev.name_map[id(en)] = best_map;
-            }
+        (verdict, nm_map, reason) = _classify_enum(en, seen_glob_names, int_use_names);
+        ev.verdicts[id(en)] = verdict;
+        if nm_map is not None {
+            ev.name_map[id(en)] = nm_map;
+        }
+        if reason {
+            ev.reasons[id(en)] = reason;
         }
     }
 

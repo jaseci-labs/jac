@@ -1,13 +1,20 @@
-impl CMapper.c_FileAST(nd: object) -> object {
-    body: list[object] = [];
-    for d in nd.ext {
-        n = self.conv_stmt(d);
+glob _MAX_QUAL_DEPTH: int = 8;
+
+impl CMapper._conv_stmts(items: list) -> list[object] {
+    out: list[object] = [];
+    for item in items {
+        n = self.conv_stmt(item);
         if isinstance(n, list) {
-            body += n;
+            out += n;
         } else {
-            body.append(n);
+            out.append(n);
         }
     }
+    return out;
+}
+
+impl CMapper.c_FileAST(nd: object) -> object {
+    body: list[object] = self._conv_stmts(nd.ext);
     if not body {
         body = [self._stamp_manual(ast3.Pass(), 1, 0)];
     }
@@ -16,16 +23,7 @@ impl CMapper.c_FileAST(nd: object) -> object {
 }
 
 impl CMapper.c_Compound(nd: object) -> list[object] {
-    stmts: list[object] = [];
-    for item in (nd.block_items or []) {
-        n = self.conv_stmt(item);
-        if isinstance(n, list) {
-            stmts += n;
-        } else {
-            stmts.append(n);
-        }
-    }
-    return stmts;
+    return self._conv_stmts(nd.block_items or []);
 }
 
 impl CMapper.c_FuncDef(nd: object) -> object {
@@ -179,7 +177,7 @@ impl CMapper.c_Decl(nd: object) -> object {
 impl CMapper._all_quals(nd: object) -> set {
     quals: set = set(nd?.quals or []);
     t = nd?.type;
-    for _ in range(8) {
+    for _ in range(_MAX_QUAL_DEPTH) {
         if t is None {
             break;
         }
@@ -248,20 +246,23 @@ impl CMapper.c_Assignment(nd: object) -> object {
     return self._surrogate_stmt(nd);
 }
 
-impl CMapper.c_Struct(nd: object) -> object {
-    name = nd.name or "_AnonStruct";
+impl CMapper._struct_classdef(snode: object, name: str, origin: object) -> object {
     fields: list[object] = [];
-    if nd.decls {
-        for mem in nd.decls {
-            ann_assign = self._struct_field(mem);
-            if ann_assign is not None {
-                fields.append(ann_assign);
+    if snode.decls {
+        for mem in snode.decls {
+            aa = self._struct_field(mem);
+            if aa is not None {
+                fields.append(aa);
             }
         }
     }
     body: list[object] = fields or [self._stamp_manual(ast3.Pass(), 1, 0)];
     cls = ast3.ClassDef(name=name, bases=[], keywords=[], body=body, decorator_list=[]);
-    return self._stamp(cls, nd, text=name);
+    return self._stamp(cls, origin, text=name);
+}
+
+impl CMapper.c_Struct(nd: object) -> object {
+    return self._struct_classdef(nd, nd.name or "_AnonStruct", nd);
 }
 
 impl CMapper._struct_field(mem: object) -> object | None {
@@ -278,22 +279,7 @@ impl CMapper._struct_field(mem: object) -> object | None {
 impl CMapper.c_Typedef(nd: object) -> object {
     inner = nd.type;
     if isinstance(inner, c_ast.TypeDecl) and isinstance(inner.type, c_ast.Struct) {
-        s = inner.type;
-        name = nd.name;
-        fields: list[object] = [];
-        if s.decls {
-            for mem in s.decls {
-                aa = self._struct_field(mem);
-                if aa is not None {
-                    fields.append(aa);
-                }
-            }
-        }
-        body: list[object] = fields or [self._stamp_manual(ast3.Pass(), 1, 0)];
-        cls = ast3.ClassDef(
-            name=name, bases=[], keywords=[], body=body, decorator_list=[]
-        );
-        return self._stamp(cls, nd, text=name);
+        return self._struct_classdef(inner.type, nd.name, nd);
     }
 
     (line, col) = self._loc(nd);
