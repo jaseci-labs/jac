@@ -9,8 +9,8 @@ import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-    JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "ownership"
-);
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "ownership"
+     );
 
 """Compile a fixture with type checking. Returns the JacProgram."""
 def compile_fixture(fixture_name: str) -> JacProgram {
@@ -33,77 +33,112 @@ def count_code(program: JacProgram, code: str) -> int {
 
 test "E1301: use of an own binding after it is moved" {
     prog = compile_fixture("use_after_move.jac");
-    assert count_code(prog, "E1301") == 1 ,
-        f"expected one E1301, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1301") == 1 , f"expected one E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "no E1301 when the moved-from binding is not read again" {
     prog = compile_fixture("move_only_ok.jac");
-    assert count_code(prog, "E1301") == 0 ,
-        f"unexpected E1301, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "reassigning a moved-from own binding revives it" {
     prog = compile_fixture("reassign_revives.jac");
-    assert count_code(prog, "E1301") == 0 ,
-        f"unexpected E1301, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "un-annotated bindings are never move-checked" {
     prog = compile_fixture("unannotated_untouched.jac");
-    assert count_code(prog, "E1301") == 0 ,
-        f"unexpected E1301, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "E1301: a conditional move reaching a later use is flagged" {
     prog = compile_fixture("branch_use_after_move.jac");
-    assert count_code(prog, "E1301") == 1 ,
-        f"expected one E1301, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1301") == 1 , f"expected one E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "no E1301 when mutually-exclusive branches each move the binding" {
     prog = compile_fixture("branch_exclusive_ok.jac");
-    assert count_code(prog, "E1301") == 0 ,
-        f"unexpected E1301, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "no E1301 when a conditionally-moved binding is not used afterwards" {
     prog = compile_fixture("branch_no_use_ok.jac");
-    assert count_code(prog, "E1301") == 0 ,
-        f"unexpected E1301, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 # --- Borrow states (E1302–E1305) --------------------------------------------
 # These capture the remaining borrow-checker error states. They are the TDD
 # spec for the `&`/`&mut` borrow surface and leak detection, which are not yet
 # implemented; expect them to fail until the parser + borrow pass land.
-
 test "E1302: two live mutable borrows of the same owner conflict" {
     prog = compile_fixture("two_mut_aliases.jac");
-    assert count_code(prog, "E1302") == 1 ,
-        f"expected one E1302, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1302") == 1 , f"expected one E1302, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "E1303: mutating an owner while a shared borrow is live is rejected" {
     prog = compile_fixture("mutate_while_shared.jac");
-    assert count_code(prog, "E1303") == 1 ,
-        f"expected one E1303, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1303") == 1 , f"expected one E1303, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "E1304: a borrow that outlives its owner is rejected" {
     prog = compile_fixture("destroy_while_borrowed.jac");
-    assert count_code(prog, "E1304") == 1 ,
-        f"expected one E1304, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1304") == 1 , f"expected one E1304, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "E1305: an own resource that is never consumed leaks" {
     prog = compile_fixture("owned_leak.jac");
-    assert count_code(prog, "E1305") == 1 ,
-        f"expected one E1305, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1305") == 1 , f"expected one E1305, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
 
 test "no E1305 when the own resource is handed off before scope end" {
     prog = compile_fixture("owned_consumed_ok.jac");
-    assert count_code(prog, "E1305") == 0 ,
-        f"unexpected E1305, errors={[str(e) for e in prog.errors_had]}";
+    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+# --- Escaping borrows (E1306) -----------------------------------------------
+# Borrows are second-class: a `&`/`&mut` reference may not outlive the scope
+# that created it, so returning one or storing it into managed storage escapes.
+test "E1306: returning a borrow escapes its scope" {
+    prog = compile_fixture("escaping_borrow_return.jac");
+    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "E1306: storing a borrow into a field escapes its scope" {
+    prog = compile_fixture("escaping_borrow_field.jac");
+    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "no E1306 when the owned value itself is moved out by return" {
+    prog = compile_fixture("return_move_ok.jac");
+    assert count_code(prog, "E1306") == 0 , f"unexpected E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
 }
