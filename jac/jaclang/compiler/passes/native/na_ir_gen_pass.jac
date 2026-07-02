@@ -48,11 +48,20 @@ glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
 
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
-glob HDR_ALLOC_ID_OFF: int = -32,
+glob HDR_ALLOC_ID_OFF: int = -48,
+     HDR_TRACE_OFF: int = -40,
+     HDR_COLOR_OFF: int = -32,
      HDR_TAG_OFF: int = -24,
      HDR_RC_OFF: int = -16,
      HDR_DTOR_OFF: int = -8,
-     HDR_TOTAL: int = 32;
+     HDR_TOTAL: int = 48;
+
+glob RC_COLOR_BLACK: int = 0,
+     RC_COLOR_WHITE: int = 1,
+     RC_COLOR_GRAY: int = 2,
+     RC_COLOR_PURPLE: int = 3,
+     RC_BUFFERED_BIT: int = 4,
+     RC_CYCLE_THRESHOLD: int = 1000;
 
 glob LIVE_NODE_ID_OFF: int = 0,
      LIVE_NODE_USER_OFF: int = 8,
@@ -183,6 +192,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
         rc_safe_free_fn: (ir.Function | None) = None,
+        rc_roots_buf_gv: object = None,
+        rc_roots_cap_gv: object = None,
+        rc_roots_count_gv: object = None,
+        rc_collecting_gv: object = None,
+        rc_push_root_fn: (ir.Function | None) = None,
+        rc_collect_cycles_fn: (ir.Function | None) = None,
+        struct_trace_fns: dict[str, ir.Function] = {},
         struct_release_fns: dict[str, ir.Function] = {},
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -769,6 +785,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _dispatch_builtin(func_name: str, args: list[ir.Value]) -> (ir.Value | None);
     def _emit_rc_helpers -> None;
+    def _emit_rc_roots_globals -> None;
+    def _emit_trace_fn(arch_name: str) -> None;
+    def _emit_set_trace_fn(b: ir.IRBuilder, obj_i8: ir.Value, trace_fn: ir.Function) -> None;
+    def _emit_rc_collect_cycles -> None;
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;

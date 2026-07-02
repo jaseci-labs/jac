@@ -9,6 +9,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
 
     self._emit_rc_debug_globals();
+    self._emit_rc_roots_globals();
 
     rc_gc_disabled_gv = ir.GlobalVariable(
         self.llvm_module, i8, name="__rc_gc_disabled"
@@ -97,6 +98,14 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, 4294967295), name="aid.lo");
     _aid_magic = b.or_(_magic_base, _aid_lo32, name="aid.magic");
     b.store(_aid_magic, _aid_ptr);
+
+    _trace_raw = b.gep(raw, [ir.Constant(i64, HDR_TOTAL + HDR_TRACE_OFF)], name="trace.raw");
+    _trace_slot = b.bitcast(_trace_raw, i64_ptr, name="trace.slot");
+    b.store(ir.Constant(i64, 0), _trace_slot);
+
+    _color_raw = b.gep(raw, [ir.Constant(i64, HDR_TOTAL + HDR_COLOR_OFF)], name="color.raw");
+    _color_slot = b.bitcast(_color_raw, i64_ptr, name="color.slot");
+    b.store(ir.Constant(i64, 0), _color_slot);
 
     _tag_raw = b.gep(
         _raw_tag_str, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="tag.raw"
@@ -327,7 +336,43 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         release_fn, done_bb, release_fn.args[0], old_rc, new_rc
     );
     log_free_bb = self._emit_raw_free_bbs(release_fn, done_bb, release_fn.args[0]);
-    b.cbranch(is_zero, check_dtor_bb, dbg_rel_bb);
+    cycle_check_bb = release_fn.append_basic_block("cycle_check");
+    b.cbranch(is_zero, check_dtor_bb, cycle_check_bb);
+
+    b = ir.IRBuilder(cycle_check_bb);
+    _cy_dis_flag = b.load(self.rc_gc_disabled_gv, name="cy.dis.flag");
+    _cy_coll_flag = b.load(self.rc_collecting_gv, name="cy.coll.flag");
+    _cy_skip = b.or_(
+        b.icmp_unsigned("!=", _cy_dis_flag, ir.Constant(i8, 0), name="cy.dis"),
+        b.icmp_unsigned("!=", _cy_coll_flag, ir.Constant(i8, 0), name="cy.coll"),
+        name="cy.skip"
+    );
+    color_check_bb = release_fn.append_basic_block("color_check");
+    b.cbranch(_cy_skip, dbg_rel_bb, color_check_bb);
+
+    b = ir.IRBuilder(color_check_bb);
+    _cy_color_slot = b.gep(
+        release_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="cy.color.slot"
+    );
+    _cy_color_byte = b.load(_cy_color_slot, name="cy.color.byte");
+    _cy_color = b.and_(_cy_color_byte, ir.Constant(i8, 3), name="cy.color");
+    _cy_is_purple = b.icmp_unsigned(
+        "==", _cy_color, ir.Constant(i8, RC_COLOR_PURPLE), name="cy.is.purple"
+    );
+    set_root_bb = release_fn.append_basic_block("set_root");
+    b.cbranch(_cy_is_purple, dbg_rel_bb, set_root_bb);
+
+    b = ir.IRBuilder(set_root_bb);
+    _cy_new_byte = b.or_(
+        b.and_(_cy_color_byte, ir.Constant(i8, 0xF8), name="cy.clear.bits"),
+        ir.Constant(i8, RC_COLOR_PURPLE | RC_BUFFERED_BIT),
+        name="cy.new.byte"
+    );
+    b.store(_cy_new_byte, _cy_color_slot);
+    if self.rc_push_root_fn is not None {
+        b.call(self.rc_push_root_fn, [release_fn.args[0]]);
+    }
+    b.branch(dbg_rel_bb);
     b = ir.IRBuilder(check_dtor_bb);
     dtor_raw = b.gep(
         release_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="dtor.raw"

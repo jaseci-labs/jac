@@ -104,7 +104,7 @@ impl NaIRGenPass._emit_container_release_fn(
     _i64c = ir.IntType(64);
     _i64_ptr_c = _i64c.as_pointer();
     _cont_i8 = b.bitcast(release_fn.args[0], _i8pc, name="cont.i8");
-    _cont_raw = b.gep(_cont_i8, [ir.Constant(_i64c, -32)], name="cont.raw");
+    _cont_raw = b.gep(_cont_i8, [ir.Constant(_i64c, HDR_ALLOC_ID_OFF)], name="cont.raw");
 
     _cl_aid_ptr = b.bitcast(_cont_raw, _i64_ptr_c, name="cl.aid.ptr");
     _cl_aid_raw = b.load(_cl_aid_ptr, name="cl.aid.raw");
