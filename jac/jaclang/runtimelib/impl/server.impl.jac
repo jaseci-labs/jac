@@ -1681,6 +1681,10 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         def do_OPTIONS(self: JacRequestHandler) {
+            self._dispatch_safely(self._do_OPTIONS);
+        }
+
+        def _do_OPTIONS(self: JacRequestHandler) {
             self.send_response(200);
             ResponseBuilder._add_cors_headers(self);
             ResponseBuilder._add_custom_headers(self);
@@ -1688,9 +1692,26 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         def _serve_graph_page(self: JacRequestHandler) {
-            import jaclang.scale;
-            template = Path(jaclang.scale.__file__).parent / 'templates' / 'graph.html';
-            Jac.send_html(self, 200, template.read_text(encoding='utf-8'));
+            try {
+                import jaclang.scale;
+                template = (
+                    Path(jaclang.scale.__file__).parent / 'templates' / 'graph.html'
+                );
+                html = template.read_text(encoding='utf-8');
+            } except (ImportError, OSError) as exc {
+                Jac.send_json(
+                    self,
+                    503,
+                    {
+                        'error': (
+                            "Graph visualizer template unavailable "
+                            f"({type(exc).__name__}: {exc})"
+                        )
+                    }
+                );
+                return;
+            }
+            Jac.send_html(self, 200, html);
         }
 
         def _serve_graph_data(self: JacRequestHandler) {

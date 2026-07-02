@@ -91,7 +91,7 @@ obj SSELineReader {
 
     def iter_lines -> any {
         for raw in iter(self.resp.readline, b"") {
-            yield raw.rstrip(b"\n");
+            yield raw.rstrip(b"\r\n");
         }
     }
 }
