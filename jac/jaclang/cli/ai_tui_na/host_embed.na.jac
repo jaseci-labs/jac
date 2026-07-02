@@ -1,50 +1,12 @@
-import from .libc_tty {
-    tty_open,
-    tty_open_dev,
-    tty_close,
-    tty_fd,
-    tty_update_size,
-    tty_rows,
-    tty_cols,
-    tty_x_pixels,
-    tty_y_pixels,
-    tty_poll,
-    tty_stdin_ready,
-    tty_key_ready,
-    tty_read_key,
-    tty_write,
-    tty_init_stdio_remap,
-    tty_restore_stdio,
-    tty_ipc_fd
-}
-import from .terminal {
-    term_enter_alt_screen,
-    term_leave_alt_screen,
-    term_hide_cursor,
-    term_show_cursor,
-    term_enable_mouse,
-    term_disable_mouse
-}
+import from .libc_tty { tty_open, tty_close, tty_fd }
 import from .state { TuiState }
 import from .select_list { SelectList, SelectItem }
-import from .ipc {
-    ipc_read_frame_v2,
-    ipc_send_cmd,
-    ipc_parse_frame,
-    ipc_next_command,
-    ipc_clear_cmd_queue
-}
-import from .screen { screen_render }
-import from .diff { DiffEngine, diff_take_buf }
-import from .input { handle_key }
+import from .ipc { ipc_clear_cmd_queue, ipc_next_command }
+import from .diff { DiffEngine }
 import from .terminal_image { term_hyperlink, image_rows }
-import from .tui_core {
-    tui_populate_state,
-    tui_enter_screen,
-    tui_leave_screen,
-    tui_render_once,
-    _sync_size
-}
+import from .transport { TtyFdTransport }
+import from .tui_loop { tui_loop_once }
+import from .tui_core { tui_populate_state, tui_enter_screen, tui_leave_screen }
 
 import os;
 
@@ -64,14 +26,10 @@ import from jacpyembed {
     ) -> None;
 }
 
-glob PY_EVAL: i32 = 258;
-
-glob host_state: TuiState = TuiState(),
-     host_diff: DiffEngine = DiffEngine();
-
-glob proj = os.getenv("JAC_AI_UI_PROJECT");
-glob files_env = os.getenv("JAC_AI_UI_FILES");
-glob presets_env = os.getenv("JAC_AI_UI_MODEL_PRESETS");
+glob PY_EVAL: i32 = 258,
+     proj = os.getenv("JAC_AI_UI_PROJECT"),
+     files_env = os.getenv("JAC_AI_UI_FILES"),
+     presets_env = os.getenv("JAC_AI_UI_MODEL_PRESETS");
 
 
 def _byllm_runtime_hook_py -> str {
@@ -126,6 +84,27 @@ def _agent_send(d: int, line: str) {
 }
 
 
+obj EmbedPyTransport(TtyFdTransport) {
+    has py_dict: int = 0;
+
+    def recv_blob -> str {
+        return _agent_poll(self.py_dict);
+    }
+
+    def flush_outbound_cmds {
+        cmd: str = ipc_next_command();
+        while len(cmd) > 0 {
+            _agent_send(self.py_dict, cmd);
+            cmd = ipc_next_command();
+        }
+    }
+}
+
+glob host_state: TuiState = TuiState(),
+     host_diff: DiffEngine = DiffEngine(),
+     embed_transport: EmbedPyTransport = EmbedPyTransport();
+
+
 def _run_embed -> None {
     proj_s: str = "";
     if proj is not None {
@@ -172,36 +151,12 @@ def _run_embed -> None {
     }
     tui_populate_state(host_state, proj_s, files_s, presets_s);
     tui_enter_screen(host_state, fd);
+    embed_transport.py_dict = d;
+    embed_transport.stdin_eof = False;
 
     ts: int = jpy_PyEval_SaveThread();
 
-    while not host_state.quit_flag {
-        tty_poll(50);
-        if tty_key_ready() > 0 {
-            k = tty_read_key();
-            if len(k) > 0 {
-                quit = handle_key(k, host_state, host_state.ipc_fd);
-                if quit {
-                    host_state.quit_flag = True;
-                }
-
-                cmd: str = ipc_next_command();
-                while len(cmd) > 0 {
-                    _agent_send(d, cmd);
-                    cmd = ipc_next_command();
-                }
-            }
-        }
-
-        blob: str = _agent_poll(d);
-        while len(blob) > 0 {
-            ipc_parse_frame(host_state, blob);
-            blob = _agent_poll(d);
-        }
-
-        _sync_size(host_state);
-        tui_render_once(host_state, host_diff, fd);
-    }
+    while tui_loop_once(host_state, host_diff, embed_transport, fd) { }
 
     jpy_PyEval_RestoreThread(ts);
     jpy_PyRun_SimpleString("_agent_stop()");

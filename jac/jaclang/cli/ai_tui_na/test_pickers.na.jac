@@ -5,6 +5,19 @@ import from .state { TuiState }
 import from .select_list { SelectList, SelectItem }
 import from .commands { palette_commands, model_items, file_items, resolve_slash_line }
 import from .autocomplete { fuzzy_score, ac_update, ac_apply }
+import from .keys {
+    parse_key,
+    KK_UP,
+    KK_DOWN,
+    KK_CTRL,
+    KK_ESCAPE,
+    KK_ENTER,
+    KK_BACKSPACE,
+    KK_CHAR,
+    KK_SHIFT_ENTER,
+    KK_WORD_LEFT,
+    KK_UNKNOWN
+}
 
 def emit(line: str) {
     tty_write(1, line + "\n");
@@ -106,19 +119,52 @@ def run_tests -> int {
 
     sl2 = SelectList();
     sl2.reset_items(model_items(state));
-    fails += check("typing filters (changed)", sl2.handle_key("g") == "changed");
+    fails += check(
+        "typing filters (changed)", sl2.handle_key(parse_key("g")) == "changed"
+    );
     fails += check("filter text accrues", sl2.filter_text == "g");
-    fails += check("down arrow -> changed", sl2.handle_key("\033[B") == "changed");
-    fails += check("enter -> select", sl2.handle_key("\r") == "select");
-    fails += check("esc -> cancel", sl2.handle_key("\033") == "cancel");
-    fails += check("ctrl+c -> cancel", sl2.handle_key("\003") == "cancel");
-    sl2.handle_key("\177");
+    fails += check(
+        "down arrow -> changed", sl2.handle_key(parse_key("\033[B")) == "changed"
+    );
+    fails += check("enter -> select", sl2.handle_key(parse_key("\r")) == "select");
+    fails += check("esc -> cancel", sl2.handle_key(parse_key("\033")) == "cancel");
+    fails += check("ctrl+c -> cancel", sl2.handle_key(parse_key("\003")) == "cancel");
+    sl2.handle_key(parse_key("\177"));
     fails += check("backspace clears filter char", sl2.filter_text == "");
 
     sl3 = SelectList();
     empty: list[SelectItem] = [];
     sl3.reset_items(empty);
     fails += check("current() is None when empty", sl3.current() is None);
+
+    fails += check("parse_key CSI up -> UP", parse_key("\033[A").kind == KK_UP);
+    fails += check("parse_key SS3 up -> UP", parse_key("\033OA").kind == KK_UP);
+    fails += check("parse_key CSI down -> DOWN", parse_key("\033[B").kind == KK_DOWN);
+    fails += check("parse_key SS3 down -> DOWN", parse_key("\033OB").kind == KK_DOWN);
+    fails += check(
+        "parse_key ctrl-c -> CTRL c",
+        parse_key("\003").kind == KK_CTRL and parse_key("\003").code == 99
+    );
+    fails += check("parse_key ctrl-q -> CTRL q", parse_key("\021").code == 113);
+    fails += check("parse_key bare esc -> ESCAPE", parse_key("\033").kind == KK_ESCAPE);
+    fails += check("parse_key enter -> ENTER", parse_key("\r").kind == KK_ENTER);
+    fails += check(
+        "parse_key backspace -> BACKSPACE", parse_key("\177").kind == KK_BACKSPACE
+    );
+    fails += check(
+        "parse_key printable -> CHAR",
+        parse_key("a").kind == KK_CHAR and parse_key("a").code == 97
+    );
+    fails += check(
+        "parse_key shift-enter (\\033\\r) -> SHIFT_ENTER",
+        parse_key("\033\r").kind == KK_SHIFT_ENTER
+    );
+    fails += check(
+        "parse_key word-left variants -> WORD_LEFT",
+        parse_key("\033[1;5D").kind == KK_WORD_LEFT
+        and parse_key("\033b").kind == KK_WORD_LEFT
+    );
+    fails += check("parse_key empty -> UNKNOWN", parse_key("").kind == KK_UNKNOWN);
 
     fails += check("fuzzy empty query -> 0", fuzzy_score("", "model") == 0);
     fails += check("fuzzy no match -> -9999", fuzzy_score("xyz", "model") == -9999);

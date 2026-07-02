@@ -38,6 +38,7 @@ import from .ipc {
 import from .screen { screen_render }
 import from .diff { DiffEngine, diff_take_buf }
 import from .input { handle_key }
+import from .keys { parse_key }
 import from .terminal_image { term_hyperlink, image_rows }
 import from .tui_core {
     tui_populate_state,
@@ -93,11 +94,11 @@ def:pub tui_wait_key(timeout_ms: int) -> int {
 }
 
 def:pub tui_handle_key -> int {
-    k = tty_read_key();
-    if len(k) == 0 {
+    raw = tty_read_key();
+    if len(raw) == 0 {
         return 0;
     }
-    quit = handle_key(k, host_state, host_state.ipc_fd);
+    quit = handle_key(parse_key(raw), host_state, host_state.ipc_fd);
     if quit {
         host_state.quit_flag = True;
         return 1;

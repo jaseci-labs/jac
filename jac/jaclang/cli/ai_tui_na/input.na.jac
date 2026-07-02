@@ -1,6 +1,31 @@
 import from .state { TuiState }
 import from .ipc { ipc_send_cmd }
 import from .ipc_schema { IPC_CMD_SEND, IPC_CMD_STOP, IPC_CMD_RESET, IPC_CMD_QUIT }
+import from .keys {
+    Key,
+    parse_key,
+    KK_UNKNOWN,
+    KK_TAB,
+    KK_ESCAPE,
+    KK_UP,
+    KK_DOWN,
+    KK_ENTER,
+    KK_CTRL,
+    KK_SHIFT_ENTER,
+    KK_BACKSPACE,
+    KK_MOUSE_SCROLL_UP,
+    KK_MOUSE_SCROLL_DOWN,
+    KK_DELETE,
+    KK_LEFT,
+    KK_RIGHT,
+    KK_HOME,
+    KK_END,
+    KK_WORD_LEFT,
+    KK_WORD_RIGHT,
+    KK_PAGE_UP,
+    KK_PAGE_DOWN,
+    KK_CHAR
+}
 import from .autocomplete { ac_update, ac_apply }
 import from .overlay {
     overlay_is_active,
@@ -31,20 +56,6 @@ import from .editor {
     editor_nav_history,
     editor_update_scroll,
     editor_submit
-}
-
-def _parse_uint(s: str) -> int {
-    n: int = 0;
-    i: int = 0;
-    m = len(s);
-    while i < m {
-        c = ord(s[i]);
-        if c >= 48 and c <= 57 {
-            n = n * 10 + (c - 48);
-        }
-        i = i + 1;
-    }
-    return n;
 }
 
 def _editor_width(state: TuiState) -> int {
@@ -113,49 +124,46 @@ def _handle_submit(state: TuiState, ipc_fd: int) -> bool {
     return False;
 }
 
-def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
-    if len(key) == 0 {
+def handle_key(k: Key, state: TuiState, ipc_fd: int) -> bool {
+    if k.kind == KK_UNKNOWN {
         return False;
     }
 
     if overlay_is_active(state) {
-        return overlay_handle_key(key, state, ipc_fd);
+        return overlay_handle_key(k, state, ipc_fd);
     }
 
     ed = state.editor;
     ew = _editor_width(state);
     emr = _editor_max_rows(state);
 
-    first = key[0];
-    code = ord(first);
-
     if state.ac.active {
-        if code == 9 {
+        if k.kind == KK_TAB {
             ac_apply(state);
             editor_update_scroll(ed, ew, emr);
             state.dirty = True;
             return False;
         }
 
-        if code == 27 and len(key) == 1 {
+        if k.kind == KK_ESCAPE {
             state.ac.dismiss();
             state.dirty = True;
             return False;
         }
 
-        if key == "\033[A" or key == "\033OA" {
+        if k.kind == KK_UP {
             state.ac.nav_up();
             state.dirty = True;
             return False;
         }
 
-        if key == "\033[B" or key == "\033OB" {
+        if k.kind == KK_DOWN {
             state.ac.nav_down();
             state.dirty = True;
             return False;
         }
 
-        if (code == 13 or code == 10) and len(key) == 1 {
+        if k.kind == KK_ENTER {
             ac_kind = state.ac.kind;
             ac_apply(state);
             editor_update_scroll(ed, ew, emr);
@@ -169,30 +177,61 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
         state.dirty = True;
     }
 
-    if code == 3 or code == 17 {
-        ipc_send_cmd(ipc_fd, IPC_CMD_QUIT);
-        return True;
-    }
-
-    if code == 7 {
-        ipc_send_cmd(ipc_fd, IPC_CMD_STOP);
-        state.dirty = True;
+    if k.kind == KK_CTRL {
+        ch = chr(k.code);
+        if ch == "c" or ch == "q" {
+            ipc_send_cmd(ipc_fd, IPC_CMD_QUIT);
+            return True;
+        }
+        if ch == "g" {
+            ipc_send_cmd(ipc_fd, IPC_CMD_STOP);
+            state.dirty = True;
+            return False;
+        }
+        if ch == "r" {
+            ipc_send_cmd(ipc_fd, IPC_CMD_RESET);
+            state.reset_events();
+            state.dirty = True;
+            return False;
+        }
+        if ch == "o" {
+            overlay_open_palette(state, "");
+            return False;
+        }
+        if ch == "a" {
+            editor_move_line_start(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+        if ch == "e" {
+            editor_move_line_end(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+        if ch == "k" {
+            editor_delete_to_line_end(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+        if ch == "u" {
+            editor_delete_to_line_start(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+        if ch == "w" {
+            editor_delete_word_back(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
         return False;
     }
 
-    if code == 18 {
-        ipc_send_cmd(ipc_fd, IPC_CMD_RESET);
-        state.reset_events();
-        state.dirty = True;
-        return False;
-    }
-
-    if code == 15 {
-        overlay_open_palette(state, "");
-        return False;
-    }
-
-    if code == 9 {
+    if k.kind == KK_TAB {
         ed_text = ed.get_text();
         if ed_text.startswith("/") {
             overlay_open_palette(state, ed_text[1:]);
@@ -200,60 +239,18 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
         }
     }
 
-    if code == 1 {
-        editor_move_line_start(ed);
-        editor_update_scroll(ed, ew, emr);
-        state.dirty = True;
-        return False;
-    }
-
-    if code == 5 {
-        editor_move_line_end(ed);
-        editor_update_scroll(ed, ew, emr);
-        state.dirty = True;
-        return False;
-    }
-
-    if code == 11 {
-        editor_delete_to_line_end(ed);
-        editor_update_scroll(ed, ew, emr);
-        state.dirty = True;
-        return False;
-    }
-
-    if code == 21 {
-        editor_delete_to_line_start(ed);
-        editor_update_scroll(ed, ew, emr);
-        state.dirty = True;
-        return False;
-    }
-
-    if code == 23 {
-        editor_delete_word_back(ed);
-        editor_update_scroll(ed, ew, emr);
-        state.dirty = True;
-        return False;
-    }
-
-    if key == "\033\r" or key == "\033[13;2~" {
+    if k.kind == KK_SHIFT_ENTER {
         editor_newline(ed);
         editor_update_scroll(ed, ew, emr);
         state.dirty = True;
         return False;
     }
 
-    if code == 13 or code == 10 {
-        if len(key) == 1 {
-            return _handle_submit(state, ipc_fd);
-        }
-
-        editor_newline(ed);
-        editor_update_scroll(ed, ew, emr);
-        state.dirty = True;
-        return False;
+    if k.kind == KK_ENTER {
+        return _handle_submit(state, ipc_fd);
     }
 
-    if code == 127 or code == 8 {
+    if k.kind == KK_BACKSPACE {
         editor_backspace(ed);
         editor_update_scroll(ed, ew, emr);
         ac_update(state);
@@ -261,121 +258,106 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
         return False;
     }
 
-    if code == 27 and len(key) > 1 {
-        klen = len(key);
-        last = key[klen - 1];
-        if key.startswith("\033[<") and (last == "M" or last == "m") {
-            parts = key[3:klen - 1].split(";");
-            if len(parts) > 0 {
-                btn = _parse_uint(parts[0]);
-                if btn == 64 {
-                    state.scroll_up(3);
-                } elif btn == 65 {
-                    state.scroll_down(3);
-                }
-            }
-            return False;
-        }
-
-        if key == "\033[3~" {
-            editor_forward_delete(ed);
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[A" or key == "\033OA" {
-            if editor_is_on_first_vline(ed, ew) {
-                navigated = editor_nav_history(ed, -1);
-                if not navigated {
-                    editor_move_line_start(ed);
-                }
-            } else {
-                editor_move_up(ed, ew);
-            }
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[B" or key == "\033OB" {
-            if editor_is_on_last_vline(ed, ew) {
-                navigated = editor_nav_history(ed, 1);
-                if not navigated {
-                    editor_move_line_end(ed);
-                }
-            } else {
-                editor_move_down(ed, ew);
-            }
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[D" or key == "\033OD" {
-            editor_move_left(ed);
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[C" or key == "\033OC" {
-            editor_move_right(ed);
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[H" or key == "\033OH" {
-            editor_move_line_start(ed);
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[F" or key == "\033OF" {
-            editor_move_line_end(ed);
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[1;5D"
-        or key == "\033[5D"
-        or key == "\033b"
-        or key == "\033[1;3D" {
-            editor_word_left(ed);
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[1;5C"
-        or key == "\033[5C"
-        or key == "\033f"
-        or key == "\033[1;3C" {
-            editor_word_right(ed);
-            editor_update_scroll(ed, ew, emr);
-            state.dirty = True;
-            return False;
-        }
-
-        if key == "\033[5~" or key == "\033[1;5A" {
-            state.scroll_up(state.term_rows - 4);
-            return False;
-        }
-
-        if key == "\033[6~" or key == "\033[1;5B" {
-            state.scroll_down(state.term_rows - 4);
-            return False;
-        }
-
+    if k.kind == KK_MOUSE_SCROLL_UP {
+        state.scroll_up(3);
         return False;
     }
 
-    if code >= 32 and code <= 126 {
+    if k.kind == KK_MOUSE_SCROLL_DOWN {
+        state.scroll_down(3);
+        return False;
+    }
+
+    if k.kind == KK_DELETE {
+        editor_forward_delete(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_UP {
+        if editor_is_on_first_vline(ed, ew) {
+            navigated = editor_nav_history(ed, -1);
+            if not navigated {
+                editor_move_line_start(ed);
+            }
+        } else {
+            editor_move_up(ed, ew);
+        }
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_DOWN {
+        if editor_is_on_last_vline(ed, ew) {
+            navigated = editor_nav_history(ed, 1);
+            if not navigated {
+                editor_move_line_end(ed);
+            }
+        } else {
+            editor_move_down(ed, ew);
+        }
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_LEFT {
+        editor_move_left(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_RIGHT {
+        editor_move_right(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_HOME {
+        editor_move_line_start(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_END {
+        editor_move_line_end(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_WORD_LEFT {
+        editor_word_left(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_WORD_RIGHT {
+        editor_word_right(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    if k.kind == KK_PAGE_UP {
+        state.scroll_up(state.term_rows - 4);
+        return False;
+    }
+
+    if k.kind == KK_PAGE_DOWN {
+        state.scroll_down(state.term_rows - 4);
+        return False;
+    }
+
+    if k.kind == KK_CHAR {
         if len(ed.get_text()) < 4096 {
-            editor_insert(ed, first);
+            editor_insert(ed, chr(k.code));
             editor_update_scroll(ed, ew, emr);
             ac_update(state);
             state.dirty = True;

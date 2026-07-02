@@ -1,4 +1,5 @@
 import from .state { TuiState }
+import from .keys { Key }
 import from .commands {
     palette_commands,
     model_items,
@@ -72,9 +73,9 @@ def overlay_close(state: TuiState) {
     state.dirty = True;
 }
 
-def overlay_handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
+def overlay_handle_key(k: Key, state: TuiState, ipc_fd: int) -> bool {
     sl = state.select_list;
-    action = sl.handle_key(key);
+    action = sl.handle_key(k);
     if action == "cancel" {
         overlay_close(state);
         return False;

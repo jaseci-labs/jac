@@ -1,5 +1,15 @@
 import from .width { visible_width, ansi_trunc, ansi_pad }
 import from .terminal { ansi_sgr, ansi_reset }
+import from .keys {
+    Key,
+    KK_UP,
+    KK_DOWN,
+    KK_ENTER,
+    KK_ESCAPE,
+    KK_CTRL,
+    KK_BACKSPACE,
+    KK_CHAR
+}
 import from .theme {
     TH_BG_R,
     TH_BG_G,
@@ -259,40 +269,35 @@ obj SelectList {
         return lines;
     }
 
-    def handle_key(key: str) -> str {
-        if len(key) == 0 {
-            return "none";
+    def handle_key(k: Key) -> str {
+        if k.kind == KK_UP {
+            self.move_up();
+            return "changed";
         }
-        first = key[0];
-        code = ord(first);
-
-        if code == 27 and len(key) > 1 {
-            if key == "\033[A" or key == "\033OA" {
-                self.move_up();
-                return "changed";
-            }
-            if key == "\033[B" or key == "\033OB" {
-                self.move_down();
-                return "changed";
-            }
-            return "none";
+        if k.kind == KK_DOWN {
+            self.move_down();
+            return "changed";
         }
 
-        if code == 13 or code == 10 {
+        if k.kind == KK_ENTER {
             if len(self.filtered) > 0 {
                 return "select";
             }
             return "none";
         }
 
-        if code == 27 and len(key) == 1 {
+        if k.kind == KK_ESCAPE {
             return "cancel";
         }
-        if code == 3 or code == 17 {
-            return "cancel";
+        if k.kind == KK_CTRL {
+            ch = chr(k.code);
+            if ch == "c" or ch == "q" {
+                return "cancel";
+            }
+            return "none";
         }
 
-        if code == 127 or code == 8 {
+        if k.kind == KK_BACKSPACE {
             if len(self.filter_text) > 0 {
                 self.filter_text = self.filter_text[:len(self.filter_text) - 1];
                 self.set_filter(self.filter_text);
@@ -301,8 +306,8 @@ obj SelectList {
             return "none";
         }
 
-        if code >= 32 and code <= 126 and len(key) == 1 {
-            self.filter_text = self.filter_text + first;
+        if k.kind == KK_CHAR {
+            self.filter_text = self.filter_text + chr(k.code);
             self.set_filter(self.filter_text);
             return "changed";
         }
