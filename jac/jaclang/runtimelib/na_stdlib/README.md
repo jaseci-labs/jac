@@ -42,7 +42,6 @@ bundled one. A bundled module links through the existing cross-module machinery
   intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
-
 - **`base64.na.jac`** (#6978 Phase 3) -- self-contained RFC 4648
   base16/base32/base64 (`b16`/`b32`/`b64` encode+decode, `altchars`,
   `standard_`/`urlsafe_` variants) plus RFC 1924 base85 (`b85encode`/`b85decode`,
