@@ -1484,6 +1484,25 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
         }
 
+        def _dispatch_safely(self: JacRequestHandler, method: Callable[[], None]) {
+            try {
+                method();
+            } except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError) {
+                self.close_connection = True;
+            } except Exception as exc {
+                import logging;
+                import traceback;
+                logging.getLogger('jaclang.serve').error(
+                    f"Unhandled error serving {self.command} {self.path}:\n" + traceback.format_exc()
+                );
+                try {
+                    Jac.send_json(self, 500, {'error': f"{type(exc).__name__}: {exc}"});
+                } except Exception {
+                    self.close_connection = True;
+                }
+            }
+        }
+
         def _get_auth_token(self: JacRequestHandler) -> (str | None) {
             auth_header = self.headers.get('Authorization');
             return auth_header[7:]
@@ -1607,7 +1626,19 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             self.end_headers();
         }
 
-        def do_GET(self: JacRequestHandler) -> None {
+        def do_GET(self: JacRequestHandler) {
+            self._dispatch_safely(self._do_GET);
+        }
+
+        def do_POST(self: JacRequestHandler) {
+            self._dispatch_safely(self._do_POST);
+        }
+
+        def do_PUT(self: JacRequestHandler) {
+            self._dispatch_safely(self._do_PUT);
+        }
+
+        def _do_GET(self: JacRequestHandler) -> None {
             parsed_path = urlparse(self.path);
             path = parsed_path.path;
             if (path == '/static/client.js') {
@@ -1866,7 +1897,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
         }
 
-        def do_POST(self: JacRequestHandler) -> None {
+        def _do_POST(self: JacRequestHandler) -> None {
             parsed_path = urlparse(self.path);
             path = parsed_path.path;
             try {
@@ -2014,7 +2045,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
         }
 
-        def do_PUT(self: JacRequestHandler) -> None {
+        def _do_PUT(self: JacRequestHandler) -> None {
             parsed_path = urlparse(self.path);
             path = parsed_path.path;
 

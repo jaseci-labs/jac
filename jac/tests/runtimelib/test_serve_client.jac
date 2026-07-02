@@ -2132,3 +2132,30 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         }
     }
 }
+
+"""A request whose setup raises outside the walker-execution envelope (here:
+the user's persisted root anchor is gone from the anchor store, e.g. stale
+state written by an older runtime) must surface as a 500 JSON error response
+- never as a silently dropped connection with no HTTP response at all."""
+test "orphaned user root returns 500 json instead of dropping the connection" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        reg = client.register_user("orphan_user", "pw12345");
+        assert reg.ok , f"register should succeed: {reg.text}";
+        # Point the users row at a root anchor id that does not exist in the
+        # anchor store, simulating a store that was reset or migrated out from
+        # under the users db.
+        um = client.user_manager;
+        um._ensure_connection();
+        um._conn.execute(
+            "UPDATE users SET root_id = ? WHERE username = ?",
+            ("deadbeefdeadbeefdeadbeefdeadbeef", "orphan_user")
+        );
+        um._conn.commit();
+        resp = client.post("/walker/CreateTask", json={"title": "x"});
+        assert resp.status_code == 500 , f"expected a 500 error envelope, got {resp.status_code}: {resp.text}";
+        body = resp.json();
+        assert "error" in body , f"500 body should carry an error: {resp.text}";
+        client.close();
+    }
+}

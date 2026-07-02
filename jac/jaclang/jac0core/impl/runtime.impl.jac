@@ -1409,7 +1409,7 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     import time;
     import threading;
     import urllib.request;
-    import from http.server { HTTPServer }
+    import from http.server { ThreadingHTTPServer }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.server { JacAPIServer as CoreJacAPIServer }
     if module_name in sv_client._registry {
@@ -1444,7 +1444,7 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     srv.port = port;
     srv.load_module();
     handler_class = srv.create_handler();
-    httpd = HTTPServer(('127.0.0.1', port), handler_class);
+    httpd = ThreadingHTTPServer(('127.0.0.1', port), handler_class);
     srv.server = httpd;
     thread = threading.Thread(target=httpd.serve_forever, daemon=True);
     thread.start();
@@ -1618,11 +1618,12 @@ impl JacServe.get_sv_registry -> dict[str, str] {
 impl JacServe.create_server(
     jac_server: JacServer, host: str, port: int, max_retries: int = 10
 ) -> HTTPServer {
+    import from http.server { ThreadingHTTPServer }
     handler_class = jac_server.create_handler();
     current_port = port;
     for _ in range(max_retries) {
         try {
-            server = HTTPServer((host, current_port), handler_class);
+            server = ThreadingHTTPServer((host, current_port), handler_class);
             if current_port != port {
                 import from jaclang.cli.console { console }
                 console.print(
