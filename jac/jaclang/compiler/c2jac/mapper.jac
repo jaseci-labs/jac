@@ -14,7 +14,6 @@ import from jaclang.compiler.c2jac.c_common {
     expr_reeval_safe,
     has_loop_continue,
     switch_is_safe,
-    section_terminates,
     is_simple_ref,
     is_null_ptr_constant,
     cast_scalar_target,
@@ -30,8 +29,7 @@ import from jaclang.compiler.c2jac.c_types {
     C_PRIM_MAP,
     elem_typename,
     jac_prim,
-    typename,
-    user_type_name
+    typename
 }
 import from jaclang.compiler.c2jac.c_idioms {
     flatten_mult,

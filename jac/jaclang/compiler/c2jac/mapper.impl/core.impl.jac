@@ -35,8 +35,7 @@ impl CMapper._tag(c_node: object, tier: Tier, idiom: Idiom, reason: str) {
             mechanism=Mechanism.PY_AST,
             idiom=idiom,
             reason=reason,
-            c_line=line,
-            snippet=reason
+            c_line=line
         )
     );
 }
@@ -86,8 +85,7 @@ impl CMapper._earn_tier_a(c_node: object) {
                 mechanism=tag.mechanism,
                 idiom=Idiom.NONE,
                 reason="",
-                c_line=tag.c_line,
-                snippet=""
+                c_line=tag.c_line
             )
         );
     }
