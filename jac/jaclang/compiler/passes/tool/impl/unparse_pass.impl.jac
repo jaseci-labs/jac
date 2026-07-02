@@ -104,7 +104,13 @@ impl UnparsePass.exit_module(nd: uni.Module) -> None {
 }
 
 impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
-    nd.gen.jac = ": " + nd.tag.gen.jac;
+    prefix = "";
+    if nd.is_own {
+        prefix = "own ";
+    } elif nd.is_borrow {
+        prefix = "&mut " if nd.is_mut_borrow else "&";
+    }
+    nd.gen.jac = ": " + prefix + nd.tag.gen.jac;
 }
 
 impl UnparsePass.exit_type_param(nd: uni.TypeParam) -> None {
@@ -788,7 +794,11 @@ impl UnparsePass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
 }
 
 impl UnparsePass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    nd.gen.jac = nd.op.gen.jac + " " + nd.operand.gen.jac;
+    if nd.is_mut_borrow {
+        nd.gen.jac = nd.op.gen.jac + "mut " + nd.operand.gen.jac;
+    } else {
+        nd.gen.jac = nd.op.gen.jac + " " + nd.operand.gen.jac;
+    }
 }
 
 impl UnparsePass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {

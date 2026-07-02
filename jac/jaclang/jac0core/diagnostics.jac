@@ -565,6 +565,54 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " TypeScript declarations (or the matching @types/<package>), or relax"
          " the setting to \"warn\"."
      ),
+     E1301 = _err(
+         "E1301",
+         Category.SEMANTIC,
+         "Use of '{name}' after it was moved",
+         help="'{name}' is an `own` binding, so assigning it elsewhere (or passing"
+         " it into managed storage) moves the value out. The value now lives at the"
+         " destination — read it there, or reassign '{name}' before using it again."
+     ),
+     E1302 = _err(
+         "E1302",
+         Category.SEMANTIC,
+         "Conflicting mutable borrow of '{name}' while another borrow is live",
+         help="A value may have any number of shared (&) borrows or exactly one"
+         " mutable (&mut) borrow, never both at once. Let the existing borrow go out"
+         " of scope before taking '&mut {name}'."
+     ),
+     E1303 = _err(
+         "E1303",
+         Category.SEMANTIC,
+         "Cannot mutate '{name}' while a shared borrow of it is live",
+         help="While a `&` shared borrow is live, the owner is read-only. Let every"
+         " shared borrow go out of scope before mutating '{name}' — reassigning it or"
+         " writing one of its fields both count as mutation."
+     ),
+     E1304 = _err(
+         "E1304",
+         Category.SEMANTIC,
+         "'{name}' is destroyed while still borrowed",
+         help="The owner '{name}' goes out of scope (and is destroyed) while a borrow"
+         " of it is still live. A borrow must not outlive the value it points to; keep"
+         " '{name}' in scope for at least as long as every borrow of it."
+     ),
+     E1305 = _err(
+         "E1305",
+         Category.SEMANTIC,
+         "Owned resource '{name}' is never consumed",
+         help="'{name}' is an `own` binding that is never moved or handed off before"
+         " its scope ends. Move it to its final owner (or into managed storage) so the"
+         " resource is accounted for rather than silently dropped."
+     ),
+     E1306 = _err(
+         "E1306",
+         Category.SEMANTIC,
+         "Borrow of '{name}' escapes its scope",
+         help="Borrows are second-class: a `&`/`&mut` reference may not be stored in a"
+         " field, returned (except a single passthrough parameter), or otherwise"
+         " outlive the scope that created it."
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",
