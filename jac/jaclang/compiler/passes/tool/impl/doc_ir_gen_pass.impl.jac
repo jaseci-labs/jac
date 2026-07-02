@@ -450,12 +450,23 @@ impl DocIRGenPass.exit_sub_tag(nd: uni.SubTag) -> None {
     before_colon: list[doc.DocType] = [];
     after_colon: list[doc.DocType] = [];
     seen_colon = False;
+    prev_after: (uni.UniNode | None) = None;
     for i in nd.kid {
         if (isinstance(i, uni.Token) and (i.name == Tok.COLON) and not seen_colon) {
             colon_tok = i.gen.doc_ir;
             seen_colon = True;
         } elif seen_colon {
+            # Ownership prefixes (`own`, `&`, `&mut`) sit between the colon and
+            # the type as separate tokens; separate them with a space, except
+            # right after `&`, which hugs its type/`mut` (`&Buffer`, `&mut T`).
+            if after_colon
+            and not (
+                isinstance(prev_after, uni.Token) and (prev_after.name == Tok.BW_AND)
+            ) {
+                after_colon.append(self.space());
+            }
             after_colon.append(i.gen.doc_ir);
+            prev_after = i;
         } else {
             before_colon.append(i.gen.doc_ir);
         }
@@ -1165,6 +1176,22 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
 }
 
 impl DocIRGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
+    if nd.is_mut_borrow {
+        # `&mut <expr>`: `&` hugs `mut`, single space before the operand.
+        nd.gen.doc_ir = self.group(
+            self.concat(
+                [
+                    nd.op.gen.doc_ir,
+                    self.text("mut"),
+                    self.space(),
+                    nd.operand.gen.doc_ir
+                ],
+                ast_node=nd
+            ),
+            ast_node=nd
+        );
+        return;
+    }
     parts: list[doc.DocType] = [];
     for i in nd.kid {
         if (

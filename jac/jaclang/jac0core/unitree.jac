@@ -314,7 +314,10 @@ obj SubTag[T](UniNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has tag: T;
+    has tag: T,
+        is_own: bool = False,
+        is_borrow: bool = False,
+        is_mut_borrow: bool = False;
 
     def postinit -> None;
 }
@@ -986,7 +989,9 @@ obj UnaryExpr(Expr) {
     def accept_enter(v: UniPass) -> None;
 
     has operand: Expr,
-        op: Token;
+        op: Token,
+        is_borrow: bool = False,
+        is_mut_borrow: bool = False;
 
     def postinit -> None;
 }
