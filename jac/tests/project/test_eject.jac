@@ -175,16 +175,88 @@ test "every emitted backend .py file parses as valid Python" {
 }
 
 
-test "requirements.txt pins jaclang and adds fastapi + uvicorn" {
+test "requirements.txt has no jaclang pin, only stock PyPI packages" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";
         _write_project(src, "myapp");
         rc = _silent_eject(str(src));
         assert rc == 0;
         reqs = _backend(src, "requirements.txt").read_text();
-        assert "jaclang" in reqs;
+        # The runtime is vendored, so the deprecated jaclang (and byllm)
+        # packages must never appear as pip requirements.
+        for line in reqs.splitlines() {
+            assert not line.strip().startswith("jaclang");
+            assert not line.strip().startswith("byllm");
+        }
         assert "fastapi" in reqs;
         assert "uvicorn" in reqs;
+    }
+}
+
+
+# ==================== vendored runtime (self-contained output) ====================
+test "backend vendors the jaclang runtime with no compiler or CLI inside" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        _write_project(src, "myapp");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        vend = src / "ejected" / "backend" / "jaclang";
+        assert "Vendored jaclang runtime" in (vend / "__init__.py").read_text();
+        # The pieces the generated main.py and compiled modules import.
+        assert (vend / "jac0core" / "jaclib.py").exists();
+        assert (vend / "jac0core" / "runtime.py").exists();
+        assert (vend / "runtimelib" / "server.py").exists();
+        assert (vend / "runtimelib" / "memory.py").exists();
+        # Compiler / tooling subtrees must stay out of the vendored runtime.
+        assert not (vend / "compiler").exists();
+        assert not (vend / "meta_importer.py").exists();
+        assert not (vend / "langserve").exists();
+        assert not (vend / "jac0core" / "unitree.py").exists();
+        assert not (vend / "runtimelib" / "client").exists();
+    }
+}
+
+
+test "byLLM projects vendor jaclang.byllm and pin the llm capability deps" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "llmapp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "llmapp"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text(
+            'import from jaclang.byllm.lib { Model }\n\n' + 'glob llm = Model(model_name="mockllm", config={"outputs": ["ok"]});\n\n' + 'def:pub summarize(text: str) -> str by llm();\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        vend = src / "ejected" / "backend" / "jaclang";
+        assert (vend / "byllm" / "lib.py").exists();
+        assert (vend / "byllm" / "plugin.py").exists();
+        # The vendored init registers the byllm provider.
+        assert "_register_vendored_byllm_provider" in (
+            vend / "__init__.py"
+        ).read_text();
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "litellm" in reqs;
+        for line in reqs.splitlines() {
+            assert not line.strip().startswith("jaclang");
+            assert not line.strip().startswith("byllm");
+        }
+    }
+}
+
+
+test "plain projects do not vendor byllm or pin llm deps" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "myapp";
+        _write_project(src, "myapp");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        vend = src / "ejected" / "backend" / "jaclang";
+        assert not (vend / "byllm").exists();
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "litellm" not in reqs;
     }
 }
 
@@ -391,7 +463,7 @@ test "request model includes fields inherited from a base walker" {
 
 
 # ==================== [eject.db] SQLAlchemy persistence ====================
-test "[eject.db] sqlalchemy emits the backend, hook, and SQLAlchemy dep" {
+test "[eject.db] sqlalchemy vendors the backend, hook, and SQLAlchemy dep" {
     with TemporaryDirectory() as td {
         src = Path(td) / "dbapp";
         _write_project(src, "dbapp");
@@ -400,9 +472,15 @@ test "[eject.db] sqlalchemy emits the backend, hook, and SQLAlchemy dep" {
         (src / "jac.toml").write_text(toml + '\n[eject.db]\ndriver = "sqlalchemy"\n');
         rc = _silent_eject(str(src));
         assert rc == 0;
-        assert _backend(src, "_jac_sqldb.py").exists();
+        # The backend is the real runtime module, vendored like the rest.
+        assert _backend(
+            src, "jaclang/runtimelib/storage/sqlalchemy_memory.py"
+        ).exists();
         main_py = _backend(src, "main.py").read_text();
-        assert "from _jac_sqldb import SqlAlchemyMemory" in main_py;
+        assert (
+            "from jaclang.runtimelib.storage.sqlalchemy_memory "
+            "import SqlAlchemyMemory"
+        ) in main_py;
         assert "def get_persistent_memory" in main_py;
         assert "JAC_DB_URL" in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
@@ -411,13 +489,15 @@ test "[eject.db] sqlalchemy emits the backend, hook, and SQLAlchemy dep" {
 }
 
 
-test "default eject does not emit the SQLAlchemy backend" {
+test "default eject does not vendor the SQLAlchemy backend" {
     with TemporaryDirectory() as td {
         src = Path(td) / "plainapp";
         _write_project(src, "plainapp");
         rc = _silent_eject(str(src));
         assert rc == 0;
-        assert not _backend(src, "_jac_sqldb.py").exists();
+        assert not _backend(
+            src, "jaclang/runtimelib/storage/sqlalchemy_memory.py"
+        ).exists();
         main_py = _backend(src, "main.py").read_text();
         assert "get_persistent_memory" not in main_py;
         reqs = _backend(src, "requirements.txt").read_text();

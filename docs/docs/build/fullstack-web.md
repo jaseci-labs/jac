@@ -54,7 +54,7 @@ Set `kind = "web-static"` for an app with **no backend** -- a pure `cl` page tha
 
 - **Concepts you need** → [Core Concepts](../quick-guide/what-makes-jac-different.md) -- codespaces & the client/server boundary
 - **Build it for real** → [Build an AI Day Planner](../tutorials/first-app/build-ai-day-planner.md) (the marquee tutorial), then the full-stack series: [Setup](../tutorials/fullstack/setup.md) · [Components](../tutorials/fullstack/components.md) · [State](../tutorials/fullstack/state.md) · [Backend](../tutorials/fullstack/backend.md) · [Auth](../tutorials/fullstack/auth.md) · [Routing](../tutorials/fullstack/routing.md)
-- **Look it up** → [jac-client reference](../reference/plugins/jac-client.md) · [Client-only apps](../reference/plugins/jac-client.md#client-only-apps)
+- **Look it up** → [jac-client reference](../reference/plugins/jac-client.md) · [Client-only apps](../reference/plugins/jac-client.md#client-only-apps) · [WebAssembly in the browser](../tutorials/native/wasm.md)
 - **Ship it** → [Local server](../tutorials/production/local.md) · [Kubernetes](../tutorials/production/kubernetes.md)
 
 ## Going further

@@ -49,13 +49,30 @@ runs:
         path: jac/.pbs-build
         key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
 
+    # The LLVMPY_* shim is the single most expensive build artifact (statically
+    # links ~0.5 GB of LLVM archives; several minutes) and depends only on
+    # native/**, build.zig, and the pinned slice (llvm_release.zig) -- NOT on
+    # jaclang/**. Cache the built shim itself so compiler-only merges (the
+    # common case for a binary-cache miss) skip both the LLVM fetch below and
+    # the link: the build step passes the restored file via `-Dshim-bin`. The
+    # cache path is the shim's in-tree place path, which a from-source build
+    # populates, so a miss self-seeds when the job ends.
+    - name: Restore cached LLVMPY shim
+      id: shim-cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache@v4
+      with:
+        path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
     # wheel anymore). Cache the pruned ~0.5 GB tree, keyed on payload.zig (which
     # pins the LLVM release via llvmRelease) -- mirrors the .pbs-build cache.
-    # Only engaged on a binary miss; a payload.zig edit re-fetches.
+    # Only engaged on a binary miss AND a shim miss (a cached shim needs no LLVM
+    # at all); a payload.zig edit re-fetches.
     - name: Restore cached LLVM (jacllvm shim deps)
-      if: steps.cache.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
       uses: actions/cache@v4
       with:
         path: jac/.llvm-build
@@ -83,9 +100,10 @@ runs:
 
     # Download + extract the pinned LLVM into jac/.llvm-build (idempotent: a no-op
     # when the cache above restored it). Must run before `zig build` so the shim's
-    # static archives exist when build.zig configures the jacllvm step.
+    # static archives exist when build.zig configures the jacllvm step. Skipped
+    # entirely when a cached shim was restored (-Dshim-bin needs no LLVM).
     - name: Fetch LLVM for the jacllvm shim
-      if: steps.cache.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: jac
       run: zig build fetch-llvm --summary all
@@ -100,7 +118,19 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: jac
-      run: zig build --summary all
+      # On a shim-cache hit, stage the restored shim OUTSIDE its in-tree place
+      # path before passing it via -Dshim-bin: the build's place step copies
+      # -Dshim-bin back to that path, and a self-copy would read the file it is
+      # truncating. On a shim miss the plain build links it from source, the
+      # place step writes it in-tree, and the shim cache saves it at job end.
+      run: |
+        SHIM_ARG=()
+        if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
+          mkdir -p .shim-build
+          cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
+          SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
+        fi
+        zig build "${SHIM_ARG[@]}" --summary all
 
     # Binary cache hits skip `zig build`, which is what normally runs fetch-typeshed.
     # Older cache entries only stored the binary, so materialize stubs when missing.

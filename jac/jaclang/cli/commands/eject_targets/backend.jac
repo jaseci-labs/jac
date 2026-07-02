@@ -3,276 +3,6 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 
 
-glob _IMPLICIT_PY_DEPS: dict = {"byllm": "byllm"},
-     _SQLDB_BACKEND_SRC: str = '''"""Vendored SQLAlchemy persistence backend for the ejected Jac app.
-Registered via jaclang\'s get_persistent_memory hook; defaults to a local SQLite
-file (set JAC_DB_URL for Postgres/MySQL). Single-writer; use the built-in scale backend to scale."""
-from __future__ import annotations
-
-import json
-import logging
-import threading
-from datetime import datetime, timezone
-from uuid import UUID
-
-from sqlalchemy import (
-    Column,
-    Integer,
-    MetaData,
-    String,
-    Table,
-    Text,
-    create_engine,
-    delete,
-    select,
-)
-
-from jaclang.jac0core.archetype import Anchor, Root
-from jaclang.runtimelib.changeset import ApplyReport, snapshot_field_hashes
-from jaclang.runtimelib.memory import PersistentMemory
-from jaclang.runtimelib.serializer import Serializer
-
-logger = logging.getLogger(__name__)
-
-_FORMAT_VERSION = 1
-_metadata = MetaData()
-_anchors = Table(
-    "anchors",
-    _metadata,
-    Column("id", String(64), primary_key=True),
-    Column("type", String(64), nullable=False),
-    Column("arch_module", Text),
-    Column("arch_type", Text),
-    Column("fingerprint", Text),
-    Column("data", Text, nullable=False),
-    Column("format_version", Integer, nullable=False, default=_FORMAT_VERSION),
-    Column("updated_at", Text),
-)
-
-
-def _anchor_row(anchor):
-    """Build the stored row for an anchor (mirrors SqliteMemory rows)."""
-    data = Serializer.serialize(anchor, include_type=True)
-    arch_module = None
-    arch_type = None
-    fingerprint = None
-    if anchor.is_populated() and anchor.archetype is not None:
-        arch = anchor.archetype
-        arch_module = type(arch).__module__
-        arch_type = type(arch).__name__
-        fp = getattr(type(arch), "__jac_fingerprint__", None)
-        fingerprint = fp if isinstance(fp, str) and fp else None
-    return {
-        "id": str(anchor.id),
-        "type": type(anchor).__name__,
-        "arch_module": arch_module,
-        "arch_type": arch_type,
-        "fingerprint": fingerprint,
-        "data": json.dumps(data),
-        "format_version": _FORMAT_VERSION,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-class SqlAlchemyMemory(PersistentMemory):
-    """PersistentMemory L3 backend over a SQLAlchemy engine."""
-
-    def __init__(self, url):
-        self._mem = {}
-        self._lock = threading.RLock()
-        self._engine = create_engine(url, future=True)
-        _metadata.create_all(self._engine)
-
-    # ---- lifecycle ----
-    def is_available(self):
-        return self._engine is not None
-
-    def close(self):
-        if self._engine is not None:
-            self._engine.dispose()
-            self._engine = None
-        self._mem.clear()
-
-    def commit(self, anchor=None):
-        # Writes are immediate (apply upserts per intent); nothing to flush.
-        pass
-
-    # ---- read path ----
-    def get(self, id):
-        anchor = self._mem.get(id)
-        if anchor is not None:
-            return anchor
-        with self._engine.connect() as conn:
-            row = conn.execute(
-                select(_anchors.c.data).where(_anchors.c.id == str(id))
-            ).fetchone()
-        if not row:
-            return None
-        try:
-            anchor = Serializer.deserialize(json.loads(row[0]))
-        except Exception as e:
-            logger.warning("SqlAlchemyMemory: failed to deserialize anchor %s: %s", id, e)
-            return None
-        if anchor is None:
-            return None
-        self._mem[id] = anchor
-        snapshot_field_hashes(anchor)
-        return anchor
-
-    def has(self, id):
-        if id in self._mem:
-            return True
-        with self._engine.connect() as conn:
-            row = conn.execute(
-                select(_anchors.c.id).where(_anchors.c.id == str(id))
-            ).fetchone()
-        return row is not None
-
-    def exists(self, id):
-        return self.has(id)
-
-    def get_mem(self):
-        return self._mem
-
-    def get_roots(self):
-        seen = set()
-        for anchor in list(self._mem.values()):
-            if isinstance(anchor.archetype, Root):
-                seen.add(anchor.id)
-                yield anchor.archetype
-        with self._engine.connect() as conn:
-            rows = conn.execute(
-                select(
-                    _anchors.c.id, _anchors.c.arch_module, _anchors.c.arch_type
-                ).where(_anchors.c.type == "NodeAnchor")
-            ).fetchall()
-        for (rid, arch_module, arch_type) in rows:
-            if not arch_module or not arch_type:
-                continue
-            uid = UUID(rid)
-            if uid in seen:
-                continue
-            cls = Serializer._get_class(arch_module, arch_type)
-            if cls is not None and isinstance(cls, type) and issubclass(cls, Root):
-                anchor = self.get(uid)
-                if anchor is not None and isinstance(anchor.archetype, Root):
-                    seen.add(uid)
-                    yield anchor.archetype
-
-    def find(self, ids, filter=None):
-        id_list = [ids] if isinstance(ids, UUID) else list(ids)
-        for id in id_list:
-            anchor = self.get(id)
-            if anchor is not None and (filter is None or filter(anchor)):
-                yield anchor
-
-    def find_one(self, ids, filter=None):
-        id_list = [ids] if isinstance(ids, UUID) else list(ids)
-        for id in id_list:
-            anchor = self.get(id)
-            if anchor is not None and (filter is None or filter(anchor)):
-                return anchor
-        return None
-
-    def query(self, filter=None):
-        seen = set()
-        for anchor in list(self._mem.values()):
-            seen.add(anchor.id)
-            if filter is None or filter(anchor):
-                yield anchor
-        with self._engine.connect() as conn:
-            rows = conn.execute(select(_anchors.c.id)).fetchall()
-        for (rid,) in rows:
-            uid = UUID(rid)
-            if uid in seen:
-                continue
-            anchor = self.get(uid)
-            if anchor is not None and (filter is None or filter(anchor)):
-                yield anchor
-
-    # ---- write path ----
-    def _write(self, conn, anchor):
-        row = _anchor_row(anchor)
-        existing = conn.execute(
-            select(_anchors.c.id).where(_anchors.c.id == row["id"])
-        ).fetchone()
-        if existing:
-            conn.execute(
-                _anchors.update().where(_anchors.c.id == row["id"]).values(**row)
-            )
-        else:
-            conn.execute(_anchors.insert().values(**row))
-
-    def put(self, anchor):
-        self._mem[anchor.id] = anchor
-        if not anchor.persistent or not anchor.is_populated():
-            return
-        try:
-            row = _anchor_row(anchor)
-        except (AttributeError, ModuleNotFoundError):
-            return
-        try:
-            with self._engine.begin() as conn:
-                self._write(conn, anchor)
-        except Exception as e:
-            logger.warning("SqlAlchemyMemory.put: failed to persist %s: %s", anchor.id, e)
-
-    def put_if_exists(self, anchor):
-        if self.has(anchor.id):
-            self.put(anchor)
-            return True
-        return False
-
-    def delete(self, id):
-        self._mem.pop(id, None)
-
-    def invalidate(self, id):
-        self._mem.pop(id, None)
-
-    def apply(self, changeset):
-        report = ApplyReport()
-        if changeset.is_empty():
-            return report
-        with self._lock:
-            try:
-                with self._engine.begin() as conn:
-                    poisoned = set()
-                    for stage in changeset.staged():
-                        for intent in stage:
-                            if intent.depends_on & poisoned:
-                                report.skipped[intent.anchor.id] = "dependency failed"
-                                poisoned.add(intent.anchor.id)
-                                continue
-                            try:
-                                if intent.is_delete():
-                                    conn.execute(
-                                        delete(_anchors).where(
-                                            _anchors.c.id == str(intent.anchor.id)
-                                        )
-                                    )
-                                else:
-                                    self._write(conn, intent.anchor)
-                                report.applied.append(intent.anchor.id)
-                            except (AttributeError, ModuleNotFoundError) as se:
-                                poisoned.add(intent.anchor.id)
-                                report.failed[intent.anchor.id] = str(se)
-                            except Exception as e:
-                                poisoned.add(intent.anchor.id)
-                                report.failed[intent.anchor.id] = str(e)
-                                logger.error(
-                                    "SqlAlchemyMemory.apply: %s failed for %s: %s",
-                                    intent.op.name, intent.anchor.id, e,
-                                )
-            except Exception as te:
-                report.applied = []
-                for stage in changeset.staged():
-                    for intent in stage:
-                        report.failed[intent.anchor.id] = str(te)
-                logger.error("SqlAlchemyMemory.apply: transaction rolled back: %s", te)
-        return report
-''';
-
-
 def emit_backend(
     backend_dir: Path,
     project_name: str,
@@ -370,18 +100,42 @@ def emit_backend(
     sql = str(db.get("driver", "")).lower() in ["sqlalchemy", "sqlite", "sql"];
     db_basename = _default_db_basename(project_name) if sql else "";
     if sql {
-        _emit_sqldb_module(backend_dir);
-        console.print("  ✔ SQLAlchemy persistence (_jac_sqldb.py)", style="success");
+        console.print(
+            "  ✔ SQLAlchemy persistence (vendored runtime backend)", style="success"
+        );
     }
 
     _emit_main_py(
         backend_dir, project_name, walkers_full, functions_full, sql, db_basename
     );
-    plugins = _detect_plugins(emitted_codes);
-    if sql and ("sqlalchemy" not in [str(p).lower() for p in plugins]) {
-        plugins.append("SQLAlchemy>=2.0");
+
+    import from jaclang.cli.commands.eject_targets.runtime_vendor {
+        vendor_runtime,
+        llm_requirements
     }
-    _emit_requirements(backend_dir, plugins);
+    uses_llm = _uses_llm(emitted_codes);
+    sql_seeds = ["jaclang.runtimelib.storage.sqlalchemy_memory"] if sql else [];
+    vendored = vendor_runtime(
+        backend_dir, emitted_codes, include_byllm=uses_llm, extra_seeds=sql_seeds
+    );
+    if vendored < 0 {
+        return 1;
+    }
+    console.print(
+        f"  ✔ vendored jaclang runtime ({vendored} modules" + (
+            ", incl. byllm" if uses_llm else ""
+        ) + ")",
+        style="success"
+    );
+
+    reqs: list[str] = [];
+    if sql {
+        reqs.append("SQLAlchemy>=2.0");
+    }
+    if uses_llm {
+        reqs.extend(llm_requirements());
+    }
+    _emit_requirements(backend_dir, reqs);
     return 0;
 }
 
@@ -393,11 +147,6 @@ def _default_db_basename(project_name: str) -> str {
     }
     name = "".join(chars).strip("_");
     return name or "jac_db";
-}
-
-
-def _emit_sqldb_module(backend_dir: Path) {
-    (backend_dir / "_jac_sqldb.py").write_text(_SQLDB_BACKEND_SRC, encoding="utf-8");
 }
 
 
@@ -414,24 +163,22 @@ def _first_duplicate(names: list) -> str {
 }
 
 
-def _detect_plugins(codes: list) -> list {
-    found: set = set();
+def _uses_llm(codes: list) -> bool {
     for code in codes {
         for raw in str(code).splitlines() {
             line = raw.strip();
-            for (mod, pkg) in _IMPLICIT_PY_DEPS.items() {
-                m = str(mod);
+            for m in ["byllm", "jaclang.byllm"] {
                 if (line == "import " + m)
                 or line.startswith("import " + m + " ")
                 or line.startswith("import " + m + ".")
                 or line.startswith("from " + m + " ")
                 or line.startswith("from " + m + ".") {
-                    found.add(str(pkg));
+                    return True;
                 }
             }
         }
     }
-    return sorted(list(found));
+    return False;
 }
 
 
@@ -634,7 +381,7 @@ def _emit_main_py(
     if sql {
         lines += [
             'from jaclang.jac0core.runtime import hookimpl, plugin_manager',
-            'from _jac_sqldb import SqlAlchemyMemory',
+            'from jaclang.runtimelib.storage.sqlalchemy_memory import SqlAlchemyMemory',
             '',
             '_DB_URL = os.environ.get("JAC_DB_URL") or (',
             '    "sqlite:///" + os.path.join(_BASE, ' + repr(
@@ -893,25 +640,10 @@ def _emit_main_py(
 }
 
 
-def _jaclang_req -> str {
-    version = "";
-    try {
-        import jaclang;
-        version = str(getattr(jaclang, "__version__", "") or "");
-    } except Exception {
-        version = "";
-    }
-    if version {
-        return f"jaclang>={version}";
-    }
-    return "jaclang";
-}
-
-
-def _emit_requirements(backend_dir: Path, plugins: list) {
-    lines: list[str] = [_jaclang_req(), "fastapi>=0.110", "uvicorn[standard]>=0.27"];
-    for p in plugins {
-        lines.append(str(p));
+def _emit_requirements(backend_dir: Path, extra_reqs: list) {
+    lines: list[str] = ["fastapi>=0.110", "uvicorn[standard]>=0.27"];
+    for req in extra_reqs {
+        lines.append(str(req));
     }
     (backend_dir / "requirements.txt").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"

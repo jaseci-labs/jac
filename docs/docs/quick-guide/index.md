@@ -79,7 +79,7 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     [plugins.client]
 
     [plugins.byllm.model]
-    default_model = "claude-sonnet-4-20250514"
+    default_model = "anthropic/claude-sonnet-4-6"
     ```
 
     Install Jac, set your API key, and run:
