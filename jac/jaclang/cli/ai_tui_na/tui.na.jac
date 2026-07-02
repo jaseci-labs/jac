@@ -1,45 +1,18 @@
 import sys;
 import os;
 
-import from .libc_tty {
-    tty_open,
-    tty_close,
-    tty_update_size,
-    tty_rows,
-    tty_cols,
-    tty_x_pixels,
-    tty_y_pixels,
-    tty_poll,
-    tty_stdin_ready,
-    tty_key_ready,
-    tty_read_key,
-    tty_write,
-    tty_init_stdio_remap,
-    tty_restore_stdio,
-    tty_ipc_fd
-}
-import from .terminal {
-    term_enter_alt_screen,
-    term_leave_alt_screen,
-    term_hide_cursor,
-    term_show_cursor,
-    term_enable_mouse,
-    term_disable_mouse
-}
-import from .state { TuiState }
-
-import from .select_list { SelectList, SelectItem }
-import from .ipc { ipc_read_frame_v2, ipc_send_cmd }
-import from .screen { screen_render }
+import from .ipc { ipc_send_cmd }
 import from .diff { DiffEngine }
-import from .input { handle_key }
-import from .terminal_image { term_hyperlink, image_rows }
-import from .tui_core { tui_setup, tui_loop_once, tui_teardown }
+import from .state { TuiState }
+import from .transport { TtyFdTransport }
+import from .tui_loop { tui_loop_once }
+import from .tui_core { tui_setup, tui_teardown }
 
 glob args = sys.argv;
 
 glob state: TuiState = TuiState(),
-     diff_engine: DiffEngine = DiffEngine();
+     diff_engine: DiffEngine = DiffEngine(),
+     tty_transport: TtyFdTransport = TtyFdTransport();
 
 glob proj = os.getenv("JAC_AI_UI_PROJECT");
 
@@ -72,7 +45,7 @@ def _run {
         }
     }
 
-    while tui_loop_once(state, diff_engine) { }
+    while tui_loop_once(state, diff_engine, tty_transport, 1) { }
 
     tui_teardown(state);
 }

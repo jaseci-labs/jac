@@ -6,10 +6,6 @@ import from .libc_tty {
     tty_update_size,
     tty_rows,
     tty_cols,
-    tty_poll,
-    tty_stdin_ready,
-    tty_key_ready,
-    tty_read_key,
     tty_write,
     tty_init_stdio_remap,
     tty_restore_stdio,
@@ -24,10 +20,8 @@ import from .terminal {
     term_disable_mouse
 }
 import from .state { TuiState }
-import from .ipc { ipc_read_frame_v2 }
 import from .screen { screen_render }
 import from .diff { DiffEngine }
-import from .input { handle_key }
 
 def _sync_size(state: TuiState) {
     tty_update_size();
@@ -119,35 +113,6 @@ def tui_setup(state: TuiState, project: str, files_env: str, presets_env: str) -
     tui_enter_screen(state, 1);
 
     return 0;
-}
-
-def tui_loop_once(state: TuiState, diff_engine: DiffEngine) -> bool {
-    tty_poll(50);
-
-    if tty_key_ready() > 0 {
-        k = tty_read_key();
-        if len(k) > 0 {
-            should_quit = handle_key(k, state, state.ipc_fd);
-            if should_quit {
-                state.quit_flag = True;
-            }
-        }
-    }
-
-    frames_drained: int = 0;
-    while tty_stdin_ready() > 0 and frames_drained < 64 {
-        ok = ipc_read_frame_v2(state);
-        if not ok {
-            state.quit_flag = True;
-            return False;
-        }
-        _sync_size(state);
-        frames_drained = frames_drained + 1;
-    }
-
-    tui_render_once(state, diff_engine, 1);
-
-    return not state.quit_flag;
 }
 
 def tui_teardown(state: TuiState) {
