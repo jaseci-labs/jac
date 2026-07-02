@@ -34,6 +34,7 @@ impl DependencyInstaller.ensure_venv -> None {
             }
             raise;
         }
+        self._seed_build_backend(target);
     }
     if self.venv_dir.exists() {
         pyvenv_cfg = self.venv_dir / "pyvenv.cfg";
@@ -61,6 +62,38 @@ impl DependencyInstaller.ensure_venv -> None {
     site_packages = str(get_venv_site_packages(self.venv_dir));
     if site_packages not in sys.path {
         sys.path.insert(0, site_packages);
+    }
+}
+
+impl DependencyInstaller._seed_build_backend(target: Path) -> None {
+    import subprocess;
+    import sys;
+    if sys.platform == "win32" {
+        venv_python = str(target / "Scripts" / "python.exe");
+    } else {
+        venv_python = str(target / "bin" / "python");
+    }
+    cmd = [
+        venv_python,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "pip",
+        "setuptools",
+        "wheel"
+    ];
+    try {
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
+        if result.returncode != 0 and self.verbose {
+            console.print(
+                f"Warning: could not seed build backend in venv: {result.stderr.strip()}"
+            );
+        }
+    } except Exception as e {
+        if self.verbose {
+            console.print(f"Warning: could not seed build backend in venv: {e}");
+        }
     }
 }
 

@@ -1,15 +1,13 @@
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client { get_bun }
-import from jaclang.runtimelib.client_bundle { ClientBundleError }
+import from jaclang.runtimelib.client.bun_installer { bun_unavailable_message }
+import from jaclang.runtimelib.client_bundle { ClientBundleError, MissingBunError }
 
 
 def _require_bun -> str {
     bun = get_bun();
     if not bun {
-        raise ClientBundleError(
-            'Bun is required but could not be found or installed. '
-            'Install manually: https://bun.sh'
-        ) from None;
+        raise MissingBunError(bun_unavailable_message()) from None;
     }
     return bun;
 }
