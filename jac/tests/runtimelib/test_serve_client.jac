@@ -2244,3 +2244,29 @@ test "ensure_bundle retries a missing-bun failure but memoizes build errors" {
     }
     assert broken.build.call_count == 1 , "a real build failure stays memoized until reload";
 }
+
+"""/graph, /graph/data and /docs must be served by the stdlib server too -
+previously they existed only on the scale (FastAPI) server, so apps embedding
+them 404'd whenever serving fell back to the zero-dependency stack."""
+test "stdlib server serves graph visualizer and docs" {
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            fixture_abs_path("serve_shared_root.jac"), base_path=tmpdir
+        );
+        page = client.get("/graph");
+        assert page.status_code == 200 , f"/graph: {page.status_code}";
+        assert "<html" in page.text.lower() , "/graph should serve the visualizer html";
+        seeded = client.post("/walker/leave_note", json={"text": "hi"});
+        assert seeded.ok , f"seed walker failed: {seeded.text}";
+        data = client.get("/graph/data");
+        assert data.status_code == 200 , f"/graph/data: {data.text}";
+        payload = data.json();
+        assert "nodes" in payload and "edges" in payload , f"payload: {data.text}";
+        assert len(payload["nodes"]) >= 1 , "graph data should include the root node";
+        docs = client.get("/docs");
+        assert docs.status_code == 200 , f"/docs: {docs.status_code}";
+        assert "/walker/leave_note" in docs.text , "docs page should list the module's walkers";
+        assert "/user/login" in docs.text , "docs page should list auth endpoints";
+        client.close();
+    }
+}

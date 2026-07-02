@@ -1687,6 +1687,65 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             self.end_headers();
         }
 
+        def _serve_graph_page(self: JacRequestHandler) {
+            import jaclang.scale;
+            template = Path(jaclang.scale.__file__).parent / 'templates' / 'graph.html';
+            Jac.send_html(self, 200, template.read_text(encoding='utf-8'));
+        }
+
+        def _serve_graph_data(self: JacRequestHandler) {
+            import from jaclang.runtimelib.utils { collect_node_connections }
+            username = self._authenticate();
+            if not username {
+                username = Con.GUEST.value;
+                if not server.user_manager.user_exists(username) {
+                    server.user_manager.create_user(username, '__no_password__');
+                }
+            }
+            root_id = server.user_manager.get_root_id(username);
+            if not root_id {
+                Jac.send_json(self, 404, {'error': 'User root not found'});
+                return;
+            }
+            req_ctx = ExecutionContext(_parent=Jac.get_context());
+            req_ctx.set_user_root(root_id);
+            token = Jac.push_request_context(req_ctx);
+            try {
+                user_root = req_ctx.get_root();
+                visited_nodes: set = set();
+                connections: set = set();
+                edge_ids: set = set();
+                nodes: list[dict] = [];
+                edges: list[dict] = [];
+                collect_node_connections(
+                    user_root, visited_nodes, connections, edge_ids
+                );
+                nodes.append({'id': str(id(user_root)), 'label': 'root'});
+                for node_arch in visited_nodes {
+                    if (node_arch != user_root) {
+                        nodes.append(
+                            {'id': str(id(node_arch)), 'label': repr(node_arch)}
+                        );
+                    }
+                }
+                for (_, source_node, target_node, edge_arch) in connections {
+                    edge_data: dict = {
+                        'from': str(id(source_node)),
+                        'to': str(id(target_node))
+                    };
+                    if (repr(edge_arch) != 'GenericEdge()') {
+                        edge_data['label'] = repr(edge_arch);
+                    }
+                    edges.append(edge_data);
+                }
+                Jac.send_json(
+                    self, 200, {'version': '1.0', 'nodes': nodes, 'edges': edges}
+                );
+            } finally {
+                Jac.reset_request_context(token);
+            }
+        }
+
         def do_GET(self: JacRequestHandler) {
             self._dispatch_safely(self._do_GET);
         }
@@ -1705,6 +1764,18 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
 
             if path in ('/healthz', '/healthz/live', '/healthz/ready') {
                 Jac.send_json(self, 200, {'status': 'ok'});
+                return;
+            }
+            if (path == '/graph') {
+                self._serve_graph_page();
+                return;
+            }
+            if (path == '/graph/data') {
+                self._serve_graph_data();
+                return;
+            }
+            if (path == '/docs') {
+                Jac.send_html(self, 200, _docs_html(server));
                 return;
             }
             if (path == '/static/client.js') {
@@ -2332,6 +2403,137 @@ impl JacAPIServer.start(
         }
     }
 }
+
+def _docs_html(server: JacAPIServer) -> str {
+    import html as _html;
+    server.introspector.load();
+    functions = server.introspector.get_functions();
+    walkers = server.introspector.get_walkers();
+    client_exports = server.introspector._client_manifest.get('exports', []);
+
+    def esc(text: any) -> str {
+        return _html.escape(str(text));
+    }
+
+    def format_param(name: str, info: dict[(str, Any)]) -> str {
+        req = 'required' if info['required'] else 'optional';
+        `default = f", default: {info['default']}" if info.get('default') else '';
+        return f"{name}: {info['type']} ({req}{`default})";
+    }
+
+    rows: list[str] = [];
+
+    def section(title: str, note: str = '') {
+        note_html = f" <small>{esc(note)}</small>" if note else '';
+        rows.append(f"<h2>{esc(title)}{note_html}</h2>");
+    }
+
+    def endpoint(method: str, path: str, desc: str, details: str = '') {
+        details_html = f"<div class='det'>{esc(details)}</div>" if details else '';
+        rows.append(
+            f"<div class='ep'><span class='m {method.lower()}'>{esc(method)}"
+            f"</span> <code>{esc(path)}</code>"
+            f"<div class='desc'>{esc(desc)}</div>{details_html}</div>"
+        );
+    }
+
+    section('Authentication');
+    endpoint(
+        'POST',
+        '/user/register',
+        'Create new user account',
+        'Body: { "username": str, "password": str }'
+    );
+    endpoint(
+        'POST',
+        '/user/login',
+        'Authenticate and get token',
+        'Body: { "username": str, "password": str }'
+    );
+    endpoint(
+        'GET',
+        '/user/info',
+        'Get authenticated user information',
+        'Requires: Authorization header with Bearer token'
+    );
+    section('Introspection');
+    endpoint('GET', '/functions', 'List all functions');
+    endpoint('GET', '/walkers', 'List all walkers');
+    if functions {
+        section('Functions');
+        for (name, func) in functions.items() {
+            sig = server.introspector.introspect_callable(func);
+            params = [format_param(n, i) for (n, i) in sig['parameters'].items()];
+            params_str = ', '.join(params) if params else '';
+            endpoint(
+                'POST',
+                f"/function/{name}",
+                f"Call function → {sig['return_type']}",
+                f"Args: {{ {params_str} }}" if params else 'No arguments'
+            );
+        }
+    }
+    if walkers {
+        section('Walkers');
+        for (name, walker_cls) in walkers.items() {
+            info = server.introspector.introspect_walker(walker_cls);
+            fields = [format_param(n, i) for (n, i) in info['fields'].items()];
+            fields_str = ', '.join(fields);
+            endpoint(
+                'POST',
+                f"/walker/{name}",
+                'Spawn walker',
+                f"Fields: {{ {fields_str} }}" if fields else 'No fields'
+            );
+        }
+    }
+    config = get_config();
+    cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
+    if client_exports {
+        section('Client pages', 'public');
+        for name in sorted(client_exports) {
+            endpoint('GET', f"/{cl_route_prefix}/{name}", 'Render HTML page');
+        }
+    }
+    section('Graph');
+    endpoint('GET', '/graph', 'Interactive graph visualizer');
+    endpoint(
+        'GET',
+        '/graph/data',
+        'Graph nodes + edges as JSON',
+        'Optional Bearer token selects the user graph; anonymous gets the '
+        'guest graph'
+    );
+
+    body = '\n'.join(rows);
+    return (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>{esc(server.module_name)} API</title>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<style>"
+        "body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:52rem;"
+        "padding:0 1rem;background:#fff;color:#1a1a1a;line-height:1.45}"
+        "h1{font-size:1.4rem}h2{font-size:1.05rem;margin:1.6rem 0 .4rem;"
+        "border-bottom:1px solid #e5e5e5;padding-bottom:.25rem}"
+        "h2 small{color:#888;font-weight:normal;font-size:.8rem}"
+        "code{font-family:ui-monospace,monospace;font-size:.9rem}"
+        ".ep{padding:.45rem .6rem;border:1px solid #eee;border-radius:6px;"
+        "margin:.35rem 0}"
+        ".m{display:inline-block;min-width:3.2rem;text-align:center;"
+        "font-size:.72rem;font-weight:700;border-radius:4px;padding:.1rem .3rem;"
+        "color:#fff;font-family:ui-monospace,monospace}"
+        ".m.get{background:#2f855a}.m.post{background:#2b6cb0}"
+        ".m.put{background:#b7791f}"
+        ".desc{color:#444;font-size:.85rem;margin-top:.15rem}"
+        ".det{color:#777;font-size:.8rem;font-family:ui-monospace,monospace;"
+        "margin-top:.15rem}"
+        "</style></head><body>"
+        f"<h1>{esc(server.module_name)} — Jac API</h1>"
+        f"{body}"
+        "</body></html>"
+    );
+}
+
 
 impl print_endpoint_docs(server: JacAPIServer) -> None {
     server.introspector.load();
