@@ -153,7 +153,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         mod, str(runtime_utils_path), runtime_out, runtimeutils_js
     );
 
-    self.jac_client_compiler.compile_ui_utils();
+    self.jac_client_compiler.compile_mobui_utils();
     return (runtimeutils_js, all_exports);
 }
 

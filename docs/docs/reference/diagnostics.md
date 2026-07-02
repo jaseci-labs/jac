@@ -266,7 +266,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 | `E1105` | JSX tag '<{tag}>' is not in scope in a mobUI project; use {suggestion} instead |
 
 !!! tip "Fixing `E1105`"
-    `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/ui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
+    `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
 
 ### Type Warnings
 

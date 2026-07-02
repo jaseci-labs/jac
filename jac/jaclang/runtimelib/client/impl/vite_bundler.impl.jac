@@ -430,13 +430,13 @@ impl ViteBundler._generate_vite_config_content(
     compiled_utils_relative = f"{compiled_base}/client_runtime.js";
     compiled_pwa_relative = f"{compiled_base}/pwa_runtime.js";
     compiled_desktop_relative = f"{compiled_base}/desktop_api.js";
-    compiled_ui_relative = f"{compiled_base}/client_ui.js";
+    compiled_ui_relative = f"{compiled_base}/client_mobui.js";
     compiled_assets_relative = f"{compiled_base}/assets";
 
     ui_alias_str = (
-        f'\n      "@jac/ui": path.resolve(buildDir, "{compiled_ui_relative}"),'
+        f'\n      "@jac/mobui": path.resolve(buildDir, "{compiled_ui_relative}"),'
     );
-    # @jac/ui renders through react-native primitives; on the web that only
+    # @jac/mobui renders through react-native primitives; on the web that only
     # works when the project ships react-native-web. Aliasing react-native
     # unconditionally would break every web build that imports it without
     # the shim installed.

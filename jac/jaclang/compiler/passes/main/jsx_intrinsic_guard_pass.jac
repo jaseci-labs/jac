@@ -6,7 +6,7 @@ import from jaclang.project.client_kind {
     resolve_client_kind_context
 }
 
-glob _GENERIC_SUGGESTION: str = "an @jac/ui component",
+glob _GENERIC_SUGGESTION: str = "an @jac/mobui component",
      _tag_suggestions: (dict[str, str] | None) = None;
 
 def _suggestion_for(tag: str) -> str {

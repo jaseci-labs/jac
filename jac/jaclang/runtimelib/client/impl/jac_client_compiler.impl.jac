@@ -434,7 +434,7 @@ impl JacClientCompiler.compile_runtime_utils(
         dep_out.write_text(dep_js, encoding='utf-8');
     }
 
-    self.compile_ui_utils();
+    self.compile_mobui_utils();
     return (runtimeutils_js, all_exports);
 }
 
@@ -504,23 +504,23 @@ impl JacClientCompiler._write_source_map(
     }
 }
 
-impl JacClientCompiler.compile_ui_utils(
+impl JacClientCompiler.compile_mobui_utils(
     self: JacClientCompiler
 ) -> tuple[str, list[str]] {
     plugin_dir = _jac_client_plugin_dir();
-    ui_path = plugin_dir / 'client_ui.cl.jac';
+    ui_path = plugin_dir / 'client_mobui.cl.jac';
     if not ui_path.exists() {
         return ('', []);
     }
     (ui_js, _mod, ui_manifest) = self.jac_compiler.compile_module(ui_path);
     glob_names = list(ui_manifest.globals) if ui_manifest else [];
 
-    shims_path = plugin_dir / 'client_ui.shims.js';
+    shims_path = plugin_dir / 'client_mobui.shims.js';
     if shims_path.exists() {
         ui_js += '\n' + shims_path.read_text(encoding='utf-8');
     }
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
-    (self.compiled_dir / 'client_ui.js').write_text(ui_js, encoding='utf-8');
+    (self.compiled_dir / 'client_mobui.js').write_text(ui_js, encoding='utf-8');
     return (ui_js, glob_names);
 }
 

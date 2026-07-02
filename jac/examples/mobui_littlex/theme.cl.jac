@@ -6,7 +6,7 @@ here. Re-skin the entire app by editing the token globals below.
 """
 
 cl {
-    import from "@jac/ui" { StyleSheet }
+    import from "@jac/mobui" { StyleSheet }
 
     # ── Design tokens — OLED-black theme ──────────────────────────────────────
     glob:pub C = {

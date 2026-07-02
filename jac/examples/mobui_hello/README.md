@@ -9,12 +9,12 @@ jac start main.jac                       # web    -> View=<div>, Text=<span> (re
 jac start main.jac --client react-native # native -> real RN components (Expo + Metro)
 ```
 
-## The `@jac/ui` vocabulary
+## The `@jac/mobui` vocabulary
 
-The app is authored entirely in `@jac/ui` primitives -- there is no `<div>`,
+The app is authored entirely in `@jac/mobui` primitives -- there is no `<div>`,
 `<span>`, `<button>`, `<input>`, or `<img>` anywhere in `main.jac`.
 
-| `@jac/ui` primitive | Replaces HTML          | Used here for       |
+| `@jac/mobui` primitive | Replaces HTML          | Used here for       |
 |---------------------|------------------------|---------------------|
 | `View`              | `div`/`section`/`main` | layout & cards      |
 | `Text`              | `span`/`p`/`h1…h6`     | any string          |
@@ -30,7 +30,7 @@ subset. No CSS files, no `className`, by construction.
 ## Compile-time enforcement (E1105)
 
 In a mobUI project, raw HTML host tags are **compile errors** with a fix-it
-pointing at the `@jac/ui` primitive to use instead. Try adding a `<div>` to
+pointing at the `@jac/mobui` primitive to use instead. Try adding a `<div>` to
 `main.jac` and run `jac check`:
 
 ```
@@ -49,6 +49,6 @@ The guard resolves every tag name in the enclosing scope:
 
 See the
 [jac-client Reference → React Native Target](https://docs.jaseci.org/reference/plugins/jac-client/#react-native-target-beta)
-for the full component vocabulary and the HTML → `@jac/ui` mapping. For a
+for the full component vocabulary and the HTML → `@jac/mobui` mapping. For a
 full-stack example (graph persistence, walker RPC, platform-split icon
 modules) see [`examples/mobui_littlex`](../mobui_littlex).

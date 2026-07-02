@@ -239,11 +239,11 @@ If mobile dev starts but the app does not load correctly:
 
 The React Native target (`--client react-native`, beta) is the **native** mobile path: instead of wrapping a web bundle in a webview, it compiles your `cl` UI to platform-native views via Expo/Metro/Hermes. This gives native gesture/scroll performance and access to the React Native ecosystem, at the cost of a different rendering and styling model.
 
-### mobUI projects and `@jac/ui`
+### mobUI projects and `@jac/mobui`
 
-A React Native app is a **mobUI** project -- one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). Because React Native has no DOM, mobUI projects do not use HTML tags. Instead they use Jac's `@jac/ui` component vocabulary, which projects to every target:
+A React Native app is a **mobUI** project -- one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). Because React Native has no DOM, mobUI projects do not use HTML tags. Instead they use Jac's `@jac/mobui` component vocabulary, which projects to every target:
 
-| `@jac/ui` | Replaces HTML |
+| `@jac/mobui` | Replaces HTML |
 |-----------|---------------|
 | `View` | `div`, `section`, `main`, `article`, `header`, `footer`, `nav`, `aside` |
 | `Text` | `span`, `p`, `h1`-`h6`, `label`, `strong`, `em`, `small` |
@@ -253,7 +253,7 @@ A React Native app is a **mobUI** project -- one source tree that compiles to bo
 | `ScrollView` | `ul`, `ol`, scroll areas |
 | `StyleSheet` | CSS / `className` |
 
-Styling is `style={{...}}` objects over a flexbox subset -- no CSS files, no `className`. In a mobUI project, raw HTML tags (`<div>`, `<span>`, ...) are **compile errors** (`E1105`) with a fix-it pointing at the `@jac/ui` primitive to use instead. See the [diagnostics reference](../../reference/diagnostics.md#mobui-project-jsx-host-tags) for details.
+Styling is `style={{...}}` objects over a flexbox subset -- no CSS files, no `className`. In a mobUI project, raw HTML tags (`<div>`, `<span>`, ...) are **compile errors** (`E1105`) with a fix-it pointing at the `@jac/mobui` primitive to use instead. See the [diagnostics reference](../../reference/diagnostics.md#mobui-project-jsx-host-tags) for details.
 
 ### One-time setup
 
@@ -274,11 +274,11 @@ version = "0.1.0"
 client_kind = "mobui"
 ```
 
-### Authoring UI with `@jac/ui`
+### Authoring UI with `@jac/mobui`
 
 ```jac
 cl {
-    import from "@jac/ui" {
+    import from "@jac/mobui" {
         View, Text, Pressable, TextInput, ScrollView, StyleSheet
     }
 
@@ -355,7 +355,7 @@ See the [jac-client Reference -> EAS Update (OTA)](../../reference/plugins/jac-c
 
 ### Platform-specific files
 
-When you need platform-exclusive native modules, add a `.native.cl.jac` variant alongside a `.cl.jac` module. The compiler picks up the `.native.cl.jac` file when `--client react-native` is selected and falls back to `.cl.jac` otherwise. This is a last resort -- prefer components from the `@jac/ui` vocabulary, which absorb platform divergence internally. (A `Platform.select` one-liner API is planned but not yet part of `@jac/ui`.)
+When you need platform-exclusive native modules, add a `.native.cl.jac` variant alongside a `.cl.jac` module. The compiler picks up the `.native.cl.jac` file when `--client react-native` is selected and falls back to `.cl.jac` otherwise. This is a last resort -- prefer components from the `@jac/mobui` vocabulary, which absorb platform divergence internally. (A `Platform.select` one-liner API is planned but not yet part of `@jac/mobui`.)
 
 ### What carries over
 

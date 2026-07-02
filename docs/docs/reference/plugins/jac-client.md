@@ -1920,7 +1920,7 @@ For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullsta
 
 Native mobile applications for Android and iOS using [React Native](https://reactnative.dev/). Unlike the [Capacitor mobile target](#mobile-target-capacitor) (which wraps a web bundle in a webview), the React Native target compiles your `cl` UI to **platform-native views** via Expo/Metro/Hermes, giving native gesture/scroll performance and access to the RN ecosystem.
 
-A React Native app is a **mobUI** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). mobUI projects use Jac's `@jac/ui` component vocabulary instead of HTML -- see [The `@jac/ui` vocabulary](#the-jacui-vocabulary) below.
+A React Native app is a **mobUI** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). mobUI projects use Jac's `@jac/mobui` component vocabulary instead of HTML -- see [The `@jac/mobui` vocabulary](#the-jacmobui-vocabulary) below.
 
 **Prerequisites:**
 
@@ -2030,7 +2030,7 @@ Both targets produce mobile apps. They are **complementary**, not replacements:
 | | Capacitor (`mobile`) | React Native (`react-native`) |
 |--|---------------------|-------------------------------|
 | UI engine | WebView + React DOM | Native views |
-| Code reuse with web | ~100% bundle reuse | Partial (logic yes, UI via `@jac/ui`) |
+| Code reuse with web | ~100% bundle reuse | Partial (logic yes, UI via `@jac/mobui`) |
 | Setup complexity | Lower | Higher |
 | Native feel | Moderate | High |
 | Web-only npm libs | Work | Break |
@@ -2038,11 +2038,11 @@ Both targets produce mobile apps. They are **complementary**, not replacements:
 
 Authors choose per project -- or ship both targets from one repo while keeping selection in the build target (`--client`) layer.
 
-#### The `@jac/ui` vocabulary
+#### The `@jac/mobui` vocabulary
 
-`@jac/ui` is Jac's UI standard library for mobUI projects -- a sealed, Jac-owned component vocabulary whose semantics are React Native's component/style model. It is **not** "re-exported React Native." mobUI apps import **nothing** from `react-native` or `react` directly; the vocabulary is the entire authoring surface, and RN / `react-native-web` are swappable implementation backends behind it.
+`@jac/mobui` is Jac's UI standard library for mobUI projects -- a sealed, Jac-owned component vocabulary whose semantics are React Native's component/style model. It is **not** "re-exported React Native." mobUI apps import **nothing** from `react-native` or `react` directly; the vocabulary is the entire authoring surface, and RN / `react-native-web` are swappable implementation backends behind it.
 
-| `@jac/ui` | Replaces HTML | Native backend (RN) | Web backend (RNW) |
+| `@jac/mobui` | Replaces HTML | Native backend (RN) | Web backend (RNW) |
 |-----------|---------------|---------------------|-------------------|
 | `View` | `div`, `section`, `main`, `article`, `header`, `footer`, `nav`, `aside` | `View` | RNW `View` |
 | `Text` | `span`, `p`, `h1`-`h6`, `label`, `strong`, `em`, `small` | `Text` | RNW `Text` |
@@ -2057,11 +2057,11 @@ Authors choose per project -- or ship both targets from one repo while keeping s
 Styling is React Native's model only: `style={{...}}` objects over a flexbox subset, plus an optional design-token/theme object. HTML tags are rejected at compile time (E1105); CSS imports are warned about and stripped from native builds (`.css` files never reach Metro).
 
 !!! note "Web builds need `react-native-web`"
-    On the web target, `@jac/ui` lowers to DOM through `react-native-web`. Declare it under `[dependencies.npm]` in `jac.toml` (the mobUI examples do); the bundler only aliases `react-native` to `react-native-web` when the dependency is present, so plain web projects that never touch `@jac/ui` are unaffected.
+    On the web target, `@jac/mobui` lowers to DOM through `react-native-web`. Declare it under `[dependencies.npm]` in `jac.toml` (the mobUI examples do); the bundler only aliases `react-native` to `react-native-web` when the dependency is present, so plain web projects that never touch `@jac/mobui` are unaffected.
 
 ```jac
 cl {
-    import from "@jac/ui" {
+    import from "@jac/mobui" {
         View, Text, Pressable, TextInput, Image, ScrollView, StyleSheet
     }
 
@@ -2087,7 +2087,7 @@ cl {
 
 #### Compile-time enforcement (E1105)
 
-In a mobUI project, raw HTML host tags are **compile errors** with a fix-it pointing at the `@jac/ui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
+In a mobUI project, raw HTML host tags are **compile errors** with a fix-it pointing at the `@jac/mobui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
 
 ```
 error[E1105]: JSX tag '<div>' is not in scope in a mobUI project; use View instead
@@ -2104,8 +2104,8 @@ See [`E1105`](../diagnostics.md#mobui-project-jsx-host-tags) in the diagnostics 
 
 Platform differences are handled in priority order:
 
-1. **The vocabulary absorbs divergence** (primary). Components own their platform differences internally -- `ScrollView`, `Image`, and future additions present one API and branch inside `@jac/ui`. Authors see a single component.
-2. **`.native.cl.jac` platform files** (rare). For wrapping platform-exclusive native modules -- see `mobui_littlex`'s `icon.cl.jac` / `icon.native.cl.jac` split. The compiler picks the `.native.cl.jac` variant when `--client react-native` is selected and falls back to `.cl.jac` when not found. (A `Platform.os` / `Platform.select` one-liner API is planned but not yet part of `@jac/ui`.)
+1. **The vocabulary absorbs divergence** (primary). Components own their platform differences internally -- `ScrollView`, `Image`, and future additions present one API and branch inside `@jac/mobui`. Authors see a single component.
+2. **`.native.cl.jac` platform files** (rare). For wrapping platform-exclusive native modules -- see `mobui_littlex`'s `icon.cl.jac` / `icon.native.cl.jac` split. The compiler picks the `.native.cl.jac` variant when `--client react-native` is selected and falls back to `.cl.jac` when not found. (A `Platform.os` / `Platform.select` one-liner API is planned but not yet part of `@jac/mobui`.)
 
 #### What carries over from web
 

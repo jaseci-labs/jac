@@ -154,10 +154,10 @@ walker:pub load_comments {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  CLIENT  —  one cross-platform app, @jac/ui primitives + Lucide icons
+#  CLIENT  —  one cross-platform app, @jac/mobui primitives + Lucide icons
 # ─────────────────────────────────────────────────────────────────────────────
 cl {
-    import from "@jac/ui" {
+    import from "@jac/mobui" {
         View,
         Text,
         Pressable,

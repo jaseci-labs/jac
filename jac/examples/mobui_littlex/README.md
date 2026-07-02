@@ -4,7 +4,7 @@ A small social feed -- post, persist, like -- in **one `main.jac` file** that ru
 **web and native from the same source**. It's the mobUI counterpart to
 [`examples/littleX`](../littleX): same idea (a graph of `Tweet` nodes with walkers
 as the API), but the UI is built entirely from portable
-[`@jac/ui`](../../jaclang/runtimelib/client/client_ui.cl.jac)
+[`@jac/mobui`](../../jaclang/runtimelib/client/client_mobui.cl.jac)
 primitives instead of raw `<div>`/`<button>`/antd -- so it isn't locked to the browser.
 
 ## What it demonstrates
@@ -20,7 +20,7 @@ primitives instead of raw `<div>`/`<button>`/antd -- so it isn't locked to the b
   uses `lucide-react` on web (plain DOM SVG -- no `react-native-svg`, so the web
   bundle stays clean), and `icon.native.cl.jac` uses `lucide-react-native` on
   native (Metro bundles its SVG fine). Same `<Icon name=.../>` API on both.
-- **No raw HTML.** There is no `<div>` anywhere -- the bundler aliases `@jac/ui` to the
+- **No raw HTML.** There is no `<div>` anywhere -- the bundler aliases `@jac/mobui` to the
   compiled primitive module and (on web only) rewrites `react-native -> react-native-web`.
 
 ## Run it

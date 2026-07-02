@@ -2,7 +2,7 @@
 name = "mobui-littlex"
 version = "1.0.0"
 client_kind = "mobui"
-description = "LittleX, cross-platform — a single-file social feed built on mobUI @jac/ui primitives (one codebase, web + native)."
+description = "LittleX, cross-platform — a single-file social feed built on mobUI @jac/mobui primitives (one codebase, web + native)."
 entry-point = "main.jac"
 
 [plugins.client]

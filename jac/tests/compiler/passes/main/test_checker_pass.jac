@@ -5348,7 +5348,7 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
 test "mobui_project_forbids_html_intrinsic_tags" {
     # D17: in a mobui (React Native) project, raw HTML host tags are
     # forbidden — JsxIntrinsicGuardPass emits E1105 for each lowercase tag,
-    # with a fix-it pointing at the @jac/ui / RN component. Uppercase user
+    # with a fix-it pointing at the @jac/mobui / RN component. Uppercase user
     # components (<Card>) are allowed. The pass runs in get_ir_gen_sched, so
     # it fires even with type_check=False (the .cl.jac / build path).
     path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");

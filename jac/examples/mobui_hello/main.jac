@@ -1,9 +1,9 @@
 """mobUI primitives demo — one source, two platforms.
 
-Exercises every @jac/ui primitive (View, Text, Pressable, TextInput, Image,
+Exercises every @jac/mobui primitive (View, Text, Pressable, TextInput, Image,
 ScrollView) plus StyleSheet.create. There is no div/span/button here on
-purpose — mobUI apps import portable primitives from @jac/ui and never touch
-raw HTML tags. The bundler aliases @jac/ui to the compiled client_ui.js and
+purpose — mobUI apps import portable primitives from @jac/mobui and never touch
+raw HTML tags. The bundler aliases @jac/mobui to the compiled client_mobui.js and
 (on web only) rewrites react-native -> react-native-web.
 
     jac start main.jac                       # web   -> View=<div>, Text=<span> (via react-native-web)
@@ -11,7 +11,7 @@ raw HTML tags. The bundler aliases @jac/ui to the compiled client_ui.js and
 """
 
 cl {
-    import from "@jac/ui" {
+    import from "@jac/mobui" {
         View,
         Text,
         Pressable,
@@ -22,8 +22,8 @@ cl {
     }
 
     # NOTE: ``Animated`` (entrance fades via ``createAnimatedValue``) lives in
-    # ``client_ui.shims.js`` but is not yet surfaced through the core
-    # ``@jac/ui`` module surface, so the Animated entrance is omitted here.
+    # ``client_mobui.shims.js`` but is not yet surfaced through the core
+    # ``@jac/mobui`` module surface, so the Animated entrance is omitted here.
     glob color = {
              bg: "#1e1e2f",
              surface: "#2a2a40",

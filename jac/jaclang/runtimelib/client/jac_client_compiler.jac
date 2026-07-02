@@ -55,7 +55,7 @@ class JacClientCompiler {
     ) -> tuple[str, list[str]];
 
     def compile_pwa_runtime(self: JacClientCompiler) -> tuple[str, list[str]];
-    def compile_ui_utils(self: JacClientCompiler) -> tuple[str, list[str]];
+    def compile_mobui_utils(self: JacClientCompiler) -> tuple[str, list[str]];
     def compile_dependencies_recursively(
         self: JacClientCompiler,
         module_path: Path,
