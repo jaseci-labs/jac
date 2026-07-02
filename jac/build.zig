@@ -267,6 +267,18 @@ pub fn build(b: *std.Build) void {
             );
         }
 
+        // Persistent JIR precompile cache (mirrors .pbs-build/.llvm-build/
+        // .bun-build): mkpayload seeds site/_precompiled from this dir and
+        // writes the refreshed tree back, so a repack after a small jaclang
+        // edit recompiles only the changed modules instead of all ~700.
+        // Deliberately NOT a tracked input: every seeded .jir is validated by
+        // its content-addressed module key, so the dir's content can never
+        // change the payload -- only how fast it packs. Skipped in
+        // linked-source mode (no bundled compiler, no precompile).
+        if (link_dir == null) {
+            mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build")}));
+        }
+
         // Contained bun runtime: fetch the pinned bun for the target and bundle
         // it inside the client package via --bun. Mirrors the fetch-pbs pattern
         // (download + sha256-verify, all in the payload tool). A BUN_VERSION

@@ -132,7 +132,7 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
@@ -140,6 +140,7 @@ pub fn main(init: std.process.Init) !void {
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
             var musl_dir: ?[]const u8 = null;
+            var precompiled_cache: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
                 const arg = argv[i];
@@ -155,9 +156,11 @@ pub fn main(init: std.process.Init) !void {
                     link_source = arg["--link-source=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--musl=")) {
                     musl_dir = arg["--musl=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--precompiled-cache=")) {
+                    precompiled_cache = arg["--precompiled-cache=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, precompiled_cache);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -790,6 +793,14 @@ fn mkPayload(
     // fully static-link Linux executables against musl at `nacompile` time, with
     // no toolchain. Null for mac/windows builds (musl is Linux-only).
     musl_dir: ?[]const u8,
+    // Persistent JIR precompile cache dir. When set, site/jaclang/_precompiled
+    // is seeded from it before the precompile and the refreshed tree is copied
+    // back after -- the precompiler validates every seeded .jir by its
+    // content-addressed module key and recompiles only stale ones, so the
+    // multi-minute full precompile shrinks to just the changed modules. A
+    // stale or partial dir is harmless (it only misses reuse), which is why
+    // CI can restore it with prefix-fallback keys unlike the binary cache.
+    precompiled_cache: ?[]const u8,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -921,7 +932,22 @@ fn mkPayload(
     if (skip_precompile or link_source != null) {
         log("==> skipping JIR precompile; modules compile on first run", .{});
     } else {
+        const site_pre = try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site});
+        if (precompiled_cache) |pc| {
+            if (Dir.cwd().openDir(io, pc, .{ .iterate = true })) |d| {
+                var seed = d;
+                defer seed.close(io);
+                log("==> seeding JIR precompile from {s}", .{pc});
+                try copyTree(io, gpa, a, seed, site_pre, skipNone);
+            } else |_| {} // no seed yet; first build populates it below
+        }
         try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
+        if (precompiled_cache) |pc| {
+            Dir.cwd().deleteTree(io, pc) catch {};
+            var fresh = try Dir.cwd().openDir(io, site_pre, .{ .iterate = true });
+            defer fresh.close(io);
+            try copyTree(io, gpa, a, fresh, pc, skipNone);
+        }
     }
 
     // Bundle runtime helpers (pytest/-xdist -> `jac test`, watchdog -> `jac start

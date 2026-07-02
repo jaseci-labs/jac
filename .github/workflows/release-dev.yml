@@ -103,6 +103,23 @@ jobs:
           path: jac/.llvm-build
           key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
 
+      # The JIR precompile dominates payload assembly (it compiles every
+      # bundled jaclang module). mkpayload seeds site/_precompiled from
+      # jac/.precompiled-build and recompiles only the modules whose
+      # content-addressed key no longer matches, so a stale tree from the
+      # previous push is exactly what we want -- hence restore-keys. This does
+      # NOT reintroduce the stale-payload risk that keeps zig's cache off
+      # below: every seeded .jir is re-validated per module inside mkpayload.
+      # actions/cache (not /restore) so each main push saves the refreshed
+      # tree per platform -- this workflow never runs on PR branches.
+      - name: Restore cached JIR precompile tree
+        uses: actions/cache@v4
+        with:
+          path: jac/.precompiled-build
+          key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
+          restore-keys: |
+            jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Install host tools (zstd)
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
