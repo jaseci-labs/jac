@@ -288,11 +288,20 @@ impl NaIRGenPass._emit_raw_free_bbs(
     );
 
     b = ir.IRBuilder(log_raw_bb);
-    import platform;
-    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
-    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
+
+    _triple = str(self.llvm_module.triple or "").lower();
     _raw_msz = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.msz");
-    _msz = b.call(_msz_fn, [_raw_msz], name="msz");
+    if "wasm" in _triple {
+        _msz = ir.Constant(i64, 0);
+    } else {
+        _is_darwin = ("darwin" in _triple)
+        or ("apple" in _triple)
+        or ("macos" in _triple)
+        or ("ios" in _triple);
+        _msz_sym = "malloc_size" if _is_darwin else "malloc_usable_size";
+        _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
+        _msz = b.call(_msz_fn, [_raw_msz], name="msz");
+    }
     _aid_slot = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="fr.aid.slot");
     _aid_ptr = b.bitcast(_aid_slot, i64_ptr, name="fr.aid.ptr");
     _aid_raw = b.load(_aid_ptr, name="fr.aid.raw");
@@ -344,10 +353,19 @@ impl NaIRGenPass._emit_struct_free_log(
     );
 
     b = ir.IRBuilder(log_struct_line_bb);
-    import platform;
-    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
-    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
-    _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");
+
+    _triple = str(self.llvm_module.triple or "").lower();
+    if "wasm" in _triple {
+        _msz2 = ir.Constant(i64, 0);
+    } else {
+        _is_darwin = ("darwin" in _triple)
+        or ("apple" in _triple)
+        or ("macos" in _triple)
+        or ("ios" in _triple);
+        _msz_sym = "malloc_size" if _is_darwin else "malloc_usable_size";
+        _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
+        _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");
+    }
     (_op, _loc) = self._emit_ctx_load(b);
     _fmt_sf = self._get_fmt_string(
         "RC FREE    id=%-4lld ptr=%p  bytes=%lld  type=%-12s  op=%-12s  at=%s"
