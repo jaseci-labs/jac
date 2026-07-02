@@ -25,12 +25,44 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Fetch the pinned LLVM once (idempotent; range-fetches only the ~84 MB subset the
-# shim needs from the llvm-slice zip -- not the ~1 GB upstream tarball -- into
-# jac/.llvm-build, ~0.35 GB on disk). The -Ddev build below compiles the LLVMPY_*
-# shim from it and places it into jac/jaclang/compiler/passes/native/llvm/ where
-# the linked compiler loads it.
-( cd jac && zig build fetch-llvm )
+# The -Ddev binary needs the LLVMPY_* shim placed in-tree. Prefer a prebuilt,
+# per-platform shim published by release-jacllvm.yml (a ~110 MB download) over
+# fetching ~0.35 GB of LLVM and linking it here. Best-effort: any miss (unknown
+# platform, uncommitted shim edits, no matching asset, network/verify failure)
+# falls through to the from-source path below -- the prebuilt is never a hard dep.
+SHIM_BIN=""
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64)  JACLLVM_PLATFORM=linux-x86_64 ;;
+  Linux-aarch64) JACLLVM_PLATFORM=linux-aarch64 ;;
+  Darwin-arm64)  JACLLVM_PLATFORM=macos-aarch64 ;;
+  *)             JACLLVM_PLATFORM="" ;;
+esac
+# Gate on a clean worktree for the shim inputs: the id is computed from HEAD, so
+# any local change -- staged, unstaged, OR untracked (e.g. a new native/ source) --
+# must fall through to a from-source link. git status --porcelain catches all three.
+if [ -n "$JACLLVM_PLATFORM" ] \
+   && [ -z "$(git status --porcelain -- jac/native jac/build.zig jac/launcher/llvm_release.zig 2>/dev/null)" ]; then
+  LLVM_VER="$(sed -nE 's/.*LLVM_VER = "([^"]+)".*/\1/p' jac/launcher/llvm_release.zig)"
+  ASSET="$(scripts/jacllvm_asset_id.sh "$JACLLVM_PLATFORM" 2>/dev/null || true)"
+  if [ -n "$LLVM_VER" ] && [ -n "$ASSET" ]; then
+    BASE="https://github.com/jaseci-labs/jaseci/releases/download/jacllvm-v${LLVM_VER}"
+    TMP="$(mktemp -d)"
+    trap 'rm -rf "$TMP"' EXIT
+    if curl -fsSL -o "$TMP/$ASSET" "$BASE/$ASSET" \
+       && curl -fsSL -o "$TMP/$ASSET.sha256" "$BASE/$ASSET.sha256" \
+       && ( cd "$TMP" && shasum -a 256 -c "$ASSET.sha256" >/dev/null 2>&1 ); then
+      SHIM_BIN="$TMP/$ASSET"
+      echo "Using prebuilt LLVMPY shim: $ASSET"
+    fi
+  fi
+fi
+
+# No prebuilt shim -> fetch the pinned LLVM once (idempotent; range-fetches only
+# the ~84 MB subset the shim needs from the llvm-slice zip into jac/.llvm-build,
+# ~0.35 GB on disk) so the -Ddev build below can compile + place the shim from it.
+if [ -z "$SHIM_BIN" ]; then
+  ( cd jac && zig build fetch-llvm )
+fi
 
 # Place the pinned, contained bun runtime into the source tree
 # (jac/jaclang/runtimelib/client/_bun) so the -Ddev linked binary below can
@@ -42,7 +74,13 @@ cd "$(git rev-parse --show-toplevel)"
 # does it all in std). zig build fetches the pinned typeshed stdlib stubs itself
 # (the fetch-typeshed step), so there is no submodule to check out. -Ddev links the
 # compiler from this checkout instead of bundling it -- fast to build, edits run live.
-( cd jac && zig build -Ddev -Dpayload-progress )
+# On a prebuilt-shim hit above, -Dshim-bin bundles it (build.zig places it in-tree
+# and skips the LLVM link); otherwise the shim is linked from the fetched LLVM.
+JAC_BUILD_ARGS=(-Ddev -Dpayload-progress)
+if [ -n "$SHIM_BIN" ]; then
+  JAC_BUILD_ARGS+=(-Dshim-bin="$SHIM_BIN")
+fi
+( cd jac && zig build "${JAC_BUILD_ARGS[@]}" )
 
 JAC_BIN="$PWD/jac/zig-out/bin/jac"
 echo "Built: $JAC_BIN"

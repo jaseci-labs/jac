@@ -1,0 +1,162 @@
+name: Publish prebuilt LLVMPY shim
+
+# Publishes the LLVMPY_* shim (jac/native's static LLVM link -- the most expensive
+# build artifact, depends only on native/**, build.zig, llvm_release.zig) per
+# platform to a fixed prerelease tag `jacllvm-v<LLVM_VER>`, so contributors
+# (scripts/fresh_env.sh) fetch a verified prebuilt instead of downloading + linking
+# LLVM. Release binaries do NOT depend on this tag (release-jaclang/dev cache the
+# shim in-CI); it exists for laptops + durability, is main-CI-writable only, and
+# every consumer sha256-verifies its download. Self-skipping: a leg builds only
+# when its content id (scripts/jacllvm_asset_id.sh) is not already on the tag.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jac/native/**'
+      - 'jac/build.zig'
+      - 'jac/launcher/llvm_release.zig'
+      - 'scripts/jacllvm_asset_id.sh'
+      - '.github/workflows/release-jacllvm.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never cancel a publish mid-upload; let overlapping runs serialize instead.
+concurrency:
+  group: release-jacllvm
+  cancel-in-progress: false
+
+jobs:
+  # Resolve the tag from the pinned LLVM version and ensure the prerelease exists
+  # once, before the matrix legs upload their per-platform assets to it (avoids a
+  # create race between legs).
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag + ensure prerelease exists
+        id: t
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          LLVM_VER="$(sed -nE 's/.*LLVM_VER = "([^"]+)".*/\1/p' jac/launcher/llvm_release.zig)"
+          [ -n "$LLVM_VER" ] || { echo "::error::could not read LLVM_VER from llvm_release.zig"; exit 1; }
+          TAG="jacllvm-v${LLVM_VER}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --prerelease \
+              --title "Prebuilt LLVMPY shim ($TAG)" \
+              --notes "Per-platform, content-addressed prebuilt \`libjacllvm\` shims for LLVM ${LLVM_VER}, statically linked against the pinned slice. Consumed by scripts/fresh_env.sh (sha256-verified); not intended for direct download."
+          fi
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same runners as release-jaclang.yml. The build target (glibc floor) is
+        # derived per platform from scripts/jacllvm_asset_id.sh -- the single source
+        # that also folds it into the asset id, so what the shim is built with and
+        # what its id records can never drift (-mcpu=baseline is set in build.zig).
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+          - os: macos-14
+            platform: macos-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve asset id + target + self-skip check
+        id: id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ASSET="$(scripts/jacllvm_asset_id.sh '${{ matrix.platform }}')"
+          TARGET="$(scripts/jacllvm_asset_id.sh '${{ matrix.platform }}' --build-target)"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          if gh release view '${{ needs.prepare.outputs.tag }}' --json assets \
+               --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Asset $ASSET already published; skipping build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install host tools (zstd)
+        if: steps.id.outputs.exists != 'true'
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y zstd
+          else
+            brew install zstd
+          fi
+
+      - name: Set up Zig 0.16.0
+        if: steps.id.outputs.exists != 'true'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Fetch LLVM for the jacllvm shim
+        if: steps.id.outputs.exists != 'true'
+        working-directory: jac
+        run: zig build fetch-llvm ${{ steps.id.outputs.target && format('-Dtarget={0}', steps.id.outputs.target) }} --summary all
+
+      - name: Build the shim (target-pinned, as the release path links it)
+        if: steps.id.outputs.exists != 'true'
+        working-directory: jac
+        run: zig build jacllvm ${{ steps.id.outputs.target && format('-Dtarget={0}', steps.id.outputs.target) }} --summary all
+
+      - name: Package + checksum
+        if: steps.id.outputs.exists != 'true'
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          if [ "$RUNNER_OS" = "macOS" ]; then EXT=dylib; else EXT=so; fi
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.$EXT"
+          [ -f "$SHIM" ] || { echo "::error::built shim not found at $SHIM"; exit 1; }
+          mkdir -p dist
+          cp "$SHIM" "dist/${{ steps.id.outputs.asset }}"
+          ( cd dist && shasum -a 256 "${{ steps.id.outputs.asset }}" > "${{ steps.id.outputs.asset }}.sha256" )
+
+      # Gate the upload: the shim must not reference a glibc symbol above its pinned
+      # floor (the same objdump -T check release-jaclang.yml runs on the release
+      # binary), so a wrong-floor shim never reaches the tag. Linux only -- macOS
+      # pins its floor via the SDK, not a glibc-versioned ELF.
+      - name: Verify glibc floor (Linux)
+        if: steps.id.outputs.exists != 'true' && runner.os == 'Linux'
+        working-directory: jac
+        env:
+          BUILD_TARGET: ${{ steps.id.outputs.target }}
+        run: |
+          set -euxo pipefail
+          SHIM="dist/${{ steps.id.outputs.asset }}"
+          FLOOR="${BUILD_TARGET##*gnu.}"
+          hi="$(objdump -T "$SHIM" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1)"
+          : "${hi:=0}"
+          echo "$SHIM -> max GLIBC_$hi (floor $FLOOR)"
+          [ "$(printf '%s\n%s\n' "$FLOOR" "$hi" | sort -V | tail -1)" = "$FLOOR" ] \
+            || { echo "::error::$SHIM requires GLIBC_$hi (> $FLOOR)"; exit 1; }
+
+      - name: Upload to the jacllvm prerelease
+        if: steps.id.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          gh release upload '${{ needs.prepare.outputs.tag }}' \
+            "dist/${{ steps.id.outputs.asset }}" \
+            "dist/${{ steps.id.outputs.asset }}.sha256" --clobber
