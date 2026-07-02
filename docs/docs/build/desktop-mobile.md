@@ -2,6 +2,9 @@
 
 Take a full-stack Jac app and wrap it in a native shell -- a desktop window that embeds the OS webview, or an Android/iOS build. These map to the `desktop` and `mobile` [project kinds](../quick-guide/project-kinds.md).
 
+!!! note "Status: beta 🧪"
+    The desktop binary renders your `cl` UI today; wiring `sv` walkers onto the embedded interpreter, HMR dev mode, and per-OS installers/signing are in progress ([issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436)). Mobile is a frontend-only Capacitor wrapper that talks to a Jac server you deploy separately. Everything else on this page works as shown.
+
 ## Your 5-minute quick win {#desktop}
 
 Start from any [full-stack app](fullstack-web.md). Jac compiles your `cl` UI into **one `jac nacompile`d binary that embeds the OS webview** (WebKitGTK / WKWebView / WebView2) -- no Rust toolchain, no PyInstaller, no separate process. The desktop target ships with `jaclang` core:

@@ -15,7 +15,7 @@ A Jaclang plugin can:
 - **[Ship project templates](#recipe-5-ship-a-project-template)** that show up in `jac create --use <name>`.
 - **[Register custom dependency types](#recipe-6-register-a-custom-dependency-type)** like `npm` alongside the built-in PyPI dependency handler.
 
-All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered as an entry point in `pyproject.toml` under the `jac` group, and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
+All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered under `[entrypoints.jac]` in the plugin's `jac.toml` (the `jac` entry-point group), and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
 
 ## Project layout
 
@@ -28,13 +28,13 @@ jac-myplugin/
 │   ├── plugin.jac            # CLI extension (`JacCmd.create_cmd` hook)
 │   ├── plugin_config.jac     # Config schema, templates, dep types
 │   └── impl/                 # Implementation modules
-└── pyproject.toml            # Dependencies + [project.entry-points."jac"]
+└── jac.toml                  # Metadata + [entrypoints.jac]
 ```
 
-The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points in `pyproject.toml`:
+The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points under `[entrypoints.jac]` in `jac.toml` (written into the wheel's `jac` entry-point group by `jac bundle`, and read directly by `jac install -e`):
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 myplugin = "jac_myplugin.plugin:JacCmd"
 myplugin_plugin_config = "jac_myplugin.plugin_config:JacMypluginPluginConfig"
 ```
@@ -120,18 +120,21 @@ class JacCmd {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
 [project]
 name = "jac-hello"
 version = "0.1.0"
 
-[project.entry-points."jac"]
+[entrypoints.jac]
 hello = "jac_hello.plugin:JacCmd"
 ```
 
 > Note: plugins do **not** depend on PyPI `jaclang` - `jaclang` is the host runtime provided by the `jac` binary that loads your plugin, so it never belongs in `dependencies`.
+
+!!! warning "Use `jac.toml`, not `pyproject.toml`, for the `jac`-native dev loop"
+    `jac install -e` and `jac bundle` read the plugin's `jac.toml`. A plugin folder with only a `pyproject.toml` declaring `[project.entry-points."jac"]` links without error under `jac install -e`, but the entry point is never registered and the command silently doesn't appear. The `pyproject.toml` form still works for plugins installed into the host Python environment with `pip`.
 
 After `jac install -e .`, `jac --help` will list `hello` in the *general* group and `jac hello Alice --shout` will print `HELLO, ALICE!`.
 
@@ -302,10 +305,10 @@ class JacTimestampPlugin {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 timestamp = "jac_timestamp.plugin:JacTimestampPlugin"
 ```
 

@@ -51,13 +51,32 @@ jobs:
           echo "summary=jaclang $VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved release version: $VERSION"
 
-  # One-click approval gate before anything outward-facing happens.
+  # One-click approval gate before anything outward-facing happens. The
+  # environment exists only for its required-reviewers protection; nothing is
+  # deployed to it (and nothing is published to PyPI anywhere in this repo).
   approve:
     needs: resolve
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    environment: pypi
+    environment: release-approval
     timeout-minutes: 60
     steps:
+      # Fail closed if the gate is toothless: referencing a nonexistent
+      # environment makes GitHub auto-create it with NO protection rules, so a
+      # merge that lands before the environment is configured would let this job
+      # run with no human review at all -- silently. Refuse to proceed unless
+      # required reviewers are actually configured (public repo, so the
+      # unauthenticated API suffices).
+      - name: Verify the gate has required reviewers
+        run: |
+          set -euo pipefail
+          rules="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/environments/release-approval" \
+            | jq '[.protection_rules[]? | select(.type=="required_reviewers")] | length')"
+          if [ "${rules:-0}" -eq 0 ]; then
+            echo "::error::The release-approval environment has no required reviewers configured; refusing to release without a human gate. Configure reviewers on the environment (Settings -> Environments) and re-run."
+            exit 1
+          fi
+          echo "release-approval has required reviewers; gate is real."
+
       - name: Approval granted
         env:
           SUMMARY: ${{ needs.resolve.outputs.summary }}
