@@ -261,14 +261,19 @@ def is_null_ptr_constant(c_node: object) -> bool {
     return parse_c_int(cur.value) == 0;
 }
 
-def jac_prim_zero(jac: str) -> tuple[object, str] {
+obj PrimZero {
+    has value: object,
+        text: str;
+}
+
+def jac_prim_zero(jac: str) -> PrimZero {
     if jac == "float" {
-        return (0.0, "0.0");
+        return PrimZero(value=0.0, text="0.0");
     }
     if jac == "bool" {
-        return (False, "False");
+        return PrimZero(value=False, text="False");
     }
-    return (0, "0");
+    return PrimZero(value=0, text="0");
 }
 
 glob _JAC_KW_IDS: set = set(TOKEN_MAP.values()) | set(keyword.kwlist);
@@ -300,7 +305,12 @@ def enumerator_value(en: object, counter: int) -> tuple[int, bool] {
     return (0, False);
 }
 
-def eval_enumerators(enumerator_list: object) -> tuple[list, bool] {
+obj EnumPairs {
+    has pairs: list,
+        all_simple: bool;
+}
+
+def eval_enumerators(enumerator_list: object) -> EnumPairs {
     pairs: list = [];
     counter: int = 0;
     all_simple = True;
@@ -312,5 +322,5 @@ def eval_enumerators(enumerator_list: object) -> tuple[list, bool] {
         pairs.append((en.name, v));
         counter = v + 1;
     }
-    return (pairs, all_simple);
+    return EnumPairs(pairs=pairs, all_simple=all_simple);
 }

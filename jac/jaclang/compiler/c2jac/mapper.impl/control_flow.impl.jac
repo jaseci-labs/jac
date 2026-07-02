@@ -289,6 +289,20 @@ impl CMapper.c_For(nd: object) -> object {
     while_ast = ast3.While(test=cond_ast, body=while_body, orelse=[]);
     self._stamp_manual(while_ast, line, col, text="for");
 
+    self._for_mark_tier(
+        nd, faithful, promotable, body_losses, cond_lossy, continue_unfaithful
+    );
+    return [*init_stmts, while_ast];
+}
+
+impl CMapper._for_mark_tier(
+    nd: object,
+    faithful: bool,
+    promotable: bool,
+    body_losses: list[str],
+    cond_lossy: bool,
+    continue_unfaithful: bool
+) {
     if faithful {
         if promotable {
             self._mark_tier_a(
@@ -336,7 +350,6 @@ impl CMapper.c_For(nd: object) -> object {
             self._mark_tier_b(nd, reason);
         }
     }
-    return [*init_stmts, while_ast];
 }
 
 impl CMapper._for_promotable(nd: object) -> bool {

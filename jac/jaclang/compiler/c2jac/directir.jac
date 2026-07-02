@@ -20,9 +20,7 @@ def is_slot_placeholder(nd: uni.UniNode) -> bool {
 def slot_id_of(placeholder: uni.ExprStmt) -> int | None {
     params = placeholder.expr.params;
     if params and len(params) == 1 and isinstance(params[0], uni.Int) {
-        try {
-            return int(params[0].value);
-        } except ValueError { }
+        return int(params[0].value);
     }
     return None;
 }

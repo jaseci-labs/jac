@@ -105,6 +105,15 @@ obj CMapper {
     def c_Continue(nd: object) -> object;
     def c_EmptyStatement(nd: object) -> object;
     def c_For(nd: object) -> object;
+    def _for_mark_tier(
+        nd: object,
+        faithful: bool,
+        promotable: bool,
+        body_losses: list[str],
+        cond_lossy: bool,
+        continue_unfaithful: bool
+    );
+
     def _for_promotable(nd: object) -> bool;
     def _for_init_stmts(init_node: object) -> list[object];
     def _for_step_stmts(step_node: object) -> list[object];
@@ -125,8 +134,6 @@ obj CMapper {
     def _decl_array(nd: object) -> object;
     def c_ArrayDecl(nd: object) -> object;
     def c_Enum(nd: object) -> object;
-    def c_Enumerator(nd: object) -> object;
-    def c_EnumeratorList(nd: object) -> object;
     def _type_ann(decl: object) -> object;
     def _type_ann_from_type(t: object) -> object;
     def _ret_ann(funcdecl: object) -> object;
