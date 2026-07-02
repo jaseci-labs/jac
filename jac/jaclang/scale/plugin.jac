@@ -221,13 +221,6 @@ class JacCmd {
                     help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
                     short=""
                 ),
-                Arg.create(
-                    "experimental",
-                    typ=bool,
-                    default=False,
-                    help="Build the pod's `jac` binary from a cloned jaseci checkout (the branch's own jaclang) instead of the released installer",
-                    short=""
-                ),
 
             ],
             pre_hook=_scale_pre_hook,
@@ -602,7 +595,12 @@ class JacScalePlugin {
     static def get_api_server_class -> type | None {
         try {
             import from .server.serve { JacAPIServer }
-        } except ImportError {
+        } except ImportError as e {
+            import logging;
+            logging.getLogger(__name__).debug(
+                "scale API server unavailable, falling back to core server: "
+                f"missing module '{e?.name or ''}' ({e})"
+            );
             return None;
         }
         return JacAPIServer;

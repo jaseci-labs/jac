@@ -600,7 +600,7 @@ import from "libpython3.x.so" { Py_Initialize, PyRun_SimpleString, ... }
 
 with entry {
     Py_Initialize();
-    PyRun_SimpleString(SERVE_PY);     # loopback http.server (broker) in a daemon thread
+    PyRun_SimpleString(BOOT_PY);      # host_boot.boot(): plugins + runtime + loopback broker
     url = f"http://127.0.0.1:{port}/";
     wv  = new_webview(False);
     wv.title(...); wv.size(...); wv.on_load(BOOTSTRAP_JS);

@@ -65,7 +65,7 @@ def prepare_inprocess_runtime(
     transport_kind: str = "testclient"
 ) -> PreparedInProcessRuntime {
     import from starlette.testclient { TestClient }
-    import from jaclang.scale.plugin { JacCmd }
+    import from jaclang.scale.plugin { JacCmd, JacScalePlugin }
 
     if transport_kind != "testclient" {
         raise NotImplementedError(
@@ -73,9 +73,13 @@ def prepare_inprocess_runtime(
         );
     }
 
-    registered_names = [nm for (nm, _p) in plugin_manager.list_name_plugin()];
+    registered = plugin_manager.list_name_plugin();
+    registered_names = [nm for (nm, _p) in registered];
     if "scale" not in registered_names {
         plugin_manager.register(JacCmd(), name="scale");
+    }
+    if not any([type(p).__name__ == "JacScalePlugin" for (_n, p) in registered]) {
+        plugin_manager.register(JacScalePlugin());
     }
 
     (base, _) = os.path.split(jac_file);
