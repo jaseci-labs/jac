@@ -27,6 +27,7 @@ obj OwnershipCheckPass(UniPass) {
     def _borrow_source_owner(nd: uni.Assignment) -> (uni.Name | None);
     def _assign_kill_gen(nd: uni.Assignment) -> tuple[set[int], set[int]];
     def _call_move_gen(nd: uni.UniCFGNode) -> set[int];
+    def _return_move_gen(nd: uni.UniCFGNode) -> set[int];
     def _transfer(nd: uni.UniCFGNode, in_set: set[int]) -> set[int];
     def _run_dataflow(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _borrow_read_gen(nd: uni.UniCFGNode) -> set[int];

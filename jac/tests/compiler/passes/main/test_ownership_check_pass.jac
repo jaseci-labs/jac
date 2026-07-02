@@ -142,3 +142,10 @@ test "no E1306 when the owned value itself is moved out by return" {
         str(e) for e in prog.errors_had
     ]}";
 }
+
+test "no E1305 when the owned value is moved out by return" {
+    prog = compile_fixture("return_move_ok.jac");
+    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}

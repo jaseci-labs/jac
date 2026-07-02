@@ -202,6 +202,26 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[int] {
     return gen;
 }
 
+impl OwnershipCheckPass._return_move_gen(nd: uni.UniCFGNode) -> set[int] {
+    gen: set[int] = set();
+    returns: list[uni.ReturnStmt] = [];
+    if isinstance(nd, uni.ReturnStmt) {
+        returns.append(nd);
+    }
+    for ret in nd.get_all_sub_nodes(uni.ReturnStmt) {
+        returns.append(ret);
+    }
+    for ret in returns {
+        expr = ret.expr;
+        if isinstance(expr, uni.Name)
+        and expr.sym
+        and id(expr.sym) in self.owned_syms {
+            gen.add(id(expr.sym));
+        }
+    }
+    return gen;
+}
+
 impl OwnershipCheckPass._transfer(nd: uni.UniCFGNode, in_set: set[int]) -> set[int] {
     out = set(in_set);
     if isinstance(nd, uni.Assignment) {
@@ -214,6 +234,9 @@ impl OwnershipCheckPass._transfer(nd: uni.UniCFGNode, in_set: set[int]) -> set[i
         }
     }
     for g in self._call_move_gen(nd) {
+        out.add(g);
+    }
+    for g in self._return_move_gen(nd) {
         out.add(g);
     }
     return out;
