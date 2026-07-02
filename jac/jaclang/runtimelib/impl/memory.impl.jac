@@ -674,6 +674,14 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
                     else None
             );
             if cls_resolved is None {
+                if os.environ.get("JAC_SV_SIBLING") == "1" {
+                    logger.debug(
+                        f"SqliteMemory: class {arch_module}.{arch_type} not "
+                        f"loaded in this sibling service; skipping anchor {id} "
+                        "(owned by a peer service)."
+                    );
+                    return None;
+                }
                 reason = f"class {arch_module}.{arch_type} unresolvable";
                 logger.warning(
                     f"SqliteMemory: class {arch_module}.{arch_type} unresolvable "

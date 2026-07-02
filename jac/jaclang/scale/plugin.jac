@@ -68,9 +68,15 @@ def _scale_pre_hook(context: HookContext) -> None {
         filename = context.get_arg("filename");
 
         if filename {
-            import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
+            import from jaclang.scale.runtime.discovery.discovery {
+                resolve_routes,
+                resolve_service_files
+            }
             ms_config["routes"] = resolve_routes(
                 filename, dict(ms_config.get("routes", {}))
+            );
+            ms_config["service_files"] = resolve_service_files(
+                filename, ms_config["routes"]
             );
         }
 
@@ -458,10 +464,14 @@ class JacCmd {
                 return 1;
             }
 
-            import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
+            import from jaclang.scale.runtime.discovery.discovery {
+                resolve_routes,
+                resolve_service_files
+            }
             merged_routes = resolve_routes(".", dict(ms_config.get("routes", {})));
             if merged_routes {
                 ms_config["routes"] = merged_routes;
+                ms_config["service_files"] = resolve_service_files(".", merged_routes);
             } else {
                 console.print(
                     "No microservices found: no routes in "

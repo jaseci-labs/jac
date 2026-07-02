@@ -21,6 +21,39 @@ test "build_registry creates entries from routes map" {
     assert registry.entries["cart_app"].file == "cart_app.jac";
 }
 
+test "build_registry file for a discovered subdir service exists on disk" {
+    import tempfile;
+    import shutil;
+    import from pathlib { Path }
+    import from jaclang.scale.runtime.discovery.discovery {
+        resolve_routes,
+        resolve_service_files
+    }
+
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    sub = tmp / "littlex";
+    sub.mkdir();
+    (sub / "social_graph.jac").write_text(
+        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+    );
+    try {
+        entry_file = str(tmp / "main.jac");
+        routes = resolve_routes(entry_file, {});
+        files = resolve_service_files(entry_file, routes);
+        registry = build_registry({"routes": routes, "service_files": files});
+
+        svc = registry.entries["social_graph"];
+        assert (tmp / svc.file).is_file() , (
+            f"registry file '{svc.file}' does not exist relative to the "
+            f"project root; the spawned `jac start {svc.file}` would crash"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
 test "build_registry handles empty config" {
     registry = build_registry({});
     assert len(registry.entries) == 0;
@@ -44,6 +77,64 @@ test "build_registry routes work after build" {
 test "build_registry default status is REGISTERED (local-mode invariant)" {
     registry = build_registry({"routes": {"orders_app": "/api/orders"}});
     assert registry.entries["orders_app"].status == ServiceStatus.REGISTERED;
+}
+
+test "_wait_for_health does not burn the boot budget on a dead child" {
+    import time;
+    import from jaclang.scale.runtime.orchestrator.orchestrator {
+        MicroserviceOrchestrator
+    }
+    import from jaclang.scale.runtime.orchestrator.process_manager {
+        ServiceProcessManager
+    }
+    import from jaclang.scale.runtime.gateway.service_registry {
+        ServiceRegistry,
+        ServiceEntry
+    }
+
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="alive",
+            file="alive.jac",
+            prefix="/alive",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.STARTING
+        )
+    );
+    reg.register(
+        ServiceEntry(
+            name="dead",
+            file="dead.jac",
+            prefix="/dead",
+            port=8002,
+            url="http://127.0.0.1:8002",
+            status=ServiceStatus.STARTING
+        )
+    );
+    pm = ServiceProcessManager(registry=reg);
+
+    alive_proc = mock.MagicMock();
+    alive_proc.poll = mock.MagicMock(return_value=None);
+    dead_proc = mock.MagicMock();
+    dead_proc.poll = mock.MagicMock(return_value=1);
+    pm.processes["alive"] = alive_proc;
+    pm.processes["dead"] = dead_proc;
+
+    orch = MicroserviceOrchestrator(ms_config={});
+    with mock.patch.object(
+        pm, "check_health", side_effect=(lambda name: name == "alive")
+    ) {
+        start = time.time();
+        orch._wait_for_health(pm, reg, 6);
+        elapsed = time.time() - start;
+    }
+
+    assert elapsed < 3.0 , (
+        f"a dead child can never become healthy; the boot wait must treat it "
+        f"as terminal instead of polling for {elapsed:.1f}s"
+    );
 }
 
 test "_mark_all_healthy_k8s flips every entry to HEALTHY (regression)" {
