@@ -207,8 +207,10 @@ test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
     );
 }
 
-# String-only (no nacompile / CEF / display): assert the generated CEF host wires
-# the Phase J4 (#6596) in-process sv backend the same way the webview host does.
+# String-only (no nacompile / CEF / display): the generated CEF host boots
+# through the same host_boot runtime module as the webview host, in cef mode.
+# The Phase J4 (#6596) in-process sv backend + sv_bridge wiring live in
+# host_boot._start_loopback's cef branch, not in generated strings.
 test "cef host source boots inprocess and wires the sv bridge (#6596)" {
     import from jaclang.runtimelib.client.targets.desktop.cef_desktop_target {
         _generate_host_source
@@ -216,14 +218,16 @@ test "cef host source boots inprocess and wires the sv bridge (#6596)" {
     src = _generate_host_source(
         "Title", 800, 600, "myapp", "/tmp/cache", {}, "main.jac", 30.0, 128, False
     );
-    # The CEF host boots the SAME staged in-process backend the webview host runs,
-    # and the loopback routes /walker/* + /function/* into it via forward().
-    assert "import inprocess_dispatch" in src;
-    assert "inprocess_dispatch.boot(" in src;
-    assert "sv_bridge=inprocess_dispatch.forward" in src;
-    # The staged entry the boot snippet resolves at runtime (relative to the binary).
+    # One boot statement into host_boot, in cef mode, with the staged entry baked.
+    assert "host_boot.boot(" in src;
+    assert "cef" in src;
     assert "main.jac" in src;
-    # The boot/import MUST appear before make_handler is called, or the
-    # `sv_bridge=inprocess_dispatch.forward` reference would NameError at runtime.
-    assert src.index("import inprocess_dispatch") < src.index("make_handler");
+    # The host reads the loopback port off the returned context.
+    assert "_ctx.port" in src;
+    # The cef branch of host_boot owns the sv bridge + in-process boot wiring.
+    host_boot_src = (_cef_dir().parent / "host_boot.jac").read_text();
+    assert "sv_bridge=inprocess_forward" in host_boot_src;
+    assert "inprocess_boot(" in host_boot_src;
+    assert "forward as inprocess_forward" in host_boot_src;
+    assert "boot as inprocess_boot" in host_boot_src;
 }
