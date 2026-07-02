@@ -2210,3 +2210,37 @@ test "stdlib server answers health endpoints" {
         client.close();
     }
 }
+
+"""A missing bun is an environmental precondition, cheap to re-check - the
+bundle layer must retry it on every request (so fetching bun fixes serving
+without a restart), while genuine build failures stay memoized."""
+test "ensure_bundle retries a missing-bun failure but memoizes build errors" {
+    import from unittest.mock { MagicMock }
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    import from jaclang.runtimelib.client_bundle { ClientBundleError, MissingBunError }
+    intro = ModuleIntrospector("serve_api", FIXTURES);
+    intro._module = object();
+    bun_missing = MagicMock();
+    bun_missing.build.side_effect = MissingBunError("bun is not available");
+    intro._bundle_builder = bun_missing;
+    for _ in range(2) {
+        try {
+            intro.ensure_bundle();
+            assert False , "ensure_bundle should raise while bun is missing";
+        } except ClientBundleError { }
+    }
+    assert bun_missing.build.call_count == 2 , "missing bun must be re-checked on every call, not memoized";
+
+    intro2 = ModuleIntrospector("serve_api", FIXTURES);
+    intro2._module = object();
+    broken = MagicMock();
+    broken.build.side_effect = RuntimeError("vite exploded");
+    intro2._bundle_builder = broken;
+    for _ in range(2) {
+        try {
+            intro2.ensure_bundle();
+            assert False , "ensure_bundle should raise for a broken build";
+        } except ClientBundleError { }
+    }
+    assert broken.build.call_count == 1 , "a real build failure stays memoized until reload";
+}

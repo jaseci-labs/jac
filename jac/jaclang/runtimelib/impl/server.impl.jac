@@ -1,7 +1,7 @@
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
-import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
+import from jaclang.runtimelib.client_bundle { MissingBunError, _ensure_js_generated }
 import from jaclang.runtimelib.exceptions { WriteConflict }
 import from jaclang.runtimelib.auth_models {
     IdentityType,
@@ -1155,6 +1155,9 @@ impl ModuleIntrospector.ensure_bundle -> str {
         self._bundle = self._bundle_builder.build(self._module);
         self._bundle_error = None;
         return self._bundle.hash;
+    } except MissingBunError {
+        self._bundle = None;
+        raise;
     } except Exception as exc {
         self._bundle = None;
         self._bundle_error = str(exc);
@@ -2247,7 +2250,10 @@ impl JacAPIServer.start(
 
                 bundle_exists = dist_dir.exists() and any(dist_dir.glob('client.*.js'));
                 if bundle_exists {
-                    console.print("  ✔ Client bundle already built", style="success");
+                    console.print(
+                        "  ✔ Client bundle found (rebuilt on first request if stale)",
+                        style="success"
+                    );
                 } else {
                     self.introspector.ensure_bundle();
                 }

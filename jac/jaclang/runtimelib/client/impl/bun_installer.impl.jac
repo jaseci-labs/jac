@@ -57,6 +57,16 @@ def _ensure_executable(path: str) {
 }
 
 
+impl bun_unavailable_message -> str {
+    return (
+        "bun is not available in this jac runtime. Shipped binaries bundle it "
+        "(a missing copy indicates a broken build); for an editable/source "
+        "checkout run `zig build fetch-bun`, or set JAC_BUN to an absolute bun "
+        "path."
+    );
+}
+
+
 impl get_bun -> str | None {
     bundled = _find_bundled_bun();
     if bundled is not None {
@@ -64,12 +74,6 @@ impl get_bun -> str | None {
         return bundled;
     }
 
-    console.error(
-        "bun is not available in this jac runtime. Shipped binaries bundle it "
-        "(a missing copy indicates a broken build); for an editable/source "
-        "checkout run `zig build fetch-bun`, or set JAC_BUN to an absolute bun "
-        "path.",
-        emoji=False
-    );
+    console.error(bun_unavailable_message(), emoji=False);
     return None;
 }
