@@ -113,6 +113,7 @@ obj TuiState {
         term_rows: int = 24,
         term_cols: int = 80,
         quit_flag: bool = False,
+        render_fd: int = -1,
         ipc_fd: int = -1,
         display_rows: list[DisplayRow] = [],
         layout_cols: int = -1,

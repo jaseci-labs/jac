@@ -41,7 +41,7 @@ def tui_drain_blobs(state: TuiState, transport: Transport) -> bool {
 }
 
 def tui_loop_once(
-    state: TuiState, diff_engine: DiffEngine, transport: Transport, render_fd: int
+    state: TuiState, diff_engine: DiffEngine, transport: Transport
 ) -> bool {
     transport.poll(50);
     tui_process_keys(state, transport);
@@ -49,6 +49,6 @@ def tui_loop_once(
         state.quit_flag = True;
         return False;
     }
-    tui_render_once(state, diff_engine, render_fd);
+    tui_render_once(state, diff_engine);
     return not state.quit_flag;
 }

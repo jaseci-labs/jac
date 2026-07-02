@@ -2,7 +2,6 @@ import from .libc_tty {
     tty_open,
     tty_open_dev,
     tty_close,
-    tty_fd,
     tty_update_size,
     tty_rows,
     tty_cols,
@@ -12,10 +11,7 @@ import from .libc_tty {
     tty_stdin_ready,
     tty_key_ready,
     tty_read_key,
-    tty_write,
-    tty_init_stdio_remap,
-    tty_restore_stdio,
-    tty_ipc_fd
+    tty_write
 }
 import from .terminal {
     term_enter_alt_screen,
@@ -75,8 +71,9 @@ def:pub tui_init(project: str, files_env: str, presets_env: str, tty_dev: str) -
     if fd < 0 {
         return 1;
     }
+    host_state.render_fd = fd;
     tui_populate_state(host_state, project, files_env, presets_env);
-    tui_enter_screen(host_state, fd);
+    tui_enter_screen(host_state);
     return 0;
 }
 
@@ -118,13 +115,12 @@ def:pub tui_quit_requested -> int {
 }
 
 def:pub tui_render -> int {
-    fd: int = tty_fd();
-    if fd < 0 {
+    if host_state.render_fd < 0 {
         return 0;
     }
 
     _sync_size(host_state);
-    if tui_render_once(host_state, host_diff, fd) {
+    if tui_render_once(host_state, host_diff) {
         return 1;
     }
     return 0;
@@ -133,14 +129,16 @@ def:pub tui_render -> int {
 def:pub tui_render_buf -> str {
     host_diff.invalidate();
     host_state.dirty = True;
-    tui_render_once(host_state, host_diff, -1);
+    saved_fd = host_state.render_fd;
+    host_state.render_fd = -1;
+    tui_render_once(host_state, host_diff);
+    host_state.render_fd = saved_fd;
     return diff_take_buf();
 }
 
 def:pub tui_shutdown -> int {
-    fd: int = tty_fd();
-    if fd >= 0 {
-        tui_leave_screen(host_state, fd);
+    if host_state.render_fd >= 0 {
+        tui_leave_screen(host_state);
     }
     tty_close();
     return 0;

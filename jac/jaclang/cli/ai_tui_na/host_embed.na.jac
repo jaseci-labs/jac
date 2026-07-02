@@ -1,4 +1,4 @@
-import from .libc_tty { tty_open, tty_close, tty_fd }
+import from .libc_tty { tty_open, tty_close }
 import from .state { TuiState }
 import from .select_list { SelectList, SelectItem }
 import from .ipc { ipc_clear_cmd_queue, ipc_next_command }
@@ -149,18 +149,19 @@ def _run_embed -> None {
         jpy_PyRun_SimpleString("_agent_stop()");
         return;
     }
+    host_state.render_fd = fd;
     tui_populate_state(host_state, proj_s, files_s, presets_s);
-    tui_enter_screen(host_state, fd);
+    tui_enter_screen(host_state);
     embed_transport.py_dict = d;
     embed_transport.stdin_eof = False;
 
     ts: int = jpy_PyEval_SaveThread();
 
-    while tui_loop_once(host_state, host_diff, embed_transport, fd) { }
+    while tui_loop_once(host_state, host_diff, embed_transport) { }
 
     jpy_PyEval_RestoreThread(ts);
     jpy_PyRun_SimpleString("_agent_stop()");
-    tui_leave_screen(host_state, fd);
+    tui_leave_screen(host_state);
     tty_close();
     jpy_Py_Finalize();
 }

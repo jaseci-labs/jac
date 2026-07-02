@@ -335,25 +335,32 @@ def tty_read_key -> str {
     return seq;
 }
 
-def tty_init_stdio_remap -> int {
-    if dup2(1, 3) < 0 {
-        return -1;
+glob RENDER_FD: int = 1,
+     IPC_FD: int = 3;
+
+obj TtyStdioContract {
+    has ok: int = 0,
+        render_fd: int = RENDER_FD,
+        ipc_fd: int = IPC_FD;
+}
+
+def tty_setup_stdio_contract -> TtyStdioContract {
+    contract = TtyStdioContract();
+    if dup2(1, contract.ipc_fd) < 0 {
+        return contract;
     }
-    if dup2(2, 1) < 0 {
-        dup2(3, 1);
-        return -1;
+    if dup2(2, contract.render_fd) < 0 {
+        dup2(contract.ipc_fd, 1);
+        return contract;
     }
     g_tty.fd_saved = 1;
-    return 0;
+    contract.ok = 1;
+    return contract;
 }
 
 def tty_restore_stdio {
     if g_tty.fd_saved != 0 {
-        dup2(3, 1);
+        dup2(IPC_FD, 1);
         g_tty.fd_saved = 0;
     }
-}
-
-def tty_ipc_fd -> int {
-    return 3;
 }

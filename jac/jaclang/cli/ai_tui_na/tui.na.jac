@@ -46,7 +46,7 @@ def _run {
         }
     }
 
-    while tui_loop_once(state, diff_engine, tty_transport, 1) { }
+    while tui_loop_once(state, diff_engine, tty_transport) { }
 
     tui_teardown(state);
 }
