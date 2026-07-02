@@ -267,11 +267,13 @@ pub fn build(b: *std.Build) void {
             );
         }
 
-        // Contained bun runtime: fetch the pinned bun for the target and bundle
-        // it inside the client package via --bun. Mirrors the fetch-pbs pattern
-        // (download + sha256-verify, all in the payload tool). Skipped in
-        // linked-source/dev mode -- there get_bun() resolves a contained,
-        // on-demand .jac/bin copy instead. A BUN_VERSION bump lands in
+        // Contained bun runtime: every build flow ships the pinned bun -- jac's
+        // JS tooling runs exclusively on it (no Node.js fallback). Normal builds
+        // fetch the target-matched bun and bundle it inside the client package
+        // via --bun; linked-source/dev builds fetch it straight into the linked
+        // tree at jaclang/runtimelib/client/_bun/, where get_bun() resolves it
+        // __file__-relative. Mirrors the fetch-pbs pattern (download +
+        // sha256-verify, all in the payload tool). A BUN_VERSION bump lands in
         // payload.zig (tracked below), so it invalidates the cached payload.
         if (link_dir == null) {
             const bun_dir = b.pathFromRoot(b.fmt(".bun-build/{s}", .{osarch}));
@@ -281,6 +283,12 @@ pub fn build(b: *std.Build) void {
             fetch_bun.has_side_effects = true;
             mk.step.dependOn(&fetch_bun.step);
             mk.addArg(b.fmt("--bun={s}/{s}", .{ bun_dir, bun_basename }));
+        } else {
+            const linked_bun_dir = b.fmt("{s}/jaclang/runtimelib/client/_bun", .{link_dir.?});
+            const fetch_bun = b.addRunArtifact(tool);
+            fetch_bun.addArgs(&.{ "fetch-bun", osarch, linked_bun_dir });
+            fetch_bun.has_side_effects = true;
+            mk.step.dependOn(&fetch_bun.step);
         }
 
         // Linux: harvest a static-musl runtime for the target from the bundled

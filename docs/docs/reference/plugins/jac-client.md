@@ -1861,7 +1861,7 @@ Native mobile applications for Android and iOS using [Capacitor](https://capacit
 
 **Prerequisites:**
 
-- Node.js *(optional)* -- when Node/npx is not installed, the JS tooling runs on the Bun runtime bundled with the `jac` binary
+- Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the Bun runtime bundled with the `jac` binary (`JAC_BUN` overrides which bun is used)
 - **Android**: Java/JDK 21+, Android SDK ([Android Studio](https://developer.android.com/studio))
 - **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
 
@@ -1924,7 +1924,7 @@ A React Native app is a **mobUI** project: one source tree that compiles to both
 
 **Prerequisites:**
 
-- Node.js *(optional)* -- when Node/npx is not installed, the JS tooling runs on the Bun runtime bundled with the `jac` binary
+- Node.js is **not** required -- all JS tooling (installs, Expo/Metro, Vite) runs on the Bun runtime bundled with the `jac` binary (`JAC_BUN` overrides which bun is used)
 - **Android**: Java/JDK 21+, Android SDK ([Android Studio](https://developer.android.com/studio))
 - **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
 
@@ -2286,7 +2286,7 @@ cl {
 
 ### Prerequisites
 
-jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. A Bun runtime ships inside the `jac` binary, so no separate install is needed; system `npm`/`npx` are preferred when present.
+jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bundling. A Bun runtime ships inside the `jac` binary and is the only JS runtime jac invokes -- no Node.js/npm install is needed or consulted. Set `JAC_BUN` to substitute a specific bun binary.
 
 ### Start Server
 

@@ -264,32 +264,15 @@ impl ViteBundler.add_packages(
         console.print("  ✔ Created package.json");
     }
 
-    npm_ok = False;
-    try {
-        probe = subprocess.run(
-            ['npm', '--version'], capture_output=True, text=True, timeout=10
-        );
-        npm_ok = probe.returncode == 0;
-    } except Exception {
-        npm_ok = False;
+    bun = get_bun();
+    if bun is None {
+        raise RuntimeError("bun unavailable: cannot install client dependencies");
     }
-    if npm_ok {
-        cmd = ['npm', 'install'];
-        if dev {
-            cmd.append('--save-dev');
-        }
-        cmd.extend(packages);
-    } else {
-        bun = get_bun();
-        if bun is None {
-            raise RuntimeError("bun unavailable: cannot install client dependencies");
-        }
-        cmd = [bun, 'add'];
-        if dev {
-            cmd.append('--dev');
-        }
-        cmd.extend(packages);
+    cmd = [bun, 'add'];
+    if dev {
+        cmd.append('--dev');
     }
+    cmd.extend(packages);
     console.print(f"  Installing: {' '.join(packages)}");
     subprocess.run(cmd, cwd=target_dir, check=True, capture_output=False);
 }

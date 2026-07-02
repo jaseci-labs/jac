@@ -678,8 +678,8 @@ test "build_expo_start_argv emits expected metro flags" {
     assert "--port" in argv;
     assert "8081" in argv;
     assert "--clear" in argv;
-    # The runner prefix (npx / bunx / bundled `bun x`) comes first; expo is
-    # the tool being run, never the executable itself.
+    # The bundled-bun runner prefix (`<bun> x`) comes first; expo is the
+    # tool being run, never the executable itself.
     assert argv.index("expo") >= 1;
 
     argv2 = build_expo_start_argv(9090, clear_cache=False);
@@ -861,10 +861,11 @@ test "client config getters expose mobile and react-native tables" {
     }
 }
 
-test "node tooling manifest install prefers npm when available" {
+test "node tooling runs installs and runners on the bundled bun only" {
     import tempfile;
     import unittest.mock;
     import from jaclang.runtimelib.client.targets.node_tooling_common {
+        resolve_node_runner,
         run_manifest_install
     }
 
@@ -877,53 +878,11 @@ test "node tooling manifest install prefers npm when available" {
                 stderr: str = "";
         }
         calls.append(cmd);
-        r = _Res();
-        if cmd == ["npm", "--version"] {
-            r.returncode = 0;
-            r.stdout = "10.9.0";
-            return r;
-        }
-        r.returncode = 0;
-        return r;
-    }
-
-    with tempfile.TemporaryDirectory() as tmp {
-        with unittest.mock.patch("subprocess.run", side_effect=_fake_run) {
-            run_manifest_install(Path(tmp));
-        }
-    }
-    assert ["npm", "--version"] in calls;
-    assert ["npm", "install"] in calls;
-    assert ["bun", "install"] not in calls;
-}
-
-test "node tooling manifest install falls back to bun when npm missing" {
-    import tempfile;
-    import unittest.mock;
-    import from jaclang.runtimelib.client.targets.node_tooling_common {
-        run_manifest_install
-    }
-
-    calls: list[list[str]] = [];
-
-    def _fake_run(cmd: list[str], **kwargs: dict) -> object {
-        class _Res {
-            has returncode: int = 0,
-                stdout: str = "",
-                stderr: str = "";
-        }
-        calls.append(cmd);
-        r = _Res();
-        if cmd == ["npm", "--version"] {
-            r.returncode = 1;
-            return r;
-        }
-        r.returncode = 0;
-        return r;
+        return _Res();
     }
 
     def _fake_get_bun -> str {
-        return "bun";
+        return "/opt/jac/_bun/bun";
     }
 
     with tempfile.TemporaryDirectory() as tmp {
@@ -933,18 +892,42 @@ test "node tooling manifest install falls back to bun when npm missing" {
                 side_effect=_fake_get_bun
             ) {
                 run_manifest_install(Path(tmp));
+                runner = resolve_node_runner();
             }
         }
     }
-    assert ["npm", "--version"] in calls;
-    install_cmds = [
-        c
-        for c in calls
-        if len(c) == 2 and c[1] == "install"
-    ];
-    assert len(install_cmds) == 1;
-    assert install_cmds[0][0].endswith("bun") or install_cmds[0][0] == "bun";
-    assert ["npm", "install"] not in calls;
+    # No system tooling is ever probed or used -- bundled bun only.
+    assert ["/opt/jac/_bun/bun", "install"] in calls;
+    assert runner == ["/opt/jac/_bun/bun", "x"];
+    for cmd in calls {
+        assert cmd[0] != "npm" and cmd[0] != "npx" and cmd[0] != "bunx" , (
+            f"system JS tooling must never be invoked, got: {cmd}"
+        );
+    }
+}
+
+test "node tooling raises actionably when the bundled bun is missing" {
+    import unittest.mock;
+    import from jaclang.runtimelib.client.targets.node_tooling_common {
+        resolve_node_runner
+    }
+
+    def _no_bun -> None {
+        return None;
+    }
+
+    with unittest.mock.patch(
+        "jaclang.runtimelib.client.targets.node_tooling_common.get_bun",
+        side_effect=_no_bun
+    ) {
+        try {
+            resolve_node_runner();
+            assert False , "expected RuntimeError when bundled bun is absent";
+        } except RuntimeError as e {
+            assert "fetch-bun" in str(e);
+            assert "JAC_BUN" in str(e);
+        }
+    }
 }
 
 test "expo prebuild runs even when native tree and prebuild state exist" {

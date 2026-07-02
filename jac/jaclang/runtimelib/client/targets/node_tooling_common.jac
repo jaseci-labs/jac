@@ -18,43 +18,27 @@ def check_command_available(
 }
 
 def resolve_node_runner -> list[str] {
-    # Argv prefix for running a package binary (`npx expo ...`,
-    # `bunx expo ...`, or `<bundled bun> x expo ...`). System tooling is
-    # preferred when present (it shares the user's cache and env); the bun
-    # bundled with the jac binary makes the fallback hermetic, so no
-    # Node.js install is required. Same policy as resolve_package_manager.
-    (ok, _) = check_command_available(["npx", "--version"]);
-    if ok {
-        return ["npx"];
-    }
-    (ok, _) = check_command_available(["bunx", "--version"]);
-    if ok {
-        return ["bunx"];
-    }
-    bun_path = get_bun();
-    if bun_path is not None {
-        return [bun_path, "x"];
-    }
-    raise RuntimeError(
-        "No JS package runner found: npx/bunx are not on PATH and the "
-        "bundled bun is missing (shipped binaries include it; for a source "
-        "checkout run `zig build fetch-bun`, or set JAC_BUN)."
-    );
+    # Argv prefix for running a package binary (`<bundled bun> x expo ...`).
+    # All JS tooling runs on the bun bundled with the jac binary -- Node.js
+    # is never consulted, so behavior is identical on every machine. Set
+    # JAC_BUN to substitute a specific bun binary.
+    return [_require_bundled_bun(), "x"];
 }
 
 def resolve_package_manager -> str {
-    (npm_ok, _) = check_command_available(["npm", "--version"]);
-    if npm_ok {
-        return "npm";
-    }
+    return _require_bundled_bun();
+}
+
+def _require_bundled_bun -> str {
     bun_path = get_bun();
-    if bun_path is not None {
-        return bun_path;
+    if bun_path is None {
+        raise RuntimeError(
+            "Bundled bun is missing. Shipped jac binaries include it (a "
+            "missing copy indicates a broken build); for a source checkout "
+            "run `zig build fetch-bun`, or set JAC_BUN to a bun binary."
+        );
     }
-    raise RuntimeError(
-        "npm or bun not found. Install Node.js (https://nodejs.org) "
-        "or Bun (https://bun.sh)."
-    );
+    return bun_path;
 }
 
 def run_manifest_install(project_dir: Path) {
@@ -84,18 +68,9 @@ def run_install_cmd(
         run_manifest_install(project_dir);
         return;
     }
-    pkg_mgr = resolve_package_manager();
-    cmd: list[str];
-    if pkg_mgr == "npm" {
-        cmd = ["npm", "install"];
-        if dev {
-            cmd.append("--save-dev");
-        }
-    } else {
-        cmd = [pkg_mgr, "add"];
-        if dev {
-            cmd.append("--dev");
-        }
+    cmd = [resolve_package_manager(), "add"];
+    if dev {
+        cmd.append("--dev");
     }
     cmd.extend(packages);
     console.print(f"  Installing: {' '.join(packages)}", style="muted");

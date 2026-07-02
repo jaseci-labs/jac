@@ -481,7 +481,7 @@ Window title and size are configured under `[plugins.desktop]` in `jac.toml`.
 Ship the same client bundle to Android/iOS via **Capacitor**, which wraps it in a native webview. The mobile app is the *frontend only* -- it talks to your Jac server over HTTP, so deploy the backend separately (e.g. as an [API service](#api-service)).
 
 ```bash
-# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (Node.js optional -- bundled Bun is used when absent)
+# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (no Node.js -- JS tooling runs on the bundled Bun)
 jac setup mobile --platform android    # one-time scaffold (android/)
 
 jac start main.jac --client mobile --dev          # live reload on device/emulator
@@ -499,7 +499,7 @@ Ship a **true native** mobile app (Android + iOS) using [React Native](https://r
 A React Native app is a **mobUI** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS via Metro). Instead of HTML tags, mobUI projects use Jac's `@jac/mobui` component vocabulary (`View`, `Text`, `Pressable`, `TextInput`, `Image`, `ScrollView`), which projects to every target. Raw HTML tags (`<div>`, `<span>`, ...) are compile errors in a mobUI project -- see [`E1105`](../reference/diagnostics.md#mobui-project-jsx-host-tags).
 
 ```bash
-# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (Node.js optional -- bundled Bun is used when absent)
+# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (no Node.js -- JS tooling runs on the bundled Bun)
 jac setup react-native              # one-time scaffold (.jac/mobile-rn/)
 
 jac start main.jac --client react-native --dev   # Fast Refresh on device/emulator

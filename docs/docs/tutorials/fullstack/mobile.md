@@ -8,7 +8,7 @@ This tutorial walks you through shipping an existing Jac full-stack app as a nat
 > **Prerequisites**
 >
 > - Completed: [Project Setup](setup.md) -- you have a working `jac start` web app
-> - Installed: Node.js *(optional -- the Bun runtime bundled with `jac` is used when Node/npx is absent)*
+> - Node.js is **not** required -- all JS tooling runs on the Bun runtime bundled with `jac`
 > - **Android**: Java/JDK 21+, Android SDK (via [Android Studio](https://developer.android.com/studio))
 > - **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
 > - Time: ~15 minutes for setup, longer on first build
@@ -314,7 +314,7 @@ The same source builds for web (`jac build`) and native (`jac build --client rea
 jac start main.jac --client react-native --dev
 ```
 
-This launches the Jac backend, compiles `.cl.jac` to JS, and runs `expo start` (via `npx`, `bunx`, or the bundled Bun). Metro serves both platforms -- pick the device in the Expo CLI (press `a` for Android, `i` for the iOS simulator) or scan the QR code in Expo Go. Editing a `.cl.jac` file recompiles and Metro Fast Refreshes the device. Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`, override with `JAC_RN_DEV_HOST`); Metro defaults to port `8081` (`JAC_RN_METRO_PORT`); `adb reverse` is auto-attempted for Android.
+This launches the Jac backend, compiles `.cl.jac` to JS, and runs `expo start` on the bundled Bun. Metro serves both platforms -- pick the device in the Expo CLI (press `a` for Android, `i` for the iOS simulator) or scan the QR code in Expo Go. Editing a `.cl.jac` file recompiles and Metro Fast Refreshes the device. Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`, override with `JAC_RN_DEV_HOST`); Metro defaults to port `8081` (`JAC_RN_METRO_PORT`); `adb reverse` is auto-attempted for Android.
 
 ### Production build
 

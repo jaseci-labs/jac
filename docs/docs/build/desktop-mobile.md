@@ -21,7 +21,7 @@ Window title and size are configured under `[plugins.desktop]` in `jac.toml`. On
 Ship the same client bundle to mobile via **Capacitor**, which wraps it in a native webview. The mobile app is the *frontend only* -- it talks to your Jac server over HTTP, so deploy the backend separately (e.g. as a [backend service](backend-apis.md#service)):
 
 ```bash
-# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (Node.js optional -- bundled Bun is used when absent)
+# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (no Node.js -- JS tooling runs on the bundled Bun)
 jac setup mobile --platform android               # one-time scaffold
 jac start main.jac --client mobile --dev          # live reload on device/emulator
 jac build --client mobile --platform android      # → app-debug.apk
@@ -34,7 +34,7 @@ Use `--platform ios` on macOS to produce an Xcode project. App name and id are s
 For **true native views** instead of a webview, the React Native target compiles your `cl` UI to platform-native components via Expo/Metro. Author the UI once in the portable [`@jac/mobui`](../reference/plugins/jac-client.md#the-jacmobui-vocabulary) vocabulary (`View`, `Text`, `Pressable`, ...) and the same source also runs on the web -- set `client_kind = "mobui"` under `[project]` and raw HTML tags become compile errors ([`E1105`](../reference/diagnostics.md#mobui-project-jsx-host-tags)) so the tree stays portable:
 
 ```bash
-# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (Node.js optional -- bundled Bun is used when absent)
+# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (no Node.js -- JS tooling runs on the bundled Bun)
 jac setup react-native                            # one-time Expo scaffold (.jac/mobile-rn/)
 jac start main.jac --client react-native --dev    # Metro Fast Refresh on device/emulator
 jac build --client react-native --platform android  # → APK (iOS: .app via xcodebuild, .ipa via EAS)
