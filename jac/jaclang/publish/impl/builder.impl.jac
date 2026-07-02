@@ -45,16 +45,15 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
     ).name
 ''';
 
-def _transpile_jac_to_py(source_path: Path | None) -> bytes {
-    import from jaclang.jac0core.program { JacProgram }
-
+def _transpile_jac_to_py(program: any, source_path: Path | None) -> bytes {
     if source_path is None {
         raise ValueError("Cannot transpile Jac source: source path is not set.");
     }
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(source_path));
-    if prog.errors_had {
-        details = "\n".join(f"  {err}" for err in prog.errors_had);
+    prev = len(program.errors_had);
+    ir = program.compile(file_path=str(source_path));
+    new_errors = program.errors_had[prev:];
+    if new_errors {
+        details = "\n".join(f"  {err}" for err in new_errors);
         raise ValueError(f"Transpilation failed for {source_path}:\n{details}");
     }
     if ir is None {
@@ -73,10 +72,15 @@ def _collect_src_data(
     source_files: list[SourceFile], transpile_jac: bool
 ) -> dict[str, bytes] {
     src_data: dict[str, bytes] = {};
+    program: any = None;
     for sf in source_files {
         if transpile_jac and sf.wheel_path.endswith(".jac") {
+            if program is None {
+                import from jaclang.jac0core.program { JacProgram }
+                program = JacProgram();
+            }
             target = sf.wheel_path[:-len(".jac")] + ".py";
-            content = _transpile_jac_to_py(sf.source_path);
+            content = _transpile_jac_to_py(program, sf.source_path);
         } else {
             target = sf.wheel_path;
             content = read_source_file(sf);
@@ -96,6 +100,16 @@ impl WheelBuilder.postinit -> None {
     if self.project_root is None {
         self.project_root = self.config.project_root;
     }
+}
+
+impl WheelBuilder.source_data -> dict[str, bytes] {
+    if self._src_data_cache is None {
+        source_files = collect_source_files(
+            self.config, project_root=self.project_root
+        );
+        self._src_data_cache = _collect_src_data(source_files, self.transpile_jac);
+    }
+    return self._src_data_cache;
 }
 
 impl WheelBuilder.build -> bytes {
@@ -125,8 +139,7 @@ impl WheelBuilder.build -> bytes {
     pkg_name = self.config.project.name.replace("-", "_");
     top_level_bytes = (pkg_name + "\n").encode("utf-8");
 
-    source_files = collect_source_files(self.config, project_root=proj_root);
-    src_data: dict[str, bytes] = _collect_src_data(source_files, self.transpile_jac);
+    src_data: dict[str, bytes] = self.source_data();
 
     entries: list[RecordEntry] = [
         record_entry_from_bytes(path, data) for (path, data) in src_data.items()
@@ -197,8 +210,7 @@ impl WheelBuilder.build_sdist -> bytes {
 
     jac_toml_path = proj_root / "jac.toml";
 
-    source_files = collect_source_files(self.config, project_root=proj_root);
-    src_data: dict[str, bytes] = _collect_src_data(source_files, self.transpile_jac);
+    src_data: dict[str, bytes] = self.source_data();
 
     buf = io.BytesIO();
     with gzip.GzipFile(fileobj=buf, mode="wb", mtime=_SDIST_MTIME) as gz {

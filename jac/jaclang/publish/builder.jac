@@ -11,9 +11,11 @@ obj WheelBuilder {
         python_tag: str = "py3",
         abi_tag: str = "none",
         platform_tag: str = "any",
-        transpile_jac: bool = True;
+        transpile_jac: bool = True,
+        _src_data_cache: dict[str, bytes] | None = None;
 
     def postinit -> None;
+    def source_data -> dict[str, bytes];
     def build -> bytes;
     def build_to(output_dir: Path) -> Path;
     def install_editable(src_dir: Path, site_pkgs: Path) -> Path;
