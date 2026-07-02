@@ -64,6 +64,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
         self._emit_struct_release_fn(arch_name);
+        self._emit_trace_fn(arch_name);
     }
 
     for arch in archetypes {
@@ -903,6 +904,13 @@ impl NaIRGenPass._codegen_instantiation(
                 _dtor_fn_s, _i64_s, name="obj_dtor_i64"
             );
             self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
+        }
+        _trace_fn_s = self.struct_trace_fns.get(type_name);
+        if _trace_fn_s is not None {
+            _obj_i8_tr = self.builder.bitcast(
+                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tr"
+            );
+            self._emit_set_trace_fn(self.builder, _obj_i8_tr, _trace_fn_s);
         }
         if self.rc_set_type_fn is not None {
             _obj_i8 = self.builder.bitcast(
