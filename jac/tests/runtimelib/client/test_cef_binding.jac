@@ -225,9 +225,7 @@ test "cef host source boots inprocess and wires the sv bridge (#6596)" {
     # The host reads the loopback port off the returned context.
     assert "_ctx.port" in src;
     # The cef branch of host_boot owns the sv bridge + in-process boot wiring.
-    host_boot_src = (
-        _cef_dir().parent / "host_boot.jac"
-    ).read_text();
+    host_boot_src = (_cef_dir().parent / "host_boot.jac").read_text();
     assert "sv_bridge=inprocess_forward" in host_boot_src;
     assert "inprocess_boot(" in host_boot_src;
     assert "forward as inprocess_forward" in host_boot_src;
