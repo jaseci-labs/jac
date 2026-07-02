@@ -3,11 +3,6 @@ import from jaclang.cli.console { console }
 import from jaclang.jac0core.ext_registry { base_stem, is_jac, is_python }
 
 
-"""Flatten a repeatable CLI flag's list-of-lists into a flat list.
-
-argparse `action="append"` with `nargs="+"` yields `[["a"], ["b","c"]]` for
-`-I a -I b c`; consumers want `["a","b","c"]`. Returns None when the flag was
-never given, so each driver's own defaults apply."""
 def flatten_append(groups: list | None) -> list | None {
     if not groups {
         return None;
@@ -16,11 +11,6 @@ def flatten_append(groups: list | None) -> list | None {
 }
 
 
-"""Create JacRuntime and return the base path, module name, and runtime state.
-
-This is the canonical function for setting up CLI execution context.
-It handles base_path setup, closing any existing context, and creating a new one.
-"""
 def proc_file(filename: str) -> tuple {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);

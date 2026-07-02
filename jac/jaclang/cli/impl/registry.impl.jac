@@ -2,18 +2,11 @@ import argparse;
 import from jaclang.cli.banners { JAC_GITHUB_URL }
 
 def _norm_dest(kwargs: dict, name: str) -> str {
-    # Normalize hyphenated arg names to underscored dest keys. Without this,
-    # `--force-include` stores as "force-include" but handlers expect
-    # "force_include" (issue #6115). Defers to an explicit `dest` if already set.
     dest: str = kwargs.get("dest") or name.replace("-", "_");
     kwargs["dest"] = dest;
     return dest;
 }
 
-# ===============================================================================
-# CommandRegistry Implementation
-# ===============================================================================
-"""Initialize the command registry."""
 impl CommandRegistry.init -> None {
     self.commands = {};
     self._pending_extensions = {};
@@ -277,10 +270,6 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         kwargs["action"] = "append";
         kwargs["nargs"] = "+";
         kwargs["default"] = None;
-        # Normalize hyphens to underscores so the parser stores the value
-        # under a key that matches Python-style parameter names. Without
-        # this, `--force-include` would be stored as "force-include" but
-        # the handler expects "force_include" (same issue as FLAG, see #6115).
         _norm_dest(kwargs, arg.name);
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
@@ -293,9 +282,6 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
     } elif arg.kind == ArgKind.FLAG or arg.typ == bool {
         kwargs["action"] = "store_true";
         kwargs["default"] = arg.default if arg.default is not None else False;
-        # `--X` and the auto `--no-X` share one underscored dest, else
-        # argparse leaves a phantom `X-dashed: True` in vars() for
-        # hyphenated names (issue #6115).
         shared_dest: str = _norm_dest(kwargs, arg.name);
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);

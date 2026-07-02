@@ -116,10 +116,7 @@ obj NormalizePass(UniPass) {
     def enter_match_arch(nd: uni.MatchArch) -> None;
     def enter_token(nd: uni.Token) -> None;
     def enter_string(nd: uni.String) -> None;
-    """Post-traversal fix-up: stamp real source lines on synthesized zero-line
-    tokens (see impl)."""
     def after_pass -> None;
-
     static def _collect_non_zero_lines(nd: uni.UniNode, result: list[int]) -> None;
     static def _fix_zero_toks_in_subtree(nd: uni.UniNode) -> None;
 }
