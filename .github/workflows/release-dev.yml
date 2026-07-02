@@ -80,6 +80,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The LLVMPY_* shim is the single most expensive build artifact (statically
+      # links ~0.5 GB of LLVM archives; several minutes) and depends only on
+      # native/**, build.zig, and the pinned slice (llvm_release.zig) -- NOT on
+      # jaclang/**. Same cache key as setup-jac, so CI on main usually has it
+      # warm: a hit skips both the LLVM fetch and the static link (-Dshim-bin
+      # below), leaving only the payload assembly this push actually changed.
+      - name: Restore cached LLVMPY shim
+        id: shim-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
+      # On a shim miss the extracted LLVM tree is still needed; cache it too
+      # (same key as setup-jac; payload.zig pins the LLVM release), so even a
+      # cold shim link skips the ~1.5-2 GB download.
+      - name: Restore cached LLVM (jacllvm shim deps)
+        if: steps.shim-cache.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+
       - name: Install host tools (zstd)
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
@@ -89,7 +112,10 @@ jobs:
           fi
 
       - name: Set up Zig 0.16.0
-        uses: mlugg/setup-zig@v2
+        # Pinned to a full SHA (not the mutable v2 tag): this job holds
+        # `contents: write` and publishes binaries users download, so a
+        # re-pointed tag on this third-party action must not reach it.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.16.0
           # Fresh cache each run: build.zig's payload step doesn't reliably
@@ -99,14 +125,28 @@ jobs:
 
       # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
       # shim, so the per-target LLVM release must be extracted before `zig build`
-      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download.
+      # (there is no llvmlite wheel anymore). Skipped entirely when a cached shim
+      # was restored (-Dshim-bin needs no LLVM).
       - name: Fetch LLVM for the jacllvm shim
+        if: steps.shim-cache.outputs.cache-hit != 'true'
         working-directory: jac
         run: zig build fetch-llvm --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
-        run: zig build --summary all
+        # On a shim-cache hit, stage the restored shim OUTSIDE its in-tree place
+        # path before passing it via -Dshim-bin: the build's place step copies
+        # -Dshim-bin back to that path, and a self-copy would read the file it
+        # is truncating. On a miss the plain build links the shim from source,
+        # places it in-tree, and the cache saves it at job end. Mirrors setup-jac.
+        run: |
+          SHIM_ARG=()
+          if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
+            mkdir -p .shim-build
+            cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
+            SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
+          fi
+          zig build "${SHIM_ARG[@]}" --summary all
 
       - name: Smoke test (no system Python)
         working-directory: jac
@@ -126,7 +166,9 @@ jobs:
           ASSET="jac-dev-${{ matrix.platform }}"
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"
-          if [ "$RUNNER_OS" = "macOS" ]; then codesign --force --sign - "dist/$ASSET" || true; fi
+          # No `|| true`: a signing failure should fail the job, not silently
+          # ship a binary that was never re-signed after the copy.
+          if [ "$RUNNER_OS" = "macOS" ]; then codesign --force --sign - "dist/$ASSET"; fi
           ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
 
