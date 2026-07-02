@@ -2,7 +2,30 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.30.3 (Latest Release)
+## jaclang 0.30.4 (Latest Release)
+
+### Breaking Changes
+
+- **Breaking: byLLM folded into `jaclang` core**: The `jac-byllm` package is no longer separate. The `by llm()` feature ships inside the `jac` binary and is importable as `jaclang.byllm` (was `byllm`); update imports accordingly (e.g. `import from byllm.lib { Model }` becomes `import from jaclang.byllm.lib { Model }`). byLLM's dependencies are now the `llm` capability (litellm, pillow) -- declare `[plugins.byllm]` in `jac.toml` and run `jac install`; optional runtimes are the `llm.local`, `llm.mcp`, and `llm.video` capabilities. `import jaclang` no longer pulls litellm: heavy deps load lazily behind `_optdeps` shims, and a real model call without the `llm` capability raises an actionable "run `jac install`" error. See [Breaking Changes](../../breaking-changes.md).
+
+### New Features
+
+- **Static-musl Linux binaries from `nacompile`**: self-contained Linux executables now link fully static against a vendored musl runtime, with no glibc or dynamic-loader dependency, so they run on Alpine, scratch containers, and any glibc version. Executables that import an external shared library (for example a desktop `libwebview` host or an embedded `libpython`) stay dynamic, and the shared-library (`.so`) path is unchanged. The musl runtime is harvested from the bundled Zig toolchain via a new `zig build vendor-musl` step and bundled into the shipped binary.
+- **Self-contained `jac eject` output**: ejected backends now vendor the jaclang runtime as compiled Python inside `backend/jaclang/`, so the output runs on stock PyPI packages only (`fastapi` + `uvicorn`, plus `SQLAlchemy` or the `llm` capability deps when those features are used) -- `requirements.txt` no longer pins the deprecated `jaclang` or `byllm` packages. Projects using `by llm()` vendor `jaclang.byllm` and pin its real dependencies (litellm, pillow, httpx, loguru). The `[eject.db]` SQLAlchemy persistence backend is now a first-class runtime module (`jaclang.runtimelib.storage.sqlalchemy_memory`, sharing its row format with `SqliteMemory`) that is vendored on demand, replacing the previous inline source template.
+
+### Bug Fixes
+
+- **Fix: `jac start --scale --experimental` host-build from a source checkout**: `jaclang.scale`'s `host_repo_root` derived the jac source dir by walking a fixed number of parents up from `binary.jac`. Folding jac-scale into core jaclang moved that file one directory deeper, so the walk landed on `<root>/jac` instead of `<root>`, and the host build then looked for the source at `<root>/jac/jac` (missing) and failed. The parent count is corrected, so `--experimental` again builds and ships the jac binary when run from an on-disk checkout.
+- **`jac run` works on glibc 2.17+ (Linux x86_64)**: the bundled native LLVM shim (`libjacllvm.so`) previously required `GLIBC_2.38`, so `jac run`/`jac build` crashed on older distros (e.g. Ubuntu 22.04) even though the launcher itself ran. The shim was linked with the host `c++` against the libstdc++ LLVM release, so it ignored the launcher's glibc floor. The x86_64 shim now links a libc++ LLVM slice with `zig c++` pinned to `x86_64-linux-gnu.2.17` (no container or special runner), and the launcher and pyembed pins drop to 2.17 to match, so the whole tool shares one glibc 2.17 floor (matching CPython). aarch64 Linux is unchanged, pending an aarch64 libc++ slice.
+
+### Refactors
+
+- **Perf: bound precompile memory by releasing per-unit AST closures**: the bytecode precompile driver (used to build the bundled `.jir` cache and to warm a cold install) no longer accumulates the union of every module's AST closure. Each file's working set (hub, type-evaluator caches, dependency map, and diagnostics) is released once its bytecode is captured, with the `.jir` cache as the durable cross-unit channel. A full cold precompile of `jaclang` drops peak memory roughly 9x (about 8.5 GB down to about 1.0 GB). Eviction is scoped to that throwaway compile driver and never runs in the live runtime import path, where the program stays a queryable result surface. Set `JAC_NO_UNIT_EVICT=1` to opt out.
+- **Refactor: unify precompile drivers behind a shared helper**: the bytecode precompile CLI and the scale binary injector now share a single `precompile_unit` helper instead of each carrying its own copy of the compile, sentinel-patch, and `.jir` write sequence. The per-unit AST closure release that bounds precompile memory now applies to both drivers (previously only the CLI had it).
+- **`jac run` works on glibc 2.17+ on Linux aarch64 too (and slice pins are single-sourced)**: the aarch64 binary drops its glibc floor from 2.34 to 2.17, matching x86_64 and CPython/PBS -- its LLVMPY_* shim now links a native-built `aarch64-linux-libcxx` LLVM slice with `zig c++` pinned at 2.17 instead of the host g++ (whose real floor was the CI runner's glibc). The zig-linked shim also pins `-mcpu=baseline`, fixing an intermittent SIGILL when a binary built on a newer-CPU runner ran on an older one. Under the hood, the per-platform LLVM slice pins move into `jac/launcher/llvm_release.zig` (imported by both `payload.zig` and `build.zig`), the shim link path is chosen by the slice's C++ runtime (`*-libcxx` triple suffix) rather than a hardcoded arch check, and the release workflow derives its glibc-floor assertion from the matrix `zig_target` and enforces it on both Linux legs.
+- **CI: the LLVMPY shim is cached independently of the compiler**: `zig build` gains a `-Dshim-bin=PATH` option that bundles a prebuilt `libjacllvm` shim, skipping the LLVM fetch and the multi-minute static link (the shim depends only on `jac/native/**`, `build.zig`, and the pinned slice table -- not on `jaclang/**`). The setup-jac CI action caches the shim on exactly those inputs, so a compiler-only merge's cold binary build drops from ~15-25 minutes to roughly the payload assembly + JIR precompile. Plain `zig build` and release binaries are unchanged.
+
+## jaclang 0.30.3
 
 ### Breaking Changes
 
