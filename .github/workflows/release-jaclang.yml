@@ -99,18 +99,43 @@ jobs:
         working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
-      # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
-      # shim, so the per-target LLVM release must be extracted before `zig build`
-      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download; not
-      # cached here, matching this workflow's fresh-each-release policy.
+      # Cache the built shim (jac/native's static LLVM link -- the most expensive
+      # artifact, keyed only on native/**, build.zig, llvm_release.zig, NOT
+      # jaclang/**). On a hit the build bundles it via -Dshim-bin, skipping the
+      # LLVM fetch + link. Exact-key + per target, so a stale shim can never ship;
+      # only the shim is reused -- the rest of the payload still builds fresh.
+      - name: Restore cached LLVMPY shim
+        id: shim-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+          # zig_target is in the key: the shim is built with it (glibc floor), so a
+          # floor/triple change must not reuse a shim keyed on the sources alone.
+          key: jac-shim-rel-${{ matrix.platform }}-${{ matrix.zig_target }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
+      # Extract the pinned LLVM the shim statically links (needed before `zig
+      # build`). Skipped on a shim-cache hit -- a bundled prebuilt shim needs no LLVM.
       - name: Fetch LLVM for the jacllvm shim
+        if: steps.shim-cache.outputs.cache-hit != 'true'
         working-directory: jac
         # zig_target -> -Dtarget=... on Linux legs; empty (host-native) on macOS.
         run: zig build fetch-llvm ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
-        run: zig build ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
+        # On a hit, stage the restored shim outside its in-tree place path before
+        # passing -Dshim-bin: the build's place step copies it back there, and a
+        # self-copy would truncate the source. On a miss the build links it and
+        # the cache saves the placed shim.
+        run: |
+          SHIM_ARG=()
+          if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
+            mkdir -p .shim-build
+            cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
+            if [ "$RUNNER_OS" = "macOS" ]; then SHIM=.shim-build/libjacllvm.dylib; else SHIM=.shim-build/libjacllvm.so; fi
+            SHIM_ARG=(-Dshim-bin="$SHIM")
+          fi
+          zig build ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} "${SHIM_ARG[@]}" --summary all
 
       - name: Smoke test (no system Python)
         working-directory: jac

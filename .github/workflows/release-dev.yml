@@ -97,16 +97,40 @@ jobs:
           # bits. Force a rebuild.
           use-cache: false
 
-      # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
-      # shim, so the per-target LLVM release must be extracted before `zig build`
-      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download.
+      # Cache the built shim (jac/native's static LLVM link -- the most expensive
+      # artifact, keyed only on native/**, build.zig, llvm_release.zig). The dev
+      # release fires on every push to main, so this skips the LLVM fetch + link
+      # whenever native/ is unchanged. Host-native build, so the key matches
+      # setup-jac's -- the dev build reuses the test CI's shim.
+      - name: Restore cached LLVMPY shim
+        id: shim-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
+      # Extract the pinned LLVM the shim statically links (needed before `zig
+      # build`). Skipped on a shim-cache hit -- a bundled prebuilt shim needs no LLVM.
       - name: Fetch LLVM for the jacllvm shim
+        if: steps.shim-cache.outputs.cache-hit != 'true'
         working-directory: jac
         run: zig build fetch-llvm --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
-        run: zig build --summary all
+        # On a hit, stage the restored shim outside its in-tree place path before
+        # passing -Dshim-bin: the build's place step copies it back there, and a
+        # self-copy would truncate the source. On a miss the build links it and
+        # the cache saves the placed shim.
+        run: |
+          SHIM_ARG=()
+          if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
+            mkdir -p .shim-build
+            cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
+            if [ "$RUNNER_OS" = "macOS" ]; then SHIM=.shim-build/libjacllvm.dylib; else SHIM=.shim-build/libjacllvm.so; fi
+            SHIM_ARG=(-Dshim-bin="$SHIM")
+          fi
+          zig build "${SHIM_ARG[@]}" --summary all
 
       - name: Smoke test (no system Python)
         working-directory: jac
