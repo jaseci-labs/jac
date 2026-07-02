@@ -5503,7 +5503,7 @@ test "jac_toml_kind_mobui_round_trip" {
     # `[project] client_kind = "mobui"`. All other mobui-project tests set
     # project_kind via CompileOptions directly; this one writes a real
     # project (jac.toml + module) and relies on the guard pass discovering
-    # the kind from the module's own path — no cwd, no config singleton.
+    # the kind from the module's own path -- no cwd, no config singleton.
     import shutil;
     import tempfile;
     import from jaclang.project.config { JacConfig }
@@ -5516,7 +5516,7 @@ test "jac_toml_kind_mobui_round_trip" {
         # Part 1: round-trip — JacConfig.load() must parse client_kind correctly.
         cfg = JacConfig.load(toml_path);
         assert cfg.project.client_kind == "mobui" , f"Expected client_kind='mobui' from jac.toml, got '{cfg.project.client_kind}'";
-        # Part 2: per-path discovery — a module inside the project picks up
+        # Part 2: per-path discovery -- a module inside the project picks up
         # "mobui" with a plain CompileOptions() (no explicit project_kind),
         # causing JsxIntrinsicGuardPass to emit E1105.
         fixture = os.path.join(tmp_dir, "main.jac");

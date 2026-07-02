@@ -1,6 +1,6 @@
 # mobui-hello
 
-Starter for **mobUI** — Jac's cross-platform UI model
+Starter for **mobUI** -- Jac's cross-platform UI model
 (`[project] client_kind = "mobui"`). One source tree compiles to **both** the
 web (via `react-native-web`) and **React Native** (Android/iOS).
 
@@ -11,7 +11,7 @@ jac start main.jac --client react-native # native -> real RN components (Expo + 
 
 ## The `@jac/ui` vocabulary
 
-The app is authored entirely in `@jac/ui` primitives — there is no `<div>`,
+The app is authored entirely in `@jac/ui` primitives -- there is no `<div>`,
 `<span>`, `<button>`, `<input>`, or `<img>` anywhere in `main.jac`.
 
 | `@jac/ui` primitive | Replaces HTML          | Used here for       |
@@ -44,7 +44,7 @@ The guard resolves every tag name in the enclosing scope:
 - **Lowercase components that resolve to an in-scope symbol are allowed.**
 - Only **unresolved lowercase names** (`div`, `span`, …) are treated as HTML
   host elements and rejected.
-- `.cl.jac` web-boundary files are exempt — raw HTML stays valid where the
+- `.cl.jac` web-boundary files are exempt -- raw HTML stays valid where the
   code can only run in a browser.
 
 See the
