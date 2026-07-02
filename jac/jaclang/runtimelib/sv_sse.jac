@@ -70,3 +70,65 @@ def consume_sse_stream(resp: any, func_label: str) -> Iterator[dict] {
         }
     }
 }
+
+def sv_http_post(url: str, path: str, args: dict) -> tuple {
+    import http.client;
+    import from urllib.parse { urlparse }
+    parsed = urlparse(url);
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port or 80, timeout=30);
+    conn.request(
+        "POST",
+        path,
+        body=json.dumps(args),
+        headers={"Content-Type": "application/json", "Accept": "application/json"}
+    );
+    return (conn.getresponse(), conn);
+}
+
+
+obj SSELineReader {
+    has resp: any;
+
+    def iter_lines -> any {
+        for raw in iter(self.resp.readline, b"") {
+            yield raw.rstrip(b"\r\n");
+        }
+    }
+}
+
+
+def wrap_sse_keepalive_conn(resp: any, conn: any, func_label: str) -> any {
+    try {
+        for ev in consume_sse_stream(SSELineReader(resp=resp), func_label) {
+            yield ev;
+        }
+    } finally {
+        try {
+            conn.close();
+        } except Exception {
+            ;
+        }
+    }
+}
+
+
+def wrap_sse_keepalive(stream_cm: any, resp: any, client: any, func_label: str) -> any {
+    try {
+        for ev in consume_sse_stream(resp, func_label) {
+            yield ev;
+        }
+    } finally {
+        try {
+            stream_cm.__exit__(None, None, None);
+        } except Exception {
+            ;
+        }
+        if client {
+            try {
+                client.close();
+            } except Exception {
+                ;
+            }
+        }
+    }
+}
