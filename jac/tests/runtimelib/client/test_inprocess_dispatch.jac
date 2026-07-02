@@ -529,8 +529,8 @@ test "error envelopes gate the traceback behind debug and always carry a request
 
 # Backend-free in BOTH lanes: a bad entry fails boot() at the scale backend import (lean
 # lane) or at jac_import (backend lane). Either way boot() must record the reason
-# and RE-RAISE, so the host's PyRun_SimpleString(DISPATCH_PY) sees != 0 and shows
-# the error page (P1-B).
+# and RE-RAISE, so the host's PyRun_SimpleString(BOOT_PY) (via host_boot.boot)
+# sees != 0 and shows the error page (P1-B).
 test "boot() records the failure reason and re-raises (P1-B)" {
     import from importlib { import_module }
     import tempfile;

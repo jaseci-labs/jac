@@ -42,7 +42,6 @@ def _jac_invoke_handler(id: int, req: int, wv_handle: int) {
 # nacompile cannot lower wv.get_handle() inside an f-string for
 # PyRun_SimpleString; passing the int through a native helper works.
 def _stash_wv_in_python(h: int) {
-    PyRun_SimpleString(f"_wv_handle = {h}");
-    PyRun_SimpleString("_host.setup(_wv_handle)");
+    PyRun_SimpleString(f"_ctx.setup_webview({h})");
 }
 # --- BRIDGE END ---
