@@ -689,18 +689,29 @@ class JacScalePlugin {
             "--no_client"
         ];
 
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=child_env,
-            cwd=str(base_dir)
-        );
+        # The sibling's output is the only way to diagnose a service that
+        # dies or never becomes healthy - never discard it.
+        log_dir = base_dir / '.jac' / 'logs';
+        log_dir.mkdir(parents=True, exist_ok=True);
+        log_path = log_dir / f"{module_name}.log";
+        log_file = open(log_path, 'ab');
+        try {
+            proc = subprocess.Popen(
+                cmd,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                env=child_env,
+                cwd=str(base_dir)
+            );
+        } finally {
+            log_file.close();
+        }
 
         if not wait_for_health(base_url, lambda : proc.poll() is None) {
             proc.terminate();
             raise RuntimeError(
-                f"sv-to-sv service '{module_name}' did not become healthy at {base_url}"
+                f"sv-to-sv service '{module_name}' did not become healthy at "
+                f"{base_url}; see {log_path} for the service's output"
             );
         }
 
@@ -741,8 +752,17 @@ class JacScalePlugin {
         }
     }
 
+    # Like the server hooks above, the RPC hooks decline (return None) when
+    # scale's transport closure (httpx) is not installed, so pluggy falls back
+    # to core's stdlib http.client RPC and sv-to-sv keeps working with zero
+    # third-party deps.
     @hookimpl
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
+        try {
+            import httpx;
+        } except ImportError {
+            return None;
+        }
         import from jaclang.scale.runtime.transport.transport { http_transport }
         return http_transport().call_function(module_name, func_name, args);
     }
@@ -751,6 +771,11 @@ class JacScalePlugin {
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any {
+        try {
+            import httpx;
+        } except ImportError {
+            return None;
+        }
         import from jaclang.scale.runtime.transport.transport { http_transport }
         return http_transport().call_walker(module_name, walker_name, args, stub_cls);
     }
