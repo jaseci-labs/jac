@@ -86,7 +86,8 @@ obj Symbol {
         access: SymbolAccess by postinit,
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
-        semstr: str by postinit;
+        semstr: str by postinit,
+        is_proven_unique: bool = False;
 
     def init(
         defn: NameAtom,

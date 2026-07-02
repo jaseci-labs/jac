@@ -101,6 +101,11 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
             if result_ownership(nd) == Ownership.OWNED {
                 self._mark_owned(_result);
             }
+            if isinstance(nd, uni.Name)
+            and nd.sym is not None
+            and nd.sym.is_proven_unique {
+                self._mark_proven_unique(_result);
+            }
         }
     }
     return _result;

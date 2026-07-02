@@ -99,11 +99,15 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _aid_magic = b.or_(_magic_base, _aid_lo32, name="aid.magic");
     b.store(_aid_magic, _aid_ptr);
 
-    _trace_raw = b.gep(raw, [ir.Constant(i64, HDR_TOTAL + HDR_TRACE_OFF)], name="trace.raw");
+    _trace_raw = b.gep(
+        raw, [ir.Constant(i64, HDR_TOTAL + HDR_TRACE_OFF)], name="trace.raw"
+    );
     _trace_slot = b.bitcast(_trace_raw, i64_ptr, name="trace.slot");
     b.store(ir.Constant(i64, 0), _trace_slot);
 
-    _color_raw = b.gep(raw, [ir.Constant(i64, HDR_TOTAL + HDR_COLOR_OFF)], name="color.raw");
+    _color_raw = b.gep(
+        raw, [ir.Constant(i64, HDR_TOTAL + HDR_COLOR_OFF)], name="color.raw"
+    );
     _color_slot = b.bitcast(_color_raw, i64_ptr, name="color.slot");
     b.store(ir.Constant(i64, 0), _color_slot);
 
@@ -419,6 +423,15 @@ impl NaIRGenPass._is_owned(val: ir.Value) -> bool {
     return bool(getattr(val, 'is_owned', False));
 }
 
+impl NaIRGenPass._mark_proven_unique(val: ir.Value) -> ir.Value {
+    val.proven_unique = True;
+    return val;
+}
+
+impl NaIRGenPass._is_proven_unique(val: ir.Value) -> bool {
+    return bool(getattr(val, 'proven_unique', False));
+}
+
 impl NaIRGenPass._release_owned_operands(
     left_orig: ir.Value, right_orig: ir.Value, op: str = ""
 ) -> None {
@@ -491,6 +504,10 @@ impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> 
     if isinstance(ptr.type.pointee, ir.FunctionType) {
         return;
     }
+
+    if op == "call_arg" and self._is_proven_unique(ptr) {
+        return;
+    }
     i8_ptr = ir.IntType(8).as_pointer();
     self._set_rc_ctx(op, loc);
     cast = self.builder.bitcast(ptr, i8_ptr, name="rc.retain.cast");
@@ -510,6 +527,10 @@ impl NaIRGenPass._emit_rc_release_simple(
     }
 
     if isinstance(ptr.type.pointee, ir.FunctionType) {
+        return;
+    }
+
+    if op == "call_arg" and self._is_proven_unique(ptr) {
         return;
     }
     i8_ptr = ir.IntType(8).as_pointer();

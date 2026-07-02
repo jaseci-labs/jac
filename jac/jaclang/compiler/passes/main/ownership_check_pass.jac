@@ -8,11 +8,14 @@ obj OwnershipCheckPass(UniPass) {
         owned_names: dict[int, str] = {},
         owned_decl: dict[int, uni.Name] = {},
         consumed_syms: set[int] = set(),
+        proven_unique_syms: set[int] = set(),
         borrow_syms: set[int] = set(),
+        param_borrow_syms: set[int] = set(),
         borrow_names: dict[int, str] = {},
         borrow_owner: dict[int, int] = {},
         borrow_owner_node: dict[int, uni.Name] = {},
         borrow_is_mut: dict[int, bool] = {},
+        e1304_borrow_ids: set[int] = set(),
         in_consumed: dict[int, set[int]] = {},
         in_live_borrows: dict[int, set[int]] = {},
         out_live_borrows: dict[int, set[int]] = {},
@@ -21,6 +24,14 @@ obj OwnershipCheckPass(UniPass) {
     def before_pass -> None;
     def _collect_owned(tree: uni.UniNode) -> None;
     def _collect_borrows(tree: uni.UniNode) -> None;
+    def _collect_params(tree: uni.UniNode) -> None;
+    def _return_roots_at_param_borrow(nd: uni.Expr | None) -> bool;
+    def _borrow_region(sym_id: int) -> (uni.UniScopeNode | None);
+    def _region_strictly_outlives(
+        dest: uni.UniScopeNode | None, region: uni.UniScopeNode | None
+    ) -> bool;
+
+    def _compute_proven_unique -> None;
     def _is_own_decl(nd: uni.Assignment) -> (uni.Name | None);
     def _is_borrow_decl(nd: uni.Assignment) -> (uni.Name | None);
     def _borrow_target(nd: uni.Assignment) -> (uni.Name | None);
