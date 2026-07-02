@@ -13,21 +13,21 @@ import from .ipc_schema {
     IPC_FTYPE_HB,
     IPC_SEP
 }
-import from .transport { Transport }
+import from .transport { CmdQueue }
 import from .libc_tty { tty_read_line }
 
-glob _transport: Transport = Transport();
+glob _cmd_queue: CmdQueue = CmdQueue();
 
 def ipc_send_cmd(fd: int, cmd: str) {
-    _transport.send(fd, cmd);
+    _cmd_queue.send(fd, cmd);
 }
 
 def ipc_next_command -> str {
-    return _transport.drain();
+    return _cmd_queue.drain();
 }
 
 def ipc_clear_cmd_queue {
-    _transport.clear();
+    _cmd_queue.clear();
 }
 
 def _unescape(s: str) -> str {
