@@ -7,9 +7,9 @@ impl CMapper.c_BinaryOp(nd: object) -> object {
     left = self._binop_operand(nd.left, nd.right);
     right = self._binop_operand(nd.right, nd.left);
     op_obj = getattr(ast3, ast_cls)();
-    if kind == "arith" {
+    if kind == BinKind.ARITH {
         expr_node = ast3.BinOp(left=left, op=op_obj, right=right);
-    } elif kind == "compare" {
+    } elif kind == BinKind.COMPARE {
         expr_node = ast3.Compare(left=left, ops=[op_obj], comparators=[right]);
     } else {
         expr_node = ast3.BoolOp(op=op_obj, values=[left, right]);
@@ -319,10 +319,10 @@ impl CMapper.c_FuncCall(nd: object) -> object {
 }
 
 impl CMapper._realloc_elide(nd: object) -> object | None {
-    if nd.args is None or len(nd.args.exprs) < 1 {
+    ptr = realloc_ptr_arg(nd);
+    if ptr is None {
         return None;
     }
-    ptr = nd.args.exprs[0];
     py_ptr = self.conv_expr(ptr);
     if isinstance(ptr, c_ast.ID) and ptr.name in self._list_bound {
         self._mark_tier_a(

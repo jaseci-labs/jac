@@ -1,6 +1,7 @@
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
-import from jaclang.compiler.c2jac.c_common { parse_c_int, jac_id, enumerator_value }
+import from jaclang.compiler.c2jac.c_common { parse_c_int, jac_id, eval_enumerators }
+import from jaclang.compiler.c2jac.c_types { walk_to_typedecl, ptr_inner_typedecl }
 
 glob _FFI_SCALARS: set = {
          "i8",
@@ -15,6 +16,7 @@ glob _FFI_SCALARS: set = {
          "f64",
 
      },
+     _MAX_TYPEDEF_DEPTH: int = 16,
      _STDINT_SCALARS: dict = {
          "int8_t": "i8",
          "uint8_t": "u8",
@@ -100,7 +102,7 @@ def _collect_typedefs(file_ast: object) -> dict {
 }
 
 def _scalar_for_names(names: list, typedefs: dict, depth: int = 0) -> str {
-    if names and len(names) == 1 and depth < 16 {
+    if names and len(names) == 1 and depth < _MAX_TYPEDEF_DEPTH {
         nm = names[0];
         if nm in _STDINT_SCALARS {
             return _STDINT_SCALARS[nm];
@@ -113,8 +115,8 @@ def _scalar_for_names(names: list, typedefs: dict, depth: int = 0) -> str {
 }
 
 def _ptr_ffi(ptr_decl: object, typedefs: dict, structs: (set | None) = None) -> str {
-    inner = ptr_decl.type;
-    if isinstance(inner, c_ast.TypeDecl) {
+    inner = ptr_inner_typedecl(ptr_decl);
+    if inner is not None {
         names = inner.type?.names or [];
         if "char" in names and "signed" not in names and "unsigned" not in names {
             return "str";
@@ -130,30 +132,23 @@ def ffi_type(
     decl_type: object, typedefs: dict | None = None, structs: (set | None) = None
 ) -> str {
     tds = typedefs or {};
-    t = decl_type;
-    while not isinstance(t, c_ast.TypeDecl) {
-        if isinstance(t, c_ast.ArrayDecl) {
-            return "int";
-        }
-        if isinstance(t, c_ast.PtrDecl) {
-            return _ptr_ffi(t, tds, structs);
-        }
-        if isinstance(t, c_ast.FuncDecl) {
-            t = t.type;
-            continue;
-        }
-        t = t?.type;
-        if t is None {
-            return "int";
-        }
+    (kind, node) = walk_to_typedecl(decl_type);
+    if kind == "array" {
+        return "int";
     }
-    if isinstance(t.type, c_ast.Struct)
-    and t.type.name
+    if kind == "ptr" {
+        return _ptr_ffi(node, tds, structs);
+    }
+    if kind == "none" {
+        return "int";
+    }
+    if isinstance(node.type, c_ast.Struct)
+    and node.type.name
     and structs
-    and t.type.name in structs {
-        return t.type.name;
+    and node.type.name in structs {
+        return node.type.name;
     }
-    names = t.type?.names or ["int"];
+    names = node.type?.names or ["int"];
     if names and len(names) == 1 and structs and names[0] in structs {
         return names[0];
     }
@@ -177,7 +172,7 @@ def _is_void_params(params: list) -> bool {
 
 def _func_signature(
     funcdecl: object, typedefs: dict, structs: (set | None) = None
-) -> tuple {
+) -> tuple[str, bool] {
     pl = funcdecl.args;
     if pl is None {
         return ("", False);
@@ -300,7 +295,7 @@ def _struct_fields_from_node(
     return out;
 }
 
-def _collect_struct_defs(file_ast: object, typedefs: dict) -> tuple {
+def _collect_struct_defs(file_ast: object, typedefs: dict) -> tuple[list, set] {
     emit_defs: list = [];
     all_names: set = set();
     for ext in file_ast.ext {
@@ -405,17 +400,11 @@ def _enum_def(ext: object) -> object | None {
 
 
 def _eval_enum(enum_node: object) -> list | None {
-    out: list = [];
-    nxt = 0;
-    for en in enum_node.values.enumerators {
-        (val, simple) = enumerator_value(en, nxt);
-        if not simple {
-            return None;
-        }
-        out.append((en.name, val));
-        nxt = val + 1;
+    (pairs, all_simple) = eval_enumerators(enum_node.values);
+    if not all_simple {
+        return None;
     }
-    return out;
+    return pairs;
 }
 
 

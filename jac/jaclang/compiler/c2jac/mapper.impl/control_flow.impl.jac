@@ -167,18 +167,12 @@ impl CMapper._switch_branch_body(stmts: list | None) -> list[object] {
     if len(items) == 1 and isinstance(items[0], c_ast.Compound) {
         items = items[0].block_items or [];
     }
-    out: list[object] = [];
-    for s in items {
-        if isinstance(s, c_ast.Break) {
-            continue;
-        }
-        n = self.conv_stmt(s);
-        if isinstance(n, list) {
-            out += n;
-        } else {
-            out.append(n);
-        }
-    }
+    kept = [
+        s
+        for s in items
+        if not isinstance(s, c_ast.Break)
+    ];
+    out: list[object] = self._conv_stmts(kept);
     if not out {
         out = [self._stamp_manual(ast3.Pass(), 1, 0)];
     }
@@ -394,16 +388,7 @@ impl CMapper._for_init_stmts(init_node: object) -> list[object] {
     } else {
         clauses = [init_node];
     }
-    out: list[object] = [];
-    for cl in clauses {
-        n = self.conv_stmt(cl);
-        if isinstance(n, list) {
-            out += n;
-        } else {
-            out.append(n);
-        }
-    }
-    return out;
+    return self._conv_stmts(clauses);
 }
 
 impl CMapper._for_step_stmts(step_node: object) -> list[object] {
@@ -416,16 +401,7 @@ impl CMapper._for_step_stmts(step_node: object) -> list[object] {
     } else {
         clauses = [step_node];
     }
-    out: list[object] = [];
-    for cl in clauses {
-        n = self.conv_stmt(cl);
-        if isinstance(n, list) {
-            out += n;
-        } else {
-            out.append(n);
-        }
-    }
-    return out;
+    return self._conv_stmts(clauses);
 }
 
 impl CMapper._is_surrogate_expr(n: object) -> bool {

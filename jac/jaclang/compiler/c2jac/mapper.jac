@@ -1,6 +1,13 @@
 import ast as ast3;
 import from jaclang.vendor.pycparser { c_ast }
-import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom, NodeTag, TagTable }
+import from jaclang.compiler.c2jac.tags {
+    Tier,
+    Mechanism,
+    Idiom,
+    BinKind,
+    NodeTag,
+    TagTable
+}
 import from jaclang.compiler.c2jac.c_common {
     C_BINOPS,
     C_AUGOPS,
@@ -36,7 +43,8 @@ import from jaclang.compiler.c2jac.c_idioms {
     sizeof_type,
     malloc_array_match,
     malloc_struct_type,
-    realloc_of_list_bound
+    realloc_of_list_bound,
+    realloc_ptr_arg
 }
 import from jaclang.compiler.c2jac.c_dataflow { lb_merge, collect_lb_kills }
 
@@ -101,6 +109,7 @@ obj CMapper {
     def _for_init_stmts(init_node: object) -> list[object];
     def _for_step_stmts(step_node: object) -> list[object];
     def _is_surrogate_expr(n: object) -> bool;
+    def _conv_stmts(items: list) -> list[object];
     def c_FileAST(nd: object) -> object;
     def c_Compound(nd: object) -> list[object];
     def c_FuncDef(nd: object) -> object;
