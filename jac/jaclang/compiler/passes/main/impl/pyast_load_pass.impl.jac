@@ -1254,9 +1254,6 @@ impl PyastBuildPass.proc_dict(nd: py_ast.Dict) -> uni.DictVal {
 }
 
 impl PyastBuildPass.proc_continue(nd: py_ast.Continue) -> uni.CtrlStmt {
-    # Stamp the real source line (CPython `ast` keeps lineno/col on Break/Continue)
-    # rather than 0: a zero-line token poisons line-based formatter logic (has_gap,
-    # span anchors) for synthesized IR. ctrl_loc is a small helper below.
     (ln, col) = self.ctrl_loc(nd);
     continue_tok = uni.Token(
         orig_src=self.orig_src,
@@ -1272,23 +1269,12 @@ impl PyastBuildPass.proc_continue(nd: py_ast.Continue) -> uni.CtrlStmt {
     return uni.CtrlStmt(ctrl=continue_tok, kid=[continue_tok]);
 }
 
-"""Source (line, col) of a break/continue, defaulting to 0 when absent."""
 impl PyastBuildPass.ctrl_loc(nd: object) -> tuple[int, int] {
     ln = getattr(nd, "lineno", 0) or 0;
     col = getattr(nd, "col_offset", 0) or 0;
     return (ln, col);
 }
 
-"""
-Process python node.
-
-        class Constant(expr):
-            value: Any  # None, str, bytes, bool, int, float, complex, Ellipsis
-            kind: str | None
-            # Aliases for value, for backwards compatibility
-            s: Any
-            n: int | float | complex
-"""
 impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
     type_mapping = {
         int: uni.Int,
@@ -1403,7 +1389,6 @@ impl PyastBuildPass.proc_call(nd: py_ast.Call) -> uni.FuncCall {
 }
 
 impl PyastBuildPass.proc_break(nd: py_ast.Break) -> uni.CtrlStmt {
-    # Stamp the real source line rather than 0 (see proc_continue).
     (ln, col) = self.ctrl_loc(nd);
     break_tok = uni.Token(
         orig_src=self.orig_src,

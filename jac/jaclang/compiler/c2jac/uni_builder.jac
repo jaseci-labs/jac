@@ -1,15 +1,3 @@
-"""Direct-IR path: pycparser C-AST → uni nodes for constructs with no Python-AST analog.
-
-Covers the enum forms (→ uni.Enum or glob GlobalVars). Used by the driver's
-splice step after PyastBuildPass has built the base uni tree.
-
-C-for loops are NOT built here: they are desugared to ordinary CPython `ast`
-(`init; while cond { body; step }`) by the mapper's single-sourced c_For, and a
-*promotable* one is rewritten from the spliced WhileStmt into a native
-IterForStmt by the driver (driver._promote_for). This keeps loop-body lowering in
-one place — the mapper — instead of mirroring every statement form here.
-"""
-
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.c2jac.tags { Idiom, TagTable }
 import from jaclang.compiler.c2jac.enum_prepass { EnumVerdicts }
@@ -26,9 +14,6 @@ obj CUniBuilder {
         self.enum_verdicts = enum_verdicts;
     }
 
-    # ------------------------------------------------------------------ #
-    # Node factories                                                        #
-    # ------------------------------------------------------------------ #
     def _name_node(value: str, line: int, col: int) -> uni.Name {
         return uni.Name(
             orig_src=self.src,
@@ -59,25 +44,18 @@ obj CUniBuilder {
     }
 
     def _coord(c_node: object) -> tuple[int, int] {
-        # Direct-IR builder has no running line cursor; fall back to line 1.
         return coord_of(c_node, 1);
     }
 
-    # ------------------------------------------------------------------ #
-    # Main dispatch                                                         #
-    # ------------------------------------------------------------------ #
     def build(c_node: object) -> list[uni.UniNode] {
         tp = type(c_node).__name__;
         if tp == "Enum" {
             return self._build_enum(c_node);
         }
-        # Fallthrough — shouldn't happen; return empty.
+
         return [];
     }
 
-    # ------------------------------------------------------------------ #
-    # Enum → uni.Enum or GlobalVars                                         #
-    # ------------------------------------------------------------------ #
     def _build_enum(nd: object) -> list[uni.UniNode] {
         verdict = self.enum_verdicts.verdicts.get(id(nd), Idiom.TIER_B);
         name_map = self.enum_verdicts.name_map.get(id(nd), {});
@@ -88,7 +66,7 @@ obj CUniBuilder {
         if verdict == Idiom.ENUM_AS_CONSTS {
             return self._enum_as_consts(name_map, line, col);
         }
-        # TIER_B — emit nothing here; the mapper's placeholder already carries the surrogate.
+
         return [];
     }
 
@@ -112,8 +90,7 @@ obj CUniBuilder {
             );
             members.append(assign);
         }
-        # Enum.body must be a list of EnumBlockStmt (Assignment) items, not a
-        # wrapped EnumBlockStmt node — NormalizePass.enter_enum iterates nd.body.
+
         return uni.Enum(
             kid=[enum_name, *members],
             doc=None,

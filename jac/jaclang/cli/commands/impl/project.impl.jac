@@ -717,9 +717,6 @@ impl install(
         return 0;
     }
 
-    # ── Editable install ──────────────────────────────────────────────────────
-    # Flatten nested lists produced by action="append" with nargs="+":
-    #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
     editable = flatten_append(editable);
     if editable {
         import from jaclang.publish.builder { WheelBuilder }

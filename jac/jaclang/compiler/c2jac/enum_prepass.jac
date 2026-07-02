@@ -1,36 +1,7 @@
-"""Enum pre-pass: Q6 verdict (ENUM_AS_ENUM vs ENUM_AS_CONSTS) for all enums.
-
-Single AST walk over file_ast produces:
-  EnumVerdicts.verdicts: dict[int, Idiom]  — id(c_enum) → Idiom.ENUM_AS_ENUM | ENUM_AS_CONSTS | TIER_B
-  EnumVerdicts.name_map: dict[int, dict[str, int]]  — id(c_enum) → {enumerator_name: value}
-
-v1 heuristic for ENUM_AS_ENUM:
-  - named enum
-  - all enumerator values are implicit (auto-sequential int) OR explicit simple int literals
-  - no duplicate values
-  - no bitwise/arithmetic expressions in value definitions (the value resolver in
-    `_enumerator_value` rejects these — anything non-simple forces ENUM_AS_CONSTS)
-  - no arithmetic/bitwise operation with an enumerator name at a use site anywhere in
-    the translation unit (`_collect_int_use_names`): a named enum whose members are
-    consumed as integers (flags, masks, `x | FLAG`) is demoted to ENUM_AS_CONSTS so the
-    integer semantics survive.
-
-Everything else → ENUM_AS_CONSTS, subject to glob-name collision check.
-Collision check: an ENUM_AS_CONSTS enum whose enumerator name collides with ANY existing
-module-level identifier — another lowered enum's constant, or a top-level C function /
-variable / typedef name (`_collect_tu_names`) — demotes to TIER_B ("enumerator name
-collides with an existing module global"). Seeding the TU names up front makes the check
-order-independent, so an enum constant clashing with a function declared later still
-demotes instead of silently shadowing it at module scope.
-"""
-
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier, Mechanism, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.c_common { enumerator_value }
 
-# Binary ops whose operands are being consumed as plain integers. An enumerator
-# appearing as an operand of one of these is evidence the program relies on the
-# enum's integer value, not its symbolic identity → lower it to consts.
 glob _INT_USE_BINOPS: set[str] = {
          "|",
          "&",
@@ -45,9 +16,9 @@ glob _INT_USE_BINOPS: set[str] = {
      };
 
 obj EnumVerdicts {
-    has verdicts: dict[int, Idiom],  # id(c_enum) → verdict idiom
-        name_map: dict[int, dict[str, int]],  # id(c_enum) → {name: value}
-        reasons: dict[int, str];  # id(c_enum) → Tier-B reason (for the Tier-B comments)
+    has verdicts: dict[int, Idiom],
+        name_map: dict[int, dict[str, int]],
+        reasons: dict[int, str];
 
     def init {
         self.verdicts = {};
@@ -57,10 +28,6 @@ obj EnumVerdicts {
 }
 
 def _collect_tu_names(file_ast: object) -> set[str] {
-    # Every top-level identifier the lowered module already binds: C function and
-    # global-variable names (Decl / FuncDef) plus typedef names. An ENUM_AS_CONSTS
-    # enumerator that collides with one of these would shadow it once hoisted to
-    # module scope, so they pre-seed the collision set.
     names: set[str] = set();
     ext = getattr(file_ast, "ext");
     if ext is None {
@@ -84,9 +51,6 @@ def _collect_tu_names(file_ast: object) -> set[str] {
 }
 
 def _collect_int_use_names(nd: object, names: set[str]) {
-    # Walk the whole TU collecting identifier names used as operands of an
-    # arithmetic/bitwise binary op, or of a bitwise-not. An ENUM_AS_ENUM candidate
-    # whose enumerator appears here is being used as an integer and is demoted.
     if isinstance(nd, c_ast.BinaryOp) and nd.op in _INT_USE_BINOPS {
         for operand in (nd.left, nd.right) {
             if isinstance(operand, c_ast.ID) {
@@ -116,15 +80,12 @@ def _enum_explicit_values(enumerator_list: object) -> dict[str, int] | None {
         result[en.name] = v;
         counter = v + 1;
     }
-    # Check no duplicate values.
+
     vals = list(result.values());
     if len(vals) != len(set(vals)) {
         return None;
     }
-    # No unit-step requirement: _enum_as_enum writes every member's value
-    # explicitly (`= val`), so a non-consecutive named enum like
-    # `enum Status { OK=0, WARN=2, ERR=4 }` lowers faithfully to an enum
-    # instead of being demoted to ENUM_AS_CONSTS over a cosmetic gap.
+
     return result;
 }
 
@@ -141,29 +102,22 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
     ev = EnumVerdicts();
     enums: list[object] = [];
     _collect_enums(file_ast, enums);
-    # Pre-seed the collision set with every module-level identifier the lowered
-    # output already binds, so the ENUM_AS_CONSTS collision check is complete and
-    # order-independent rather than only catching enum-vs-enum clashes.
+
     seen_glob_names: set[str] = _collect_tu_names(file_ast);
-    # Names consumed by integer arithmetic/bitwise ops anywhere in the TU; a named
-    # enum whose members appear here is demoted from ENUM_AS_ENUM to ENUM_AS_CONSTS.
+
     int_use_names: set[str] = set();
     _collect_int_use_names(file_ast, int_use_names);
     for en in enums {
         if en.values is None {
-            # Forward declaration — skip.
             continue;
         }
         name_map = _enum_explicit_values(en.values);
         used_as_int = name_map is not None
         and any(nm in int_use_names for nm in name_map);
         if en.name is not None and name_map is not None and not used_as_int {
-            # Candidate for ENUM_AS_ENUM.
             ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM;
             ev.name_map[id(en)] = name_map;
         } elif name_map is not None {
-            # Anonymous, or a named enum whose members are used as integers
-            # (demoted from ENUM_AS_ENUM above) — lower to consts, check collision.
             collision = False;
             for nm in name_map {
                 if nm in seen_glob_names {
@@ -182,10 +136,6 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                 ev.name_map[id(en)] = name_map;
             }
         } else {
-            # Complex values — ENUM_AS_CONSTS with best-effort or TIER_B.
-            # Build a best-effort name→value map using the shared resolver; any
-            # non-simple enumerator (expression / unparseable literal) places a 0
-            # and forces TIER_B. The map is only consumed when ok stays True.
             best_map: dict[str, int] = {};
             counter = 0;
             ok = True;
@@ -212,10 +162,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             }
         }
     }
-    # Propagate verdicts into the tag table so the enum's idiom is recorded and
-    # Tier-B enums (collisions / non-constant values) are flagged in the Tier-B comments.
-    # Without this the default tagger leaves every Enum at TIER_A and a demoted
-    # enum silently vanishes (uni_builder emits nothing) with an empty report.
+
     if tags is not None {
         for en in enums {
             verdict = ev.verdicts.get(id(en));
