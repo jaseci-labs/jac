@@ -1080,6 +1080,12 @@ test "strip_css_imports removes CSS import lines and deletes CSS files" {
             'import "./theme.scss";\n'
             'import buttons from "./buttons.css";\n'
             'import { card } from "./card.sass";\n'
+            'import wide\n'
+            '  from "./wide.css";\n'
+            'import {\n'
+            '  panel,\n'
+            '  row\n'
+            '} from "./panel.less";\n'
             'import { useState } from "react";\n'
             'import "./other.js";\n'
             'console.log("hello");\n',
@@ -1107,6 +1113,11 @@ test "strip_css_imports removes CSS import lines and deletes CSS files" {
         # ones — these were previously linted but left in the bundle.
         assert "buttons.css" not in app_js;
         assert "card.sass" not in app_js;
+        # Multiline forms: a default binding split before `from`, and a
+        # braced list spanning lines. The lint path catches these, so the
+        # strip path must too or Metro fails on the unresolvable module.
+        assert "wide.css" not in app_js;
+        assert "panel.less" not in app_js;
         # Non-CSS imports must be preserved.
         assert "from \"react\"" in app_js;
         assert "other.js" in app_js;

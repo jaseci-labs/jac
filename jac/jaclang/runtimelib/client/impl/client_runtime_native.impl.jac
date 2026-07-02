@@ -564,8 +564,19 @@ impl _makeNativeRouteScreen(route: dict) -> any {
 impl __nativeRouter(props: dict = {}) -> JsxElement {
     nav_ref = React.useRef(None);
     React.useEffect(lambda { globalThis.__jacNativeNavigationRef__ = nav_ref; }, []);
+    def _flushPendingNavigation {
+        pending = globalThis.__jacPendingNavigation__;
+        if pending {
+            globalThis.__jacPendingNavigation__ = None;
+            # Queued redirects (e.g. a 401 during mount) predate any user
+            # navigation, so replace rather than push.
+            _performNavigation(nav_ref.current, pending, {"replace": True});
+        }
+    }
     return React.createElement(
-        JacNavigationContainer, {"ref": nav_ref}, props.children
+        JacNavigationContainer,
+        {"ref": nav_ref, "onReady": _flushPendingNavigation},
+        props.children
     );
 }
 
@@ -719,6 +730,12 @@ impl useParams -> dict {
 impl navigate(path: str) -> None {
     nav_ref = globalThis.__jacNativeNavigationRef__;
     nav = nav_ref.current if nav_ref and nav_ref.current else None;
+    if nav == None {
+        # The container is not ready yet (e.g. a walker 401 fired during
+        # mount). Queue the target; __nativeRouter flushes it onReady.
+        globalThis.__jacPendingNavigation__ = path;
+        return;
+    }
     _performNavigation(nav, path, {});
 }
 

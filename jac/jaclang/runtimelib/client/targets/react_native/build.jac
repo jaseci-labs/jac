@@ -402,8 +402,11 @@ def strip_css_imports(compiled_dir: Path) -> int {
         r"^[^\S\n]*import\s+(?:[^'\"\n]*?\sfrom\s+)?['\"][^'\"\n]+\.(?:css|scss|sass|less)['\"]\s*;?\s*(?://[^\n]*)?$",
         re.MULTILINE
     );
+    # Bindings (braced, default, or namespace) may span lines in compiled
+    # output; they can never contain quotes or semicolons, which keeps the
+    # lazy match from jumping across statements or into string literals.
     css_multi_pattern = re.compile(
-        r"import\s+\{[^{}]*\}\s*from\s+['\"][^'\"]+\.(?:css|scss|sass|less)['\"]\s*;?",
+        r"import\s+(?:[^;'\"]*?\sfrom\s+)?['\"][^'\"\n]+\.(?:css|scss|sass|less)['\"]\s*;?",
         re.DOTALL
     );
     css_asset_extensions = {".css", ".scss", ".sass", ".less"};
