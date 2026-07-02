@@ -35,7 +35,7 @@ Each recipe name links to its guided **"I like to build…" track** -- a 5-minut
 | [Static / in-browser app](../build/fullstack-web.md#web-static) | ✅ | | ● | ● | ● | | | -- |
 | [Desktop app](../build/desktop-mobile.md#desktop) | 🧪⁴ | ● | ● | | ● | | desktop | WebKit² |
 | [Mobile app (webview)](../build/desktop-mobile.md#mobile) | 🧪⁵ | ◐ | ● | | | | mobile | Android SDK / Xcode |
-| [Mobile app (React Native)](../reference/plugins/jac-client.md#react-native-target-beta) | 🧪⁶ | ◐ | ● | | | | react-native | Android SDK / Xcode |
+| [Mobile app (React Native)](../build/desktop-mobile.md#react-native) | 🧪⁶ | ◐ | ● | | | | react-native | Android SDK / Xcode |
 | [Full-stack package](#on-the-roadmap) | 🚧 | ● | ● | | | attach | | -- |
 
 **Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service. **status**: ✅ shipping · 🧪 beta (works, with caveats footnoted below) · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the built-in `scale` subsystem (which ships with `jaclang` core; its optional deploy deps are pulled per-project via `[scale.*]` config + `jac install`) and the full-stack client/desktop framework (which also ships with `jaclang` core).
