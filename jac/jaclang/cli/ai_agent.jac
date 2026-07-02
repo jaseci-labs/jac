@@ -1,7 +1,7 @@
-import from jaclang.cli.agent_api { AgentRequest }
 import from typing { Callable }
-import from byllm.lib { Model }
-import from byllm.parallel { mark_serialize }
+import from jaclang.jac0core.archetype { Root }
+import from jaclang.byllm.lib { Model }
+import from jaclang.byllm.parallel { mark_serialize }
 
 obj AgentConfig {
     has yolo_mode: bool = True,
@@ -25,11 +25,6 @@ obj Workspace {
     def set_cwd(new_dir: str);
     def code_intel -> any;
     def project_errors -> list;
-}
-
-obj PatternCheck {
-    has label: str = "",
-        pattern: str = "";
 }
 
 obj FileTools {
@@ -94,11 +89,6 @@ obj BrowseTools {
 
 glob _THINK_WIDTH = 40;
 
-obj ReasoningSplit {
-    has prose: str = "",
-        hit: bool = False;
-}
-
 obj TurnRenderer {
     def print_banner;
     def print_help;
@@ -117,7 +107,7 @@ obj TurnRenderer {
     );
 
     def _strip_control(text: str) -> str;
-    def _split_reasoning(raw: str) -> ReasoningSplit;
+    def _split_reasoning(raw: str) -> tuple[str, bool];
     def _result_snippet(text: str, max_lines: int) -> list[str];
     def _fmt_ms(ms: float) -> str;
     def _fmt_gen(ms: float, tokens: int) -> str;
@@ -208,14 +198,6 @@ obj ToolSpec {
         phases: set[type] = set();
 }
 
-obj HostCmd {
-    has names: list[str],
-        help_label: str,
-        help_desc: str,
-        takes_arg: bool,
-        handler: any;
-}
-
 def _project_root_of(start: str) -> str;
 def resolve_model_name(model_override: str = "") -> str;
 def _byllm_config -> any;
@@ -225,17 +207,7 @@ glob agent_model = build_model();
 
 def truncate(text: str, limit: int = 12000) -> str;
 def confirm(action: str) -> bool;
-obj DiagnosticCounts {
-    has errors: int = 0,
-        warnings: int = 0;
-}
-
-def _count_diags(diags: list) -> DiagnosticCounts;
-def _term_output_enabled -> bool;
-def _term_print(*args: any, **kwargs: any) -> None;
-def register_ui_provider_error(exc: any) -> None;
-def _install_ui_provider_capture(target_bus: any = None) -> None;
-def _tool_result_is_error(result: str, tool_name: str = "") -> bool;
+def _count_diags(diags: list) -> tuple[int, int];
 
 def _san_msg(m: any) -> dict;
 
@@ -501,8 +473,7 @@ walker AgentSession {
         stats: TurnStats,
         steps: int = 0,
         max_steps: int = 16,
-        build_nudges: int = 0,
-        phases: list = [];
+        build_nudges: int = 0;
 
     can begin with Root entry;
 }
@@ -510,7 +481,7 @@ walker AgentSession {
 
 def run_turn(message: str);
 def verify_and_continue(max_rounds: int = 3);
-def run_agent(req: AgentRequest) -> int;
+def run_agent(req: object) -> int;
 
 
 def ui_configure -> None;
@@ -538,11 +509,6 @@ glob _MODEL_PRESETS: list[str] = [
          "local:gemma-4-e4b"
      ];
 
-obj KeyRequirement {
-    has needed: bool = False,
-        env: str = "";
-}
-
-def _model_needs_key(name: str) -> KeyRequirement;
+def _model_needs_key(name: str) -> tuple[bool, str];
 
 def _refresh_key_status -> None;
