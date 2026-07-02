@@ -235,8 +235,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                         mechanism=Mechanism.DIRECT_IR,
                         idiom=Idiom.TIER_B,
                         reason=reason,
-                        c_line=line,
-                        snippet=reason
+                        c_line=line
                     )
                 );
             } else {
@@ -247,8 +246,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                         mechanism=Mechanism.DIRECT_IR,
                         idiom=verdict,
                         reason="",
-                        c_line=line,
-                        snippet=""
+                        c_line=line
                     )
                 );
             }

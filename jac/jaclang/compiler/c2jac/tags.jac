@@ -23,8 +23,7 @@ obj NodeTag {
         mechanism: Mechanism,
         idiom: Idiom = Idiom.NONE,
         reason: str = "",
-        c_line: int = 0,
-        snippet: str = "";
+        c_line: int = 0;
 }
 
 obj TagTable {

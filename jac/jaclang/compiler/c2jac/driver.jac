@@ -3,7 +3,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
-import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom, NodeTag, TagTable }
+import from jaclang.compiler.c2jac.tags { Idiom, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
 import from jaclang.compiler.c2jac.mapper { CMapper }
 import from jaclang.compiler.c2jac.directir {
@@ -93,7 +93,7 @@ def _populate_default_tags(nd: object, tags: TagTable) {
     coord = nd?.coord;
     line = coord.line if coord and coord.line else 0;
     nt = NodeTag(
-        tier=tier, mechanism=mech, idiom=Idiom.NONE, reason="", c_line=line, snippet=""
+        tier=tier, mechanism=mech, idiom=Idiom.NONE, reason="", c_line=line
     );
     tags.tag(nd, nt);
     for (_, child) in nd.children() {
