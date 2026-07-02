@@ -85,12 +85,11 @@ def:pub b16encode(s: bytes) -> bytes {
 def:pub b16decode(s: bytes, casefold: bool = False) -> bytes {
     rev: list[int] = _make_rev(_B16);
     if casefold {
-        rev[97] = 10;
-        rev[98] = 11;
-        rev[99] = 12;
-        rev[100] = 13;
-        rev[101] = 14;
-        rev[102] = 15;
+        j: int = 0;
+        while j < 6 {
+            rev[97 + j] = 10 + j;
+            j += 1;
+        }
     }
     return _decode_bits(s, rev, 4);
 }
