@@ -358,6 +358,29 @@ test "WheelBuilder.build flat layout with __init__.jac transpiles without collis
     }
 }
 
+test "WheelBuilder.build skips inlined annex files when transpiling" {
+    tmpdir = tempfile.mkdtemp();
+    try {
+        proj = Path(tmpdir);
+        pkg = proj / "mypkg";
+        pkg.mkdir();
+        (pkg / "greeter.jac").write_text("def greet() -> str;\n");
+        (pkg / "greeter.impl.jac").write_text("impl greet {\n    return \"hi\";\n}\n");
+        (pkg / "greeter.test.jac").write_text("test \"t\" {\n    assert 1 == 1;\n}\n");
+        cfg = pkg_config_with_include(proj, "mypkg");
+        data = WheelBuilder(config=cfg, project_root=proj).build();
+        with zipfile.ZipFile(io.BytesIO(data)) as zf {
+            names = zf.namelist();
+            assert "mypkg/greeter.py" in names;
+            assert not any(n.endswith(".impl.py") for n in names);
+            assert not any(n.endswith(".test.py") for n in names);
+            assert not any(n.endswith(".jac") for n in names);
+        }
+    } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
 test "WheelBuilder.build is reproducible" {
     tmpdir = tempfile.mkdtemp();
     try {

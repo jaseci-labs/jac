@@ -71,10 +71,15 @@ def _transpile_jac_to_py(program: any, source_path: Path | None) -> bytes {
 def _collect_src_data(
     source_files: list[SourceFile], transpile_jac: bool
 ) -> dict[str, bytes] {
+    import from jaclang.jac0core.ext_registry { is_annex }
+
     src_data: dict[str, bytes] = {};
     program: any = None;
     for sf in source_files {
         if transpile_jac and sf.wheel_path.endswith(".jac") {
+            if is_annex(sf.wheel_path) {
+                continue;
+            }
             if program is None {
                 import from jaclang.jac0core.program { JacProgram }
                 program = JacProgram();
