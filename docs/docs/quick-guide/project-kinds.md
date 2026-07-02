@@ -21,26 +21,26 @@ Jac is also batteries-included -- it bundles LLVM, ships its own native linker, 
 
 Each recipe name links to its guided **"I like to build…" track** -- a 5-minute quick win plus a curated path through the tutorials and reference. The detailed inline recipe for each is in the sections further down this page.
 
-| Recipe | sv | cl | na | served | packaged | shell | requires |
-|---|:--:|:--:|:--:|:--:|:--:|:--:|---|
-| [CLI tool](../build/cli-and-native.md#cli) | ● | | | | | | -- |
-| [Native CLI tool](../build/cli-and-native.md#cli-native) | | | ● | | | | -- |
-| [Native binary](../build/cli-and-native.md#native-binary) | | | ● | | | | -- |
-| [API service](../build/backend-apis.md#service) | ● | | | ● | | | -- |
-| [Microservices](../build/backend-apis.md#service-mesh) | ● ×N | | | ● | | | -- |
-| [Python package (PyPI)](../build/libraries.md#py-package) | ● | | | | wheel | | twine¹ |
-| [npm package (npmjs.com)](../build/libraries.md#js-package) | | ● | | | npm | | npm³ |
-| [Shared library (C ABI)](../build/libraries.md#native-lib) | | | ● | | .so/.dll | | -- |
-| [Full-stack app](../build/fullstack-web.md#web-app) | ● | ● | | ● | | | -- |
-| [Static / in-browser app](../build/fullstack-web.md#web-static) | | ● | ● | ● | | | -- |
-| [Desktop app](../build/desktop-mobile.md#desktop) | ● | ● | | ● | | desktop | WebKit² |
-| [Mobile app (webview)](../build/desktop-mobile.md#mobile) | ◐ | ● | | | | mobile | Android SDK / Xcode |
-| [Full-stack package](#on-the-roadmap) 🚧 | ● | ● | | | attach | | -- |
-| [Mobile app (React Native)](#on-the-roadmap) 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
+| Recipe | status | sv | cl | na | served | packaged | shell | requires |
+|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|---|
+| [CLI tool](../build/cli-and-native.md#cli) | ✅ | ● | | | | | | -- |
+| [Native CLI tool](../build/cli-and-native.md#cli-native) | ✅ | | | ● | | | | -- |
+| [Native binary](../build/cli-and-native.md#native-binary) | ✅ | | | ● | | | | -- |
+| [API service](../build/backend-apis.md#service) | ✅ | ● | | | ● | | | -- |
+| [Microservices](../build/backend-apis.md#service-mesh) | ✅ | ● ×N | | | ● | | | -- |
+| [Python package (PyPI)](../build/libraries.md#py-package) | ✅ | ● | | | | wheel | | twine¹ |
+| [npm package (npmjs.com)](../build/libraries.md#js-package) | ✅ | | ● | | | npm | | npm³ |
+| [Shared library (C ABI)](../build/libraries.md#native-lib) | ✅ | | | ● | | .so/.dll | | -- |
+| [Full-stack app](../build/fullstack-web.md#web-app) | ✅ | ● | ● | | ● | | | -- |
+| [Static / in-browser app](../build/fullstack-web.md#web-static) | ✅ | | ● | ● | ● | | | -- |
+| [Desktop app](../build/desktop-mobile.md#desktop) | 🧪⁴ | ● | ● | | ● | | desktop | WebKit² |
+| [Mobile app (webview)](../build/desktop-mobile.md#mobile) | 🧪⁵ | ◐ | ● | | | | mobile | Android SDK / Xcode |
+| [Full-stack package](#on-the-roadmap) | 🚧 | ● | ● | | | attach | | -- |
+| [Mobile app (React Native)](#on-the-roadmap) | 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
 
-**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the built-in `scale` subsystem (which ships with `jaclang` core; its optional deploy deps are pulled per-project via `[scale.*]` config + `jac install`) and the full-stack client/desktop framework (which also ships with `jaclang` core).
+**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service. **status**: ✅ shipping · 🧪 beta (works, with caveats footnoted below) · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the built-in `scale` subsystem (which ships with `jaclang` core; its optional deploy deps are pulled per-project via `[scale.*]` config + `jac install`) and the full-stack client/desktop framework (which also ships with `jaclang` core).
 
-<small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm.</small>
+<small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm. &nbsp; ⁴ The binary renders your `cl` UI today; wiring `sv` walkers onto the embedded interpreter, HMR dev mode, and per-OS installers are in progress ([#6436](https://github.com/jaseci-labs/jaseci/issues/6436)). &nbsp; ⁵ Frontend-only Capacitor wrapper -- the app talks to a Jac server you deploy separately.</small>
 
 Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 

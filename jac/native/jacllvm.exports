@@ -1,4 +1,4 @@
-# Linker version script for the x86_64 zig-c++ shim link (#7082).
+# Linker version script for the zig-c++ (libc++-slice) shim link (#7082).
 #
 # Export ONLY the LLVMPY_* C ABI (ffi.jac ctypes-loads these); the shim's own
 # internals and every statically-linked LLVM/libc++ symbol stay local. This is

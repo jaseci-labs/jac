@@ -262,6 +262,11 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         f"{fe_summary}",
         style="muted"
     );
+    console.print(
+        "  self-contained: the jaclang runtime is vendored into backend/; "
+        "no jaclang package install needed.",
+        style="muted"
+    );
     console.print();
     console.print("Next steps:", style="bold");
     console.print(f"  cd {out}");

@@ -83,6 +83,8 @@ jaclang/runtimelib/client/_bun/
 # TARBALL_SHA256 / LICENSE / PROVENANCE.md beside the stubs are tracked.
 jaclang/vendor/typeshed/stdlib/
 .llvm-build/
+# CI staging dir for a cache-restored prebuilt shim (setup-jac -Dshim-bin).
+.shim-build/
 # Zig-built LLVMPY_* shim, placed in-tree per host platform (see build.zig).
 libjacllvm.so
 libjacllvm.dylib

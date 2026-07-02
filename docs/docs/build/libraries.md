@@ -44,9 +44,11 @@ Scalars pass by value; Jac objects and strings cross as opaque handles with `jac
 ## Your learning path
 
 - **Concepts you need** → [Core Concepts](../quick-guide/what-makes-jac-different.md) -- codespaces (`sv`/`cl`/`na`) decide which package kind you build
+- **Build it for real** → [Publish a Library](../tutorials/extend/publish-a-library.md) -- scaffold → test → wheel → PyPI, then the npm flow
 - **Look it up** → [Publishing packages](../reference/publishing.md) · [Publishing to npm](../reference/publishing.md#publishing-to-npm-npmjsorg) · [Native pathway -- shared libraries](../reference/language/native-pathway.md#shared-libraries-c-abi)
 
 ## Going further
 
 - Use a library in an app → [Backend APIs & services](backend-apis.md) · [Full-stack web apps](fullstack-web.md)
 - Ship an executable instead of a library → [CLI tools & native binaries](cli-and-native.md#native-binary)
+- Extend the `jac` CLI itself → [Build a Jac Plugin](../tutorials/extend/build-a-plugin.md)

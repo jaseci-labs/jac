@@ -21,7 +21,7 @@ jobs:
   create-release-pr:
     if: github.repository == 'Jaseci-Labs/jaseci'
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
+    timeout-minutes: 40
     permissions:
       contents: write
       pull-requests: write

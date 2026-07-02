@@ -533,7 +533,7 @@ Jac gives you two ways to expose server logic: `def:pub` functions and `walker` 
 !!! tip "Rule of thumb"
     Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal.
 
-The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pub` in the early parts, then refactors to walkers in [Part 6](../first-app/build-ai-day-planner.md#part-6-multi-user-support) -- showing exactly when and why to make the switch.
+The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pub` in the early parts, then refactors to walkers in [Part 6](../first-app/build-ai-day-planner.md#part-6-authentication-and-multi-file-organization) -- showing exactly when and why to make the switch.
 
 ---
 
