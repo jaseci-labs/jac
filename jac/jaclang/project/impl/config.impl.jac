@@ -704,10 +704,20 @@ impl _parse_toml_data(
     }
     if "project" in data {
         proj = data["project"];
+
+        client_kind = str(proj.get("client_kind", "web")).strip().lower();
+        if client_kind not in VALID_CLIENT_KINDS {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[project] client_kind='{proj.get('client_kind')}' is not "
+                f"one of {VALID_CLIENT_KINDS}; defaulting to 'web'."
+            );
+            client_kind = "web";
+        }
         config.project = ProjectConfig(
             name=proj.get("name", ""),
             version=proj.get("version", "0.1.0"),
-            client_kind=proj.get("client_kind", "web"),
+            client_kind=client_kind,
             description=proj.get("description", ""),
             authors=_parse_persons(proj.get("authors", [])),
             maintainers=_parse_persons(proj.get("maintainers", [])),

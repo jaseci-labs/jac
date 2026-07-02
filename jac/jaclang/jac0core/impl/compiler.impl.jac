@@ -565,37 +565,6 @@ impl JacCompiler.compile(
         actual_program = self._resolve_program(file_path, target_program);
     }
     actual_program._compile_options = options;
-
-    if actual_program.project_kind == "web" {
-        resolved_kind = options.project_kind;
-        resolved_root = options.project_root;
-        try {
-            import from jaclang.project.config { get_config, find_project_root }
-            import from pathlib { Path as _Path }
-            if resolved_kind == "web" {
-                cfg = get_config();
-                if cfg {
-                    resolved_kind = cfg.project.client_kind or "web";
-                }
-            }
-
-            if resolved_root is None and resolved_kind != "web" {
-                try {
-                    _start = _Path(os.path.dirname(os.path.abspath(file_path)));
-                    _result = find_project_root(start=_start);
-                    if _result {
-                        resolved_root = str(_result[0]);
-                    }
-                } except Exception {
-                    pass;
-                }
-            }
-        } except ImportError {
-            resolved_kind = "web";
-        }
-        actual_program.project_kind = resolved_kind;
-        actual_program.project_root = resolved_root;
-    }
     keep_str = use_str or read_file_with_encoding(file_path);
     had_parse_errors = len(actual_program.errors_had);
     mod_targ = self.parse_str(

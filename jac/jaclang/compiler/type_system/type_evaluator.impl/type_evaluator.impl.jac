@@ -557,7 +557,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     for part in expr.name.parts {
                         if isinstance(part, uni.Name) {
                             tag_val = part.value or "";
-                            is_mobui = self.program.project_kind == "mobui";
+                            is_mobui = self._is_mobui_module(part);
                             if tag_val and (tag_val[0].isupper() or is_mobui) {
                                 self.get_type_of_expression(part);
                             } elif tag_val {

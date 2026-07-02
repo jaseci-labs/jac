@@ -33,7 +33,6 @@ import from jaclang.jac0core.passes {
     BoundaryAnalysisPass,
     DeclImplMatchPass,
     JacAnnexPass,
-    JsxIntrinsicGuardPass,
     PyastGenPass,
     PyBytecodeGenPass,
     SemanticAnalysisPass,
@@ -71,6 +70,9 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
         import from jaclang.compiler.passes.main.capability_check_pass {
             CapabilityCheckPass
+        }
+        import from jaclang.compiler.passes.main.jsx_intrinsic_guard_pass {
+            JsxIntrinsicGuardPass
         }
 
         import jaclang.compiler.symbol_utils;

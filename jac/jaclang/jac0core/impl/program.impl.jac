@@ -9,9 +9,6 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
-
-    self.project_kind: str = "web";
-    self.project_root: (str | None) = None;
     self._native_cache: dict = {};
 
     self._hub_cache_times: dict[str, float] = {};

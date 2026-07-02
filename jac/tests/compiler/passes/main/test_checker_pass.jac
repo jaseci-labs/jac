@@ -5354,7 +5354,10 @@ test "mobui_project_forbids_html_intrinsic_tags" {
     path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
     program = JacProgram();
     program.compile(
-        path, options=CompileOptions(type_check=False, project_kind="mobui")
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
     );
 
     e1105 = [
@@ -5401,7 +5404,10 @@ test "mobui_project_allows_lowercase_component_in_scope" {
     path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
     program = JacProgram();
     program.compile(
-        path, options=CompileOptions(type_check=False, project_kind="mobui")
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
     );
     e1105 = [
         e
@@ -5424,7 +5430,10 @@ test "mobui_project_lowercase_component_no_w1050" {
     );
     program = JacProgram();
     program.compile(
-        path, options=CompileOptions(type_check=True, project_kind="mobui")
+        path,
+        options=CompileOptions(
+            type_check=True, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
     );
     w1050 = [
         w
@@ -5490,13 +5499,14 @@ test "cl_jac_files_inside_project_root_also_exempt" {
 }
 
 test "jac_toml_kind_mobui_round_trip" {
-    # Verify the jac.toml → get_config() → compile() code path for
+    # Verify the jac.toml → per-path discovery → compile() code path for
     # `[project] client_kind = "mobui"`. All other mobui-project tests set
-    # project_kind via CompileOptions directly; this one exercises the TOML
-    # read and the compiler's fallback to get_config() when no explicit kind
-    # is provided.
+    # project_kind via CompileOptions directly; this one writes a real
+    # project (jac.toml + module) and relies on the guard pass discovering
+    # the kind from the module's own path — no cwd, no config singleton.
+    import shutil;
     import tempfile;
-    import from jaclang.project.config { JacConfig, get_config, set_config }
+    import from jaclang.project.config { JacConfig }
 
     toml_content = '[project]\nname = "test-proj"\nclient_kind = "mobui"\n';
 
@@ -5506,29 +5516,23 @@ test "jac_toml_kind_mobui_round_trip" {
         # Part 1: round-trip — JacConfig.load() must parse client_kind correctly.
         cfg = JacConfig.load(toml_path);
         assert cfg.project.client_kind == "mobui" , f"Expected client_kind='mobui' from jac.toml, got '{cfg.project.client_kind}'";
-        # Part 2: compiler fallback — inject the loaded config as the singleton
-        # and compile with a plain CompileOptions() (no explicit project_kind).
-        # The compiler's `resolved_kind == "web"` branch must consult get_config()
-        # and pick up "mobui", causing JsxIntrinsicGuardPass to emit E1105.
-        prev_cfg = get_config();
-        set_config(cfg);
-        try {
-            fixture = os.path.join(
-                CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac"
-            );
-            program = JacProgram();
-            program.compile(fixture, options=CompileOptions(type_check=False));
-            e1105 = [
-                e
-                for e in program.errors_had
-                if e.code and e.code.code == "E1105"
-            ];
-            assert len(e1105) == 4 , f"Expected 4 E1105 from jac.toml client_kind=mobui, got {len(
-                e1105
-            )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
-        } finally {
-            # Restore whatever singleton was active before the test.
-            set_config(prev_cfg);
-        }
+        # Part 2: per-path discovery — a module inside the project picks up
+        # "mobui" with a plain CompileOptions() (no explicit project_kind),
+        # causing JsxIntrinsicGuardPass to emit E1105.
+        fixture = os.path.join(tmp_dir, "main.jac");
+        shutil.copyfile(
+            os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac"),
+            fixture
+        );
+        program = JacProgram();
+        program.compile(fixture, options=CompileOptions(type_check=False));
+        e1105 = [
+            e
+            for e in program.errors_had
+            if e.code and e.code.code == "E1105"
+        ];
+        assert len(e1105) == 4 , f"Expected 4 E1105 from jac.toml client_kind=mobui, got {len(
+            e1105
+        )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
     }
 }
