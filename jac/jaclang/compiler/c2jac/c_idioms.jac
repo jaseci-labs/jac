@@ -44,14 +44,31 @@ def is_listable_elem(tname: str) -> bool {
     return True;
 }
 
-def malloc_array_match(nd: object) -> str | None {
+def _is_call_1arg(nd: object, fname: str) -> bool {
+    if not isinstance(nd, c_ast.FuncCall) {
+        return False;
+    }
+    if not isinstance(nd.name, c_ast.ID) or nd.name.name != fname {
+        return False;
+    }
+    return nd.args is not None and len(nd.args.exprs) == 1;
+}
+
+def realloc_ptr_arg(nd: object) -> object | None {
     if not isinstance(nd, c_ast.FuncCall) {
         return None;
     }
-    if not isinstance(nd.name, c_ast.ID) or nd.name.name != "malloc" {
+    if not isinstance(nd.name, c_ast.ID) or nd.name.name != "realloc" {
         return None;
     }
-    if nd.args is None or len(nd.args.exprs) != 1 {
+    if nd.args is None or len(nd.args.exprs) < 1 {
+        return None;
+    }
+    return nd.args.exprs[0];
+}
+
+def malloc_array_match(nd: object) -> str | None {
+    if not _is_call_1arg(nd, "malloc") {
         return None;
     }
     factors: list = [];
@@ -76,10 +93,7 @@ def malloc_array_match(nd: object) -> str | None {
 }
 
 def malloc_struct_type(nd: object) -> str | None {
-    if not isinstance(nd.name, c_ast.ID) or nd.name.name != "malloc" {
-        return None;
-    }
-    if nd.args is None or len(nd.args.exprs) != 1 {
+    if not _is_call_1arg(nd, "malloc") {
         return None;
     }
     arg = nd.args.exprs[0];
@@ -97,15 +111,6 @@ def malloc_struct_type(nd: object) -> str | None {
 }
 
 def realloc_of_list_bound(nd: object, list_bound: set) -> bool {
-    if not isinstance(nd, c_ast.FuncCall) {
-        return False;
-    }
-    if not isinstance(nd.name, c_ast.ID) or nd.name.name != "realloc" {
-        return False;
-    }
-    if nd.args is None or len(nd.args.exprs) < 1 {
-        return False;
-    }
-    ptr = nd.args.exprs[0];
+    ptr = realloc_ptr_arg(nd);
     return isinstance(ptr, c_ast.ID) and ptr.name in list_bound;
 }

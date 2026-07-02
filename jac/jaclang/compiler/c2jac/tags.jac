@@ -1,5 +1,7 @@
 enum Tier { TIER_A = "tier_a", TIER_B = "tier_b" }
 
+enum BinKind { ARITH = "arith", COMPARE = "compare", BOOL = "bool" }
+
 enum Mechanism { PY_AST = "py_ast", DIRECT_IR = "direct_ir" }
 
 enum Idiom {

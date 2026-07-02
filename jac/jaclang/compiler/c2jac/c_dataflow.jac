@@ -1,5 +1,5 @@
 import from jaclang.vendor.pycparser { c_ast }
-import from jaclang.compiler.c2jac.c_idioms { malloc_array_match }
+import from jaclang.compiler.c2jac.c_idioms { malloc_array_match, realloc_ptr_arg }
 
 def lb_merge(states: list) -> set {
     if not states {
@@ -16,15 +16,9 @@ def lb_assignment_kills(name: str, rhs: object) -> bool {
     if malloc_array_match(rhs) is not None {
         return False;
     }
-    if isinstance(rhs, c_ast.FuncCall)
-    and isinstance(rhs.name, c_ast.ID)
-    and rhs.name.name == "realloc"
-    and rhs.args is not None
-    and len(rhs.args.exprs) >= 1 {
-        ptr = rhs.args.exprs[0];
-        if isinstance(ptr, c_ast.ID) and ptr.name == name {
-            return False;
-        }
+    ptr = realloc_ptr_arg(rhs);
+    if isinstance(ptr, c_ast.ID) and ptr.name == name {
+        return False;
     }
     return True;
 }

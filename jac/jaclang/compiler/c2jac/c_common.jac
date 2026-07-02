@@ -1,26 +1,27 @@
 import keyword;
 import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.vendor.pycparser { c_ast }
+import from jaclang.compiler.c2jac.tags { BinKind }
 
-glob C_BINOPS: dict[str, tuple[str, str]] = {
-         "+": ("arith", "Add"),
-         "-": ("arith", "Sub"),
-         "*": ("arith", "Mult"),
-         "/": ("arith", "Div"),
-         "%": ("arith", "Mod"),
-         "&": ("arith", "BitAnd"),
-         "|": ("arith", "BitOr"),
-         "^": ("arith", "BitXor"),
-         "<<": ("arith", "LShift"),
-         ">>": ("arith", "RShift"),
-         "==": ("compare", "Eq"),
-         "!=": ("compare", "NotEq"),
-         "<": ("compare", "Lt"),
-         "<=": ("compare", "LtE"),
-         ">": ("compare", "Gt"),
-         ">=": ("compare", "GtE"),
-         "&&": ("bool", "And"),
-         "||": ("bool", "Or"),
+glob C_BINOPS: dict[str, tuple[BinKind, str]] = {
+         "+": (BinKind.ARITH, "Add"),
+         "-": (BinKind.ARITH, "Sub"),
+         "*": (BinKind.ARITH, "Mult"),
+         "/": (BinKind.ARITH, "Div"),
+         "%": (BinKind.ARITH, "Mod"),
+         "&": (BinKind.ARITH, "BitAnd"),
+         "|": (BinKind.ARITH, "BitOr"),
+         "^": (BinKind.ARITH, "BitXor"),
+         "<<": (BinKind.ARITH, "LShift"),
+         ">>": (BinKind.ARITH, "RShift"),
+         "==": (BinKind.COMPARE, "Eq"),
+         "!=": (BinKind.COMPARE, "NotEq"),
+         "<": (BinKind.COMPARE, "Lt"),
+         "<=": (BinKind.COMPARE, "LtE"),
+         ">": (BinKind.COMPARE, "Gt"),
+         ">=": (BinKind.COMPARE, "GtE"),
+         "&&": (BinKind.BOOL, "And"),
+         "||": (BinKind.BOOL, "Or"),
 
      },
      C_AUGOPS: dict[str, str] = {
@@ -260,7 +261,7 @@ def is_null_ptr_constant(c_node: object) -> bool {
     return parse_c_int(cur.value) == 0;
 }
 
-def jac_prim_zero(jac: str) -> tuple {
+def jac_prim_zero(jac: str) -> tuple[object, str] {
     if jac == "float" {
         return (0.0, "0.0");
     }
@@ -276,7 +277,7 @@ def jac_id(name: str) -> str {
     return f"`{name}`" if name in _JAC_KW_IDS else name;
 }
 
-def enumerator_value(en: object, counter: int) -> tuple {
+def enumerator_value(en: object, counter: int) -> tuple[int, bool] {
     if en.value is None {
         return (counter, True);
     }
@@ -297,4 +298,19 @@ def enumerator_value(en: object, counter: int) -> tuple {
         return (-v, True) if en.value.op == "-" else (v, True);
     }
     return (0, False);
+}
+
+def eval_enumerators(enumerator_list: object) -> tuple[list, bool] {
+    pairs: list = [];
+    counter: int = 0;
+    all_simple = True;
+    for en in enumerator_list.enumerators {
+        (v, simple) = enumerator_value(en, counter);
+        if not simple {
+            all_simple = False;
+        }
+        pairs.append((en.name, v));
+        counter = v + 1;
+    }
+    return (pairs, all_simple);
 }
