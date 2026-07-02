@@ -263,7 +263,7 @@ From your project root:
 jac setup react-native
 ```
 
-This scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree), adds a `[plugins.client.react_native]` section to `jac.toml`, and prints next steps.
+This scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree) and prints next steps.
 
 Then opt in to the mobUI project kind in `jac.toml`:
 
@@ -327,7 +327,7 @@ jac build --client react-native --platform android
 jac build --client react-native --platform ios
 ```
 
-Android produces an APK via `gradlew assembleDebug`. iOS produces an `.ipa` via `xcodebuild` on macOS; on other platforms the build errors out and points you at EAS Build. Release variants via `[plugins.client.react_native].release = true`.
+Android produces an APK via `gradlew assembleDebug`. iOS produces a simulator-installable `.app` bundle via `xcodebuild` on macOS (a distributable `.ipa` comes from the EAS Build path); on other platforms the build errors out and points you at EAS Build. Release variants via `[plugins.client.react_native].release = true`.
 
 ### EAS Update (OTA)
 

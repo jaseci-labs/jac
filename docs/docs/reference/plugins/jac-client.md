@@ -1816,7 +1816,7 @@ jac-client supports building for multiple deployment targets from a single codeb
 | **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No |
 | **CEF** (Chromium) | `jac build --client cef` | CEF bundle under `.jac/client/cef/` | No |
 | **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
-| **React Native** (beta) | `jac build --client react-native --platform android` | Android APK / iOS `.ipa` (native views) | Yes |
+| **React Native** (beta) | `jac build --client react-native --platform android` | Android APK / iOS `.app` bundle (native views; `.ipa` via EAS) | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
 ### Web Target (Default)
@@ -1948,7 +1948,8 @@ jac build --client react-native --platform ios
 **Output:**
 
 - Android: APK via `gradlew assembleDebug` (or EAS Build)
-- iOS: `.ipa` via `xcodebuild` on macOS (or EAS Build cloud)
+- iOS: `.app` bundle via `xcodebuild` on macOS (installed with `simctl`); a
+  distributable `.ipa` comes from the EAS Build path
 
 **Configuration** via `[plugins.client.react_native]` in `jac.toml`:
 
@@ -2044,6 +2045,9 @@ Authors choose per project -- or ship both targets from one repo while keeping s
 
 Styling is React Native's model only: `style={{...}}` objects over a flexbox subset, plus an optional design-token/theme object. No CSS files, no `className`, by construction rather than by lint.
 
+!!! note "Web builds need `react-native-web`"
+    On the web target, `@jac/ui` lowers to DOM through `react-native-web`. Declare it under `[dependencies.npm]` in `jac.toml` (the mobUI examples do); the bundler only aliases `react-native` to `react-native-web` when the dependency is present, so plain web projects that never touch `@jac/ui` are unaffected.
+
 ```jac
 cl {
     import from "@jac/ui" {
@@ -2072,7 +2076,7 @@ cl {
 
 #### Compile-time enforcement (E1105)
 
-In a mobUI project, raw HTML host tags in `.cl.jac` are **compile errors** with a fix-it pointing at the `@jac/ui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
+In a mobUI project, raw HTML host tags are **compile errors** with a fix-it pointing at the `@jac/ui` primitive to use instead. The guard (`JsxIntrinsicGuardPass`) resolves every tag name in the enclosing scope -- only **unresolved lowercase names** are treated as HTML host elements and rejected:
 
 ```
 error[E1105]: JSX tag '<div>' is not in scope in a mobUI project; use View instead
@@ -2081,8 +2085,9 @@ error[E1105]: JSX tag '<div>' is not in scope in a mobUI project; use View inste
 - **Uppercase components** (`<Card>`, `<Image>`) are always allowed.
 - **Lowercase components that resolve to an in-scope symbol are allowed** (e.g. a local `counter` component used as `<counter .../>`).
 - Only unresolved lowercase names (`div`, `span`, ...) are rejected.
+- **`.cl.jac` web-boundary files are exempt** (raw HTML stays valid where the code can only run in a browser), as are modules outside the project root (framework and third-party code). The kind is discovered from each module's own project `jac.toml`, never the process cwd.
 
-See [`E1105`](../diagnostics.md#mobui-project-jsx-host-tags) in the diagnostics reference. Web projects (`kind = "fullstack"` or unset) are unaffected -- HTML tags remain valid there.
+See [`E1105`](../diagnostics.md#mobui-project-jsx-host-tags) in the diagnostics reference. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
 
 #### Platform divergence
 

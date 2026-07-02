@@ -5536,3 +5536,35 @@ test "jac_toml_kind_mobui_round_trip" {
         )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
     }
 }
+
+test "mobui_hello_example_discovers_kind_and_stays_e1105_clean" {
+    # Integration over the shipped starter example: its jac.toml declares
+    # client_kind = "mobui", per-path discovery must switch the guard on for
+    # its modules, and the example itself must stay free of raw HTML tags.
+    import from jaclang.project.client_kind { resolve_client_kind_context }
+
+    example_dir = os.path.join(JAC_ROOT, "examples", "mobui_hello");
+    entry = os.path.join(example_dir, "main.jac");
+    assert os.path.isfile(entry) , f"mobui_hello example missing at {entry}";
+
+    (kind, proj_root) = resolve_client_kind_context(entry);
+    assert kind == "mobui" , (
+        f"per-path discovery must resolve mobui for the example, got '{kind}'"
+    );
+    assert proj_root and os.path.samefile(proj_root, example_dir) , (
+        f"project root must be the example dir, got '{proj_root}'"
+    );
+
+    program = JacProgram();
+    program.compile(entry, options=CompileOptions(type_check=False));
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , (
+        "shipped mobUI example must be E1105-clean:\n" + "\n---\n".join(
+            e.pretty_print() for e in e1105
+        )
+    );
+}

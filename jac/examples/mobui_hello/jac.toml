@@ -1,6 +1,7 @@
 [project]
 name = "mobui-hello"
 version = "1.0.0"
+client_kind = "mobui"
 description = "mobUI walking skeleton: View + Text from @jac/ui, one source for web and native"
 entry-point = "main.jac"
 
