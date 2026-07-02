@@ -211,9 +211,12 @@ impl CMapper._zero_default(inner: object) -> object {
     }
     jac = jac_prim(names);
     if jac == "str" {
-        (val, t) = ("", '""');
+        val: object = "";
+        t: str = '""';
     } else {
-        (val, t) = jac_prim_zero(jac);
+        pz = jac_prim_zero(jac);
+        val = pz.value;
+        t = pz.text;
     }
     return self._stamp_manual(ast3.Constant(value=val), line, col, text=t);
 }
@@ -348,14 +351,6 @@ impl CMapper.c_ArrayDecl(nd: object) -> object {
 
 impl CMapper.c_Enum(nd: object) -> object {
     return self._directir_placeholder(nd);
-}
-
-impl CMapper.c_Enumerator(nd: object) -> object {
-    return self._surrogate_stmt(nd);
-}
-
-impl CMapper.c_EnumeratorList(nd: object) -> object {
-    return self._surrogate_stmt(nd);
 }
 
 impl CMapper._type_ann(decl: object) -> object {

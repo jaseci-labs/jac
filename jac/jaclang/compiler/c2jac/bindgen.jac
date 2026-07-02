@@ -1,6 +1,11 @@
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
-import from jaclang.compiler.c2jac.c_common { parse_c_int, jac_id, eval_enumerators }
+import from jaclang.compiler.c2jac.c_common {
+    parse_c_int,
+    jac_id,
+    eval_enumerators,
+    EnumPairs
+}
 import from jaclang.compiler.c2jac.c_types { walk_to_typedecl, ptr_inner_typedecl }
 
 glob _FFI_SCALARS: set = {
@@ -170,16 +175,21 @@ def _is_void_params(params: list) -> bool {
     return False;
 }
 
+obj FuncSig {
+    has sig: str,
+        variadic: bool;
+}
+
 def _func_signature(
     funcdecl: object, typedefs: dict, structs: (set | None) = None
-) -> tuple[str, bool] {
+) -> FuncSig {
     pl = funcdecl.args;
     if pl is None {
-        return ("", False);
+        return FuncSig(sig="", variadic=False);
     }
     params = pl.params;
     if _is_void_params(params) {
-        return ("", False);
+        return FuncSig(sig="", variadic=False);
     }
     parts: list[str] = [];
     is_var = False;
@@ -194,7 +204,7 @@ def _func_signature(
         parts.append(f"{pname}: {ffi_type(p.type, typedefs, structs)}");
         idx += 1;
     }
-    return (", ".join(parts), is_var);
+    return FuncSig(sig=", ".join(parts), variadic=is_var);
 }
 
 def _lib_token(lib: str) -> str {
@@ -295,7 +305,12 @@ def _struct_fields_from_node(
     return out;
 }
 
-def _collect_struct_defs(file_ast: object, typedefs: dict) -> tuple[list, set] {
+obj StructDefs {
+    has emit_defs: list,
+        all_names: set;
+}
+
+def _collect_struct_defs(file_ast: object, typedefs: dict) -> StructDefs {
     emit_defs: list = [];
     all_names: set = set();
     for ext in file_ast.ext {
@@ -333,7 +348,7 @@ def _collect_struct_defs(file_ast: object, typedefs: dict) -> tuple[list, set] {
             all_names.add(t.name);
         }
     }
-    return (emit_defs, all_names);
+    return StructDefs(emit_defs=emit_defs, all_names=all_names);
 }
 
 def _emit_structs(lib: str, emit_defs: list, block_set: set, rep: BindReport) -> str {
@@ -400,11 +415,11 @@ def _enum_def(ext: object) -> object | None {
 
 
 def _eval_enum(enum_node: object) -> list | None {
-    (pairs, all_simple) = eval_enumerators(enum_node.values);
-    if not all_simple {
+    ep: EnumPairs = eval_enumerators(enum_node.values);
+    if not ep.all_simple {
         return None;
     }
-    return pairs;
+    return ep.pairs;
 }
 
 
@@ -483,9 +498,10 @@ def _emit_bindings(
     allow_set = set(allow) if allow else None;
     block_set = set(block) if block else set();
     typedefs = _collect_typedefs(file_ast);
-    (emit_defs, struct_names) = _collect_struct_defs(file_ast, typedefs);
+    sd = _collect_struct_defs(file_ast, typedefs);
+    struct_names = sd.all_names;
     rep = BindReport();
-    struct_section = _emit_structs(lib, emit_defs, block_set, rep);
+    struct_section = _emit_structs(lib, sd.emit_defs, block_set, rep);
     (extern_section, extern_names) = _emit_extern_vars(
         lib, file_ast, typedefs, struct_names, allow_set, block_set, rep
     );
@@ -502,12 +518,12 @@ def _emit_bindings(
             continue;
         }
         funcdecl = fn.type;
-        (sig, is_var) = _func_signature(funcdecl, typedefs, struct_names);
+        fs = _func_signature(funcdecl, typedefs, struct_names);
         ret = ffi_type(funcdecl.type, typedefs, struct_names);
-        blocks.append(_emit_func_block(lib, name, sig, ret));
+        blocks.append(_emit_func_block(lib, name, fs.sig, ret));
         fn_names.add(name);
         rep.functions += 1;
-        if is_var {
+        if fs.variadic {
             rep.variadic += 1;
         }
     }

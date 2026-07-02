@@ -344,7 +344,7 @@ impl CMapper._realloc_elide(nd: object) -> object | None {
 impl CMapper._elem_default(tname: str) -> object {
     if tname in C_PRIM_MAP {
         jac = C_PRIM_MAP.get(tname, "int");
-        (val, _text) = jac_prim_zero(jac);
+        val = jac_prim_zero(jac).value;
         return self._stamp_manual(ast3.Constant(value=val), self._lineno, 0);
     }
     fn = ast3.Name(id=tname, ctx=ast3.Load());
