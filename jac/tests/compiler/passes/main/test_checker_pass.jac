@@ -5543,9 +5543,9 @@ test "mobui_hello_example_discovers_kind_and_stays_e1105_clean" {
     # its modules, and the example itself must stay free of raw HTML tags.
     import from jaclang.project.client_kind { resolve_client_kind_context }
 
-    example_dir = os.path.join(JAC_ROOT, "examples", "mobui_hello");
+    example_dir = os.path.join(JAC_ROOT, "examples", "mobui", "hello");
     entry = os.path.join(example_dir, "main.jac");
-    assert os.path.isfile(entry) , f"mobui_hello example missing at {entry}";
+    assert os.path.isfile(entry) , f"mobui hello example missing at {entry}";
 
     (kind, proj_root) = resolve_client_kind_context(entry);
     assert kind == "mobui" , (

@@ -2105,7 +2105,7 @@ See [`E1105`](../diagnostics.md#mobui-project-jsx-host-tags) in the diagnostics 
 Platform differences are handled in priority order:
 
 1. **The vocabulary absorbs divergence** (primary). Components own their platform differences internally -- `ScrollView`, `Image`, and future additions present one API and branch inside `@jac/mobui`. Authors see a single component.
-2. **`.native.cl.jac` platform files** (rare). For wrapping platform-exclusive native modules -- see `mobui_littlex`'s `icon.cl.jac` / `icon.native.cl.jac` split. The compiler picks the `.native.cl.jac` variant when `--client react-native` is selected and falls back to `.cl.jac` when not found. (A `Platform.os` / `Platform.select` one-liner API is planned but not yet part of `@jac/mobui`.)
+2. **`.native.cl.jac` platform files** (rare). For wrapping platform-exclusive native modules -- see `examples/mobui/littlex`'s `icon.cl.jac` / `icon.native.cl.jac` split. The compiler picks the `.native.cl.jac` variant when `--client react-native` is selected and falls back to `.cl.jac` when not found. (A `Platform.os` / `Platform.select` one-liner API is planned but not yet part of `@jac/mobui`.)
 
 #### What carries over from web
 

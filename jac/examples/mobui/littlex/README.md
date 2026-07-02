@@ -2,9 +2,9 @@
 
 A small social feed -- post, persist, like -- in **one `main.jac` file** that runs on
 **web and native from the same source**. It's the mobUI counterpart to
-[`examples/littleX`](../littleX): same idea (a graph of `Tweet` nodes with walkers
+[`examples/littleX`](../../littleX): same idea (a graph of `Tweet` nodes with walkers
 as the API), but the UI is built entirely from portable
-[`@jac/mobui`](../../jaclang/runtimelib/client/client_mobui.cl.jac)
+[`@jac/mobui`](../../../jaclang/runtimelib/client/client_mobui.cl.jac)
 primitives instead of raw `<div>`/`<button>`/antd -- so it isn't locked to the browser.
 
 ## What it demonstrates

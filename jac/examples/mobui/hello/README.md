@@ -51,4 +51,4 @@ See the
 [jac-client Reference → React Native Target](https://docs.jaseci.org/reference/plugins/jac-client/#react-native-target-beta)
 for the full component vocabulary and the HTML → `@jac/mobui` mapping. For a
 full-stack example (graph persistence, walker RPC, platform-split icon
-modules) see [`examples/mobui_littlex`](../mobui_littlex).
+modules) see [`examples/mobui/littlex`](../littlex).
