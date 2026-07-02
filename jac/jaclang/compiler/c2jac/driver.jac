@@ -92,9 +92,7 @@ def _populate_default_tags(nd: object, tags: TagTable) {
     mech = default_mechanism(nd);
     coord = nd?.coord;
     line = coord.line if coord and coord.line else 0;
-    nt = NodeTag(
-        tier=tier, mechanism=mech, idiom=Idiom.NONE, reason="", c_line=line
-    );
+    nt = NodeTag(tier=tier, mechanism=mech, idiom=Idiom.NONE, reason="", c_line=line);
     tags.tag(nd, nt);
     for (_, child) in nd.children() {
         _populate_default_tags(child, tags);

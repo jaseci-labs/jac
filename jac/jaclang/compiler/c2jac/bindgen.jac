@@ -126,7 +126,9 @@ def _ptr_ffi(ptr_decl: object, typedefs: dict, structs: (set | None) = None) -> 
     return "int";
 }
 
-def ffi_type(decl_type: object, typedefs: dict | None = None, structs: (set | None) = None) -> str {
+def ffi_type(
+    decl_type: object, typedefs: dict | None = None, structs: (set | None) = None
+) -> str {
     tds = typedefs or {};
     t = decl_type;
     while not isinstance(t, c_ast.TypeDecl) {
@@ -145,7 +147,10 @@ def ffi_type(decl_type: object, typedefs: dict | None = None, structs: (set | No
             return "int";
         }
     }
-    if isinstance(t.type, c_ast.Struct) and t.type.name and structs and t.type.name in structs {
+    if isinstance(t.type, c_ast.Struct)
+    and t.type.name
+    and structs
+    and t.type.name in structs {
         return t.type.name;
     }
     names = t.type?.names or ["int"];
@@ -170,7 +175,9 @@ def _is_void_params(params: list) -> bool {
     return False;
 }
 
-def _func_signature(funcdecl: object, typedefs: dict, structs: (set | None) = None) -> tuple {
+def _func_signature(
+    funcdecl: object, typedefs: dict, structs: (set | None) = None
+) -> tuple {
     pl = funcdecl.args;
     if pl is None {
         return ("", False);
@@ -281,7 +288,9 @@ def _emit_extern_vars(
     return ("\n# Extern variable bindings.\n" + "".join(lines), seen);
 }
 
-def _struct_fields_from_node(snode: object, typedefs: dict, known_structs: set) -> list {
+def _struct_fields_from_node(
+    snode: object, typedefs: dict, known_structs: set
+) -> list {
     out: list = [];
     for decl in (snode.decls or []) {
         fname = jac_id(decl.name or "_f");
@@ -292,15 +301,15 @@ def _struct_fields_from_node(snode: object, typedefs: dict, known_structs: set) 
 }
 
 def _collect_struct_defs(file_ast: object, typedefs: dict) -> tuple {
-    # Returns (emit_defs, all_names) where:
-    #   emit_defs: list[(canonical_name, fields)] — one entry per physical struct to emit
-    #   all_names: set — every name (canonical + tag aliases) ffi_type may recognize
     emit_defs: list = [];
     all_names: set = set();
     for ext in file_ast.ext {
         if isinstance(ext, c_ast.Typedef) {
             inner = ext.type;
-            if not (isinstance(inner, c_ast.TypeDecl) and isinstance(inner.type, c_ast.Struct)) {
+            if not (
+                isinstance(inner, c_ast.TypeDecl)
+                and isinstance(inner.type, c_ast.Struct)
+            ) {
                 continue;
             }
             snode = inner.type;
@@ -332,12 +341,7 @@ def _collect_struct_defs(file_ast: object, typedefs: dict) -> tuple {
     return (emit_defs, all_names);
 }
 
-def _emit_structs(
-    lib: str,
-    emit_defs: list,
-    block_set: set,
-    rep: BindReport
-) -> str {
+def _emit_structs(lib: str, emit_defs: list, block_set: set, rep: BindReport) -> str {
     lines: list[str] = [];
     for (name, fields) in emit_defs {
         if name in block_set {

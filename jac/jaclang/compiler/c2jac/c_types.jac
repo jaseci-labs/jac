@@ -1,19 +1,5 @@
-"""C type-name resolution: pycparser type nodes → Jac builtin/user type names.
-
-Extracted from mapper.jac so the type model lives in one place rather than
-threaded through every declaration handler. These functions are pure (no AST
-node-building, no tagging, no `CMapper` state) — they answer "what Jac type
-name does this C declarator resolve to". The mapper's `_type_ann`/`_ret_ann`
-helpers wrap these to build the stamped `ast` annotation nodes.
-
-This is the seed of roadmap #15 (a canonical internal C type model): centralizing
-name resolution here is the first step toward replacing the ad-hoc scatter.
-"""
-
 import from jaclang.vendor.pycparser { c_ast }
 
-# C primitive/builtin type names that must NOT be treated as struct/typedef
-# names when resolving a pointer or sizeof target to a Jac type reference.
 glob C_BUILTIN_TYPES: set = {
          "int",
          "float",
@@ -28,9 +14,6 @@ glob C_BUILTIN_TYPES: set = {
          "size_t",
 
      },
-     # Canonical C-primitive → Jac builtin type-name map. Any C type name absent
-     # here resolves to "int" (the conservative scalar default). Single source of
-     # truth for every scalar type-name lookup in c2jac.
      C_PRIM_MAP: dict = {
          "int": "int",
          "float": "float",
@@ -46,10 +29,6 @@ glob C_BUILTIN_TYPES: set = {
      };
 
 def jac_prim(names: list) -> str {
-    # Map a C IdentifierType name list to a Jac builtin type name.
-    # `char` alone is treated as text (→ str), but `signed char` /
-    # `unsigned char` are byte-numeric integers (→ int) — keying on
-    # names[-1]=="char" alone would wrongly call those str.
     if not names {
         return "int";
     }
@@ -63,9 +42,6 @@ def jac_prim(names: list) -> str {
 }
 
 def user_type_name(t: object) -> str | None {
-    # Return the user-defined (struct tag / typedef) name carried by a type
-    # node, or None when it names only C builtins. Shared by pointer
-    # resolution and malloc(sizeof(T)) struct detection.
     if isinstance(t, c_ast.Struct) and t.name {
         return t.name;
     }
@@ -77,15 +53,10 @@ def user_type_name(t: object) -> str | None {
 }
 
 def ptr_typename(ptr_decl: object) -> str {
-    # Resolve a PtrDecl to a Jac type name:
-    #   char*      → str
-    #   struct T*  → T   (PTR_REF; also non-builtin typedef pointers)
-    #   otherwise  → object
     inner = ptr_decl.type;
     if isinstance(inner, c_ast.TypeDecl) {
         names = inner.type?.names or [];
-        # Only a plain `char *` is a C string; `signed/unsigned char *`
-        # are byte buffers, so route the decision through jac_prim.
+
         if "char" in names and jac_prim(names) == "str" {
             return "str";
         }
@@ -98,12 +69,6 @@ def ptr_typename(ptr_decl: object) -> str {
 }
 
 def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
-    # Shared declarator-chain walk: descend through FuncDecl wrappers to the
-    # underlying TypeDecl, short-circuiting on array (→ list) and pointer (→
-    # ptr_typename). At the TypeDecl, `resolve_user` decides whether a struct/
-    # typedef element keeps its real name (array elements) or collapses to its
-    # primitive (scalar/return positions). Single source for typename/elem_typename
-    # so the walk is fixed in one place.
     t = decl_type;
     while not isinstance(t, c_ast.TypeDecl) {
         if isinstance(t, c_ast.ArrayDecl) {
@@ -132,17 +97,9 @@ def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
 }
 
 def typename(decl_type: object) -> str {
-    # Canonical scalar/pointer/array type-name resolver. A struct/typedef element
-    # collapses to its primitive (the conservative scalar default for annotation
-    # and return positions).
     return _resolve_decl(decl_type, False);
 }
 
 def elem_typename(decl_type: object) -> str {
-    # Like `typename`, but resolves a struct/union/typedef element to its
-    # user-defined name (e.g. `S`) instead of collapsing it to "int". Used for
-    # array element types, where the `list[T]` annotation and the per-element
-    # default `T()` must name the real type. Primitive elements resolve exactly
-    # as `typename` does.
     return _resolve_decl(decl_type, True);
 }

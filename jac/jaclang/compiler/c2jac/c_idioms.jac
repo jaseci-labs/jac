@@ -1,22 +1,7 @@
-"""Structural recognizers for the C malloc/realloc pointer idioms (§7).
-
-Extracted from mapper.jac. These functions are pure *structural tests* over the
-pycparser c_ast: given a node, they answer "is this `malloc(n*sizeof(T))`?",
-"what element type?", "is this a `realloc` of a known list?" — without building
-any output node or recording any tag. The mapper's node-building idiom handlers
-(`_malloc_array`, `_realloc_elide`, …) call these to decide *whether* an idiom
-applies, then emit the faithful Jac form and stamp the Tier verdict.
-
-Keeping the recognition logic separate from the emission/tagging logic means the
-"what shape is this" rules can be read, tested, and extended on their own.
-"""
-
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.c_types { C_PRIM_MAP, user_type_name }
 
 def flatten_mult(nd: object, acc: list) {
-    # Collect the multiplicative factors of a `*`-chain into acc (so
-    # `n * sizeof(T)` and `2 * n * sizeof(T)` both yield a flat factor list).
     if isinstance(nd, c_ast.BinaryOp) and nd.op == "*" {
         flatten_mult(nd.left, acc);
         flatten_mult(nd.right, acc);
@@ -26,7 +11,6 @@ def flatten_mult(nd: object, acc: list) {
 }
 
 def sizeof_type(f: object) -> str | None {
-    # Raw C type name of a `sizeof(T)` / `sizeof(T*)` factor, else None.
     if not isinstance(f, c_ast.UnaryOp) or f.op != "sizeof" {
         return None;
     }
@@ -54,9 +38,6 @@ def sizeof_type(f: object) -> str | None {
 }
 
 def is_listable_elem(tname: str) -> bool {
-    # A malloc element type we can default-initialize into a Jac list: any
-    # user type, or a numeric/bool primitive. char (string buffer) and void
-    # are not list-of-objects — they stay Tier-B.
     if tname in C_PRIM_MAP {
         return C_PRIM_MAP.get(tname, "int") in ("int", "float", "bool");
     }
@@ -64,9 +45,6 @@ def is_listable_elem(tname: str) -> bool {
 }
 
 def malloc_array_match(nd: object) -> str | None {
-    # Pure structural test (no node-building, no tagging): if nd is
-    # `malloc(<count> * sizeof(T))` with at least one non-sizeof factor and a
-    # list-able element T, return T's C name; else None.
     if not isinstance(nd, c_ast.FuncCall) {
         return None;
     }
@@ -98,7 +76,6 @@ def malloc_array_match(nd: object) -> str | None {
 }
 
 def malloc_struct_type(nd: object) -> str | None {
-    # Returns the struct/typedef name if nd is malloc(sizeof(T)) for a named type T, else None.
     if not isinstance(nd.name, c_ast.ID) or nd.name.name != "malloc" {
         return None;
     }
@@ -120,9 +97,6 @@ def malloc_struct_type(nd: object) -> str | None {
 }
 
 def realloc_of_list_bound(nd: object, list_bound: set) -> bool {
-    # True if nd is `realloc(p, …)` where p is an ID currently proven list-bound.
-    # Such a reassignment yields the same logical buffer, so list-boundness is
-    # preserved across `arr = realloc(arr, …)` rather than dropped (§7.5).
     if not isinstance(nd, c_ast.FuncCall) {
         return False;
     }
