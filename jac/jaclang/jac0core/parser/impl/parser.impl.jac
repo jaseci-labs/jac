@@ -1233,9 +1233,7 @@ impl Parser.parse_ref -> Expr {
     if self.match_tok(TokenKind.BW_AND) {
         op = self.make_uni_token(self.previous());
         kids: list = [op];
-        # `&mut <expr>` is an exclusive (mutable) borrow. `mut` is contextual,
-        # not a reserved keyword: only a NAME `mut` in prefix position that is
-        # followed by the start of an operand is treated as the borrow marker.
+
         is_mut = False;
         if self.check(TokenKind.NAME)
         and self.current().value == "mut"
@@ -4968,37 +4966,39 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
     return NonLocalStmt(target=targets, kid=kid);
 }
 
+impl Parser.parse_ownership_prefix(kids: list) -> tuple[bool, bool, bool] {
+    is_own = False;
+    is_borrow = False;
+    is_mut_borrow = False;
+    if self.check(TokenKind.NAME)
+    and self.current().value == "own"
+    and not self.check_peek(TokenKind.EQ)
+    and not self.check_peek(TokenKind.SEMI) {
+        own_tok = self.advance();
+        kids.append(self.make_uni_token(own_tok));
+        is_own = True;
+    } elif self.check(TokenKind.BW_AND) {
+        amp_tok = self.advance();
+        kids.append(self.make_uni_token(amp_tok));
+        is_borrow = True;
+        if self.check(TokenKind.NAME) and self.current().value == "mut" {
+            mut_tok = self.advance();
+            kids.append(self.make_uni_token(mut_tok));
+            is_mut_borrow = True;
+        }
+    }
+    return (is_own, is_borrow, is_mut_borrow);
+}
+
 impl Parser.parse_assignment_with_target(
     target: Expr, require_semi: bool = True
 ) -> Assignment {
     type_tag = None;
     if self.match_tok(TokenKind.COLON) {
         colon_uni = self.make_uni_token(self.previous());
-        # `own` is a contextual ownership prefix on the annotation, e.g.
-        # `x: own Buffer = ...`. It is not a reserved keyword: only a NAME
-        # `own` immediately followed by a type token is treated as the marker.
-        is_own = False;
-        is_borrow = False;
-        is_mut_borrow = False;
+
         own_kid: list = [colon_uni];
-        if self.check(TokenKind.NAME)
-        and self.current().value == "own"
-        and not self.check_peek(TokenKind.EQ)
-        and not self.check_peek(TokenKind.SEMI) {
-            own_tok = self.advance();
-            own_kid.append(self.make_uni_token(own_tok));
-            is_own = True;
-        } elif self.check(TokenKind.BW_AND) {
-            # Borrow annotation: `&T` (shared) or `&mut T` (exclusive).
-            amp_tok = self.advance();
-            own_kid.append(self.make_uni_token(amp_tok));
-            is_borrow = True;
-            if self.check(TokenKind.NAME) and self.current().value == "mut" {
-                mut_tok = self.advance();
-                own_kid.append(self.make_uni_token(mut_tok));
-                is_mut_borrow = True;
-            }
-        }
+        (is_own, is_borrow, is_mut_borrow) = self.parse_ownership_prefix(own_kid);
         tp = self.parse_pipe();
         own_kid.append(tp);
         type_tag = SubTag(
@@ -5049,9 +5049,7 @@ impl Parser.parse_assignment_with_target(
             if self.check(TokenKind.KW_YIELD)
             else self.parse_expression();
     }
-    # A shared-borrow annotation promotes its `&<expr>` initializer from the
-    # object-reference operator to a transparent borrow (no codegen change),
-    # so the borrow pass can see it. `&mut` initializers are already marked.
+
     if type_tag is not None
     and type_tag.is_borrow
     and isinstance(value, UnaryExpr)
@@ -6185,8 +6183,19 @@ impl Parser.parse_param_var -> ParamVar | None {
     type_tag: SubTag | None = None;
     if self.match_tok(TokenKind.COLON) {
         param_colon_uni = self.make_uni_token(self.previous());
+        param_type_kid: list = [param_colon_uni];
+        (is_own, is_borrow, is_mut_borrow) = self.parse_ownership_prefix(
+            param_type_kid
+        );
         tp = self.parse_pipe();
-        type_tag = SubTag(tag=tp, kid=[param_colon_uni, tp]);
+        param_type_kid.append(tp);
+        type_tag = SubTag(
+            tag=tp,
+            is_own=is_own,
+            is_borrow=is_borrow,
+            is_mut_borrow=is_mut_borrow,
+            kid=param_type_kid
+        );
     }
     default_val: Expr | None = None;
     param_eq_uni: UniToken | None = None;

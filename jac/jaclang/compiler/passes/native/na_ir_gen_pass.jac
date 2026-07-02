@@ -787,7 +787,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_rc_helpers -> None;
     def _emit_rc_roots_globals -> None;
     def _emit_trace_fn(arch_name: str) -> None;
-    def _emit_set_trace_fn(b: ir.IRBuilder, obj_i8: ir.Value, trace_fn: ir.Function) -> None;
+    def _emit_set_trace_fn(
+        b: ir.IRBuilder, obj_i8: ir.Value, trace_fn: ir.Function
+    ) -> None;
+
     def _emit_rc_collect_cycles -> None;
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
@@ -800,6 +803,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
+    def _mark_proven_unique(val: ir.Value) -> ir.Value;
+    def _is_proven_unique(val: ir.Value) -> bool;
     def _release_owned_operands(
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
     ) -> None;
