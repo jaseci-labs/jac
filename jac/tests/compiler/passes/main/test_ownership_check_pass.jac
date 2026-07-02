@@ -5,6 +5,7 @@ OwnershipCheckPass slots into) and asserts on the emitted E13xx diagnostics.
 """
 
 import os;
+import jaclang.jac0core.unitree as uni;
 import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.program { JacProgram }
 
@@ -148,4 +149,74 @@ test "no E1305 when the owned value is moved out by return" {
     assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
         str(e) for e in prog.errors_had
     ]}";
+}
+
+# --- Borrow-typed parameters (P1.1 passthrough exception) --------------------
+# `&T`/`&mut T`/`own T` parameters opt the binding into the checker. Returning a
+# borrow that roots at a borrow parameter is the one allowed escape.
+test "no E1306 when a borrow parameter is returned (single passthrough)" {
+    prog = compile_fixture("param_borrow_passthrough_ok.jac");
+    assert count_code(prog, "E1306") == 0 , f"unexpected E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "no E1305 when an own parameter is consumed by return" {
+    prog = compile_fixture("own_param_consumed_ok.jac");
+    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "E1305: an own parameter that is never consumed leaks" {
+    prog = compile_fixture("own_param_leak.jac");
+    assert count_code(prog, "E1305") == 1 , f"expected one E1305, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+# --- Fuller escape routes (P1.1) --------------------------------------------
+# Borrows escape not just via return/field-store but into a `flow` concurrency
+# boundary, a subscript slot of managed storage, and (RegionMap) any binding
+# whose scope strictly outlives the borrow's owner.
+test "E1306: a borrow handed to a `flow` boundary escapes" {
+    prog = compile_fixture("escaping_borrow_flow.jac");
+    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "E1306: storing a borrow into a subscript slot escapes" {
+    prog = compile_fixture("escaping_borrow_subscript.jac");
+    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "E1306: a borrow assigned into an outer scope outlives its owner" {
+    prog = compile_fixture("escaping_borrow_outlives_owner.jac");
+    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+    assert count_code(prog, "E1304") == 0 , f"unexpected E1304, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+# --- Phase 2 seed: proven-unique analysis (RC-elision `Proven` bit) ----------
+# A consumed, never-borrowed `own` binding is proven unique; the pass stamps
+# `sym.is_proven_unique` so the native backend may elide its RC churn.
+test "a consumed, unborrowed own binding is marked proven-unique" {
+    path = os.path.join(FIXTURES, "proven_unique_ok.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    mod = program.find_module(path);
+    assert mod is not None , "compiled module not found in hub";
+    proven = 0;
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.sym is not None and nm.sym.is_proven_unique {
+            proven += 1;
+        }
+    }
+    assert proven >= 1 , "expected the consumed, unborrowed own binding to be proven-unique";
 }

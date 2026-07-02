@@ -7,11 +7,14 @@ impl OwnershipCheckPass.before_pass -> None {
     self.owned_names = {};
     self.owned_decl = {};
     self.consumed_syms = set();
+    self.proven_unique_syms = set();
     self.borrow_syms = set();
+    self.param_borrow_syms = set();
     self.borrow_names = {};
     self.borrow_owner = {};
     self.borrow_owner_node = {};
     self.borrow_is_mut = {};
+    self.e1304_borrow_ids = set();
     self.in_consumed = {};
     self.in_live_borrows = {};
     self.out_live_borrows = {};
@@ -23,6 +26,7 @@ impl OwnershipCheckPass.before_pass -> None {
     }
     self._collect_owned(mod_root);
     self._collect_borrows(mod_root);
+    self._collect_params(mod_root);
     if not self.owned_syms and not self.borrow_syms {
         return;
     }
@@ -35,6 +39,7 @@ impl OwnershipCheckPass.before_pass -> None {
     self._run_dataflow(cfg_nodes);
     self._run_borrow_liveness(cfg_nodes);
     self._run_reaching_borrows(cfg_nodes);
+    self._compute_proven_unique();
     self._emit_diagnostics(mod_root);
     self._emit_borrow_diagnostics(mod_root);
     self._emit_leak_diagnostics();
@@ -144,6 +149,84 @@ impl OwnershipCheckPass._collect_borrows(tree: uni.UniNode) -> None {
             self.borrow_owner[borrow_id] = owner_id;
             self.borrow_owner_node[borrow_id] = owner;
             self.borrow_is_mut[borrow_id] = nd.value.is_mut_borrow;
+        }
+    }
+}
+
+impl OwnershipCheckPass._collect_params(tree: uni.UniNode) -> None {
+    for param in tree.get_all_sub_nodes(uni.ParamVar) {
+        tag = param.type_tag;
+        if tag is None {
+            continue;
+        }
+        name = param.name;
+        if not (isinstance(name, uni.Name) and name.sym) {
+            continue;
+        }
+        sid = id(name.sym);
+        if tag.is_borrow or tag.is_mut_borrow {
+            self.borrow_syms.add(sid);
+            self.param_borrow_syms.add(sid);
+            self.borrow_names[sid] = name.sym_name;
+            self.borrow_is_mut[sid] = tag.is_mut_borrow;
+        } elif tag.is_own {
+            self.owned_syms.add(sid);
+            self.owned_names[sid] = name.sym_name;
+            self.owned_decl[sid] = name;
+        }
+    }
+}
+
+impl OwnershipCheckPass._return_roots_at_param_borrow(nd: uni.Expr | None) -> bool {
+    cur = nd;
+    if isinstance(cur, uni.UnaryExpr) and (cur.is_borrow or cur.is_mut_borrow) {
+        cur = cur.operand;
+    }
+    while isinstance(cur, uni.AtomTrailer) {
+        cur = cur.target;
+    }
+    if isinstance(cur, uni.Name)
+    and cur.sym
+    and id(cur.sym) in self.param_borrow_syms {
+        return True;
+    }
+    return False;
+}
+
+impl OwnershipCheckPass._borrow_region(sym_id: int) -> (uni.UniScopeNode | None) {
+    owner_id = self.borrow_owner.get(sym_id);
+    if owner_id is not None and owner_id in self.owned_decl {
+        return self._nearest_scope(self.owned_decl[owner_id]);
+    }
+    return None;
+}
+
+impl OwnershipCheckPass._region_strictly_outlives(
+    dest: uni.UniScopeNode | None, region: uni.UniScopeNode | None
+) -> bool {
+    if dest is None or region is None {
+        return False;
+    }
+    if dest is region {
+        return False;
+    }
+    return self._is_ancestor(dest, region);
+}
+
+impl OwnershipCheckPass._compute_proven_unique -> None {
+    borrowed_owners: set[int] = set();
+    for owner_id in self.borrow_owner.values() {
+        borrowed_owners.add(owner_id);
+    }
+    for owner_id in self.owned_syms {
+        if owner_id in self.consumed_syms and owner_id not in borrowed_owners {
+            self.proven_unique_syms.add(owner_id);
+        }
+    }
+    for owner_id in self.proven_unique_syms {
+        decl = self.owned_decl.get(owner_id);
+        if decl is not None and decl.sym is not None {
+            decl.sym.is_proven_unique = True;
         }
     }
 }
@@ -492,6 +575,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
                             name=self.owned_names.get(owner_id, owner.sym_name)
                         );
                         emitted_e1304.add(borrow_id);
+                        self.e1304_borrow_ids.add(borrow_id);
                         break;
                     }
                 }
@@ -560,26 +644,72 @@ impl OwnershipCheckPass._escaping_borrow_owner(nd: uni.Expr | None) -> (str | No
 impl OwnershipCheckPass._emit_escape_diagnostics(tree: uni.UniNode) -> None {
     for ret in tree.get_all_sub_nodes(uni.ReturnStmt) {
         owner = self._escaping_borrow_owner(ret.expr);
-        if owner is not None {
+        if owner is not None and not self._return_roots_at_param_borrow(ret.expr) {
             self.emit(E1306, node_override=ret.expr, name=owner);
+        }
+    }
+
+    for cexpr in tree.get_all_sub_nodes(uni.ConcurrentExpr) {
+        names: list[uni.Name] = [];
+        if isinstance(cexpr.target, uni.Name) {
+            names.append(cexpr.target);
+        }
+        for nm in cexpr.target.get_all_sub_nodes(uni.Name) {
+            names.append(nm);
+        }
+        for nm in names {
+            if nm.sym is None or id(nm.sym) not in self.borrow_syms {
+                continue;
+            }
+            if not self._is_read_name(nm) {
+                continue;
+            }
+            owner = self._escaping_borrow_owner(nm);
+            if owner is not None {
+                self.emit(E1306, node_override=nm, name=owner);
+                break;
+            }
         }
     }
     for nd in tree.get_all_sub_nodes(uni.Assignment) {
         if nd.aug_op is not None {
             continue;
         }
-        stores_to_field = False;
+        stores_to_managed = False;
         for tgt in nd.target {
-            if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
-                stores_to_field = True;
+            if isinstance(tgt, uni.AtomTrailer) {
+                stores_to_managed = True;
             }
         }
-        if not stores_to_field {
+        if stores_to_managed {
+            owner = self._escaping_borrow_owner(nd.value);
+            if owner is not None {
+                self.emit(E1306, node_override=nd.value, name=owner);
+            }
             continue;
         }
-        owner = self._escaping_borrow_owner(nd.value);
-        if owner is not None {
-            self.emit(E1306, node_override=nd.value, name=owner);
+
+        for tgt in nd.target {
+            if not (isinstance(tgt, uni.Name) and tgt.sym) {
+                continue;
+            }
+            tgt_id = id(tgt.sym);
+            if tgt_id not in self.borrow_syms or tgt_id in self.e1304_borrow_ids {
+                continue;
+            }
+            source_owner = self._borrow_source_owner(nd);
+            if source_owner is None or source_owner.sym is None {
+                continue;
+            }
+            region = self._nearest_scope(source_owner.sym.decl);
+            dest = self._nearest_scope(tgt.sym.decl);
+            if self._region_strictly_outlives(dest, region) {
+                self.emit(
+                    E1306,
+                    node_override=nd.value,
+                    name=self.owned_names.get(id(source_owner.sym), tgt.sym_name)
+                );
+            }
         }
     }
 }
