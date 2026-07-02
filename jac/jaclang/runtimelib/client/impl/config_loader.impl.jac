@@ -1,4 +1,5 @@
 import shutil;
+import os;
 import from jaclang.cli.console { console }
 import from pathlib { Path }
 import from jaclang.project.plugin_config { deep_merge }
@@ -93,14 +94,53 @@ def _migrate_legacy_meta_packages(
     return (npm_deps, npm_dev_deps, migrated);
 }
 
-def _clear_node_modules(project_dir: Path | None) {
-    if project_dir is not None {
-        node_modules: Path = project_dir / '.jac' / 'client' / 'node_modules';
+def _clear_node_modules(client_dir: Path | None) {
+    if client_dir is not None {
+        node_modules: Path = client_dir / 'node_modules';
         if node_modules.exists() {
             shutil.rmtree(node_modules);
             console.print("  Reinstalling dependencies...\n");
         }
     }
+}
+
+def _resolve_client_target(client_config: dict) -> str {
+    raw = str(client_config.get("target", "") or "").strip();
+    if raw == "" {
+        raw = str(os.environ.get("JAC_CLIENT_TARGET", "") or "").strip();
+    }
+    if raw == "" {
+        return "web";
+    }
+    normalized = raw.lower().replace("-", "_");
+    if normalized == "rn" {
+        return "react_native";
+    }
+    if normalized == "reactnative" {
+        return "react_native";
+    }
+    return normalized;
+}
+
+def _get_target_scoped_npm_deps(jac_config: any, target_name: str) -> dict[str, str] {
+    npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get("npm", {}));
+    deps: dict[str, str] = {};
+    key1 = str(target_name or "").strip();
+    key2 = key1.replace("_", "-");
+    for key in [key1, key2] {
+        if key == "" {
+            continue;
+        }
+        section = npm_plugin_deps.get(key, {});
+        if isinstance(section, dict) {
+            for (name, version) in section.items() {
+                if isinstance(version, str) {
+                    deps[name] = version;
+                }
+            }
+        }
+    }
+    return deps;
 }
 
 impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
@@ -142,8 +182,10 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     jac_config = self.get_jac_config();
 
     client_config = jac_config.get_plugin_config('client');
+    target_name = _resolve_client_target(client_config);
 
     npm_deps = jac_config.get_plugin_deps('npm');
+    target_scoped_npm_deps = _get_target_scoped_npm_deps(jac_config, target_name);
 
     npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
     dev_section = npm_plugin_deps.get('dev', {});
@@ -175,9 +217,10 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         needs_reinstall = needs_reinstall or added;
 
         if needs_reinstall {
-            _clear_node_modules(self.project_dir);
+            _clear_node_modules(self.get_jac_config().get_client_dir());
         }
     }
+    merged_npm_deps = {** npm_deps, ** target_scoped_npm_deps};
 
     user_config: dict[str, any] = {
         'api': client_config.get('api', {}),
@@ -193,7 +236,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
             'description': jac_config.project.description,
-            'dependencies': npm_deps,
+            'dependencies': merged_npm_deps,
             'devDependencies': npm_dev_deps
         }
     };
@@ -303,6 +346,18 @@ impl JacClientConfig.check_runtime_version(
     }
 
     return (True, user_react, required_react);
+}
+
+impl JacClientConfig.get_mobile_config(self: JacClientConfig) -> dict[str, any] {
+    client_config = self.get_jac_config().get_plugin_config("client");
+    section = client_config.get("mobile", {});
+    return section if isinstance(section, dict) else {};
+}
+
+impl JacClientConfig.get_react_native_config(self: JacClientConfig) -> dict[str, any] {
+    client_config = self.get_jac_config().get_plugin_config("client");
+    section = client_config.get("react_native", {});
+    return section if isinstance(section, dict) else {};
 }
 
 impl JacClientConfig.sync_runtime_version(self: JacClientConfig) -> None {

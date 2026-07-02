@@ -102,6 +102,25 @@ runs:
         path: jac/.bun-build
         key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/runtimelib/client/bun_installer.jac') }}
 
+    # The JIR precompile is mkpayload's single most expensive stage (~24 min:
+    # it compiles every bundled jaclang module). Each .jir embeds a
+    # content-addressed module key (jaclang version + python version + source +
+    # annex hashes), and mkpayload seeds site/_precompiled from
+    # jac/.precompiled-build, recompiling ONLY the modules whose key no longer
+    # matches. A stale or partial tree is therefore useful rather than
+    # dangerous -- which is why, unlike the binary cache, this one uses
+    # restore-keys: any prior build's tree turns the full precompile into a
+    # recompile of just the changed modules.
+    - name: Restore cached JIR precompile tree
+      id: precompiled-cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: jac/.precompiled-build
+        key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
+        restore-keys: |
+          jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
+
     - name: Set up Zig 0.16.0
       if: steps.cache.outputs.cache-hit != 'true' || steps.typeshed-cache.outputs.cache-hit != 'true'
       uses: mlugg/setup-zig@v2
@@ -188,6 +207,19 @@ runs:
       with:
         path: jac/.bun-build
         key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/runtimelib/client/bun_installer.jac') }}
+
+    # cache-hit is only 'true' on an exact-key match, so a restore-keys prefix
+    # hit still saves here -- that is what keeps main's entry tracking HEAD
+    # (each merge re-saves the refreshed tree under the new jaclang/** hash).
+    - name: Save JIR precompile cache (main only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.precompiled-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/.precompiled-build
+        key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
 
     # Binary cache hits skip `zig build`, which is what normally runs fetch-typeshed.
     # Older cache entries only stored the binary, so materialize stubs when missing.

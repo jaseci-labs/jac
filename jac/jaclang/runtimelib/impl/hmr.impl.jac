@@ -343,12 +343,13 @@ impl HotReloader._path_to_module(file_path: str) -> str {
 }
 
 impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
+    import from jaclang.runtimelib.react_entry { build_web_error_overlay_entry_script }
     output_base = Path(self.base_path) / self._client_output_dir;
     output_dir = output_base;
     output_dir.mkdir(parents=True, exist_ok=True);
     js_filename = "_entry.js";
     output_path = output_dir / js_filename;
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
+    entry_content = build_web_error_overlay_entry_script(file_path, errors);
 
     output_path.write_text(entry_content, encoding='utf-8');
 
