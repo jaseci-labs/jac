@@ -66,9 +66,11 @@ const MAX_PATH = Dir.max_path_bytes;
 
 const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", mkpayload, @"typeshed-sha" };
 
-// LLVM release whose static archives the LLVMPY_* shim (jac/native) links
-// against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
-const LLVM_VER = "22.1.8";
+// The pinned LLVM release + per-platform slice table lives in llvm_release.zig
+// (shared with build.zig, so the fetch and the build can't drift).
+const llvm_release = @import("llvm_release.zig");
+const LLVM_VER = llvm_release.LLVM_VER;
+const LlvmRelease = llvm_release.LlvmRelease;
 
 // jaseci-labs/llvm-slice repackages the official LLVM release into a per-member,
 // HTTP-range-fetchable zip. fetchLlvmSlice pulls only the ~84 MB the shim needs
@@ -79,44 +81,9 @@ const LLVM_VER = "22.1.8";
 const SLICE_BASE = "https://github.com/jaseci-labs/llvm-slice/releases/download";
 const SLICE_TAG = "v" ++ LLVM_VER;
 
-// The release is selected per host. `dirname` is the release's top-level dir (also
-// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync).
-// `triple`/`manifest_sha256`/`zip_size` drive the slice fetch. Add a row to
-// support another host platform.
-const LlvmRelease = struct {
-    dirname: []const u8,
-    triple: []const u8,
-    manifest_sha256: []const u8,
-    zip_size: u64,
-};
+// The release is selected for the build host (this tool runs on it).
 fn llvmRelease() ?LlvmRelease {
-    return switch (builtin.os.tag) {
-        .linux => switch (builtin.cpu.arch) {
-            .x86_64 => .{
-                .dirname = "LLVM-22.1.8-Linux-X64",
-                .triple = "x86_64-linux",
-                .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
-                .zip_size = 970350875,
-            },
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-Linux-ARM64",
-                .triple = "aarch64-linux",
-                .manifest_sha256 = "b1aae9c16de5feff6fd4441f0bf32671b27c6dda98382ee389d305db6351e598",
-                .zip_size = 932506999,
-            },
-            else => null,
-        },
-        .macos => switch (builtin.cpu.arch) {
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-macOS-ARM64",
-                .triple = "aarch64-apple-darwin",
-                .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
-                .zip_size = 743879473,
-            },
-            else => null,
-        },
-        else => null,
-    };
+    return llvm_release.llvmRelease(builtin.os.tag, builtin.cpu.arch);
 }
 
 pub fn main(init: std.process.Init) !void {

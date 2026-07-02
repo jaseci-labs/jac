@@ -616,9 +616,9 @@ JAC_PROFILE=production jac run main.jac
 
 ---
 
-## Environment Variables
+## Environment Variable Interpolation
 
-Use environment variable interpolation:
+Use environment variable interpolation inside `jac.toml` values:
 
 ```toml
 [plugins.byllm.model]
@@ -800,6 +800,11 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `NO_EMOJI` | Disable emoji in terminal output |
 | `JAC_PROFILE` | Activate a configuration profile (e.g., `production`) |
 | `JAC_BASE_PATH` | Override base directory for data/storage |
+| `JAC_DATA_PATH` | Override the base directory for application data (graph storage, user db) |
+| `JACPATH` | Colon-separated extra search path for Jac module resolution (like `PYTHONPATH`) |
+| `JAC_DISABLED_PLUGINS` | Comma-separated plugins to disable: `*` for all, `package:*`, or `package:plugin` (same effect as `[plugins].disabled` in `jac.toml`) |
+| `JAC_SCHEMA_REPAIR` | Schema-drift handling on load: `repair` (default) or `strict` |
+| `JAC_STRICT_PERMISSIONS` | Enable strict permission checking for security-sensitive operations (`1`/`true`) |
 
 ### Storage
 
@@ -830,6 +835,21 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 | `SSO_HOST` | SSO callback host URL | `http://localhost:8000/sso` |
 | `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | None |
 | `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | None |
+| `EMAILER_SMTP_PASSWORD` | SMTP password for the built-in email sender | None |
+
+### Scale: Microservices
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_SV_ROUTES` | JSON object mapping service module names to URL route prefixes |
+| `JAC_SV_<MODULE>_URL` | Point an `sv import` of `<MODULE>` at a remote provider URL |
+
+### Client
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_CLIENT_SKIP_NPM_INSTALL` | Skip `npm install` during client build setup |
+| `JAC_MOBILE_PLATFORM` | Mobile platform selection for dev/build (`auto`, `android`, `ios`) |
 
 ### Scale: Webhooks
 
@@ -842,17 +862,12 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 
 ### Scale: Kubernetes
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `APP_NAME` | Application name for K8s resources | `jaseci` |
-| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
-| `K8s_NODE_PORT` | External NodePort | `30001` |
-| `K8s_CPU_REQUEST` | CPU resource request | None |
-| `K8s_CPU_LIMIT` | CPU resource limit | None |
-| `K8s_MEMORY_REQUEST` | Memory resource request | None |
-| `K8s_MEMORY_LIMIT` | Memory resource limit | None |
-| `DOCKER_USERNAME` | DockerHub username | None |
-| `DOCKER_PASSWORD` | DockerHub password/token | None |
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[plugins.scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+
+| Variable | Description |
+|----------|-------------|
+| `K8S_APP_NAME` | Application name (used by observability and admin tooling inside the pod) |
+| `K8S_NAMESPACE` | Namespace the workload runs in |
 
 ---
 

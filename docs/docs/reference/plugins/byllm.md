@@ -408,7 +408,7 @@ glob llm = ModelPool(
     models=[
         Model(model_name="gemini/gemini-2.5-flash"),    # try first
         Model(model_name="gpt-4o-mini"),                 # if gemini fails
-        Model(model_name="claude-sonnet-4-20250514"),    # last resort
+        Model(model_name="anthropic/claude-sonnet-4-6"),  # last resort
     ],
     strategy="fallback",
 );

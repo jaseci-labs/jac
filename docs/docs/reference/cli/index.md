@@ -25,6 +25,8 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Type-check, format, or lint | `jac check` · `jac format` · `jac lint` · `jac precommit` |
 | Run tests | `jac test` |
 | Debug or visualize a graph | `jac debug` · `jac dot` · `jac browse` |
+| Have an AI agent write or edit code in my project | `jac ai` |
+| Query code structure (definitions, uses, walkers) | `jac code` |
 | Inspect or recover the persistence DB | `jac db` |
 | Manage config, plugins, or profiles | `jac config` · `jac plugins` |
 | Manage byLLM local models | `jac model` |
@@ -52,6 +54,11 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
 | `jac browse` | Automate a headless browser over CDP (navigate, click, snapshot, screenshot) |
+| `jac ai` | Launch an interactive Jac coding agent (works with local models, no API key) |
+| `jac code` | Query code structure via the compiler (symbols, uses, walkers, slices) |
+| `jac mcp` | Start the MCP server so AI assistants can use the live Jac compiler |
+| `jac completions` | Generate (and optionally install) shell completions |
+| `jac nacompile` | Compile the native (`na`) subset to a binary, shared library, or WebAssembly |
 | `jac plugins` | Manage plugins |
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
@@ -490,7 +497,7 @@ jac lint .
 jac lint . --ignore fixtures
 ```
 
-> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. See [Lint Rules](../diagnostics.md#lint-rules-w3xxx--e3xxx) for the full list with diagnostic codes.
+> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. See [Lint Rules](../diagnostics.md#lint-rules-w3xxx-e3xxx) for the full list with diagnostic codes.
 
 ---
 
@@ -777,6 +784,89 @@ jac browse click @e5
 jac browse screenshot result.png
 jac browse close
 ```
+
+---
+
+## AI-Assisted Development
+
+Three commands make Jac projects legible to (and drivable by) AI agents -- including Jac's own built-in coding agent. See also [Agent Skills & MCP](../../quick-guide/agent-skills-and-mcp.md) for the workflow overview.
+
+### jac ai
+
+Launch an interactive Jac coding agent in your project. Runs against your configured byLLM model -- including fully local models, so it works without an API key.
+
+```bash
+jac ai [prompt] [-m MODEL] [--n_ctx N] [--safe] [-q] [--ui]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `prompt` | Optional one-shot request; omit for an interactive session | interactive |
+| `-m, --model` | Model to use, e.g. `local:gemma-4-e4b` or `openai/gpt-4o` | from `jac.toml` |
+| `-n, --n_ctx` | Context-window size for local models (tokens) | model default |
+| `-s, --safe` | Confirm every file write and code execution | off |
+| `-q, --quiet` | Compact output: hide live reasoning, timings, and step detail | off |
+| `-u, --ui` | Open the agent in a web UI with a live phase-graph visualizer | off |
+
+**Examples:**
+
+```bash
+# Interactive session using the project's configured model
+jac ai
+
+# One-shot request
+jac ai "add a walker that lists all Todo nodes"
+
+# Fully local, no API key
+jac ai -m local:gemma-4-e4b
+
+# Web UI with live phase-graph visualization
+jac ai --ui
+```
+
+### jac code
+
+Query code structure via the compiler -- grep's structural successor. Returns JSON by default (for tools and agents); pass `--text` for human-readable output.
+
+```bash
+jac code <action> [target] [-t] [-d DEPTH]
+```
+
+| Action | Description |
+|--------|-------------|
+| `symbol <name>` | Definitions and use-sites of a symbol |
+| `uses <name>` | All reads/writes of a symbol |
+| `map [kind]` | Structural overview of nodes, walkers, edges, objs (optionally filtered by kind) |
+| `walkers <node-type>` | Walkers whose traversals visit a given node type |
+| `slice <name> [-d N]` | Typed neighbourhood of a symbol to depth N (built for prompt assembly) |
+| `diag [file]` | Structured compiler errors and warnings |
+
+**Examples:**
+
+```bash
+jac code map                    # what's in this project?
+jac code symbol Todo --text     # where is Todo defined and used?
+jac code walkers Todo           # which walkers touch Todo nodes?
+jac code slice add_todo -d 2    # everything an agent needs to edit add_todo
+```
+
+### jac mcp
+
+Start the Model Context Protocol server so any MCP client (Claude Code, Claude Desktop, Cursor, ...) can lint, transpile, run, and explain Jac code through the live compiler.
+
+```bash
+jac mcp [-t stdio|sse|streamable-http] [-p PORT] [--host HOST] [--mode lite|standard|full] [--inspect]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-t, --transport` | Transport protocol | `stdio` |
+| `-p, --port` | Port for SSE/HTTP transports | `3001` |
+| `--host` | Bind address for SSE/HTTP transports | `127.0.0.1` |
+| `--mode` | Tool/prompt exposure level for the connecting model | `full` |
+| `--inspect` | Print inventory of resources, tools, and prompts, then exit | off |
+
+See the [MCP Server Reference](../mcp.md) for the full tool catalog and per-client setup snippets.
 
 ---
 
@@ -1996,6 +2086,37 @@ jac tool ir sym main.jac
 
 # View generated Python
 jac tool ir py main.jac
+```
+
+---
+
+### jac lsp
+
+Start the Jac language server (LSP over stdio) for editor/IDE integration.
+
+```bash
+jac lsp
+```
+
+Editors normally launch this for you; configure your editor's LSP client to run `jac lsp` for `.jac` files.
+
+---
+
+### jac completions
+
+Generate a shell completion script for `jac`.
+
+```bash
+jac completions [-s bash|zsh|fish] [-i]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-s, --shell` | Shell to generate completions for | `bash` |
+| `-i, --install` | Append the completions to your shell config (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`) | off |
+
+```bash
+jac completions --shell zsh --install
 ```
 
 ---
