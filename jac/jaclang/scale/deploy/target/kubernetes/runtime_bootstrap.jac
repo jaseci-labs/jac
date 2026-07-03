@@ -11,6 +11,33 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 
 
+def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
+    # apt install for the service container (not the discarded init layer).
+    packages = k8s_config.service_dependencies;
+    if not packages {
+        return "";
+    }
+    import re;
+    valid = re.compile(r"^[a-z0-9][a-z0-9.+\-]*$");
+    for pkg in packages {
+        if not valid.match(pkg) {
+            raise ValueError(
+                f"[dependencies.system] package name {pkg!r} is not a valid "
+                "Debian package name (allowed characters: a-z 0-9 . + -)."
+            );
+        }
+    }
+    pkg_list = ' '.join(sorted(set(packages)));
+    # Trailing ` && ` (not `;`) chains the install into the app-start command so
+    # a failed apt aborts the container boot instead of starting without the deps.
+    return (
+        "export DEBIAN_FRONTEND=noninteractive && "
+        "apt-get update && apt-get install -y --no-install-recommends "
+        f"{pkg_list} && "
+    );
+}
+
+
 def build_runtime_install_commands(
     k8s_config: KubernetesConfig, overlay_source: bool = False
 ) -> list[str] {
