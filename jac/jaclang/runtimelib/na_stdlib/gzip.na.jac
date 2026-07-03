@@ -19,8 +19,6 @@ def:pub compress(data: bytes, compresslevel: int = 9, mtime: int = 0) -> bytes {
     written: int = int.from_bytes(dest_len, "little");
     body = dest[2:written - 4];
 
-    # XFL mirrors zlib's gzip header rule (CPython reuses it): 2 for max
-    # compression (level 9), 4 for fastest (level < 2), 0 otherwise.
     xfl: int = 0;
     if compresslevel == 9 {
         xfl = 2;
@@ -44,14 +42,12 @@ def:pub compress(data: bytes, compresslevel: int = 9, mtime: int = 0) -> bytes {
 def:pub decompress(data: bytes) -> bytes {
     n: int = len(data);
     if n == 0 {
-        # CPython's gzip.decompress(b"") returns b"" (EOF before any member).
         return b"";
     }
 
     result = b"";
     pos: int = 0;
     while pos < n {
-        # --- RFC 1952 member header ---------------------------------------
         if data[pos] != 31 or (pos + 1 < n and data[pos + 1] != 139) {
             raise ValueError("gzip.decompress: not a gzip file (bad magic)");
         }
@@ -65,7 +61,7 @@ def:pub decompress(data: bytes) -> bytes {
         flg: int = data[pos + 3];
         hpos: int = pos + 10;
 
-        if (flg & 4) != 0 {  # FEXTRA
+        if (flg & 4) != 0 {
             if hpos + 2 > n {
                 raise ValueError("gzip.decompress: truncated gzip member header");
             }
@@ -75,7 +71,7 @@ def:pub decompress(data: bytes) -> bytes {
                 raise ValueError("gzip.decompress: truncated gzip member header");
             }
         }
-        if (flg & 8) != 0 {  # FNAME (NUL-terminated)
+        if (flg & 8) != 0 {
             while hpos < n and data[hpos] != 0 {
                 hpos += 1;
             }
@@ -84,7 +80,7 @@ def:pub decompress(data: bytes) -> bytes {
             }
             hpos += 1;
         }
-        if (flg & 16) != 0 {  # FCOMMENT (NUL-terminated)
+        if (flg & 16) != 0 {
             while hpos < n and data[hpos] != 0 {
                 hpos += 1;
             }
@@ -93,32 +89,22 @@ def:pub decompress(data: bytes) -> bytes {
             }
             hpos += 1;
         }
-        if (flg & 2) != 0 {  # FHCRC: skipped without verification (as CPython does)
+        if (flg & 2) != 0 {
             hpos += 2;
         }
 
-        # A member needs a DEFLATE body (>= 2 bytes) plus the 8-byte trailer;
-        # this also rejects a bare header glued straight onto a trailer.
         if n - hpos < 10 {
             raise ValueError(
                 "gzip.decompress: compressed data ended before the end-of-stream marker"
             );
         }
 
-        # --- inflate one member over the zlib floor ------------------------
-        # The remaining bytes are re-framed as a zlib stream. inflate stops at
-        # the DEFLATE end-of-stream marker and then consumes 4 more bytes as
-        # the adler32 check -- here the first 4 gzip trailer bytes -- so
-        # uncompress2's consumed-source count locates the member boundary.
-        # The adler check then almost always fails (Z_DATA_ERROR); if the CRC
-        # bytes happen to equal the output's adler32 it reports Z_OK. Both are
-        # success here; integrity is enforced by gzip's own CRC32 + ISIZE.
         remaining: int = n - hpos;
         rewrapped = b"\x78\x9c" + data[hpos:n];
         src_total: int = len(rewrapped);
 
-        ceiling: int = remaining * 1032 + 1024;  # DEFLATE max expansion ~1032x
-        cap: int = int.from_bytes(data[n - 4:n], "little");  # final ISIZE hint
+        ceiling: int = remaining * 1032 + 1024;
+        cap: int = int.from_bytes(data[n - 4:n], "little");
         if cap < 64 {
             cap = 64;
         }
@@ -147,20 +133,17 @@ def:pub decompress(data: bytes) -> bytes {
             raise ValueError("gzip.decompress: invalid compressed data");
         }
 
-        # consumed = 2 (zlib header) + DEFLATE body + 4 (bytes read as adler).
         if consumed < 8 {
             raise ValueError("gzip.decompress: invalid compressed data");
         }
         body_len: int = consumed - 6;
         tpos: int = hpos + body_len;
         if tpos + 8 > n {
-            # inflate ran off the end: no end-of-stream marker in the member.
             raise ValueError(
                 "gzip.decompress: compressed data ended before the end-of-stream marker"
             );
         }
 
-        # --- gzip trailer: CRC32 + ISIZE (mod 2^32, per RFC 1952) ----------
         crc_expected: int = int.from_bytes(data[tpos:tpos + 4], "little");
         isize: int = int.from_bytes(data[tpos + 4:tpos + 8], "little");
         out = dest[0:written];
@@ -172,7 +155,7 @@ def:pub decompress(data: bytes) -> bytes {
         }
 
         result = result + out;
-        pos = tpos + 8;  # next member (CPython concatenates all members)
+        pos = tpos + 8;
     }
     return result;
 }
