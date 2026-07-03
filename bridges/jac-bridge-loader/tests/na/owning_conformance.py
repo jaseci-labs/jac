@@ -10,12 +10,14 @@ It exercises the by-handle owning wrappers that na realizes via an adopt-ctor +
   * Regex.find     -> Option<OwnedMatch>   (handle with as_str(), or None)
   * Regex.captures -> Option<OwnedCaptures>(handle, or None)
 
-``OwnedCaptures.name`` is Option<Str>, an honest na skip (str|None nullability is
-not yet verified natively), so the na side only observes *presence* of a captures
-handle, never reads a group.  Everything asserted here is read identically on
-both runtimes: a match yields a live wrapper (find -> its text), a non-match
-yields Jac ``None``, and an empty (zero-width) match is a real handle whose text
-is "" — distinct from None.
+``OwnedCaptures.name`` is Option<Str>, now bridged on na: str|None nullability
+(narrow + concat) is verified natively, so the na side reads a named group and a
+null JacBuf.ptr crosses in-band as Jac ``None`` — kept DISTINCT from a present but
+empty ("") group.  Everything asserted here is read identically on both runtimes:
+a match yields a live wrapper (find -> its text), a non-match yields Jac ``None``,
+an empty (zero-width) match is a real handle whose text is "" (distinct from None),
+and ``name(group)`` returns the group text, ``""`` for a zero-width group, or
+``None`` for an absent / non-existent group.
 
 na side: synthesize Jac source from the .so's metadata, nacompile it with an
 appended probe that prints one line per observation, run the binary, diff the
@@ -41,10 +43,14 @@ FIND_CASES = [
     (r"", "anything"),  # empty (zero-width) match -> "" (a real handle)
     (r"\w+", "hello world"),  # match -> "hello"
 ]
-# (pattern, haystack) -> captures() present or None (na can't read name()).
+# (pattern, haystack, group) -> captures().name(group): text / "" / None.
+# Brackets make "" (a present zero-width group) visible and distinct from None.
 CAPS_CASES = [
-    (r"(\d+)-(\d+)", "nothing here"),  # no match -> None
-    (r"(\d+)-(\d+)", "12-34 today"),  # match -> present
+    (r"(?P<num>\d+)-(?P<rest>\d+)", "nothing here", "num"),  # no match -> caps None
+    (r"(?P<num>\d+)-(?P<rest>\d+)", "12-34 today", "num"),  # -> "12"
+    (r"(?P<num>\d+)-(?P<rest>\d+)", "12-34 today", "nope"),  # no such group -> None
+    (r"(?P<a>x)?(?P<b>y)", "y", "a"),  # optional group didn't match -> None
+    (r"(?P<z>\d*)", "abc", "z"),  # zero-width group present -> "" (not None)
 ]
 
 
@@ -52,8 +58,8 @@ def _find_label(pat: str, text: str) -> str:
     return f"find {pat!r} {text!r} = "
 
 
-def _caps_label(pat: str, text: str) -> str:
-    return f"caps {pat!r} {text!r} = "
+def _caps_label(pat: str, text: str, group: str) -> str:
+    return f"caps {pat!r} {text!r} name({group!r}) = "
 
 
 def cpython_side() -> list[str]:
@@ -71,13 +77,18 @@ def cpython_side() -> list[str]:
             lines.append(_find_label(pat, text) + "[" + m.as_str() + "]")
             m.close()
         re.close()
-    for pat, text in CAPS_CASES:
+    for pat, text, group in CAPS_CASES:
+        label = _caps_label(pat, text, group)
         re = owning.Regex(pat)
         c = re.captures(text)
         if c is None:
-            lines.append(_caps_label(pat, text) + "None")
+            lines.append(label + "caps=None")
         else:
-            lines.append(_caps_label(pat, text) + "present")
+            v = c.name(group)
+            if v is None:
+                lines.append(label + "None")
+            else:
+                lines.append(label + "[" + v + "]")
             c.close()
         re.close()
     return [ln for ln in "\n".join(lines).splitlines() if ln.strip()]
@@ -119,15 +130,27 @@ def na_side() -> list[str]:
         probe.append(f"        print({_jac_str(label + 'None')});")
         probe.append("    }")
         probe.append("    re.close();")
-    for pat, text in CAPS_CASES:
-        label = _caps_label(pat, text)
+    for pat, text, group in CAPS_CASES:
+        label = _caps_label(pat, text, group)
         probe.append(f"    re = Regex({_jac_str(pat)});")
         probe.append(f"    c = re.captures({_jac_str(text)});")
         probe.append("    if c is not None {")
-        probe.append(f"        print({_jac_str(label + 'present')});")
-        probe.append("        c.close();")
+        # Same union-receiver caveat as find above: rebind the `OwnedCaptures | None`
+        # local to a plain-typed local before dispatching name().  name() returns
+        # `str | None`; a null JacBuf.ptr (absent/non-existent group) narrows to
+        # None, a non-null buffer decodes to its text (possibly "").
+        probe.append("        oc: OwnedCaptures = c;")
+        probe.append(f"        n = oc.name({_jac_str(group)});")
+        probe.append("        if n is not None {")
+        probe.append(
+            f"            print({_jac_str(label + '[')} + n + {_jac_str(']')});"
+        )
+        probe.append("        } else {")
+        probe.append(f"            print({_jac_str(label + 'None')});")
+        probe.append("        }")
+        probe.append("        oc.close();")
         probe.append("    } else {")
-        probe.append(f"        print({_jac_str(label + 'None')});")
+        probe.append(f"        print({_jac_str(label + 'caps=None')});")
         probe.append("    }")
         probe.append("    re.close();")
     probe.append("}")

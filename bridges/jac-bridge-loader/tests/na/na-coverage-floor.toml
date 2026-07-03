@@ -1,0 +1,40 @@
+# na-runtime coverage floor for the loader's bridge fixtures (D6 ratchet).
+#
+# The sibling of the binder's tests/corpus/coverage-baseline.toml, but for the na
+# (native/AOT) synthesizer (`_na_codegen.render_na_source`) instead of the Rust
+# binder.  It answers a DIFFERENT question than the binder floor: not "how much of
+# a real crate's API does the binder emit", but "how much of each hand-built bridge
+# .so's public surface does na actually REALIZE as callable native code".  The
+# counts are proven by the na conformance suite compiling + running the emitted
+# source against the same .so (owning_conformance.py / conformance.py).
+#
+# The gate (`test_na_coverage_floor.py`) fails if the na synthesizer bridges FEWER
+# items than the floor here.  Raise these as na gains verticals; never lower one
+# without a recorded reason (a genuine fixture API change on a rebuild).
+#
+#   bridged = constructors + methods emitted into the na bridge source
+#   total   = bridged + skipped (every public item render_na_source considered)
+#
+# A synthesized adopt-ctor and the error type's consumed message() fn are NOT
+# counted here — neither is a standalone public surface item.
+#
+# Keyed by .so basename (regex and regex_v2 share module `regex` but are distinct
+# fixtures).  A .so absent from a checkout is skipped by the gate, not failed.
+
+# owning: the Option<Ref> owning-wrapper + Option<Str> verticals are fully realized
+# on na — Regex.new/is_match/find/captures + OwnedMatch.as_str + OwnedCaptures.name,
+# 0 skips.  find/captures return `T | None` via adopt-ctor; name returns `str | None`
+# with a null JacBuf.ptr crossing in-band as None (distinct from a present "").
+[libjac_bridge_owning_so]
+bridged = 6
+total = 6
+
+# regex: the M3 golden-spike surface — Regex.new + is_match (message() is consumed
+# into raised-exception text, not a surface method), 0 skips.
+[libjac_bridge_regex_so]
+bridged = 2
+total = 2
+
+[libjac_bridge_regex_v2_so]
+bridged = 2
+total = 2

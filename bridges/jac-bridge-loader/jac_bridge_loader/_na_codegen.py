@@ -63,6 +63,12 @@ class Skip:
 class NaModule:
     source: str
     skips: list[Skip] = field(default_factory=list)
+    # public Rust items realized as callable na surface (constructors + methods
+    # emitted into `source`).  The na-runtime analog of the binder's coverage
+    # metric; `total` public items considered == bridged + len(skips).  Synthesized
+    # adopt-ctors and the consumed error message() fn are NOT counted (neither is a
+    # standalone public surface item).
+    bridged: int = 0
 
 
 def _base(tag: int) -> int:
@@ -236,22 +242,24 @@ class _Synth:
         # bare-constructs its wrapper via the target's adopt-ctor; a null handle on
         # OK status lowers to a Jac None (na represents None as a null pointer and
         # lowers `T | None` to `T` — proven by the xmod_unionret native fixture).
-        # Option<Str> stays a skip: str|None nullability isn't verified on na yet,
-        # and mapping null->"" would silently conflate "absent" with "empty".
+        # A str return (plain -> str or nullable -> str | None) shares the JacBuf
+        # out-slot; for Option<Str>, na represents None as a null pointer and a
+        # null JacBuf.ptr on OK status crosses in-band as None (str|None narrowing
+        # + concat verified natively), kept DISTINCT from a non-null empty "".
         if _is_ref(fd.ret):
             if _ref_index(fd.ret) not in self.adoptable:
                 return None
             lines.append('        out_h = struct.pack("<Q", 0);')
             call.append("out_h")
-        elif _is_opt(fd.ret):
-            return None
         elif fd.ret == TAG_BOOL:
             lines.append('        out_b = struct.pack("<B", 0);')
             call.append("out_b")
-        elif fd.ret == TAG_STR:
+        elif _base(fd.ret) == TAG_STR:
             lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);')
             call.append("out_buf")
             self._bridged_str_method = True
+        elif _is_opt(fd.ret):
+            return None  # nullable non-str/non-ref (e.g. Option<bool>) — out of scope
         elif fd.ret != TAG_VOID:
             return None
         lines.append('        out_e = struct.pack("<Q", 0);')
@@ -274,11 +282,19 @@ class _Synth:
             lines.append(f"        return {target}(rh);")
         elif fd.ret == TAG_BOOL:
             lines.append('        return struct.unpack("<B", out_b)[0] != 0;')
-        elif fd.ret == TAG_STR:
+        elif _base(fd.ret) == TAG_STR:
             # JacBuf out-slot -> owned Jac str; free the bridge buffer after copy.
+            # A null ptr means None for Option<Str> but "" for a plain str return
+            # (Rust never hands back a null buffer for a non-Option String; the ""
+            # guard is defensive).  A non-null buffer of len 0 decodes to "" in both
+            # cases, so an absent group (None) stays distinct from a present empty
+            # one ("").
             lines.append('        rb = struct.unpack("<QII", out_buf);')
             lines.append("        if rb[0] == 0 {")
-            lines.append('            return "";')
+            if _is_opt(fd.ret):
+                lines.append("            return None;")
+            else:
+                lines.append('            return "";')
             lines.append("        }")
             lines.append("        rs = __jac_str_from_raw(rb[0], rb[1]);")
             lines.append(f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));")
@@ -339,11 +355,7 @@ class _Synth:
                 shim_fds.append(fd)
             elif fd.kind == FN_METHOD and fd.self_type in self.opaque:
                 if self._shim_decl(fd) is None or self._method_body(fd) is None:
-                    if _is_opt(fd.ret) and _base(fd.ret) == TAG_STR:
-                        reason = (
-                            "returns Option<str> (None-vs-empty not yet verified on na)"
-                        )
-                    elif _is_ref(fd.ret) and _ref_index(fd.ret) not in self.adoptable:
+                    if _is_ref(fd.ret) and _ref_index(fd.ret) not in self.adoptable:
                         reason = (
                             "returns an opaque handle whose type has its own "
                             "constructor (na adopt-ctor signature clash)"
@@ -456,7 +468,8 @@ class _Synth:
             out.append("}")
             out.append("")
 
-        return NaModule("\n".join(out), self.skips)
+        bridged = len(ctor_of) + sum(len(v) for v in methods_of.values())
+        return NaModule("\n".join(out), self.skips, bridged)
 
     # -- Jac-visible signatures --------------------------------------------
 
@@ -481,9 +494,9 @@ class _Synth:
         if _base(fd.ret) == TAG_STR:
             # A str return MUST be annotated: without it the native backend types
             # the call result as its i64 primitive fallback, so `"x" + m.as_str()`
-            # miscompiles to an integer add (i8* vs i64).  (Option<Str> stays a
-            # skip and never reaches here.)
-            return " -> str"
+            # miscompiles to an integer add (i8* vs i64).  Option<Str> -> `str | None`
+            # (na lowers the union to a nullable i8*, None to a null pointer).
+            return " -> str | None" if _is_opt(fd.ret) else " -> str"
         if _is_ref(fd.ret):
             t = self.opaque.get(_ref_index(fd.ret), "object")
             # nullable by-handle return -> `T | None` (na lowers the union to T*,

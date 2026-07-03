@@ -173,17 +173,25 @@ def test_adopt_ctor_and_wrapper_declared_before_producer(
     assert order.index("OwnedCaptures") < order.index("Regex")
 
 
-def test_opt_str_return_is_skipped_not_conflated_with_empty(
+def test_opt_str_return_bridges_none_distinct_from_empty(
     owning_meta: tuple[Path, BridgeMeta],
 ) -> None:
     so, meta = owning_meta
     res = render_na_source(meta, so.name)
-    reasons = {s.item: s.reason for s in res.skips}
-    # Option<str> is NOT silently mapped to "" — it's an honest skip until na's
-    # str|None nullability is verified (None vs "" must stay distinguishable).
-    assert "OwnedCaptures.name" in reasons
-    assert "none-vs-empty" in reasons["OwnedCaptures.name"].lower()
-    assert "jac_owning_OwnedCaptures_name(" not in res.source
+    # Option<str> is now bridged on na: str|None narrowing + concat is verified
+    # natively, so a null JacBuf.ptr crosses in-band as None, kept DISTINCT from a
+    # non-null empty "" (a present group that matched zero chars).
+    items = {s.item for s in res.skips}
+    assert "OwnedCaptures.name" not in items
+    src = res.source
+    assert "def jac_owning_OwnedCaptures_name(" in src
+    # nullable str return type,
+    assert "def name(name: str) -> str | None {" in src
+    # a null-ptr -> None mapping (NOT "" — that would conflate absent with empty),
+    assert "if rb[0] == 0 {" in src
+    assert "return None;" in src
+    # and a real decode of a non-null buffer (empty or not).
+    assert "rs = __jac_str_from_raw(rb[0], rb[1]);" in src
 
 
 def test_non_nullable_methods_still_bridge(
