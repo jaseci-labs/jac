@@ -2,6 +2,7 @@ import keyword;
 import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { BinKind }
+import from jaclang.compiler.c2jac.c_types { JacPrim }
 
 glob C_BINOPS: dict[str, tuple[BinKind, str]] = {
          "+": (BinKind.ARITH, "Add"),
@@ -38,14 +39,18 @@ glob C_BINOPS: dict[str, tuple[BinKind, str]] = {
 
      };
 
-def parse_c_int(raw: str) -> int | None {
+def _c_int_autobase(raw: str) -> int {
+    return int(raw, 0);
+}
+
+def _parse_strippable(raw: str, fn: callable, suffix: str) -> object | None {
     try {
-        return int(raw, 0);
+        return fn(raw);
     } except ValueError {
-        stripped = raw.rstrip("uUlL");
+        stripped = raw.rstrip(suffix);
         if stripped and stripped != raw {
             try {
-                return int(stripped, 0);
+                return fn(stripped);
             } except ValueError {
                 return None;
             }
@@ -54,20 +59,12 @@ def parse_c_int(raw: str) -> int | None {
     }
 }
 
+def parse_c_int(raw: str) -> int | None {
+    return _parse_strippable(raw, _c_int_autobase, "uUlL");
+}
+
 def parse_c_float(raw: str) -> float | None {
-    try {
-        return float(raw);
-    } except ValueError {
-        stripped = raw.rstrip("fFlL");
-        if stripped and stripped != raw {
-            try {
-                return float(stripped);
-            } except ValueError {
-                return None;
-            }
-        }
-        return None;
-    }
+    return _parse_strippable(raw, float, "fFlL");
 }
 
 glob CLIT_INT: str = "int",
@@ -266,11 +263,11 @@ obj PrimZero {
         text: str;
 }
 
-def jac_prim_zero(jac: str) -> PrimZero {
-    if jac == "float" {
+def jac_prim_zero(jac: JacPrim) -> PrimZero {
+    if jac == JacPrim.FLOAT {
         return PrimZero(value=0.0, text="0.0");
     }
-    if jac == "bool" {
+    if jac == JacPrim.BOOL {
         return PrimZero(value=False, text="False");
     }
     return PrimZero(value=0, text="0");

@@ -210,7 +210,7 @@ impl CMapper._zero_default(inner: object) -> object {
         names = inner.type?.names or [];
     }
     jac = jac_prim(names);
-    if jac == "str" {
+    if jac == JacPrim.STR {
         val: object = "";
         t: str = '""';
     } else {
@@ -393,7 +393,8 @@ impl CMapper._ret_ann(funcdecl: object) -> object {
 }
 
 impl CMapper._list_ann_of(tname: str) -> object {
-    jac = C_PRIM_MAP.get(tname, tname);
+    raw = C_PRIM_MAP.get(tname);
+    jac: str = raw.value if raw is not None else tname;
     elem = self._stamp_manual(
         ast3.Name(id=jac, ctx=ast3.Load()), self._lineno, 0, text=jac
     );

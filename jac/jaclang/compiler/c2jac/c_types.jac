@@ -1,5 +1,13 @@
 import from jaclang.vendor.pycparser { c_ast }
 
+enum JacPrim {
+    INT = "int",
+    FLOAT = "float",
+    BOOL = "bool",
+    STR = "str",
+    VOID = "None"
+}
+
 glob C_BUILTIN_TYPES: set = {
          "int",
          "float",
@@ -15,30 +23,30 @@ glob C_BUILTIN_TYPES: set = {
 
      },
      C_PRIM_MAP: dict = {
-         "int": "int",
-         "float": "float",
-         "double": "float",
-         "char": "str",
-         "void": "None",
-         "long": "int",
-         "short": "int",
-         "unsigned": "int",
-         "signed": "int",
-         "bool": "bool",
+         "int": JacPrim.INT,
+         "float": JacPrim.FLOAT,
+         "double": JacPrim.FLOAT,
+         "char": JacPrim.STR,
+         "void": JacPrim.VOID,
+         "long": JacPrim.INT,
+         "short": JacPrim.INT,
+         "unsigned": JacPrim.INT,
+         "signed": JacPrim.INT,
+         "bool": JacPrim.BOOL,
 
      };
 
-def jac_prim(names: list) -> str {
+def jac_prim(names: list) -> JacPrim {
     if not names {
-        return "int";
+        return JacPrim.INT;
     }
     if "char" in names {
         if "signed" in names or "unsigned" in names {
-            return "int";
+            return JacPrim.INT;
         }
-        return "str";
+        return JacPrim.STR;
     }
-    return C_PRIM_MAP.get(names[-1], "int");
+    return C_PRIM_MAP.get(names[-1], JacPrim.INT);
 }
 
 def user_type_name(t: object) -> str | None {
@@ -86,7 +94,7 @@ def ptr_typename(ptr_decl: object) -> str {
     if inner is not None {
         names = inner.type?.names or [];
 
-        if "char" in names and jac_prim(names) == "str" {
+        if "char" in names and jac_prim(names) == JacPrim.STR {
             return "str";
         }
         user = user_type_name(inner.type);
@@ -115,7 +123,7 @@ def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
         }
     }
     names = node.type?.names or ["int"];
-    return jac_prim(names);
+    return jac_prim(names).value;
 }
 
 def typename(decl_type: object) -> str {

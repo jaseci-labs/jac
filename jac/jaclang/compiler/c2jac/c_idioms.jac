@@ -1,5 +1,5 @@
 import from jaclang.vendor.pycparser { c_ast }
-import from jaclang.compiler.c2jac.c_types { C_PRIM_MAP, user_type_name }
+import from jaclang.compiler.c2jac.c_types { JacPrim, C_PRIM_MAP, user_type_name }
 
 def flatten_mult(nd: object, acc: list) {
     if isinstance(nd, c_ast.BinaryOp) and nd.op == "*" {
@@ -39,7 +39,11 @@ def sizeof_type(f: object) -> str | None {
 
 def is_listable_elem(tname: str) -> bool {
     if tname in C_PRIM_MAP {
-        return C_PRIM_MAP.get(tname, "int") in ("int", "float", "bool");
+        return C_PRIM_MAP.get(tname, JacPrim.INT) in (
+            JacPrim.INT,
+            JacPrim.FLOAT,
+            JacPrim.BOOL
+        );
     }
     return True;
 }

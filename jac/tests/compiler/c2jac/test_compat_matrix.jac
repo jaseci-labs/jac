@@ -374,9 +374,9 @@ test "matrix_faithfulness_floor" {
     faithful_forms = 0;
     for label in _MATRIX.keys() {
         (js, tags) = transpile_c_str(_MATRIX[label]["src"], f"{label}.c");
-        (ta, tot) = tags.tier_counts();
-        total_nodes += tot;
-        tier_a_nodes += ta;
+        stats = tags.tier_counts();
+        total_nodes += stats.total;
+        tier_a_nodes += stats.tier_a;
         # A form is "faithful" iff it emits no Tier-B tag at all (matches the
         # Tier-A contract in `check`): surrogate-backed and best-effort both count
         # against it.

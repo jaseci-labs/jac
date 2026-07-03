@@ -1,38 +1,76 @@
-import re;
+import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.c2jac.tags { TagTable, NodeTag }
 import from jaclang.compiler.c2jac.c_common { UNSUPPORTED_STMT, UNSUPPORTED_EXPR }
 
-glob _MARKER_RE = re.compile(
-         r"(?:" + re.escape(UNSUPPORTED_EXPR) + r"|" + re.escape(UNSUPPORTED_STMT) + r")\((\d+)\)"
-     ),
-     _NOTE_PREFIX = "# c2jac: BEST-EFFORT — ";
+glob _NOTE_PREFIX = "# c2jac: BEST-EFFORT — ",
+     _SURROGATE_NAMES = frozenset([UNSUPPORTED_STMT, UNSUPPORTED_EXPR]);
 
-def inject_tier_b_comments(jac_str: str, tags: TagTable) -> str {
+def inject_tier_b_comments(jac_str: str, tags: TagTable, uni_mod: uni.Module) -> str {
     entries = tags.tier_b_entries();
     if not entries {
         return jac_str;
     }
     by_line = _reasons_by_line(entries);
+    surr_lines = _surrogate_output_lines(uni_mod, jac_str);
     out: list[str] = [];
-    for ln in jac_str.split("\n") {
-        matches = list(_MARKER_RE.finditer(ln));
-        if matches {
+    for (i, ln) in enumerate(jac_str.split("\n"), start=1) {
+        c_line = surr_lines.get(i);
+        if c_line is not None {
             reasons: list[str] = [];
-            for m in matches {
-                for r in by_line.get(int(m.group(1)), []) {
-                    if r not in reasons {
-                        reasons.append(r);
-                    }
+            for r in by_line.get(c_line, []) {
+                if r not in reasons {
+                    reasons.append(r);
                 }
             }
             note = "; ".join(reasons) if reasons else "unsupported C construct";
-
             out.append(f"{ln}  {_NOTE_PREFIX}{note}");
         } else {
             out.append(ln);
         }
     }
     return _build_header(by_line) + "\n".join(out);
+}
+
+def _surrogate_output_lines(uni_mod: uni.Module, jac_str: str) -> dict[int, int] {
+    keys: list[tuple[str, int]] = [];
+    for nd in uni_mod.flatten() {
+        if not isinstance(nd, uni.FuncCall) {
+            continue;
+        }
+        tgt = nd.target;
+        if not isinstance(tgt, uni.Name) or tgt.value not in _SURROGATE_NAMES {
+            continue;
+        }
+        c_ln = _surrogate_c_line(nd);
+        keys.append((f"{tgt.value}({c_ln})", c_ln));
+    }
+    if not keys {
+        return {};
+    }
+    out: dict[int, int] = {};
+    for (i, ln) in enumerate(jac_str.split("\n"), start=1) {
+        norm = _norm_scan(ln);
+        for (key, c_ln) in keys {
+            if key in norm {
+                out[i] = c_ln;
+            }
+        }
+    }
+    return out;
+}
+
+def _norm_scan(s: str) -> str {
+    return "".join(s.split());
+}
+
+def _surrogate_c_line(call: uni.FuncCall) -> int {
+    if call.params and len(call.params) > 0 {
+        p = call.params[0];
+        if isinstance(p, uni.Int) {
+            return p.lit_value;
+        }
+    }
+    return call.loc.first_line if call.loc else 0;
 }
 
 def _reasons_by_line(entries: list[NodeTag]) -> dict[int, list[str]] {

@@ -107,7 +107,7 @@ def _classify_enum(
     if name_map is not None {
         if any(nm in seen_glob_names for nm in name_map) {
             return (
-                Idiom.TIER_B,
+                Idiom.NONE,
                 None,
                 "enumerator name collides with an existing module global"
             );
@@ -127,7 +127,7 @@ def _classify_enum(
         reason = "enumerator name collides with an existing module global"
             if collision
             else "enum has non-constant enumerator values";
-        return (Idiom.TIER_B, None, reason);
+        return (Idiom.NONE, None, reason);
     }
     for nm in best_map {
         seen_glob_names.add(nm);
@@ -166,7 +166,8 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             }
             coord = en?.coord;
             line = coord.line if coord and coord.line else 0;
-            if verdict == Idiom.TIER_B {
+
+            if verdict == Idiom.NONE {
                 reason = ev.reasons.get(
                     id(en), "enum not expressible as a Jac enum or consts"
                 );
@@ -175,7 +176,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                     NodeTag(
                         tier=Tier.TIER_B,
                         mechanism=Mechanism.DIRECT_IR,
-                        idiom=Idiom.TIER_B,
+                        idiom=Idiom.NONE,
                         reason=reason,
                         c_line=line
                     )

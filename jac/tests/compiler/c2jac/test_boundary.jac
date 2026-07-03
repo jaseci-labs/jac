@@ -3,8 +3,9 @@
 Tier is NOT class-derived: every node defaults to TIER_B (un-earned) and earns
 Tier-A only when the mapper faithfully lowers it (CMapper._earn_tier_a), so these
 pin the uniform default rather than a per-class allowlist. Mechanism IS class-
-routed: For/Enum/Enumerator/EnumeratorList have no faithful Python-AST analog and
-go to the direct-IR builder; everything else is PY_AST.
+routed: only For/Enum are direct-IR roots (uni_builder/splice); Enumerator/
+EnumeratorList are children of Enum and route PY_AST because they are never
+lowered individually. Everything else is PY_AST.
 """
 
 import from jaclang.vendor.pycparser { c_ast }
@@ -32,9 +33,15 @@ test "every node defaults to TIER_B (Tier-A is earned at lowering, not by class)
     }
 }
 
-test "direct-IR mechanism is class-routed (For/Enum/Enumerator/EnumeratorList)" {
-    for cls in [c_ast.For, c_ast.Enum, c_ast.Enumerator, c_ast.EnumeratorList] {
+test "direct-IR mechanism is class-routed (For/Enum only)" {
+    for cls in [c_ast.For, c_ast.Enum] {
         assert default_mechanism(_make_node(cls)) == Mechanism.DIRECT_IR , f"{cls.__name__} should route to the direct-IR builder";
+    }
+}
+
+test "Enumerator/EnumeratorList are PY_AST (consumed under Enum, not spliced)" {
+    for cls in [c_ast.Enumerator, c_ast.EnumeratorList] {
+        assert default_mechanism(_make_node(cls)) == Mechanism.PY_AST , f"{cls.__name__} is never lowered individually";
     }
 }
 

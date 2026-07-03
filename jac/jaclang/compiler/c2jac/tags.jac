@@ -16,8 +16,7 @@ enum Idiom {
     C_FOR = "c_for",
     SWITCH_CLEAN = "switch_clean",
     DO_WHILE = "do_while",
-    PRE_INCDEC = "pre_incdec",
-    TIER_B = "tier_b"
+    PRE_INCDEC = "pre_incdec"
 }
 
 obj NodeTag {
@@ -26,6 +25,11 @@ obj NodeTag {
         idiom: Idiom = Idiom.NONE,
         reason: str = "",
         c_line: int = 0;
+}
+
+obj TierStats {
+    has tier_a: int,
+        total: int;
 }
 
 obj TagTable {
@@ -47,7 +51,7 @@ obj TagTable {
         ];
     }
 
-    def tier_counts -> tuple[int, int] {
+    def tier_counts -> TierStats {
         total = len(self._data);
         losses = len(
             [
@@ -56,7 +60,7 @@ obj TagTable {
                 if v.tier == Tier.TIER_B and v.reason != ""
             ]
         );
-        return (total - losses, total);
+        return TierStats(tier_a=total - losses, total=total);
     }
 
     def by_idiom(idiom: Idiom) -> list[NodeTag] {

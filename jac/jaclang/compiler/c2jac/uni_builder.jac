@@ -57,7 +57,7 @@ obj CUniBuilder {
     }
 
     def _build_enum(nd: object) -> list[uni.UniNode] {
-        verdict = self.enum_verdicts.verdicts.get(id(nd), Idiom.TIER_B);
+        verdict = self.enum_verdicts.verdicts.get(id(nd), Idiom.NONE);
         name_map = self.enum_verdicts.name_map.get(id(nd), {});
         (line, col) = self._coord(nd);
         if verdict == Idiom.ENUM_AS_ENUM {
