@@ -1123,9 +1123,7 @@ jobs:
             --global
 
       - name: Cache the built admin console (largest host-prep cost, ~2 min)
-        # ensure_admin_dist_built no-ops when _dist/index.html exists, so a
-        # cache hit removes the on-host admin build from the deploy entirely
-        # (warm operator hosts already skip it the same way).
+        # ensure_admin_dist_built no-ops when _dist exists, so a hit skips the on-host admin build.
         uses: actions/cache@v4
         with:
           path: jac/jaclang/scale/admin/_dist

@@ -15,10 +15,7 @@ if [ ! -f "${PROJECT_DIR}/jac.toml" ]; then
     exit 1
 fi
 
-# The committed fixture is deliberately zero-config (#7137/#7140: a plain
-# `sv import` app deploys as-is). The e2e still wants the full feature surface
-# covered, so append the test-only opt-ins here at run time - same pattern as
-# the workflow's [dev] append. Marker-guarded so re-runs don't duplicate tables.
+# The fixture is deliberately zero-config; append the e2e-only opt-ins at run time (marker-guarded), like the workflow's [dev] append.
 if ! grep -q "e2e-harness overlay" "${PROJECT_DIR}/jac.toml"; then
     cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
 

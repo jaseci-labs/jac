@@ -257,12 +257,7 @@ def ensure_admin_dist_built(source_root: Path) -> None {
 
 
 glob _JIR_ADOPT_PY: str = """\
-# Re-home host-precompiled .jir seeds into this pod's module cache (#7138).
-# Pure stdlib and run with the SYSTEM python3: invoking the overlay-active jac
-# here would eagerly compile the whole overlay during its own startup, which is
-# exactly the work the seeds exist to skip. The manifest (baked at pack time by
-# the same binary the pod runs) maps each seed to its literal destination
-# filename, so no jaclang import is needed to reproduce the cache layout.
+# Re-home host-precompiled .jir seeds via the baked manifest (#7138); pure stdlib on system python3 - invoking jac here would compile the overlay first.
 import os
 import shutil
 from pathlib import Path
@@ -290,8 +285,7 @@ print("[jac-scale] adopted %d host-precompiled modules" % adopted)
 
 
 def _host_jir_cache_for(source_path: Path) -> (Path | None) {
-    # Host-side compiled .jir for this source, if this deploy driver (same
-    # binary the pods run) already compiled it. Best-effort by design.
+    # Host-side compiled .jir for this source, if the driver (same binary as pods) compiled it; best-effort.
     try {
         import from jaclang.jac0core.jir { get_module_cache_path }
         cache = get_module_cache_path(str(source_path));
@@ -303,11 +297,7 @@ def _host_jir_cache_for(source_path: Path) -> (Path | None) {
 
 
 def _pod_seed_dest_name(rel: str) -> str {
-    # The literal cache filename the POD's compiler will look for: the module
-    # key inside the .jir is content-derived (same binary, same source), but the
-    # filename hashes the absolute source path - which on a pod is always
-    # {APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}. This runs in
-    # the deploy driver, which IS the binary pods run, so sys.version matches.
+    # Literal pod-side cache filename: content key matches, only the path hash differs and the pod path is fixed.
     import sys;
     pod_abs = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}";
     path_hash = hashlib.sha256(pod_abs.encode()).hexdigest()[:8];
@@ -334,8 +324,7 @@ def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
             }
             rel = path.relative_to(source_root);
             tar.add(str(path), arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}");
-            # Ship the host's compiled .jir as a re-homeable seed so pods
-            # validate the cache instead of recompiling the overlay (#7138).
+            # Ship the host's compiled .jir so pods validate instead of recompiling (#7138).
             if str(path).endswith(".jac") {
                 cache = _host_jir_cache_for(path);
                 if cache is not None {

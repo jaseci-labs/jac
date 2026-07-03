@@ -48,11 +48,7 @@ def build_runtime_install_commands(
 
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
-    # apt only when the project asks for extra packages: the shipped jac binary
-    # bundles bun and python, the overlay ships as a tar (no git clone), and the
-    # jir seeds remove the compile - so the default boot needs nothing from apt.
-    # Projects with VCS pip deps or system libs declare them via
-    # additional_packages / [dependencies.system] and pay this cost knowingly.
+    # apt only for declared packages: the binary bundles bun+python and the overlay ships as a tar, so the default boot needs nothing from apt.
     if config.additional_packages {
         commands.append(
             'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
@@ -106,12 +102,7 @@ def runtime_container_env -> list[dict[str, str]] {
 
 
 def _first_boot_install -> str {
-    # Adopt host-precompiled .jir seeds (shipped in the overlay by pack_overlay)
-    # BEFORE the first jac invocation: `jac install` under a dev overlay eagerly
-    # compiles the whole overlay during startup, which is exactly the work the
-    # seeds skip. The adoption script is pure stdlib, so the base image's system
-    # python3 runs it without touching jac (#7138). Best-effort: without seeds
-    # (or on failure) the install compiles exactly as before.
+    # Adopt jir seeds via system python3 BEFORE any jac invocation (jac would compile the overlay first); best-effort fallback compiles as before (#7138).
     adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
     return (
         f'if [ -f "{adopt}" ]; then '
