@@ -79,7 +79,7 @@ def _transpile_ast(
 
     jac_str = uni_mod.unparse(requires_format=True);
 
-    jac_str = inject_tier_b_comments(jac_str, tags);
+    jac_str = inject_tier_b_comments(jac_str, tags, uni_mod);
     return (jac_str, tags);
 }
 

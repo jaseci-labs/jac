@@ -150,8 +150,8 @@ test "enum_collision.c second enum demotes to TIER_B no duplicate glob" {
     file_ast = c_parser.CParser().parse(src, "enum_collision.c");
     ev = build_enum_map(file_ast);
     verdicts = list(ev.verdicts.values());
-    # The second enum with VAL_A collision should be TIER_B.
-    assert Idiom.TIER_B in verdicts , f"Expected TIER_B for collision in {verdicts}";
+    # The second enum with VAL_A collision is demoted (matched no idiom).
+    assert Idiom.NONE in verdicts , f"Expected demotion (Idiom.NONE) for collision in {verdicts}";
 }
 
 test "enum_collision.c emits valid Jac without duplicate globals" {
@@ -627,7 +627,7 @@ test "enum_tu_collision.c: enum constant colliding with a top-level function dem
     verdicts = list(ev.verdicts.values());
     # STATUS_OK is also a top-level function name — seeding TU names makes this
     # collision visible regardless of declaration order.
-    assert Idiom.TIER_B in verdicts , f"Expected TIER_B for TU-name collision in {verdicts}";
+    assert Idiom.NONE in verdicts , f"Expected demotion (Idiom.NONE) for TU-name collision in {verdicts}";
 }
 
 # --- Review finding 4: direct-IR for-body/condition expression coverage.

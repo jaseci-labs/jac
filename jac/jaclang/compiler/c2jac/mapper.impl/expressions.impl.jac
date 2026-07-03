@@ -20,7 +20,7 @@ impl CMapper.c_BinaryOp(nd: object) -> object {
 impl CMapper._binop_operand(operand: object, sibling: object) -> object {
     if isinstance(operand, c_ast.Constant)
     and classify_c_constant(operand.type) == CLIT_CHAR
-    and self._expr_prim(sibling) in ("int", "float", "bool") {
+    and self._expr_prim(sibling) in (JacPrim.INT, JacPrim.FLOAT, JacPrim.BOOL) {
         ov = c_char_ord(operand.value);
         if ov is not None {
             (line, col) = self._loc(operand);
@@ -30,17 +30,17 @@ impl CMapper._binop_operand(operand: object, sibling: object) -> object {
     return self.conv_expr(operand);
 }
 
-impl CMapper._expr_prim(c_node: object) -> str | None {
+impl CMapper._expr_prim(c_node: object) -> JacPrim | None {
     if isinstance(c_node, c_ast.Constant) {
         fam = classify_c_constant(c_node.type);
         if fam == CLIT_INT {
-            return "int";
+            return JacPrim.INT;
         }
         if fam == CLIT_FLOAT {
-            return "float";
+            return JacPrim.FLOAT;
         }
 
-        return "str";
+        return JacPrim.STR;
     }
     if isinstance(c_node, c_ast.ID) {
         return self._var_types.get(c_node.name);
@@ -48,7 +48,7 @@ impl CMapper._expr_prim(c_node: object) -> str | None {
     return None;
 }
 
-impl CMapper._scalar_prim(type_node: object) -> str | None {
+impl CMapper._scalar_prim(type_node: object) -> JacPrim | None {
     if isinstance(type_node, c_ast.TypeDecl)
     and isinstance(type_node.type, c_ast.IdentifierType) {
         return jac_prim(type_node.type.names);
@@ -113,7 +113,7 @@ impl CMapper._pre_incdec_walrus(nd: object) -> object | None {
     if not isinstance(nd.expr, c_ast.ID) {
         return None;
     }
-    if self._expr_prim(nd.expr) not in ("int", "float") {
+    if self._expr_prim(nd.expr) not in (JacPrim.INT, JacPrim.FLOAT) {
         return None;
     }
     name = nd.expr.name;
@@ -343,7 +343,7 @@ impl CMapper._realloc_elide(nd: object) -> object | None {
 
 impl CMapper._elem_default(tname: str) -> object {
     if tname in C_PRIM_MAP {
-        jac = C_PRIM_MAP.get(tname, "int");
+        jac = C_PRIM_MAP.get(tname, JacPrim.INT);
         val = jac_prim_zero(jac).value;
         return self._stamp_manual(ast3.Constant(value=val), self._lineno, 0);
     }

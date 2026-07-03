@@ -33,6 +33,7 @@ import from jaclang.compiler.c2jac.c_common {
     jac_prim_zero
 }
 import from jaclang.compiler.c2jac.c_types {
+    JacPrim,
     C_PRIM_MAP,
     elem_typename,
     jac_prim,
@@ -56,7 +57,7 @@ obj CMapper {
         _next_slot: int,
         _lineno: int,
         _list_bound: set[str],
-        _var_types: dict[str, str],
+        _var_types: dict[str, JacPrim],
         _func_depth: int,
         _ret_is_ptr: bool;
 

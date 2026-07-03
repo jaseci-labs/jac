@@ -43,7 +43,7 @@ impl CMapper._tag(c_node: object, tier: Tier, idiom: Idiom, reason: str) {
 impl CMapper._surrogate(c_node: object, name: str) -> object {
     (line, col) = self._loc(c_node);
     reason = f"{type(c_node).__name__} @ L{line}";
-    self._tag(c_node, Tier.TIER_B, Idiom.TIER_B, reason);
+    self._tag(c_node, Tier.TIER_B, Idiom.NONE, reason);
     name_n = self._stamp_manual(
         ast3.Name(id=name, ctx=ast3.Load()), line, col, text=name
     );
@@ -65,7 +65,7 @@ impl CMapper._surrogate_expr(c_node: object) -> object {
 }
 
 impl CMapper._mark_tier_b(c_node: object, reason: str) {
-    self._tag(c_node, Tier.TIER_B, Idiom.TIER_B, reason);
+    self._tag(c_node, Tier.TIER_B, Idiom.NONE, reason);
 }
 
 impl CMapper._mark_tier_a(c_node: object, idiom: Idiom, reason: str = "") {
