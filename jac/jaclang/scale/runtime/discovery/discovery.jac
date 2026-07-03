@@ -68,7 +68,7 @@ def should_enter_local_ms(
 }
 
 
-def discover_sv_services(entry_file: str) -> dict[str, str] {
+def _scan_project(entry_file: str) -> tuple {
     entry_path = Path(entry_file);
     if entry_path.is_dir() {
         root_dir = entry_path;
@@ -78,7 +78,7 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
         entry_stem: str = entry_path.stem;
     }
     if not root_dir.is_dir() {
-        return {};
+        return (set(), {});
     }
 
     project_root = find_jac_project_root(str(entry_path));
@@ -86,6 +86,8 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
     scan_root_str = str(scan_root);
 
     services: set[str] = set();
+    service_files: dict[str, str] = {};
+    all_stems: dict[str, str] = {};
 
     for (cur_root, dirnames, filenames) in os.walk(scan_root_str) {
         kept: list[str] = [];
@@ -107,6 +109,11 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
                 continue;
             }
             jac_path = os.path.join(cur_root, fn);
+            stem: str = Path(jac_path).stem;
+            rel_path: str = os.path.relpath(jac_path, scan_root_str);
+            if stem not in all_stems {
+                all_stems[stem] = rel_path;
+            }
             try {
                 text = Path(jac_path).read_text(encoding="utf-8");
             } except Exception {
@@ -120,12 +127,32 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
                 services.add(target);
             }
             if markers.is_service {
-                services.add(Path(jac_path).stem);
+                services.add(stem);
+                if stem not in service_files {
+                    service_files[stem] = rel_path;
+                }
             }
         }
     }
 
     services.discard(entry_stem);
+
+    # A service found only as an sv-import target (no `to sv:` marker of its
+    # own) still lives at its module file -- fall back to any scanned .jac
+    # whose stem matches the service name.
+    files: dict[str, str] = {};
+    for name in services {
+        path = service_files.get(name) or all_stems.get(name);
+        if path {
+            files[name] = path;
+        }
+    }
+    return (services, files);
+}
+
+
+def discover_sv_services(entry_file: str) -> dict[str, str] {
+    (services, _files) = _scan_project(entry_file);
 
     routes: dict[str, str] = {};
     for name in sorted(services) {
@@ -137,8 +164,24 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
 }
 
 
+def discover_sv_service_files(entry_file: str) -> dict[str, str] {
+    (_services, files) = _scan_project(entry_file);
+    return files;
+}
+
+
 def resolve_routes(entry_file: str, explicit_routes: dict[str, str]) -> dict[str, str] {
     merged: dict[str, str] = dict(discover_sv_services(entry_file));
     merged.update(explicit_routes);
     return merged;
+}
+
+
+def resolve_service_files(entry_file: str, routes: dict[str, str]) -> dict[str, str] {
+    discovered = discover_sv_service_files(entry_file);
+    out: dict[str, str] = {};
+    for name in routes {
+        out[name] = discovered.get(name) or f"{name}.jac";
+    }
+    return out;
 }

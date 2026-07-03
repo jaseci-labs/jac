@@ -206,6 +206,54 @@ def dispatch(payload_json: str) -> str {
 }
 
 
+def _dispatch_sync_run(payload_json: str, box: dict, done: any) {
+    try {
+        box["v"] = dispatch(payload_json);
+    } except Exception as e {
+        box["v"] = _error_envelope(
+            "NATIVE_DISPATCH_ERROR", str(e), traceback.format_exc()
+        );
+    } finally {
+        done.set();
+    }
+}
+
+
+def dispatch_sync(payload_json: str, timeout_s: float = 0.0) -> str {
+    if _BOOT_ERROR {
+        return _error_envelope(
+            "NATIVE_BOOT_ERROR", "in-process backend failed to start", _BOOT_ERROR
+        );
+    }
+    if _tc is None {
+        return _error_envelope(
+            "NOT_BOOTED", "in-process dispatch called before boot()"
+        );
+    }
+    if timeout_s <= 0.0 {
+        timeout_s = _timeout_s;
+    }
+    box: dict = {"v": None};
+    done = threading.Event();
+    th = threading.Thread(
+        target=_dispatch_sync_run,
+        args=(payload_json, box, done),
+        name="jac-inprocess-dispatch-sync",
+        daemon=True
+    );
+    th.start();
+
+    done.wait(timeout_s);
+    if box["v"] is not None {
+        return box["v"] as str;
+    }
+    return _error_envelope(
+        "NATIVE_DISPATCH_TIMEOUT",
+        "in-process dispatch exceeded " + str(timeout_s) + "s"
+    );
+}
+
+
 def forward(
     method: str, path: str, body: bytes, token: str = ""
 ) -> tuple[int, str, str] {

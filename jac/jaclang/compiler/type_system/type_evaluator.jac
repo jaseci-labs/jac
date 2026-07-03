@@ -213,6 +213,7 @@ obj TypeEvaluator {
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
+        _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
@@ -506,9 +507,12 @@ obj TypeEvaluator {
         name: uni.JsxElementName
     ) -> types.FunctionType | None;
 
+    def _is_mobui_module(nd: uni.UniNode) -> bool;
     def _get_intrinsic_props_type(tag_name: str) -> types.ClassType | None;
     def _validate_component_jsx_props(
-        expr: uni.JsxElement, component_name: str
+        expr: uni.JsxElement,
+        component_name: str,
+        func_type: types.FunctionType | None = None
     ) -> None;
 
     def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;
