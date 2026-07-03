@@ -17,14 +17,21 @@ impl OwnershipCheckPass.before_pass -> None {
     self.consumed_at = {};
     self.borrow_created_at = {};
     self.loop_depth_flagged_names = set();
+    self.idx_assignments = [];
+    self.idx_names = [];
+    self.idx_params = [];
+    self.idx_returns = [];
+    self.idx_concurrent = [];
+    self.name_uses_by_sym = {};
 
     mod_root = self.ir_in;
     if mod_root is None {
         return;
     }
-    self._collect_owned(mod_root);
-    self._collect_borrows(mod_root);
-    self._collect_params(mod_root);
+    self._build_index(mod_root);
+    self._collect_owned();
+    self._collect_borrows();
+    self._collect_params();
     if not self.owned_syms and not self.borrow_syms {
         return;
     }
@@ -38,11 +45,11 @@ impl OwnershipCheckPass.before_pass -> None {
     self._run_borrow_liveness(cfg_nodes);
     self._run_reaching_borrows(cfg_nodes);
     self._compute_proven_unique();
-    self._emit_loop_move_diagnostics(mod_root);
-    self._emit_diagnostics(mod_root);
-    self._emit_borrow_diagnostics(mod_root);
+    self._emit_loop_move_diagnostics();
+    self._emit_diagnostics();
+    self._emit_borrow_diagnostics();
     self._emit_leak_diagnostics();
-    self._emit_escape_diagnostics(mod_root);
+    self._emit_escape_diagnostics();
 }
 
 impl OwnershipCheckPass._is_own_decl(nd: uni.Assignment) -> (uni.Name | None) {
@@ -110,8 +117,27 @@ impl OwnershipCheckPass._borrow_source_owner(nd: uni.Assignment) -> (uni.Name | 
     return None;
 }
 
-impl OwnershipCheckPass._collect_owned(tree: uni.UniNode) -> None {
-    for nd in tree.get_all_sub_nodes(uni.Assignment) {
+impl OwnershipCheckPass._build_index(tree: uni.UniNode) -> None {
+    self.idx_assignments = tree.get_all_sub_nodes(uni.Assignment);
+    self.idx_names = tree.get_all_sub_nodes(uni.Name);
+    self.idx_params = tree.get_all_sub_nodes(uni.ParamVar);
+    self.idx_returns = tree.get_all_sub_nodes(uni.ReturnStmt);
+    self.idx_concurrent = tree.get_all_sub_nodes(uni.ConcurrentExpr);
+    for name in self.idx_names {
+        sid = self._sym_id(name);
+        if sid is None {
+            continue;
+        }
+        if sid in self.name_uses_by_sym {
+            self.name_uses_by_sym[sid].append(name);
+        } else {
+            self.name_uses_by_sym[sid] = [name];
+        }
+    }
+}
+
+impl OwnershipCheckPass._collect_owned -> None {
+    for nd in self.idx_assignments {
         target = self._is_own_decl(nd);
         if target is not None {
             sid = self._sym_id(target);
@@ -121,8 +147,8 @@ impl OwnershipCheckPass._collect_owned(tree: uni.UniNode) -> None {
     }
 }
 
-impl OwnershipCheckPass._collect_borrows(tree: uni.UniNode) -> None {
-    for nd in tree.get_all_sub_nodes(uni.Assignment) {
+impl OwnershipCheckPass._collect_borrows -> None {
+    for nd in self.idx_assignments {
         target = self._is_borrow_decl(nd);
         if target is not None {
             borrow_id = self._sym_id(target);
@@ -134,7 +160,7 @@ impl OwnershipCheckPass._collect_borrows(tree: uni.UniNode) -> None {
             self.borrow_created_at[borrow_id] = nd;
         }
     }
-    for nd in tree.get_all_sub_nodes(uni.Assignment) {
+    for nd in self.idx_assignments {
         target = self._borrow_target(nd);
         owner = self._borrow_source_owner(nd);
         if target is not None and owner is not None {
@@ -149,8 +175,8 @@ impl OwnershipCheckPass._collect_borrows(tree: uni.UniNode) -> None {
     }
 }
 
-impl OwnershipCheckPass._collect_params(tree: uni.UniNode) -> None {
-    for param in tree.get_all_sub_nodes(uni.ParamVar) {
+impl OwnershipCheckPass._collect_params -> None {
+    for param in self.idx_params {
         tag = param.type_tag;
         if tag is None {
             continue;
@@ -163,7 +189,9 @@ impl OwnershipCheckPass._collect_params(tree: uni.UniNode) -> None {
         if tag.is_borrow or tag.is_mut_borrow {
             self.borrow_syms.add(sid);
             self.param_borrow_syms.add(sid);
-            self.borrow_meta[sid] = BorrowMeta(name=name.sym_name, is_mut=tag.is_mut_borrow);
+            self.borrow_meta[sid] = BorrowMeta(
+                name=name.sym_name, is_mut=tag.is_mut_borrow
+            );
             self.borrow_created_at[sid] = param;
         } elif tag.is_own {
             self.owned_syms.add(sid);
@@ -295,7 +323,9 @@ impl OwnershipCheckPass._return_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
     return gen;
 }
 
-impl OwnershipCheckPass._transfer(nd: uni.UniCFGNode, in_set: set[SymId]) -> set[SymId] {
+impl OwnershipCheckPass._transfer(
+    nd: uni.UniCFGNode, in_set: set[SymId]
+) -> set[SymId] {
     out = set(in_set);
     if isinstance(nd, uni.Assignment) {
         (kill, gen) = self._assign_kill_gen(nd);
@@ -327,7 +357,6 @@ impl OwnershipCheckPass._transfer(nd: uni.UniCFGNode, in_set: set[SymId]) -> set
 impl OwnershipCheckPass._solve_forward_dataflow(
     cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
 ) -> dict[int, set[SymId]] {
-    # IN[n] = union over preds of transfer(pred, IN[pred]); re-enqueue successors.
     state: dict[int, set[SymId]] = {};
     for n in cfg_nodes {
         state[id(n)] = set();
@@ -354,7 +383,6 @@ impl OwnershipCheckPass._solve_forward_dataflow(
 impl OwnershipCheckPass._solve_backward_dataflow(
     cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
 ) -> dict[int, set[SymId]] {
-    # IN[n] = transfer(n, union over succs of IN[succ]); re-enqueue predecessors.
     state: dict[int, set[SymId]] = {};
     for n in cfg_nodes {
         state[id(n)] = set();
@@ -434,7 +462,9 @@ impl OwnershipCheckPass._live_transfer(
 }
 
 impl OwnershipCheckPass._run_borrow_liveness(cfg_nodes: list[uni.UniCFGNode]) -> None {
-    self.in_live_borrows = self._solve_backward_dataflow(cfg_nodes, self._live_transfer);
+    self.in_live_borrows = self._solve_backward_dataflow(
+        cfg_nodes, self._live_transfer
+    );
 }
 
 impl OwnershipCheckPass._reaching_transfer(
@@ -490,10 +520,6 @@ impl OwnershipCheckPass._is_ancestor(ancestor: uni.UniNode, nd: uni.UniNode) -> 
     return False;
 }
 
-"""Classify how `nd` participates in the statement it sits in — the single
-place that answers "is this occurrence a target, an argument, a return, a
-delete, or a plain read" so callers stop hand-rolling `isinstance`/parent
-checks."""
 impl OwnershipCheckPass._classify_access(nd: uni.Name) -> AccessKind {
     parent = nd.parent;
     if isinstance(parent, uni.Assignment) {
@@ -509,8 +535,8 @@ impl OwnershipCheckPass._classify_access(nd: uni.Name) -> AccessKind {
                 if held.right is nd {
                     return (
                         AccessKind.ATTR_TARGET
-                        if held.is_attr
-                        else AccessKind.SUBSCRIPT_TARGET
+                            if held.is_attr
+                            else AccessKind.SUBSCRIPT_TARGET
                     );
                 }
                 return AccessKind.READ;
@@ -531,20 +557,12 @@ impl OwnershipCheckPass._classify_access(nd: uni.Name) -> AccessKind {
     return AccessKind.READ;
 }
 
-# `_classify_access` is the single source of truth for how a `Name` occurrence
-# participates; `_is_write_target`/`_is_read_name` are the only two projections
-# the borrow checker needs and they partition every `AccessKind` between them.
 impl OwnershipCheckPass._is_write_target(nd: uni.Name) -> bool {
-    # A write rebinds the name itself: a plain assignment target or one slot of a
-    # destructuring assignment. Attribute/subscript targets instead READ the base
-    # name to locate the object being mutated, so they are not writes of the name.
     kind = self._classify_access(nd);
     return kind == AccessKind.ASSIGN_TARGET or kind == AccessKind.DESTRUCTURE_TARGET;
 }
 
 impl OwnershipCheckPass._is_read_name(nd: uni.Name) -> bool {
-    # Everything that is not a rebind reads the current binding: attribute and
-    # subscript bases, delete, call arguments, returns, and plain reads.
     return not self._is_write_target(nd);
 }
 
@@ -626,8 +644,8 @@ impl OwnershipCheckPass._loop_depth(nd: uni.UniNode) -> int {
     return depth;
 }
 
-impl OwnershipCheckPass._emit_loop_move_diagnostics(tree: uni.UniNode) -> None {
-    for nd in tree.get_all_sub_nodes(uni.Name) {
+impl OwnershipCheckPass._emit_loop_move_diagnostics -> None {
+    for nd in self.idx_names {
         owned = self._owned_sym_of(nd);
         if owned is None {
             continue;
@@ -656,8 +674,8 @@ impl OwnershipCheckPass._emit_loop_move_diagnostics(tree: uni.UniNode) -> None {
     }
 }
 
-impl OwnershipCheckPass._emit_diagnostics(tree: uni.UniNode) -> None {
-    for nd in tree.get_all_sub_nodes(uni.Name) {
+impl OwnershipCheckPass._emit_diagnostics -> None {
+    for nd in self.idx_names {
         if self._owned_sym_of(nd) is None {
             continue;
         }
@@ -676,15 +694,17 @@ impl OwnershipCheckPass._emit_diagnostics(tree: uni.UniNode) -> None {
         if sid in consumed {
             sym_name = self._owned_name(sid, nd.sym_name);
             move_site = self.consumed_at.get(sid);
-            move_related = [(f"'{sym_name}' was moved here", move_site)] if move_site is not None else None;
+            move_related = [(f"'{sym_name}' was moved here", move_site)]
+                if move_site is not None
+                else None;
             self.emit(E1301, node_override=nd, name=sym_name, related=move_related);
         }
     }
 }
 
-impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
+impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
     emitted_e1304: set[SymId] = set();
-    for nd in tree.get_all_sub_nodes(uni.Assignment) {
+    for nd in self.idx_assignments {
         owner = self._borrow_source_owner(nd);
         target = self._borrow_target(nd);
 
@@ -704,7 +724,11 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
                 and (nd.value.is_mut_borrow or self._borrow_is_mut_of(other)) {
                     other_site = self.borrow_created_at.get(other);
                     other_name = self._borrow_display_name(other, "");
-                    e1302_related = [(f"existing borrow of '{other_name}' created here", other_site)] if other_site is not None else None;
+                    e1302_related = [
+                        (f"existing borrow of '{other_name}' created here", other_site)
+                    ]
+                        if other_site is not None
+                        else None;
                     self.emit(
                         E1302,
                         node_override=owner,
@@ -718,11 +742,14 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
             if owner_scope is not None and borrow_id not in emitted_e1304 {
                 borrow_site = self.borrow_created_at.get(borrow_id);
                 borrow_name = self._borrow_display_name(borrow_id, "");
-                for use in tree.get_all_sub_nodes(uni.Name) {
-                    if self._sym_id(use) == borrow_id
-                    and self._is_read_name(use)
+                for use in self.name_uses_by_sym.get(borrow_id, []) {
+                    if self._is_read_name(use)
                     and not self._is_ancestor(owner_scope, use) {
-                        e1304_related = [(f"borrow of '{borrow_name}' created here", borrow_site)] if borrow_site is not None else None;
+                        e1304_related = [
+                            (f"borrow of '{borrow_name}' created here", borrow_site)
+                        ]
+                            if borrow_site is not None
+                            else None;
                         self.emit(
                             E1304,
                             node_override=owner,
@@ -751,9 +778,15 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
                 ) {
                     borrow_site = self.borrow_created_at.get(borrow_id);
                     borrow_name = self._borrow_display_name(borrow_id, "");
-                    e1303_related = [(f"shared borrow of '{borrow_name}' created here", borrow_site)] if borrow_site is not None else None;
+                    e1303_related = [
+                        (f"shared borrow of '{borrow_name}' created here", borrow_site)
+                    ]
+                        if borrow_site is not None
+                        else None;
                     self.emit(
-                        E1303, node_override=tgt, name=self._owned_name(owner_id, ""),
+                        E1303,
+                        node_override=tgt,
+                        name=self._owned_name(owner_id, ""),
                         related=e1303_related
                     );
                     break;
@@ -814,8 +847,8 @@ impl OwnershipCheckPass._owner_decl_related(
     return None;
 }
 
-impl OwnershipCheckPass._emit_escape_diagnostics(tree: uni.UniNode) -> None {
-    for ret in tree.get_all_sub_nodes(uni.ReturnStmt) {
+impl OwnershipCheckPass._emit_escape_diagnostics -> None {
+    for ret in self.idx_returns {
         owner = self._escaping_borrow_owner(ret.expr);
         if owner is not None and not self._return_roots_at_param_borrow(ret.expr) {
             borrow_id = self._borrow_sym_of(ret.expr);
@@ -824,7 +857,7 @@ impl OwnershipCheckPass._emit_escape_diagnostics(tree: uni.UniNode) -> None {
         }
     }
 
-    for cexpr in tree.get_all_sub_nodes(uni.ConcurrentExpr) {
+    for cexpr in self.idx_concurrent {
         names: list[uni.Name] = [];
         if isinstance(cexpr.target, uni.Name) {
             names.append(cexpr.target);
@@ -848,7 +881,7 @@ impl OwnershipCheckPass._emit_escape_diagnostics(tree: uni.UniNode) -> None {
             }
         }
     }
-    for nd in tree.get_all_sub_nodes(uni.Assignment) {
+    for nd in self.idx_assignments {
         if nd.aug_op is not None {
             continue;
         }
@@ -863,7 +896,9 @@ impl OwnershipCheckPass._emit_escape_diagnostics(tree: uni.UniNode) -> None {
             if owner is not None {
                 borrow_id = self._borrow_sym_of(nd.value);
                 e1306_related = self._owner_decl_related(borrow_id, owner);
-                self.emit(E1306, node_override=nd.value, name=owner, related=e1306_related);
+                self.emit(
+                    E1306, node_override=nd.value, name=owner, related=e1306_related
+                );
             }
             continue;
         }
@@ -886,7 +921,9 @@ impl OwnershipCheckPass._emit_escape_diagnostics(tree: uni.UniNode) -> None {
                 owner_id = self._sym_id(source_owner);
                 owner_name = self._owned_name(owner_id, tgt.sym_name);
                 owner_decl = self.owned_decl.get(owner_id);
-                e1306_related = [(f"owner '{owner_name}' declared here", owner_decl)] if owner_decl is not None else None;
+                e1306_related = [(f"owner '{owner_name}' declared here", owner_decl)]
+                    if owner_decl is not None
+                    else None;
                 self.emit(
                     E1306,
                     node_override=nd.value,
