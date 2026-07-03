@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
 
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, ScalarType,
-    Skip, SkipReason, TypeKind,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, RootProducer,
+    ScalarType, Skip, SkipReason, TypeKind,
 };
 
 pub fn classify(doc: &Crate) -> BridgeSpec {
@@ -25,16 +25,25 @@ pub fn classify(doc: &Crate) -> BridgeSpec {
         ctx.classify_impl(bt);
     }
 
-    // Materialize synthesized owning wrappers (M4 Phase B v1). A wrapper is
-    // requested once per qualifying producer; dedupe by the borrowed type so two
-    // producers targeting the same wrapper (e.g. `find`/`find_iter`-style) add it
-    // once. Their reader-skips land in the global skip list for honest coverage.
-    let mut seen_borrowed: Vec<u32> = vec![];
+    // Materialize synthesized owning wrappers (M4 Phase B v1). The same wrapper
+    // can be requested by several producers — a ROOT producer (`Regex::find`) and
+    // a NESTED one (`OwnedCaptures::name`) both yield `OwnedMatch`. Merge requests
+    // by borrowed type so the wrapper is emitted once, keeping a root construction
+    // path if ANY requester has one and unioning readers/skips. Encounter order is
+    // preserved for deterministic output. Reader-skips land in the global skip list.
+    let mut order: Vec<u32> = vec![];
+    let mut merged: HashMap<u32, PendingWrapper> = HashMap::new();
     for pw in std::mem::take(&mut ctx.pending_wrappers) {
-        if seen_borrowed.contains(&pw.borrowed_id) {
-            continue;
+        match merged.get_mut(&pw.borrowed_id) {
+            None => {
+                order.push(pw.borrowed_id);
+                merged.insert(pw.borrowed_id, pw);
+            }
+            Some(existing) => existing.merge(pw),
         }
-        seen_borrowed.push(pw.borrowed_id);
+    }
+    for id in order {
+        let pw = merged.remove(&id).unwrap();
         ctx.skips.extend(pw.reader_skips);
         types.push(BridgeType {
             name: pw.wrapper_name,
@@ -70,6 +79,30 @@ struct PendingWrapper {
     wrapper: OwningWrapper,
     readers: Vec<BridgeFn>,
     reader_skips: Vec<Skip>,
+}
+
+impl PendingWrapper {
+    /// Fold another request for the SAME borrowed type into this one: adopt a root
+    /// construction path if we lack one (a nested-only request has `root: None`, a
+    /// root producer supplies it), and union readers/skips by name so the wrapper's
+    /// full surface is emitted exactly once. Sorted for deterministic output.
+    fn merge(&mut self, other: PendingWrapper) {
+        if self.wrapper.root.is_none() {
+            self.wrapper.root = other.wrapper.root;
+        }
+        for r in other.readers {
+            if !self.readers.iter().any(|x| x.name == r.name) {
+                self.readers.push(r);
+            }
+        }
+        for s in other.reader_skips {
+            if !self.reader_skips.iter().any(|x| x.item == s.item) {
+                self.reader_skips.push(s);
+            }
+        }
+        self.readers.sort_by(|a, b| a.name.cmp(&b.name));
+        self.reader_skips.sort_by(|a, b| a.item.cmp(&b.item));
+    }
 }
 
 struct Ctx<'a> {
@@ -218,9 +251,9 @@ impl<'a> Ctx<'a> {
                         // type has a readable surface becomes a producer + wrapper
                         // instead of a lifetime-borrow skip.
                         match self.try_owning_wrapper(&method_name, f, bt) {
-                            Some((producer, pending)) => {
+                            Some((producer, pendings)) => {
                                 bt.methods.push(producer);
-                                self.pending_wrappers.push(pending);
+                                self.pending_wrappers.extend(pendings);
                             }
                             None => self.skips.push(Skip { item: item_path, reason }),
                         }
@@ -365,7 +398,7 @@ impl<'a> Ctx<'a> {
         method_name: &str,
         f: &rustdoc_types::Function,
         bt: &BridgeType,
-    ) -> Option<(BridgeFn, PendingWrapper)> {
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
         // Must be a method (has a receiver), not a constructor.
         if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
             return None;
@@ -392,7 +425,11 @@ impl<'a> Ctx<'a> {
         let (borrowed_id, borrowed_name, lifetimes) = self.option_borrowed_struct(&f.sig.output)?;
 
         // The wrapper is viable only if the borrowed type has a readable surface.
-        let (readers, reader_skips) = self.discover_readers(borrowed_id, &borrowed_name);
+        // Its readers may themselves be nested producers (a reader returning
+        // `Option<Borrowed<'h>>`), which pend further wrappers — collected here.
+        let mut seen = vec![];
+        let (readers, reader_skips, nested) =
+            self.discover_readers(borrowed_id, &borrowed_name, &mut seen);
         if readers.is_empty() {
             return None;
         }
@@ -412,13 +449,64 @@ impl<'a> Ctx<'a> {
             wrapper: OwningWrapper {
                 borrowed_path: format!("{}::{}", self.module_name, borrowed_name),
                 lifetimes,
-                owner_inner_path: bt.inner_path.clone(),
-                producer_call: method_name.to_string(),
+                root: Some(RootProducer {
+                    owner_inner_path: bt.inner_path.clone(),
+                    producer_call: method_name.to_string(),
+                }),
             },
             readers,
             reader_skips,
         };
-        Some((producer, pending))
+        let mut pendings = vec![pending];
+        pendings.extend(nested);
+        Some((producer, pendings))
+    }
+
+    /// A wrapper reader that returns `Option<Borrowed<'h>>` (another in-crate
+    /// lifetime-bearing struct) becomes a NESTED producer: `Owned<Borrowed>` built
+    /// inline from the parent wrapper's borrowing value, sharing its owned buffer
+    /// via an `Arc` clone. Returns the nested producer reader plus the wrapper
+    /// requests it implies (the nested wrapper, `root: None`, plus anything IT
+    /// nests). `None` if the borrowed type has no readable surface — the caller
+    /// then records the original lifetime-borrow skip.
+    fn try_nested_wrapper(
+        &self,
+        reader_name: &str,
+        params: &[BridgeParam],
+        output: &Option<Type>,
+        seen: &mut Vec<u32>,
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
+        let (borrowed_id, borrowed_name, lifetimes) = self.option_borrowed_struct(output)?;
+        let (readers, reader_skips, deeper) =
+            self.discover_readers(borrowed_id, &borrowed_name, seen);
+        if readers.is_empty() {
+            return None;
+        }
+        let wrapper_name = format!("Owned{borrowed_name}");
+        let reader = BridgeFn {
+            name: reader_name.to_string(),
+            export_name: None,
+            params: params.to_vec(),
+            ret: BridgeReturn::OptWrapper(wrapper_name.clone()),
+            throws: None,
+            recv: Recv::Inner,
+        };
+        let pending = PendingWrapper {
+            wrapper_name,
+            borrowed_id,
+            wrapper: OwningWrapper {
+                borrowed_path: format!("{}::{}", self.module_name, borrowed_name),
+                lifetimes,
+                // Nested-only here; if a root producer (e.g. `find`) also targets
+                // this type, its `root: Some(..)` merges in at materialization.
+                root: None,
+            },
+            readers,
+            reader_skips,
+        };
+        let mut pendings = vec![pending];
+        pendings.extend(deeper);
+        Some((reader, pendings))
     }
 
     /// If `output` is `Option<T>` with `T` an own-crate struct that has ≥1
@@ -455,7 +543,19 @@ impl<'a> Ctx<'a> {
     /// methods into int-free readers (str/bool returns, delegated through
     /// `self.inner`) and recorded skips (everything else — `usize`, nested
     /// borrows, …), so a wrapped type's whole surface stays honestly counted.
-    fn discover_readers(&self, borrowed_id: u32, borrowed_name: &str) -> (Vec<BridgeFn>, Vec<Skip>) {
+    fn discover_readers(
+        &self,
+        borrowed_id: u32,
+        borrowed_name: &str,
+        seen: &mut Vec<u32>,
+    ) -> (Vec<BridgeFn>, Vec<Skip>, Vec<PendingWrapper>) {
+        // Cycle guard: a wrapper reachable from its own reader chain would recurse
+        // forever. `seen` carries the borrowed-type ids already being expanded.
+        if seen.contains(&borrowed_id) {
+            return (vec![], vec![], vec![]);
+        }
+        seen.push(borrowed_id);
+
         let impl_ids: Vec<Id> = self
             .doc
             .index
@@ -468,7 +568,8 @@ impl<'a> Ctx<'a> {
 
         let mut readers: Vec<BridgeFn> = vec![];
         let mut skips: Vec<Skip> = vec![];
-        let mut seen: Vec<String> = vec![];
+        let mut nested_pendings: Vec<PendingWrapper> = vec![];
+        let mut seen_names: Vec<String> = vec![];
 
         for impl_id in impl_ids {
             let Some(impl_item) = self.item(&impl_id) else { continue };
@@ -490,10 +591,10 @@ impl<'a> Ctx<'a> {
                     continue;
                 }
                 let mname = method.name.clone().unwrap_or_default();
-                if mname.is_empty() || seen.contains(&mname) {
+                if mname.is_empty() || seen_names.contains(&mname) {
                     continue;
                 }
-                seen.push(mname.clone());
+                seen_names.push(mname.clone());
                 let item_path = format!("{borrowed_name}::{mname}");
 
                 // Params must all cross the boundary.
@@ -525,14 +626,25 @@ impl<'a> Ctx<'a> {
                         throws: None,
                         recv: Recv::Inner,
                     }),
-                    Err(reason) => skips.push(Skip { item: item_path, reason }),
+                    // A reader whose return is `Option<Borrowed<'h>>` isn't a dead
+                    // skip — it's a NESTED producer of another owning wrapper, so
+                    // long as that borrowed type is itself readable. Recurse.
+                    Err(reason) => {
+                        match self.try_nested_wrapper(&mname, &params, &f.sig.output, seen) {
+                            Some((reader, pendings)) => {
+                                readers.push(reader);
+                                nested_pendings.extend(pendings);
+                            }
+                            None => skips.push(Skip { item: item_path, reason }),
+                        }
+                    }
                 }
             }
         }
 
         readers.sort_by(|a, b| a.name.cmp(&b.name));
         skips.sort_by(|a, b| a.item.cmp(&b.item));
-        (readers, skips)
+        (readers, skips, nested_pendings)
     }
 
     /// Return classifier for a wrapper reader. Unlike [`Self::classify_return`],

@@ -115,13 +115,15 @@ fn owned_match_wrapper_emitted() {
     assert!(
         src.contains("pub struct OwnedMatch {")
             && src.contains("inner: regex::Match<'static>,")
-            && src.contains("_input: String,"),
+            && src.contains("_input: std::sync::Arc<String>,"),
         "missing OwnedMatch ouroboros struct\n{src}"
     );
-    // The non-pub wrap ctor clones the input, produces from it, erases the borrow.
+    // The non-pub wrap ctor clones the input into an Arc, produces from it, erases
+    // the borrow. The Arc lets a nested wrapper share this exact buffer.
     assert!(
         src.contains("fn wrap(owner: &regex::Regex, input: &str) -> Option<OwnedMatch>")
-            && src.contains("let inner = owner.find(&owned)?;")
+            && src.contains("let owned = std::sync::Arc::new(input.to_owned());")
+            && src.contains("let inner = owner.find(owned.as_str())?;")
             && src.contains("let inner: regex::Match<'static> = unsafe { std::mem::transmute(inner) };"),
         "missing/incorrect wrap ctor\n{src}"
     );
@@ -139,6 +141,40 @@ fn owned_match_wrapper_emitted() {
     assert!(
         src.contains("pub fn is_empty(&self) -> bool") && src.contains("self.inner.is_empty()"),
         "missing OwnedMatch::is_empty reader\n{src}"
+    );
+}
+
+#[test]
+fn owned_captures_nested_producer_emitted() {
+    let src = generated();
+    // The OwnedCaptures wrapper struct (Arc-shared input) and its root wrap ctor.
+    assert!(
+        src.contains("pub struct OwnedCaptures {")
+            && src.contains("inner: regex::Captures<'static>,")
+            && src.contains("_input: std::sync::Arc<String>,"),
+        "missing OwnedCaptures struct\n{src}"
+    );
+    assert!(
+        src.contains("fn wrap(owner: &regex::Regex, input: &str) -> Option<OwnedCaptures>")
+            && src.contains("let inner = owner.captures(owned.as_str())?;"),
+        "missing OwnedCaptures root wrap ctor\n{src}"
+    );
+    // Regex::captures is now a root producer of the wrapper.
+    assert!(
+        src.contains("pub fn captures(&self, haystack: &str) -> Option<OwnedCaptures>")
+            && src.contains("OwnedCaptures::wrap(&self.0, haystack)"),
+        "missing captures producer\n{src}"
+    );
+    // The NESTED producer: OwnedCaptures::name builds an OwnedMatch inline from the
+    // parent's borrowing value, sharing the owned buffer via an Arc clone — no
+    // transmute, no re-allocation.
+    assert!(
+        src.contains("pub fn name(&self, name: &str) -> Option<OwnedMatch>")
+            && src.contains("let inner = self.inner.name(name)?;")
+            && src.contains(
+                "Some(OwnedMatch { inner, _input: std::sync::Arc::clone(&self._input) })"
+            ),
+        "missing/incorrect OwnedCaptures::name nested producer\n{src}"
     );
 }
 

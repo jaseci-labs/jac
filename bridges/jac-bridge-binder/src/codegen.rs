@@ -1,7 +1,8 @@
 use std::fmt::Write;
 
 use crate::types::{
-    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, ScalarType, TypeKind,
+    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, RootProducer, ScalarType,
+    TypeKind,
 };
 
 /// Emit a `Cargo.toml` for the generated bridge crate.
@@ -88,9 +89,14 @@ pub fn emit(spec: &BridgeSpec) -> String {
             continue;
         }
 
-        // Synthesized wrappers get a non-pub `wrap` constructor (the ouroboros
-        // lifetime-erasure) emitted before their readers.
-        let wrap_src = bt.wrapper.as_ref().map(|w| emit_wrap(w, bt));
+        // A synthesized wrapper WITH a root producer gets a non-pub `wrap` ctor
+        // (the ouroboros lifetime-erasure) emitted before its readers. A
+        // nested-only wrapper has no root path — its instances are built inline by
+        // the nested producer — so it gets no `wrap`.
+        let wrap_src = bt
+            .wrapper
+            .as_ref()
+            .and_then(|w| w.root.as_ref().map(|r| emit_wrap(w, r, bt)));
         let ctor_src = bt.ctor.as_ref().and_then(|f| emit_fn(f, bt, true));
         let method_srcs: Vec<String> =
             bt.methods.iter().filter_map(|f| emit_fn(f, bt, false)).collect();
@@ -166,7 +172,9 @@ fn static_args(n: usize) -> String {
 
 /// Emit the ouroboros struct for a synthesized owning wrapper: the borrowing
 /// value (lifetime erased to `'static`) declared before the owned input it
-/// points into, so it drops first.
+/// points into, so it drops first. The input is an `Arc<String>` so a NESTED
+/// wrapper produced from this one (a `Match` from a `Captures`) can share the
+/// exact same buffer via an Arc clone rather than re-owning a copy.
 fn emit_wrapper_struct(out: &mut String, bt: &BridgeType, w: &OwningWrapper) {
     writeln!(out, "    pub struct {} {{", bt.name).unwrap();
     writeln!(
@@ -176,27 +184,28 @@ fn emit_wrapper_struct(out: &mut String, bt: &BridgeType, w: &OwningWrapper) {
         static_args(w.lifetimes)
     )
     .unwrap();
-    writeln!(out, "        _input: String,").unwrap();
+    writeln!(out, "        _input: std::sync::Arc<String>,").unwrap();
     writeln!(out, "    }}").unwrap();
 }
 
-/// Emit the non-pub `wrap` constructor: clone the input, produce the borrowed
-/// value from it, erase the lifetime, and store both.
-fn emit_wrap(w: &OwningWrapper, bt: &BridgeType) -> String {
+/// Emit the non-pub `wrap` constructor: clone the input into an `Arc<String>`,
+/// produce the borrowed value from it, erase the lifetime, and store both.
+fn emit_wrap(w: &OwningWrapper, root: &RootProducer, bt: &BridgeType) -> String {
     let static_ty = format!("{}{}", w.borrowed_path, static_args(w.lifetimes));
     format!(
         "        fn wrap(owner: &{owner}, input: &str) -> Option<{wname}> {{\n\
-         \x20           let owned = input.to_owned();\n\
-         \x20           let inner = owner.{producer}(&owned)?;\n\
-         \x20           // SAFETY: `inner` borrows `owned`, which is moved into the returned\n\
-         \x20           // struct beside it and never mutated or moved-out; the borrower drops\n\
-         \x20           // before the owner. Erasing to 'static is sound for the value's life.\n\
+         \x20           let owned = std::sync::Arc::new(input.to_owned());\n\
+         \x20           let inner = owner.{producer}(owned.as_str())?;\n\
+         \x20           // SAFETY: `inner` borrows the `String` inside `owned`, whose Arc is\n\
+         \x20           // stored beside it and never mutated or moved-out; the borrower drops\n\
+         \x20           // before the owner, and every wrapper aliasing the buffer holds its own\n\
+         \x20           // Arc clone, so erasing to 'static is sound for the value's whole life.\n\
          \x20           let inner: {static_ty} = unsafe {{ std::mem::transmute(inner) }};\n\
          \x20           Some({wname} {{ inner, _input: owned }})\n\
          \x20       }}",
-        owner = w.owner_inner_path,
+        owner = root.owner_inner_path,
         wname = bt.name,
-        producer = w.producer_call,
+        producer = root.producer_call,
     )
 }
 
@@ -281,12 +290,27 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             };
             (" -> Result<Self, String>".into(), call)
         }
-        BridgeReturn::OptWrapper(wrapper) => {
-            // Producer of an owning wrapper: delegate to the wrapper's `wrap`
-            // ctor, which owns the input and erases the borrow. Always a method.
-            let call = format!("{}::wrap(&self.0, {})", wrapper, args_str);
-            (format!(" -> Option<{}>", wrapper), call)
-        }
+        BridgeReturn::OptWrapper(wrapper) => match f.recv {
+            // Root producer (on a plain owner): delegate to the wrapper's `wrap`
+            // ctor, which owns the input and erases the borrow.
+            Recv::Field0 => {
+                let call = format!("{}::wrap(&self.0, {})", wrapper, args_str);
+                (format!(" -> Option<{}>", wrapper), call)
+            }
+            // Nested producer (a reader on ANOTHER wrapper): build the child inline
+            // from this wrapper's already-'static borrowing value, sharing the owned
+            // buffer via an Arc clone. No transmute, no new allocation — the parent
+            // is 'static, so its produced value is too, and the Arc clone keeps the
+            // shared buffer alive for the child's whole life.
+            Recv::Inner => {
+                let call = format!(
+                    "let inner = self.inner.{}({})?;\n            \
+                     Some({} {{ inner, _input: std::sync::Arc::clone(&self._input) }})",
+                    fname, args_str, wrapper
+                );
+                (format!(" -> Option<{}>", wrapper), call)
+            }
+        },
     };
 
     Some(format!(

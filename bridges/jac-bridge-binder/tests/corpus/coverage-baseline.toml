@@ -13,11 +13,16 @@
 # they are what M4 Phase B exists to move.
 
 # regex: owning-wrapper synthesis (M4 Phase B v1) rescued `find` -> OwnedMatch
-# (readers as_str/is_empty), lifting bridged 7 -> 10. `captures` stays a skip:
-# Captures has no int-free reader (get/name return Option<Match>, len is usize).
+# (readers as_str/is_empty), lifting bridged 7 -> 10. The NESTED-wrapper rule then
+# rescued `captures` too: Captures has no DIRECT reader, but its `name(&str) ->
+# Option<Match>` is a nested producer of OwnedMatch, giving Captures a readable
+# surface (OwnedCaptures.name), lifting bridged 10 -> 12. `total` rose 66 -> 73
+# because Captures' own unbridgeable methods (get/len/expand/extract/iter/get_match)
+# are now each individually recorded as skips instead of hidden behind one
+# `Regex::captures` skip — more honest, not a regression.
 [regex]
-bridged = 10
-total = 66
+bridged = 12
+total = 73
 
 [base64]
 bridged = 1

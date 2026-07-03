@@ -87,6 +87,45 @@ fn no_duplicate_types() {
 }
 
 #[test]
+fn captures_rescued_by_nested_wrapper() {
+    let doc = load_regex_doc();
+    let spec = classify(&doc);
+
+    // Regex::captures becomes a producer of the OwnedCaptures wrapper.
+    let regex_type = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
+    let captures =
+        regex_type.methods.iter().find(|m| m.name == "captures").expect("captures producer");
+    assert_eq!(captures.ret, BridgeReturn::OptWrapper("OwnedCaptures".into()));
+    assert_eq!(captures.recv, Recv::Field0); // root producer on the plain owner
+
+    // OwnedCaptures exists and its `name` reader is a NESTED producer of OwnedMatch,
+    // delegating through self.inner (recv Inner), not a lifetime-borrow skip.
+    let oc = spec.types.iter().find(|t| t.name == "OwnedCaptures").expect("OwnedCaptures type");
+    let name = oc.methods.iter().find(|m| m.name == "name").expect("name nested producer");
+    assert_eq!(name.ret, BridgeReturn::OptWrapper("OwnedMatch".into()));
+    assert_eq!(name.recv, Recv::Inner);
+    assert_eq!(name.params.len(), 1);
+    assert_eq!(name.params[0].ty, ScalarType::Str);
+
+    // OwnedCaptures is a nested-only wrapper OF an owner (Regex::captures gives it a
+    // root path), so its wrapper metadata carries a root producer via `captures`.
+    let ocw = oc.wrapper.as_ref().expect("OwnedCaptures wrapper metadata");
+    assert_eq!(ocw.borrowed_path, "regex::Captures");
+    let ocroot = ocw.root.as_ref().expect("OwnedCaptures root producer (captures)");
+    assert_eq!(ocroot.producer_call, "captures");
+
+    // The single shared OwnedMatch keeps its root `wrap` ctor (from find) even
+    // though it is ALSO produced nested — the two requests merged.
+    let om_count = spec.types.iter().filter(|t| t.name == "OwnedMatch").count();
+    assert_eq!(om_count, 1, "OwnedMatch must be emitted exactly once (merged)");
+    let om = spec.types.iter().find(|t| t.name == "OwnedMatch").unwrap();
+    assert!(
+        om.wrapper.as_ref().and_then(|w| w.root.as_ref()).is_some(),
+        "merged OwnedMatch must retain its root wrap ctor from find"
+    );
+}
+
+#[test]
 fn cursor_and_unreadable_borrows_are_skipped() {
     let doc = load_regex_doc();
     let spec = classify(&doc);
@@ -95,16 +134,13 @@ fn cursor_and_unreadable_borrows_are_skipped() {
     let iter_skip = spec.skips.iter().find(|s| s.item == "Regex::captures_iter");
     assert!(iter_skip.is_some(), "Regex::captures_iter should be a skip");
 
-    // Regex::captures returns Option<Captures<'h>>, but Captures has no int-free
-    // reader (get/name return Option<Match>, len is usize), so the owning-wrapper
-    // rule declines it and it stays a precise lifetime-borrow skip.
-    let cap_skip = spec.skips.iter().find(|s| s.item == "Regex::captures");
-    assert!(cap_skip.is_some(), "Regex::captures should stay a skip (no reader)");
-    assert_eq!(cap_skip.unwrap().reason, SkipReason::LifetimeBorrow);
-    // And no OwnedCaptures wrapper should have been synthesized.
+    // Regex::captures returns Option<Captures<'h>>. Captures has no DIRECT int-free
+    // reader (get/len are usize), but its `name(&str) -> Option<Match>` is a NESTED
+    // producer of OwnedMatch, which gives Captures a readable surface — so it is now
+    // rescued into an OwnedCaptures wrapper rather than a lifetime-borrow skip.
     assert!(
-        spec.types.iter().all(|t| t.name != "OwnedCaptures"),
-        "OwnedCaptures must not be synthesized — Captures has no reader"
+        spec.skips.iter().all(|s| s.item != "Regex::captures"),
+        "Regex::captures should be rescued via the nested-wrapper rule, not skipped"
     );
 }
 
@@ -131,8 +167,12 @@ fn find_is_rescued_by_owning_wrapper() {
     let w = owned.wrapper.as_ref().expect("wrapper metadata");
     assert_eq!(w.borrowed_path, "regex::Match");
     assert_eq!(w.lifetimes, 1);
-    assert_eq!(w.owner_inner_path, "regex::Regex");
-    assert_eq!(w.producer_call, "find");
+    // OwnedMatch has a root construction path (via Regex::find) — it is also
+    // produced nested (from OwnedCaptures::name), and the two requests merge so
+    // the root `wrap` ctor survives.
+    let root = w.root.as_ref().expect("OwnedMatch has a root producer (find)");
+    assert_eq!(root.owner_inner_path, "regex::Regex");
+    assert_eq!(root.producer_call, "find");
 
     // Its readers are Match's int-free methods, delegating through self.inner.
     let mut reader_names: Vec<&str> = owned.methods.iter().map(|m| m.name.as_str()).collect();

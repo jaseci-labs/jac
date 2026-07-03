@@ -45,6 +45,19 @@ pub struct OwningWrapper {
     /// Number of lifetime params on the borrowed type — each erased to `'static`
     /// in the stored field (`Match<'static>`, `Captures<'static>`, …).
     pub lifetimes: usize,
+    /// How the wrapper is built from a plain owner type (e.g. `Regex::find`), if
+    /// it is. `None` for a wrapper reached ONLY by nesting — produced from another
+    /// wrapper's reader (e.g. an `OwnedMatch` returned by `OwnedCaptures::name`) —
+    /// which has no owner `&str`-taking method to synthesize a root `wrap` ctor
+    /// from; its instances are built inline by the nested producer instead.
+    pub root: Option<RootProducer>,
+}
+
+/// The root construction path for an owning wrapper: an owner method
+/// `fn(&self, &str) -> Option<Borrowed<'_>>` that both owns the input and
+/// produces the borrowing value. Emitted as the wrapper's non-pub `wrap` ctor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RootProducer {
     /// The owner type's inner path, e.g. `regex::Regex` — the `wrap` ctor's first arg.
     pub owner_inner_path: String,
     /// The owner method that produces the borrowed value, e.g. `find`.
@@ -112,8 +125,10 @@ pub enum BridgeReturn {
     /// Returns `Result<Self, E>` — bridge source emits `-> Result<Self, String>`.
     OwnSelfResult,
     /// Producer of a synthesized owning wrapper: the method returns
-    /// `Option<Wrapper>` and its body delegates to `Wrapper::wrap(&self.0, …)`.
-    /// The string is the wrapper type name (e.g. `OwnedMatch`).
+    /// `Option<Wrapper>`. The string is the wrapper type name (e.g. `OwnedMatch`).
+    /// A ROOT producer (`recv: Field0`) delegates to `Wrapper::wrap(&self.0, …)`;
+    /// a NESTED producer (`recv: Inner`) builds the wrapper inline from the parent
+    /// wrapper's borrowing value, sharing the owned buffer via an `Arc` clone.
     OptWrapper(String),
 }
 
