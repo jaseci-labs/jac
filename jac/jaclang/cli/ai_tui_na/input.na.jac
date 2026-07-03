@@ -2,11 +2,7 @@ import from .state { TuiState, EventKind, TuiStatus, AcKind }
 import from .ipc { ipc_send_cmd }
 import from .ipc_schema { IPC_CMD_SEND, IPC_CMD_STOP, IPC_CMD_RESET, IPC_CMD_QUIT }
 import from .runtime { TuiRuntime }
-import from .keys {
-    Key,
-    KeyKind,
-    parse_key
-}
+import from .keys { Key, KeyKind, parse_key }
 import from .autocomplete { ac_update, ac_apply }
 import from .overlay {
     overlay_is_active,
@@ -106,10 +102,8 @@ def _handle_submit(rt: TuiRuntime) -> bool {
     return False;
 }
 
-# ---------- Per-key-kind handlers (Fix 9: Long Method) ----------
-
 def _handle_ac_key(k: Key, rt: TuiRuntime) -> bool {
-    """Handle keys when autocomplete is active."""
+    """Handle keys when autocomplete is active.""";
     state = rt.state;
     ed = state.editor;
     ew = _editor_width(state);
@@ -150,13 +144,13 @@ def _handle_ac_key(k: Key, rt: TuiRuntime) -> bool {
         return False;
     }
 
-    # Any other key dismisses autocomplete
     state.ac.dismiss();
     state.dirty = True;
     return False;
+}
 
 def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
-    """Handle Ctrl+<char> key combinations."""
+    """Handle Ctrl+<char> key combinations.""";
     state = rt.state;
     ed = state.editor;
     ew = _editor_width(state);
@@ -213,9 +207,10 @@ def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
         return False;
     }
     return False;
+}
 
 def _handle_movement_key(k: Key, rt: TuiRuntime) -> bool {
-    """Handle cursor movement keys (up/down/left/right/home/end/word/page)."""
+    """Handle cursor movement keys (up/down/left/right/home/end/word/page).""";
     state = rt.state;
     ed = state.editor;
     ew = _editor_width(state);
@@ -302,9 +297,10 @@ def _handle_movement_key(k: Key, rt: TuiRuntime) -> bool {
     }
 
     return False;
+}
 
 def _handle_edit_key(k: Key, rt: TuiRuntime) -> bool {
-    """Handle text editing keys (enter, backspace, delete, char, etc.)."""
+    """Handle text editing keys (enter, backspace, delete, char, etc.).""";
     state = rt.state;
     ed = state.editor;
     ew = _editor_width(state);
@@ -366,9 +362,10 @@ def _handle_edit_key(k: Key, rt: TuiRuntime) -> bool {
     }
 
     return False;
+}
 
 def handle_key(k: Key, rt: TuiRuntime) -> bool {
-    """Main key dispatch — delegates to per-kind handlers."""
+    """Main key dispatch — delegates to per-kind handlers.""";
     state = rt.state;
     if k.kind == KeyKind.UNKNOWN {
         return False;
@@ -378,26 +375,29 @@ def handle_key(k: Key, rt: TuiRuntime) -> bool {
         return overlay_handle_key(k, rt);
     }
 
-    # Autocomplete has priority for most keys
     if state.ac.active {
         return _handle_ac_key(k, rt);
     }
 
-    # Ctrl combinations
     if k.kind == KeyKind.CTRL {
         return _handle_ctrl_key(k, rt);
     }
 
-    # Movement keys
     result = _handle_movement_key(k, rt);
-    if k.kind == KeyKind.UP or k.kind == KeyKind.DOWN
-    or k.kind == KeyKind.LEFT or k.kind == KeyKind.RIGHT
-    or k.kind == KeyKind.HOME or k.kind == KeyKind.END
-    or k.kind == KeyKind.WORD_LEFT or k.kind == KeyKind.WORD_RIGHT
-    or k.kind == KeyKind.PAGE_UP or k.kind == KeyKind.PAGE_DOWN {
+    if (
+        k.kind == KeyKind.UP
+        or k.kind == KeyKind.DOWN
+        or k.kind == KeyKind.LEFT
+        or k.kind == KeyKind.RIGHT
+        or k.kind == KeyKind.HOME
+        or k.kind == KeyKind.END
+        or k.kind == KeyKind.WORD_LEFT
+        or k.kind == KeyKind.WORD_RIGHT
+        or k.kind == KeyKind.PAGE_UP
+        or k.kind == KeyKind.PAGE_DOWN
+    ) {
         return result;
     }
 
-    # Everything else (editing keys)
     return _handle_edit_key(k, rt);
 }
