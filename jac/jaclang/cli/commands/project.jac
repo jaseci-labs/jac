@@ -425,7 +425,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
         Arg.create(
             "target",
             default="wheel",
-            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'all', or 'npm-runtime'",
+            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'sealed' (source-free JIR image, #7135), 'all', or 'npm-runtime'",
             short="t"
         ),
 
@@ -433,6 +433,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
     examples=[
         ("jac bundle", "Build a pure-Python wheel into dist/ (.jac transpiled to .py)"),
         ("jac bundle --target npm", "Build an npm .tgz into dist/"),
+        ("jac bundle --target sealed", "Build a source-free sealed JIR image into dist/"),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],

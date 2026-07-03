@@ -18,6 +18,7 @@ glob MAGIC = b"JIR\x00",
      SEC_NATIVE_OBJ: int = 0x06,
      SEC_SYMINDEX: int = 0x07,
      SEC_MODKEY: int = 0x08,
+     SEC_DEBUG_SRC: int = 0x09,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
@@ -325,7 +326,10 @@ def read_bytecode_only(data: bytes) -> (bytes | None) {
 }
 
 def write_precompiled_jir(
-    bytecode: bytes, module_key: str = "", flags: int = 0
+    bytecode: bytes,
+    module_key: str = "",
+    flags: int = 0,
+    extra_sections: (dict[int, bytes] | None) = None
 ) -> bytes {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -350,8 +354,27 @@ def write_precompiled_jir(
     if module_key {
         sections[SEC_MODKEY] = module_key.encode('utf-8');
     }
+    if extra_sections {
+        sections.update(extra_sections);
+    }
     section_bytes = write_sections(sections);
     return header + empty_payload + section_bytes;
+}
+
+# Source text from a JIR's optional debug section (sealed dev builds).
+def read_debug_source(data: bytes) -> (str | None) {
+    try {
+        magic_bytes: any = SECTIONS_MAGIC;
+        pos = data.find(magic_bytes, HEADER_SIZE);
+        if pos < 0 {
+            return None;
+        }
+        sections = read_sections(data, pos + len(magic_bytes));
+        src = sections.get(SEC_DEBUG_SRC);
+        return zlib.decompress(src).decode('utf-8') if src is not None else None;
+    } except Exception {
+        return None;
+    }
 }
 
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {

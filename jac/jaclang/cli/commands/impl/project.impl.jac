@@ -1348,6 +1348,89 @@ def _bundle_wheel(config: any, output: str) -> int {
     return 0;
 }
 
+# shutil.copytree ignore callback: drop caches/artifacts from the seal staging copy.
+def _seal_copy_ignore(_dir: str, items: list) -> list {
+    return [
+        it for it in items
+        if it in ("__pycache__", "node_modules", ".jac", "_precompiled")
+    ];
+}
+
+# Produce a portable *sealed image* of the project package (#7135 phase G): the
+# same manifest+JIR format the jac runtime itself is sealed with, so a user app
+# ships source-free and loads via the runtime's SealedImageFinder. This reuses
+# the exact precompiler --seal --strip-sources path; wrapping it into a launcher
+# stub (a standalone `binary` target) rides the zig pack toolchain and lands as
+# a follow-up. The output dir here is a drop-in _precompiled/-bearing package a
+# host jac can `register_image()` + import.
+def _bundle_sealed(config: any, output: str) -> int {
+    import shutil;
+    import sys;
+    import subprocess;
+    import from jaclang.jac0core { ext_registry }
+
+    proj_root = config.project_root;
+    if proj_root is None {
+        console.error("No project root for sealed bundle.");
+        return 1;
+    }
+    name = config.project.name;
+    out_dir = Path(output) / f"{name}-sealed";
+    console.print(f"\n  Sealing {name} → {out_dir}...", style="muted");
+
+    # Seal a COPY so the project's own sources are never stripped. The copy is a
+    # package dir (holds the importable modules); the precompiler's
+    # find_package_dir picks it up from the staging parent.
+    stage = Path(output) / f".{name}-seal-stage";
+    if stage.exists() {
+        shutil.rmtree(stage);
+    }
+    pkg_copy = stage / name;
+    shutil.copytree(proj_root, pkg_copy, ignore=_seal_copy_ignore);
+    # A package needs an __init__; synthesize an empty one if the project omits it.
+    has_init = any((pkg_copy / f).exists() for f in ext_registry.INIT_FILES);
+    if not has_init and not (pkg_copy / "__init__.py").exists() {
+        (pkg_copy / "__init__.jac").write_text("");
+    }
+
+    precompiler = str(
+        Path(sys.prefix) / "jaclang" / "utils" / "precompile_bytecode.jac"
+    );
+    if not Path(precompiler).exists() {
+        import from importlib.util { find_spec }
+        spec = find_spec("jaclang");
+        if spec is not None and spec.submodule_search_locations {
+            precompiler = str(
+                Path(list(spec.submodule_search_locations)[0])
+                / "utils" / "precompile_bytecode.jac"
+            );
+        }
+    }
+    rc = subprocess.call(
+        [sys.executable, "run", precompiler, str(stage), "--seal", "--strip-sources"]
+    );
+    if rc != 0 {
+        console.error("Seal failed; not writing sealed bundle.");
+        shutil.rmtree(stage, ignore_errors=True);
+        return 1;
+    }
+
+    if out_dir.exists() {
+        shutil.rmtree(out_dir);
+    }
+    shutil.move(str(pkg_copy), str(out_dir));
+    shutil.rmtree(stage, ignore_errors=True);
+    console.print(
+        f"  ✔ Sealed image at [cyan]{out_dir}[/cyan] (source-free; _precompiled/MANIFEST.json)",
+        style="success"
+    );
+    console.print(
+        "  Load in a host jac via jaclang.jac0core.sealed.register_image(<dir>/_precompiled).",
+        style="muted"
+    );
+    return 0;
+}
+
 def _bundle_npm(config: any, output: str) -> int {
     import from jaclang.publish.npm_builder { NpmBuilder }
     import from jaclang.publish.npm_sources { NpmBoundaryError }
@@ -1418,10 +1501,13 @@ impl bundle(output: str = "dist", target: str = "wheel") -> int {
         );
         return 1;
     }
+    if target == "sealed" {
+        return _bundle_sealed(config, output);
+    }
     if target not in ("wheel", "npm", "all") {
         console.error(
             f"Unknown bundle target: '{target}'",
-            hint="Use --target wheel, npm, or all."
+            hint="Use --target wheel, npm, sealed, or all."
         );
         return 1;
     }

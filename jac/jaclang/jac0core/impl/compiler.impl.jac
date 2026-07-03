@@ -142,32 +142,37 @@ impl JacCompiler.get_bytecode(
         }
     }
 
-    if (not rebuild) and (not no_precompile) {
-        precompiled_bc = self._get_precompiled_jir_bytecode(full_target);
-        if precompiled_bc is not None {
-            try {
-                import from jaclang.jac0core.jir {
-                    write_precompiled_jir,
-                    FLAG_PRECOMPILED
-                }
-                jir_bytes = write_precompiled_jir(
-                    precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
-                );
-                cache_path.parent.mkdir(parents=True, exist_ok=True);
-
-                import os as _os;
-                tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
-                try {
-                    tmp_path.write_bytes(jir_bytes);
-                    tmp_path.rename(cache_path);
-                } finally {
-                    tmp_path.unlink(missing_ok=True);
-                }
-            } except Exception {
-                ;
+    # Precompiled/sealed bundle lookup. A sealed bundle is source-free and
+    # authoritative, so it applies even under the rebuild/no_precompile dev
+    # knobs (both presuppose a source to recompile); an unsealed cache honors
+    # them.
+    allow_unsealed = (not rebuild) and (not no_precompile);
+    precompiled_bc = self._get_precompiled_jir_bytecode(
+        full_target, allow_unsealed
+    );
+    if precompiled_bc is not None {
+        try {
+            import from jaclang.jac0core.jir {
+                write_precompiled_jir,
+                FLAG_PRECOMPILED
             }
-            return marshal.loads(precompiled_bc);
+            jir_bytes = write_precompiled_jir(
+                precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
+            );
+            cache_path.parent.mkdir(parents=True, exist_ok=True);
+
+            import os as _os;
+            tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+            try {
+                tmp_path.write_bytes(jir_bytes);
+                tmp_path.rename(cache_path);
+            } finally {
+                tmp_path.unlink(missing_ok=True);
+            }
+        } except Exception {
+            ;
         }
+        return marshal.loads(precompiled_bc);
     }
 
     is_internal = actual_program is self._internal_program;
@@ -406,9 +411,12 @@ impl JacCompiler._restore_sections(
     }
 }
 
-impl JacCompiler._get_precompiled_jir_bytecode(full_target: str) -> (bytes | None) {
+impl JacCompiler._get_precompiled_jir_bytecode(
+    full_target: str, allow_unsealed: bool = True
+) -> (bytes | None) {
     import from pathlib { Path as _Path }
     import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL }
+    import from jaclang.jac0core { sealed as _sealed }
     norm_file = os.path.normpath(os.path.abspath(full_target));
     d = os.path.dirname(norm_file);
     pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
@@ -422,10 +430,21 @@ impl JacCompiler._get_precompiled_jir_bytecode(full_target: str) -> (bytes | Non
             rel_path = norm_file[len(norm_root) + 1:];
             jir_rel = os.path.splitext(rel_path)[0] + '.jir';
             jir_path = os.path.join(bundle_dir, pyver, jir_rel);
+            # A sealed bundle is trusted by its build-time manifest and applies
+            # unconditionally (it has no source to recompile); an unsealed cache
+            # must re-hash the on-disk source and defers to the caller's knobs.
+            sealed_img = _sealed.image_for_bundle_dir(bundle_dir);
+            if sealed_img is None and not allow_unsealed {
+                break;
+            }
             if os.path.isfile(jir_path) {
                 try {
                     jir_data = _Path(jir_path).read_bytes();
-                    if jir_matches_source(jir_data, norm_file) {
+                    trusted = (
+                        sealed_img is not None
+                        or jir_matches_source(jir_data, norm_file)
+                    );
+                    if trusted {
                         bc = read_bytecode_only(jir_data);
                         if bc is not None {
                             return patch_co_filenames_bytes(bc, PRECOMPILE_SENTINEL, d);

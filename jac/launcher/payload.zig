@@ -132,7 +132,7 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--seal] [--debug-src]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
@@ -141,6 +141,9 @@ pub fn main(init: std.process.Init) !void {
             var link_source: ?[]const u8 = null;
             var musl_dir: ?[]const u8 = null;
             var precompiled_cache: ?[]const u8 = null;
+            var seal = false;
+            var debug_src = false;
+            var sourceless_py = false;
             var i: usize = 5;
             while (i < n) : (i += 1) {
                 const arg = argv[i];
@@ -158,9 +161,15 @@ pub fn main(init: std.process.Init) !void {
                     musl_dir = arg["--musl=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--precompiled-cache=")) {
                     precompiled_cache = arg["--precompiled-cache=".len..];
+                } else if (std.mem.eql(u8, arg, "--seal")) {
+                    seal = true;
+                } else if (std.mem.eql(u8, arg, "--debug-src")) {
+                    debug_src = true;
+                } else if (std.mem.eql(u8, arg, "--sourceless-py")) {
+                    sourceless_py = true;
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, precompiled_cache);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, precompiled_cache, seal, debug_src, sourceless_py);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -801,6 +810,20 @@ fn mkPayload(
     // stale or partial dir is harmless (it only misses reuse), which is why
     // CI can restore it with prefix-fallback keys unlike the binary cache.
     precompiled_cache: ?[]const u8,
+    // Seal the runtime (issue #7135): freeze the jac0core bootstrap layer, emit
+    // _precompiled/MANIFEST.json, and strip the sealed .jac sources so the
+    // payload boots source-free from JIR. Strict: any precompile failure aborts
+    // the build rather than shipping a half-sealed tree.
+    seal: bool,
+    // Embed zlib source text in each sealed .jir so tracebacks still show source
+    // lines with no .jac on disk (dev sealed builds); release omits it.
+    debug_src: bool,
+    // Compile the bundled CPython stdlib + jaclang .py to sourceless unchecked-
+    // hash .pyc (PEP 552) and drop the .py (#7135 phase E). Safe because the
+    // interpreter is pinned to the exact bundled CPython. OPT-IN: it needs a
+    // full-binary e2e to validate (inspect.getsource / data-adjacent stdlib
+    // modules), which the CI build provides -- not on by default with seal.
+    sourceless_py: bool,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -941,7 +964,7 @@ fn mkPayload(
                 try copyTree(io, gpa, a, seed, site_pre, skipNone);
             } else |_| {} // no seed yet; first build populates it below
         }
-        try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
+        try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site, seal, debug_src);
         if (precompiled_cache) |pc| {
             Dir.cwd().deleteTree(io, pc) catch {};
             var fresh = try Dir.cwd().openDir(io, site_pre, .{ .iterate = true });
@@ -960,6 +983,10 @@ fn mkPayload(
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir);
 
+    if (sourceless_py) {
+        try sourcelessPy(io, gpa, a, parent_env, py, pbs_py_dir, stage);
+    }
+
     log("==> packing tar | gzip", .{});
     try tarGzDir(io, gpa, a, stage, out);
     log("==> payload: {s}", .{out});
@@ -977,10 +1004,21 @@ fn resolvePython(io: Io, a: Allocator, pbs_py_dir: []const u8) ![]const u8 {
 /// Precompile jaclang -> _precompiled JIR for a fast first run. The precompiler
 /// intentionally cannot bytecode-compile a few core modules and exits non-zero;
 /// success is judged by the JIR count, not the exit code.
-fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, py: []const u8, pbs_py_dir: []const u8, site: []const u8) !void {
+fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, py: []const u8, pbs_py_dir: []const u8, site: []const u8, seal: bool, debug_src: bool) !void {
     const pc = try std.fmt.allocPrint(a, "{s}/jaclang/utils/precompile_bytecode.jac", .{site});
     if (!fileExists(io, pc)) return;
-    log("==> precompiling jaclang -> _precompiled JIR (fast first run)", .{});
+    if (seal) {
+        log("==> precompiling + SEALING jaclang (source-free JIR image, #7135)", .{});
+    } else {
+        log("==> precompiling jaclang -> _precompiled JIR (fast first run)", .{});
+    }
+
+    // Flags forwarded to precompile_bytecode.jac (after the site positional).
+    // Sealing implies --strip-sources so the payload ships no importable .jac.
+    const flags = try std.fmt.allocPrint(a, "{s}{s}", .{
+        if (seal) ", '--seal', '--strip-sources'" else "",
+        if (seal and debug_src) ", '--debug-src'" else "",
+    });
 
     const boot = try std.fmt.allocPrint(a, "{s}/precompile_boot.py", .{site});
     try Dir.cwd().writeFile(io, .{
@@ -988,11 +1026,11 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
         .data = try std.fmt.allocPrint(a,
             \\import sys
             \\import _jac_finder; _jac_finder.install()
-            \\sys.argv = ['jac', 'run', r'''{s}''', r'''{s}''']
+            \\sys.argv = ['jac', 'run', r'''{s}''', r'''{s}'''{s}]
             \\from jaclang.jac0core.cli_boot import start_cli
             \\start_cli()
             \\
-        , .{ pc, site }),
+        , .{ pc, site, flags }),
     });
 
     // Controlled, hermetic env (clone parent, then override) -- mirrors the env
@@ -1019,13 +1057,85 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
 
     _ = runChild(io, &.{ py, "-S", boot }, &env, true); // non-zero exit is by design
 
-    const jir = countJir(io, gpa, try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site}));
+    const pre_dir = try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site});
+    const jir = countJir(io, gpa, pre_dir);
     if (jir >= 300) {
         log("   _precompiled: {d} JIR generated (a few core modules compile at runtime by design)", .{jir});
     } else {
         // Below the healthy floor means the precompiler crashed, not the handful
         // of by-design skips. Fail rather than ship a slow cold-start binary.
         die("mkpayload: only {d} JIR produced (expected >=300); precompiler likely crashed.", .{jir});
+    }
+    if (seal) {
+        // Seal is strict: the precompiler writes MANIFEST.json only on a clean
+        // seal (zero module + bootstrap failures) and strips the .jac sources.
+        // Its absence means the seal aborted -- never ship a half-sealed tree.
+        const manifest = try std.fmt.allocPrint(a, "{s}/MANIFEST.json", .{pre_dir});
+        if (!fileExists(io, manifest)) {
+            die("mkpayload: seal produced no MANIFEST.json; the seal failed (see log above).", .{});
+        }
+        log("   sealed: MANIFEST.json present; payload boots source-free from JIR.", .{});
+    }
+}
+
+/// Compile the staged tree to sourceless unchecked-hash .pyc (PEP 552) and drop
+/// the .py, so the payload ships bytecode-only Python too (#7135 phase E). Runs
+/// `compileall` with `--invalidation-mode unchecked-hash` (the pinned bundled
+/// CPython never revalidates), then relocates each `X/__pycache__/m.cpython-*.pyc`
+/// to the sourceless `X/m.pyc` and removes `X/m.py`. Best-effort per file; a
+/// compile failure leaves that module as .py (still importable).
+fn sourcelessPy(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, py: []const u8, pbs_py_dir: []const u8, stage: []const u8) !void {
+    log("==> compiling stdlib + jaclang .py -> sourceless .pyc (#7135 phase E)", .{});
+    const stdlib = try std.fmt.allocPrint(a, "{s}/python/lib/python{s}", .{ stage, py_ver });
+    const site = try std.fmt.allocPrint(a, "{s}/site", .{stage});
+
+    var env = try cloneEnv(gpa, parent_env);
+    defer env.deinit();
+    try env.put("PYTHONHOME", try std.fmt.allocPrint(a, "{s}/install", .{pbs_py_dir}));
+    // Sourceless load resolves m.pyc beside where m.py was, so keep lib-dynload
+    // and encodings compiling; -o2 strips docstrings+asserts for the smallest
+    // image. -q quiet, -f force, unchecked-hash so first run never re-stats.
+    _ = runChild(io, &.{
+        py,                    "-S",              "-m",           "compileall",
+        "-q",                  "-f",              "-o",           "2",
+        "--invalidation-mode", "unchecked-hash",  stdlib,         site,
+    }, &env, true);
+
+    try relocateSourceless(io, gpa, a, stdlib);
+    try relocateSourceless(io, gpa, a, site);
+}
+
+/// Walk `root`; for every `.py` with a matching `__pycache__/<stem>.<tag>.pyc`,
+/// move the .pyc to the sourceless location `<dir>/<stem>.pyc` and delete the
+/// .py. Leaves .py whose compile was skipped (no .pyc) untouched.
+fn relocateSourceless(io: Io, gpa: Allocator, a: Allocator, root: []const u8) !void {
+    // __pycache__ tag: py_ver "3.14" -> "cpython-314" (dot stripped).
+    const nodot = try std.mem.replaceOwned(u8, a, py_ver, ".", "");
+    const tag = try std.fmt.allocPrint(a, "cpython-{s}", .{nodot});
+    var dir = Dir.cwd().openDir(io, root, .{ .iterate = true }) catch return;
+    defer dir.close(io);
+    var walker = try dir.walk(gpa);
+    defer walker.deinit();
+    while (try walker.next(io)) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".py")) continue;
+        const stem = entry.path[0 .. entry.path.len - 3];
+        const d = std.fs.path.dirname(entry.path) orelse "";
+        const base = std.fs.path.basename(stem);
+        const pyc = if (d.len == 0)
+            try std.fmt.allocPrint(a, "__pycache__/{s}.{s}.pyc", .{ base, tag })
+        else
+            try std.fmt.allocPrint(a, "{s}/__pycache__/{s}.{s}.pyc", .{ d, base, tag });
+        const dst = try std.fmt.allocPrint(a, "{s}.pyc", .{stem});
+        dir.rename(pyc, dst, io) catch continue; // no .pyc -> keep the .py
+        dir.deleteFile(io, entry.path) catch {};
+    }
+    // Drop now-empty __pycache__ dirs (best-effort).
+    var w2 = dir.walk(gpa) catch return;
+    defer w2.deinit();
+    while (w2.next(io) catch null) |e| {
+        if (e.kind == .directory and std.mem.eql(u8, std.fs.path.basename(e.path), "__pycache__")) {
+            dir.deleteTree(io, e.path) catch {};
+        }
     }
 }
 

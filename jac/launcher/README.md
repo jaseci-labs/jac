@@ -78,9 +78,23 @@ archive is only a payload input; it is never linked.
   without the bundle). The precompiler intentionally leaves a few core modules
   (`jir`, `archetype`, `modresolver`) to compile at runtime and exits non-zero;
   the tool judges success by JIR produced (>=300), not the exit code.
-  - Cold start is then dominated by payload extraction + first-time JIR cache
-    laundering, not compilation. Sealing the runtime (shipping JIR-only, no
-    `.jac`/live compile of the bootstrap layer) is the further win -- issue
-    #6852 Phase 4.
+- **Sealed runtime (default; #6852 Phase 4 / #7135).** A release `zig build`
+  payload ships **no importable `.jac` sources** -- it boots source-free from a
+  sealed JIR *image*: `_precompiled/MANIFEST.json` maps module fullnames to JIR
+  (full compiler) + frozen `.jbc` (the jac0core bootstrap layer, incl.
+  `modresolver`), and a `SealedImageFinder` tier resolves modules by name with
+  no filesystem `.jac` probing and no per-load source re-hash. Trust moves to
+  build time (the manifest) + the existing payload sha256 trailer; the runtime
+  fail-closes on a manifest/tag/JIR-format mismatch rather than degrading to
+  live compilation. Sealing is strict: any precompile failure aborts the build.
+  - `-Dno-seal` ships `.jac` sources (the old shape) for debugging;
+    `-Ddev`/`-Djaclang-dir` (linked source) and `-Dskip-precompile` are inert
+    for sealing. `-Ddebug-src` embeds source text in each JIR so tracebacks
+    still show source lines source-free (via the loader's `get_source` +
+    `linecache`); release omits it. `-Dsourceless-py` (opt-in) additionally
+    ships the stdlib + jaclang `.py` as sourceless unchecked-hash `.pyc`.
+  - Same image, two products: `jac bundle --target sealed` emits the identical
+    manifest+JIR image for a **user app** (source-free), loadable in a host jac
+    via `jaclang.jac0core.sealed.register_image(<dir>/_precompiled)`.
 - **Linux**: the staged shared lib is named `libpython3.14.so` (pbs may ship
   `libpython3.14.so.1.0` -- `mkpayload` dereferences it to the bare name).

@@ -25,6 +25,7 @@ import jaclang.jac0 as _jac0_mod
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
 from jaclang.jac0core import ext_registry  # noqa: E402
+from jaclang.jac0core import sealed as _sealed  # noqa: E402
 from jaclang.jac0core.cache_paths import get_bootstrap_cache_dir  # noqa: E402
 
 _jac0_source_path = getattr(_jac0_mod, "__file__", "")
@@ -99,15 +100,23 @@ def _bootstrap_compile(
     return code
 
 
-# Bootstrap modresolver.jac with jac0 before JacMetaImporter is registered.
-# This module must be available for find_spec()/get_code(), but normal
-# .jac imports are not yet operational at this point.
+# Bootstrap modresolver.jac before JacMetaImporter is registered. This module
+# must be available for find_spec()/get_code(), but normal .jac imports are not
+# yet operational at this point. In a sealed image (source-free), its code
+# object is served frozen from the manifest; otherwise jac0 transpiles it live.
 _jac0core_dir = os.path.join(os.path.dirname(__file__), "jac0core")
 _modresolver_jac = os.path.join(_jac0core_dir, "modresolver.jac")
-with open(_modresolver_jac, encoding="utf-8") as _f:
-    _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
+_frozen_modresolver = _sealed.find_module("jaclang.jac0core.modresolver")
+if _frozen_modresolver is not None and _frozen_modresolver[1] == "bootstrap":
+    _mr_image = _frozen_modresolver[0]
+    _modresolver_code = _mr_image.bootstrap_code("jaclang.jac0core.modresolver")
+    _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[3])
+else:
+    with open(_modresolver_jac, encoding="utf-8") as _f:
+        _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
+    _modresolver_origin = _modresolver_jac
 _modresolver = types.ModuleType("jaclang.jac0core.modresolver")
-_modresolver.__file__ = _modresolver_jac
+_modresolver.__file__ = _modresolver_origin
 _modresolver.__package__ = "jaclang.jac0core"
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
 sys.modules["jaclang.jac0core.modresolver"] = _modresolver
@@ -186,7 +195,32 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         fullname, module_file, loader=self
                     )
 
-        return None
+        # Sealed fallback: no source on disk, but the manifest may carry this
+        # module as precompiled JIR (or frozen bootstrap). Synthesize a spec at
+        # the module's virtual origin so exec_module's existing machinery works.
+        return self._sealed_spec(fullname)
+
+    def _sealed_spec(
+        self, fullname: str
+    ) -> importlib.machinery.ModuleSpec | None:
+        found = _sealed.find_module(fullname)
+        if found is None:
+            return None
+        image, kind, entry, src_rel = found
+        origin = image.virtual_origin(src_rel)
+        is_pkg = (
+            entry.get("package", False) if kind == "jir"
+            else os.path.basename(src_rel) in ext_registry.INIT_FILES
+        )
+        spec = importlib.machinery.ModuleSpec(
+            fullname, self, origin=origin, is_package=is_pkg
+        )
+        # Populate __file__ from the (virtual) origin so tracebacks and code
+        # that inspects __file__ behave as if the source were on disk.
+        spec._set_fileattr = True
+        if is_pkg:
+            spec.submodule_search_locations = [os.path.dirname(origin)]
+        return spec
 
     def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType | None:
         """Create the module."""
@@ -199,6 +233,15 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         They are compiled with the lightweight jac0 transpiler rather than
         the full Jac compiler, which depends on them.
         """
+        # Sealed image: the bootstrap code object is frozen in the manifest;
+        # there is no .jac source to transpile.
+        frozen = _sealed.find_module(module.__name__)
+        if frozen is not None and frozen[1] == "bootstrap":
+            code = frozen[0].bootstrap_code(module.__name__)
+            if code is not None:
+                exec(code, module.__dict__)  # noqa: S102
+                return
+
         with open(file_path, encoding="utf-8") as f:
             jac_source = f.read()
 
@@ -305,6 +348,16 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                     logging.getLogger(__name__).debug(
                         f"Native wrapper install failed for {file_path}: {e}"
                     )
+
+    def get_source(self, fullname: str) -> str | None:
+        """Return module source text when available.
+
+        For sealed modules the ``.jac`` file is absent, but a ``--debug-src``
+        image embeds the source in the JIR; ``linecache`` calls this to render
+        source lines in tracebacks. Returns None when no debug source exists
+        (release images), which leaves tracebacks with file:line but no echo.
+        """
+        return _sealed.source_for(fullname)
 
     def get_code(self, fullname: str) -> object | None:
         """Get the code object for a module.
