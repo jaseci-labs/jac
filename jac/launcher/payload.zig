@@ -64,7 +64,7 @@ const BUN_BASE = "https://github.com/oven-sh/bun/releases/download";
 
 const MAX_PATH = Dir.max_path_bytes;
 
-const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", mkpayload, @"typeshed-sha" };
+const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", @"build-wasm-libc", mkpayload, @"typeshed-sha" };
 
 // The pinned LLVM release + per-platform slice table lives in llvm_release.zig
 // (shared with build.zig, so the fetch and the build can't drift).
@@ -127,6 +127,10 @@ pub fn main(init: std.process.Init) !void {
             if (n < 5) die("usage: payload build-musl <os-arch> <dest-dir> <zig-exe>", .{});
             try buildMusl(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4]);
         },
+        .@"build-wasm-libc" => {
+            if (n < 5) die("usage: payload build-wasm-libc <wasm-rt-src-dir> <dest-dir> <zig-exe>", .{});
+            try buildWasmLibc(io, gpa, a, argv[2], argv[3], argv[4]);
+        },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
             try fetchTypeshed(io, gpa, a, argv[2]);
@@ -140,6 +144,7 @@ pub fn main(init: std.process.Init) !void {
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
             var musl_dir: ?[]const u8 = null;
+            var wasm_libc_dir: ?[]const u8 = null;
             var precompiled_cache: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
@@ -156,11 +161,13 @@ pub fn main(init: std.process.Init) !void {
                     link_source = arg["--link-source=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--musl=")) {
                     musl_dir = arg["--musl=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--wasm-libc=")) {
+                    wasm_libc_dir = arg["--wasm-libc=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--precompiled-cache=")) {
                     precompiled_cache = arg["--precompiled-cache=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, precompiled_cache);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -629,6 +636,95 @@ fn buildMusl(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Envi
     if (staged < 4) die("build-musl: incomplete harvest ({d}/6 artifacts)", .{staged});
 }
 
+// ========================================================== build-wasm-libc ===
+
+/// Compile the in-repo wasm_rt libc (vendored musl/wasi-libc subset + the jac
+/// allocator/io/abi adapters) to LLVM bitcode for wasm32, one .bc per source
+/// file, into `dest`. wasm_build.jac links these into every na->wasm module so
+/// pure-compute libc never becomes a browser import (#7048). Like build-musl
+/// this is BUILT from the bundled Zig (its clang emits wasm32 bitcode that the
+/// jacllvm LLVM reads); unlike musl the output is target-independent, so there
+/// is one set for all platforms. Idempotent by file count — delete `dest` to
+/// force a rebuild after editing wasm_rt sources.
+fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, dest: []const u8, zig_exe: []const u8) !void {
+    // Collect sources: jac_*.c at the wasm_rt root, then everything under
+    // vendor/. Output names flatten the vendor path (string/strlen.c ->
+    // string_strlen.bc) to match wasm_build.jac's flat directory scan.
+    var srcs: std.ArrayList([]const u8) = .empty; // absolute-ish source paths
+    defer srcs.deinit(gpa);
+    var outs: std.ArrayList([]const u8) = .empty; // matching .bc basenames
+    defer outs.deinit(gpa);
+    {
+        var root = Dir.cwd().openDir(io, src_root, .{ .iterate = true }) catch
+            die("build-wasm-libc: wasm_rt source dir missing at {s}", .{src_root});
+        defer root.close(io);
+        var it = root.iterate();
+        while (it.next(io) catch null) |entry| {
+            if (entry.kind != .file) continue;
+            if (!std.mem.startsWith(u8, entry.name, "jac_") or !std.mem.endsWith(u8, entry.name, ".c")) continue;
+            try srcs.append(gpa, try std.fmt.allocPrint(a, "{s}/{s}", .{ src_root, entry.name }));
+            try outs.append(gpa, try std.fmt.allocPrint(a, "{s}bc", .{entry.name[0 .. entry.name.len - 1]}));
+        }
+        const vendor = try std.fmt.allocPrint(a, "{s}/vendor", .{src_root});
+        var vdir = Dir.cwd().openDir(io, vendor, .{ .iterate = true }) catch
+            die("build-wasm-libc: vendor dir missing at {s}", .{vendor});
+        defer vdir.close(io);
+        var walker = vdir.walk(gpa) catch die("build-wasm-libc: vendor walk failed", .{});
+        defer walker.deinit();
+        while (walker.next(io) catch null) |entry| {
+            if (entry.kind != .file) continue;
+            if (!std.mem.endsWith(u8, entry.path, ".c")) continue;
+            try srcs.append(gpa, try std.fmt.allocPrint(a, "{s}/{s}", .{ vendor, entry.path }));
+            const flat = try a.dupe(u8, entry.path);
+            for (flat) |*ch| {
+                if (ch.* == '/' or ch.* == '\\') ch.* = '_';
+            }
+            try outs.append(gpa, try std.fmt.allocPrint(a, "{s}bc", .{flat[0 .. flat.len - 1]}));
+        }
+    }
+    if (srcs.items.len == 0) die("build-wasm-libc: no sources found under {s}", .{src_root});
+
+    try Dir.cwd().createDirPath(io, dest);
+    // Idempotent: complete set already present -> nothing to do.
+    var have: usize = 0;
+    for (outs.items) |name| {
+        if (fileExists(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, name }))) have += 1;
+    }
+    if (have == outs.items.len) {
+        log("==> wasm libc bitcode already vendored in {s}; skipping", .{dest});
+        return;
+    }
+
+    log("==> compiling {d} wasm_rt source(s) to bitcode via {s} ...", .{ srcs.items.len, zig_exe });
+    // wasm32-wasi supplies the public libc headers; the vendored internal
+    // headers ride -I flags. -fno-builtin keeps libc-defining TUs from
+    // folding into themselves; -g0 because debug relocs would bloat objects
+    // the in-house WasmLinker then has to skip.
+    const prelude = try std.fmt.allocPrint(a, "{s}/prelude.h", .{src_root});
+    const inc_include = try std.fmt.allocPrint(a, "-I{s}/vendor/include", .{src_root});
+    const inc_internal = try std.fmt.allocPrint(a, "-I{s}/vendor/internal", .{src_root});
+    const inc_arch = try std.fmt.allocPrint(a, "-I{s}/vendor/arch/wasm32", .{src_root});
+    const inc_private = try std.fmt.allocPrint(a, "-I{s}/vendor/private", .{src_root});
+    const inc_math = try std.fmt.allocPrint(a, "-I{s}/vendor/math", .{src_root});
+    var built: usize = 0;
+    for (srcs.items, outs.items) |src, out_name| {
+        const out_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, out_name });
+        if (fileExists(io, out_path)) continue;
+        if (!runChild(io, &.{
+            zig_exe,                                                                       "cc",         "-target",    "wasm32-wasi",  "-O2",      "-g0",
+            "-w",                                                                          "-c",         "-emit-llvm", "-fno-builtin", "-include", prelude,
+            inc_include,                                                                   inc_internal, inc_arch,     inc_private,    inc_math,   "-D__wasilibc_printscan_no_long_double",
+            "-D__wasilibc_printscan_full_support_option=\"long double support disabled\"", "-o",         out_path,     src,
+        }, null, false))
+            die("build-wasm-libc: zig cc failed for {s}", .{src});
+        built += 1;
+    }
+    // The merged-module cache is derived from the parts; a fresh compile
+    // invalidates it.
+    Dir.cwd().deleteFile(io, try std.fmt.allocPrint(a, "{s}/_merged.bc", .{dest})) catch {};
+    log("==> compiled {d} wasm libc bitcode file(s) -> {s}", .{ built, dest });
+}
+
 /// Extract the single zip member whose name ends with `suffix` from an in-memory
 /// zip, returning its decompressed bytes (caller frees). Reuses the central-
 /// directory parsing helpers from the llvm-slice path; bun's zips are small so
@@ -793,6 +889,11 @@ fn mkPayload(
     // fully static-link Linux executables against musl at `nacompile` time, with
     // no toolchain. Null for mac/windows builds (musl is Linux-only).
     musl_dir: ?[]const u8,
+    // The vendored wasm32 libc bitcode dir (payload build-wasm-libc output).
+    // Bundled so an installed binary links pure-compute libc INTO na->wasm
+    // modules instead of leaking env imports (#7048). Target-independent, so
+    // every platform's payload carries the same set.
+    wasm_libc_dir: ?[]const u8,
     // Persistent JIR precompile cache dir. When set, site/jaclang/_precompiled
     // is seeded from it before the precompile and the refreshed tree is copied
     // back after -- the precompiler validates every seeded .jir by its
@@ -958,7 +1059,7 @@ fn mkPayload(
     Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/__pycache__", .{site})) catch {};
     _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "--target", site }, null, false);
 
-    try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir);
+    try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
 
     log("==> packing tar | gzip", .{});
     try tarGzDir(io, gpa, a, stage, out);
@@ -1042,7 +1143,7 @@ fn countJir(io: Io, gpa: Allocator, dir_path: []const u8) usize {
 }
 
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
-fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8) !void {
+fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8, wasm_libc_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
     const lib_dst = try std.fmt.allocPrint(a, "{s}/python/lib", .{stage});
     try Dir.cwd().createDirPath(io, lib_dst);
@@ -1105,6 +1206,10 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // Vendored static-musl runtime, so an installed binary can fully static-link
     // Linux executables against musl at `nacompile` time (no glibc/loader dep).
     if (musl_dir) |md| try stageMusl(io, a, md, stage);
+
+    // Vendored wasm32 libc bitcode, so an installed binary links libc into
+    // na->wasm modules (in-module libc + jac_host1 import contract, #7048).
+    if (wasm_libc_dir) |wd| try stageWasmLibc(io, a, wd, stage);
 }
 
 /// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names
@@ -1190,6 +1295,37 @@ fn stageMusl(io: Io, a: Allocator, musl_dir: []const u8, stage: []const u8) !voi
         staged += 1;
     }
     log("==> staged {d} musl runtime artifact(s) -> python/floor/{s}/musl", .{ staged, osarch });
+}
+
+/// Stage the vendored wasm32 libc bitcode into the payload so an installed
+/// binary links libc into na->wasm modules at build time (in-module libc +
+/// jac_host1 import contract, #7048). Lands at `python/floor/wasm32/libc/`,
+/// exactly where wasm_build.jac's _wasm_libc_dir looks in a shipped binary;
+/// NOT arch-keyed — bitcode for wasm32 is the same on every build host. The
+/// derived `_merged.bc` cache is skipped: it is regenerated on first use.
+fn stageWasmLibc(io: Io, a: Allocator, wasm_libc_dir: []const u8, stage: []const u8) !void {
+    const dst = try std.fmt.allocPrint(a, "{s}/python/floor/wasm32/libc", .{stage});
+    try Dir.cwd().createDirPath(io, dst);
+    var dir = Dir.cwd().openDir(io, wasm_libc_dir, .{ .iterate = true }) catch
+        die("wasm-libc staging: dir missing at {s} (run `zig build vendor-wasm-libc`)", .{wasm_libc_dir});
+    defer dir.close(io);
+    var staged: usize = 0;
+    var it = dir.iterate();
+    while (it.next(io) catch null) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".bc")) continue;
+        if (std.mem.eql(u8, entry.name, "_merged.bc")) continue;
+        try Dir.cwd().copyFile(
+            try std.fmt.allocPrint(a, "{s}/{s}", .{ wasm_libc_dir, entry.name }),
+            Dir.cwd(),
+            try std.fmt.allocPrint(a, "{s}/{s}", .{ dst, entry.name }),
+            io,
+            .{},
+        );
+        staged += 1;
+    }
+    log("==> staged {d} wasm libc bitcode file(s) -> python/floor/wasm32/libc", .{staged});
+    if (staged == 0) die("wasm-libc staging: no .bc files in {s}", .{wasm_libc_dir});
 }
 
 /// Locate certifi's `cacert.pem` in the pbs tree (pip vendors it). Tries the
