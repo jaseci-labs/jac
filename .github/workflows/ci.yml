@@ -1077,7 +1077,7 @@ jobs:
   # runner's minimal kernel lacks (microk8s' calico felix can't come up there).
   # Not a required check.
   k8s-real-e2e:
-    name: kind real-app smoke
+    name: microservice e2e (k8s)
     needs: changes
     if: >-
       github.event_name != 'push' &&

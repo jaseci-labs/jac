@@ -95,7 +95,8 @@ YAML
     # "mkdir: can't create directory '/jac-bundles/bundles/': Permission denied".
     # microk8s' hostpath-provisioner makes its dir world-writable, so match that
     # with a one-shot root pod that opens the path up (runs in the privileged
-    # namespace so the hostPath mount is admitted).
+    # namespace so the hostPath mount is admitted). 0777 is safe here: this is an
+    # ephemeral single-node test cluster torn down at the end of the run.
     kubectl -n "${NAMESPACE}" delete pod jac-rwx-perms --ignore-not-found >/dev/null 2>&1 || true
     kubectl -n "${NAMESPACE}" apply -f - <<YAML
 apiVersion: v1
