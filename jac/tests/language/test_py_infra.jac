@@ -15,6 +15,7 @@ import shutil;
 import importlib;
 import pytest;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from unittest.mock { patch }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
@@ -29,8 +30,7 @@ import from jaclang.jac0core.helpers {
 }
 import tomllib;
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      EXAMPLES = os.path.join(JAC_ROOT, "examples");
 
 # Helper function to create files within tests
@@ -455,32 +455,64 @@ test "walker dynamic update" {
     }
 }
 
-test "import from site packages" {
+test "import jac module from a site-packages dir on sys.path" {
+    # A project's .jac/venv site-packages is placed on sys.path (as _jac_finder
+    # does), so a .jac module installed there must be importable. This is the
+    # hermetic replacement for the old site.getsitepackages() lookup.
     Jac.attach_program(JacProgram());
     with tempfile.TemporaryDirectory() as tmpdir {
-        # Simulate site-packages directory structure
         mock_site_dir = os.path.join(tmpdir, "site-packages");
         os.makedirs(mock_site_dir);
-        # Create a module within the simulated site-packages
         site_mod_content = 'with entry { "Site package module loaded!" |> print; }';
         create_temp_jac_file(site_mod_content, mock_site_dir, "site_pkg_mod.jac");
-        # Create the importing script in the main temp directory
         importer_content = "import site_pkg_mod;";
         _ = create_temp_jac_file(importer_content, tmpdir, "importer_site.jac");
-        with patch("site.getsitepackages", return_value=[mock_site_dir]) {
-            captured = io.StringIO();
-            old_stdout = sys.stdout;
-            sys.stdout = captured;
-            original_cwd = os.getcwd();
+        sys.path.insert(0, mock_site_dir);
+        captured = io.StringIO();
+        old_stdout = sys.stdout;
+        sys.stdout = captured;
+        original_cwd = os.getcwd();
+        try {
+            Jac.jac_import("importer_site", base_path=tmpdir);
+        } finally {
+            os.chdir(original_cwd);
+            sys.stdout = old_stdout;
+            if mock_site_dir in sys.path {
+                sys.path.remove(mock_site_dir);
+            }
+        }
+        stdout_value = captured.getvalue();
+        assert "Site package module loaded!" in stdout_value;
+    }
+}
+
+test "host site-packages are NOT consulted for jac imports" {
+    # Hermeticity: a .jac module reachable only via the host's system/user
+    # site-packages (and NOT on sys.path) must be unresolvable -- third-party
+    # code lives only in the project venv.
+    Jac.attach_program(JacProgram());
+    with tempfile.TemporaryDirectory() as tmpdir {
+        host_site = os.path.join(tmpdir, "host-site-packages");
+        os.makedirs(host_site);
+        create_temp_jac_file(
+            'with entry { "LEAKED!" |> print; }', host_site, "host_only_mod.jac"
+        );
+        importer_content = "import host_only_mod;";
+        _ = create_temp_jac_file(importer_content, tmpdir, "importer_host.jac");
+        original_cwd = os.getcwd();
+        raised = False;
+        with patch("site.getsitepackages", return_value=[host_site]), patch(
+            "site.getusersitepackages", return_value=host_site
+        ) {
             try {
-                Jac.jac_import("importer_site", base_path=tmpdir);
+                Jac.jac_import("importer_host", base_path=tmpdir);
+            } except Exception {
+                raised = True;
             } finally {
                 os.chdir(original_cwd);
-                sys.stdout = old_stdout;
             }
-            stdout_value = captured.getvalue();
-            assert "Site package module loaded!" in stdout_value;
         }
+        assert raised , "Module in host site-packages should NOT be importable";
     }
 }
 
@@ -578,25 +610,6 @@ test "by operator" {
     assert "by" in stdout_value.lower();
     assert "not" in stdout_value.lower();
     assert "implemented" in stdout_value.lower();
-}
-
-test "sitecustomize meta importer" {
-    Jac.attach_program(JacProgram());
-    with tempfile.TemporaryDirectory() as tmpdir {
-        Path(tmpdir, "mymod.jac").write_text('with entry {print("via meta");}');
-        env = os.environ.copy();
-        project_root = str(Path(JAC_ROOT));
-        env["PYTHONPATH"] = os.pathsep.join([project_root, tmpdir]);
-        proc = subprocess.run(
-            [sys.executable, "-c", "import mymod"],
-            capture_output=True,
-            text=True,
-            cwd=tmpdir,
-            env=env
-        );
-        assert proc.returncode == 0 , proc.stderr;
-        assert proc.stdout.strip() == "via meta";
-    }
 }
 
 # -- read_file_with_encoding tests --

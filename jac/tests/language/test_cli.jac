@@ -11,6 +11,7 @@ import sys;
 import tempfile;
 import traceback;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.cli.commands {
     analysis,
@@ -26,8 +27,7 @@ import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
 import from jaclang.project.config { set_config }
 import from jaclang.runtimelib.builtin { printgraph }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _template_state = {"initialized": False},
      _CONFIG_TOML = (
          '[project]\nname = "test-project"\nversion = "1.0.0"\n'
@@ -436,8 +436,9 @@ test "jac test err" {
     sys.stdout = sys.__stdout__;
     sys.stderr = sys.__stderr__;
     stdout_value = captured_output.getvalue();
-    path_to_file = fixture_path("baddy.test.jac");
-    assert f'"{path_to_file}", line 2,' in stdout_value;
+    # pytest points the failure at <file>:<line> -- the deliberate error is on
+    # line 2 of the base module's test annex.
+    assert "baddy.test.jac:2" in stdout_value;
 }
 
 test "jac ast tool pass template" {
@@ -510,38 +511,41 @@ test "del clean" {
 }
 
 test "run test" {
-    captured_stderr = io.StringIO();
-    old_stderr = sys.stderr;
-    sys.stderr = captured_stderr;
-
     captured = io.StringIO();
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
         analysis.test(fixture_path("run_test.jac"), maxfail=2);
-        stderr = captured_stderr.getvalue();
+        out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
-        sys.stderr = old_stderr;
     }
 
-    assert "Ran 3 tests" in stderr;
-    assert "FAILED (failures=2)" in stderr;
-    assert "F.F" in stderr;
+    # jac test routes through pytest, reporting on stdout; --maxfail 2 stops the
+    # run after the 2nd failure.
+    assert "2 failed" in out;
+    assert "run_test.jac" in out;
 }
 
 test "run test with directory filter" {
+    # Directory discovery + glob filter over fixture files is native-runner
+    # behavior (the pytest collector skips fixtures/ and non-test_ names).
     fixtures_dir = fixture_path("");
+    env = dict(os.environ);
+    env["JAC_TEST_NATIVE"] = "1";
     process = subprocess.Popen(
         ["jac", "test", "-d", fixtures_dir, "-f", "circle*", "-x"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        encoding="utf-8",
+        env=env
     );
     (stdout, stderr) = process.communicate();
-    assert "circle" in stdout;
-    assert "circle_purfe.test" not in stdout;
-    assert "circle_pure.impl" not in stdout;
+    combined = stdout + stderr;
+    assert "circle" in combined;
+    assert "circle_purfe.test" not in combined;
+    assert "circle_pure.impl" not in combined;
 }
 
 test "discovery prunes hidden and pycache dirs" {
@@ -561,11 +565,17 @@ test "discovery prunes hidden and pycache dirs" {
         Path(os.path.join(tmp_dir, "__pycache__", "skip_test.jac")).write_text(
             'test "pruned_pyc" {\n    assert False;\n}\n'
         );
+        # Directory discovery + pruning of hidden/cache dirs is native-runner
+        # behavior (the pytest collector only takes test_ names, not good_test.jac).
+        env = dict(os.environ);
+        env["JAC_TEST_NATIVE"] = "1";
         process = subprocess.Popen(
             ["jac", "test", "-d", tmp_dir],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            encoding="utf-8",
+            env=env
         );
         (stdout, stderr) = process.communicate();
         combined = stdout + stderr;
@@ -582,19 +592,30 @@ test "discovery prunes hidden and pycache dirs" {
 }
 
 test "run test with filter maxfail" {
+    # Glob filter over a discovered directory is native-runner behavior.
+    env = dict(os.environ);
+    env["JAC_TEST_NATIVE"] = "1";
     process = subprocess.Popen(
         ["jac", "test", "-f", "*run_test.jac", "-m", "3"],
         cwd=fixture_path(""),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        encoding="utf-8",
+        env=env
     );
     (stdout, stderr) = process.communicate();
-    assert "...F" in stderr;
-    assert "F.F" in stderr;
+    combined = stdout + stderr;
+    assert "...F" in combined;
+    assert "F.F" in combined;
 }
 
 test "run specific test only" {
+    # Asserting on a passing test's own printed output needs the native runner
+    # (pytest captures/suppresses stdout of passing tests).
+    old_native = os.environ.get("JAC_TEST_NATIVE");
+    os.environ["JAC_TEST_NATIVE"] = "1";
+
     captured_stderr = io.StringIO();
     old_stderr = sys.stderr;
     sys.stderr = captured_stderr;
@@ -609,6 +630,11 @@ test "run specific test only" {
     } finally {
         sys.stdout = old_stdout;
         sys.stderr = old_stderr;
+        if old_native is None {
+            del os.environ["JAC_TEST_NATIVE"];
+        } else {
+            os.environ["JAC_TEST_NATIVE"] = old_native;
+        }
     }
 
     assert "Ran 1 test" in stderr;
@@ -660,6 +686,25 @@ test "py to jac" {
     assert "def my_print(x: object) -> None" in stdout_value;
     assert "class MyClass {" in stdout_value;
     assert '"""Print function."""' in stdout_value;
+}
+
+test "py to jac line continuation does not drop file" {
+    # #6928: implicit string concat joined by a `\` line-continuation used to
+    # leak the backslash into the emitted Jac, so py2jac exited 0 while writing
+    # empty stdout -- silently dropping the file in a batch port.
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        result = transform.py2jac(fixture_path("py2jac_line_continuation.py"));
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured.getvalue();
+    assert result == 0 , f"py2jac should succeed, got exit {result}";
+    assert stdout_value.strip() , "py2jac must not emit empty output on success";
+    assert "\\\n" not in stdout_value , f"Stray line-continuation in:\n{stdout_value}";
+    assert '"hello " "world"' in stdout_value , f"Expected folded concat in:\n{stdout_value}";
 }
 
 test "lambda arg annotation" {
@@ -766,12 +811,13 @@ test "caching issue" {
                 text=True
             );
             (stdout, stderr) = process.communicate();
+            combined = stdout + stderr;
+            # jac test routes through pytest; the rebuilt file must re-run (not
+            # serve a stale cached result), so pass/fail flips with the assertion.
             if is_passed {
-                assert "Passed successfully." in stdout;
-                assert "." in stderr;
+                assert "1 passed" in combined;
             } else {
-                assert "Passed successfully." not in stdout;
-                assert "F" in stderr;
+                assert "1 failed" in combined;
             }
         }
     }
@@ -1241,9 +1287,10 @@ test "jac create without name initializes current directory" {
     }
 }
 
-test "install editable resolves config from target package when outside project dir" {
-    import from unittest.mock { patch }
-
+test "install editable outside any project errors" {
+    # Editable installs land in the CURRENT project's .jac/venv, so they require a
+    # consuming project; running from a directory with no jac.toml must error
+    # rather than fall back to a binary-global/host install target.
     _tmpdir = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     try {
@@ -1252,26 +1299,12 @@ test "install editable resolves config from target package when outside project 
         (pkg_dir / "jac.toml").write_text(
             '[project]\nname = "my-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n'
         );
-        # cwd has no jac.toml — install must not fall back to cwd
+        # cwd (_tmpdir) has no jac.toml of its own; clear any cached config from a
+        # prior test so discovery actually runs against this project-less cwd.
         os.chdir(_tmpdir);
-
-        captured_src_dir = [];
-        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
-            captured_src_dir.append(src_dir);
-        }
-
-        with patch(
-            "jaclang.publish.builder.WheelBuilder.install_editable",
-            fake_install_editable
-        ) {
-            result = project.install(editable=[[str(pkg_dir)]]);
-        }
-
-        assert result == 0 , f"Expected success, got exit code {result}";
-        assert len(captured_src_dir) == 1 , "install_editable should be called once";
-        assert captured_src_dir[0] == pkg_dir , (
-            f"Expected src_dir={pkg_dir}, got {captured_src_dir[0]}"
-        );
+        _reset_config();
+        result = project.install(editable=[[str(pkg_dir)]]);
+        assert result == 1 , f"Expected error exit (no project), got {result}";
     } finally {
         _reset_config();
         os.chdir(original_cwd);
@@ -1333,6 +1366,10 @@ test "jac install -e accepts space-separated and repeated flag forms" {
         (pkg_c / "jac.toml").write_text(
             '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
         );
+        # The host project (cwd) receives the editable links in its .jac/venv.
+        (Path(_tmpdir) / "jac.toml").write_text(
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
 
         # -e pkg_a pkg_b exercises space-separated; -e pkg_c exercises repeated flag
         process = subprocess.Popen(
@@ -1346,6 +1383,7 @@ test "jac install -e accepts space-separated and repeated flag forms" {
                 str(pkg_c),
                 "--dry-run"
             ],
+            cwd=_tmpdir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -1385,6 +1423,10 @@ test "jac install -e links all packages for space-separated and repeated flag fo
         (pkg_c / "jac.toml").write_text(
             '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
         );
+        # The host project (cwd) receives the editable links in its .jac/venv.
+        (Path(_tmpdir) / "jac.toml").write_text(
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
         os.chdir(_tmpdir);
 
         linked: list = [];
@@ -1414,20 +1456,51 @@ test "jac install -e links all packages for space-separated and repeated flag fo
     }
 }
 
-test "jac install <pkg> routes package names through argparse" {
-    # Verifies CLI wiring: argparse maps positional args into packages,
-    # bypasses jac.toml, and --dry-run keeps it network/disk-free.
+test "jac install <pkg> routes package names to the project venv installer" {
+    # Verifies CLI wiring: positional args map into `packages` and are installed
+    # into the current project's venv. install_package is patched so the test
+    # touches neither the network nor a real venv.
+    import from unittest.mock { patch }
+
+    _tmpdir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        (Path(_tmpdir) / "jac.toml").write_text(
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        os.chdir(_tmpdir);
+        captured: list = [];
+        def fake_install_package(self: object, specs: object) -> bool {
+            captured.append(specs);
+            return True;
+        }
+        with patch(
+            "jaclang.project.dependencies.DependencyInstaller.install_package",
+            fake_install_package
+        ) {
+            result = project.install(packages=["numpy", "pandas"]);
+        }
+        assert result == 0 , f"Expected exit 0, got {result}";
+        assert captured == [["numpy", "pandas"]] , f"unexpected specs routed: {captured}";
+    } finally {
+        _reset_config();
+        os.chdir(original_cwd);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install <pkg> outside a project errors" {
+    # `jac install <pkg>` targets the project venv, so it requires a project.
     with tempfile.TemporaryDirectory() as tmp {
         result = subprocess.run(
-            ["jac", "install", "numpy", "pandas", "--dry-run"],
+            ["jac", "install", "numpy", "--dry-run"],
             capture_output=True,
             text=True,
             cwd=str(tmp)
         );
         combined = result.stdout + result.stderr;
-        assert result.returncode == 0 , f"Expected exit 0:\n{combined}";
-        assert "No jac.toml found" not in combined;
-        assert "Dry run complete" in combined;
+        assert result.returncode == 1 , f"Expected exit 1 (no project):\n{combined}";
+        assert "No jac.toml found" in combined , f"Expected hint about missing project:\n{combined}";
     }
 }
 

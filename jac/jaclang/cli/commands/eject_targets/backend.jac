@@ -1,291 +1,8 @@
-"""FastAPI backend emitter for `jac eject`: writes the compiled Jac modules
-as-is (they import the real jaclang runtime) and a `main.py` that serves each
-walker/function over the @jac/runtime HTTP contract, with jaclang-native auth."""
-
 import ast;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
 
-# jaclang companion packages a compiled module may import implicitly (not in
-# jac.toml). Detected in the emitted Python and added to requirements.txt so
-# `pip install` produces a runnable backend.
-glob _IMPLICIT_PY_DEPS: dict = {"byllm": "byllm"},
-     # Vendored into the ejected backend as `_jac_sqldb.py` when `[eject.db]
-     # driver` is "sqlalchemy"/"sqlite"; wired via the get_persistent_memory hook
-     # in main.py. Defaults to SQLite; JAC_DB_URL points it at Postgres/MySQL.
-     _SQLDB_BACKEND_SRC: str = '''"""Vendored SQLAlchemy persistence backend for the ejected Jac app.
-Registered via jaclang\'s get_persistent_memory hook; defaults to a local SQLite
-file (set JAC_DB_URL for Postgres/MySQL). Single-writer; use jac-scale to scale."""
-from __future__ import annotations
-
-import json
-import logging
-import threading
-from datetime import datetime, timezone
-from uuid import UUID
-
-from sqlalchemy import (
-    Column,
-    Integer,
-    MetaData,
-    String,
-    Table,
-    Text,
-    create_engine,
-    delete,
-    select,
-)
-
-from jaclang.jac0core.archetype import Anchor, Root
-from jaclang.runtimelib.changeset import ApplyReport, snapshot_field_hashes
-from jaclang.runtimelib.memory import PersistentMemory
-from jaclang.runtimelib.serializer import Serializer
-
-logger = logging.getLogger(__name__)
-
-_FORMAT_VERSION = 1
-_metadata = MetaData()
-_anchors = Table(
-    "anchors",
-    _metadata,
-    Column("id", String(64), primary_key=True),
-    Column("type", String(64), nullable=False),
-    Column("arch_module", Text),
-    Column("arch_type", Text),
-    Column("fingerprint", Text),
-    Column("data", Text, nullable=False),
-    Column("format_version", Integer, nullable=False, default=_FORMAT_VERSION),
-    Column("updated_at", Text),
-)
-
-
-def _anchor_row(anchor):
-    """Build the stored row for an anchor (mirrors SqliteMemory rows)."""
-    data = Serializer.serialize(anchor, include_type=True)
-    arch_module = None
-    arch_type = None
-    fingerprint = None
-    if anchor.is_populated() and anchor.archetype is not None:
-        arch = anchor.archetype
-        arch_module = type(arch).__module__
-        arch_type = type(arch).__name__
-        fp = getattr(type(arch), "__jac_fingerprint__", None)
-        fingerprint = fp if isinstance(fp, str) and fp else None
-    return {
-        "id": str(anchor.id),
-        "type": type(anchor).__name__,
-        "arch_module": arch_module,
-        "arch_type": arch_type,
-        "fingerprint": fingerprint,
-        "data": json.dumps(data),
-        "format_version": _FORMAT_VERSION,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-class SqlAlchemyMemory(PersistentMemory):
-    """PersistentMemory L3 backend over a SQLAlchemy engine."""
-
-    def __init__(self, url):
-        self._mem = {}
-        self._lock = threading.RLock()
-        self._engine = create_engine(url, future=True)
-        _metadata.create_all(self._engine)
-
-    # ---- lifecycle ----
-    def is_available(self):
-        return self._engine is not None
-
-    def close(self):
-        if self._engine is not None:
-            self._engine.dispose()
-            self._engine = None
-        self._mem.clear()
-
-    def commit(self, anchor=None):
-        # Writes are immediate (apply upserts per intent); nothing to flush.
-        pass
-
-    # ---- read path ----
-    def get(self, id):
-        anchor = self._mem.get(id)
-        if anchor is not None:
-            return anchor
-        with self._engine.connect() as conn:
-            row = conn.execute(
-                select(_anchors.c.data).where(_anchors.c.id == str(id))
-            ).fetchone()
-        if not row:
-            return None
-        try:
-            anchor = Serializer.deserialize(json.loads(row[0]))
-        except Exception as e:
-            logger.warning("SqlAlchemyMemory: failed to deserialize anchor %s: %s", id, e)
-            return None
-        if anchor is None:
-            return None
-        self._mem[id] = anchor
-        snapshot_field_hashes(anchor)
-        return anchor
-
-    def has(self, id):
-        if id in self._mem:
-            return True
-        with self._engine.connect() as conn:
-            row = conn.execute(
-                select(_anchors.c.id).where(_anchors.c.id == str(id))
-            ).fetchone()
-        return row is not None
-
-    def exists(self, id):
-        return self.has(id)
-
-    def get_mem(self):
-        return self._mem
-
-    def get_roots(self):
-        seen = set()
-        for anchor in list(self._mem.values()):
-            if isinstance(anchor.archetype, Root):
-                seen.add(anchor.id)
-                yield anchor.archetype
-        with self._engine.connect() as conn:
-            rows = conn.execute(
-                select(
-                    _anchors.c.id, _anchors.c.arch_module, _anchors.c.arch_type
-                ).where(_anchors.c.type == "NodeAnchor")
-            ).fetchall()
-        for (rid, arch_module, arch_type) in rows:
-            if not arch_module or not arch_type:
-                continue
-            uid = UUID(rid)
-            if uid in seen:
-                continue
-            cls = Serializer._get_class(arch_module, arch_type)
-            if cls is not None and isinstance(cls, type) and issubclass(cls, Root):
-                anchor = self.get(uid)
-                if anchor is not None and isinstance(anchor.archetype, Root):
-                    seen.add(uid)
-                    yield anchor.archetype
-
-    def find(self, ids, filter=None):
-        id_list = [ids] if isinstance(ids, UUID) else list(ids)
-        for id in id_list:
-            anchor = self.get(id)
-            if anchor is not None and (filter is None or filter(anchor)):
-                yield anchor
-
-    def find_one(self, ids, filter=None):
-        id_list = [ids] if isinstance(ids, UUID) else list(ids)
-        for id in id_list:
-            anchor = self.get(id)
-            if anchor is not None and (filter is None or filter(anchor)):
-                return anchor
-        return None
-
-    def query(self, filter=None):
-        seen = set()
-        for anchor in list(self._mem.values()):
-            seen.add(anchor.id)
-            if filter is None or filter(anchor):
-                yield anchor
-        with self._engine.connect() as conn:
-            rows = conn.execute(select(_anchors.c.id)).fetchall()
-        for (rid,) in rows:
-            uid = UUID(rid)
-            if uid in seen:
-                continue
-            anchor = self.get(uid)
-            if anchor is not None and (filter is None or filter(anchor)):
-                yield anchor
-
-    # ---- write path ----
-    def _write(self, conn, anchor):
-        row = _anchor_row(anchor)
-        existing = conn.execute(
-            select(_anchors.c.id).where(_anchors.c.id == row["id"])
-        ).fetchone()
-        if existing:
-            conn.execute(
-                _anchors.update().where(_anchors.c.id == row["id"]).values(**row)
-            )
-        else:
-            conn.execute(_anchors.insert().values(**row))
-
-    def put(self, anchor):
-        self._mem[anchor.id] = anchor
-        if not anchor.persistent or not anchor.is_populated():
-            return
-        try:
-            row = _anchor_row(anchor)
-        except (AttributeError, ModuleNotFoundError):
-            return
-        try:
-            with self._engine.begin() as conn:
-                self._write(conn, anchor)
-        except Exception as e:
-            logger.warning("SqlAlchemyMemory.put: failed to persist %s: %s", anchor.id, e)
-
-    def put_if_exists(self, anchor):
-        if self.has(anchor.id):
-            self.put(anchor)
-            return True
-        return False
-
-    def delete(self, id):
-        self._mem.pop(id, None)
-
-    def invalidate(self, id):
-        self._mem.pop(id, None)
-
-    def apply(self, changeset):
-        report = ApplyReport()
-        if changeset.is_empty():
-            return report
-        with self._lock:
-            try:
-                with self._engine.begin() as conn:
-                    poisoned = set()
-                    for stage in changeset.staged():
-                        for intent in stage:
-                            if intent.depends_on & poisoned:
-                                report.skipped[intent.anchor.id] = "dependency failed"
-                                poisoned.add(intent.anchor.id)
-                                continue
-                            try:
-                                if intent.is_delete():
-                                    conn.execute(
-                                        delete(_anchors).where(
-                                            _anchors.c.id == str(intent.anchor.id)
-                                        )
-                                    )
-                                else:
-                                    self._write(conn, intent.anchor)
-                                report.applied.append(intent.anchor.id)
-                            except (AttributeError, ModuleNotFoundError) as se:
-                                poisoned.add(intent.anchor.id)
-                                report.failed[intent.anchor.id] = str(se)
-                            except Exception as e:
-                                poisoned.add(intent.anchor.id)
-                                report.failed[intent.anchor.id] = str(e)
-                                logger.error(
-                                    "SqlAlchemyMemory.apply: %s failed for %s: %s",
-                                    intent.op.name, intent.anchor.id, e,
-                                )
-            except Exception as te:
-                report.applied = []
-                for stage in changeset.staged():
-                    for intent in stage:
-                        report.failed[intent.anchor.id] = str(te)
-                logger.error("SqlAlchemyMemory.apply: transaction rolled back: %s", te)
-        return report
-''';
-
-
-"""Emit the FastAPI backend into `backend_dir` from the orchestrator's
-{module, py, server} units and [{name, module, pub}] walker/function
-descriptors. `remap` renames module stems that collide with main.py."""
 def emit_backend(
     backend_dir: Path,
     project_name: str,
@@ -316,8 +33,7 @@ def emit_backend(
         }
         module = str(unit["module"]);
         code = _rewrite_imports(str(unit["py"]), remap);
-        # Dotted module (pkg.util) -> pkg/util.py, with __init__.py in each
-        # package dir so the compiler's dotted imports resolve at runtime.
+
         dest = backend_dir / (module.replace(".", "/") + ".py");
         dest.parent.mkdir(parents=True, exist_ok=True);
         pkg_dir = dest.parent;
@@ -339,8 +55,6 @@ def emit_backend(
         return 1;
     }
 
-    # Each walker/function name maps 1:1 to an HTTP route and a main.py import,
-    # so a name reused across modules would shadow the import and collide routes.
     dup = _first_duplicate([str(w["name"]) for w in walkers]);
     if dup {
         console.error(
@@ -383,31 +97,48 @@ def emit_backend(
         );
     }
 
-    # Opt-in via `[eject.db] driver` ("sqlalchemy"/"sqlite"/"sql"); absent it the
-    # backend keeps the runtime's built-in zero-dep SQLite. Default URL is a
-    # SQLite file under backend/; JAC_DB_URL overrides it for Postgres/MySQL.
     sql = str(db.get("driver", "")).lower() in ["sqlalchemy", "sqlite", "sql"];
     db_basename = _default_db_basename(project_name) if sql else "";
     if sql {
-        _emit_sqldb_module(backend_dir);
-        console.print("  ✔ SQLAlchemy persistence (_jac_sqldb.py)", style="success");
+        console.print(
+            "  ✔ SQLAlchemy persistence (vendored runtime backend)", style="success"
+        );
     }
 
     _emit_main_py(
         backend_dir, project_name, walkers_full, functions_full, sql, db_basename
     );
-    plugins = _detect_plugins(emitted_codes);
-    if sql and ("sqlalchemy" not in [str(p).lower() for p in plugins]) {
-        plugins.append("SQLAlchemy>=2.0");
+
+    import from jaclang.publish.runtime_vendor { vendor_runtime, llm_requirements }
+    uses_llm = _uses_llm(emitted_codes);
+    sql_seeds = ["jaclang.runtimelib.storage.sqlalchemy_memory"] if sql else [];
+    try {
+        vendored = vendor_runtime(
+            backend_dir, emitted_codes, include_byllm=uses_llm, extra_seeds=sql_seeds
+        );
+    } except ValueError as e {
+        console.error(f"  {e}");
+        return 1;
     }
-    _emit_requirements(backend_dir, plugins);
+    console.print(
+        f"  ✔ vendored jaclang runtime ({vendored} modules" + (
+            ", incl. byllm" if uses_llm else ""
+        ) + ")",
+        style="success"
+    );
+
+    reqs: list[str] = [];
+    if sql {
+        reqs.append("SQLAlchemy>=2.0");
+    }
+    if uses_llm {
+        reqs.extend(llm_requirements());
+    }
+    _emit_requirements(backend_dir, reqs);
     return 0;
 }
 
 
-"""Default SQLite filename stem for an ejected project: the project name
-lowercased with non-alphanumerics folded to underscores (falls back to
-"jac_db"). The runtime DB URL is built from this unless JAC_DB_URL is set."""
 def _default_db_basename(project_name: str) -> str {
     chars: list = [];
     for ch in project_name.lower() {
@@ -418,13 +149,6 @@ def _default_db_basename(project_name: str) -> str {
 }
 
 
-"""Write the vendored SQLAlchemy persistence backend into the ejected app."""
-def _emit_sqldb_module(backend_dir: Path) {
-    (backend_dir / "_jac_sqldb.py").write_text(_SQLDB_BACKEND_SRC, encoding="utf-8");
-}
-
-
-"""Return the first name that repeats in `names`, or "" if all are unique."""
 def _first_duplicate(names: list) -> str {
     seen: set = set();
     for n in names {
@@ -438,31 +162,25 @@ def _first_duplicate(names: list) -> str {
 }
 
 
-"""Scan emitted backend Python for imports of known jaclang companion
-packages (byllm, ...) and return the pip names to add."""
-def _detect_plugins(codes: list) -> list {
-    found: set = set();
+def _uses_llm(codes: list) -> bool {
     for code in codes {
         for raw in str(code).splitlines() {
             line = raw.strip();
-            for (mod, pkg) in _IMPLICIT_PY_DEPS.items() {
-                m = str(mod);
+            for m in ["byllm", "jaclang.byllm"] {
                 if (line == "import " + m)
                 or line.startswith("import " + m + " ")
                 or line.startswith("import " + m + ".")
                 or line.startswith("from " + m + " ")
                 or line.startswith("from " + m + ".") {
-                    found.add(str(pkg));
+                    return True;
                 }
             }
         }
     }
-    return sorted(list(found));
+    return False;
 }
 
 
-"""Rewrite references to remapped sibling modules (a Jac module whose stem
-collided with main.py). The jaclang runtime imports are left untouched."""
 def _rewrite_imports(py_code: str, remap: dict) -> str {
     if not remap {
         return py_code;
@@ -488,8 +206,6 @@ def _rewrite_imports(py_code: str, remap: dict) -> str {
 }
 
 
-# Compiled runtime base classes a walker always inherits; not user fields, so
-# an unresolved base with one of these names is never a missing-field warning.
 glob _RUNTIME_ARCH_BASES: set = {
          "Walker",
          "WalkerArchetype",
@@ -502,9 +218,6 @@ glob _RUNTIME_ARCH_BASES: set = {
      };
 
 
-"""Extract each walker's request fields from the compiled Python (skipping
-private and `reports`), including same-module base-class fields (base-first,
-subclass overrides). Returns {walker: [{name, type, has_default, default}]}."""
 def _extract_walker_fields(py_code: str, walker_names: set) -> dict {
     result: dict = {};
     try {
@@ -537,9 +250,6 @@ def _extract_walker_fields(py_code: str, walker_names: set) -> dict {
 }
 
 
-"""Collect a walker class's annotated fields into `ordered` ({name: record}),
-recursing into same-module base classes first so a subclass field overrides an
-inherited one. Bases that are neither in-module nor runtime go to `unresolved`."""
 def _collect_walker_fields(
     cls_node: ast.ClassDef,
     class_map: dict[str, ast.ClassDef],
@@ -584,8 +294,6 @@ def _collect_walker_fields(
 }
 
 
-"""Extract each public function's parameters (with defaults) from the
-compiled Python. Returns {func_name: [{name, type, has_default, default}]}."""
 def _extract_func_params(py_code: str, func_names: set) -> dict {
     result: dict = {};
     try {
@@ -598,7 +306,7 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
         and (node.name in func_names) {
             all_args = node.args.args;
             defaults = node.args.defaults;
-            # Python aligns the defaults list to the LAST len(defaults) args.
+
             first_default = len(all_args) - len(defaults);
             params: list = [];
             for i in range(len(all_args)) {
@@ -629,9 +337,6 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
 }
 
 
-"""Pydantic request-model name. The `suffix` keeps walker and function models
-in separate namespaces so a name reused across both kinds does not collide
-(walker Square -> SquareIn, function Square -> SquareFnIn)."""
 def _model_class_name(name: str, suffix: str) -> str {
     return name[:1].upper() + name[1:] + suffix;
 }
@@ -753,8 +458,6 @@ def _emit_main_py(
         'from jaclang.runtimelib.server import UserManager, ExecutionManager'
     ];
 
-    # Import each walker/function under a kind-prefixed alias (_W_ / _F_) so a
-    # name reused across a walker and a function (or modules) never shadows.
     for w in walkers {
         wn = str(w["name"]);
         lines.append("from " + str(w["module"]) + " import " + wn + " as _W_" + wn);
@@ -766,13 +469,10 @@ def _emit_main_py(
 
     lines += ['', '_BASE = os.path.dirname(os.path.abspath(__file__))'];
 
-    # Register the get_persistent_memory hook before any ExecutionManager builds
-    # a context, so the runtime picks the SQLAlchemy L3 backend. Registered
-    # unconditionally; the SQLite default always resolves (JAC_DB_URL overrides).
     if sql {
         lines += [
             'from jaclang.jac0core.runtime import hookimpl, plugin_manager',
-            'from _jac_sqldb import SqlAlchemyMemory',
+            'from jaclang.runtimelib.storage.sqlalchemy_memory import SqlAlchemyMemory',
             '',
             '_DB_URL = os.environ.get("JAC_DB_URL") or (',
             '    "sqlite:///" + os.path.join(_BASE, ' + repr(
@@ -1035,28 +735,10 @@ def _emit_main_py(
 }
 
 
-"""Resolve the jaclang requirement line, pinned to the build version."""
-def _jaclang_req -> str {
-    version = "";
-    try {
-        import jaclang;
-        version = str(getattr(jaclang, "__version__", "") or "");
-    } except Exception {
-        version = "";
-    }
-    if version {
-        return f"jaclang>={version}";
-    }
-    return "jaclang";
-}
-
-
-"""Write backend/requirements.txt: jaclang + fastapi + uvicorn, plus any
-implicit jaclang companion packages detected in the emitted Python."""
-def _emit_requirements(backend_dir: Path, plugins: list) {
-    lines: list[str] = [_jaclang_req(), "fastapi>=0.110", "uvicorn[standard]>=0.27"];
-    for p in plugins {
-        lines.append(str(p));
+def _emit_requirements(backend_dir: Path, extra_reqs: list) {
+    lines: list[str] = ["fastapi>=0.110", "uvicorn[standard]>=0.27"];
+    for req in extra_reqs {
+        lines.append(str(req));
     }
     (backend_dir / "requirements.txt").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"

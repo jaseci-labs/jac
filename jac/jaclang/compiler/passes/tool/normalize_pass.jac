@@ -1,17 +1,9 @@
-"""
-NormalizePass: rebuilds kid lists from semantic fields.
-
-This pass traverses the AST using enter_* methods (pre-order)
-to rebuild each node's kid list from its semantic fields.
-This is needed before passes that read .kid (e.g., DocIRGenPass).
-"""
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { CodeContext, EdgeDir }
 import from jaclang.jac0core.unitree { Tok, EmptyToken, Token }
 
-"""Rebuild kid lists from semantic fields."""
 obj NormalizePass(UniPass) {
     def enter_sub_tag(nd: uni.SubTag) -> None;
     def enter_module(nd: uni.Module) -> None;

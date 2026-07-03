@@ -87,11 +87,12 @@ test "cli exposes mobile dev flags and cap live-reload" {
         _client_dir / "targets" / "impl" / "mobile_target.impl.jac"
     ).read_text();
     mobile_dev = (_client_dir / "targets" / "mobile" / "dev.jac").read_text();
+    dev_common = (_client_dir / "targets" / "client_dev_common.jac").read_text();
     mobile = mobile_impl + mobile_dev;
-    assert "--live-reload" in mobile;
+    assert "_run_cap_run_live_reload" in mobile;
     assert "_mobile_start_backend_server" in mobile;
     assert "def _mobile_setup_android_port_reverse" in mobile;
-    assert '["adb", "reverse"' in mobile;
+    assert '["adb", "reverse"' in dev_common;
     assert "resolve_mobile_dev_host(plat, host_override)" in mobile_impl;
     assert "resolve_mobile_vite_port(project_dir, port)" in mobile_impl;
     assert "_mobile_setup_android_port_reverse(vite_port, server_port)" in mobile_impl;
@@ -101,7 +102,7 @@ test "cli exposes mobile dev flags and cap live-reload" {
 test "cli exposes mobile setup platform selector" {
     cli = (_client_dir / "cli.jac").read_text();
     assert "Platform for mobile setup (android, ios, all)" in cli;
-    assert "JAC_MOBILE_SETUP_PLATFORM" in cli;
+    assert "mobile_setup_platform_env_swap" in cli;
     mobile_config = (_client_dir / "targets" / "mobile" / "config.jac").read_text();
     assert "MOBILE_SETUP_PLATFORM_ENV" in mobile_config;
     assert "_resolve_mobile_setup_mode" in mobile_config;

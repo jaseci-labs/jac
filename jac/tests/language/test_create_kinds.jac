@@ -4,7 +4,7 @@
 it stamps `[project] kind` into jac.toml, lays down an entry-point in the
 right codespace, and produces a project whose bare `jac run` resolves to the
 natural action for that kind. These tests cover the eight core kinds (the
-plugin kinds -- fullstack/client/mobile/desktop -- are tested in their own
+plugin kinds -- web-app/web-static/mobile/desktop -- are tested in their own
 plugin packages)."""
 
 import os;
@@ -61,8 +61,8 @@ test "create --kind cli" {
     _cleanup();
 }
 
-test "create --kind native-app" {
-    _assert_kind("native-app", "main.na.jac", "execute");
+test "create --kind cli-native" {
+    _assert_kind("cli-native", "main.na.jac", "execute");
     _cleanup();
 }
 
@@ -71,28 +71,28 @@ test "create --kind native-binary" {
     _cleanup();
 }
 
-test "create --kind shared-library" {
-    _assert_kind("shared-library", "main.na.jac", "build");
+test "create --kind native-lib" {
+    _assert_kind("native-lib", "main.na.jac", "build");
     _cleanup();
 }
 
-test "create --kind api-service" {
-    _assert_kind("api-service", "main.sv.jac", "serve");
+test "create --kind service" {
+    _assert_kind("service", "main.sv.jac", "serve");
     _cleanup();
 }
 
-test "create --kind microservices" {
-    _assert_kind("microservices", "main.sv.jac", "serve");
+test "create --kind service-mesh" {
+    _assert_kind("service-mesh", "main.sv.jac", "serve");
     _cleanup();
 }
 
-test "create --kind pypi-package" {
-    _assert_kind("pypi-package", "lib.jac", "build");
+test "create --kind py-package" {
+    _assert_kind("py-package", "lib.jac", "build");
     _cleanup();
 }
 
-test "create --kind npm-package" {
-    _assert_kind("npm-package", "lib.jac", "build");
+test "create --kind js-package" {
+    _assert_kind("js-package", "lib.jac", "build");
     _cleanup();
 }
 
@@ -122,8 +122,8 @@ test "create rejects an unknown kind" {
 
 test "kind_entry matches the scaffolded entry-point" {
     assert kind_entry("cli") == "main.jac";
-    assert kind_entry("native-app") == "main.na.jac";
-    assert kind_entry("api-service") == "main.sv.jac";
+    assert kind_entry("cli-native") == "main.na.jac";
+    assert kind_entry("service") == "main.sv.jac";
     assert is_valid_kind("cli");
     assert not is_valid_kind("nope");
 }

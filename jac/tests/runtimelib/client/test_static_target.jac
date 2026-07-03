@@ -1,6 +1,6 @@
 """Tests for the client-only (static) build target.
 
-A `client`-kind Jac project runs entirely in the browser with no server. The
+A `web-static`-kind Jac project runs entirely in the browser with no server. The
 static target must therefore produce a *portable* dist whose `index.html` is
 fully self-contained (JS + CSS inlined) so it renders when opened directly
 from disk via `file://` -- ES module `<script src=...>` tags are CORS-blocked
@@ -98,12 +98,12 @@ test "static target is registered and resolvable" {
     }
 }
 
-"""An explicit `kind = \"client\"` resolves to the client project kind.
+"""An explicit `kind = \"web-static\"` resolves to the static web project kind.
 
 This is the signal `jac build` / `jac start` key off to auto-route a
 client-only project to the portable/static path without any --client flag.
 """
-test "client kind is detected from jac toml" {
+test "web-static kind is detected from jac toml" {
     import from jaclang.project.config { JacConfig }
     import from jaclang.project.kinds { resolve_project_kind }
 
@@ -112,7 +112,7 @@ test "client kind is detected from jac toml" {
 name = "browser-app"
 version = "1.0.0"
 entry-point = "main.jac"
-kind = "client"
+kind = "web-static"
 
 [plugins.client]
 ''';
@@ -122,7 +122,7 @@ kind = "client"
         }
         config = JacConfig.load(Path(toml_path));
         kind = resolve_project_kind(config, os.path.join(temp_dir, "main.jac"));
-        assert kind == "client" , f"expected client kind, got {kind}";
+        assert kind == "web-static" , f"expected web-static kind, got {kind}";
     }
 }
 
@@ -165,7 +165,7 @@ test "static server maps static prefix to dist root" {
     }
 }
 
-"""End-to-end: a kind=client project builds a dist that renders from file://.
+"""End-to-end: a kind=web-static project builds a dist that renders from file://.
 
 This is the user-facing contract -- `jac build` with no `--client` flag must
 auto-detect the client-only project and emit a portable page that opens
@@ -194,7 +194,7 @@ test "client build renders from file protocol" {
             toml_text = f.read();
         }
         toml_text = toml_text.replace(
-            'entry-point = "main.jac"', 'entry-point = "main.jac"\nkind = "client"'
+            'entry-point = "main.jac"', 'entry-point = "main.jac"\nkind = "web-static"'
         );
         with open(toml_path, "w") as f {
             f.write(toml_text);

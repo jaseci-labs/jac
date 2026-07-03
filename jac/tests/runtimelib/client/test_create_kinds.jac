@@ -1,7 +1,7 @@
 """Tests for jac-client's kind-aware `jac create` templates.
 
-jac-client contributes the project kinds it owns -- `fullstack`, `wasm`, and
-`mobile` -- to the kind-aware `jac create`. Each scaffolds with `[project]
+jac-client contributes the project kinds it owns -- `web-app`, `web-static`,
+and `mobile` -- to the kind-aware `jac create`. Each scaffolds with `[project]
 kind` stamped and the right entry-point. npm/Bun install is skipped via
 JAC_CLIENT_SKIP_NPM_INSTALL so the scaffold is offline and fast."""
 
@@ -49,13 +49,13 @@ def _assert_kind(kind: str, action: str) {
     assert plan.action == action , f"{kind}: expected {action}, got {plan.action}";
 }
 
-test "create --kind fullstack" {
-    _assert_kind("fullstack", "serve");
+test "create --kind web-app" {
+    _assert_kind("web-app", "serve");
     _cleanup();
 }
 
-test "create --kind client" {
-    _assert_kind("client", "serve");
+test "create --kind web-static" {
+    _assert_kind("web-static", "serve");
     _cleanup();
 }
 

@@ -59,6 +59,31 @@ glob _ANSI_STYLE_TOKENS: dict = {
          'bright_blue': BRIGHT_BLUE
      };
 
+"""Return True if `stream` is an interactive terminal.
+
+The facade's `use_color` is a process-wide master switch (NO_COLOR, TERM=dumb),
+resolved once from `sys.stdout.isatty()`. But a single process can write to
+many streams — `sys.stderr` redirected to a file, `print(file=...)` targeting
+an arbitrary sink — and ANSI escapes only render on a real TTY. Styling a
+non-TTY stream corrupts captured output (issue #6499), so each emit must
+re-check the *target* stream in addition to the master flag.
+
+Streams are not required to expose `isatty`, and it can raise (e.g. a closed
+file), so the call is guarded: anything that isn't clearly a TTY is treated as
+non-stylable.
+"""
+def _stream_is_tty(stream: any) -> bool {
+    try {
+        isatty = stream?.isatty;
+        if isatty is None {
+            return False;
+        }
+        return bool(isatty());
+    } except Exception {
+        return False;
+    }
+}
+
 """Resolve a style role/expression to ANSI prefix code(s), or empty string."""
 def _resolve_ansi_style(style: str | None) -> str {
     if not style {
@@ -179,9 +204,13 @@ facade resolved `use_color = True`.
 """
 impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
     out = stream if stream is not None else sys.stdout;
+    # `use_color` is the master off-switch (NO_COLOR, TERM=dumb); the target
+    # stream must *also* be a TTY, or ANSI escapes corrupt captured output
+    # (issue #6499: `jac build 2>errors.log` with stdout a TTY at init).
+    can_style = self.use_color and _stream_is_tty(out);
     parts: list[str] = [];
     for s in spans {
-        if self.use_color and s.style is not None and _ANSI_ROLES.get(s.style) {
+        if can_style and s.style is not None and _ANSI_ROLES.get(s.style) {
             parts.append(f"{_ANSI_ROLES.get(s.style)}{s.text}{RESET}");
         } else {
             parts.append(s.text);
@@ -210,7 +239,9 @@ impl ConsoleRenderer.emit_raw(
     args: list, stream: any, style: str | None, kwargs: dict
 ) -> None {
     out = stream if stream is not None else sys.stdout;
-    style_prefix = _resolve_ansi_style(style) if self.use_color else "";
+    # Master switch (use_color) AND per-stream TTY check — see emit() / #6499.
+    can_style = self.use_color and _stream_is_tty(out);
+    style_prefix = _resolve_ansi_style(style) if can_style else "";
     # Handle Windows console encoding - replace unencodable chars
     if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
         encoding: str = str(out?.encoding or 'cp1252');

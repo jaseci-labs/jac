@@ -1,10 +1,3 @@
-"""Project configuration and management for Jac projects.
-
-This module provides the jac.toml configuration system, including:
-- JacConfig: Central configuration class for project settings
-- Project discovery: Auto-detection of jac.toml in parent directories
-- Dependency management: Install, add, remove dependencies
-"""
 import from jaclang.project.config {
     BuildConfig,
     CacheConfig,
@@ -42,6 +35,25 @@ import from jaclang.project.dependencies {
     remove_venv_from_path,
     is_venv_in_path
 }
+import from jaclang.project.capabilities {
+    Capability,
+    CapabilityClosure,
+    CAPABILITY_SPECS,
+    RUNTIME,
+    DEPLOY,
+    all_capability_names,
+    capability_for_package,
+    command_capabilities,
+    derive_capabilities,
+    get_capability,
+    get_capability_registry,
+    missing_capability_error,
+    package_missing_error,
+    resolve_closure,
+    resolve_closures,
+    resolve_config_closures,
+    scale_intent_from_config
+}
 import from jaclang.project.template_registry { ProjectTemplate }
 import from jaclang.project.template_loader {
     load_template_from_directory,
@@ -76,6 +88,23 @@ glob __all__ = [
          'add_venv_to_path',
          'remove_venv_from_path',
          'is_venv_in_path',
+         'Capability',
+         'CapabilityClosure',
+         'CAPABILITY_SPECS',
+         'RUNTIME',
+         'DEPLOY',
+         'all_capability_names',
+         'capability_for_package',
+         'command_capabilities',
+         'derive_capabilities',
+         'get_capability',
+         'get_capability_registry',
+         'missing_capability_error',
+         'package_missing_error',
+         'resolve_closure',
+         'resolve_closures',
+         'resolve_config_closures',
+         'scale_intent_from_config',
          'ProjectTemplate',
          'load_template_from_directory',
          'load_template_from_json',

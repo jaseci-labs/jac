@@ -6,7 +6,7 @@ description: Delegating a function's body to an LLM call - structured outputs (o
 `by llm(...)` replaces a function body with an LLM call. The signature declares typed args and a return type; at call time the LLM generates a value matching the return type, optionally using any functions listed in `tools=[...]` as ReAct helpers. Describe every LLM-visible thing - the function itself, each parameter, each field of a return obj - with `sem` statements, not docstrings. `sem` is the prompt the LLM sees.
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob llm: Model = Model(model_name="gpt-4o");
 
@@ -72,7 +72,7 @@ Method-level `by llm` automatically includes the object's `has` fields as contex
 | Anthropic | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
 | Google | `gemini/gemini-2.0-flash` | `GOOGLE_API_KEY` |
 | Ollama | `ollama/llama3:70b` | none - local daemon |
-| Built-in local | `local:gemma-4-e4b` | none - `pip install 'byllm[local]'`, then `jac model pull gemma-4-e4b` |
+| Built-in local | `local:gemma-4-e4b` | none - `jac install 'byllm[local]'`, then `jac model pull gemma-4-e4b` |
 
 Env vars take precedence over `api_key` in `jac.toml`; `BYLLM_DEFAULT_MODEL=...` overrides the project default for one shell. The glob name needn't be `llm` - any module-level glob holding a `Model` works: `glob fast = Model(model_name="gpt-4o-mini"); def quick_label(text: str) -> str by fast();`.
 
@@ -95,7 +95,7 @@ def stream_story(topic: str) -> str by llm(stream=True);
 Runs without API keys - mock outputs are consumed sequentially, one per `by` call. For typed returns put pre-built instances in `outputs` (e.g. `Priority.HIGH`, `[Task(...)]`). See `jac-testing` for `jac test` mechanics.
 
 ```jac
-import from byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM }
 
 glob llm = MockLLM(model_name="mockllm", config={"outputs": ["Bonjour", "Salut"]});
 
@@ -116,13 +116,13 @@ test "mock outputs consumed in order" {
 ## Images & video
 
 ```jac
-import from byllm.lib { Image, Video }
+import from jaclang.byllm.lib { Image, Video }
 
 def parse_receipt(img: Image) -> Receipt by llm();   # structured output straight from an image
 def describe_clip(v: Video) -> str by llm();
 
 # Call as parse_receipt(Image("receipt.jpg")) - Image also accepts URLs, raw bytes, PIL images.
-# Video(path="clip.mp4", fps=1): fps = frames sampled/sec; needs `pip install byllm[video]`.
+# Video(path="clip.mp4", fps=1): fps = frames sampled/sec; needs `jac install 'byllm[video]'`.
 # Requires a vision-capable model (e.g. gpt-4o, claude-sonnet-4-6).
 ```
 

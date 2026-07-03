@@ -1,23 +1,8 @@
-"""The `jac code` command group: compiler-backed code intelligence for agents.
-
-Where `grep` answers "which lines contain this string", `jac code` answers
-"where is this symbol defined, everywhere it is used, what type it has, and
-which walkers traverse it" -- the structural questions a text search cannot.
-It is grep's structural successor: a thin, JSON-by-default shim over the
-compiler's `CodeIntelligence` facade, built for terminal-driven AI agents.
-
-Output is machine-readable JSON by default (every payload carries a
-`schema_version` so consumers can pin a shape); pass `--text` for the
-human-readable rendering. Exit codes are stable: 0 = ok, 1 = usage/runtime
-error, 2 = nothing found for the query.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Ask the compiler about your code -- grep's structural successor."""
 @registry.command(
     name="code",
     help="Query code structure via the compiler (grep's structural successor)",

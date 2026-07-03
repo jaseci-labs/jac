@@ -1,19 +1,13 @@
-"""Window control plugin for the Jac desktop IPC system.
-
-Controls the native window by calling back into libwebview via ctypes.
-Requires the webview handle and the loaded libwebview CDLL.
-
-Transpiled to dependency-free Python at build time.
-"""
 import ctypes;
+import json;
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-"""Controls the native webview window via ctypes -> libwebview."""
 obj WindowPlugin(DesktopPlugin) {
     has _wv: ctypes.CDLL | None = None,
-        _handle: int = 0;
+        _handle: int = 0,
+        _host: object | None = None;
 
     static def manifest -> PluginManifest {
         return PluginManifest(
@@ -35,19 +29,63 @@ obj WindowPlugin(DesktopPlugin) {
         self._wv = wv_lib;
     }
 
-    """Late-bind the real webview handle and lib after native webview creation."""
     def setup(wv_handle: int, wv_lib: ctypes.CDLL) {
         self._handle = wv_handle;
         self._wv = wv_lib;
     }
 
+    def setup_cef(host: object) {
+        self._host = host;
+    }
+
+    def _handle_cef(command: str, args: dict) -> dict {
+        if command == "set_title" {
+            title = args.get("title", "");
+            if not title {
+                raise PluginError(ErrorCode.INVALID_ARGS, "'title' is required");
+            }
+            if not self._host.set_window_title(title) {
+                self._host.eval_js("document.title=" + json.dumps(title));
+            }
+            return {};
+        }
+        if command == "set_size" {
+            width = int(args.get("width", 0));
+            height = int(args.get("height", 0));
+            if width <= 0 or height <= 0 {
+                raise PluginError(
+                    ErrorCode.INVALID_ARGS,
+                    "'width' and 'height' must be positive integers"
+                );
+            }
+            if not self._host.set_window_size(width, height) {
+                self._host.eval_js(
+                    "try{window.resizeTo(" + str(width) + "," + str(height) + ");}catch(e){}"
+                );
+            }
+            return {};
+        }
+        if command == "fullscreen" {
+            self._host.eval_js(
+                "document.documentElement.requestFullscreen().catch(function(){});"
+            );
+            return {};
+        }
+        if command == "terminate" {
+            self._host.eval_js("window.close();");
+            return {};
+        }
+        return super.handle(command, args);
+    }
+
     def handle(command: str, args: dict) -> dict {
+        if self._host is not None {
+            return self._handle_cef(command, args);
+        }
         if self._wv is None {
             raise PluginError(ErrorCode.NOT_READY, "Window plugin not yet initialized");
         }
-        # Wrap the handle in c_void_p so ctypes marshals it as a full-width
-        # pointer. A bare int defaults to c_int and truncates the 64-bit webview
-        # handle to 32 bits on Windows x64 (LLP64).
+
         wv = ctypes.c_void_p(self._handle);
         if command == "set_title" {
             title = args.get("title", "");

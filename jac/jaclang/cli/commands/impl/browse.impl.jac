@@ -1,10 +1,3 @@
-"""Implementation of the `jac browse` command.
-
-Dispatches the action positional to the matching engine command. Output is
-printed raw (so it pipes cleanly); errors go to the console and return exit 1.
-The session can also be set via the JACBROWSER_SESSION env var.
-"""
-
 import os;
 import sys;
 import json;

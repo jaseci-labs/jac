@@ -93,6 +93,8 @@ mylib = "mylib.plugin:JacRuntime"
 
 `[entrypoints.scripts]` is written as `[console_scripts]` in the wheel; `[entrypoints.jac]` is the `jac` entry-point group queried by the plugin loader.
 
+Consumers who install your package into a Jac project (`jac install mylib`) can run its console-script with [`jac x mylib`](cli/index.md#jac-x) under the `jac` runtime, without it being on their shell `PATH`.
+
 ## 2. Build the wheel
 
 ```bash
@@ -105,20 +107,7 @@ This writes `dist/<name>-<version>-py3-none-any.whl`. Build to a different direc
 jac bundle -o /tmp/wheels
 ```
 
-`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Use `--precompile` (`-p`) to compile `.jac` → `.jir` automatically for every `python3.X` interpreter found on `PATH` before packaging:
-
-```bash
-jac bundle --precompile
-```
-
-The flag creates an isolated venv per Python version, compiles all `.jac` sources inside it, and folds the resulting `.jir` files into the wheel. Shipped bytecode is keyed by Python version and validated against a source hash; if it is missing, incompatible, or stale, the runtime transparently falls back to compiling the bundled `.jac` source -- a mismatch never breaks the package.
-
-Each venv installs your declared dependencies from PyPI to compile against. If a dependency's **new** version isn't on PyPI yet -- e.g. you're releasing two interdependent packages together -- point precompile at the local source so the version pin resolves without PyPI:
-
-| Variable | Installs from local source |
-|----------|----------------------------|
-| `JAC_PRECOMPILE_LOCAL_INSTALL` | `jaclang` (a path to the local source tree). |
-| `JAC_PRECOMPILE_LOCAL_DEPS` | Sibling Jac packages (comma-separated source dirs), installed via `jac install -e` before the PyPI deps. |
+`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Shipped bytecode is keyed by Python version and validated against a source hash; on a consumer running a different Python version (or if the bytecode is missing or stale), the runtime transparently recompiles the bundled `.jac` source on first import -- a mismatch never breaks the package.
 
 Wheels are reproducible: every ZIP entry uses a fixed timestamp, so the same source produces a byte-identical wheel.
 
@@ -194,7 +183,7 @@ npm pack dist/<name>-<version>.tgz   # optional: inspect the contents
 npm publish dist/<name>-<version>.tgz --access public
 ```
 
-In CI, authenticate with an automation token via `NODE_AUTH_TOKEN` (see the `publish-npm` job in `.github/workflows/publish-release.yml`, which publishes any package with an `[npm]` section).
+In CI, authenticate with an automation token via `NODE_AUTH_TOKEN`.
 
 ## Editable installs
 

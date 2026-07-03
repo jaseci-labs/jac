@@ -1,18 +1,9 @@
-"""Identity/credential auth request models for the jaclang HTTP server."""
-
-"""Supported identity types. jaclang's user store only handles usernames today."""
-enum IdentityType {
-    USERNAME = 'username'
-}
+enum IdentityType { USERNAME = 'username' }
 
 
-"""Supported credential types."""
-enum CredentialType {
-    PASSWORD = 'password'
-}
+enum CredentialType { PASSWORD = 'password' }
 
 
-"""One identity: a typed identifier (e.g. username) and its raw value."""
 obj IdentityInput {
     has type: str,
         value: str;
@@ -34,7 +25,6 @@ obj IdentityInput {
 }
 
 
-"""One credential (password-only for now)."""
 obj CredentialInput {
     has type: str,
         password: str;
@@ -56,7 +46,6 @@ obj CredentialInput {
 }
 
 
-"""POST /user/login payload."""
 obj LoginRequest {
     has identity: IdentityInput,
         credential: CredentialInput;
@@ -79,7 +68,6 @@ obj LoginRequest {
 }
 
 
-"""POST /user/register payload. At least one identity is required."""
 obj RegisterRequest {
     has identities: list[IdentityInput],
         credential: CredentialInput;

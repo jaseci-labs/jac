@@ -1,5 +1,3 @@
-"""Implementation of the reproducible npm tarball packer."""
-
 import io;
 import gzip;
 import tarfile;

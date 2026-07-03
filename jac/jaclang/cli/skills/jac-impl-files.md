@@ -61,7 +61,7 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 
 ## Client components: the handler annex
 
-The standard answer to "my `.cl.jac` component file is too big": declare the async handlers as **stubs inside the component**, implement them in the paired `.impl.jac`. This is how the `jac create --use fullstack` scaffold ships and the dominant pattern in real Jac frontends - the `.cl.jac` stays a readable state-plus-render surface while fetch/mutate bodies live next door. Inside an `impl app.handler`, the component's reactive `has` fields are read and written **bare** - `items = ...`, never `self.items` - and assignments re-render exactly as they would inline. `root spawn walker(...)` and `await sv_fn(...)` calls work the same as in the component body.
+The standard answer to "my `.cl.jac` component file is too big": declare the async handlers as **stubs inside the component**, implement them in the paired `.impl.jac`. This is how the `jac create --use web-app` scaffold ships and the dominant pattern in real Jac frontends - the `.cl.jac` stays a readable state-plus-render surface while fetch/mutate bodies live next door. Inside an `impl app.handler`, the component's reactive `has` fields are read and written **bare** - `items = ...`, never `self.items` - and assignments re-render exactly as they would inline. `root spawn walker(...)` and `await sv_fn(...)` calls work the same as in the component body.
 
 ```jac
 # frontend.cl.jac - state + stubs + render

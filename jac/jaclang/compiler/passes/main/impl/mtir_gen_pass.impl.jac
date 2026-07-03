@@ -1,11 +1,7 @@
-"""MTIR Generation Pass Implementation.
-
-This module contains the implementations for MTIRGenPass methods.
-"""
-
 import from collections.abc { Sequence }
 import from pathlib { Path }
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.mtp {
@@ -20,20 +16,20 @@ import from jaclang.jac0core.mtp {
     type_to_str
 }
 
-"""Initialize the pass with the input IR and program context."""
 impl MTIRGenPass.postinit -> None {
     super.postinit();
 }
 
-"""Process all GenAI abilities via the sub-node table (no tree traversal)."""
 impl MTIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     for nd in UniPass.get_all_sub_nodes(ir_in, uni.Ability) {
         self._process_ability(nd);
     }
+    for arch in self._collect_routing_archetypes(ir_in) {
+        self._register_archetype_light(arch);
+    }
     return ir_in;
 }
 
-"""Check if a type expression represents a primitive type."""
 impl MTIRGenPass._is_primitive_type(type_expr: uni.Expr | None) -> bool {
     if type_expr is None {
         return False;
@@ -44,8 +40,6 @@ impl MTIRGenPass._is_primitive_type(type_expr: uni.Expr | None) -> bool {
     return False;
 }
 
-"""Parse a unitree type expression into a primitive name, ClassInfo,
-or tuple-based generic representation (using mk_list/mk_dict/mk_tuple)."""
 impl MTIRGenPass._parse_type_expr(
     type_expr: uni.Expr | None, scope: uni.UniScopeNode
 ) -> ClassInfo | EnumInfo | str | tuple | None {
@@ -123,7 +117,6 @@ impl MTIRGenPass._parse_type_expr(
     return None;
 }
 
-"""Extract symbol from type expression if it's not a primitive type."""
 impl MTIRGenPass._extract_type_symbol(
     type_expr: uni.Expr | None, scope: uni.UniScopeNode
 ) -> uni.Symbol | None {
@@ -146,34 +139,29 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
     }
     enum_node = decl.name_of;
     members: list[FieldInfo] = [];
-    # Check if enum has a body and it's a Sequence
+
     if enum_node.body and isinstance(enum_node.body, Sequence) {
         for enum_stmt in enum_node.body {
-            # Handle Assignment nodes (e.g., RED = 1)
             if isinstance(enum_stmt, uni.Assignment) and enum_stmt.is_enum_stmt {
-                # Extract the target name (should be a single Name/NameAtom)
                 if enum_stmt.target and len(enum_stmt.target) > 0 {
                     target = enum_stmt.target[0];
                     if isinstance(target, uni.NameAtom)
                     or isinstance(target, uni.Name) {
                         member_name = target.value;
-                        # Determine type from the assigned value
+
                         type_info = None;
                         if enum_stmt.value {
-                            # Check literal types
                             if isinstance(enum_stmt.value, uni.Int) {
                                 type_info = "int";
                             } elif isinstance(enum_stmt.value, uni.String) {
                                 type_info = "str";
                             } elif isinstance(enum_stmt.value, uni.MultiString) {
-                                # MultiString is used for string literals in some contexts
                                 type_info = "str";
                             } elif isinstance(enum_stmt.value, uni.Float) {
                                 type_info = "float";
                             } elif isinstance(enum_stmt.value, uni.Bool) {
                                 type_info = "bool";
                             } else {
-                                # Non-allowed type for enum value
                                 raise self.ice(
                                     f"Enum member '{member_name}' has invalid value type: {type(
                                         enum_stmt.value
@@ -182,7 +170,7 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                                 );
                             }
                         }
-                        # Get semantic string from symbol if available
+
                         semstr_val = None;
                         if target?.sym and target.sym {
                             semstr_val = target.sym.semstr;
@@ -193,19 +181,14 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
                         members.append(field_info);
                     }
                 }
-            }
-            # Handle NameAtom nodes (simple enum members like RED, BLUE)
-            elif isinstance(enum_stmt, uni.NameAtom) and enum_stmt.is_enum_stmt {
+            } elif isinstance(enum_stmt, uni.NameAtom) and enum_stmt.is_enum_stmt {
                 member_name = enum_stmt.value;
-                # Get semantic string from symbol if available
                 semstr_val = None;
                 if enum_stmt?.sym and enum_stmt.sym {
                     semstr_val = enum_stmt.sym.semstr;
                 }
                 field_info = FieldInfo(
-                    name=member_name,
-                    semstr=semstr_val,
-                    type_info=None  # Simple enum members don't have explicit type
+                    name=member_name, semstr=semstr_val, type_info=None
                 );
                 members.append(field_info);
             }
@@ -218,7 +201,6 @@ impl MTIRGenPass._extract_enum_info(symbol: uni.Symbol) -> EnumInfo {
     );
 }
 
-"""Extract class structure information from a symbol."""
 impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
     if not self?._class_info_cache {
         self._class_info_cache = {};
@@ -283,7 +265,6 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
     return placeholder;
 }
 
-"""Extract comprehensive information from an Ability node."""
 impl MTIRGenPass._extract_function_info(nd: uni.Ability) -> FunctionInfo {
     function_name = nd.py_resolve_name();
     parameters: list[ParamInfo] = [];
@@ -314,8 +295,6 @@ impl MTIRGenPass._extract_function_info(nd: uni.Ability) -> FunctionInfo {
     }
     tools: list[FunctionInfo] = [];
     if nd.is_genai_ability {
-        # Extract tools from the by clause expression
-        # node.body is the expression after 'by' (e.g., model(tools=[...]))
         by_expr = nd.body;
         tools = self._extract_tools_from_expr(by_expr, nd);
     }
@@ -328,7 +307,6 @@ impl MTIRGenPass._extract_function_info(nd: uni.Ability) -> FunctionInfo {
     );
 }
 
-"""Extract method information from an Ability node."""
 impl MTIRGenPass._extract_method_info(
     nd: uni.Ability, by_call: bool = False
 ) -> MethodInfo {
@@ -350,21 +328,16 @@ impl MTIRGenPass._extract_method_info(
     );
 }
 
-"""Get a unique scope string for a given scope node."""
 impl MTIRGenPass._get_scope_str(nd: uni.UniScopeNode) -> str {
     import from jaclang.jac0core.ext_registry { STEM_REKEY_SUFFIXES }
-    # For Module nodes, use the file stem as the scope key.
-    # For the entry point module, this will be just the filename without extension.
-    # At runtime, we can get the same value from sys.modules['__main__'].__file__
+
     if isinstance(nd, uni.Module) {
         mod_path = nd.loc.mod_path;
         if mod_path {
             path = Path(mod_path);
-            # Use just the file stem (filename without extension)
+
             stem = path.stem;
-            # Handle multi-extension files like .impl.jac. Native (".na") is
-            # intentionally not stripped here, matching the importer's MTIR
-            # re-key (shared STEM_REKEY_SUFFIXES).
+
             for suf in STEM_REKEY_SUFFIXES {
                 if stem.endswith(suf) {
                     stem = stem[:-len(suf)];
@@ -373,7 +346,7 @@ impl MTIRGenPass._get_scope_str(nd: uni.UniScopeNode) -> str {
             }
             return stem;
         }
-        # Fallback to scope_name if mod_path is not available
+
         return nd.scope_name;
     }
     self_name = nd.scope_name;
@@ -384,29 +357,23 @@ impl MTIRGenPass._get_scope_str(nd: uni.UniScopeNode) -> str {
     return self_name;
 }
 
-"""Extract tools from a by clause expression."""
 impl MTIRGenPass._extract_tools_from_expr(
     expr: uni.Expr, scope: uni.UniScopeNode
 ) -> list[FunctionInfo] {
     tools: list[FunctionInfo] = [];
-    # Helper to extract tools from a list of params
-    # This is inlined instead of a nested function
+
     params_to_check: list = [];
-    # Case 1: Direct function call - by model(tools=[...])
+
     if isinstance(expr, uni.FuncCall) and expr?.params {
         params_to_check = expr.params;
-    }
-    # Case 2: AtomTrailer (attribute/subscript access, possibly with call)
-    elif isinstance(expr, uni.AtomTrailer) {
-        # Traverse the chain to find FuncCall nodes
+    } elif isinstance(expr, uni.AtomTrailer) {
         current = expr;
         while current {
-            # Check if right is a FuncCall
             if isinstance(current.right, uni.FuncCall) and current.right?.params {
                 params_to_check = current.right.params;
                 break;
             }
-            # Check if target is AtomTrailer to continue chain
+
             if isinstance(current.target, uni.AtomTrailer) {
                 current = current.target;
             } else {
@@ -414,22 +381,19 @@ impl MTIRGenPass._extract_tools_from_expr(
             }
         }
     }
-    # Extract tools from the params we found
+
     for param in params_to_check {
         if isinstance(param, uni.KWPair)
         and param?.key
         and param.key.value == 'tools' {
-            # params.value should be a list of tool references
             if param.value?.values {
                 for tool in param.value.values {
                     try {
-                        # Try to lookup the tool symbol
                         tool_sym = None;
                         if isinstance(tool, uni.NameAtom) {
                             tool_sym = scope.lookup(tool.value, deep=True);
                         } elif isinstance(tool, uni.AtomTrailer)
                         and isinstance(tool.right, uni.NameAtom) {
-                            # Handle module.function references
                             tool_sym = scope.lookup(tool.right.value, deep=True);
                         } elif tool?.symbol_table {
                             tool_sym = tool.symbol_table;
@@ -451,8 +415,6 @@ impl MTIRGenPass._extract_tools_from_expr(
                             }
                         }
                     } except Exception {
-                        # If we can't resolve the tool, skip it
-                        # Tools might be defined at runtime
                         ;
                     }
                 }
@@ -462,7 +424,6 @@ impl MTIRGenPass._extract_tools_from_expr(
     return tools;
 }
 
-"""Process a single ability node for MTIR generation."""
 impl MTIRGenPass._process_ability(nd: uni.Ability) -> None {
     if not nd.is_genai_ability {
         return;
@@ -485,4 +446,146 @@ impl MTIRGenPass._process_ability(nd: uni.Ability) -> None {
     }
     scope = self._get_scope_str(nd);
     Jac.add_mtir_to_map(scope, func_info);
+}
+
+impl MTIRGenPass._collect_routing_archetypes(ir_in: uni.Module) -> list[uni.Archetype] {
+    scoped: dict = {};
+    widen_all = False;
+    saw_routing = False;
+    for vs in UniPass.get_all_sub_nodes(ir_in, uni.VisitStmt) {
+        tgt = vs.target;
+        if not (
+            isinstance(tgt, uni.BinaryExpr) and tgt?.op and (tgt.op.name == Tok.KW_BY)
+        ) {
+            continue;
+        }
+        saw_routing = True;
+        scope_node = vs.find_parent_of_type(uni.Ability) or ir_in;
+        walker_arch = vs.find_parent_of_type(uni.Archetype);
+        if walker_arch is not None {
+            scoped[id(walker_arch)] = walker_arch;
+        }
+        here_arch = self._archetype_from_event(vs.find_parent_of_type(uni.Ability));
+        if here_arch is not None {
+            scoped[id(here_arch)] = here_arch;
+        }
+        (cands, bare) = self._traversal_candidate_archetypes(tgt.left, scope_node);
+        for c in cands {
+            scoped[id(c)] = c;
+        }
+        if bare {
+            widen_all = True;
+        }
+    }
+    if not saw_routing {
+        return [];
+    }
+    if widen_all {
+        for arch in UniPass.get_all_sub_nodes(ir_in, uni.Archetype) {
+            if arch.arch_kind in ('node', 'edge') {
+                scoped[id(arch)] = arch;
+            }
+        }
+    }
+    return list(scoped.values());
+}
+
+impl MTIRGenPass._archetype_from_event(ab: uni.Ability | None) -> uni.Archetype | None {
+    if ab is None {
+        return None;
+    }
+    sig = ab.signature;
+    if not (isinstance(sig, uni.EventSignature) and sig?.arch_tag_info) {
+        return None;
+    }
+    return self._archetype_of_type_expr(sig.arch_tag_info, ab);
+}
+
+impl MTIRGenPass._archetype_of_type_expr(
+    type_expr: uni.Expr, scope: uni.UniScopeNode
+) -> uni.Archetype | None {
+    sym = self._extract_type_symbol(type_expr, scope);
+    if sym
+    and sym?.decl
+    and sym.decl?.name_of
+    and isinstance(sym.decl.name_of, uni.Archetype) {
+        return sym.decl.name_of;
+    }
+    return None;
+}
+
+impl MTIRGenPass._traversal_candidate_archetypes(
+    expr: uni.Expr, scope: uni.UniScopeNode
+) -> tuple {
+    cands: list[uni.Archetype] = [];
+    bare = False;
+    if not isinstance(expr, uni.EdgeRefTrailer) {
+        return ([], True);
+    }
+    for item in expr.chain {
+        if isinstance(item, uni.FilterCompr) {
+            if item?.f_type {
+                node_arch = self._archetype_of_type_expr(item.f_type, scope);
+                if node_arch is not None {
+                    cands.append(node_arch);
+                } else {
+                    bare = True;
+                }
+            }
+        } elif isinstance(item, uni.EdgeOpRef) {
+            fc = item.filter_cond;
+            if fc and fc?.f_type {
+                edge_arch = self._archetype_of_type_expr(fc.f_type, scope);
+                if edge_arch is not None {
+                    cands.append(edge_arch);
+                    found_ep = False;
+                    for ep in [edge_arch.src_endpoint, edge_arch.tgt_endpoint] {
+                        if ep is not None {
+                            ep_arch = self._archetype_of_type_expr(ep, scope);
+                            if ep_arch is not None {
+                                cands.append(ep_arch);
+                                found_ep = True;
+                            }
+                        }
+                    }
+                    if not found_ep {
+                        bare = True;
+                    }
+                } else {
+                    bare = True;
+                }
+            } else {
+                bare = True;
+            }
+        }
+    }
+    return (cands, bare);
+}
+
+impl MTIRGenPass._register_archetype_light(nd: uni.Archetype) -> None {
+    class_sym = nd.name?.sym;
+    if not class_sym {
+        return;
+    }
+
+    fields: list[FieldInfo] = [];
+    for var in nd.get_has_vars() {
+        fsem = var.sym.semstr if (var?.sym and var.sym) else None;
+        fields.append(
+            FieldInfo(name=var.name.value, semstr=fsem or None, type_info=None)
+        );
+    }
+    methods: list[MethodInfo] = [];
+    for method in nd.get_methods() {
+        msem = method.sym.semstr if (method?.sym and method.sym) else None;
+        methods.append(MethodInfo(name=method.py_resolve_name(), semstr=msem or None));
+    }
+    class_info = ClassInfo(
+        name=nd.name.value,
+        semstr=class_sym.semstr or (nd.doc.lit_value if nd?.doc else None),
+        fields=fields,
+        base_classes=[],
+        methods=methods
+    );
+    Jac.add_mtir_to_map(self._get_scope_str(nd), class_info);
 }

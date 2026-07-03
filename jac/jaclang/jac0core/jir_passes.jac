@@ -1,12 +1,3 @@
-"""JIR (Jac IR) serialization: writer and reader for the unified IR.
-
-The writer performs a post-order walk of the unitree, assigning each node
-a sequential ID. Each node's constructor fields, scope overlay, CFG overlay,
-and symbol bindings are serialized into a compact binary stream.
-
-The reader reconstructs the tree by reading the node stream, rebuilding
-kid/parent, scope chains, symbol tables, and CFG edges.
-"""
 import struct;
 import sys;
 import zlib;
@@ -29,13 +20,9 @@ import type from jaclang.jac0core.unitree {
     Token
 }
 
-# --- Constants ---
-"""Sentinel value for None node references."""
 glob SENTINEL_NONE: int = 0xFFFFFE,
      EXTERNAL_REF: int = 0xFFFFFF;
 
-# --- LEB128 varint (module-private, inlined for performance) ---
-"""Encode an unsigned integer as LEB128 varint, appending to buf."""
 def _write_varint(buf: bytearray, value: int) {
     while value >= 0x80 {
         buf.append((value & 0x7F) | 0x80);
@@ -44,7 +31,6 @@ def _write_varint(buf: bytearray, value: int) {
     buf.append(value & 0x7F);
 }
 
-"""Decode an unsigned LEB128 varint. Returns (value, new_pos)."""
 def _read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
     result = 0;
     shift = 0;
@@ -60,8 +46,6 @@ def _read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
     return (result, pos);
 }
 
-# --- String Pool (private, used only by writer/reader) ---
-"""Deduplicated string table for serialization."""
 obj _StringPool {
     has _strings: list[str] by postinit,
         _index: dict[str, int] by postinit;
@@ -102,7 +86,6 @@ obj _StringPool {
     }
 }
 
-"""Deserialize a string pool from data at pos. Returns (pool, new_pos)."""
 def _deserialize_string_pool(
     data: (bytes | memoryview), pos: int
 ) -> tuple[_StringPool, int] {
@@ -117,10 +100,6 @@ def _deserialize_string_pool(
     return (pool, pos);
 }
 
-# =============================================================================
-# JirWriter
-# =============================================================================
-"""Serialize a Module tree to JIR binary format."""
 obj JirWriter {
     has _pool: _StringPool by postinit,
         _node_ids: dict[int, int] by postinit,
@@ -158,10 +137,6 @@ obj JirWriter {
     def _count_symbols(module: Module) -> int;
 }
 
-# =============================================================================
-# JirReader
-# =============================================================================
-"""Deserialize JIR binary back to a Module tree."""
 obj JirReader {
     has _skip_loc: bool = True,
         _source_path: str = "",
