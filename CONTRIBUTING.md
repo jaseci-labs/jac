@@ -207,18 +207,18 @@ the MCP server, and the client/desktop runtimes are all bundled into the binary.
 
 ### Step 1: Create the Release PR
 
-1. Go to **GitHub Actions** -> **Create Release PR**
-2. Click **Run workflow** and pick the `jaclang` bump type (`patch`, `minor`, or `major`)
+1. Go to **GitHub Actions** -> **Release**
+2. Click **Run workflow**, set `action` to `create-pr`, and pick the `jaclang` bump type (`patch`, `minor`, or `major`)
 3. The workflow bumps the version in `jac/jac.toml` (the single source of truth) and opens a PR from a `release/*` branch
 4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
 5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 
 ### Step 2: Approve the Release
 
-After the release PR is merged, the **Publish Release** workflow triggers automatically:
+After the release PR is merged, the **Release** workflow triggers automatically:
 
 1. **Manual approval required** (only maintainers with `release-approval` environment access):
-   - Go to **GitHub Actions** -> find the running **Publish Release** workflow
+   - Go to **GitHub Actions** -> find the running **Release** workflow
    - Click the paused job, then **Review deployments**, select `release-approval`, and **Approve and deploy**
 2. The workflow then handles everything automatically:
    - Tags `v<version>` at the merge commit and creates/updates the GitHub Release
@@ -233,5 +233,5 @@ Every step is idempotent: re-running a partial release converges instead of erro
 | CI checks not running / not showing on the release PR | Expected: GitHub skips `pull_request` checks for PRs opened by the `github-actions[bot]` / `GITHUB_TOKEN` actor. **Close and reopen the PR** so the reopen event comes from a real user, and the checks then run and attach. (A GitHub App / PAT token authoring the PR would remove this step.) |
 | Auto-merge won't enable / PR won't merge | Auto-merge needs the PR's required status checks to be attached; do the close/reopen above first so the checks exist on the PR |
 | Publish workflow didn't trigger | Ensure the PR branch started with `release/` |
-| Binaries missing from the release | Re-run **Release jac native binary** via `workflow_dispatch` with the release tag (e.g. `v0.30.4`); it rebuilds and re-attaches idempotently. An empty tag builds artifacts only (a dry run that attaches nothing) |
-| Need to re-run after the release PR is merged | Manually trigger **Publish Release** (`workflow_dispatch`); the version is re-read from `jac/jac.toml` |
+| Binaries missing from the release | Re-run **Build jac native binaries** via `workflow_dispatch` with the release tag (e.g. `v0.30.4`); it rebuilds and re-attaches idempotently. An empty tag builds artifacts only (a dry run that attaches nothing) |
+| Need to re-run after the release PR is merged | Manually trigger **Release** with `action: publish`; the version is re-read from `jac/jac.toml` |

@@ -214,6 +214,10 @@ def derive_capabilities(
             }
         }
     }
+
+    if intent and ("serve" in caps) and not ({"data.mongo", "data.redis"} & caps) {
+        caps.add("data.mongo");
+    }
     return caps;
 }
 

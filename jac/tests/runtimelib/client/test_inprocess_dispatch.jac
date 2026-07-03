@@ -14,7 +14,7 @@ The round-trip needs the built-in scale backend (starlette + jaclang.scale). The
 lean `jac test` desktop CI step does NOT install starlette, so the heavy imports
 are lazy (module import + collection stay backend-free) and each test self-skips
 when the backend deps are absent. It runs for real in the scale-backed CI step
--- see `.github/workflows/test-jaseci.yml`.
+-- see `.github/workflows/ci.yml`.
 """
 
 import os;

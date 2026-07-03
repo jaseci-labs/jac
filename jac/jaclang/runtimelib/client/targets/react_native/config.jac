@@ -1,12 +1,7 @@
 import from pathlib { Path }
-import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
 glob _RN_BUILDERS_ANDROID = {"gradle", "eas"},
      _RN_BUILDERS_IOS = {"xcodebuild", "eas"};
-
-def _load_react_native_config(project_dir: Path) -> dict {
-    return JacClientConfig(project_dir).get_react_native_config();
-}
 
 def _to_bool(value: any, fallback: bool = False) -> bool {
     if value is None {

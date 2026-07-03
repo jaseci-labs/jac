@@ -9,6 +9,8 @@ import type from jaclang.jac0core.unitree { Module }
 
 class ClientBundleError(RuntimeError) {}
 
+class MissingBunError(ClientBundleError) {}
+
 def _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None);
 
 def _ensure_js_generated(mod: Module, program: any) -> None;

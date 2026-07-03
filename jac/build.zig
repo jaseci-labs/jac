@@ -267,12 +267,27 @@ pub fn build(b: *std.Build) void {
             );
         }
 
+        // Persistent JIR precompile cache (mirrors .pbs-build/.llvm-build/
+        // .bun-build): mkpayload seeds site/_precompiled from this dir and
+        // writes the refreshed tree back, so a repack after a small jaclang
+        // edit recompiles only the changed modules instead of all ~700.
+        // Deliberately NOT a tracked input: every seeded .jir is validated by
+        // its content-addressed module key, so the dir's content can never
+        // change the payload -- only how fast it packs. Skipped in
+        // linked-source mode (no bundled compiler, no precompile).
+        if (link_dir == null) {
+            mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build")}));
+        }
+
         // Contained bun runtime: fetch the pinned bun for the target and bundle
         // it inside the client package via --bun. Mirrors the fetch-pbs pattern
-        // (download + sha256-verify, all in the payload tool). Skipped in
-        // linked-source/dev mode -- there get_bun() resolves a contained,
-        // on-demand .jac/bin copy instead. A BUN_VERSION bump lands in
-        // payload.zig (tracked below), so it invalidates the cached payload.
+        // (download + sha256-verify, all in the payload tool). A BUN_VERSION
+        // bump lands in payload.zig (tracked below), so it invalidates the
+        // cached payload. In linked-source/dev mode there is no bundled copy to
+        // fall back on -- get_bun() resolves from the linked tree -- so place
+        // bun INTO that tree instead, exactly like the LLVM shim's `place`
+        // step. Every jac binary gets bun, not just releases: jac's JS tooling
+        // runs exclusively on the bundled bun (no Node.js fallback).
         if (link_dir == null) {
             const bun_dir = b.pathFromRoot(b.fmt(".bun-build/{s}", .{osarch}));
             const bun_basename = if (target.result.os.tag == .windows) "bun.exe" else "bun";
@@ -281,6 +296,11 @@ pub fn build(b: *std.Build) void {
             fetch_bun.has_side_effects = true;
             mk.step.dependOn(&fetch_bun.step);
             mk.addArg(b.fmt("--bun={s}/{s}", .{ bun_dir, bun_basename }));
+        } else if (osArchString(b.graph.host.result)) |host_osarch| {
+            const fetch_bun = b.addRunArtifact(tool);
+            fetch_bun.addArgs(&.{ "fetch-bun", host_osarch, b.fmt("{s}/jaclang/runtimelib/client/_bun", .{link_dir.?}) });
+            fetch_bun.has_side_effects = true;
+            mk.step.dependOn(&fetch_bun.step);
         }
 
         // Linux: harvest a static-musl runtime for the target from the bundled

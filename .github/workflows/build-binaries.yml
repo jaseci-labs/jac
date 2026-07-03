@@ -1,33 +1,24 @@
-name: Release jac native binary
+name: Build jac native binaries
 
-# jaclang ships as a single self-contained `jac` binary (Zig launcher that
-# dlopens a bundled CPython; no system Python, uv, or pip). This workflow builds
-# that binary per platform and attaches it to the GitHub Release. jaclang is no
-# longer published to PyPI -- the binary is the distribution.
+# Builds the self-contained `jac` binary per platform and attaches it to a
+# GitHub Release. Primary path: called by release.yml after it cuts the release
+# (a GITHUB_TOKEN-created release emits no release.published event). The
+# release event is the safety net for releases published by a real user.
 
 on:
-  # Called by publish-release.yml right after it cuts the release. This is the
-  # primary path: a release created with GITHUB_TOKEN does not emit a
-  # release.published event to other workflows (GitHub anti-recursion), so the
-  # publisher invokes the build directly instead of relying on the event.
   workflow_call:
     inputs:
       tag:
         description: "Canonical release tag v<version> to upload assets to."
         required: true
         type: string
-  # Safety net: a release published by a real user (e.g. via the UI) does emit
-  # this event, so binaries still attach even outside the publish workflow.
   release:
     types: [published]
-  # Manual re-attach of binaries to an existing release.
   workflow_dispatch:
     inputs:
       tag:
-        # Use the canonical release tag `v<version>` (e.g. v0.30.1) so binaries
-        # land on the release the publish pipeline already cut. Do NOT invent a
-        # new tag (e.g. `jaclang-0.30.1`) -- that creates a duplicate release.
-        # Empty = build the artifact only, attach nothing.
+        # Use the canonical `v<version>` tag; a new tag would create a
+        # duplicate release. Empty = build the artifact only, attach nothing.
         description: "Canonical release tag to upload assets to (e.g. v0.30.1). Empty = artifact only."
         required: false
         type: string
@@ -41,39 +32,25 @@ jobs:
       fail-fast: false
       matrix:
         # One native runner per target so the smoke test runs on real hardware.
-        # The launcher links only libc and dlopens libpython, so each build is
-        # self-contained; build.zig fetches the per-target python-build-standalone
-        # and (for the native backend) the per-target LLVM release.
+        # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014);
+        # macOS builds host-native. No Intel-Mac leg: LLVM ships no macOS-x64
+        # prebuilt for the pinned release.
         include:
-          # zig_target pins each Linux binary's glibc floor regardless of the
-          # runner's glibc, so the asset runs on that floor+. Both Linux legs are
-          # floored at 2.17 (matching CPython/PBS manylinux2014): the launcher +
-          # pyembed are zig pins, and the LLVMPY_* shim links its libc++ LLVM
-          # slice with `zig c++` at the same 2.17 (build.zig linuxShim, #7082) --
-          # a host-g++ link would force the runner's glibc instead (the shim, not
-          # the launcher, is the floor). The verify step below asserts the floor
-          # from this value. macOS omits zig_target and builds host-native.
           - os: ubuntu-latest
             platform: linux-x86_64
             zig_target: x86_64-linux-gnu.2.17
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             zig_target: aarch64-linux-gnu.2.17
-          # No macos-x86_64 (Intel) leg: the native (na) backend statically links
-          # a pinned LLVM release, and LLVM ships no macOS-x64 prebuilt for 20.1.8
-          # (only Linux-X64/ARM64 + macOS-ARM64). Apple Silicon is covered by
-          # macos-aarch64; restoring Intel-Mac needs an x86_64 LLVM static source.
           - os: macos-14
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
     steps:
-      # Check out the release tag, not the caller's default SHA. A reusable
-      # workflow (`uses:`) otherwise runs at the caller's ref, so a recovery
-      # dispatch after `main` advanced would build binaries from newer source
-      # and clobber them onto the old release -- source and assets would drift.
-      # On a release event this is the published tag; empty (artifact-only
-      # dispatch) falls through to the default ref.
-      - uses: actions/checkout@v4
+      # Check out the release tag, not the caller's ref, so a recovery run
+      # after main advanced still builds the release's own source.
+      # SHA-pinned: this job holds contents:write and ships user-downloaded
+      # binaries, so a re-pointed tag on the action must not reach it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ inputs.tag || github.event.release.tag_name }}
 
@@ -89,9 +66,7 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
-          # Fresh cache each run: build.zig's payload step doesn't reliably
-          # invalidate on jaclang/ changes, so a cached payload could ship stale
-          # bits in a release. Force a rebuild.
+          # Fresh cache each run: a cached payload could ship stale bits.
           use-cache: false
 
       - name: Read version (from jac.toml)
@@ -99,13 +74,10 @@ jobs:
         working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
-      # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
-      # shim, so the per-target LLVM release must be extracted before `zig build`
-      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download; not
-      # cached here, matching this workflow's fresh-each-release policy.
+      # The native backend statically links a pinned LLVM; fetch it per target
+      # before `zig build`.
       - name: Fetch LLVM for the jacllvm shim
         working-directory: jac
-        # zig_target -> -Dtarget=... on Linux legs; empty (host-native) on macOS.
         run: zig build fetch-llvm ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
 
       - name: Build the jac binary (one command)
@@ -122,16 +94,13 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
+      # Guards #7082: neither the launcher nor the LLVMPY_* shim may reference
+      # a glibc symbol newer than the zig_target floor.
       - name: Verify glibc floor (from zig_target)
         if: runner.os == 'Linux'
         working-directory: jac
         env:
           ZIG_TARGET: ${{ matrix.zig_target }}
-        # Guards #7082: the shipped launcher and the LLVMPY_* shim must not reference
-        # a glibc symbol newer than the advertised floor -- which is exactly the
-        # matrix zig_target's suffix (x86_64-linux-gnu.2.17 -> 2.17), so there is no
-        # second place to keep a floor number in sync. objdump -T lists each
-        # undefined symbol's GLIBC_x.y version tag; assert the maximum is <= floor.
         run: |
           set -euxo pipefail
           FLOOR="${ZIG_TARGET##*gnu.}"
@@ -146,13 +115,12 @@ jobs:
             fi
           }
           check zig-out/bin/jac
-          # Materialize the shim as an install artifact if the build didn't place it.
           SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.so"
           [ -f "$SHIM" ] || zig build jacllvm -Dtarget=${{ matrix.zig_target }} --summary all
           [ -f "$SHIM" ] || SHIM="zig-out/lib/libjacllvm.so"
           check "$SHIM"
 
-      - name: Package asset (+ checksum, ad-hoc codesign on macOS)
+      - name: Package asset (+ checksum)
         id: pkg
         working-directory: jac
         run: |
@@ -160,7 +128,9 @@ jobs:
           ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"
-          if [ "$RUNNER_OS" = "macOS" ]; then codesign --force --sign - "dist/$ASSET" || true; fi
+          # No codesign on macOS: the payload tarball appended past the Mach-O
+          # end fails codesign's strict validation; the zig linker's ad-hoc
+          # signature is content-based and survives cp.
           ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
 
@@ -178,14 +148,9 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
 
-      # End-to-end check of the user-facing install path. Now that THIS
-      # platform's asset is attached to the release, `scripts/install.sh` must be
-      # able to resolve, download, checksum-verify, and run it. This is the gate
-      # that catches release-tag/installer scheme drift (the kind that silently
-      # breaks `curl ... | bash`) at release time, on the same native hardware
-      # the asset targets, instead of in users' terminals. Gated like the upload
-      # above -- only meaningful once the asset is actually on a release. Runs in
-      # an isolated $HOME so the runner's PATH/profile is left untouched.
+      # With this platform's asset attached, `scripts/install.sh` must resolve,
+      # download, checksum-verify, and run it -- catches release-tag/installer
+      # drift at release time on the target hardware.
       - name: Verify install.sh can fetch + run this release
         if: github.event_name == 'release' || inputs.tag != ''
         env:
@@ -198,9 +163,7 @@ jobs:
           TAG="${{ inputs.tag }}"
           [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
 
-          # The GitHub API lists release assets with a few seconds of lag after an
-          # upload, and install.sh resolves the binary from that listing. Wait for
-          # this platform's asset to appear before verifying.
+          # The assets API lags uploads by a few seconds; wait for this asset.
           echo "Waiting for asset $ASSET to appear on release $TAG..."
           deadline=$(( SECONDS + 120 ))
           until gh release view "$TAG" --json assets \

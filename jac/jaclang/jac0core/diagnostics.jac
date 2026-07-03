@@ -495,6 +495,20 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot spread type {actual} into '{component}' (expected dict)"
      ),
+     E1105 = _err(
+         "E1105",
+         Category.TYPE,
+         "JSX tag '<{tag}>' is not in scope in a mobUI project;"
+         " use {suggestion} instead",
+         "mobUI projects target React Native as well as the web, where raw"
+         " HTML host elements do not exist. If the tag is meant to be a"
+         " component, make sure it is imported and in scope. Otherwise, replace"
+         " it with a @jac/mobui primitive (View, Text, Pressable, TextInput,"
+         " Image, ScrollView, ...). Lowercase tags that resolve to imported"
+         " components are"
+         " allowed; only unresolved names are rejected.",
+         blocks_codegen=True
+     ),
      E1110 = _err(
          "E1110",
          Category.TYPE,
