@@ -16,10 +16,7 @@ UNIIR_NODE_DOC = "docs/internals/uniir_node.md"
 AST_TOOL = AstTool()
 # Directory basenames to exclude
 EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git", "tests"}
-# In a sealed binary (#7135) jaclang ships as sourceless .pyc (no .py) beside its
-# JIR modules, so the playground zip MUST carry those .pyc for the in-browser
-# runtime (same CPython 3.14 the .jir target). Only .pyo/.pyi are dropped.
-EXCLUDE_EXTS = {".pyo", ".pyi"}
+EXCLUDE_EXTS = {".pyc", ".pyo", ".pyi"}
 # Subdirectory paths within jaclang to exclude entirely
 EXCLUDE_SUBDIRS = {
     os.path.join("compiler", "passes", "native"),
@@ -28,21 +25,61 @@ EXCLUDE_SUBDIRS = {
 
 
 def resolve_jaclang_dir() -> str:
-    """Locate the host jaclang package directory for the playground zip.
+    """Locate a jaclang SOURCE tree for the playground zip.
 
-    jaclang is no longer published to PyPI -- it ships inside the self-contained
-    `jac` binary, whose bundled copy already carries the pre-compiled .jir files
-    the playground needs. Use that installed package directly instead of
-    `pip install --target`. Caller must NOT delete the returned directory.
+    The playground runs jaclang in-browser (Pyodide) to execute snippets, so it
+    needs jaclang *source* (.jac + .py). A sealed `jac` binary (#7135) ships
+    source-free, so prefer the in-repo source tree; the binary's built
+    ``_precompiled/*.jir`` are overlaid separately (see ``_overlay_precompiled``)
+    for the fast in-browser boot. Caller must NOT delete the returned directory.
     """
+    repo_src = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "jac", "jaclang")
+    )
+    if os.path.isfile(os.path.join(repo_src, "__init__.py")):
+        print(f"Using in-repo jaclang source at {repo_src}")
+        return repo_src
+
     import jaclang
 
     jaclang_dir = os.path.dirname(os.path.abspath(jaclang.__file__))
-    jir_count = sum(
-        1 for _, _, files in os.walk(jaclang_dir) for f in files if f.endswith(".jir")
-    )
-    print(f"Using host jaclang at {jaclang_dir} ({jir_count} pre-compiled .jir files)")
+    print(f"Using host jaclang at {jaclang_dir} (no in-repo source tree found)")
     return jaclang_dir
+
+
+def _overlay_precompiled(zipf: "zipfile.ZipFile", already: set) -> int:
+    """Add the sealed binary's ``jaclang/_precompiled/*.jir`` to the zip so the
+    in-browser runtime boots from JIR instead of compiling jaclang from source.
+    Source (from resolve_jaclang_dir) carries no .jir; the binary carries them.
+    """
+    try:
+        import jaclang
+    except Exception:
+        return 0
+    pc = os.path.join(
+        os.path.dirname(os.path.abspath(jaclang.__file__)), "_precompiled"
+    )
+    if not os.path.isdir(pc):
+        return 0
+    added = 0
+    for root, _dirs, files in os.walk(pc):
+        for file in files:
+            # Skip MANIFEST.json: with source present the playground runs jaclang
+            # *unsealed* (source-primary, .jir as a validated cache) -- exactly
+            # how it behaved before #7135. A manifest would flip it into sealed
+            # source-free mode, which is the browser path that does not work.
+            if file == "MANIFEST.json":
+                continue
+            src = os.path.join(root, file)
+            arcname = os.path.join(
+                ZIP_FOLDER_NAME, "_precompiled", os.path.relpath(src, pc)
+            )
+            if arcname in already:
+                continue
+            zipf.write(src, arcname)
+            already.add(arcname)
+            added += 1
+    return added
 
 
 def pre_build_hook(**kwargs: dict) -> None:
@@ -101,6 +138,7 @@ def create_playground_zip(jaclang_dir: str) -> None:
 
     os.makedirs(EXTRACTED_FOLDER, exist_ok=True)
 
+    written: set = set()
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as zipf:
         for root, dirs, files in os.walk(jaclang_dir):
             dirs[:] = [
@@ -116,6 +154,11 @@ def create_playground_zip(jaclang_dir: str) -> None:
                         ZIP_FOLDER_NAME, os.path.relpath(file_path, jaclang_dir)
                     )
                     zipf.write(file_path, arcname)
+                    written.add(arcname)
+
+        # Overlay the sealed binary's precompiled JIR (source tree has none).
+        overlaid = _overlay_precompiled(zipf, written)
+        print(f"  Overlaid {overlaid} precompiled .jir from the binary")
 
     # Verify and report
     with zipfile.ZipFile(PLAYGROUND_ZIP_PATH, "r") as zf:
