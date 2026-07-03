@@ -1,7 +1,11 @@
 import io;
 import hashlib;
+import logging;
 import tarfile;
+import tomllib;
 import from pathlib { Path }
+
+glob logger = logging.getLogger(__name__);
 
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
@@ -83,7 +87,42 @@ def _is_dev_section(name: str) -> bool {
 }
 
 
-def sanitized_jac_toml(base: Path) -> (str | None) {
+"""Materialize the database backend the deploy provisions into the shipped
+manifest. The deployer injects the connection URI (e.g. MONGODB_URI) into
+every service pod, so the pod's `jac install` must close over the matching
+data capability; a project with no declared [plugins.scale.*] intent would
+otherwise boot straight into an ImportError (#7137). scale_intent_from_config
+prefers a top-level [scale] table over [plugins.scale], so the appended
+section follows whichever form the project uses."""
+def bake_database_intent(toml_text: str, backend: str) -> str {
+    if not backend {
+        return toml_text;
+    }
+    try {
+        data = tomllib.loads(toml_text);
+    } except tomllib.TOMLDecodeError as exc {
+        logger.warning(
+            f"Sanitized jac.toml is not parseable ({exc}); shipping it without "
+            f"the provisioned '{backend}' database intent -- the pod's install "
+            f"may miss the matching data capability."
+        );
+        return toml_text;
+    }
+    scale = data.get("scale");
+    uses_scale_table = isinstance(scale, dict);
+    if not uses_scale_table {
+        plugins = data.get("plugins");
+        scale = plugins.get("scale") if isinstance(plugins, dict) else None;
+    }
+    if isinstance(scale, dict) and isinstance(scale.get("database"), dict) {
+        return toml_text;
+    }
+    header = "scale.database" if uses_scale_table else "plugins.scale.database";
+    return f'{toml_text}\n[{header}]\nbackend = "{backend}"\n';
+}
+
+
+def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | None) {
     src = base / "jac.toml";
     if not src.is_file() {
         return None;
@@ -125,11 +164,11 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
         out.append(line);
     }
     out.extend(pending);
-    return "\n".join(out) + "\n";
+    return bake_database_intent("\n".join(out) + "\n", provisioned_database);
 }
 
 
-def pack_source(project_dir: str) -> bytes {
+def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
@@ -143,7 +182,7 @@ def pack_source(project_dir: str) -> bytes {
             }
             tar.add(str(path), arcname=str(rel));
         }
-        sanitized = sanitized_jac_toml(base);
+        sanitized = sanitized_jac_toml(base, provisioned_database);
         if sanitized is not None {
             data = sanitized.encode("utf-8");
             info = tarfile.TarInfo(name="jac.toml");

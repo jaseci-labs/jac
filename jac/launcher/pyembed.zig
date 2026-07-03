@@ -8,8 +8,8 @@
 //! here, in one shared library the host DT_NEEDEDs:
 //!
 //!   * `jac_engine_boot()` runs the shared bring-up (embed.zig: materialize the
-//!     trailer payload -> hermetic env -> dlopen the bundled libpython -> pin the
-//!     program name -> Py_Initialize), then resolves the CPython C-API the host
+//!     trailer payload -> dlopen the bundled libpython -> PEP 741 config init,
+//!     hermetic + env-leak-free), then resolves the CPython C-API the host
 //!     calls into module globals. No path args: the shim resolves its own process
 //!     image (/proc/self/exe), which is the host binary carrying the trailer.
 //!   * `jpy_`-PREFIXED thin forwarders (`jpy_PyRun_SimpleString`, ...) re-export
@@ -116,11 +116,12 @@ export fn jac_engine_boot() c_int {
         &rt_buf,
     ) catch return fail("runtime bring-up failed (trailer payload not materialized?)");
 
-    // Pin program name, then initialize. embed owns env/dlopen; the host owns
-    // what runs after init (SERVE/PLUGIN/DISPATCH), via the forwarders below.
-    emb.setProgramName(exe_z) catch return fail("failed to pin program name");
-    const py_init = emb.symOrErr(embed.Py_Initialize_t, "Py_Initialize") catch return fail("libpython missing symbol: Py_Initialize");
-    py_init();
+    // Initialize via the shared PEP 741 config path (program-name pin, hermetic
+    // home/paths -- config values, never env, so nothing leaks to children,
+    // #7047). embed owns dlopen/init; the host owns what runs after init
+    // (SERVE/PLUGIN/DISPATCH), via the forwarders below. No argv: the embedded
+    // host keeps CPython's `sys.argv == ['']` default, as before.
+    emb.initInterpreter(exe_z, .{}) catch return fail("interpreter initialization failed");
 
     // Resolve the host-facing C-API once. A missing symbol here is a packaging
     // bug; surface it cleanly rather than faulting on first forwarded call.

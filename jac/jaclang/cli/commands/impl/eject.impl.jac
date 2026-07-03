@@ -2,7 +2,12 @@ import shutil;
 import json;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.ext_registry { base_stem, is_client_module, is_annex }
+import from jaclang.jac0core.ext_registry {
+    base_stem,
+    is_client_module,
+    is_native_module,
+    is_annex
+}
 
 glob _SKIP_DIRS: set = {
          ".jac",
@@ -184,7 +189,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             bmod = ".".join(parent_parts + [stem]);
         }
         is_client = is_client_module(rel.name);
-        server = _is_meaningful_python(py_code) and (not is_client);
+        is_native = is_native_module(rel.name);
+        server = _is_meaningful_python(py_code) and (not is_client) and (not is_native);
 
         if server {
             for item in ir.body {
@@ -198,12 +204,12 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
                         }
                     );
                 } elif isinstance(item, uni.Ability) and item.name_ref is not None {
+                    fn_name = str(item.name_ref.sym_name);
+                    if fn_name.startswith("_") {
+                        continue;
+                    }
                     functions.append(
-                        {
-                            "name": str(item.name_ref.sym_name),
-                            "module": bmod,
-                            "pub": _has_pub_access(item)
-                        }
+                        {"name": fn_name, "module": bmod, "pub": _has_pub_access(item)}
                     );
                 }
             }
@@ -232,7 +238,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     if has_frontend {
         runtime_copied = _copy_client_runtime(src, frontend_dir);
         _emit_package_json(frontend_dir, project_name, toml_data);
-        _emit_vite_config(frontend_dir, runtime_copied);
+        _emit_vite_config(frontend_dir, runtime_copied, toml_data);
         _emit_entry_js(frontend_src_dir, entry_module);
         _emit_index_html(frontend_dir, project_name);
     } else {
@@ -415,10 +421,20 @@ def _emit_package_json(frontend_dir: Path, project_name: str, toml_data: dict) {
 }
 
 
-def _emit_vite_config(frontend_dir: Path, runtime_copied: bool) {
+def _emit_vite_config(frontend_dir: Path, runtime_copied: bool, toml_data: dict) {
+    vite_cfg = dict(toml_data.get("plugins", {}).get("client", {}).get("vite", {}));
+    lib_imports = [str(i) for i in vite_cfg.get("lib_imports", [])];
+    plugins = [str(p) for p in vite_cfg.get("plugins", [])];
+
     header: list[str] = [
         'import path from "path";',
-        'import { fileURLToPath } from "url";',
+        'import { fileURLToPath } from "url";'
+    ];
+    for lib_import in lib_imports {
+        line = lib_import if lib_import.rstrip().endswith(";") else (lib_import + ";");
+        header.append(line);
+    }
+    header += [
         '',
         'const __dirname = path.dirname(fileURLToPath(import.meta.url));',
         'const _backendPort = process.env.BACKEND_PORT || "8000";',
@@ -428,6 +444,14 @@ def _emit_vite_config(frontend_dir: Path, runtime_copied: bool) {
         'export default {',
 
     ];
+    plugins_block: list[str] = [];
+    if plugins {
+        plugins_block.append('  plugins: [');
+        for plugin in plugins {
+            plugins_block.append('    ' + plugin + ',');
+        }
+        plugins_block.append('  ],');
+    }
     resolve_block: list[str] = [];
     if runtime_copied {
         resolve_block = [
@@ -447,13 +471,15 @@ def _emit_vite_config(frontend_dir: Path, runtime_copied: bool) {
         '      "/function":  _backend,',
         '      "/functions": _backend,',
         '      "/user":      _backend,',
-        '      "/cl":        _backend',
+        '      "/cl":        _backend,',
+        '      "/docs":      _backend,',
+        '      "/openapi.json": _backend',
         '    }',
         '  }',
         '};',
         ''
     ];
-    lines: list[str] = header + resolve_block + server_block;
+    lines: list[str] = header + plugins_block + resolve_block + server_block;
     (frontend_dir / "vite.config.js").write_text("\n".join(lines), encoding="utf-8");
 }
 
@@ -534,13 +560,25 @@ def _copy_data_files(
             copied = True;
             continue;
         }
-        dest_b = backend_dir / rel;
-        dest_b.parent.mkdir(parents=True, exist_ok=True);
-        shutil.copy2(path, dest_b);
+        is_frontend_only = path.suffix == ".css";
+        if not (has_frontend and is_frontend_only) {
+            dest_b = backend_dir / rel;
+            dest_b.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(path, dest_b);
+        }
         if has_frontend {
             dest_f = frontend_src_dir / rel;
             dest_f.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(path, dest_f);
+            static_rels = [rel];
+            if rel_parts and (rel_parts[0] == "assets") and (len(rel_parts) > 1) {
+                static_rels.append(Path(*rel_parts[1:]));
+            }
+            for static_rel in static_rels {
+                dest_s = frontend_root / "public" / "static" / static_rel;
+                dest_s.parent.mkdir(parents=True, exist_ok=True);
+                shutil.copy2(path, dest_s);
+            }
         }
         copied = True;
     }

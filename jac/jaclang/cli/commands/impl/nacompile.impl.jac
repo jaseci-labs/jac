@@ -270,9 +270,14 @@ impl nacompile(
     }
 
     if is_wasm {
-        import from jaclang.compiler.passes.native.wasm_build { emit_wasm_from_ir }
+        import from jaclang.compiler.passes.native.wasm_build {
+            emit_wasm_from_ir,
+            app_declared_imports
+        }
         try {
-            wasm_bytes = emit_wasm_from_ir(str(ir_module.gen.llvm_ir));
+            wasm_bytes = emit_wasm_from_ir(
+                str(ir_module.gen.llvm_ir), app_imports=app_declared_imports(ir_module),
+            );
         } except Exception as e {
             console.error(f"Wasm emit/link failed: {e}");
             import traceback;
@@ -283,7 +288,10 @@ impl nacompile(
             _wf.write(wasm_bytes);
         }
         console.print(f"  Wasm module written to {output} ({len(wasm_bytes)} bytes).");
-        console.print(f"  Instantiate in a browser/Node with an `env` import object.");
+        console.print(
+            "  Instantiate with the `jac_host1` host object (see @jac/wasm_host)"
+            " plus an `env` object for any FFI the app declares."
+        );
         return 0;
     }
 
