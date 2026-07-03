@@ -234,6 +234,12 @@ def _ext_registry() -> ModuleType:
             or os.path.dirname(__file__)
         )
         path = os.path.join(base, "jaclang", "jac0core", "ext_registry.py")
+        if not os.path.exists(path):
+            # A sealed binary ships the stdlib + jaclang .py as sourceless .pyc
+            # (#7135 phase E); load the compiled form when the source is gone.
+            pyc = path[:-3] + ".pyc"
+            if os.path.exists(pyc):
+                path = pyc
         spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load extension registry from {path}")
