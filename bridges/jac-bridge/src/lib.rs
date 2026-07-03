@@ -16,7 +16,7 @@ enum TypeKind { Opaque, Error }
 struct TypeDef { name: Ident, kind: TypeKind }
 
 #[derive(Clone, PartialEq, Eq)]
-enum Tag { Bool, Str, Void, Ref(usize), Opt(Box<Tag>) }
+enum Tag { Bool, Str, Void, Ref(usize), Opt(Box<Tag>), Callback }
 
 impl Tag {
     fn as_u32(&self) -> u32 {
@@ -26,6 +26,7 @@ impl Tag {
             Tag::Void     => schema::TAG_VOID,
             Tag::Ref(i)   => schema::TAG_REF_BIT | (*i as u32),
             Tag::Opt(inner) => schema::TAG_OPT_BIT | inner.as_u32(),
+            Tag::Callback => schema::TAG_FN,
         }
     }
 }
@@ -95,7 +96,20 @@ fn expand(module_name: String, input: ItemMod) -> Result<TS2, Error> {
     let shims_ts  = gen_shims(&module_name, &types, &fns, &input.ident);
 
     // Strip #[jac_error] from struct attrs before re-emitting
-    let cleaned: Vec<TS2> = items.iter().map(strip_jac_error).collect();
+    let mut cleaned: Vec<TS2> = items.iter().map(strip_jac_error).collect();
+
+    // A bridge fn that names `JacCallback` as a param needs the type in scope
+    // inside the re-emitted module; it lives in the sibling rt module.  Inject
+    // the `use` only when a callback is present so callback-free bridges stay
+    // byte-identical (no new imports).
+    let has_callback = fns.iter().any(|f| f.params.iter().any(|p| p.tag == Tag::Callback));
+    if has_callback {
+        let rt = format_ident!("__jac_bridge_{module_name}_rt");
+        cleaned.insert(0, quote! {
+            #[allow(unused_imports)]
+            use super::#rt::JacCallback;
+        });
+    }
 
     let vis       = &input.vis;
     let mod_attrs = &input.attrs;
@@ -257,9 +271,13 @@ fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
         Type::Path(tp) if tp.path.segments.len() == 1 => {
             let id = &tp.path.segments[0].ident;
             match id.to_string().as_str() {
-                "bool"   => Ok((Tag::Bool, false)),
-                "String" => Ok((Tag::Str,  false)),
-                "str"    => Ok((Tag::Str,  true)),
+                "bool"        => Ok((Tag::Bool, false)),
+                "String"      => Ok((Tag::Str,  false)),
+                "str"         => Ok((Tag::Str,  true)),
+                // A callback param: the Jac side supplies a C-ABI function
+                // pointer (fn(*const u8, u32, *mut JacBuf, *mut u64) -> i32).
+                // Crosses as a single u64; decoded into the rt `JacCallback`.
+                "JacCallback" => Ok((Tag::Callback, false)),
                 _ => {
                     if let Some(i) = types.iter().position(|t| &t.name == id) {
                         Ok((Tag::Ref(i), false))
@@ -515,6 +533,63 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
             pub fn panic_err_handle(msg: &str) -> u64 {
                 ::std::boxed::Box::into_raw(::std::boxed::Box::new(msg.to_string())) as u64
             }
+
+            // A callback the Jac side hands us: a C-ABI function pointer with a
+            // fixed signature.  The Jac runtime (na `def:pub` thunk, or a CPython
+            // CFUNCTYPE) supplies the pointer; we invoke it with the match text
+            // and read back an owned replacement JacBuf (allocated Jac-side via
+            // `..._make_buf`, freed here after copying — same allocator both ways).
+            pub type JacCbFn = unsafe extern "C" fn(
+                *const u8, u32, *mut JacBuf, *mut u64,
+            ) -> i32;
+
+            #[derive(Clone, Copy)]
+            pub struct JacCallback { func: JacCbFn }
+
+            impl JacCallback {
+                /// # Safety
+                /// `raw` must be a valid `JacCbFn` pointer for the call's duration.
+                pub unsafe fn from_raw(raw: u64) -> JacCallback {
+                    JacCallback { func: unsafe { ::std::mem::transmute::<usize, JacCbFn>(raw as usize) } }
+                }
+
+                /// Invoke the callback with `arg`; copy the returned buffer into an
+                /// owned `String` and free it.  A null out buffer decodes to "".
+                pub fn call(&self, arg: &str) -> ::std::result::Result<String, String> {
+                    let mut buf = JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 };
+                    let mut err = 0u64;
+                    let st = unsafe {
+                        (self.func)(arg.as_ptr(), arg.len() as u32, &mut buf, &mut err)
+                    };
+                    if st != 0 {
+                        // The callback signalled failure.  We do NOT dereference
+                        // `err` (its ownership convention is runtime-specific and
+                        // v1 callbacks are infallible); surface a status message.
+                        return ::std::result::Result::Err(
+                            format!("callback returned error status {st}")
+                        );
+                    }
+                    let out = if buf.ptr.is_null() {
+                        String::new()
+                    } else {
+                        let bytes = unsafe {
+                            ::std::slice::from_raw_parts(buf.ptr, buf.len as usize)
+                        };
+                        String::from_utf8_lossy(bytes).into_owned()
+                    };
+                    // Reclaim the owned replacement buffer (cap!=0 == Jac-allocated
+                    // via `..._make_buf`).  cap==0 would be a borrowed buffer we
+                    // must not free; null ptr is a no-op.
+                    if !buf.ptr.is_null() && buf.cap != 0 {
+                        unsafe {
+                            ::std::mem::drop(::std::vec::Vec::from_raw_parts(
+                                buf.ptr, buf.len as usize, buf.cap as usize,
+                            ));
+                        }
+                    }
+                    ::std::result::Result::Ok(out)
+                }
+            }
         }
     }];
 
@@ -578,6 +653,30 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
             }
         }
     });
+
+    // make_buf — copy `s_len` bytes at `s_ptr` into a freshly-allocated JacBuf
+    // written to `*out_buf`.  Emitted only for bridges with a callback: it lets a
+    // Jac callback thunk hand back an owned replacement buffer (allocated on the
+    // Rust heap, so the reader frees it via free_buf — one allocator both ways),
+    // sidestepping the lack of a str->raw-pointer intrinsic on the na runtime.
+    let has_callback = fns.iter().any(|f| f.params.iter().any(|p| p.tag == Tag::Callback));
+    if has_callback {
+        let make_buf = format_ident!("jac_{module_name}_make_buf");
+        items.push(quote! {
+            #[no_mangle]
+            pub unsafe extern "C" fn #make_buf(
+                s_ptr: *const u8, s_len: u32, out_buf: *mut #rt::JacBuf,
+            ) {
+                let src = unsafe { ::std::slice::from_raw_parts(s_ptr, s_len as usize) };
+                let mut v = src.to_vec();
+                let ptr = v.as_mut_ptr();
+                let len = v.len() as u32;
+                let cap = v.capacity() as u32;
+                ::std::mem::forget(v);
+                unsafe { *out_buf = #rt::JacBuf { ptr, len, cap }; }
+            }
+        });
+    }
 
     // Function shims
     for f in fns {
@@ -652,6 +751,14 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident) -> T
                 Tag::Bool => {
                     c_params.push(quote! { #pn: u8 });
                     decode.push(quote! { let #pn = #pn != 0; });
+                }
+                Tag::Callback => {
+                    // A C function pointer crosses as a u64; wrap it so the
+                    // bridge fn calls it with a `&str` and gets a `String` back.
+                    c_params.push(quote! { #pn: u64 });
+                    decode.push(quote! {
+                        let #pn = unsafe { #rt::JacCallback::from_raw(#pn) };
+                    });
                 }
                 _ => { c_params.push(quote! { #pn: u64 }); }
             }
@@ -782,5 +889,7 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
             // ret_tag guarantees Opt only wraps Ref or Str.
             _ => unreachable!("Tag::Opt wraps only Ref or Str"),
         },
+        // Callback is a param-only tag; `ret_tag` never produces it as a return.
+        Tag::Callback => unreachable!("Tag::Callback is param-only, never a return"),
     }
 }

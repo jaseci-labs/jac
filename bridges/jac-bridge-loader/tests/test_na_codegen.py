@@ -265,3 +265,26 @@ def test_cursor_and_drain_bridge(
     assert order.index("OwnedMatch") < order.index("OwnedMatches")  # next's product
     assert order.index("OwnedMatches") < order.index("Regex")  # find_iter's product
     assert order.index("OwnedSplit") < order.index("Regex")  # split's product
+
+
+def test_callback_bridge(owning_meta: tuple[Path, BridgeMeta]) -> None:
+    """The CALLBACK vertical: replace_all takes a TAG_FN param as an int (a C-ABI
+    callback fn pointer the caller supplies via `<def:pub thunk> as int`, the na
+    trampoline) and forwards it to Rust; make_buf is NEED-linked so the thunk can
+    hand its replacement back as an owned JacBuf."""
+    so, meta = owning_meta
+    res = render_na_source(meta, so.name)
+    items = {s.item for s in res.skips}
+    src = res.source
+
+    assert "Regex.replace_all" not in items, "replace_all must not be skipped"
+    # The callback crosses as a plain int; the str result rides the JacBuf out-slot.
+    assert "def replace_all(text: str, rep: int) -> str {" in src
+    # The raw fn-pointer int is forwarded straight to the foreign shim.
+    assert (
+        "jac_owning_Regex_replace_all(self.__handle, text, strlen(text), rep, out_buf, out_e)"
+        in src
+    )
+    # make_buf is declared in the foreign import block (the callback's replacement
+    # sink) — only emitted because a bridged method takes a callback.
+    assert "def jac_owning_make_buf(s: str, s_len: int, out_buf: int) -> None;" in src

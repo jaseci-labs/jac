@@ -41,6 +41,7 @@ from ._blob import (
     KIND_ERROR,
     KIND_OPAQUE,
     TAG_BOOL,
+    TAG_FN,
     TAG_OPT_BIT,
     TAG_REF_BIT,
     TAG_STR,
@@ -147,7 +148,14 @@ class _Synth:
         # is two SysV eightbytes (both INTEGER), so we call it as two ints:
         # (ptr, len | cap<<32) — matching what the by-value ABI puts in rdi/rsi.
         self.free_buf = f"jac_{meta.module_name}_free_buf"
+        # A callback (TAG_FN) param crosses as a C-ABI function pointer: the Jac
+        # side passes the address of a `def:pub` thunk (`thunk as int`) — the na
+        # trampoline.  The thunk hands its replacement back through make_buf (an
+        # owned JacBuf the bridge fn frees), so make_buf must be NEED-linked when
+        # any bridged method takes a callback.
+        self.make_buf_sym = f"jac_{meta.module_name}_make_buf"
         self._bridged_str_method = False
+        self._bridged_callback = False
 
     # -- foreign shim declaration for one fn --------------------------------
 
@@ -159,7 +167,8 @@ class _Synth:
             if p.tag == TAG_STR:
                 params.append(f"{p.name}: str")
                 params.append(f"{p.name}_len: int")
-            elif p.tag == TAG_BOOL or _is_ref(p.tag):
+            elif p.tag == TAG_BOOL or _is_ref(p.tag) or p.tag == TAG_FN:
+                # TAG_FN: a C-ABI callback fn pointer crosses as a single int.
                 params.append(f"{p.name}: int")
             else:
                 # unsupported param type -> caller skips the whole fn
@@ -231,6 +240,10 @@ class _Synth:
                 call.append(f"({p.name} and 1 or 0)")
             elif _is_ref(p.tag):
                 call.append(f"{p.name}.__handle")
+            elif p.tag == TAG_FN:
+                # A C-ABI callback fn pointer: forward the raw int straight to Rust.
+                call.append(p.name)
+                self._bridged_callback = True
             else:
                 return None
         lines.append("        if self.__closed {")
@@ -313,6 +326,9 @@ class _Synth:
                 call.append(f"({p.name} and 1 or 0)")
             elif _is_ref(p.tag):
                 call.append(f"{p.name}.__handle")
+            elif p.tag == TAG_FN:
+                call.append(p.name)
+                self._bridged_callback = True
             else:
                 return None
         lines.append('        out_h = struct.pack("<Q", 0);')
@@ -415,6 +431,13 @@ class _Synth:
             out.append(
                 f"    def {self.free_buf}(buf_ptr: int, buf_lencap: int) -> None;"
             )
+        if self._bridged_callback:
+            # Copies `s` into an owned JacBuf written at `out_buf` — the sink a
+            # `def:pub` callback thunk uses to return its replacement (no
+            # str->raw-ptr intrinsic exists on na, so Rust does the copy).
+            out.append(
+                f"    def {self.make_buf_sym}(s: str, s_len: int, out_buf: int) -> None;"
+            )
         out.append("}")
         out.append("")
 
@@ -506,6 +529,8 @@ class _Synth:
             return f"{p.name}: bool"
         if _is_ref(p.tag):
             return f"{p.name}: {self.opaque.get(_ref_index(p.tag), 'object')}"
+        # TAG_FN and any other scalar cross as an int (a callback fn pointer for
+        # TAG_FN: the caller passes `<def:pub thunk> as int`).
         return f"{p.name}: int"
 
     def _ctor_params(self, fd: FnDesc) -> str:

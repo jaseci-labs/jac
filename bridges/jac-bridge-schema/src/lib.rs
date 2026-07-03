@@ -11,6 +11,11 @@ pub const ABI_VERSION: u32 = 1;
 // TypeTag values (u32, stored in StrRef / tag fields)
 pub const TAG_BOOL: u32 = 1;
 pub const TAG_STR: u32 = 4;
+/// A callback function pointer parameter (`JacCallback`).  Crosses the boundary
+/// as a single `u64` C function pointer with the fixed signature
+/// `fn(*const u8, u32, *mut JacBuf, *mut u64) -> i32` (match text in, replacement
+/// out-slot, error out).  Param-only — never a return tag.  Additive to ABI v1.
+pub const TAG_FN: u32 = 5;
 /// Sentinel meaning "no type" (absent self_type / throws / void return).
 pub const TAG_VOID: u32 = 0xFFFF_FFFF;
 /// OR'd with a type index to produce a type-reference tag.

@@ -12,6 +12,7 @@ from ._blob import (
     KIND_ERROR,
     KIND_OPAQUE,
     TAG_BOOL,
+    TAG_FN,
     TAG_OPT_BIT,
     TAG_REF_BIT,
     TAG_STR,
@@ -28,6 +29,19 @@ class _JacBuf(ctypes.Structure):
         ("len", ctypes.c_uint32),
         ("cap", ctypes.c_uint32),
     ]
+
+
+# The C-ABI callback shape (schema TAG_FN): the bridge calls back into Python
+# once per match with the matched text (ptr+len), and reads an owned replacement
+# JacBuf back plus an error out-slot.  A CFUNCTYPE-wrapped trampoline (see _call)
+# presents an arbitrary Python callable to Rust through this exact signature.
+_CB_TYPE = ctypes.CFUNCTYPE(
+    ctypes.c_int,  # -> status (0 ok)
+    ctypes.c_void_p,  # arg_ptr (matched text)
+    ctypes.c_uint32,  # arg_len
+    ctypes.POINTER(_JacBuf),  # out_buf (replacement, owned)
+    ctypes.POINTER(ctypes.c_uint64),  # out_err
+)
 
 
 def _encode(val: str | bytes) -> tuple[bytes, int]:
@@ -49,6 +63,15 @@ class _Runtime:
         fb.argtypes = [_JacBuf]
         fb.restype = None
         self.free_buf = fb
+
+        # make_buf is emitted only for bridges with a callback param; a callback
+        # trampoline hands its replacement back through it (Rust allocates the
+        # JacBuf, the bridge fn frees it — one allocator both ways).
+        mb = getattr(lib, f"jac_{meta.module_name}_make_buf", None)
+        if mb is not None:
+            mb.argtypes = [ctypes.c_char_p, ctypes.c_uint32, ctypes.POINTER(_JacBuf)]
+            mb.restype = None
+        self.make_buf = mb
 
         self._err_drops: dict[int, Any] = {}  # type_idx -> drop fn
         self._err_msgs: dict[int, Any] = {}  # type_idx -> message fn
@@ -123,6 +146,8 @@ def _wire(lib: ctypes.CDLL, fd: FnDesc) -> Callable[..., object]:
             args.extend([ctypes.c_char_p, ctypes.c_uint32])
         elif p.tag == TAG_BOOL:
             args.append(ctypes.c_uint8)
+        elif p.tag == TAG_FN:
+            args.append(_CB_TYPE)
         else:
             args.append(ctypes.c_uint64)
 
@@ -146,6 +171,39 @@ def _wire(lib: ctypes.CDLL, fd: FnDesc) -> Callable[..., object]:
 
 
 # ---------------------------------------------------------------------------
+# Wrap a Python callable as a C-ABI JacCallback (TAG_FN param).
+# ---------------------------------------------------------------------------
+
+
+def _make_trampoline(
+    fn: Callable[[str], object], rt: "_Runtime"
+) -> Callable[..., object]:
+    """Present a Python ``str -> str`` callable to the bridge as a C function ptr.
+
+    The bridge calls back once per match with the matched text; we invoke *fn*
+    and hand its result back through the bridge's ``make_buf`` as an owned JacBuf
+    (the bridge fn frees it after copying — one allocator both ways).  A Python
+    exception is trapped and turned into a nonzero status so it never unwinds
+    through the C frame; the bridge fn then raises on the Rust side.
+    """
+    make_buf = rt.make_buf
+    if make_buf is None:
+        raise RuntimeError("bridge has a callback param but exports no make_buf")
+
+    def _trampoline(ptr: int, n: int, out_buf: object, _out_err: object) -> int:
+        try:
+            match = ctypes.string_at(ptr, n).decode("utf-8", errors="replace")
+            result = fn(match)
+            enc = result.encode("utf-8") if isinstance(result, str) else bytes(result)
+            make_buf(enc, len(enc), out_buf)
+            return 0
+        except Exception:
+            return 3
+
+    return _CB_TYPE(_trampoline)
+
+
+# ---------------------------------------------------------------------------
 # Invoke a wired C function with Python-level args.
 # Returns the Python value (or a partially-initialised handle object for refs).
 # ---------------------------------------------------------------------------
@@ -160,6 +218,9 @@ def _call(
     classes: dict[int, type],
 ) -> object:
     c_args: list[Any] = []
+    # CFUNCTYPE trampolines must outlive the call (ctypes does not keep the
+    # Python callable alive on its own); hold them here for the call's duration.
+    keepalive: list[Any] = []
 
     if fd.kind == FN_METHOD and self_h is not None:
         c_args.append(self_h)
@@ -171,6 +232,10 @@ def _call(
             c_args.extend([enc, ctypes.c_uint32(n)])
         elif p.tag == TAG_BOOL:
             c_args.append(ctypes.c_uint8(int(bool(v))))
+        elif p.tag == TAG_FN:
+            cb = _make_trampoline(v, rt)
+            keepalive.append(cb)
+            c_args.append(cb)
         else:
             c_args.append(ctypes.c_uint64(int(v)))
 

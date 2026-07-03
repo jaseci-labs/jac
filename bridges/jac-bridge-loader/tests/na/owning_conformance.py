@@ -96,6 +96,32 @@ SPLIT_CASES = [
 ]
 
 
+# (pattern, haystack) -> replace_all driven by the "upper" callback, which
+# uppercases each matched substring.  This is the CALLBACK vertical: Rust calls
+# BACK into Jac once per match.  On na the callback is a `def:pub` C-ABI thunk
+# whose address crosses as an int (the na trampoline); on CPython it is a
+# CFUNCTYPE-wrapped lambda.  Cases include no-match (text passes through) and an
+# empty haystack, to prove the callback simply is not invoked there.
+REPLACE_UPPER_CASES = [
+    (r"[a-z]+", "hello world"),  # two matches -> HELLO WORLD
+    (r"\w+", "MixEd caSe x"),  # -> MIXED CASE X
+    (r"z+", "no zeds here"),  # no match -> unchanged
+    (r"\w+", ""),  # empty haystack -> ""
+]
+# (pattern, haystack) -> replace_all driven by a SECOND, distinct callback that
+# wraps each match in <>.  A different fn pointer proves the trampoline is not
+# hard-wired to one callback; digit matches make the rewrite visible.
+REPLACE_BRACKET_CASES = [
+    (r"\d+", "a1b22c333"),  # -> a<1>b<22>c<333>
+    (r"-", "x-y-z"),  # -> x<->y<->z
+    (r"\d+", "no digits"),  # no match -> unchanged
+]
+
+
+def _replace_label(pat: str, text: str, kind: str) -> str:
+    return f"replace {pat!r} {text!r} {kind} = "
+
+
 def _cursor_label(pat: str, text: str) -> str:
     return f"iter {pat!r} {text!r} = "
 
@@ -183,6 +209,16 @@ def cpython_side() -> list[str]:
         lines.append(_split_label(pat, text) + "[" + acc + "]")
         dr.close()
         re.close()
+    for pat, text in REPLACE_UPPER_CASES:
+        re = owning.Regex(pat)
+        out = re.replace_all(text, lambda m: m.upper())
+        lines.append(_replace_label(pat, text, "upper") + "[" + out + "]")
+        re.close()
+    for pat, text in REPLACE_BRACKET_CASES:
+        re = owning.Regex(pat)
+        out = re.replace_all(text, lambda m: "<" + m + ">")
+        lines.append(_replace_label(pat, text, "bracket") + "[" + out + "]")
+        re.close()
     return [ln for ln in "\n".join(lines).splitlines() if ln.strip()]
 
 
@@ -199,6 +235,29 @@ def na_side() -> list[str]:
 
     meta = parse(read_jac_bridge_section(str(SO)))
     src = render_na_source(meta, SO.name).source
+
+    # The na trampoline: module-level `def:pub` C-ABI thunks the callback ABI
+    # calls back into.  Each decodes the matched text (via __jac_str_from_raw),
+    # computes its replacement in Jac, and hands it back through the bridge's
+    # make_buf as an owned JacBuf.  `<thunk> as int` (below, in the entry) takes
+    # the thunk's address — exactly what CPython's CFUNCTYPE does dynamically.
+    mb = f"jac_{meta.module_name}_make_buf"
+    thunks = f"""
+def:pub owning_upper_cb(arg_ptr: int, arg_len: int, out_buf: int, out_err: int) -> i32 {{
+    s = __jac_str_from_raw(arg_ptr, arg_len);
+    r = s.upper();
+    {mb}(r, strlen(r), out_buf);
+    return 0;
+}}
+
+def:pub owning_bracket_cb(arg_ptr: int, arg_len: int, out_buf: int, out_err: int) -> i32 {{
+    s = __jac_str_from_raw(arg_ptr, arg_len);
+    r = "<" + s + ">";
+    {mb}(r, strlen(r), out_buf);
+    return 0;
+}}
+"""
+    src = src + thunks
 
     probe = ["\nwith entry {"]
     for pat, text in FIND_CASES:
@@ -305,6 +364,24 @@ def na_side() -> list[str]:
         probe.append("    }")
         probe.append(f"    print({_jac_str(label + '[')} + acc + {_jac_str(']')});")
         probe.append("    dr.close();")
+        probe.append("    re.close();")
+    # Take the address of each C-ABI thunk once (the na trampoline), then drive
+    # replace_all with it — mirroring the CPython side's two lambdas.  A callback
+    # never fires for a no-match / empty case, so the text passes through
+    # verbatim, identically to CPython.
+    probe.append("    cb_up = owning_upper_cb as int;")
+    probe.append("    cb_br = owning_bracket_cb as int;")
+    for pat, text in REPLACE_UPPER_CASES:
+        label = _replace_label(pat, text, "upper")
+        probe.append(f"    re = Regex({_jac_str(pat)});")
+        probe.append(f"    out = re.replace_all({_jac_str(text)}, cb_up);")
+        probe.append(f"    print({_jac_str(label + '[')} + out + {_jac_str(']')});")
+        probe.append("    re.close();")
+    for pat, text in REPLACE_BRACKET_CASES:
+        label = _replace_label(pat, text, "bracket")
+        probe.append(f"    re = Regex({_jac_str(pat)});")
+        probe.append(f"    out = re.replace_all({_jac_str(text)}, cb_br);")
+        probe.append(f"    print({_jac_str(label + '[')} + out + {_jac_str(']')});")
         probe.append("    re.close();")
     probe.append("}")
     src = src + "\n".join(probe)

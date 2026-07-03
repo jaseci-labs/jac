@@ -38,9 +38,17 @@
 # producing cursor.  Still 0 skips; proven by owning_conformance.py (22 observations
 # identical na≡CPython, incl. empty streams and empty drain pieces kept distinct
 # from the None that terminates each pull).
+#
+# The CALLBACK vertical then added Regex.replace_all (11 -> 12): a TAG_FN param
+# crosses as a C-ABI callback fn pointer (an int) that na FORWARDS to Rust, which
+# calls BACK into a Jac `def:pub` thunk once per match — the na trampoline, proven
+# natively without any backend change (the thunk's address is taken with `as int`;
+# it hands its replacement back through the bridge's make_buf).  Still 0 skips;
+# owning_conformance.py now runs 29 observations identical na≡CPython (the 7 new
+# replace cases across two distinct callbacks, incl. no-match/empty passthrough).
 [libjac_bridge_owning_so]
-bridged = 11
-total = 11
+bridged = 12
+total = 12
 
 # regex: the M3 golden-spike surface — Regex.new + is_match (message() is consumed
 # into raised-exception text, not a surface method), 0 skips.

@@ -11,6 +11,10 @@ SUPPORTED_ABI = 1
 TAG_VOID = 0xFFFF_FFFF
 TAG_BOOL = 1
 TAG_STR = 4
+# A callback function-pointer parameter (JacCallback): a single u64 C function
+# pointer, fixed signature fn(*const u8, u32, *mut JacBuf, *mut u64) -> i32.
+# Param-only — never a return tag.
+TAG_FN = 5
 TAG_REF_BIT = 0x8000_0000
 # OR'd with an inner tag (Ref or Str) to mark a nullable Option<T> return: the
 # shim signals None in-band (null handle / null JacBuf.ptr) with an OK status.

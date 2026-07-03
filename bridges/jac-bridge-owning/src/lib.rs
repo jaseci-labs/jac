@@ -34,6 +34,14 @@
 //!   * `Vec`-AS-DRAIN (`Regex::split -> Split<'h>`): the pieces are copied into an
 //!     owned `Vec<String>` up front (no lifetime survives) and drained via
 //!     `next -> Option<String>`.
+//!
+//! The last class is CALLBACKS (`Regex::replace_all` with a closure `Replacer`),
+//! where Rust calls BACK into Jac once per match.  The callback crosses as a
+//! single C-ABI function pointer (`JacCallback`): on the na runtime a `def:pub`
+//! thunk whose address is taken with `as int`; on CPython a `CFUNCTYPE`-wrapped
+//! callable.  The callback returns its replacement through an owned `JacBuf`
+//! allocated Jac-side via the generated `jac_owning_make_buf` and freed here
+//! after copying — the same allocator both ways, so no cross-heap free.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -119,6 +127,43 @@ mod bridge_impl {
         /// Drain cursor over the substrings between matches — rescues `split`.
         pub fn split(&self, text: &str) -> OwnedSplit {
             OwnedSplit::collect(&self.0, text)
+        }
+
+        /// Replace every match of `self` in `text` by invoking the Jac callback
+        /// `rep` on each matched substring — the CALLBACK vertical, rescuing
+        /// `Regex::replace_all` with a closure `Replacer`.  This is the one
+        /// vertical where Rust calls BACK into Jac: for each match we hand the
+        /// matched text to `rep` and splice in the `String` it returns.
+        ///
+        /// The callback crosses as a single C-ABI function pointer (`JacCallback`)
+        /// — on the na runtime a `def:pub` thunk whose address is taken with
+        /// `as int` (the "na trampoline"); on CPython a `CFUNCTYPE`-wrapped
+        /// callable.  A callback error aborts the replacement and surfaces as this
+        /// method's `Err` (a thrown exception on both loaders).
+        pub fn replace_all(&self, text: &str, rep: JacCallback) -> Result<String, String> {
+            // `replace_all`'s closure must return a `String`, with no error
+            // channel of its own; capture the first callback error and raise it
+            // after the walk completes.
+            let err: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
+            let out = self
+                .0
+                .replace_all(text, |caps: &regex::Captures| {
+                    let m = caps.get(0).map_or("", |x| x.as_str());
+                    match rep.call(m) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            if err.borrow().is_none() {
+                                *err.borrow_mut() = Some(e);
+                            }
+                            String::new()
+                        }
+                    }
+                })
+                .into_owned();
+            match err.into_inner() {
+                Some(e) => Err(e),
+                None => Ok(out),
+            }
         }
     }
 
@@ -232,15 +277,55 @@ mod tests {
 
     use super::{
         jac_owning_Regex_new, jac_owning_Regex_find, jac_owning_Regex_captures,
-        jac_owning_Regex_find_iter, jac_owning_Regex_split,
+        jac_owning_Regex_find_iter, jac_owning_Regex_split, jac_owning_Regex_replace_all,
         jac_owning_Regex_drop, jac_owning_OwnedMatch_as_str, jac_owning_OwnedMatch_drop,
         jac_owning_OwnedCaptures_name, jac_owning_OwnedCaptures_name_match,
         jac_owning_OwnedCaptures_drop,
         jac_owning_OwnedMatches_next, jac_owning_OwnedMatches_drop,
         jac_owning_OwnedSplit_next, jac_owning_OwnedSplit_drop,
-        jac_owning_error_drop, jac_owning_free_buf,
+        jac_owning_error_drop, jac_owning_free_buf, jac_owning_make_buf,
         __jac_bridge_owning_rt::JacBuf,
     };
+
+    /// A hand-written C-ABI callback — exactly the shape a Jac `def:pub` na thunk
+    /// (or a CPython `CFUNCTYPE`) presents to `replace_all`.  It uppercases the
+    /// matched text and hands the replacement back as an owned `JacBuf` allocated
+    /// via the bridge's own `make_buf` (so `replace_all` frees it with the same
+    /// allocator).
+    unsafe fn upper_cb(
+        ptr: *const u8, len: u32, out_buf: *mut JacBuf, _out_err: *mut u64,
+    ) -> i32 {
+        let s = std::str::from_utf8(std::slice::from_raw_parts(ptr, len as usize)).unwrap();
+        let up = s.to_uppercase();
+        jac_owning_make_buf(up.as_ptr(), up.len() as u32, out_buf);
+        0
+    }
+
+    /// A callback that always fails (nonzero status) — proves the error channel
+    /// aborts the replacement and surfaces as `replace_all`'s Err.
+    unsafe fn failing_cb(
+        _ptr: *const u8, _len: u32, _out_buf: *mut JacBuf, _out_err: *mut u64,
+    ) -> i32 {
+        7
+    }
+
+    unsafe fn call_replace_all(re: u64, text: &str, cb: u64) -> Result<String, i32> {
+        let mut buf = MaybeUninit::<JacBuf>::uninit();
+        let mut e = 0u64;
+        let st = jac_owning_Regex_replace_all(
+            re, text.as_ptr(), text.len() as u32, cb, buf.as_mut_ptr(), &mut e,
+        );
+        if st != 0 {
+            if e != 0 {
+                jac_owning_error_drop(e);
+            }
+            return Err(st);
+        }
+        let buf = buf.assume_init();
+        let out = read_buf(&buf);
+        jac_owning_free_buf(buf);
+        Ok(out)
+    }
 
     const STATUS_OK: i32 = 0;
 
@@ -520,6 +605,38 @@ mod tests {
             jac_owning_free_buf(buf); // null-safe
 
             jac_owning_OwnedSplit_drop(dh);
+            jac_owning_Regex_drop(re);
+        }
+    }
+
+    /// Callback: `replace_all` invokes the Jac callback once per match and
+    /// splices in its result.  Rust calls BACK into (here, hand-written C) code
+    /// per match; the replacement crosses as an owned JacBuf, freed after copy.
+    #[test]
+    fn replace_all_invokes_callback_per_match() {
+        unsafe {
+            let re = compile(r"\w+");
+            let cb = upper_cb as *const () as u64;
+            // Two matches — the callback fires for each, punctuation untouched.
+            assert_eq!(call_replace_all(re, "hello world", cb).unwrap(), "HELLO WORLD");
+            // No match — the callback never fires, text passes through verbatim.
+            assert_eq!(call_replace_all(re, "!!! ???", cb).unwrap(), "!!! ???");
+            // Empty haystack — no matches, empty result.
+            assert_eq!(call_replace_all(re, "", cb).unwrap(), "");
+            jac_owning_Regex_drop(re);
+        }
+    }
+
+    /// A failing callback aborts the replacement: the nonzero status propagates
+    /// out as `replace_all`'s error (a raised exception on both loaders).
+    #[test]
+    fn replace_all_propagates_callback_error() {
+        unsafe {
+            let re = compile(r"\w+");
+            let cb = failing_cb as *const () as u64;
+            // The callback fails on the first match -> the whole call errors.
+            let r = call_replace_all(re, "abc def", cb);
+            assert_eq!(r, Err(1), "callback error must surface as a status-1 error");
             jac_owning_Regex_drop(re);
         }
     }
