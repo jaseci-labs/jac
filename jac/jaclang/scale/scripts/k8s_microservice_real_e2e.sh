@@ -58,12 +58,7 @@ cleanup() {
 trap 'cleanup "$?"' EXIT
 
 provision_kind_rwx_storage() {
-    # kind's default StorageClass (rancher local-path) is ReadWriteOnce-only, so
-    # it rejects the RWX bundle PVC ("Only support ReadWriteOnce access mode")
-    # and the loader pod hangs Pending. On single-node kind every pod shares the
-    # node filesystem, so a static hostPath PV satisfies ReadWriteMany. Provision
-    # a no-provisioner StorageClass + a matching static PV; recreate the PV each
-    # run so a Released PV from a prior run can't block the new claim from binding.
+    # kind's local-path StorageClass is RWO-only; on single-node kind a static hostPath PV satisfies the RWX bundle PVC. Recreate it each run so a Released PV can't block binding.
     echo "=== provisioning RWX hostPath storage for kind (class=${BUNDLE_STORAGE_CLASS}) ==="
     kubectl delete pv -l managed=jac-scale-e2e --ignore-not-found >/dev/null 2>&1 || true
     kubectl apply -f - <<YAML
@@ -90,13 +85,7 @@ spec:
     path: /var/jac-rwx-bundle
     type: DirectoryOrCreate
 YAML
-    # kubelet creates the DirectoryOrCreate hostPath root:root 0755, but the
-    # bundle loader (and app pods) run non-root and can't write it -
-    # "mkdir: can't create directory '/jac-bundles/bundles/': Permission denied".
-    # microk8s' hostpath-provisioner makes its dir world-writable, so match that
-    # with a one-shot root pod that opens the path up (runs in the privileged
-    # namespace so the hostPath mount is admitted). 0777 is safe here: this is an
-    # ephemeral single-node test cluster torn down at the end of the run.
+    # kubelet makes the hostPath dir root:0755 but the pods run non-root; a one-shot root pod opens it up (0777 is fine on this ephemeral single-node test cluster).
     kubectl -n "${NAMESPACE}" delete pod jac-rwx-perms --ignore-not-found >/dev/null 2>&1 || true
     kubectl -n "${NAMESPACE}" apply -f - <<YAML
 apiVersion: v1

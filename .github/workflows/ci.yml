@@ -1071,11 +1071,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
 
-  # Real-app k8s e2e on kind; PR-only when jac core changed, never on push.
-  # kind (not microk8s) so it runs on the fast blacksmith runner: kindnet + a
-  # kube-proxy iptables data-plane need no ipset kernel modules, which that
-  # runner's minimal kernel lacks (microk8s' calico felix can't come up there).
-  # Not a required check.
+  # Real-app microservice e2e on kind (not microk8s) so it runs on the fast blacksmith runner, whose minimal kernel lacks the ipset modules microk8s' calico needs. PR-only on core changes; not a required check.
   k8s-real-e2e:
     name: microservice e2e (k8s)
     needs: changes
@@ -1127,15 +1123,16 @@ jobs:
             --global
 
       - name: Set up kind cluster
-        # kind comes up in ~30s and its kindnet CNI + kube-proxy use plain
-        # iptables (no ipset), so it runs on this fast runner where microk8s'
-        # calico can't (the kernel lacks the ip_set modules felix needs). The
-        # single control-plane node is labelled ingress-ready and maps host
-        # 80/443 so ingress-nginx's kind provider manifest can bind them.
+        # Single node labelled ingress-ready + host 80/443 mapped so ingress-nginx's kind provider can bind them.
         run: |
+          # Fetch kind + kubectl and verify their published SHA256 before installing with sudo.
           curl -fsSL -o ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          curl -fsSL -o ./kind.sha256 https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64.sha256sum
+          echo "$(cut -d' ' -f1 ./kind.sha256)  ./kind" | sha256sum -c -
           chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
           curl -fsSL -o kubectl https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
+          curl -fsSL -o kubectl.sha256 https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl.sha256
+          echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c -
           sudo install kubectl /usr/local/bin/kubectl
           cat > /tmp/kind.yaml <<'EOF'
           kind: Cluster
@@ -1173,9 +1170,7 @@ jobs:
       - name: Deploy ingress-nginx + metrics-server (kind, best-effort)
         continue-on-error: true
         run: |
-          # ingress-nginx kind provider: the controller binds hostPort 80/443 on
-          # the ingress-ready node, which the node's port mappings expose at
-          # 127.0.0.1 for the e2e's ingress probe.
+          # ingress-nginx kind provider binds hostPort 80/443, exposed at 127.0.0.1 for the e2e's ingress probe.
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.5/deploy/static/provider/kind/deploy.yaml
           kubectl wait --namespace ingress-nginx --for=condition=ready pod \
               --selector=app.kubernetes.io/component=controller --timeout=180s \

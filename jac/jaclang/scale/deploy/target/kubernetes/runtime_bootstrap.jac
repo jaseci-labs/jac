@@ -113,14 +113,7 @@ def runtime_container_env -> list[dict[str, str]] {
 
 
 def _shared_first_boot_install -> str {
-    # All app pods share the RWX bundle PVC and would each cold-run `jac install`
-    # (resolve the venv + compile the jaclang overlay) simultaneously, thrashing
-    # the node CPU on identical work. Elect one pod via an atomic mkdir lock on
-    # the PVC to do it first; the others wait for the lock to clear, then their
-    # own `jac install` is a near no-op against the now-warm shared venv and the
-    # content-keyed `.jir` cache. Fully best-effort: concurrent installs are
-    # already safe, a waiter that times out just installs itself, and a stale
-    # lock from a dead leader is cleared - so this is never slower than before.
+    # Elect one pod via an atomic mkdir lock on the shared PVC to warm the venv + `.jir` cache first; the rest wait then no-op. Best-effort: a timed-out waiter or stale lock just installs itself.
     lock = f"{APP_MOUNT_PATH}/.jac/.bootstrap.lock";
     return (
         f'mkdir -p {APP_MOUNT_PATH}/.jac; '

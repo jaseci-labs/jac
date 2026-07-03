@@ -10,6 +10,7 @@ import tarfile;
 import tempfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
+import from urllib.error { HTTPError }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 
 glob logger = logging.getLogger(__name__);
@@ -50,17 +51,12 @@ def download_release_binary(channel: str, arch: str) -> bytes {
     checksum_url = "";
 
     if channel == "dev" {
-        # The rolling `dev` prerelease has a FIXED tag and fixed asset names, so
-        # build the release-download URLs directly and skip the api.github.com
-        # asset lookup entirely. Those API calls are anonymous (60 req/hr per IP)
-        # and CI runners exhaust them ("HTTP 403: rate limit exceeded"); the
-        # release-download host (objects storage) is not API-rate-limited.
+        # The rolling `dev` prerelease has fixed asset names, so build the URL directly and skip the API (anonymous, 60 req/hr, exhausted on CI).
         base = f"https://github.com/{repo}/releases/download/dev";
         binary_url = f"{base}/jac-dev{suffix}";
         checksum_url = f"{binary_url}.sha256";
     } else {
-        # Stable asset names carry the release version, so the latest tag + asset
-        # list still have to be resolved through the API.
+        # Stable asset names carry the release version, so resolve them through the API.
         api = f"https://api.github.com/repos/{repo}/releases/latest";
         meta = json.loads(_http_get_bytes(api).decode("utf-8"));
         for asset in meta.get("assets", []) {
@@ -85,7 +81,18 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         }
     }
 
-    payload = _http_get_bytes(binary_url);
+    try {
+        payload = _http_get_bytes(binary_url);
+    } except HTTPError as e {
+        if e.code == 404 {
+            raise RuntimeError(
+                f"No `jac-*{suffix}` binary published for this arch on the "
+                f"{channel} release; set JAC_NODE_ARCH or check "
+                f"https://github.com/{repo}/releases."
+            );
+        }
+        raise;
+    }
     if checksum_url {
         parts = _http_get_bytes(checksum_url).decode("utf-8").split();
         if not parts {
@@ -189,13 +196,7 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 
 
 def ensure_admin_dist_built(source_root: Path) -> None {
-    # The gateway serves the admin/ops console from a pre-built `_dist` shipped
-    # beside the admin package. A wheel install bakes it in at package time, but
-    # the dev SOURCE overlay carries none, so the gateway would build it from
-    # source on-pod - a heavy `bun` build that gets the container OOM-killed
-    # under a busy single node (mongo + redis + the app fleet + observability),
-    # crash-looping the gateway. Build it here on the host (as the client bundle
-    # is built) so the pod just copies the finished dist and starts fast.
+    # Build the admin console `_dist` on the host (like the client bundle) so the gateway ships it pre-built instead of doing a heavy on-pod `bun` build that can OOM-kill the container.
     admin = source_root / "jaclang" / "scale" / "admin";
     dist = admin / "_dist";
     if (dist / "index.html").is_file() {
