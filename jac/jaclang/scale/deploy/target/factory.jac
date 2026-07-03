@@ -3,8 +3,33 @@ import from jaclang.scale.deploy.target.deployment_target { DeploymentTarget }
 import from jaclang.scale.config.base_config { BaseConfig }
 import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale._optdeps.optional_deps { require_optional }
+import from jaclang.project.capabilities {
+    ensure_global_capability,
+    missing_capability_dists
+}
 
 type TargetFactory = Callable[[dict[str, any], Logger | None], DeploymentTarget];
+
+"""Deploy tooling is operator-machine tooling pinned by the jac binary, not a
+project dependency -- sync it into the jac global site on first use so a scale
+deploy never requires a manual 'jac install --scale'."""
+def _ensure_deploy_tooling {
+    missing = missing_capability_dists("deploy.k8s");
+    if not missing {
+        return;
+    }
+    import from jaclang.cli.console { console }
+    console.print(
+        f"Deploy tooling missing; installing {', '.join(missing)} "
+        f"(capability 'deploy.k8s') into the jac global site."
+    );
+    if not ensure_global_capability("deploy.k8s") {
+        console.warning(
+            "Automatic install of the deploy tooling failed; run "
+            "'jac install --scale' to see the full pip output."
+        );
+    }
+}
 
 class DeploymentTargetFactory {
     static has _registry: dict[str, TargetFactory] = {};
@@ -22,6 +47,7 @@ class DeploymentTargetFactory {
         }
 
         if target_type == 'kubernetes' {
+            _ensure_deploy_tooling();
             require_optional("kubernetes", "deploy.k8s");
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
                 KubernetesTarget
@@ -32,6 +58,7 @@ class DeploymentTargetFactory {
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
         } elif target_type == 'kubernetes-microservice' {
+            _ensure_deploy_tooling();
             require_optional("kubernetes", "deploy.k8s");
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
                 KubernetesConfig

@@ -26,6 +26,31 @@ test "deployment target factory creates kubernetes target" {
     assert target.k8s_config.app_name == "test-app";
 }
 
+test "kubernetes target creation auto-syncs missing deploy tooling globally" {
+    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.missing_capability_dists"
+    ) as mock_missing, unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.ensure_global_capability"
+    ) as mock_ensure {
+        mock_missing.return_value = ["kubernetes>=34.1.0,<35.0.0"];
+        target = DeploymentTargetFactory.create("kubernetes", config);
+        assert target is not None;
+        mock_ensure.assert_called_once_with("deploy.k8s");
+    }
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.missing_capability_dists"
+    ) as mock_missing, unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.ensure_global_capability"
+    ) as mock_ensure {
+        mock_missing.return_value = [];
+        DeploymentTargetFactory.create("kubernetes-microservice", config);
+        mock_ensure.assert_not_called();
+    }
+}
+
 test "deployment target factory raises for unsupported target" {
     config = {"app_name": "test-app"};
 

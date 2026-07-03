@@ -98,6 +98,7 @@ obj PvcInjector(Injector) {
     has size: str = "1Gi",
         storage_class: str = "",
         loader_image: str = "busybox:1.36",
+        provisioned_database: str = "",
         _object_key: str = "",
         _bundle_bytes: bytes = b"";
 
@@ -110,7 +111,7 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        raw = pack_source(project_dir);
+        raw = pack_source(project_dir, self.provisioned_database);
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);
         self._bundle_bytes = raw;

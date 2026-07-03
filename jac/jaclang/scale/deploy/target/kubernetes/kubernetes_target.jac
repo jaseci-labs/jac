@@ -1017,7 +1017,10 @@ obj KubernetesTarget(DeploymentTarget) {
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
-                app_config.code_folder
+                app_config.code_folder,
+                provisioned_database=(
+                    "mongo" if self.k8s_config.mongodb_enabled else ""
+                )
             );
             ensure_pvc_exists(
                 core_v1,

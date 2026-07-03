@@ -57,7 +57,8 @@ obj MicroserviceManifestBuilder {
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
-            proj
+            proj,
+            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else "")
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
