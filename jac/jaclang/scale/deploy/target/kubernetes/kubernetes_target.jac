@@ -178,11 +178,16 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def _build_runtime_setup_command(app_config: AppConfig) -> list[str] {
+        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+            build_service_apt_prefix
+        }
+        apt_prefix = build_service_apt_prefix(self.k8s_config);
         commands = [
             f"cd {self.k8s_config.app_mount_path}",
             f"jac start {app_config.file_name}"
         ];
-        return ['bash', '-c', ' && '.join(commands)];
+        script = ' && '.join(commands);
+        return ['bash', '-c', apt_prefix + script];
     }
 
     def _build_container_config(

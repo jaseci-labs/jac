@@ -42,6 +42,19 @@ glob _UNMAPPED_WARNED = {},
      _JAC_NATIVE_OUTLET_CONTEXT = React.createContext(None),
      _JAC_NATIVE_STACK = jacCreateNativeStackNavigator();
 
+obj RouteDef {
+    has name: str,
+        path: str,
+        element: any = None,
+        wrappers: list = [];
+}
+
+obj RouteMatch {
+    has name: str,
+        path: str,
+        params: dict = {};
+}
+
 glob:pub useState = reactUseState,
      useEffect = reactUseEffect,
      Router = __nativeRouter,
@@ -57,33 +70,32 @@ def _adaptProps(tag: str, props: dict) -> dict;
 def _isAbsoluteImageUri(src: str) -> bool;
 def _adaptImageProps(props: dict) -> dict;
 def _textStyleFrom(style: any) -> dict;
-def _prepend_args(comp: any, props: any, children: list) -> list;
 def _makeNativeLink(props: dict, children: list) -> JsxElement;
 def _toChildrenArray(children: any) -> list;
 def _normalizeRoutePath(path: str) -> str;
 def _joinRoutePath(parent_path: str, child_path: str) -> str;
 def _splitRouteParts(path: str) -> list[str];
 def _buildRouteName(path: str) -> str;
-def _cacheNativeRoutes(route_defs: list) -> None;
+def _cacheNativeRoutes(route_defs: list[RouteDef]) -> None;
 def _getNativeRoutes -> list;
 def _matchRoutePattern(pattern_path: str, actual_path: str) -> (dict | None);
-def _lookupRouteByPath(path: str) -> (dict | None);
+def _lookupRouteByPath(path: str) -> (RouteMatch | None);
 def _lookupRouteByName(name: str) -> (dict | None);
 def _hydratePath(pattern_path: str, params: any) -> str;
 def _stripMetaParams(params: any) -> dict;
 def _performNavigation(nav: any, target: any, options: dict = {}) -> None;
 def _collectNativeRoutes(
-    children: any, parent_path: str, wrappers: list, out_routes: list
+    children: any, parent_path: str, wrappers: list, out_routes: list[RouteDef]
 ) -> None;
 
-def _makeNativeRouteScreen(route: dict) -> any;
+def _makeNativeRouteScreen(route: RouteDef) -> any;
 
 def:pub __nativeRouter(props: dict = {}) -> JsxElement;
 def:pub __nativeRoutes(props: dict = {}) -> JsxElement;
-def:pub __nativeRoute(props: dict = {}) -> JsxElement;
+def:pub __nativeRoute(props: dict = {}) -> (JsxElement | None);
 def:pub __nativeLink(props: dict = {}) -> JsxElement;
-def:pub __nativeNavigate(props: dict = {}) -> JsxElement;
-def:pub __nativeOutlet(props: dict = {}) -> JsxElement;
+def:pub __nativeNavigate(props: dict = {}) -> (JsxElement | None);
+def:pub __nativeOutlet(props: dict = {}) -> (JsxElement | None);
 def:pub useRouter -> dict;
 def:pub useNavigate -> any;
 def:pub useLocation -> dict;
@@ -98,8 +110,9 @@ async def:pub __setLocalStorageAsync(key: str, value: str) -> None;
 async def:pub __removeLocalStorageAsync(key: str) -> None;
 async def:pub __primeNativeTokenCache -> None;
 def:pub __ensureNativeTokenPrimed -> any;
+
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
-def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
+def:pub ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
 def:pub JacForm(props: dict) -> JsxElement;
 def:pub __jacInstallErrorHandlers -> None;

@@ -819,6 +819,10 @@ impl _parse_toml_data(
             outfile=fmt.get("outfile", ""), fix=fmt.get("fix", False)
         );
     }
+    if "precommit" in data {
+        pc_data = data["precommit"];
+        config.precommit = PrecommitConfig(typecheck=pc_data.get("typecheck", True));
+    }
     if "check" in data {
         check_data = data["check"];
         lint_config = LintConfig();
