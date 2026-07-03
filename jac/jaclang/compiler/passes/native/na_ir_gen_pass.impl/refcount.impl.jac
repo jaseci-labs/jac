@@ -432,6 +432,27 @@ impl NaIRGenPass._is_proven_unique(val: ir.Value) -> bool {
     return bool(getattr(val, 'proven_unique', False));
 }
 
+impl NaIRGenPass._try_move_lower(rhs: object) -> bool {
+    if not isinstance(rhs, uni.Name) {
+        return False;
+    }
+    if rhs.sym is None or not rhs.sym.is_proven_unique {
+        return False;
+    }
+    src_alloca = self.local_vars.get(rhs.value);
+    if src_alloca is None {
+        return False;
+    }
+    if not (
+        isinstance(src_alloca.type, ir.PointerType)
+        and isinstance(src_alloca.type.pointee, ir.PointerType)
+    ) {
+        return False;
+    }
+    self.builder.store(ir.Constant(src_alloca.type.pointee, None), src_alloca);
+    return True;
+}
+
 impl NaIRGenPass._release_owned_operands(
     left_orig: ir.Value, right_orig: ir.Value, op: str = ""
 ) -> None {
@@ -505,9 +526,6 @@ impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> 
         return;
     }
 
-    if op == "call_arg" and self._is_proven_unique(ptr) {
-        return;
-    }
     i8_ptr = ir.IntType(8).as_pointer();
     self._set_rc_ctx(op, loc);
     cast = self.builder.bitcast(ptr, i8_ptr, name="rc.retain.cast");
@@ -530,9 +548,6 @@ impl NaIRGenPass._emit_rc_release_simple(
         return;
     }
 
-    if op == "call_arg" and self._is_proven_unique(ptr) {
-        return;
-    }
     i8_ptr = ir.IntType(8).as_pointer();
     self._set_rc_ctx(op, loc);
     cast = self.builder.bitcast(ptr, i8_ptr, name="rc.release.cast");
