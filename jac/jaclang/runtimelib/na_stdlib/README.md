@@ -109,17 +109,32 @@ Two conventions make foreign byte I/O work:
   `crc32`) would shadow it. Bind the non-colliding variant instead; the floor
   uses `crc32_z` / `adler32_z`.
 
-`bz2` (#6978 Phase 2) follows the same two-file split over the bundled
-`libbz2.a`: `_bz2_native.na.jac` wraps the one-shot `BZ2_bzBuffToBuffCompress` /
-`BZ2_bzBuffToBuffDecompress` buffer API (logical name `bz2` -> `libbz2`), and
+`bz2` (#6978 Phase 2) follows the same two-file split: `_bz2_native.na.jac`
+wraps the one-shot `BZ2_bzBuffToBuffCompress` / `BZ2_bzBuffToBuffDecompress`
+buffer API (logical name `bz2` -> `libbz2`; the in-process JIT dlopens the
+system library, while AOT `nacompile` consumes the bundled `libbz2.a`), and
 `bz2.na.jac` is the Python-shaped `compress(data, compresslevel=9)` /
 `decompress(data)` surface. `compress` produces a single bzip2 stream
-byte-identical to CPython's (same default `workFactor`); note `libbz2` takes the
-in/out `destLen` as `unsigned int*` (a 4-byte cell), unlike zlib's 8-byte
-`uLongf*`, so the surface allocates a 4-byte length buffer. SCOPE: the one-shot
-buffer API only -- `decompress` handles a single stream (CPython additionally
-concatenates multiple streams), and incremental `BZ2Compressor` /
-`BZ2Decompressor` and the file API are out of scope.
+byte-identical to CPython's (same default `workFactor`); note `libbz2`'s
+one-shot API is 32-bit throughout -- `sourceLen` is a by-value C `unsigned int`
+(lowered as `u32`, unlike zlib's LP64 8-byte `uLong`) and the in/out `destLen`
+is an `unsigned int*` (a 4-byte cell) -- so both directions reject inputs
+larger than 4 GiB with a `ValueError` (CPython, which streams internally, has
+no such limit). SCOPE and divergences from CPython (3.14):
+
+- One-shot buffer API only: incremental `BZ2Compressor` / `BZ2Decompressor`
+  and the file API are out of scope.
+- Multi-stream inputs return only the first stream's data (silent partial
+  output); CPython concatenates every stream.
+- Corrupt input raises `ValueError` (carrying the libbz2 error code) where
+  CPython raises `OSError("Invalid data stream")`; truncated streams raise
+  `ValueError` on both. Out-of-range compresslevels raise `ValueError` on both
+  (the native surface reports libbz2's `BZ_PARAM_ERROR` rather than CPython's
+  bounds message).
+- `decompress` grows its output buffer on `BZ_OUTBUFF_FULL` up to a ceiling of
+  `sourceLen * 1024 + 64 MiB` (clamped to 4 GiB); a valid stream that expands
+  past that ceiling raises a distinct `ValueError` ("decompressed output
+  exceeds the one-shot API limit") where CPython, which streams, would succeed.
 
 Mechanism-F modules are native-host only: a wasm target gets a clean link error
 rather than silent breakage.
