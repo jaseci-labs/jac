@@ -1,11 +1,10 @@
-import from collections.abc { Sequence }
+import from collections.abc { Callable, Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 
 obj OwnershipCheckPass(UniPass) {
     has owned_syms: set[int] = set(),
-        owned_names: dict[int, str] = {},
         owned_decl: dict[int, uni.Name] = {},
         consumed_syms: set[int] = set(),
         proven_unique_syms: set[int] = set(),
@@ -13,12 +12,10 @@ obj OwnershipCheckPass(UniPass) {
         param_borrow_syms: set[int] = set(),
         borrow_names: dict[int, str] = {},
         borrow_owner: dict[int, int] = {},
-        borrow_owner_node: dict[int, uni.Name] = {},
         borrow_is_mut: dict[int, bool] = {},
         e1304_borrow_ids: set[int] = set(),
         in_consumed: dict[int, set[int]] = {},
         in_live_borrows: dict[int, set[int]] = {},
-        out_live_borrows: dict[int, set[int]] = {},
         in_reaching_borrows: dict[int, set[int]] = {};
 
     def before_pass -> None;
@@ -39,10 +36,16 @@ obj OwnershipCheckPass(UniPass) {
     def _assign_kill_gen(nd: uni.Assignment) -> tuple[set[int], set[int]];
     def _call_move_gen(nd: uni.UniCFGNode) -> set[int];
     def _return_move_gen(nd: uni.UniCFGNode) -> set[int];
+    def _solve_dataflow(
+        cfg_nodes: list[uni.UniCFGNode], backward: bool, transfer: Callable
+    ) -> dict[int, set[int]];
+
     def _transfer(nd: uni.UniCFGNode, in_set: set[int]) -> set[int];
     def _run_dataflow(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _borrow_read_gen(nd: uni.UniCFGNode) -> set[int];
     def _borrow_assign_kill_gen(nd: uni.UniCFGNode) -> tuple[set[int], set[int]];
+    def _reaching_transfer(nd: uni.UniCFGNode, in_set: set[int]) -> set[int];
+    def _live_transfer(nd: uni.UniCFGNode, out_set: set[int]) -> set[int];
     def _run_borrow_liveness(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _run_reaching_borrows(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _nearest_cfg(nd: uni.UniNode) -> (uni.UniCFGNode | None);
@@ -53,6 +56,9 @@ obj OwnershipCheckPass(UniPass) {
     def _emit_leak_diagnostics -> None;
     def _emit_escape_diagnostics(tree: uni.UniNode) -> None;
     def _escaping_borrow_owner(nd: uni.Expr | None) -> (str | None);
+    def _owned_sym_of(nd: uni.UniNode | None) -> (int | None);
+    def _borrow_sym_of(nd: uni.UniNode | None) -> (int | None);
+    def _owned_name(sym_id: int, fallback: str) -> str;
     def _is_write_target(nd: uni.Name) -> bool;
     def _is_read_name(nd: uni.Name) -> bool;
     def _target_owner_sym(nd: uni.Expr) -> (int | None);

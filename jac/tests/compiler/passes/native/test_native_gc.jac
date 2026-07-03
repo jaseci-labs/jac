@@ -187,24 +187,19 @@ test "gc reduces rss for chess" {
     print(f"[chess] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
 
-test "cycle_collect: two-node cycle reclaimed cleanly" {
-    # A <-> B cycle: without collect_cycles the pair leaks permanently.
-    # We verify the binary compiles and exits 0, and that the cycle-collector
-    # prints the expected sentinel so we know it ran rather than segfaulted.
-    with tempfile.TemporaryDirectory() as tmp {
-        bin_path = os.path.join(tmp, "cycle_collect");
-        _nacompile("cycle_collect.na.jac", bin_path);
-        proc = subprocess.run(
-            [bin_path], capture_output=True, text=True, timeout=30
-        );
-        assert proc.returncode == 0 , (
-            f"cycle_collect exited {proc.returncode}\n"
-            f"stderr: {proc.stderr[-400:] if proc.stderr else '(empty)'}"
-        );
-        assert "cycle_collect OK" in proc.stdout , (
-            f"sentinel not found in stdout: {proc.stdout!r}"
-        );
-    }
+test "cycle_collect: reclaims mutually-referential cycles under load" {
+    # Drives ~300k two-node `A <-> B` cycles past RC_CYCLE_THRESHOLD so the
+    # trial-deletion collector actually fires (~600 sweeps).  These pairs are
+    # unreclaimable by reference counting alone — each node keeps its sibling's
+    # refcount at 1 forever — so the ONLY way the GC-enabled run stays flat
+    # while `JAC_NO_GC=1` balloons is if the cycle collector reclaims them.
+    # A broken or never-triggered collector leaks every pair and collapses the
+    # delta, failing the >= min_savings assertion below.  This is the real
+    # proof of collection, not merely that the binary exits cleanly.
+    (gc, nogc) = _measure_gc_savings(
+        "cycle_collect_storm.na.jac", min_savings_kb=10240
+    );
+    print(f"[cycle_collect] gc={gc} KB  nogc={nogc} KB  saved={nogc - gc} KB");
 }
 
 test "gc reclaims owned temporaries across consumption seams" {
