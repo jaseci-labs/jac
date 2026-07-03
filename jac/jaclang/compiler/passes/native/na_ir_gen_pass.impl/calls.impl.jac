@@ -31,6 +31,26 @@ impl NaIRGenPass._callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None) 
     return sig if isinstance(sig, uni.FuncSignature) else None;
 }
 
+impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None) {
+    # Signature of the archetype's init for an instantiation call, so
+    # _codegen_instantiation can bind omitted defaulted params. arch_ast_map
+    # holds local archetypes and imported ones (registered when the imported
+    # module's uni tree is walked), so this works across modules.
+    arch = self.arch_ast_map.get(type_name);
+    if not isinstance(arch, uni.Archetype) or arch.body is None {
+        return None;
+    }
+    for stmt in arch.body {
+        if isinstance(stmt, uni.Ability)
+        and stmt.name_ref is not None
+        and stmt.name_ref.sym_name in ("init", "__init__")
+        and isinstance(stmt.signature, uni.FuncSignature) {
+            return stmt.signature;
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
     if isinstance(t, ir.PointerType) {
         if t.pointee == self._get_bytes_struct_type() {
