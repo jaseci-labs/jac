@@ -63,6 +63,11 @@ obj:pub Fraction {
     }
 
     def __truediv__(other: Fraction) -> Fraction {
+        # CPython reduces before it discovers the zero denominator, so its
+        # message is always "Fraction(1, 0)" whatever the operands were.
+        if other.numerator == 0 {
+            raise ZeroDivisionError("Fraction(1, 0)");
+        }
         return Fraction(
             self.numerator * other.denominator, self.denominator * other.numerator
         );
