@@ -32,10 +32,6 @@ impl NaIRGenPass._callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None) 
 }
 
 impl NaIRGenPass._arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None) {
-    # Signature of the archetype's init for an instantiation call, so
-    # _codegen_instantiation can bind omitted defaulted params. arch_ast_map
-    # holds local archetypes and imported ones (registered when the imported
-    # module's uni tree is walked), so this works across modules.
     arch = self.arch_ast_map.get(type_name);
     if not isinstance(arch, uni.Archetype) or arch.body is None {
         return None;

@@ -55,7 +55,7 @@ bundled one. A bundled module links through the existing cross-module machinery
   Float/Decimal/string construction is out of scope. SCOPE: native `int` is a
   fixed-width i64, so the cross-multiplications in `__add__` / `__lt__` (and
   friends) silently overflow once intermediate products exceed 2^63, where
-  CPython's bignum `Fraction` stays exact — keep components comfortably below
+  CPython's bignum `Fraction` stays exact; keep components comfortably below
   ~3x10^9 (sqrt of i64 max).
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
