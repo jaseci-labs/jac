@@ -110,14 +110,18 @@ def native_stdlib_root -> (str | None) {
     return root if os.path.isdir(root) else None;
 }
 
+def _is_rust_bridge_module(module_name: str) -> bool {
+    clean = module_name.lstrip('.');
+    return clean.startswith("rust.") and clean.count(".") == 1;
+}
+
 def is_bundled_native_module(module_name: str) -> bool {
     import os;
     if not module_name {
         return False;
     }
 
-    import from jaclang.compiler.rust_bridge { is_bridge_module }
-    if is_bridge_module(module_name) {
+    if _is_rust_bridge_module(module_name) {
         return True;
     }
     root = native_stdlib_root();
@@ -134,8 +138,8 @@ def resolve_native_module(
     import os;
     clean = module_name.lstrip('.');
 
-    import from jaclang.compiler.rust_bridge { is_bridge_module, materialize_bridge }
-    if is_bridge_module(clean) {
+    if _is_rust_bridge_module(clean) {
+        import from jaclang.compiler.rust_bridge { materialize_bridge }
         path = materialize_bridge(clean);
         if path {
             return (f"{clean}.na", path);
