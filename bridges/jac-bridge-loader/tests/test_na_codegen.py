@@ -1,0 +1,108 @@
+"""Unit tests for the na Jac-source synthesizer (_na_codegen).
+
+These assert the STRUCTURE of the generated source without invoking the native
+compiler (which needs the LLVM shim).  The end-to-end "generated source compiles
+and runs natively" check lives in the na conformance suite, gated on a shim.
+"""
+
+from pathlib import Path
+
+import pytest
+from jac_bridge_loader._blob import BridgeMeta, parse
+from jac_bridge_loader._elf import read_jac_bridge_section
+from jac_bridge_loader._na_codegen import render_na_source
+
+
+def _find_regex_so() -> Path | None:
+    here = Path(__file__).resolve()
+    for base in (here.parents[2], here.parents[3]):  # bridges/, repo/
+        for build in ("release", "debug"):
+            p = base / "target" / build / "libjac_bridge_regex.so"
+            if p.is_file():
+                return p
+    return None
+
+
+@pytest.fixture(scope="module")
+def regex_meta() -> tuple[Path, BridgeMeta]:
+    so = _find_regex_so()
+    if so is None:
+        pytest.skip("libjac_bridge_regex.so not built (run: cargo build --release)")
+    return so, parse(read_jac_bridge_section(str(so)))
+
+
+def test_generates_opaque_obj_and_ctor(regex_meta: tuple[Path, BridgeMeta]) -> None:
+    so, meta = regex_meta
+    res = render_na_source(meta, so.name)
+    src = res.source
+    assert "obj Regex {" in src
+    assert "has __handle: int = 0;" in src
+    assert "has __closed: bool = True;" in src
+    assert "def init(pattern: str) {" in src
+    assert "def is_match(text: str) -> bool {" in src
+    assert "def __del__() {" in src
+
+
+def test_marshaling_uses_strlen_and_struct(regex_meta: tuple[Path, BridgeMeta]) -> None:
+    so, meta = regex_meta
+    src = render_na_source(meta, so.name).source
+    # string IN goes through libc strlen, not len()
+    assert 'import from "libc.so.6" {' in src
+    assert "def strlen(s: str) -> int;" in src
+    assert "strlen(pattern)" in src
+    assert "strlen(text)" in src
+    # never the bare na len() on a str param (strlen(...) is fine — hence the space)
+    assert " len(" not in src and "(len(" not in src
+    # out-params via struct.pack / struct.unpack
+    assert 'struct.pack("<Q", 0)' in src
+    assert 'struct.pack("<B", 0)' in src
+    assert 'struct.unpack("<Q", out_h)[0]' in src
+    assert 'struct.unpack("<B", out_b)[0] != 0' in src
+
+
+def test_foreign_shims_and_drop_declared(regex_meta: tuple[Path, BridgeMeta]) -> None:
+    so, meta = regex_meta
+    src = render_na_source(meta, so.name).source
+    assert f'import from "{so.name}" {{' in src
+    assert "def jac_regex_Regex_new(" in src
+    assert "def jac_regex_Regex_is_match(" in src
+    assert "def jac_regex_Regex_drop(handle: int) -> None;" in src
+    assert "def jac_regex_error_drop(err_handle: int) -> None;" in src
+    # dtor calls the drop shim
+    assert "jac_regex_Regex_drop(self.__handle);" in src
+
+
+def test_error_message_is_read_into_raised_exception(
+    regex_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = regex_meta
+    res = render_na_source(meta, so.name)
+    src = res.source
+    # RegexError.message() is no longer skipped — it's consumed to build the
+    # real Rust error text on the raised exception (matching the CPython loader).
+    items = {s.item for s in res.skips}
+    assert "RegexError.message" not in items
+    # message() stays off the obj surface (errors are exceptions, not handles).
+    assert "def message(" not in src
+    # the error path reads the JacBuf via the na intrinsic, frees it, and raises
+    # the decoded text rather than a synthetic "failed with status N".
+    assert "jac_regex_error_message(err_h, mbuf, mben)" in src
+    assert "__jac_str_from_raw(mb[0], mb[1])" in src
+    assert "jac_regex_free_buf(mb[0], mb[1] | (mb[2] << 32))" in src
+    assert "raise ValueError(emsg);" in src
+
+
+def test_free_buf_reconstructs_jacbuf_by_value(
+    regex_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = regex_meta
+    src = render_na_source(meta, so.name).source
+    # A #[repr(C)] {ptr:u64, len:u32, cap:u32} is two SysV eightbytes; free_buf
+    # (by-value) is declared + called as two ints (ptr, len|cap<<32).
+    assert "def jac_regex_free_buf(buf_ptr: int, buf_lencap: int) -> None;" in src
+
+
+def test_no_fragile_from_handle(regex_meta: tuple[Path, BridgeMeta]) -> None:
+    so, meta = regex_meta
+    # _from_handle would call the arg-taking ctor with no args; never emit it.
+    assert "_from_handle" not in render_na_source(meta, so.name).source

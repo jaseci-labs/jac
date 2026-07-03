@@ -42,6 +42,9 @@ suppress-none-returning = true
 [lint.per-file-ignores]
 # Allow print in tests (for debugging output), scripts, and test fixtures
 "**/tests/**/*.py" = ["T201"]
+# Bridge test fixtures/params mirror the loaded Rust classes (Regex, RegexError,
+# PanicError), which are correctly PascalCase; N802/N803 would force un-Pythonic names.
+"bridges/jac-bridge-loader/tests/**/*.py" = ["N802", "N803"]
 "**/fixtures/**/*.py" = ["T201"]
 "scripts/**/*.py" = ["T201"]
 "docs/scripts/**/*.py" = ["T201"]
