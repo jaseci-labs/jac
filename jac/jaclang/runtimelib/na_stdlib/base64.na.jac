@@ -22,6 +22,19 @@ def _make_rev(alphabet: bytes) -> list[int] {
 }
 
 
+def _casefold_rev(rev: list[int], alphabet: bytes) {
+    n: int = len(alphabet);
+    j: int = 0;
+    while j < n {
+        c: int = alphabet[j];
+        if c >= 65 and c <= 90 {
+            rev[c + 32] = rev[c];
+        }
+        j += 1;
+    }
+}
+
+
 def _encode_bits(data: bytes, alphabet: bytes, bits: int, quantum: int) -> bytes {
     out: list[int] = [];
     acc: int = 0;
@@ -49,7 +62,7 @@ def _encode_bits(data: bytes, alphabet: bytes, bits: int, quantum: int) -> bytes
 }
 
 
-def _decode_bits(data: bytes, rev: list[int], bits: int) -> bytes {
+def _decode_bits(data: bytes, rev: list[int], bits: int, padded: bool = True) -> bytes {
     out: list[int] = [];
     acc: int = 0;
     nbits: int = 0;
@@ -57,7 +70,7 @@ def _decode_bits(data: bytes, rev: list[int], bits: int) -> bytes {
     i: int = 0;
     while i < n {
         c: int = data[i];
-        if c == _PAD {
+        if padded and c == _PAD {
             break;
         }
         v: int = rev[c];
@@ -85,13 +98,9 @@ def:pub b16encode(s: bytes) -> bytes {
 def:pub b16decode(s: bytes, casefold: bool = False) -> bytes {
     rev: list[int] = _make_rev(_B16);
     if casefold {
-        j: int = 0;
-        while j < 6 {
-            rev[97 + j] = 10 + j;
-            j += 1;
-        }
+        _casefold_rev(rev, _B16);
     }
-    return _decode_bits(s, rev, 4);
+    return _decode_bits(s, rev, 4, padded=False);
 }
 
 
@@ -103,11 +112,7 @@ def:pub b32encode(s: bytes) -> bytes {
 def:pub b32decode(s: bytes, casefold: bool = False) -> bytes {
     rev: list[int] = _make_rev(_B32);
     if casefold {
-        j: int = 0;
-        while j < 26 {
-            rev[97 + j] = j;
-            j += 1;
-        }
+        _casefold_rev(rev, _B32);
     }
     return _decode_bits(s, rev, 5);
 }
