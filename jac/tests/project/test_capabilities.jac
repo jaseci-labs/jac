@@ -135,6 +135,21 @@ test "empty or non-dict intent yields only command caps" {
     assert derive_capabilities({}, None) == set();
 }
 
+test "scale serve defaults to the mongo user-store when no [database] is set" {
+    caps = derive_capabilities(
+        {"microservices": {"enabled": True}}, command_capabilities("serve", scale=True)
+    );
+    assert "data.mongo" in caps;
+    redis_caps = derive_capabilities(
+        {"database": {"type": "redis"}}, command_capabilities("serve", scale=True)
+    );
+    assert "data.redis" in redis_caps;
+    assert "data.mongo" not in redis_caps;
+    assert "data.mongo" not in derive_capabilities(
+        {"microservices": {"enabled": True}}, []
+    );
+}
+
 # ===== command_capabilities =====
 test "command_capabilities maps action and scale flag" {
     assert command_capabilities("serve") == ["serve"];

@@ -6,8 +6,7 @@ import from pathlib { Path }
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      JAC_HOME: str = "/app/.jachome",
-     TOOLCHAIN_SUBDIR: str = ".jactoolchain",
-     JAC_ZIG_VERSION: str = "0.16.0";
+     TOOLCHAIN_SUBDIR: str = ".jactoolchain";
 
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
@@ -43,7 +42,16 @@ glob _EXCLUDE_SUFFIXES: tuple = (
 
 
 def is_excluded(rel: Path) -> bool {
-    for part in rel.parts {
+    parts = rel.parts;
+    if (
+        len(parts) >= 3
+        and parts[0] == ".jac"
+        and parts[1] == "client"
+        and parts[2] == "dist"
+    ) {
+        return False;
+    }
+    for part in parts {
         if part in _EXCLUDE_DIRS {
             return True;
         }
@@ -62,31 +70,61 @@ def is_excluded(rel: Path) -> bool {
 }
 
 
+def _is_secret_path(name: str) -> bool {
+    return name == "plugins.scale.secrets"
+    or name.startswith("plugins.scale.secrets.")
+    or name == "scale.secrets"
+    or name.startswith("scale.secrets.");
+}
+
+
+def _is_dev_section(name: str) -> bool {
+    return name == "dev" or name.startswith("dev.");
+}
+
+
 def sanitized_jac_toml(base: Path) -> (str | None) {
     src = base / "jac.toml";
     if not src.is_file() {
         return None;
     }
     out: list[str] = [];
-    in_scale_section = False;
-    at_top_level = True;
+    pending: list[str] = [];
+    in_stripped_section = False;
+    current_section = "";
     for line in src.read_text().splitlines() {
         stripped = line.lstrip();
         if stripped.startswith("[") {
             header = stripped.lstrip("[").split("]")[0].strip();
-            in_scale_section = header == "plugins.scale"
-            or header.startswith("plugins.scale.");
-            at_top_level = False;
-            if in_scale_section {
+            in_stripped_section = _is_secret_path(header) or _is_dev_section(header);
+            current_section = header;
+            if in_stripped_section {
+                pending = [];
                 continue;
             }
-        } elif at_top_level and stripped.startswith("plugins.scale.") {
+            out.extend(pending);
+            pending = [];
+            out.append(line);
             continue;
         }
-        if not in_scale_section {
-            out.append(line);
+        if in_stripped_section {
+            continue;
         }
+        if stripped == "" or stripped.startswith("#") {
+            pending.append(line);
+            continue;
+        }
+        key = stripped.split("=")[0].strip();
+        full_key = key if current_section == "" else f"{current_section}.{key}";
+        if _is_secret_path(full_key) {
+            pending = [];
+            continue;
+        }
+        out.extend(pending);
+        pending = [];
+        out.append(line);
     }
+    out.extend(pending);
     return "\n".join(out) + "\n";
 }
 

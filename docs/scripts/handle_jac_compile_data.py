@@ -4,7 +4,6 @@ This script is used  to handle the jac compile data for jac playground.
 """
 
 import os
-import subprocess
 import time
 import zipfile
 
@@ -14,7 +13,6 @@ EXTRACTED_FOLDER = "docs/playground"
 PLAYGROUND_ZIP_PATH = os.path.join(EXTRACTED_FOLDER, "jaclang.zip")
 ZIP_FOLDER_NAME = "jaclang"
 UNIIR_NODE_DOC = "docs/internals/uniir_node.md"
-TOP_CONTRIBUTORS_DOC = "docs/community/top_contributors.md"
 AST_TOOL = AstTool()
 # Directory basenames to exclude
 EXCLUDE_DIRS = {"__pycache__", ".pytest_cache", ".git", "tests"}
@@ -67,9 +65,6 @@ def pre_build_hook(**kwargs: dict) -> None:
             f.write(AST_TOOL.autodoc_uninode())
     else:
         print(f"File is recent: {UNIIR_NODE_DOC}. Skipping creation.")
-
-    with open(TOP_CONTRIBUTORS_DOC, "w") as f:
-        f.write(get_top_contributors())
 
 
 def is_file_older_than_minutes(file_path: str, minutes: int) -> bool:
@@ -142,23 +137,6 @@ def create_playground_zip(jaclang_dir: str) -> None:
         zip_size = os.path.getsize(PLAYGROUND_ZIP_PATH) / 1024 / 1024
         print(f"  Precompiled .jir files: {len(jir_files)}")
         print(f"  Total files: {len(names)}, Size: {zip_size:.1f} MB")
-
-
-def get_top_contributors() -> str:
-    """Get the top contributors for the current repository."""
-    # Get the current directory (docs/scripts)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # Go to the root directory (two levels up from docs/scripts)
-    root_dir = os.path.dirname(os.path.dirname(current_dir))
-    cmd = ["jac", "run", "scripts/top_contributors.jac"]
-    try:
-        return subprocess.check_output(cmd, cwd=root_dir).decode("utf-8")
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: Failed to get top contributors: {e}")
-        return "# Top Contributors\n\nUnable to fetch contributor data at this time.\n"
-    except Exception as e:
-        print(f"Warning: Unexpected error getting top contributors: {e}")
-        return "# Top Contributors\n\nUnable to fetch contributor data at this time.\n"
 
 
 pre_build_hook()

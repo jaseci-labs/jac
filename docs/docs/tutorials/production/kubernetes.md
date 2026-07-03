@@ -205,7 +205,7 @@ autoscaler_initial_cooldown = 0    # default 0; seconds after deploy before scal
 !!! note
     KEDA must be installed on your cluster before setting `autoscaler_engine = "keda"`. See the [KEDA installation guide](https://keda.sh/docs/latest/deploy/).
 
-For the full list of autoscaling options (including event triggers, polling intervals, cooldown tuning, and authenticated triggers), see the [Scale Reference](../../reference/plugins/jac-scale.md#autoscaling).
+For the full list of autoscaling options (including event triggers, polling intervals, cooldown tuning, and authenticated triggers), see the [Scale Reference](../../reference/plugins/jac-scale-kubernetes.md#autoscaling).
 
 ---
 

@@ -4,11 +4,8 @@ import from pathlib { Path }
 import from types { ModuleType }
 import from typing { TYPE_CHECKING, Any }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
-import from jaclang.runtimelib.client.asset_processor { AssetProcessor }
-import from jaclang.runtimelib.client.import_processor { ImportProcessor }
 import from jaclang.runtimelib.client.jac_to_js { JacToJSCompiler }
-import from jaclang.jac0core.ext_registry { CLIENT_SUFFIX, ANNEX_SUFFIXES }
-import from .route_scanner { RouteScanner, RouteEntry }
+import from jaclang.runtimelib.client.jac_client_compiler { JacClientCompiler }
 import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
 with entry {
@@ -16,23 +13,6 @@ with entry {
 }
 
 class ViteCompiler {
-    with entry {
-        ROUTER_EXPORTS = [
-            'Router',
-            'Routes',
-            'Route',
-            'Link',
-            'Navigate',
-            'Outlet',
-            'useNavigate',
-            'useLocation',
-            'useParams',
-            'AuthGuard'
-        ];
-        COMPOUND_EXTENSIONS = [CLIENT_SUFFIX] + list(ANNEX_SUFFIXES);
-    }
-
-    def _jac_path_to_js(self: ViteCompiler, rel_str: str) -> str;
     def init(
         self: ViteCompiler,
         vite_package_json: Path,
@@ -45,44 +25,10 @@ class ViteCompiler {
     );
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];
-    def compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str]];
     def compile_desktop_sdk(self: ViteCompiler);
-    def _write_source_map(
-        self: ViteCompiler,
-        mod: Any,
-        source_file: str,
-        output_path: Path,
-        full_output: str
-    ) -> None;
-
-    def compile_dependencies_recursively(
-        self: ViteCompiler,
-        module_path: Path,
-        visited: (set[Path] | None) = None,
-        collected_exports: (set[str] | None) = None,
-        collected_globals: (dict[(str, Any)] | None) = None,
-        source_root: (Path | None) = None
-    ) -> None;
-
-    def _get_client_dir(self: ViteCompiler) -> Path;
-    def _copy_js_file(self: ViteCompiler, js_path: Path, source_root: Path) -> None;
-    def _copy_ts_file(self: ViteCompiler, ts_path: Path, source_root: Path) -> None;
-    def _copy_asset_file(
-        self: ViteCompiler, asset_path: Path, source_root: Path
-    ) -> None;
-
-    def copy_root_assets(self: ViteCompiler) -> None;
-    def _emit_na_wasm(self: ViteCompiler, module_path: Path) -> None;
     def create_entry_file(self: ViteCompiler, module_path: Path) -> None;
     def _create_pages_entry_content(self: ViteCompiler, module_path: Path) -> str;
-    def _scan_and_compile_pages(
-        self: ViteCompiler,
-        visited: (set[Path] | None) = None,
-        collected_exports: (set[str] | None) = None,
-        collected_globals: (dict[(str, Any)] | None) = None
-    ) -> bool;
-
-    def _generate_routes_manifest(self: ViteCompiler) -> None;
+    def _emit_na_wasm(self: ViteCompiler, module_path: Path) -> None;
     def compile_and_bundle(
         self: ViteCompiler, module: ModuleType, module_path: Path
     ) -> tuple[str, str, list[str], list[str]];

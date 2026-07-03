@@ -180,8 +180,21 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     }
 }
 
-impl JacProgram._search_hubs(self: JacProgram) -> list[dict] {
-    hubs: list[dict] = [self.mod.hub];
+impl JacProgram.release_compile_closure(self: JacProgram) -> None {
+    import os;
+    if os.environ.get("JAC_NO_UNIT_EVICT") {
+        return;
+    }
+    self.mod.hub.clear();
+    self._hub_cache_times.clear();
+    self._dependents.clear();
+    self.type_evaluator = None;
+    self.errors_had.clear();
+    self.warnings_had.clear();
+}
+
+impl JacProgram._search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]] {
+    hubs: list[dict[(str, uni.Module)]] = [self.mod.hub];
     internal = self._get_compiler().internal_program;
     if internal is not self {
         hubs.append(internal.mod.hub);

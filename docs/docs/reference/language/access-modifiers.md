@@ -7,7 +7,7 @@ The crucial thing to understand is that **the same three keywords mean different
 | Context | Applies to | What the modifier controls |
 |---|---|---|
 | [Member encapsulation](#member-encapsulation) | `has` / `def` declared **inside an archetype** | who may reference the member in source |
-| [Module / project visibility](#module--project-visibility) | top-level `glob` / `obj` / `def` / `enum` / `walker` | which modules may reference the symbol in source |
+| [Module and project visibility](#module-and-project-visibility) | top-level `glob` / `obj` / `def` / `enum` / `walker` | which modules may reference the symbol in source |
 | [Service auth](#service-auth) | served `def` / `walker` endpoints (`jac serve`) | whether an HTTP caller must authenticate |
 
 The first two are **compile-time reference rules** enforced by `AccessCheckPass`. The third is a **runtime auth rule** applied by the server. They are independent: a single tag on a top-level `walker` is read by *both* the visibility rule and the auth rule, but they ask different questions.
@@ -43,7 +43,7 @@ obj VetRecord(PetRecord) {
 
 ---
 
-## Module / project visibility
+## Module and project visibility
 
 For a **top-level** symbol (`glob`, `obj`, `def`, `enum`, `walker` at module scope, not inside a class), the modifier controls cross-module reference legality. A *project* is the directory tree rooted at its `jac.toml`.
 

@@ -200,6 +200,46 @@ def _read_cstr(sh: any, p: int) -> str {
     return s;
 }
 
+"""Chars strtod/strtol would consume from `s` - the runtime checks the
+written endptr to reject trailing garbage, so this must be exact."""
+def _num_prefix_len(s: str, want_float: bool, base: int) -> int {
+    n = len(s);
+    i = 0;
+    # Only space-skipping: the na runtime's own literals never carry tabs,
+    # and escaped literals do not survive jac2js in cl code.
+    while i < n and s[i] == " " {
+        i += 1;
+    }
+    j = i;
+    if j < n and (s[j] == "+" or s[j] == "-") {
+        j += 1;
+    }
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"[:(base if base > 1 else 10)];
+    saw = False;
+    while j < n
+    and (digits.indexOf(s[j].toLowerCase()) >= 0 or (want_float and s[j] == ".")) {
+        saw = saw or s[j] != ".";
+        j += 1;
+    }
+    if not saw {
+        return 0;
+    }
+    if want_float and j < n and (s[j] == "e" or s[j] == "E") {
+        k = j + 1;
+        if k < n and (s[k] == "+" or s[k] == "-") {
+            k += 1;
+        }
+        exp_start = k;
+        while k < n and s[k] >= "0" and s[k] <= "9" {
+            k += 1;
+        }
+        if k > exp_start {
+            j = k;
+        }
+    }
+    return j;
+}
+
 def _flush(sh: any) -> None {
     if len(sh.verts) == 0 {
         return;
@@ -331,6 +371,45 @@ def _build_env(sh: any) -> dict {
         "puts": lambda p: int { return 0; },
         "printf": lambda a: int { return 0; },
         "snprintf": lambda a: int , b: int , c: int , d: int { return 0; },
+        "strlen": lambda p: int {
+            u8 = new(Uint8Array, sh.mem.buffer);
+            i = p;
+            while u8[i] != 0 {
+                i = i + 1;
+            }
+            # size_t lowers to i64 at the wasm boundary -> BigInt.
+            return BigInt(i - p);
+        },
+        "strchr": lambda p: int , c: int {
+            u8 = new(Uint8Array, sh.mem.buffer);
+            ch = c & 255;
+            i = p;
+            while u8[i] != 0 {
+                if u8[i] == ch {
+                    return i;
+                }
+                i = i + 1;
+            }
+            return i if ch == 0 else 0;
+        },
+        "strtod": lambda p: int , endp: int {
+            s = _read_cstr(sh, p);
+            used = _num_prefix_len(s, True, 10);
+            if endp != 0 {
+                new(DataView, sh.mem.buffer).setUint32(endp, p + used, True);
+            }
+            return parseFloat(s) if used > 0 else 0.0;
+        },
+        "strtol": lambda p: int , endp: int , base: int {
+            s = _read_cstr(sh, p);
+            b = base if base != 0 else 10;
+            used = _num_prefix_len(s, False, b);
+            if endp != 0 {
+                new(DataView, sh.mem.buffer).setUint32(endp, p + used, True);
+            }
+            # long lowers to i64 at the wasm boundary -> BigInt.
+            return BigInt(parseInt(s, b)) if used > 0 else BigInt(0);
+        },
         "getenv": lambda p: int { return 0; },
         "fflush": lambda p: int { return 0; },
         "abort": lambda { },

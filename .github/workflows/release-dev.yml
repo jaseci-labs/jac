@@ -1,17 +1,8 @@
 name: Release jac dev binary (rolling main)
 
-# Rolling "dev" build of the self-contained `jac` binary. On every push to main
-# this rebuilds the per-platform binaries and re-publishes them to a single
-# prerelease tag `dev`, force-moved to the current main HEAD. The download URLs
-# are therefore stable and always map to the tip of upstream main:
-#
-#   https://github.com/<owner>/<repo>/releases/download/dev/jac-dev-linux-x86_64
-#   https://github.com/<owner>/<repo>/releases/download/dev/jac-dev-linux-aarch64
-#   https://github.com/<owner>/<repo>/releases/download/dev/jac-dev-macos-aarch64
-#
-# This mirrors release-jaclang.yml (the versioned, tagged release path) but with
-# a push-on-main trigger and a fixed, clobbered `dev` tag instead of a per-version
-# one. The `dev` release is kept as a *prerelease* so it never shows as "Latest".
+# Rolling "dev" prerelease: every push to main rebuilds the per-platform
+# binaries and re-publishes them under the single force-moved `dev` tag, so
+# .../releases/download/dev/jac-dev-<platform> always maps to main HEAD.
 
 on:
   push:
@@ -21,19 +12,18 @@ on:
 permissions:
   contents: write
 
-# A newer push to main supersedes an in-flight dev build: cancel the old run so
-# the `dev` tag/assets always reflect the most recent main commit.
+# A newer push to main supersedes an in-flight dev build.
 concurrency:
   group: release-dev
   cancel-in-progress: true
 
 jobs:
-  # Force-move the `dev` tag to the current commit and ensure the prerelease
-  # exists, before the matrix jobs upload their assets to it.
   prepare:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # SHA-pinned: this workflow holds contents:write and ships user-downloaded
+      # binaries, so a re-pointed tag on the action must not reach it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
 
@@ -45,7 +35,6 @@ jobs:
           SHA="${GITHUB_SHA}"
           SHORT="${SHA:0:7}"
           NOTES="Rolling build of \`main\` @ ${SHORT}. Auto-updated on every push to main; not a stable release."
-          # Move the dev tag to HEAD (created on first run, force-moved after).
           git tag -f dev "$SHA"
           git push -f origin refs/tags/dev
           if gh release view dev >/dev/null 2>&1; then
@@ -62,23 +51,44 @@ jobs:
       fail-fast: false
       matrix:
         # One native runner per target so the smoke test runs on real hardware.
-        # The launcher links only libc and dlopens libpython, so each build is
-        # self-contained; build.zig fetches the per-target python-build-standalone
-        # and (for the native backend) the per-target LLVM release.
+        # No Intel-Mac leg: LLVM ships no macOS-x64 prebuilt for the pinned release.
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
-          # No macos-x86_64 (Intel) leg: the native (na) backend statically links
-          # a pinned LLVM release, and LLVM ships no macOS-x64 prebuilt for 20.1.8
-          # (only Linux-X64/ARM64 + macOS-ARM64). Apple Silicon is covered by
-          # macos-aarch64; restoring Intel-Mac needs an x86_64 LLVM static source.
           - os: macos-14
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # The LLVMPY_* shim is the most expensive artifact and depends only on
+      # native/**, build.zig, and the pinned LLVM slice; same cache key as
+      # setup-jac, so main usually has it warm.
+      - name: Restore cached LLVMPY shim
+        id: shim-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
+      - name: Restore cached LLVM (jacllvm shim deps)
+        if: steps.shim-cache.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+
+      # mkpayload re-validates every seeded .jir per module, so a stale tree
+      # from the previous push is safe and exactly what restore-keys is for.
+      - name: Restore cached JIR precompile tree
+        uses: actions/cache@v4
+        with:
+          path: jac/.precompiled-build
+          key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
+          restore-keys: |
+            jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install host tools (zstd)
         run: |
@@ -89,24 +99,32 @@ jobs:
           fi
 
       - name: Set up Zig 0.16.0
-        uses: mlugg/setup-zig@v2
+        # SHA-pinned: this job holds contents:write and ships user-downloaded
+        # binaries, so a re-pointed tag on the action must not reach it.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.16.0
-          # Fresh cache each run: build.zig's payload step doesn't reliably
-          # invalidate on jaclang/ changes, so a cached payload could ship stale
-          # bits. Force a rebuild.
+          # Fresh cache each run: a cached payload could ship stale bits.
           use-cache: false
 
-      # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
-      # shim, so the per-target LLVM release must be extracted before `zig build`
-      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download.
       - name: Fetch LLVM for the jacllvm shim
+        if: steps.shim-cache.outputs.cache-hit != 'true'
         working-directory: jac
         run: zig build fetch-llvm --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
-        run: zig build --summary all
+        # On a shim-cache hit, stage the shim outside its in-tree place path:
+        # the build copies -Dshim-bin back there, and a self-copy would read
+        # the file it is truncating. Mirrors setup-jac.
+        run: |
+          SHIM_ARG=()
+          if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
+            mkdir -p .shim-build
+            cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
+            SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
+          fi
+          zig build "${SHIM_ARG[@]}" --summary all
 
       - name: Smoke test (no system Python)
         working-directory: jac
@@ -118,7 +136,7 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
-      - name: Package asset (+ checksum, ad-hoc codesign on macOS)
+      - name: Package asset (+ checksum)
         id: pkg
         working-directory: jac
         run: |
@@ -126,7 +144,9 @@ jobs:
           ASSET="jac-dev-${{ matrix.platform }}"
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"
-          if [ "$RUNNER_OS" = "macOS" ]; then codesign --force --sign - "dist/$ASSET" || true; fi
+          # No codesign on macOS: the payload tarball appended past the Mach-O
+          # end fails codesign's strict validation; the zig linker's ad-hoc
+          # signature is content-based and survives cp.
           ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
 

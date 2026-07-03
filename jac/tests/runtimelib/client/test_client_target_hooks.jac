@@ -17,7 +17,7 @@ test "register_targets registers the built-in client targets directly" {
 
     register_targets();
     registry = get_target_registry();
-    for name in ["web", "pwa", "static", "mobile", "desktop"] {
+    for name in ["web", "pwa", "static", "mobile", "desktop", "react-native"] {
         assert registry.get(name) is not None , (
             f"register_targets() must register the '{name}' target directly"
         );
@@ -31,6 +31,7 @@ test "register.jac registers built-in targets without a plugin group" {
     assert "registry.register(WebTarget())" in content;
     assert "registry.register(MobileTarget())" in content;
     assert "registry.register(NativeDesktopTarget())" in content;
+    assert "registry.register(ReactNativeTarget())" in content;
     assert "def sync_client_target_choices" in content;
     # The removed secondary plugin-group indirection must not have returned.
     assert "JacClientRuntime" not in content;

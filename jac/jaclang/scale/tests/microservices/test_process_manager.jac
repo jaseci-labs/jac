@@ -199,6 +199,99 @@ test "check health returns false on network error" {
     }
 }
 
+test "start service passes the registry's subdir file path to jac start" {
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="social_graph",
+            file="littlex/social_graph.jac",
+            prefix="/social_graph"
+        )
+    );
+    pm = ServiceProcessManager(registry=reg);
+
+    mock_proc = unittest.mock.MagicMock();
+    mock_proc.pid = 12345;
+
+    with unittest.mock.patch("subprocess.Popen", return_value=mock_proc) as popen {
+        assert pm.start_service("social_graph");
+        cmd = popen.call_args[0][0];
+        assert "littlex/social_graph.jac" in cmd , (
+            f"spawn must use the registry file path verbatim, got: {cmd}"
+        );
+    }
+}
+
+test "check all health marks a dead managed process STOPPED without HTTP polling" {
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.STARTING
+        )
+    );
+    pm = ServiceProcessManager(registry=reg);
+
+    dead_proc = unittest.mock.MagicMock();
+    dead_proc.pid = 12345;
+    dead_proc.poll = unittest.mock.MagicMock(return_value=1);
+    pm.processes["orders"] = dead_proc;
+
+    with unittest.mock.patch.object(pm, "check_health") as hc {
+        results = pm.check_all_health();
+    }
+
+    assert reg.entries["orders"].status == ServiceStatus.STOPPED , (
+        f"a dead child can never become healthy; status must be STOPPED, "
+        f"got {reg.entries['orders'].status}"
+    );
+    assert results["orders"] == False;
+    hc.assert_not_called();
+}
+
+test "check all health reports a dead process once, not every poll" {
+    import jaclang.scale.runtime.orchestrator.process_manager as pm_mod;
+
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.STARTING
+        )
+    );
+    pm = ServiceProcessManager(registry=reg);
+
+    dead_proc = unittest.mock.MagicMock();
+    dead_proc.pid = 12345;
+    dead_proc.poll = unittest.mock.MagicMock(return_value=1);
+    pm.processes["orders"] = dead_proc;
+
+    with unittest.mock.patch.object(pm_mod, "logger") as fake_log {
+        pm.check_all_health();
+        pm.check_all_health();
+        pm.check_all_health();
+        exit_reports = [
+            c for c in (
+                list(fake_log.warning.call_args_list)
+                + list(fake_log.error.call_args_list)
+            )
+            if "exited" in str(c)
+        ];
+    }
+    assert len(exit_reports) == 1 , (
+        f"a dead child must be reported exactly once, got {len(exit_reports)}: "
+        f"{exit_reports}"
+    );
+}
+
 test "check all health marks service unhealthy after max failures" {
     reg = ServiceRegistry();
     reg.register(

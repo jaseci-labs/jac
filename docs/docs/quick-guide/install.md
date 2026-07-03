@@ -43,10 +43,10 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ## Installing Plugins
 
-The `jac` binary is the language core. Add plugins -- AI integration, deployment -- with the binary's own installer once `jac` is on your PATH:
+The `jac` binary is the language core, and bundles the AI (byLLM), MCP, and deployment & scaling subsystems built in. "Enabling" one of these just resolves its optional dependencies into your project; genuine third-party plugins install the same way, by name:
 
 ```bash
-# AI/LLM integration
+# AI/LLM integration (byLLM is built in; this pulls its optional deps -- litellm, pillow, ...):
 jac install byllm
 
 # The MCP server and the production deployment & scaling subsystem ship built
@@ -203,11 +203,10 @@ Re-run the one-line installer to upgrade the `jac` binary to the latest version:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-To upgrade a plugin, reinstall it:
+Built-in subsystems (byLLM, MCP, scale) upgrade with the binary itself. To force-refresh a third-party plugin's resolved dependencies, reinstall it:
 
 ```bash
-jac install --force-reinstall byllm
-jac install --force-reinstall jac-mcp
+jac install --force-reinstall <plugin>
 ```
 
 ---
