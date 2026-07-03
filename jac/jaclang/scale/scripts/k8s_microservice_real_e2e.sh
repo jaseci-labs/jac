@@ -289,9 +289,11 @@ _t "pods Ready"
 
 echo "=== first-boot compile stats (jir-seed adoption per pod) ==="
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
-    line=$(kubectl logs -n "${NAMESPACE}" "${pod}" -c jac-bootstrap 2>/dev/null \
-        | grep -E "adopted [0-9]+ host-precompiled|modules compiled and cached" | tail -2)
-    [ -n "${line}" ] && echo "  ${pod}: $(echo "${line}" | tr '\n' ' ')"
+    # `|| true` throughout: pods without a jac-bootstrap container (mongo,
+    # observability) and no-match greps must not trip `set -e`.
+    line=$( (kubectl logs -n "${NAMESPACE}" "${pod}" -c jac-bootstrap 2>/dev/null || true) \
+        | (grep -E "adopted [0-9]+ host-precompiled|modules compiled and cached|adoption failed" || true) | tail -2)
+    [ -n "${line}" ] && echo "  ${pod}: $(echo "${line}" | tr '\n' ' ')" || true
 done
 echo "=== port-forward gateway + curl /health ==="
 GATEWAY_LOCAL_PORT="${GATEWAY_LOCAL_PORT:-18000}"

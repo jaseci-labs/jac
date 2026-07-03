@@ -223,10 +223,22 @@ test "pack_overlay ships the host's compiled .jir as a re-homeable seed (#7138)"
     raw = pack_overlay(b"ELF", src_root);
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
         names = tar.getnames();
+        manifest = tar.extractfile(
+            f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/_manifest.tsv"
+        ).read().decode(
+            "utf-8"
+        );
     }
     assert f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/jaclang/x.jac.jir" in names;
-    # The pod-side adoption script ships with the seeds.
+    # The pure-stdlib adoption script + its baked destination manifest ship
+    # with the seeds (pods must not invoke jac before adoption - that compiles
+    # the overlay eagerly, defeating the seeds).
     assert f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/_adopt.py" in names;
+    (seed_rel, dest_name) = manifest.strip().split("\t");
+    assert seed_rel == "jaclang/x.jac.jir";
+    # dest is the pod-side cache filename: stem.<8-hex path hash>.cpython-XY.jir
+    import re;
+    assert re.fullmatch(r"x\.[0-9a-f]{8}\.cpython-\d+\.jir", dest_name) , dest_name;
 }
 
 
@@ -235,6 +247,9 @@ test "bootstrap adopts jir seeds before jac install (pods validate, not compile)
     cmds.append(_first_boot_install());
     joined = " && ".join(cmds);
     assert "jir-seed/_adopt.py" in joined;
+    # System python3 runs the adoption: any jac invocation before `jac install`
+    # would itself eagerly compile the overlay, defeating the seeds.
+    assert 'python3 "' in joined;
     # Adoption strictly precedes the install so its caches are seen.
     assert joined.index("_adopt.py") < joined.index("jac install");
 }

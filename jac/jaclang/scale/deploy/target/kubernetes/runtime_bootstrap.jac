@@ -114,13 +114,15 @@ def runtime_container_env -> list[dict[str, str]] {
 
 def _first_boot_install -> str {
     # Adopt host-precompiled .jir seeds (shipped in the overlay by pack_overlay)
-    # before `jac install`, so the pod validates the compiled cache instead of
-    # recompiling the whole overlay on first boot (#7138). Best-effort: without
-    # seeds (or on failure) the install compiles exactly as before.
+    # BEFORE the first jac invocation: `jac install` under a dev overlay eagerly
+    # compiles the whole overlay during startup, which is exactly the work the
+    # seeds skip. The adoption script is pure stdlib, so the base image's system
+    # python3 runs it without touching jac (#7138). Best-effort: without seeds
+    # (or on failure) the install compiles exactly as before.
     adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
     return (
         f'if [ -f "{adopt}" ]; then '
-        f'jac -c "exec(open(\'{adopt}\').read())" '
+        f'python3 "{adopt}" '
         f'|| echo "[jac-scale] jir-seed adoption failed; compiling from source"; '
         f'fi; '
         f'jac install'
