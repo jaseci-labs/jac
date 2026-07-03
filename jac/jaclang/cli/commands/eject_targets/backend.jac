@@ -342,10 +342,6 @@ def _model_class_name(name: str, suffix: str) -> str {
 }
 
 
-"""Type names safe to keep verbatim in a generated Pydantic request model: JSON
-primitives, common containers, and typing constructs. Any other identifier (a
-Jac `obj` type like GuestEntry, never imported into main.py) is widened to Any
-so the request model still resolves and accepts the value untyped."""
 glob _JSON_SAFE_TYPE_NAMES: set = {
          "str",
          "int",
@@ -374,9 +370,6 @@ glob _JSON_SAFE_TYPE_NAMES: set = {
      };
 
 
-"""Render a walker/function field type safe to drop into the generated main.py:
-kept only when every identifier is JSON-safe (resolves without importing user
-types); otherwise widened to Any."""
 def _safe_model_type(ftype: str) -> str {
     try {
         tree = ast.parse(ftype, mode="eval");
@@ -392,10 +385,6 @@ def _safe_model_type(ftype: str) -> str {
 }
 
 
-"""Render a field default safe for a Pydantic model. Unwraps jaclang's mutable-
-default idiom `field(factory=lambda: X)` to `X`, then keeps the result only when
-it is a JSON literal; anything referencing an unimported name or constructor
-falls back to None (the walker/function keeps its own runtime default)."""
 def _safe_model_default(default_src: str) -> str {
     try {
         expr = ast.parse(default_src, mode="eval").body;
@@ -428,9 +417,6 @@ def _safe_model_default(default_src: str) -> str {
 }
 
 
-"""Write main.py: a FastAPI app running the walkers on the jaclang runtime with
-jaclang-native auth. When `sql` is set, register the get_persistent_memory hook
-so the graph persists via SQLAlchemy (SQLite `<db_basename>.db` / JAC_DB_URL)."""
 def _emit_main_py(
     backend_dir: Path,
     project_name: str,

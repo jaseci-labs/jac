@@ -188,9 +188,6 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         } else {
             bmod = ".".join(parent_parts + [stem]);
         }
-        # `.na.jac` are native-compile targets (`jac nacompile`), not server
-        # modules: they bind C libraries and use native-only intrinsics absent
-        # from the Python runtime, so keep them out of the backend.
         is_client = is_client_module(rel.name);
         is_native = is_native_module(rel.name);
         server = _is_meaningful_python(py_code) and (not is_client) and (not is_native);
@@ -424,21 +421,11 @@ def _emit_package_json(frontend_dir: Path, project_name: str, toml_data: dict) {
 }
 
 
-"""Write frontend/vite.config.js: dev-server proxy forwarding API routes
-(/walker, /function, /user, ...) to the FastAPI backend, and (when
-`runtime_copied`) a resolve.alias for "@jac/runtime" -> src/__jac_runtime.js."""
 def _emit_vite_config(frontend_dir: Path, runtime_copied: bool, toml_data: dict) {
-    # Carry over the project's Vite plugins/imports from `[plugins.client.vite]`
-    # (jac.toml) so plugin-driven tooling like Tailwind v4's `@tailwindcss/vite`
-    # still runs; without it `@import "tailwindcss"` emits no utilities and the
-    # ejected site renders unstyled.
     vite_cfg = dict(toml_data.get("plugins", {}).get("client", {}).get("vite", {}));
     lib_imports = [str(i) for i in vite_cfg.get("lib_imports", [])];
     plugins = [str(p) for p in vite_cfg.get("plugins", [])];
 
-    # Proxy target honours $BACKEND_PORT so a custom backend port flows through
-    # to the Vite proxy without editing vite.config.js; falls back to the
-    # backend's own default of 8000 when the env var is not set.
     header: list[str] = [
         'import path from "path";',
         'import { fileURLToPath } from "url";'
