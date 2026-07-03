@@ -182,6 +182,27 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // Standalone: compile the in-repo wasm_rt libc (vendored musl/wasi-libc
+    // subset + jac allocator/io/abi adapters) to wasm32 LLVM bitcode under
+    // .pbs-build/wasm32/libc, so na->wasm builds link libc INTO the module
+    // (in-module libc + jac_host1 import contract, #7048) instead of leaking
+    // env imports. Unlike vendor-musl this is target-independent — bitcode
+    // for wasm32 is identical on every build host — so it runs everywhere.
+    // Editable/source checkouts and the test suite resolve it straight from
+    // .pbs-build via wasm_build.jac's _wasm_libc_dir.
+    {
+        const vendor_wasm_libc = b.addRunArtifact(tool);
+        vendor_wasm_libc.addArgs(&.{
+            "build-wasm-libc",
+            b.pathFromRoot("jaclang/compiler/passes/native/wasm_rt"),
+            b.pathFromRoot(".pbs-build/wasm32/libc"),
+            b.graph.zig_exe,
+        });
+        vendor_wasm_libc.has_side_effects = true;
+        b.step("vendor-wasm-libc", "Compile the wasm_rt libc to bitcode into .pbs-build/wasm32/libc")
+            .dependOn(&vendor_wasm_libc.step);
+    }
+
     const osarch = osArchString(target.result) orelse {
         // Unsupported target for a full binary; stub + test steps still work.
         return;
@@ -315,6 +336,24 @@ pub fn build(b: *std.Build) void {
             vendor_musl.has_side_effects = true;
             mk.step.dependOn(&vendor_musl.step);
             mk.addArg(b.fmt("--musl={s}", .{musl_lib}));
+        }
+
+        // Wasm32 libc bitcode: compile the in-repo wasm_rt sources (payload
+        // tool's `build-wasm-libc`, mirrors the musl block above) and bundle
+        // them so a shipped binary links libc into na->wasm modules at build
+        // time (#7048). Target-independent, so every platform bundles it.
+        if (link_dir == null) {
+            const wasm_libc = b.pathFromRoot(".pbs-build/wasm32/libc");
+            const vendor_wasm = b.addRunArtifact(tool);
+            vendor_wasm.addArgs(&.{
+                "build-wasm-libc",
+                b.pathFromRoot("jaclang/compiler/passes/native/wasm_rt"),
+                wasm_libc,
+                b.graph.zig_exe,
+            });
+            vendor_wasm.has_side_effects = true;
+            mk.step.dependOn(&vendor_wasm.step);
+            mk.addArg(b.fmt("--wasm-libc={s}", .{wasm_libc}));
         }
 
         // Track the payload's real inputs so it repacks when any source changes.

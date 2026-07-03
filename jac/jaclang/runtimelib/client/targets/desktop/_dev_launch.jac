@@ -85,14 +85,7 @@ def ensure_dev_build_env {
 
 def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
     env = desktop_launch_env(base);
-    for key in [
-        "PYTHONHOME",
-        "PYTHONPATH",
-        "PYTHONEXECUTABLE",
-        "JAC_EXECUTABLE",
-        "VIRTUAL_ENV",
-
-    ] {
+    for key in ["PYTHONEXECUTABLE", "JAC_EXECUTABLE", "VIRTUAL_ENV", ] {
         env.pop(key, None);
     }
     env.setdefault("GDK_BACKEND", "x11");
