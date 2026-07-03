@@ -52,7 +52,11 @@ bundled one. A bundled module links through the existing cross-module machinery
   / `__eq__` / `__lt__`); since the native backend has no operator-overload
   dispatch yet, the na fixture calls them directly (`a.__add__(b)`) where the sv
   fixture uses `+` / `<`, and the resulting *values* are congruent.
-  Float/Decimal/string construction is out of scope.
+  Float/Decimal/string construction is out of scope. SCOPE: native `int` is a
+  fixed-width i64, so the cross-multiplications in `__add__` / `__lt__` (and
+  friends) silently overflow once intermediate products exceed 2^63, where
+  CPython's bignum `Fraction` stays exact — keep components comfortably below
+  ~3x10^9 (sqrt of i64 max).
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the
