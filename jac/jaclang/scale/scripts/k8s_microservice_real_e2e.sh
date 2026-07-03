@@ -392,12 +392,11 @@ else
     fi
     echo "  Loki /ready = 200"
 
-    echo "  waiting 15s for Alloy to scrape + ship initial logs..."
-    sleep 15
-
+    # No fixed pre-sleep: the retry loop below already polls; Alloy usually
+    # ships the first streams well before 15s, so start querying immediately.
     echo "  LogQL query: streams for namespace=${NAMESPACE}..."
     LOG_STREAMS="0"
-    for attempt in $(seq 1 10); do
+    for attempt in $(seq 1 15); do
         # Loki's instant-query endpoint returns {"status":"success","data":
         # {"resultType":"streams","result":[{stream:..., values:[...]}, ...]}}.
         # We just need >=1 entry in result[] to prove Alloy is shipping.
@@ -410,7 +409,7 @@ else
         if [ "${LOG_STREAMS}" -gt 0 ] 2>/dev/null; then
             break
         fi
-        echo "    attempt ${attempt}/10: ${LOG_STREAMS} streams, retrying in 5s..."
+        echo "    attempt ${attempt}/15: ${LOG_STREAMS} streams, retrying in 5s..."
         sleep 5
     done
     if ! [ "${LOG_STREAMS}" -gt 0 ] 2>/dev/null; then

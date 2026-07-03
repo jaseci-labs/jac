@@ -1,4 +1,3 @@
-import from jaclang.runtimelib.client { BUN_VERSION }
 import from jaclang.scale.injector.bundle {
     JAC_HOME,
     APP_VOLUME_NAME,
@@ -49,33 +48,27 @@ def build_runtime_install_commands(
 
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
-    commands.append(
-        'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
-    );
-
-    commands.append(
-        'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
-    );
-    commands.append(
-        'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
-    );
-
-    commands.append(
-        'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
-        '-o Acquire::https::Timeout=20 update || true'
-    );
-
-    base_packages = ['git', 'curl', 'unzip'];
+    # apt only when the project asks for extra packages: the shipped jac binary
+    # bundles bun and python, the overlay ships as a tar (no git clone), and the
+    # jir seeds remove the compile - so the default boot needs nothing from apt.
+    # Projects with VCS pip deps or system libs declare them via
+    # additional_packages / [dependencies.system] and pay this cost knowingly.
     if config.additional_packages {
-        base_packages.extend(config.additional_packages);
+        commands.append(
+            'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
+        );
+        commands.append(
+            'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
+        );
+        commands.append(
+            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
+        );
+        commands.append(
+            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+            '-o Acquire::https::Timeout=20 update || true'
+        );
+        commands.append(f"apt-get install -y {' '.join(config.additional_packages)}");
     }
-    commands.append(f"apt-get install -y {' '.join(base_packages)}");
-
-    commands.append(
-        f'curl -fsSL https://bun.sh/install | bash -s "bun-v{BUN_VERSION}"'
-    );
-    commands.append('export BUN_INSTALL="$HOME/.bun"');
-    commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
     commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
