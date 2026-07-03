@@ -999,3 +999,18 @@ test "bug_loop_exit_widen" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# Bug #6723: in-loop narrowing is resolved as a fixed point (iterate the body
+# until narrowed types stabilize), matching Python/Pyright. Covers the monotone
+# recurrence `cur = cur.next` under a compound condition, a guard-narrowed
+# variable that is only read inside the loop (must stay narrowed, not widen), and
+# independent recurrences across sibling/nested loops.
+test "bug_loop_fixed_point" {
+    program = compile_and_check("checker_bug_loop_fixed_point.jac");
+    assert program.errors_had == [] , (
+        "Bug #6723: in-loop reads must resolve to the loop fixed point - a "
+        "monotone recurrence stays narrowed, and a variable only read in a loop "
+        "keeps the narrowing an enclosing guard established. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
