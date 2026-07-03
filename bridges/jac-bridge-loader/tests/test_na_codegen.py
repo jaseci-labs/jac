@@ -31,6 +31,24 @@ def regex_meta() -> tuple[Path, BridgeMeta]:
     return so, parse(read_jac_bridge_section(str(so)))
 
 
+def _find_owning_so() -> Path | None:
+    here = Path(__file__).resolve()
+    for base in (here.parents[2], here.parents[3]):  # bridges/, repo/
+        for build in ("release", "debug"):
+            p = base / "target" / build / "libjac_bridge_owning.so"
+            if p.is_file():
+                return p
+    return None
+
+
+@pytest.fixture(scope="module")
+def owning_meta() -> tuple[Path, BridgeMeta]:
+    so = _find_owning_so()
+    if so is None:
+        pytest.skip("libjac_bridge_owning.so not built (run: cargo build --release)")
+    return so, parse(read_jac_bridge_section(str(so)))
+
+
 def test_generates_opaque_obj_and_ctor(regex_meta: tuple[Path, BridgeMeta]) -> None:
     so, meta = regex_meta
     res = render_na_source(meta, so.name)
@@ -106,3 +124,46 @@ def test_no_fragile_from_handle(regex_meta: tuple[Path, BridgeMeta]) -> None:
     so, meta = regex_meta
     # _from_handle would call the arg-taking ctor with no args; never emit it.
     assert "_from_handle" not in render_na_source(meta, so.name).source
+
+
+# ── nullable Option<T> returns (owning bridge): honest skips on na ────────────
+
+
+def test_opt_ref_returns_are_skipped_with_honest_reason(
+    owning_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = owning_meta
+    res = render_na_source(meta, so.name)
+    reasons = {s.item: s.reason for s in res.skips}
+    # find / captures return Option<opaque handle> — deferred (no bare-construct).
+    assert "no na bare-construct path yet" in reasons["Regex.find"]
+    assert "no na bare-construct path yet" in reasons["Regex.captures"]
+    # Their shims must NOT leak into the source.
+    assert "jac_owning_Regex_find(" not in res.source
+    assert "jac_owning_Regex_captures(" not in res.source
+
+
+def test_opt_str_return_is_skipped_not_conflated_with_empty(
+    owning_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = owning_meta
+    res = render_na_source(meta, so.name)
+    reasons = {s.item: s.reason for s in res.skips}
+    # Option<str> is NOT silently mapped to "" — it's an honest skip until na can
+    # express the None/"" distinction.
+    assert "OwnedCaptures.name" in reasons
+    assert "nullable" in reasons["OwnedCaptures.name"].lower()
+    assert "jac_owning_OwnedCaptures_name(" not in res.source
+
+
+def test_non_nullable_methods_still_bridge(
+    owning_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = owning_meta
+    src = render_na_source(meta, so.name).source
+    # The plain (non-Option) surface is unaffected by OPT-bit handling.
+    assert "obj Regex {" in src
+    assert "def is_match(text: str) -> bool {" in src
+    assert "jac_owning_Regex_is_match(" in src
+    # OwnedMatch.as_str is a plain String return -> still bridged as a method.
+    assert "def as_str() {" in src

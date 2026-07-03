@@ -12,6 +12,9 @@ TAG_VOID = 0xFFFF_FFFF
 TAG_BOOL = 1
 TAG_STR = 4
 TAG_REF_BIT = 0x8000_0000
+# OR'd with an inner tag (Ref or Str) to mark a nullable Option<T> return: the
+# shim signals None in-band (null handle / null JacBuf.ptr) with an OK status.
+TAG_OPT_BIT = 0x4000_0000
 KIND_OPAQUE = 0
 KIND_ERROR = 3
 FN_CTOR = 0

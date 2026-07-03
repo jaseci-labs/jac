@@ -12,6 +12,7 @@ from ._blob import (
     KIND_ERROR,
     KIND_OPAQUE,
     TAG_BOOL,
+    TAG_OPT_BIT,
     TAG_REF_BIT,
     TAG_STR,
     TAG_VOID,
@@ -127,11 +128,14 @@ def _wire(lib: ctypes.CDLL, fd: FnDesc) -> Callable[..., object]:
 
     # Every bridge function has out_err and returns i32 — even void-return ones.
     # Tag::Void just means no *extra* out-param; the status/panic path is always present.
-    if fd.ret == TAG_BOOL:
+    # A nullable Option<T> return (TAG_OPT_BIT) uses the SAME out-slot as its inner
+    # tag — None just arrives as a null handle / null JacBuf.ptr — so strip it here.
+    base_ret = fd.ret & ~TAG_OPT_BIT
+    if base_ret == TAG_BOOL:
         args.append(ctypes.POINTER(ctypes.c_uint8))
-    elif fd.ret == TAG_STR:
+    elif base_ret == TAG_STR:
         args.append(ctypes.POINTER(_JacBuf))
-    elif fd.ret != TAG_VOID:  # type ref
+    elif base_ret != TAG_VOID:  # type ref
         args.append(ctypes.POINTER(ctypes.c_uint64))
 
     args.append(ctypes.POINTER(ctypes.c_uint64))  # out_err — always present
@@ -175,11 +179,16 @@ def _call(
     out_buf = _JacBuf()
     out_e = ctypes.c_uint64(0)
 
-    if fd.ret == TAG_BOOL:
+    # An Option<T> return shares its inner tag's out-slot; None arrives in-band as
+    # a null handle / null JacBuf.ptr on an OK status.
+    opt = bool(fd.ret & TAG_OPT_BIT)
+    base_ret = fd.ret & ~TAG_OPT_BIT
+
+    if base_ret == TAG_BOOL:
         c_args.append(ctypes.byref(out_b))
-    elif fd.ret == TAG_STR:
+    elif base_ret == TAG_STR:
         c_args.append(ctypes.byref(out_buf))
-    elif fd.ret != TAG_VOID:
+    elif base_ret != TAG_VOID:
         c_args.append(ctypes.byref(out_h))
 
     c_args.append(ctypes.byref(out_e))  # out_err — always present
@@ -193,11 +202,14 @@ def _call(
         msg = rt.drain_err(out_e.value)
         raise rt.PanicError(msg)
 
-    if fd.ret == TAG_VOID:
+    if base_ret == TAG_VOID:
         return None
-    if fd.ret == TAG_BOOL:
+    if base_ret == TAG_BOOL:
         return bool(out_b.value)
-    if fd.ret == TAG_STR:
+    if base_ret == TAG_STR:
+        # Option<Str> None: null buffer pointer, nothing to free or decode.
+        if opt and out_buf.ptr == 0:
+            return None
         raw = ctypes.string_at(out_buf.ptr, out_buf.len)
         rt.free_buf(out_buf)
         return raw.decode("utf-8", errors="replace")
@@ -205,7 +217,10 @@ def _call(
     # Type-ref return: wrap the raw handle in a partially-init instance.
     # The caller (typically __init__) steals _handle and marks this obj closed.
     h = out_h.value
-    ret_idx = fd.ret & ~TAG_REF_BIT
+    # Option<Ref> None: a null (0) handle maps straight to Python None.
+    if opt and h == 0:
+        return None
+    ret_idx = base_ret & ~TAG_REF_BIT
     cls = classes.get(ret_idx)
     if cls is None:
         return h

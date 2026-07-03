@@ -22,7 +22,15 @@ def isolate_jac_context(tmp_path: pathlib.Path) -> Iterator[pathlib.Path]:
 def pytest_configure(config: pytest.Config) -> None:
     ws = pathlib.Path(__file__).resolve().parent.parent.parent
     subprocess.run(
-        ["cargo", "build", "--release", "-p", "jac-bridge-regex"],
+        [
+            "cargo",
+            "build",
+            "--release",
+            "-p",
+            "jac-bridge-regex",
+            "-p",
+            "jac-bridge-owning",
+        ],
         cwd=ws,
         check=True,
         capture_output=True,
@@ -48,3 +56,19 @@ def regex_mod(regex_so: str) -> types.ModuleType:
     from jac_bridge_loader import load_bridge
 
     return load_bridge(regex_so)
+
+
+@pytest.fixture(scope="session")
+def owning_so() -> str:
+    ws = pathlib.Path(__file__).resolve().parent.parent.parent
+    for stem in (
+        "libjac_bridge_owning.so",
+        "libjac_bridge_owning.dylib",
+        "jac_bridge_owning.dll",
+    ):
+        p = ws / "target" / "release" / stem
+        if p.exists():
+            return str(p)
+    raise FileNotFoundError(
+        "libjac_bridge_owning not found; run: cargo build --release"
+    )

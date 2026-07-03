@@ -37,6 +37,7 @@ from ._blob import (
     KIND_ERROR,
     KIND_OPAQUE,
     TAG_BOOL,
+    TAG_OPT_BIT,
     TAG_REF_BIT,
     TAG_STR,
     TAG_VOID,
@@ -60,12 +61,22 @@ class NaModule:
     skips: list[Skip] = field(default_factory=list)
 
 
+def _base(tag: int) -> int:
+    """Strip the nullable Option<T> marker; the inner tag rides the same slot."""
+    return tag & ~TAG_OPT_BIT
+
+
+def _is_opt(tag: int) -> bool:
+    return bool(tag & TAG_OPT_BIT)
+
+
 def _is_ref(tag: int) -> bool:
-    return bool(tag & TAG_REF_BIT) and tag != TAG_VOID
+    base = _base(tag)
+    return bool(base & TAG_REF_BIT) and base != TAG_VOID
 
 
 def _ref_index(tag: int) -> int:
-    return tag & ~TAG_REF_BIT
+    return _base(tag) & ~TAG_REF_BIT
 
 
 def _drop_sym_for(meta: BridgeMeta, kind: int) -> str | None:
@@ -120,14 +131,15 @@ class _Synth:
             else:
                 # unsupported param type -> caller skips the whole fn
                 return None
-        # return out-slot(s)
-        if fd.ret == TAG_VOID:
+        # return out-slot(s) — a nullable Option<T> shares its inner tag's slot.
+        ret = _base(fd.ret)
+        if ret == TAG_VOID:
             pass
-        elif fd.ret == TAG_BOOL:
+        elif ret == TAG_BOOL:
             params.append("out_bool: bytes")
         elif _is_ref(fd.ret):
             params.append("out_handle: bytes")
-        elif fd.ret == TAG_STR:
+        elif ret == TAG_STR:
             params.append("out_buf: bytes")  # 16-byte JacBuf out-slot
         else:
             # other return -> not supported in v1
@@ -193,7 +205,12 @@ class _Synth:
             f'            raise RuntimeError("{fd.name} called after close()");'
         )
         lines.append("        }")
-        # out slots
+        # out slots. A nullable Option<T> return is deferred on na: Option<Ref>
+        # needs the (missing) bare-construct path, and Option<Str> would need Jac
+        # optional typing to distinguish None from "" — mapping null->"" would
+        # silently conflate the two. Both stay honest skips until na verification.
+        if _is_opt(fd.ret):
+            return None
         if fd.ret == TAG_BOOL:
             lines.append('        out_b = struct.pack("<B", 0);')
             call.append("out_b")
@@ -281,7 +298,11 @@ class _Synth:
                 shim_fds.append(fd)
             elif fd.kind == FN_METHOD and fd.self_type in self.opaque:
                 if self._shim_decl(fd) is None or self._method_body(fd) is None:
-                    if fd.ret == TAG_STR:
+                    if _is_opt(fd.ret) and _is_ref(fd.ret):
+                        reason = "returns Option<opaque handle> (no na bare-construct path yet)"
+                    elif _is_opt(fd.ret) and _base(fd.ret) == TAG_STR:
+                        reason = "returns Option<str> (nullable->None mapping deferred on na)"
+                    elif fd.ret == TAG_STR:
                         reason = "returns a string (JacBuf->str read not yet supported on na)"
                     elif _is_ref(fd.ret):
                         reason = (
