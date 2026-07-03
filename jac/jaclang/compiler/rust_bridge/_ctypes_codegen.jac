@@ -3,6 +3,7 @@ import types as pytypes;
 import from ctypes {
     Structure,
     CDLL,
+    CFUNCTYPE,
     POINTER,
     byref,
     string_at,
@@ -17,7 +18,9 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_VOID,
     TAG_BOOL,
     TAG_STR,
+    TAG_FN,
     TAG_REF_BIT,
+    TAG_OPT_BIT,
     KIND_OPAQUE,
     KIND_ERROR,
     FN_CTOR,
@@ -30,6 +33,11 @@ class _JacBuf(Structure) {
         _fields_ = [('ptr', c_uint64), ('len', c_uint32), ('cap', c_uint32)];
     }
 }
+
+
+glob _CB_TYPE = CFUNCTYPE(
+         c_int, c_void_p, c_uint32, POINTER(_JacBuf), POINTER(c_uint64)
+     );
 
 
 def _encode(val: object) -> tuple {
@@ -47,6 +55,13 @@ class _Runtime {
         fb.argtypes = [_JacBuf];
         fb.restype = None;
         self.free_buf = fb;
+
+        mb = getattr(lib, f"jac_{meta.module_name}_make_buf", None);
+        if mb is not None {
+            mb.argtypes = [c_char_p, c_uint32, POINTER(_JacBuf)];
+            mb.restype = None;
+        }
+        self.make_buf = mb;
 
         self._err_drops = {};
         self._err_msgs = {};
@@ -121,16 +136,19 @@ def _wire(lib: object, fd: object) -> object {
             args.extend([c_char_p, c_uint32]);
         } elif p.tag == TAG_BOOL {
             args.append(c_uint8);
+        } elif p.tag == TAG_FN {
+            args.append(_CB_TYPE);
         } else {
             args.append(c_uint64);
         }
     }
 
-    if fd.ret == TAG_BOOL {
+    base_ret = fd.ret & ~TAG_OPT_BIT;
+    if base_ret == TAG_BOOL {
         args.append(POINTER(c_uint8));
-    } elif fd.ret == TAG_STR {
+    } elif base_ret == TAG_STR {
         args.append(POINTER(_JacBuf));
-    } elif fd.ret != TAG_VOID {
+    } elif base_ret != TAG_VOID {
         args.append(POINTER(c_uint64));
     }
 
@@ -142,10 +160,33 @@ def _wire(lib: object, fd: object) -> object {
 }
 
 
+def _make_trampoline(fn: object, rt: object) -> object {
+    make_buf = rt.make_buf;
+    if make_buf is None {
+        raise RuntimeError("bridge has a callback param but exports no make_buf");
+    }
+
+    def _trampoline(ptr: int, n: int, out_buf: object, _out_err: object) -> int {
+        try {
+            matched = string_at(ptr, n).decode("utf-8", errors="replace");
+            result = fn(matched);
+            enc = result.encode("utf-8") if isinstance(result, str) else bytes(result);
+            make_buf(enc, len(enc), out_buf);
+            return 0;
+        } except Exception {
+            return 3;
+        }
+    }
+
+    return _CB_TYPE(_trampoline);
+}
+
+
 def _call(
     c_fn: object, fd: object, rt: object, self_h: object, py_args: object, classes: dict
 ) -> object {
     c_args = [];
+    keepalive = [];
 
     if fd.kind == FN_METHOD and self_h is not None {
         c_args.append(self_h);
@@ -158,6 +199,10 @@ def _call(
             c_args.extend([enc, c_uint32(n)]);
         } elif p.tag == TAG_BOOL {
             c_args.append(c_uint8(int(bool(v))));
+        } elif p.tag == TAG_FN {
+            cb = _make_trampoline(v, rt);
+            keepalive.append(cb);
+            c_args.append(cb);
         } else {
             c_args.append(c_uint64(int(v)));
         }
@@ -168,11 +213,14 @@ def _call(
     out_buf = _JacBuf();
     out_e = c_uint64(0);
 
-    if fd.ret == TAG_BOOL {
+    opt = bool(fd.ret & TAG_OPT_BIT);
+    base_ret = fd.ret & ~TAG_OPT_BIT;
+
+    if base_ret == TAG_BOOL {
         c_args.append(byref(out_b));
-    } elif fd.ret == TAG_STR {
+    } elif base_ret == TAG_STR {
         c_args.append(byref(out_buf));
-    } elif fd.ret != TAG_VOID {
+    } elif base_ret != TAG_VOID {
         c_args.append(byref(out_h));
     }
 
@@ -189,20 +237,26 @@ def _call(
         raise rt.PanicError(msg);
     }
 
-    if fd.ret == TAG_VOID {
+    if base_ret == TAG_VOID {
         return None;
     }
-    if fd.ret == TAG_BOOL {
+    if base_ret == TAG_BOOL {
         return bool(out_b.value);
     }
-    if fd.ret == TAG_STR {
+    if base_ret == TAG_STR {
+        if opt and out_buf.ptr == 0 {
+            return None;
+        }
         raw = string_at(out_buf.ptr, out_buf.len);
         rt.free_buf(out_buf);
         return raw.decode("utf-8", errors="replace");
     }
 
     h = out_h.value;
-    ret_idx = fd.ret & ~TAG_REF_BIT;
+    if opt and h == 0 {
+        return None;
+    }
+    ret_idx = base_ret & ~TAG_REF_BIT;
     cls = classes.get(ret_idx);
     if cls is None {
         return h;

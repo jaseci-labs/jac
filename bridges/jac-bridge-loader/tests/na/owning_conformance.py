@@ -38,7 +38,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO = Path("/home/jac/repos/rust-ffi")
+REPO = Path(__file__).resolve().parents[4]
 JAC = REPO / "jac"
 LOADER = REPO / "bridges" / "jac-bridge-loader"
 SO = REPO / "bridges" / "target" / "release" / "libjac_bridge_owning.so"

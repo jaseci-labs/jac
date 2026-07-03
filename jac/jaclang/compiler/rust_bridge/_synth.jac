@@ -4,6 +4,8 @@ import from jaclang.compiler.rust_bridge._blob {
     KIND_ERROR,
     KIND_OPAQUE,
     TAG_BOOL,
+    TAG_FN,
+    TAG_OPT_BIT,
     TAG_REF_BIT,
     TAG_STR,
     TAG_VOID
@@ -19,20 +21,32 @@ class Skip {
 
 
 class NaModule {
-    def init(self: NaModule, source: str, skips: list = None) {
+    def init(self: NaModule, source: str, skips: list = None, bridged: int = 0) {
         self.source = source;
         self.skips = skips if skips is not None else [];
+        self.bridged = bridged;
     }
 }
 
 
+def _base(tag: int) -> int {
+    return tag & ~TAG_OPT_BIT;
+}
+
+
+def _is_opt(tag: int) -> bool {
+    return bool(tag & TAG_OPT_BIT);
+}
+
+
 def _is_ref(tag: int) -> bool {
-    return bool(tag & TAG_REF_BIT) and tag != TAG_VOID;
+    base = _base(tag);
+    return bool(base & TAG_REF_BIT) and base != TAG_VOID;
 }
 
 
 def _ref_index(tag: int) -> int {
-    return tag & ~TAG_REF_BIT;
+    return _base(tag) & ~TAG_REF_BIT;
 }
 
 
@@ -56,6 +70,21 @@ class _Synth {
             for td in meta.types
             if td.kind == KIND_OPAQUE
         };
+        ctor_targets = {
+            _ref_index(fd.ret)
+            for fd in meta.fns
+            if fd.kind == FN_CTOR
+            and _is_ref(fd.ret)
+            and _ref_index(fd.ret) in self.opaque
+        };
+        self.adoptable = {
+            _ref_index(fd.ret)
+            for fd in meta.fns
+            if fd.kind == FN_METHOD
+            and _is_ref(fd.ret)
+            and _ref_index(fd.ret) in self.opaque
+            and _ref_index(fd.ret) not in ctor_targets
+        };
         self.error_drop = _drop_sym_for(meta, KIND_ERROR);
         self.error_msg_sym = None;
         for fd in meta.fns {
@@ -69,7 +98,9 @@ class _Synth {
             }
         }
         self.free_buf = f"jac_{meta.module_name}_free_buf";
+        self.make_buf_sym = f"jac_{meta.module_name}_make_buf";
         self._bridged_str_method = False;
+        self._bridged_callback = False;
     }
 
     def _shim_decl(self: _Synth, fd: object) -> object {
@@ -81,19 +112,20 @@ class _Synth {
             if p.tag == TAG_STR {
                 params.append(f"{p.name}: str");
                 params.append(f"{p.name}_len: int");
-            } elif p.tag == TAG_BOOL or _is_ref(p.tag) {
+            } elif p.tag == TAG_BOOL or _is_ref(p.tag) or p.tag == TAG_FN {
                 params.append(f"{p.name}: int");
             } else {
                 return None;
             }
         }
-        if fd.ret == TAG_VOID {
+        ret = _base(fd.ret);
+        if ret == TAG_VOID {
             pass;
-        } elif fd.ret == TAG_BOOL {
+        } elif ret == TAG_BOOL {
             params.append("out_bool: bytes");
         } elif _is_ref(fd.ret) {
             params.append("out_handle: bytes");
-        } elif fd.ret == TAG_STR {
+        } elif ret == TAG_STR {
             params.append("out_buf: bytes");
         } else {
             return None;
@@ -149,6 +181,9 @@ class _Synth {
                 call.append(f"({p.name} and 1 or 0)");
             } elif _is_ref(p.tag) {
                 call.append(f"{p.name}.__handle");
+            } elif p.tag == TAG_FN {
+                call.append(p.name);
+                self._bridged_callback = True;
             } else {
                 return None;
             }
@@ -158,13 +193,21 @@ class _Synth {
             f'            raise RuntimeError("{fd.name} called after close()");'
         );
         body_lines.append("        }");
-        if fd.ret == TAG_BOOL {
+        if _is_ref(fd.ret) {
+            if _ref_index(fd.ret) not in self.adoptable {
+                return None;
+            }
+            body_lines.append('        out_h = struct.pack("<Q", 0);');
+            call.append("out_h");
+        } elif fd.ret == TAG_BOOL {
             body_lines.append('        out_b = struct.pack("<B", 0);');
             call.append("out_b");
-        } elif fd.ret == TAG_STR {
+        } elif _base(fd.ret) == TAG_STR {
             body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
             call.append("out_buf");
             self._bridged_str_method = True;
+        } elif _is_opt(fd.ret) {
+            return None;
         } elif fd.ret != TAG_VOID {
             return None;
         }
@@ -176,12 +219,25 @@ class _Synth {
         body_lines.append('            err_h = struct.unpack("<Q", out_e)[0];');
         body_lines.extend(self._drain_and_raise(fd.name));
         body_lines.append("        }");
-        if fd.ret == TAG_BOOL {
+        if _is_ref(fd.ret) {
+            target = self.opaque[_ref_index(fd.ret)];
+            body_lines.append('        rh = struct.unpack("<Q", out_h)[0];');
+            if _is_opt(fd.ret) {
+                body_lines.append("        if rh == 0 {");
+                body_lines.append("            return None;");
+                body_lines.append("        }");
+            }
+            body_lines.append(f"        return {target}(rh);");
+        } elif fd.ret == TAG_BOOL {
             body_lines.append('        return struct.unpack("<B", out_b)[0] != 0;');
-        } elif fd.ret == TAG_STR {
+        } elif _base(fd.ret) == TAG_STR {
             body_lines.append('        rb = struct.unpack("<QII", out_buf);');
             body_lines.append("        if rb[0] == 0 {");
-            body_lines.append('            return "";');
+            if _is_opt(fd.ret) {
+                body_lines.append("            return None;");
+            } else {
+                body_lines.append('            return "";');
+            }
             body_lines.append("        }");
             body_lines.append("        rs = __jac_str_from_raw(rb[0], rb[1]);");
             body_lines.append(
@@ -203,6 +259,9 @@ class _Synth {
                 call.append(f"({p.name} and 1 or 0)");
             } elif _is_ref(p.tag) {
                 call.append(f"{p.name}.__handle");
+            } elif p.tag == TAG_FN {
+                call.append(p.name);
+                self._bridged_callback = True;
             } else {
                 return None;
             }
@@ -221,6 +280,17 @@ class _Synth {
         body_lines.extend(self._drain_and_raise(fd.name));
         body_lines.append("        }");
         return body_lines;
+    }
+
+    def _visit(self: _Synth, ti: int, produces: dict, visited: set, emit_order: list) {
+        if ti in visited {
+            return;
+        }
+        visited.add(ti);
+        for p in sorted(produces[ti]) {
+            self._visit(p, produces, visited, emit_order);
+        }
+        emit_order.append(ti);
     }
 
     def render(self: _Synth) -> NaModule {
@@ -247,10 +317,8 @@ class _Synth {
                 shim_fds.append(fd);
             } elif fd.kind == FN_METHOD and fd.self_type in self.opaque {
                 if self._shim_decl(fd) is None or self._method_body(fd) is None {
-                    if fd.ret == TAG_STR {
-                        reason = "returns a string (JacBuf->str read not yet supported on na)";
-                    } elif _is_ref(fd.ret) {
-                        reason = "returns an opaque handle (no na bare-construct path yet)";
+                    if _is_ref(fd.ret) and _ref_index(fd.ret) not in self.adoptable {
+                        reason = "returns an opaque handle whose type has its own constructor (na adopt-ctor signature clash)";
                     } else {
                         reason = "unbridgeable param/return";
                     }
@@ -310,10 +378,46 @@ class _Synth {
                 f"    def {self.free_buf}(buf_ptr: int, buf_lencap: int) -> None;"
             );
         }
+        if self._bridged_callback {
+            out.append(
+                f"    def {self.make_buf_sym}(s: str, s_len: int, out_buf: int) -> None;"
+            );
+        }
         out.append("}");
         out.append("");
 
-        for (ti, name) in self.opaque.items() {
+        produces = {ti: set() for ti in self.opaque};
+        for ti in self.opaque {
+            for fd in methods_of.get(ti, []) {
+                if _is_ref(fd.ret) {
+                    p = _ref_index(fd.ret);
+                    if p in self.opaque and p != ti {
+                        produces[ti].add(p);
+                    }
+                }
+            }
+        }
+        emit_order = [];
+        visited = set();
+        seed = sorted(
+            [
+                t
+                for t in self.opaque
+                if t in self.adoptable
+            ]
+        ) + sorted(
+            [
+                t
+                for t in self.opaque
+                if t not in self.adoptable
+            ]
+        );
+        for ti in seed {
+            self._visit(ti, produces, visited, emit_order);
+        }
+
+        for ti in emit_order {
+            name = self.opaque[ti];
             drop_sym = m.types[ti].drop_sym;
             out.append(f"obj {name} {{");
             out.append("    has __handle: int = 0;");
@@ -324,6 +428,12 @@ class _Synth {
                 sig = self._ctor_params(ctor);
                 out.append(f"    def init({sig}) {{");
                 out.extend(self._ctor_body(ctor));
+                out.append("    }");
+                out.append("");
+            } elif ti in self.adoptable {
+                out.append("    def init(raw: int) {");
+                out.append("        self.__handle = raw;");
+                out.append("        self.__closed = False;");
                 out.append("    }");
                 out.append("");
             }
@@ -352,7 +462,8 @@ class _Synth {
             out.append("");
         }
 
-        return NaModule(source="\n".join(out), skips=self.skips);
+        bridged = len(ctor_of) + sum([len(v) for v in methods_of.values()]);
+        return NaModule(source="\n".join(out), skips=self.skips, bridged=bridged);
     }
 
     def _jac_param(self: _Synth, p: object) -> str {
@@ -377,11 +488,15 @@ class _Synth {
     }
 
     def _ret_ann(self: _Synth, fd: object) -> str {
-        if fd.ret == TAG_BOOL {
+        if _base(fd.ret) == TAG_BOOL {
             return " -> bool";
         }
+        if _base(fd.ret) == TAG_STR {
+            return " -> str | None" if _is_opt(fd.ret) else " -> str";
+        }
         if _is_ref(fd.ret) {
-            return " -> " + self.opaque.get(_ref_index(fd.ret), "object");
+            t = self.opaque.get(_ref_index(fd.ret), "object");
+            return f" -> {t} | None" if _is_opt(fd.ret) else f" -> {t}";
         }
         return "";
     }

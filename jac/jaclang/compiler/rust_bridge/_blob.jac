@@ -1,10 +1,13 @@
 import struct;
 
 glob MAGIC = b"JACBRDG1",
+     SUPPORTED_ABI = 1,
      TAG_VOID = 0xFFFFFFFF,
      TAG_BOOL = 1,
      TAG_STR = 4,
+     TAG_FN = 5,
      TAG_REF_BIT = 0x80000000,
+     TAG_OPT_BIT = 0x40000000,
      KIND_OPAQUE = 0,
      KIND_ERROR = 3,
      FN_CTOR = 0,
@@ -85,23 +88,50 @@ def parse(blob: bytes) -> BridgeMeta {
         return blob[off];
     }
 
+    abi = u32(8);
+    if abi != SUPPORTED_ABI {
+        raise ValueError(f"unsupported ABI version {abi} (expected {SUPPORTED_ABI})");
+    }
+
+    blob_len = u32(16);
+    if len(blob) < blob_len {
+        raise ValueError(f"blob truncated: have {len(blob)} B, header says {blob_len}");
+    }
+
     def sref(off: int) -> str {
         a = u32(off);
         n = u32(off + 4);
+        if a + n > blob_len {
+            raise ValueError(
+                f"string ref [{a}:{a + n}] out of bounds (blob_len={blob_len})"
+            );
+        }
         return blob[a:a + n].decode("utf-8");
     }
 
-    abi = u32(8);
     mod = sref(24);
     t_off = u32(40);
     t_cnt = u32(44);
     f_off = u32(48);
     f_cnt = u32(52);
 
+    if t_off < 56 or t_off > blob_len {
+        raise ValueError(f"type section offset {t_off} out of range");
+    }
+    if f_off > blob_len {
+        raise ValueError(f"function section offset {f_off} out of range");
+    }
+
     types = [];
     off = t_off;
     for i in range(t_cnt) {
+        if off + 4 > blob_len {
+            raise ValueError(f"TypeDesc[{i}] descriptor truncated at {off}");
+        }
         dsz = u32(off);
+        if dsz < 24 or off + dsz > blob_len {
+            raise ValueError(f"TypeDesc[{i}] invalid descriptor size {dsz} at {off}");
+        }
         kind = u8(off + 4);
         name = sref(off + 8);
         drop = sref(off + 16);
@@ -112,7 +142,13 @@ def parse(blob: bytes) -> BridgeMeta {
     fns = [];
     off = f_off;
     for i in range(f_cnt) {
+        if off + 4 > blob_len {
+            raise ValueError(f"FnDesc[{i}] descriptor truncated at {off}");
+        }
         dsz = u32(off);
+        if dsz < 44 or off + dsz > blob_len {
+            raise ValueError(f"FnDesc[{i}] invalid descriptor size {dsz} at {off}");
+        }
         fname = sref(off + 4);
         sym = sref(off + 12);
         self_type = u32(off + 20);
@@ -121,6 +157,11 @@ def parse(blob: bytes) -> BridgeMeta {
         ret = u32(off + 32);
         p_off = u32(off + 36);
         p_cnt = u32(off + 40);
+        if p_cnt > 0 and (p_off < 56 or p_off + p_cnt * 12 > blob_len) {
+            raise ValueError(
+                f"FnDesc[{i}] param section [{p_off}:{p_off + p_cnt * 12}] " + f"out of bounds (blob_len={blob_len})"
+            );
+        }
         params = [];
         poff = p_off;
         for _ in range(p_cnt) {
