@@ -247,17 +247,9 @@ impl WasmObj.parse_linking(o: int, end: int) -> None {
                     }
                     self.symtab.append([kind, flags, info, nm]);
                 } elif kind == 3 {
-                    # section symbol: flags + target section index, no name
                     (idx, o) = _rd_uleb(b, o);
                     self.symtab.append([kind, flags, idx, None]);
                 } else {
-                    # function/global/table/tag: index + name. The name is
-                    # present when the symbol is defined OR carries
-                    # WASM_SYM_EXPLICIT_NAME (0x40, set on renamed imports —
-                    # e.g. weak aliases from the linked libc bitcode). Every
-                    # record must be consumed even for kinds the linker never
-                    # resolves — a skipped record shifts all later symbol
-                    # indices and corrupts relocations.
                     (idx, o) = _rd_uleb(b, o);
                     nm = None;
                     if (not undef) or (flags & 0x40) {
@@ -283,10 +275,6 @@ impl WasmObj.parse_linking(o: int, end: int) -> None {
 }
 
 impl WasmObj.parse_reloc(nm: str, o: int, end: int) -> None {
-    # Only CODE relocations are ever applied (the output keeps no custom
-    # sections, so reloc..debug_* targets are dropped wholesale). Debug reloc
-    # records also use types whose encoding this parser does not model —
-    # parsing them would desynchronize.
     if nm != "reloc.CODE" {
         return;
     }
@@ -351,8 +339,6 @@ def _sym_val(
     }
     if k == 1 {
         if idx is None {
-            # Undefined data symbol: the only one the linker synthesizes is
-            # __heap_base, referenced by the in-module allocator (wasm_rt).
             if e[3] == "__heap_base" and heap_base >= 0 {
                 return heap_base;
             }
@@ -415,8 +401,6 @@ impl WasmLinker.link(
         if im[2] in _PLACEHOLDER { } else {
             fld = im[2];
             if host_abi is not None and fld in host_abi {
-                # Floor host call: emit under the versioned host ABI module
-                # instead of LLVM's default "env".
                 im = [im[0], host_module, fld, im[3]];
             } elif app_imports is not None and fld not in app_imports {
                 raise RuntimeError(
@@ -515,9 +499,6 @@ impl WasmLinker.link(
     if not ef {
         ef = [];
         for e in ob.symtab {
-            # skip undefined (0x10) and binding-local (0x2) symbols — the
-            # latter are internalized helpers (e.g. the in-module libc), not
-            # part of the module's surface.
             if e[0] == 0 and e[3] and not (e[1] & 0x10) and not (e[1] & 0x2) {
                 ef.append(e[3]);
             }
@@ -564,9 +545,6 @@ impl WasmLinker.link(
         out += _section(11, _vec(dsegs));
     }
 
-    # "name" custom section: function names for debuggers/stack traces.
-    # Imports first (their field names), then defined functions from the
-    # symbol table. Runtimes ignore it; traps become legible.
     nm_entries = [];
     fi2 = 0;
     for im in kept {

@@ -63,9 +63,7 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
     console.print(
         f"  Native wasm module: /static/{module_path.stem}.wasm ({len(wasm)} bytes)"
     );
-    # Import manifest: the module's exact host contract, for shims/tooling.
-    # jac_host1 is supplied by @jac/wasm_host; anything under "env" is app FFI
-    # the app's own shim must provide at instantiation.
+
     try {
         import json;
         import from jaclang.compiler.passes.native.wasm_build { wasm_import_map }

@@ -1,13 +1,4 @@
-"""Build a browser-instantiable wasm module from na jac code.
-
-The vendored wasm_rt libc (see wasm_rt/README.md) is linked into the module
-as LLVM bitcode before code generation, so pure-compute libc (string.h,
-ctype, strtod/strtol, snprintf, libm, the allocator) never becomes an import.
-What remains crossing the boundary is the versioned jac_host1 contract
-(wasm_host_abi.jac) plus the app's own declared FFI ("env").
-"""
 import os;
-import sys;
 
 def _wasm_libc_dir -> (str | None) {
     env = os.environ.get("JAC_NATIVE_WASM_LIBC_DIR", "");
@@ -29,7 +20,6 @@ def _wasm_libc_dir -> (str | None) {
     return None;
 }
 
-"""Parse the vendored bitcode into one module (cached as _merged.bc)."""
 def _load_libc_module(llvm: object, libc_dir: str, triple: str) -> object {
     parts = sorted(
         [
@@ -70,18 +60,11 @@ def _load_libc_module(llvm: object, libc_dir: str, triple: str) -> object {
     return merged;
 }
 
-# Never internalized before the optimization pipeline: LLVM synthesizes calls
-# to these AFTER our internalize step — the backend lowers memory intrinsics
-# and 128-bit multiplies to libcalls at instruction selection, and
-# SimplifyLibCalls rewrites printf-family calls (printf("x\n") -> puts) after
-# GlobalOpt may already have dropped an unused internal definition.
 glob _LATE_BOUND: set = {
-         # backend libcalls (must stay defined through emission)
          "memcpy",
          "memmove",
          "memset",
          "__multi3",
-         # SimplifyLibCalls rewrite targets
          "puts",
          "putchar",
          "strlen",
@@ -106,21 +89,9 @@ glob _LATE_BOUND: set = {
          "ldexp",
          "scalbn",
 
-     };
-
-# Of _LATE_BOUND, only these can be conjured by the BACKEND (after all module
-# passes); the rest may be internalized for the cleanup pipeline run once the
-# simplification passes have had their chance to bind to them.
-glob _BACKEND_BOUND: set = {"memcpy", "memmove", "memset", "__multi3"};
-
-# The floor declares libc externs with 64-bit size_t/long (jac ints are i64);
-# wasm32 libc uses i32, and the wasm backend lowers signature-mismatched
-# direct calls to `unreachable`. Declarations of these names are renamed to
-# __jac64_<name> before linking so they bind to the widening adapters in
-# wasm_rt/jac_abi64.c (keep both lists in sync). Any OTHER floor declaration
-# whose signature disagrees with the vendored definition is a hard build
-# error — that is the drift guard.
-glob _ABI64_ADAPTED: set = {
+     },
+     _BACKEND_BOUND: set = {"memcpy", "memmove", "memset", "__multi3"},
+     _ABI64_ADAPTED: set = {
          "strlen",
          "malloc",
          "calloc",
@@ -136,15 +107,12 @@ glob _ABI64_ADAPTED: set = {
 
      };
 
-"""Link the vendored libc into `mod` and internalize it so DCE strips whatever
-the app never calls. Returns False when no vendored libc is available (legacy
-env-import behavior)."""
 def _link_wasm_libc(mod: object, llvm: object) -> bool {
     libc_dir = _wasm_libc_dir();
     if libc_dir is None {
-        print(
-            "warning: vendored wasm libc not found (run `zig build " + "vendor-wasm-libc`); libc symbols stay as raw env imports and " + "the jac_host1 import contract is NOT enforced",
-            file=sys.stderr,
+        import from jaclang.cli.console { console }
+        console.warning(
+            "vendored wasm libc not found (run `zig build vendor-wasm-libc`); " + "libc symbols stay as raw env imports and the jac_host1 import " + "contract is NOT enforced"
         );
         return False;
     }
@@ -153,11 +121,7 @@ def _link_wasm_libc(mod: object, llvm: object) -> bool {
         return False;
     }
     import from jaclang.compiler.passes.native.wasm_host_abi { WASM_HOST_ABI }
-    # Host-owned symbols must stay imports even when the vendored libc happens
-    # to define them (e.g. fwrite exists in-module for vsnprintf's internals,
-    # but the floor's fwrite operates on opaque host FILE* handles).
-    # Internalizing them in the libc module before linking keeps intra-libc
-    # calls bound while leaving the floor's declaration unresolved.
+
     for fn in libc.functions {
         if not fn.is_declaration and fn.name in WASM_HOST_ABI {
             fn.linkage = "internal";
@@ -176,7 +140,7 @@ def _link_wasm_libc(mod: object, llvm: object) -> bool {
             provided.add(gv.name);
         }
     }
-    # ABI64 adaptation + drift guard on the app module's declarations.
+
     renames = [];
     for fn in mod.functions {
         if fn.is_declaration and fn.name in provided and fn.name not in WASM_HOST_ABI {
@@ -212,10 +176,6 @@ def _link_wasm_libc(mod: object, llvm: object) -> bool {
     return True;
 }
 
-"""Second internalize round, after the main pipeline ran: the simplification
-passes have bound to whatever _LATE_BOUND names they needed, so all but the
-backend-lowered ones can now go internal and a cleanup pipeline run sweeps the
-unused remainder."""
 def _internalize_late_bound(mod: object) {
     for fn in mod.functions {
         if fn.name in _LATE_BOUND
@@ -245,15 +205,12 @@ def emit_wasm_from_ir(
     pb = llvm.create_pass_builder(tm, pto);
     pb.getModulePassManager().run(mod, pb);
     if libc_linked {
-        # the simplification passes have run; sweep late-bound leftovers
         _internalize_late_bound(mod);
         pb2 = llvm.create_pass_builder(tm, pto);
         pb2.getModulePassManager().run(mod, pb2);
     }
     obj_bytes = tm.emit_object(mod);
     if not libc_linked {
-        # No vendored libc: keep the historical single-namespace behavior so
-        # existing setups degrade the way they always did.
         return WasmLinker.link(obj_bytes, export_funcs, 256);
     }
     return WasmLinker.link(
@@ -266,8 +223,6 @@ def emit_wasm_from_ir(
     );
 }
 
-"""Parse a FINAL wasm module's import section into {module: [field, ...]}.
-Used by the client build to write the .wasm.imports.json manifest."""
 def wasm_import_map(wasm_bytes: bytes) -> dict {
     import from jaclang.compiler.passes.native.wasm_linker { _rd_uleb, _rd_name }
     out = {};
@@ -289,7 +244,6 @@ def wasm_import_map(wasm_bytes: bytes) -> dict {
                     (_t, o) = _rd_uleb(wasm_bytes, o);
                     out.setdefault(mod_nm, []).append(fld);
                 } else {
-                    # only function imports occur in linked jac modules
                     break;
                 }
                 ci += 1;
@@ -304,20 +258,18 @@ def wasm_import_map(wasm_bytes: bytes) -> dict {
     return out;
 }
 
-"""Symbols the app itself brings to the boundary: clib import-block externs
-plus interop-manifest bindings. These stay under "env"."""
 def app_declared_imports(ir_module: object) -> set {
     names = set();
-    gen = getattr(ir_module, "gen", None);
+    gen = ir_module?.gen;
     if gen is None {
         return names;
     }
-    sym_lib = getattr(gen, "_clib_symbol_lib", None);
+    sym_lib = gen?._clib_symbol_lib;
     if sym_lib {
         names.update(sym_lib.keys());
     }
-    manifest = getattr(gen, "interop_manifest", None);
-    bindings = getattr(manifest, "bindings", None) if manifest else None;
+    manifest = gen?.interop_manifest;
+    bindings = manifest?.bindings if manifest else None;
     if bindings {
         names.update(bindings.keys());
     }
