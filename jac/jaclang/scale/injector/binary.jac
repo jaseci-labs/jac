@@ -17,6 +17,7 @@ glob logger = logging.getLogger(__name__);
 
 glob BINARY_ARCNAME: str = "bin/jac",
      OVERLAY_SUBDIR: str = "jaclang-src",
+     JIR_SEED_SUBDIR: str = "jir-seed",
      _HTTP_TIMEOUT: int = 60,
      _SUBPROCESS_TIMEOUT: int = 300,
      _JASECI_REPO: str = "https://github.com/jaseci-labs/jaseci",
@@ -255,8 +256,48 @@ def ensure_admin_dist_built(source_root: Path) -> None {
 }
 
 
+glob _JIR_ADOPT_PY: str = """\
+# Re-home host-precompiled .jir seeds to this pod's cache paths (#7138).
+# The module key inside each seed is content-derived so it stays valid; only
+# the cache FILENAME hashes the absolute source path, which differs on the pod.
+import os
+import shutil
+from pathlib import Path
+from jaclang.jac0core.jir import get_module_cache_path
+
+seed_root = Path(__file__).resolve().parent
+src_root = seed_root.parent / "jaclang-src"
+adopted = 0
+for seed in seed_root.rglob("*.jir"):
+    rel = str(seed.relative_to(seed_root))[:-4]  # strip trailing ".jir"
+    source = src_root / rel
+    if not source.is_file():
+        continue
+    dest = get_module_cache_path(str(source))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(str(seed), str(dest))
+    os.utime(str(dest), None)  # fresher than the untarred source -> cache valid
+    adopted += 1
+print("[jac-scale] adopted %d host-precompiled modules" % adopted)
+""";
+
+
+def _host_jir_cache_for(source_path: Path) -> (Path | None) {
+    # Host-side compiled .jir for this source, if this deploy driver (same
+    # binary the pods run) already compiled it. Best-effort by design.
+    try {
+        import from jaclang.jac0core.jir { get_module_cache_path }
+        cache = get_module_cache_path(str(source_path));
+        return cache if cache.is_file() else None;
+    } except Exception {
+        return None;
+    }
+}
+
+
 def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
     ensure_admin_dist_built(source_root);
+    seeded = 0;
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
@@ -270,7 +311,33 @@ def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
             }
             rel = path.relative_to(source_root);
             tar.add(str(path), arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}");
+            # Ship the host's compiled .jir beside the source (as a jir-seed):
+            # the module key is content-derived but the cache FILENAME hashes
+            # the absolute source path, so pods re-home each seed to their own
+            # cache path at boot and `jac install` validates instead of
+            # recompiling the whole overlay in every pod (#7138).
+            if str(path).endswith(".jac") {
+                cache = _host_jir_cache_for(path);
+                if cache is not None {
+                    tar.add(
+                        str(cache),
+                        arcname=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{rel}.jir"
+                    );
+                    seeded += 1;
+                }
+            }
         }
+        if seeded {
+            adopt = _JIR_ADOPT_PY.encode("utf-8");
+            info = tarfile.TarInfo(
+                name=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/_adopt.py"
+            );
+            info.size = len(adopt);
+            tar.addfile(info, io.BytesIO(adopt));
+        }
+    }
+    if seeded {
+        logger.info(f"Packed {seeded} host-precompiled modules into the overlay.");
     }
     return buf.getvalue();
 }

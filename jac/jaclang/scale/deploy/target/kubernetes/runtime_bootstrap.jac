@@ -112,17 +112,18 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
-def _shared_first_boot_install -> str {
-    # Elect one pod via an atomic mkdir lock on the shared PVC to warm the venv + `.jir` cache first; the rest wait then no-op. Best-effort: a timed-out waiter or stale lock just installs itself.
-    lock = f"{APP_MOUNT_PATH}/.jac/.bootstrap.lock";
+def _first_boot_install -> str {
+    # Adopt host-precompiled .jir seeds (shipped in the overlay by pack_overlay)
+    # before `jac install`, so the pod validates the compiled cache instead of
+    # recompiling the whole overlay on first boot (#7138). Best-effort: without
+    # seeds (or on failure) the install compiles exactly as before.
+    adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
     return (
-        f'mkdir -p {APP_MOUNT_PATH}/.jac; '
-        f'if mkdir "{lock}" 2>/dev/null; then '
-        f'jac install; rc=$?; rmdir "{lock}" 2>/dev/null || true; exit $rc; '
-        f'else '
-        f'n=0; while [ -d "{lock}" ] && [ $n -lt 210 ]; do sleep 2; n=$((n+1)); done; '
-        f'rmdir "{lock}" 2>/dev/null || true; jac install; '
-        f'fi'
+        f'if [ -f "{adopt}" ]; then '
+        f'jac -c "exec(open(\'{adopt}\').read())" '
+        f'|| echo "[jac-scale] jir-seed adoption failed; compiling from source"; '
+        f'fi; '
+        f'jac install'
     );
 }
 
@@ -132,7 +133,7 @@ def build_bootstrap_init_container(
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config, overlay_source);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    commands.append(_shared_first_boot_install());
+    commands.append(_first_boot_install());
     script = ' && '.join(commands);
     return {
         "name": "jac-bootstrap",

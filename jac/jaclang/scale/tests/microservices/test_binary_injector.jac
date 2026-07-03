@@ -22,7 +22,8 @@ import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_runtime_install_commands,
     runtime_container_env,
-    build_service_apt_prefix
+    build_service_apt_prefix,
+    _first_boot_install
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -203,6 +204,39 @@ test "pack_overlay tars the binary plus the jaclang source tree" {
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in names;
     assert f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/jaclang/x.jac" in names;
     assert not any(["__pycache__" in n for n in names]);
+}
+
+
+test "pack_overlay ships the host's compiled .jir as a re-homeable seed (#7138)" {
+    import from jaclang.jac0core.jir { get_module_cache_path }
+    import from jaclang.scale.injector.binary { JIR_SEED_SUBDIR }
+
+    src_root = Path(tempfile.mkdtemp());
+    (src_root / "jaclang").mkdir();
+    src = src_root / "jaclang" / "x.jac";
+    src.write_text("x = 1;");
+    # Plant a fake host-side compiled cache exactly where the compiler would.
+    cache = get_module_cache_path(str(src));
+    cache.parent.mkdir(parents=True, exist_ok=True);
+    cache.write_bytes(b"JIRC-fake");
+
+    raw = pack_overlay(b"ELF", src_root);
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
+        names = tar.getnames();
+    }
+    assert f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/jaclang/x.jac.jir" in names;
+    # The pod-side adoption script ships with the seeds.
+    assert f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/_adopt.py" in names;
+}
+
+
+test "bootstrap adopts jir seeds before jac install (pods validate, not compile)" {
+    cmds = build_runtime_install_commands(KubernetesConfig(), True);
+    cmds.append(_first_boot_install());
+    joined = " && ".join(cmds);
+    assert "jir-seed/_adopt.py" in joined;
+    # Adoption strictly precedes the install so its caches are seen.
+    assert joined.index("_adopt.py") < joined.index("jac install");
 }
 
 
