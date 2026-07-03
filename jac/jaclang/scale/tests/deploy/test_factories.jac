@@ -368,12 +368,6 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
 }
 
 test "kubernetes_target binds ConfigException for its kubeconfig fallback" {
-    # kubernetes_target uses `except ConfigException` in ~9 places to fall back to
-    # in-cluster config when load_kube_config() finds no kubeconfig (the in-pod
-    # path). Except-clause names resolve lazily from module globals, so a missing
-    # import only NameErrors inside a pod (no ~/.kube/config), never on a dev box
-    # or CI runner where load_kube_config() succeeds and the clause is skipped.
-    # Regression guard for jaseci#7130.
     assert hasattr(kt_module, "ConfigException") , "kubernetes_target must import ConfigException; its except clauses reference it";
     ce = kt_module.ConfigException;
     assert isinstance(ce, type) and issubclass(ce, BaseException) , f"ConfigException must be an exception type, got {ce!r}";
