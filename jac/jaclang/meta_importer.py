@@ -373,14 +373,16 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         from jaclang.jac0core.runtime import JacRuntime as Jac
 
         # Sealed image is authoritative (see find_spec): resolve a sealed module
-        # by name from the manifest, no filesystem probing.
-        sealed_spec = self._sealed_spec(fullname)
-        if sealed_spec is not None and sealed_spec.origin:
-            found = _sealed.find_module(fullname)
-            if found is not None and found[1].get("bootstrap"):
-                return found[0].bootstrap_code(fullname)
+        # by name from the manifest, no filesystem probing. One lookup: the
+        # bootstrap tier loads via bootstrap_code, the rest via get_bytecode at
+        # the virtual origin.
+        found = _sealed.find_module(fullname)
+        if found is not None:
+            image, entry, src_rel = found
+            if entry.get("bootstrap"):
+                return image.bootstrap_code(fullname)
             return Jac.get_compiler().get_bytecode(
-                full_target=sealed_spec.origin,
+                full_target=image.virtual_origin(src_rel),
                 target_program=Jac.get_program(),
             )
 

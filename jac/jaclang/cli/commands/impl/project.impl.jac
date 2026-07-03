@@ -1356,23 +1356,23 @@ def _seal_copy_ignore(_dir: str, items: list) -> list {
     return [it for it in items if it in drop or it.endswith("-seal-stage")];
 }
 
-# Resolve the bundled precompiler entry (.jac). sys.prefix in the sealed binary,
-# else the installed jaclang package dir.
-def _resolve_precompiler -> str {
+# Run the precompiler over `src_dir` with `flags`; returns its exit code.
+# Invokes it as a MODULE, not a file: in a sealed jac binary its own .jac source
+# is stripped, but it is importable from the sealed image. Worker mode (`jac -c`)
+# runs plain Python; set argv and call main().
+def _run_precompiler(src_dir: str, flags: list[str]) -> int {
     import sys;
-    cand = Path(sys.prefix) / "jaclang" / "utils" / "precompile_bytecode.jac";
-    if cand.exists() {
-        return str(cand);
-    }
-    import from importlib.util { find_spec }
-    spec = find_spec("jaclang");
-    if spec is not None and spec.submodule_search_locations {
-        return str(
-            Path(list(spec.submodule_search_locations)[0])
-            / "utils" / "precompile_bytecode.jac"
-        );
-    }
-    return str(cand);
+    import subprocess;
+    # Install the jac finder (and dev-source override) first, exactly as the
+    # payload build's precompile boot does -- worker mode does not run the CLI
+    # boot that would otherwise set this up.
+    code = (
+        "import _jac_finder as _jf; _jf.apply_dev_source_override(); _jf.install(); "
+        "import sys; sys.argv = ['precompile', " + repr(src_dir) + "] + "
+        + repr(list(flags))
+        + "; from jaclang.utils.precompile_bytecode import main; main()"
+    );
+    return subprocess.call([sys.executable, "-c", code]);
 }
 
 # Build a source-free *sealed image* of the project package into
@@ -1382,8 +1382,6 @@ def _resolve_precompiler -> str {
 # sources are never stripped.
 def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
     import shutil;
-    import sys;
-    import subprocess;
     import tempfile;
     import from jaclang.jac0core { ext_registry }
 
@@ -1404,9 +1402,7 @@ def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
             (pkg_copy / "__init__.jac").write_text("");
         }
 
-        rc = subprocess.call(
-            [sys.executable, "run", _resolve_precompiler(), str(stage), "--seal"]
-        );
+        rc = _run_precompiler(str(stage), ["--seal"]);
         if rc != 0 {
             console.error("Seal failed.");
             return None;
@@ -1498,7 +1494,7 @@ def _bundle_binary(config: any, output: str) -> int {
         }
         site = stage / "site";
         shutil.copytree(img, site / name);
-        entry_mod = _app_entry_module(img, name);
+        entry_mod = _app_entry_module(img, name, config.project.entry_point);
         (site / "jac_app.json").write_text(
             json.dumps({"package": name, "entry": entry_mod})
         );
@@ -1565,10 +1561,15 @@ def _tar_gz_dir(top: Path) -> bytes {
     return gzip.compress(buf.getvalue(), 6, mtime=0);
 }
 
-# Pick the app entry module: the project's configured entrypoint if any, else a
-# top-level `main` module, else the package itself (runs its __init__ entry).
-def _app_entry_module(img: Path, name: str) -> str {
-    for cand in ("main", "app", "__main__") {
+# Pick the app entry module: the project's configured entry-point (jac.toml
+# [project] entry-point, e.g. "main.jac" -> <pkg>.main) when its module is in the
+# image; else a conventional top-level main/app/__main__; else the package itself
+# (runs its __init__ entry).
+def _app_entry_module(img: Path, name: str, entry_point: str) -> str {
+    import from jaclang.jac0core { ext_registry }
+    configured = ext_registry.base_stem(entry_point) if entry_point else "";
+    candidates = ([configured] if configured else []) + ["main", "app", "__main__"];
+    for cand in candidates {
         if _sealed_has_module(img, f"{name}.{cand}") {
             return f"{name}.{cand}";
         }

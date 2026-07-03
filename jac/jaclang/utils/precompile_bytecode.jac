@@ -20,7 +20,11 @@ import from jaclang.jac0core.jir {
     jir_matches_source,
     PRECOMPILE_SENTINEL
 }
-import from jaclang.jac0core.sealed { MANIFEST_NAME, MANIFEST_FORMAT }
+import from jaclang.jac0core.sealed {
+    MANIFEST_NAME,
+    MANIFEST_FORMAT,
+    JIR_FORMAT_VERSION as SEALED_JIR_FORMAT_VERSION
+}
 
 def find_package_dir(source_dir: str) -> str | None {
     src = Path(source_dir).resolve();
@@ -243,6 +247,19 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
 def seal_finalize(
     pkg_path: Path, precompiled_dir: Path, pkg_name: str, pyver: str, embed_src: bool
 ) -> int {
+    # Build-time drift guard: sealed.py must hold the JIR format literal that the
+    # runtime validates images against (it can't import jir.jac -- bootstrap). If
+    # jir.jac's FORMAT_VERSION bumps and sealed.py's copy is not updated, fail the
+    # seal loudly here rather than shipping images the runtime will reject.
+    if SEALED_JIR_FORMAT_VERSION != FORMAT_VERSION {
+        console.error(
+            f"JIR format drift: jir.FORMAT_VERSION={FORMAT_VERSION} but "
+            f"sealed.JIR_FORMAT_VERSION={SEALED_JIR_FORMAT_VERSION}. "
+            "Update jaclang/jac0core/sealed.py."
+        );
+        return 1;
+    }
+
     out_dir = precompiled_dir / pyver;
 
     # Drop a stale pre-unification bootstrap/ dir (old format shipped jac0core as
