@@ -10,20 +10,37 @@ impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
 
 impl NaIRGenPass._callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None) {
     decl = nd.callee_decl;
-    if decl is None {
-        sym: (uni.Symbol | None) = None;
-        if isinstance(nd.target, uni.AstSymbolNode) {
-            sym = nd.target.sym;
-        } elif isinstance(nd.target, uni.AtomTrailer)
-        and isinstance(nd.target.right, uni.AstSymbolNode) {
-            sym = nd.target.right.sym;
+    sym: (uni.Symbol | None) = None;
+    if isinstance(nd.target, uni.AstSymbolNode) {
+        sym = nd.target.sym;
+    } elif isinstance(nd.target, uni.AtomTrailer)
+    and isinstance(nd.target.right, uni.AstSymbolNode) {
+        sym = nd.target.right.sym;
+    }
+    if decl is None and sym is not None and sym.defn {
+        cand = sym.defn[0];
+        if isinstance(cand, uni.Ability) {
+            decl = cand;
+        } elif isinstance(cand.parent, uni.Ability) {
+            decl = cand.parent;
         }
-        if sym is not None and sym.defn {
-            cand = sym.defn[0];
-            if isinstance(cand, uni.Ability) {
-                decl = cand;
-            } elif isinstance(cand.parent, uni.Ability) {
-                decl = cand.parent;
+    }
+
+    if decl is not None
+    and str(decl.loc.mod_path).endswith(".pyi")
+    and sym is not None
+    and sym.defn {
+        for alt in sym.defn {
+            alt_decl = None;
+            if isinstance(alt, uni.Ability) {
+                alt_decl = alt;
+            } elif isinstance(alt.parent, uni.Ability) {
+                alt_decl = alt.parent;
+            }
+            if alt_decl is not None
+            and not str(alt_decl.loc.mod_path).endswith(".pyi") {
+                decl = alt_decl;
+                break;
             }
         }
     }
@@ -105,6 +122,10 @@ impl NaIRGenPass._codegen_bound_args(
             chosen = kw_map[sp.name.sym_name];
         } elif sp.value is not None {
             chosen = sp.value;
+            if isinstance(chosen, uni.Null)
+            and str(chosen.loc.mod_path).endswith(".pyi") {
+                chosen = None;
+            }
         }
         val = self._codegen_expr(chosen) if chosen is not None else None;
         if val is not None {

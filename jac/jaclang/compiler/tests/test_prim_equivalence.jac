@@ -242,6 +242,11 @@ test "json bundled" {
     run_with_both("prim_json.jac", "json_py", "json_cl", "json_na", require=["na"]);
 }
 
+test "base64 bundled" {
+    run_with_both(
+        "prim_base64.jac", "base64_py", "base64_cl", "base64_na", require=["na"]
+}
+
 test "textwrap bundled" {
     run_with_both(
         "prim_textwrap.jac", "textwrap_py", "textwrap_cl", "textwrap_na", require=["na"]

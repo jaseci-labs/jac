@@ -42,6 +42,29 @@ bundled one. A bundled module links through the existing cross-module machinery
   intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
+- **`base64.na.jac`** (#6978 Phase 3) -- self-contained RFC 4648
+  base16/base32/base64 (`b16`/`b32`/`b64` encode+decode, `altchars`,
+  `standard_`/`urlsafe_` variants) plus RFC 1924 base85 (`b85encode`/`b85decode`,
+  the alphabet CPython's `base64.b85encode` uses). A big-endian bit-accumulator
+  over `bytes` primitives -- no FFI floor, no big-int -- growing the result in a
+  `list[int]` and converting once with `bytes(...)`. Encoding is byte-identical
+  to CPython for all 256 byte values; decoding matches the embedded CPython
+  3.14 semantics, probed case by case: `b64decode(validate=False)` (the
+  default) discards non-alphabet bytes and applies 3.14's end-of-input padding
+  rules (so newline-wrapped MIME/PEM input decodes, unpadded input raises
+  `Incorrect padding`); `validate=True` implements strict mode with CPython's
+  leading/excess/discontinuous-padding errors; `urlsafe_b64decode` accepts
+  both the `+/` and `-_` alphabets (CPython translates then decodes); `b16`
+  enforces digit-before-odd-length checks; `b32decode` takes `casefold` and
+  `map01` and enforces `len % 8` plus CPython's valid pad-count set
+  {0,1,3,4,6}; `b85decode` reports CPython's absolute error positions and the
+  32-bit overflow check. Error messages match CPython text, raised as
+  `ValueError` (CPython raises `binascii.Error`, itself a `ValueError`
+  subclass, so `except ValueError` is congruent; the message text is
+  identical). SCOPE: the CPython `None` sentinels for `altchars`/`map01` are
+  `b""` here (na has no None-able `bytes` parameter), and bad `altchars`/
+  `map01` lengths raise `ValueError` where CPython asserts; the Ascii85
+  (`a85`) variant is a follow-up.
 - **`textwrap.na.jac`** (#6978 Phase 3) -- the greedy line wrapper (`wrap`,
   `fill`) plus `dedent` and `indent`, a faithful port of CPython's
   `TextWrapper._wrap_chunks`/`_handle_long_word` over primitives (following
@@ -143,7 +166,11 @@ flat `import os`, not bundled here (see
 3. Add a tri-backend equivalence fixture
    (`jac/jaclang/compiler/tests/fixtures/prim_<name>.jac`) and register it in
    `test_prim_equivalence.jac` with `require=["na"]` so sv/na congruence is
-   enforced, not assumed.
+   enforced, not assumed. Keep the `na { }` block self-contained (a
+   module-level helper called from native code lowers to an unregistered
+   interop stub) and split a large case body across several small na helpers
+   mutating one result dict -- one giant function is beyond what the na
+   backend JITs reliably today.
 
 ## Mechanism / portability
 
