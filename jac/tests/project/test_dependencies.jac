@@ -134,6 +134,40 @@ test "DependencyInstaller ensure_venv creates" {
     }
 }
 
+test "DependencyInstaller ensure_venv seeds the build backend" {
+    # ensurepip on Python 3.12+ gives a fresh venv pip but NOT setuptools, so
+    # source-only (sdist) deps that build via setuptools.build_meta failed in
+    # pods. ensure_venv must seed the backend itself so `jac install` is
+    # self-sufficient (no caller-side `pip install setuptools wheel` needed).
+    # subprocess.run is mocked so the test is deterministic and never reaches
+    # PyPI; it asserts the seed command is issued (with a timeout) after the
+    # venv is created.
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        installer = DependencyInstaller(config=config);
+        with patch("subprocess.run") as run {
+            run.return_value = MagicMock(returncode=0, stderr="");
+            installer.ensure_venv();
+        }
+        seed_calls = [
+            call
+            for call in run.call_args_list
+            if any(["setuptools" in str(arg) for arg in call.args])
+        ];
+        assert seed_calls , "expected the build backend to be seeded via pip";
+        seed_cmd = seed_calls[0].args[0];
+        assert "setuptools" in seed_cmd;
+        assert "wheel" in seed_cmd;
+        # bounded so a hung index cannot block venv creation forever
+        assert seed_calls[0].kwargs.get("timeout") is not None;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
 test "DependencyInstaller ensure_venv skips existing valid" {
     reset_config();
     (tmp, project_dir) = make_temp_project();

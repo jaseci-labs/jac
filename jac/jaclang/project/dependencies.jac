@@ -22,6 +22,7 @@ obj DependencyInstaller {
 
     def postinit -> None;
     def ensure_venv -> None;
+    def _seed_build_backend(target: Path) -> None;
     def _run_pip(args: list[str]) -> tuple[int, str, str];
     def _make_pip_spec(name: str, version: str) -> str;
     def _make_git_spec(name: str, git_url: str, branch: str = "") -> str;

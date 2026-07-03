@@ -55,6 +55,7 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces,
     def handle_health -> Response;
     def handle_health_live -> Response;
     def handle_health_ready -> Response;
+    async def aggregate_graph_data(request: Request) -> Response | None;
     async def handle_builtin_passthrough(
         request: Request, path: str
     ) -> Response | None;

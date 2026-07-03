@@ -1,6 +1,18 @@
 import from uuid { UUID }
 
 
+obj MissingAnchorError(ValueError) {
+    has anchor_id: str;
+
+    def __str__ -> str {
+        return (
+            f"Anchor {self.anchor_id} does not exist in the anchor store "
+            "(was the data store reset or migrated?)"
+        );
+    }
+}
+
+
 obj WriteConflict(Exception) {
     has anchor_id: UUID,
         expected_version: int = -1,

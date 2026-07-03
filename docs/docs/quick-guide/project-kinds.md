@@ -35,12 +35,12 @@ Each recipe name links to its guided **"I like to build…" track** -- a 5-minut
 | [Static / in-browser app](../build/fullstack-web.md#web-static) | ✅ | | ● | ● | ● | | | -- |
 | [Desktop app](../build/desktop-mobile.md#desktop) | 🧪⁴ | ● | ● | | ● | | desktop | WebKit² |
 | [Mobile app (webview)](../build/desktop-mobile.md#mobile) | 🧪⁵ | ◐ | ● | | | | mobile | Android SDK / Xcode |
+| [Mobile app (React Native)](../build/desktop-mobile.md#react-native) | 🧪⁶ | ◐ | ● | | | | react-native | Android SDK / Xcode |
 | [Full-stack package](#on-the-roadmap) | 🚧 | ● | ● | | | attach | | -- |
-| [Mobile app (React Native)](#on-the-roadmap) | 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
 
 **Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service. **status**: ✅ shipping · 🧪 beta (works, with caveats footnoted below) · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the built-in `scale` subsystem (which ships with `jaclang` core; its optional deploy deps are pulled per-project via `[scale.*]` config + `jac install`) and the full-stack client/desktop framework (which also ships with `jaclang` core).
 
-<small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm. &nbsp; ⁴ The binary renders your `cl` UI today; wiring `sv` walkers onto the embedded interpreter, HMR dev mode, and per-OS installers are in progress ([#6436](https://github.com/jaseci-labs/jaseci/issues/6436)). &nbsp; ⁵ Frontend-only Capacitor wrapper -- the app talks to a Jac server you deploy separately.</small>
+<small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm. &nbsp; ⁴ The binary renders your `cl` UI today; wiring `sv` walkers onto the embedded interpreter, HMR dev mode, and per-OS installers are in progress ([#6436](https://github.com/jaseci-labs/jaseci/issues/6436)). &nbsp; ⁵ Frontend-only Capacitor wrapper -- the app talks to a Jac server you deploy separately. &nbsp; ⁶ Beta React Native (Expo/Metro) frontend built from a mobUI source tree (`@jac/mobui` primitives, no HTML) that also compiles for the web; it talks to a Jac server you deploy separately.</small>
 
 Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 
@@ -481,7 +481,7 @@ Window title and size are configured under `[plugins.desktop]` in `jac.toml`.
 Ship the same client bundle to Android/iOS via **Capacitor**, which wraps it in a native webview. The mobile app is the *frontend only* -- it talks to your Jac server over HTTP, so deploy the backend separately (e.g. as an [API service](#api-service)).
 
 ```bash
-# prerequisites: Node.js; Android: JDK + Android SDK; iOS (macOS): Xcode
+# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (no Node.js -- JS tooling runs on the bundled Bun)
 jac setup mobile --platform android    # one-time scaffold (android/)
 
 jac start main.jac --client mobile --dev          # live reload on device/emulator
@@ -492,6 +492,25 @@ Use `--platform ios` on macOS to produce an Xcode project. App name and id are s
 
 :octicons-arrow-right-24: Full tutorial: [Mobile App](../tutorials/fullstack/mobile.md)
 
+### Mobile app (React Native)
+
+Ship a **true native** mobile app (Android + iOS) using [React Native](https://reactnative.dev/), with platform-native views rather than a webview. This is the *frontend only* -- it talks to your Jac server over HTTP, so deploy the backend separately (e.g. as an [API service](#api-service)).
+
+A React Native app is a **mobUI** project: one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS via Metro). Instead of HTML tags, mobUI projects use Jac's `@jac/mobui` component vocabulary (`View`, `Text`, `Pressable`, `TextInput`, `Image`, `ScrollView`), which projects to every target. Raw HTML tags (`<div>`, `<span>`, ...) are compile errors in a mobUI project -- see [`E1105`](../reference/diagnostics.md#mobui-project-jsx-host-tags).
+
+```bash
+# prerequisites: Android: JDK + Android SDK; iOS (macOS): Xcode (no Node.js -- JS tooling runs on the bundled Bun)
+jac setup react-native              # one-time scaffold (.jac/mobile-rn/)
+
+jac start main.jac --client react-native --dev   # Fast Refresh on device/emulator
+jac build --client react-native --platform android
+jac build --client react-native --platform ios    # macOS only
+```
+
+Set `client_kind = "mobui"` under `[project]` in `jac.toml` to opt in. The scaffold and build options live under `[plugins.client.react_native]`.
+
+:octicons-arrow-right-24: Full reference: [React Native target](../reference/plugins/jac-client.md#react-native-target-beta) · Tutorial: [Mobile App](../tutorials/fullstack/mobile.md#react-native-target)
+
 ---
 
 ## On the roadmap
@@ -499,7 +518,6 @@ Use `--platform ios` on macOS to produce an Xcode project. App name and id are s
 These aren't missing "kinds" -- they're **capability combinations that aren't wired end-to-end yet**. Here's the honest status and the closest thing you can do today.
 
 - **Full-stack package** (`sv` + `cl` + *attach*) -- An installable feature that brings its own routes, UI components, and data models into your app (think "drop in payments and get a checkout button + endpoints + models"). `sv import` composes *services* over HTTP, but there's no attachable in-process package yet. This needs a no-entry "package" artifact and conflict-resolution semantics across the three runtimes.
-- **Mobile app (React Native)** (a new RN *shell*) -- The mobile shell is Capacitor (webview) only. A true React Native shell would need a Jac → RN component path and a typed client SDK rather than the DOM/JSX bundle.
 
 !!! info "Want to follow the design?"
     The unified build/artifact work that would close these gaps is tracked in the Jac repo's `jac build` / `.jab` proposals.

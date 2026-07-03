@@ -109,16 +109,15 @@ def emit_backend(
         backend_dir, project_name, walkers_full, functions_full, sql, db_basename
     );
 
-    import from jaclang.cli.commands.eject_targets.runtime_vendor {
-        vendor_runtime,
-        llm_requirements
-    }
+    import from jaclang.publish.runtime_vendor { vendor_runtime, llm_requirements }
     uses_llm = _uses_llm(emitted_codes);
     sql_seeds = ["jaclang.runtimelib.storage.sqlalchemy_memory"] if sql else [];
-    vendored = vendor_runtime(
-        backend_dir, emitted_codes, include_byllm=uses_llm, extra_seeds=sql_seeds
-    );
-    if vendored < 0 {
+    try {
+        vendored = vendor_runtime(
+            backend_dir, emitted_codes, include_byllm=uses_llm, extra_seeds=sql_seeds
+        );
+    } except ValueError as e {
+        console.error(f"  {e}");
         return 1;
     }
     console.print(
