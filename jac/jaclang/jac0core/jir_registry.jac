@@ -1487,7 +1487,12 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(FieldDesc(name="tag", kind=4), )
+             fields=(
+                 FieldDesc(name="tag", kind=4),
+                 FieldDesc(name="is_own", kind=2),
+                 FieldDesc(name="is_borrow", kind=2),
+                 FieldDesc(name="is_mut_borrow", kind=2)
+             )
          ),
          NodeSpec(
              type_idx=131,
@@ -1599,7 +1604,12 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(FieldDesc(name="operand", kind=4), FieldDesc(name="op", kind=4))
+             fields=(
+                 FieldDesc(name="operand", kind=4),
+                 FieldDesc(name="op", kind=4),
+                 FieldDesc(name="is_borrow", kind=2),
+                 FieldDesc(name="is_mut_borrow", kind=2)
+             )
          ),
          NodeSpec(
              type_idx=141,
