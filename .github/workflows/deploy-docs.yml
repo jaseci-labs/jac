@@ -11,7 +11,6 @@ on:
       - 'docs/**'
       - '.github/workflows/deploy-docs.yml'
   schedule:
-    # Rebuild documentation daily at 2 AM UTC
     - cron: '0 2 * * *'
 
 permissions:
@@ -21,11 +20,8 @@ permissions:
 env:
   ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPOSITORY: jac-lang-website
-  # Build/serve docs through the SHIPPED binary, not the editable dev loop: a
-  # freshly built binary would otherwise pick up the checkout's `[dev]
-  # jaclang_source` stanza and reroute `import jaclang` to the source tree while
-  # skipping the precompiled JIR bundle, slowing every `jac` invocation here.
-  # (Mirrors the guard in test-binary.yml / test-jaseci.yml.)
+  # Build/serve docs through the SHIPPED binary, not the `[dev] jaclang_source`
+  # dev loop (which would skip the precompiled JIR bundle and slow every jac call).
   JAC_NO_DEV_SOURCE: "1"
 
 jobs:
@@ -89,8 +85,7 @@ jobs:
             TAG="manual-$(date +%Y%m%d-%H%M%S)"
           elif [[ "${{ github.event_name }}" == "release" ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
-            # The canonical release tag is `v<version>` (e.g. v0.30.1). The
-            # `jac-lang-docs-*` form is still accepted for docs-only releases;
+            # `jac-lang-docs-*` (docs-only releases) is stripped to its suffix;
             # anything else (incl. the canonical `v*`) is used verbatim.
             if [[ $TAG_NAME =~ ^jac-lang-docs-(.+)$ ]]; then
               TAG="${BASH_REMATCH[1]}"
@@ -140,13 +135,10 @@ jobs:
           COPY CONTRIBUTING.md ./CONTRIBUTING.md
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
-          # jaclang is the prebuilt single binary (copied in via jac/zig-out from
-          # the setup-jac build step), not a pip install. Install the docs deps
-          # (mkdocs etc.) into the binary's own global site with --global so they
-          # sit beside the bundled jaclang; the container is then served via
-          # `jac run` (see CMD). The binary's embedded Python is the only
-          # interpreter where `import jaclang` resolves, which the mkdocs build
-          # hook (handle_jac_compile_data.py) requires.
+          # jaclang is the prebuilt single binary (jac/zig-out from setup-jac);
+          # docs deps install --global into the binary's own site, since its
+          # embedded Python is the only interpreter where `import jaclang`
+          # resolves (required by the mkdocs build hook).
           ENV PATH="/app/jac/zig-out/bin:${PATH}"
           RUN jac install -e ./docs --global
 

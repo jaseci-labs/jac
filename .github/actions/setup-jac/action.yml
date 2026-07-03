@@ -22,7 +22,7 @@ runs:
       uses: actions/cache@v4
       with:
         # Also cache the gitignored typeshed stdlib stubs: they are materialized
-        # during `zig build` and test-binary.yml publishes them as an artifact for
+        # during `zig build` and ci.yml publishes them as an artifact for
         # the compiler suite. Without them here, a binary cache hit skips the
         # build and the upload step fails on a fresh checkout.
         path: |
@@ -37,14 +37,24 @@ runs:
         path: jac/jaclang/vendor/typeshed/stdlib
         key: typeshed-stdlib-${{ hashFiles('jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256', 'jac/launcher/payload.zig') }}
 
+    # The four caches below (pbs, shim, LLVM, bun) are big (0.2-0.6 GB each) and
+    # read-mostly: their keys only change on a pin bump, not on ordinary code
+    # pushes. They use restore/save split with SAVES GATED TO MAIN: PR branches
+    # read main's entries (cross-branch restore from the default branch), and a
+    # per-PR save would only duplicate ~1.2 GB per ref into the repo's 10 GB
+    # cache pool -- which is exactly what pushed it into daily LRU eviction and
+    # made every "stable" entry a recurring miss. Main runs (every merge) seed
+    # and refresh the shared copies.
+
     # Avoid re-downloading + re-decoding the ~600 MB python-build-standalone tree
     # on every binary-cache miss (the std zstd decode of the 122 MB archive is
     # slow): cache the extracted .pbs-build, keyed on the pbs pin (PBS_TAG /
     # PBS_PY / PBS_FLAVOR live in payload.zig). Only engaged on a binary miss
     # (when we actually build); a payload.zig edit re-fetches.
     - name: Restore cached python-build-standalone tree
+      id: pbs-cache
       if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: jac/.pbs-build
         key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
@@ -56,38 +66,60 @@ runs:
     # common case for a binary-cache miss) skip both the LLVM fetch below and
     # the link: the build step passes the restored file via `-Dshim-bin`. The
     # cache path is the shim's in-tree place path, which a from-source build
-    # populates, so a miss self-seeds when the job ends.
+    # populates, so a main-branch miss self-seeds when the job ends.
     - name: Restore cached LLVMPY shim
       id: shim-cache
       if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
         key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
 
     # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
     # shim, so `zig build` needs that LLVM extracted first (there is no llvmlite
-    # wheel anymore). Cache the pruned ~0.5 GB tree, keyed on payload.zig (which
-    # pins the LLVM release via llvmRelease) -- mirrors the .pbs-build cache.
-    # Only engaged on a binary miss AND a shim miss (a cached shim needs no LLVM
-    # at all); a payload.zig edit re-fetches.
+    # wheel anymore). Cache the pruned ~0.5 GB tree, keyed on the single-sourced
+    # slice pin (llvm_release.zig) so unrelated payload.zig churn (bun/pbs/pip
+    # pins) does not orphan a 0.5 GB entry. Only engaged on a binary miss AND a
+    # shim miss (a cached shim needs no LLVM at all).
     - name: Restore cached LLVM (jacllvm shim deps)
+      id: llvm-cache
       if: steps.cache.outputs.cache-hit != 'true' && steps.shim-cache.outputs.cache-hit != 'true'
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: jac/.llvm-build
-        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
 
     # The contained bun runtime is fetched + sha256-verified and bundled into the
     # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
-    # miss does not re-download it, keyed on payload.zig (BUN_VERSION lives there).
-    # Only engaged on a binary miss; a payload.zig edit re-fetches.
+    # miss does not re-download it, keyed on the resolver pin in
+    # bun_installer.jac (kept in lockstep with payload.zig by the contribution
+    # check). Only engaged on a binary miss.
     - name: Restore cached bun runtime
+      id: bun-cache
       if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: jac/.bun-build
-        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/runtimelib/client/bun_installer.jac') }}
+
+    # The JIR precompile is mkpayload's single most expensive stage (~24 min:
+    # it compiles every bundled jaclang module). Each .jir embeds a
+    # content-addressed module key (jaclang version + python version + source +
+    # annex hashes), and mkpayload seeds site/_precompiled from
+    # jac/.precompiled-build, recompiling ONLY the modules whose key no longer
+    # matches. A stale or partial tree is therefore useful rather than
+    # dangerous -- which is why, unlike the binary cache, this one uses
+    # restore-keys: any prior build's tree turns the full precompile into a
+    # recompile of just the changed modules.
+    - name: Restore cached JIR precompile tree
+      id: precompiled-cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: jac/.precompiled-build
+        key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
+        restore-keys: |
+          jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Set up Zig 0.16.0
       if: steps.cache.outputs.cache-hit != 'true' || steps.typeshed-cache.outputs.cache-hit != 'true'
@@ -131,6 +163,63 @@ runs:
           SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
         fi
         zig build "${SHIM_ARG[@]}" --summary all
+
+    # Seed the shared read-mostly caches -- from main only (see the note above
+    # the restore steps). Every merge to main runs this action, so a pin bump
+    # is seeded within one merge; PR runs never duplicate these entries.
+    - name: Save pbs cache (main only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.pbs-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/.pbs-build
+        key: pbs-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+
+    - name: Save LLVMPY shim cache (main only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.shim-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+        key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
+    - name: Save LLVM cache (main only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.shim-cache.outputs.cache-hit != 'true' &&
+        steps.llvm-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/.llvm-build
+        key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
+
+    - name: Save bun cache (main only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.bun-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/.bun-build
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/runtimelib/client/bun_installer.jac') }}
+
+    # cache-hit is only 'true' on an exact-key match, so a restore-keys prefix
+    # hit still saves here -- that is what keeps main's entry tracking HEAD
+    # (each merge re-saves the refreshed tree under the new jaclang/** hash).
+    - name: Save JIR precompile cache (main only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        steps.precompiled-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/.precompiled-build
+        key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
 
     # Binary cache hits skip `zig build`, which is what normally runs fetch-typeshed.
     # Older cache entries only stored the binary, so materialize stubs when missing.

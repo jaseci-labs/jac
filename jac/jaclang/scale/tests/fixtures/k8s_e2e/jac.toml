@@ -68,7 +68,7 @@ base_route = "/"
 enabled = true
 
 # K10: Ingress for K8s deploys. Enabled here so the CI real-app e2e
-# (.github/workflows/k8s-microservice-real-e2e.yml) exercises the
+# (.github/workflows/ci.yml) exercises the
 # full external-URL path (Ingress -> gateway -> services). Local-mode
 # deploys ignore this section entirely.
 [plugins.scale.microservices.ingress]

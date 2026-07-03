@@ -1,6 +1,7 @@
 """Type checker pass tests -- migrated from test_checker_pass.py."""
 
 import os;
+import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
@@ -5341,5 +5342,229 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
     }
     assert has_e2027 , "Expected E2027 for endpoint clause on a node, got:\\n" + "\\n---\\n".join(
         e.pretty_print() for e in program.errors_had
+    );
+}
+
+test "mobui_project_forbids_html_intrinsic_tags" {
+    # D17: in a mobui (React Native) project, raw HTML host tags are
+    # forbidden — JsxIntrinsicGuardPass emits E1105 for each lowercase tag,
+    # with a fix-it pointing at the @jac/mobui / RN component. Uppercase user
+    # components (<Card>) are allowed. The pass runs in get_ir_gen_sched, so
+    # it fires even with type_check=False (the .cl.jac / build path).
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
+    );
+
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    # Host tags: <span>, <div>, <button>, <img> => 4. <Card> is exempt.
+    assert len(e1105) == 4 , f"Expected 4 E1105 (div/span/button/img), got {len(
+        e1105
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+
+    # Assert against the diagnostic messages (not pretty_print, whose source
+    # context would include nearby lines like the <Card .../> line).
+    msgs = "\n".join(e.msg for e in e1105);
+    # No component tag is ever flagged.
+    assert "<Card>" not in msgs , f"<Card> must not be flagged:\n{msgs}";
+    # The fix-it suggestions are present (div -> View, span -> Text, etc.).
+    assert "View" in msgs , f"Expected a 'View' suggestion:\n{msgs}";
+    assert "Text" in msgs , f"Expected a 'Text' suggestion:\n{msgs}";
+}
+
+test "web_project_allows_html_intrinsic_tags" {
+    # The same fixture compiled as a plain web project (default kind) emits no
+    # E1105 — host tags are allowed there.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(path, options=NO_TC);
+
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , f"Expected no E1105 in a web project, got {len(
+        e1105
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+}
+
+test "mobui_project_allows_lowercase_component_in_scope" {
+    # An in-scope lowercase component must NOT trigger E1105 — the guard
+    # resolves it via scope lookup and recognises it as a user component.
+    # The 4 HTML host tags in the same fixture still emit E1105 as expected.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
+    );
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    msgs = "\n".join(e.msg for e in e1105);
+    assert "<myCard>" not in msgs , f"<myCard> is in scope and must not be flagged:\n{msgs}";
+    assert len(e1105) == 4 , f"Expected 4 E1105 (div/span/button/img), got {len(
+        e1105
+    )}:\n{msgs}";
+}
+
+test "mobui_project_lowercase_component_no_w1050" {
+    # Gap 3: in a mobui project, an in-scope lowercase component must not
+    # produce W1050 ('Unknown intrinsic JSX element'). The type evaluator
+    # routes it via scope resolution, not the _JsxIntrinsicElements registry.
+    path = os.path.join(
+        CHECKER_FIXTURES, "checker_jsx_lowercase_imported_component.jac"
+    );
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=True, project_kind="mobui", project_root=CHECKER_FIXTURES
+        )
+    );
+    w1050 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1050"
+    ];
+    assert len(w1050) == 0 , f"Expected no W1050 for in-scope lowercase component, got:\n" + "\n".join(
+        w.pretty_print() for w in w1050
+    );
+}
+
+test "mobui_kind_does_not_leak_outside_project_root" {
+    # Regression: a consumer's project_kind="mobui" must not reach files
+    # outside the project root. The real failure was client_runtime.cl.jac
+    # (from jac-client) being compiled into the user's JacProgram during
+    # `jac build` and receiving E1105 for its HTML tags ("kind-leak").
+    # We simulate it by passing an explicit project_root that does NOT contain
+    # the fixture, mimicking a framework file outside the user's project.
+    import tempfile;
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_cl_html_allowed.cl.jac");
+    with tempfile.TemporaryDirectory() as tmp_root {
+        program = JacProgram();
+        program.compile(
+            path,
+            options=CompileOptions(
+                type_check=False, project_kind="mobui", project_root=tmp_root
+            )
+        );
+        e1105 = [
+            e
+            for e in program.errors_had
+            if e.code and e.code.code == "E1105"
+        ];
+        assert len(e1105) == 0 , (
+            f"E1105 must not fire on files outside project_root (kind-leak regression), "
+            f"got {len(e1105)}:\n" + "\n---\n".join(e.pretty_print() for e in e1105)
+        );
+    }
+}
+
+test "cl_jac_files_inside_project_root_also_exempt" {
+    # Even when a .cl.jac file lives inside the project root (user's own
+    # web-client boundary file), E1105 must not fire — .cl.jac always targets
+    # the browser and raw HTML is valid there.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_cl_html_allowed.cl.jac");
+    fixtures_dir = os.path.dirname(path);
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="mobui", project_root=fixtures_dir
+        )
+    );
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , (
+        f"E1105 must not fire on .cl.jac files even inside project_root, "
+        f"got {len(e1105)}:\n" + "\n---\n".join(e.pretty_print() for e in e1105)
+    );
+}
+
+test "jac_toml_kind_mobui_round_trip" {
+    # Verify the jac.toml → per-path discovery → compile() code path for
+    # `[project] client_kind = "mobui"`. All other mobui-project tests set
+    # project_kind via CompileOptions directly; this one writes a real
+    # project (jac.toml + module) and relies on the guard pass discovering
+    # the kind from the module's own path -- no cwd, no config singleton.
+    import shutil;
+    import tempfile;
+    import from jaclang.project.config { JacConfig }
+
+    toml_content = '[project]\nname = "test-proj"\nclient_kind = "mobui"\n';
+
+    with tempfile.TemporaryDirectory() as tmp_dir {
+        toml_path = Path(tmp_dir) / "jac.toml";
+        toml_path.write_text(toml_content);
+        # Part 1: round-trip — JacConfig.load() must parse client_kind correctly.
+        cfg = JacConfig.load(toml_path);
+        assert cfg.project.client_kind == "mobui" , f"Expected client_kind='mobui' from jac.toml, got '{cfg.project.client_kind}'";
+        # Part 2: per-path discovery -- a module inside the project picks up
+        # "mobui" with a plain CompileOptions() (no explicit project_kind),
+        # causing JsxIntrinsicGuardPass to emit E1105.
+        fixture = os.path.join(tmp_dir, "main.jac");
+        shutil.copyfile(
+            os.path.join(CHECKER_FIXTURES, "checker_jsx_mobui_html_forbidden.jac"),
+            fixture
+        );
+        program = JacProgram();
+        program.compile(fixture, options=CompileOptions(type_check=False));
+        e1105 = [
+            e
+            for e in program.errors_had
+            if e.code and e.code.code == "E1105"
+        ];
+        assert len(e1105) == 4 , f"Expected 4 E1105 from jac.toml client_kind=mobui, got {len(
+            e1105
+        )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+    }
+}
+
+test "mobui_hello_example_discovers_kind_and_stays_e1105_clean" {
+    # Integration over the shipped starter example: its jac.toml declares
+    # client_kind = "mobui", per-path discovery must switch the guard on for
+    # its modules, and the example itself must stay free of raw HTML tags.
+    import from jaclang.project.client_kind { resolve_client_kind_context }
+
+    example_dir = os.path.join(JAC_ROOT, "examples", "mobui", "hello");
+    entry = os.path.join(example_dir, "main.jac");
+    assert os.path.isfile(entry) , f"mobui hello example missing at {entry}";
+
+    (kind, proj_root) = resolve_client_kind_context(entry);
+    assert kind == "mobui" , (
+        f"per-path discovery must resolve mobui for the example, got '{kind}'"
+    );
+    assert proj_root and os.path.samefile(proj_root, example_dir) , (
+        f"project root must be the example dir, got '{proj_root}'"
+    );
+
+    program = JacProgram();
+    program.compile(entry, options=CompileOptions(type_check=False));
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , (
+        "shipped mobUI example must be E1105-clean:\n" + "\n---\n".join(
+            e.pretty_print() for e in e1105
+        )
     );
 }

@@ -8,7 +8,6 @@ import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.injector.bundle { JAC_ZIG_VERSION }
 import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_name }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_bootstrap_init_container,
@@ -1007,8 +1006,8 @@ obj KubernetesTarget(DeploymentTarget) {
             probe_configs = self._build_probe_config(health_check_path);
 
             import from jaclang.scale.injector.binary_injector { select_injector }
-            (injector, ship_binary, _tc_key) = select_injector(
-                app_config.experimental,
+            (injector, _tc_key) = select_injector(
+                app_config.dev,
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
@@ -1080,9 +1079,8 @@ obj KubernetesTarget(DeploymentTarget) {
             template_spec['initContainers'].append(
                 build_bootstrap_init_container(
                     self.k8s_config,
-                    app_config.experimental,
                     self.k8s_config.python_image,
-                    ship_binary
+                    app_config.dev.overlays_source()
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

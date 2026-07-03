@@ -275,13 +275,11 @@ def _npm_remove_handler(config: JacConfig, package_name: str, is_dev: bool = Fal
 def _regenerate_and_install(project_dir: Path) {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client.bun_installer { bun_unavailable_message }
 
     bun = get_bun();
     if not bun {
-        raise RuntimeError(
-            "Bun is required but could not be found or installed. "
-            "Install manually: https://bun.sh"
-        ) from None;
+        raise RuntimeError(bun_unavailable_message()) from None;
     }
 
     bundler = ViteBundler(project_dir);

@@ -89,24 +89,11 @@ def _normalize_mobile_platform(platform: Optional[str] = None) -> str {
     );
 }
 
-def _resolve_npx -> str {
-    (ok, _) = _check_command_available(["npx", "--version"]);
-    if ok {
-        return "npx";
-    }
-    (ok, _) = _check_command_available(["bunx", "--version"]);
-    if ok {
-        return "bunx";
-    }
-    raise RuntimeError(
-        "npx or bunx not found. Install Node.js (https://nodejs.org) "
-        "or Bun (https://bun.sh)."
-    );
-}
-
 def _run_cap_cmd(project_dir: Path, args: list[str], label: str) {
-    npx = _resolve_npx();
-    cmd = [npx, "cap"] + args;
+    import from jaclang.runtimelib.client.targets.node_tooling_common {
+        resolve_node_runner
+    }
+    cmd = resolve_node_runner() + ["cap"] + args;
     console.print(f"  Running {label}: {' '.join(cmd)}", style="muted");
     subprocess.run(cmd, cwd=project_dir, check=True, capture_output=False);
 }
