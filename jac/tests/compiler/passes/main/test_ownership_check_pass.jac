@@ -225,6 +225,16 @@ test "E1301: reading an owned value after it is sealed into managed storage" {
     ]}";
 }
 
+# --- Loop-depth rule (P0.3 soundness gap) ------------------------------------
+# Moving a pre-loop `own` binding inside a loop is rejected — the binding would
+# be consumed on the first iteration, leaving it invalid on all subsequent ones.
+test "E1301: moving a pre-loop own binding inside a loop body is rejected" {
+    prog = compile_fixture("move_in_loop.jac");
+    assert count_code(prog, "E1301") >= 1 , f"expected E1301 for loop-depth move, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
 # --- Phase 2 seed: proven-unique analysis (RC-elision `Proven` bit) ----------
 # A consumed, never-borrowed `own` binding is proven unique; the pass stamps
 # `sym.is_proven_unique` so the native backend may elide its RC churn.

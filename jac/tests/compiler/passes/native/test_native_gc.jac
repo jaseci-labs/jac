@@ -188,13 +188,14 @@ test "gc reduces rss for chess" {
 }
 
 test "cycle_collect: reclaims mutually-referential cycles under load" {
-    # Drives ~300k two-node `A <-> B` cycles past RC_CYCLE_THRESHOLD so the
-    # trial-deletion collector actually fires (~600 sweeps).  These pairs are
-    # unreclaimable by reference counting alone — each node keeps its sibling's
-    # refcount at 1 forever — so the ONLY way the GC-enabled run stays flat
-    # while `JAC_NO_GC=1` balloons is if the cycle collector reclaims them.
-    # A broken or never-triggered collector leaks every pair and collapses the
-    # delta, failing the >= min_savings assertion below.  This is the real
+    # Drives ~300k two-node `A <-> B` cycles, forcing a trial-deletion sweep via
+    # the `__rc_collect_cycles()` hook every 10k pairs so collection fires
+    # deterministically (not dependent on RC_CYCLE_THRESHOLD overflowing under
+    # load).  These pairs are unreclaimable by reference counting alone — each
+    # node keeps its sibling's refcount at 1 forever — so the ONLY way the
+    # GC-enabled run stays flat while `JAC_NO_GC=1` balloons is if the cycle
+    # collector reclaims them.  A broken collector leaks every pair and collapses
+    # the delta, failing the >= min_savings assertion below.  This is the real
     # proof of collection, not merely that the binary exits cleanly.
     (gc, nogc) = _measure_gc_savings(
         "cycle_collect_storm.na.jac", min_savings_kb=10240

@@ -268,6 +268,19 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 !!! tip "Fixing `E1105`"
     `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
 
+### Ownership / Borrow Errors
+
+Emitted by `OwnershipCheckPass` for `own`/`borrow`/`&`/`&mut` bindings. See [Ownership & Borrowing](language/ownership-borrowing.md).
+
+| Code | Message |
+|------|---------|
+| `E1301` | Use of '{name}' after it was moved |
+| `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
+| `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
+| `E1304` | '{name}' is destroyed while still borrowed |
+| `E1305` | Owned resource '{name}' is never consumed |
+| `E1306` | Borrow of '{name}' escapes its scope |
+
 ### Type Warnings
 
 | Code | Message |
