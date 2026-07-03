@@ -203,6 +203,28 @@ test "E1306: a borrow assigned into an outer scope outlives its owner" {
     ]}";
 }
 
+# --- Membrane: sealing an owned value back into managed storage (P1.2) -------
+# Storing an `own` value into a managed/graph location *moves* it back into
+# management (RC/GC): the source is consumed, so it may not be read afterwards,
+# it does not leak (E1305), and — unlike storing a borrow — it is not an escape
+# (E1306). Reading the field back yields an ordinary managed value.
+test "no E1305/E1306 when an owned value is sealed into a managed field" {
+    prog = compile_fixture("membrane_seal_in_ok.jac");
+    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+    assert count_code(prog, "E1306") == 0 , f"unexpected E1306, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "E1301: reading an owned value after it is sealed into managed storage" {
+    prog = compile_fixture("membrane_use_after_seal.jac");
+    assert count_code(prog, "E1301") == 1 , f"expected one E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
 # --- Phase 2 seed: proven-unique analysis (RC-elision `Proven` bit) ----------
 # A consumed, never-borrowed `own` binding is proven unique; the pass stamps
 # `sym.is_proven_unique` so the native backend may elide its RC churn.
