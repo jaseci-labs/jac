@@ -6,6 +6,7 @@ glob _B16: bytes = b"0123456789ABCDEF",
      _rev_b16: list[int] = [],
      _rev_b32: list[int] = [],
      _rev_b64: list[int] = [],
+     _rev_b64url: list[int] = [],
      _rev_b85: list[int] = [];
 
 
@@ -90,7 +91,7 @@ def _encode_bits(data: bytes, alphabet: bytes, bits: int, quantum: int) -> bytes
 }
 
 
-def _decode_bits(data: bytes, rev: list[int], bits: int, padded: bool = True) -> bytes {
+def _decode_bits(data: bytes, rev: list[int], bits: int, errmsg: str) -> bytes {
     out: list[int] = [];
     acc: int = 0;
     nbits: int = 0;
@@ -98,12 +99,9 @@ def _decode_bits(data: bytes, rev: list[int], bits: int, padded: bool = True) ->
     i: int = 0;
     while i < n {
         c: int = data[i];
-        if padded and c == _PAD {
-            break;
-        }
         v: int = rev[c];
         if v < 0 {
-            raise ValueError("Invalid base-encoded character: " + str(c));
+            raise ValueError(errmsg);
         }
         acc = (acc << bits) | v;
         nbits += bits;
@@ -129,7 +127,18 @@ def:pub b16decode(s: bytes, casefold: bool = False) -> bytes {
         rev = _copy_rev(rev);
         _casefold_rev(rev, _B16);
     }
-    return _decode_bits(s, rev, 4, padded=False);
+    n: int = len(s);
+    i: int = 0;
+    while i < n {
+        if rev[s[i]] < 0 {
+            raise ValueError("Non-base16 digit found");
+        }
+        i += 1;
+    }
+    if (n % 2) != 0 {
+        raise ValueError("Odd-length string");
+    }
+    return _decode_bits(s, rev, 4, "Non-base16 digit found");
 }
 
 
@@ -138,13 +147,50 @@ def:pub b32encode(s: bytes) -> bytes {
 }
 
 
-def:pub b32decode(s: bytes, casefold: bool = False) -> bytes {
+def:pub b32decode(s: bytes, casefold: bool = False, map01: bytes = b"") -> bytes {
+    if (len(s) % 8) != 0 {
+        raise ValueError("Incorrect padding");
+    }
+    work: bytes = s;
+    if len(map01) != 0 {
+        if len(map01) != 1 {
+            raise ValueError("map01 must be exactly 1 byte");
+        }
+        mapped: list[int] = [];
+        m: int = len(s);
+        k: int = 0;
+        while k < m {
+            c: int = s[k];
+            if c == 48 {
+                mapped.append(79);
+            } elif c == 49 {
+                mapped.append(map01[0]);
+            } else {
+                mapped.append(c);
+            }
+            k += 1;
+        }
+        work = bytes(mapped);
+    }
     rev: list[int] = _rev_for(_B32, _rev_b32);
     if casefold {
         rev = _copy_rev(rev);
         _casefold_rev(rev, _B32);
     }
-    return _decode_bits(s, rev, 5);
+    end: int = len(work);
+    while end > 0 and work[end - 1] == _PAD {
+        end -= 1;
+    }
+    padchars: int = len(work) - end;
+    decoded: bytes = _decode_bits(work[0:end], rev, 5, "Non-base32 digit found");
+    if padchars != 0
+    and padchars != 1
+    and padchars != 3
+    and padchars != 4
+    and padchars != 6 {
+        raise ValueError("Incorrect padding");
+    }
+    return decoded;
 }
 
 
@@ -159,16 +205,112 @@ def _b64_alphabet(altchars: bytes) -> bytes {
 }
 
 
+def _b64_decode_core(data: bytes, rev: list[int], strict: bool) -> bytes {
+    n: int = len(data);
+    if strict and n > 0 and data[0] == _PAD {
+        raise ValueError("Leading padding not allowed");
+    }
+    out: list[int] = [];
+    acc: int = 0;
+    quad_pos: int = 0;
+    pads: int = 0;
+    datachars: int = 0;
+    padding_started: bool = False;
+    padding_done: bool = False;
+    i: int = 0;
+    while i < n {
+        c: int = data[i];
+        if c == _PAD {
+            if strict {
+                padding_started = True;
+                if padding_done or quad_pos < 2 {
+                    raise ValueError("Excess padding not allowed");
+                }
+                pads += 1;
+                if quad_pos + pads >= 4 {
+                    if quad_pos == 2 {
+                        out.append((acc >> 4) & 255);
+                    } else {
+                        out.append((acc >> 10) & 255);
+                        out.append((acc >> 2) & 255);
+                    }
+                    acc = 0;
+                    quad_pos = 0;
+                    pads = 0;
+                    padding_done = True;
+                }
+            } elif quad_pos >= 2 {
+                pads += 1;
+            }
+            i += 1;
+            continue;
+        }
+        v: int = rev[c];
+        if v < 0 {
+            if strict {
+                raise ValueError("Only base64 data is allowed");
+            }
+            i += 1;
+            continue;
+        }
+        if strict and padding_started {
+            if padding_done {
+                raise ValueError("Excess data after padding");
+            }
+            raise ValueError("Discontinuous padding not allowed");
+        }
+        pads = 0;
+        datachars += 1;
+        acc = (acc << 6) | v;
+        quad_pos += 1;
+        if quad_pos == 4 {
+            out.append((acc >> 16) & 255);
+            out.append((acc >> 8) & 255);
+            out.append(acc & 255);
+            acc = 0;
+            quad_pos = 0;
+        }
+        i += 1;
+    }
+    if quad_pos == 1 {
+        raise ValueError(
+            "Invalid base64-encoded string: number of data characters (" + str(
+                datachars
+            ) + ") cannot be 1 more than a multiple of 4"
+        );
+    }
+    if quad_pos >= 2 {
+        if quad_pos + pads >= 4 {
+            if quad_pos == 2 {
+                out.append((acc >> 4) & 255);
+            } else {
+                out.append((acc >> 10) & 255);
+                out.append((acc >> 2) & 255);
+            }
+        } else {
+            raise ValueError("Incorrect padding");
+        }
+    }
+    return bytes(out);
+}
+
+
 def:pub b64encode(s: bytes, altchars: bytes = b"") -> bytes {
     return _encode_bits(s, _b64_alphabet(altchars), 6, 4);
 }
 
 
-def:pub b64decode(s: bytes, altchars: bytes = b"") -> bytes {
-    if len(altchars) == 0 {
-        return _decode_bits(s, _rev_for(_B64, _rev_b64), 6);
+def:pub b64decode(s: bytes, altchars: bytes = b"", validate: bool = False) -> bytes {
+    rev: list[int] = _rev_for(_B64, _rev_b64);
+    if len(altchars) != 0 {
+        if len(altchars) != 2 {
+            raise ValueError("altchars must be exactly 2 bytes");
+        }
+        rev = _copy_rev(rev);
+        rev[altchars[0]] = 62;
+        rev[altchars[1]] = 63;
     }
-    return _decode_bits(s, _make_rev(_b64_alphabet(altchars)), 6);
+    return _b64_decode_core(s, rev, validate);
 }
 
 
@@ -182,13 +324,28 @@ def:pub standard_b64decode(s: bytes) -> bytes {
 }
 
 
+def _rev_urlsafe_for(cache: list[int]) -> list[int] {
+    if len(cache) == 0 {
+        built: list[int] = _copy_rev(_rev_for(_B64, _rev_b64));
+        built[45] = 62;
+        built[95] = 63;
+        k: int = 0;
+        while k < 256 {
+            cache.append(built[k]);
+            k += 1;
+        }
+    }
+    return cache;
+}
+
+
 def:pub urlsafe_b64encode(s: bytes) -> bytes {
     return b64encode(s, b"-_");
 }
 
 
 def:pub urlsafe_b64decode(s: bytes) -> bytes {
-    return b64decode(s, b"-_");
+    return _b64_decode_core(s, _rev_urlsafe_for(_rev_b64url), False);
 }
 
 
@@ -249,7 +406,7 @@ def:pub b85decode(b: bytes) -> bytes {
             }
             v: int = rev[c];
             if v < 0 {
-                raise ValueError("bad base85 character: " + str(c));
+                raise ValueError("bad base85 character at position " + str(i + j));
             }
             acc = acc * 85 + v;
             j += 1;
