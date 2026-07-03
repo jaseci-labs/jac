@@ -8,7 +8,7 @@ This tutorial walks through splitting a tiny app into two services, running the 
 >
 > - Completed: [Local API Server](local.md)
 > - Time: ~20 minutes
-> - Reference: [Microservice Interop](../../reference/plugins/jac-scale.md#microservice-interop-sv-to-sv) in the Scale reference
+> - Reference: [Microservice Interop](../../reference/plugins/jac-scale-http.md#microservice-interop-sv-to-sv) in the Scale reference
 
 ---
 
@@ -231,7 +231,7 @@ A few things to know:
 - **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary there's no useful concept of an unexecuted remote walker, so instantiating a sv-imported walker is **spawn-and-execute** and always returns a post-execution instance.
 - **`walker:pub` only.** Private walkers don't get an endpoint. The same 404 you'd see for non-public functions also fires for non-public walkers.
 - **Boundary types still flow through.** A walker that emits an `obj` value via `report` comes back as that type, not as a raw dict, as long as the type is also listed in the `sv import`.
-- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls. See the [Scale reference](../../reference/plugins/jac-scale.md#walker-imports) for the full contract.
+- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls. See the [Scale reference](../../reference/plugins/jac-scale-http.md#walker-imports) for the full contract.
 
 ---
 
@@ -344,7 +344,7 @@ The gateway exposes a standard error envelope (`{ok, error: {code, message, serv
 | Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s |
 | CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
 | Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
-| Centralised logs (Loki + Alloy) | `[...logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale.md#centralised-logs) for the deployed components, dashboard, and storage caveats |
+| Centralised logs (Loki + Alloy) | `[...logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale-kubernetes.md#centralised-logs) for the deployed components, dashboard, and storage caveats |
 
 WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently -- no config. On `SIGTERM` (or `jac scale stop`), each service flips a drain flag (new requests get `503` with `Retry-After: 2`) and uvicorn waits up to `drain_timeout_seconds` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
 
@@ -450,6 +450,6 @@ Two services that read like a single program. The split happens at deploy time, 
 
 ## Next Steps
 
-- [Microservice Interop reference](../../reference/plugins/jac-scale.md#microservice-interop-sv-to-sv) for the resolution chain, `sv_client` API, and plugin hook details.
+- [Microservice Interop reference](../../reference/plugins/jac-scale-http.md#microservice-interop-sv-to-sv) for the resolution chain, `sv_client` API, and plugin hook details.
 - [Kubernetes tutorial](kubernetes.md) for the full deployment pipeline that packages each service into its own image.
 - [Backend Integration](../fullstack/backend.md) for the cl-to-sv flavor of `sv import`, where a browser client calls a server.

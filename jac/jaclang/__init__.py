@@ -156,6 +156,34 @@ def _register_builtin_mcp_provider() -> None:
 
 _register_builtin_mcp_provider()
 
+
+def _register_builtin_byllm_provider() -> None:
+    """Register the built-in byLLM provider (the ``by llm()`` feature).
+
+    This shipped as the separate ``jac-byllm`` plugin; it is now part of core and
+    registers directly (no entry point, no separate package). All heavy
+    third-party imports (litellm/openai/pydantic/pillow/loguru) are deferred behind
+    ``jaclang.byllm._optdeps`` shims and a ``require_optional`` guard in
+    ``Model.postinit``, so this registration never pulls the ``llm`` capability
+    closure at ``import jaclang`` time; those deps arrive in the project
+    ``.jac/venv`` via the capability registry when ``[plugins.byllm]`` is declared.
+    """
+    try:
+        from jaclang.byllm.cli import JacCmd
+        from jaclang.byllm.plugin import JacRuntime as JacByllmRuntime
+        from jaclang.byllm.plugin_config import JacByllmPluginConfig
+    except Exception as exc:  # keep core usable if byllm fails to import
+        import warnings
+
+        warnings.warn(f"Built-in byLLM provider unavailable: {exc}", stacklevel=2)
+        return
+    for _provider in (JacByllmRuntime, JacCmd, JacByllmPluginConfig):
+        if not plugin_manager.is_registered(_provider):
+            plugin_manager.register(_provider)
+
+
+_register_builtin_byllm_provider()
+
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:
     from jaclang.project.config import get_config as _get_jac_config

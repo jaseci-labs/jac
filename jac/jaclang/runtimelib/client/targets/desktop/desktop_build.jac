@@ -185,47 +185,6 @@ def _jac_bin -> str {
     raise RuntimeError("jac CLI not found on PATH.");
 }
 
-def _loopback_serve_py(
-    app_name: str,
-    plugin_bootstrap: str = "",
-    dispatch_arg: str = "",
-    threaded: bool = False,
-    sv_arg: str = ""
-) -> str {
-    pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-
-    srv_setup = (
-        "_S = socketserver.ThreadingTCPServer\n_S.daemon_threads = True\n"
-            if threaded
-            else "_S = socketserver.TCPServer\n"
-    );
-    return (
-        "import os, sys, socketserver, threading\n" + srv_setup + "if os.path.isfile('/proc/self/exe'):\n"
-        "    _exe = os.path.realpath('/proc/self/exe')\n"
-        "else:\n"
-        "    _exe = os.path.abspath(sys.argv[0])\n"
-        "_root = os.path.dirname(_exe)\n"
-        "_dir = os.path.join(_root, 'dist')\n"
-        "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker as _broker\n" + plugin_bootstrap + "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n" + "_H = _broker.make_handler(_dir, _store" + dispatch_arg + sv_arg + ")\n" + "_S.allow_reuse_address = True\n"
-        f"_pref = {pref_port}\n"
-        "_srv = None; _port = None\n"
-        "for _i in range(64):\n"
-        "    try:\n"
-        "        _srv = _S(('127.0.0.1', _pref + _i), _H)\n"
-        "        _port = _pref + _i; break\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "if _srv is None:\n"
-        "    _srv = _S(('127.0.0.1', 0), _H)\n"
-        "    _port = _srv.server_address[1]\n"
-        "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
-        "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
-    );
-}
-
-
 def _cef_bootstrap_js -> str {
     src = (_find_cef_dir() / "cef_dispatch.na.jac").read_text();
     anchor = "glob BOOTSTRAP_JS: str = \"";

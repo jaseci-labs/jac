@@ -46,6 +46,7 @@ obj UserManager {
     def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
     def validate_token(token: str) -> (str | None);
     def get_root_id(username: str) -> (str | None);
+    def reset_root(username: str) -> (str | None);
     def get_user(username: str) -> (dict[(str, str)] | None);
     def user_exists(username: str) -> bool;
     def update_username(current_username: str, new_username: str) -> dict[str, str];

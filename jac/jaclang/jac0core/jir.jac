@@ -134,6 +134,25 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     return result;
 }
 
+glob _client_kind_probe_active: bool = False;
+
+def _module_client_kind(source_path: str) -> str {
+    global _client_kind_probe_active;
+    if _client_kind_probe_active {
+        return "web";
+    }
+    _client_kind_probe_active = True;
+    try {
+        import from jaclang.project.client_kind { resolve_client_kind_context }
+        (kind, _) = resolve_client_kind_context(source_path);
+        return kind;
+    } except Exception {
+        return "web";
+    } finally {
+        _client_kind_probe_active = False;
+    }
+}
+
 def compute_module_key(source_path: str) -> str {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -145,6 +164,7 @@ def compute_module_key(source_path: str) -> str {
     h.update(jac_ver.encode());
     h.update(struct.pack('<H', (sys.version_info.major << 8) | sys.version_info.minor));
     h.update(struct.pack('<H', FORMAT_VERSION));
+    h.update(_module_client_kind(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
     for (rel, digest) in _related_files(source_path) {
         h.update(rel.encode());

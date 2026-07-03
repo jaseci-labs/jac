@@ -1,3 +1,4 @@
+import os;
 import from jaclang.scale.runtime.context.tracing { start_memory_span, end_memory_span }
 import from jaclang.runtimelib.exceptions { WriteConflict }
 
@@ -338,6 +339,17 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
                 else None
         );
         if cls_resolved is None {
+            # A sibling service pod is EXPECTED to lack peer services'
+            # archetype classes in a shared store -- skip without mutating the
+            # shared collection; quarantining would poison it for the owner.
+            if os.environ.get("JAC_SV_SIBLING") == "1" {
+                logger.debug(
+                    f"MongoBackend: class {arch_module}.{arch_type} not "
+                    f"loaded in this sibling service; skipping anchor {id} "
+                    "(owned by a peer service)."
+                );
+                return None;
+            }
             reason = f"class {arch_module}.{arch_type} unresolvable";
             code = 'CLASS_MISSING';
             logger.warning(

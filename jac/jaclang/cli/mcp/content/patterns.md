@@ -161,7 +161,7 @@ with entry {
 ```jac
 """Using by llm() for AI-powered functions."""
 
-import from byllm.llm { Model }
+import from jaclang.byllm.llm { Model }
 
 glob model = Model(model_name="openai/gpt-4o-mini");
 

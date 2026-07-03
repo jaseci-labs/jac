@@ -1,16 +1,21 @@
 import json;
 import os;
-import shutil;
-import socket;
 import subprocess;
 import from pathlib { Path }
 import from typing { Any, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jaclang.runtimelib.client.config_loader { JacClientConfig }
-import from jaclang.runtimelib.client.targets.mobile.common {
-    SUBPROCESS_TIMEOUT_SHORT,
-    _resolve_npx
+import from jaclang.runtimelib.client.targets.mobile.common { SUBPROCESS_TIMEOUT_SHORT }
+import from jaclang.runtimelib.client.targets.node_tooling_common {
+    resolve_node_runner
+}
+import from jaclang.runtimelib.client.targets.client_dev_common {
+    assert_port_available,
+    ensure_watchdog_common,
+    invalidate_runtime_module_cache,
+    setup_android_port_reverse_common,
+    start_backend_server_common
 }
 
 def _get_api_base_url_str(project_dir: Path) -> str {
@@ -19,21 +24,15 @@ def _get_api_base_url_str(project_dir: Path) -> str {
 }
 
 def _assert_mobile_port_available(port: int, role: str) {
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
-    try {
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
-        s.bind(("0.0.0.0", port));
-    } except OSError as e {
-        raise RuntimeError(
-            f"{role} port {port} is already in use ({e}). Mobile dev needs "
-            "deterministic ports so adb reverse and capacitor.config.json "
-            "match what the server actually binds. Stop the conflicting "
-            f"process, choose a different port (e.g. --port {port + 100}), "
-            f"or set [plugins.client].vite.server.port in jac.toml."
-        );
-    } finally {
-        s.close();
-    }
+    assert_port_available(
+        port,
+        role,
+        "Mobile dev needs deterministic ports so adb reverse and "
+        "capacitor.config.json match what the server actually binds. Stop "
+        "the conflicting process, choose a different port "
+        f"(e.g. --port {port + 100}), or set "
+        "[plugins.client].vite.server.port in jac.toml."
+    );
 }
 
 def _warn_mobile_dev_api_url(project_dir: Path) {
@@ -56,87 +55,15 @@ def _mobile_read_dev_env -> tuple[str, str] {
 }
 
 def _mobile_setup_android_port_reverse(vite_port: int, server_port: int) {
-    if not shutil.which("adb") {
-        return;
-    }
-
-    def _try_adb_reverse_port(port: int) {
-        cmd = ["adb", "reverse", f"tcp:{port}", f"tcp:{port}"];
-        try {
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=SUBPROCESS_TIMEOUT_SHORT,
-                check=False
-            );
-            if result.returncode == 0 {
-                console.print(
-                    f"  ✔ adb reverse tcp:{port} tcp:{port}", style="success"
-                );
-            } else {
-                err = (result.stderr or "").strip() or "unknown adb error";
-                console.warning(f"  ⚠ adb reverse failed for tcp:{port} ({err})");
-            }
-        } except Exception as e {
-            console.warning(f"  ⚠ adb reverse failed for tcp:{port} ({e})");
-        }
-    }
-
-    _try_adb_reverse_port(vite_port);
+    ports = [vite_port];
     if server_port != vite_port {
-        _try_adb_reverse_port(server_port);
+        ports.append(server_port);
     }
+    setup_android_port_reverse_common(ports, timeout=SUBPROCESS_TIMEOUT_SHORT);
 }
 
 def _mobile_ensure_watchdog -> bool {
-    try {
-        import watchdog;
-        return True;
-    } except ImportError {
-        console.warning(
-            "  watchdog not installed - saving .jac files will not refresh the WebView. "
-            "Install with: pip install 'watchdog>=3.0.0' (or add to [dev-dependencies]).",
-            style="muted"
-        );
-        return False;
-    }
-}
-
-def _mobile_invalidate_runtime_module_cache(paths: list[str]) -> None {
-    try {
-        import from jaclang { JacRuntime as Jac }
-        program = Jac.program;
-        if not program or not program.mod or not program.mod.hub {
-            return;
-        }
-        hub = program.mod.hub;
-        norm_targets: set[str] = set();
-        for p in paths {
-            if not p {
-                continue;
-            }
-            try {
-                norm_targets.add(os.path.normcase(str(Path(p).resolve())));
-            } except Exception {
-                norm_targets.add(os.path.normcase(str(p)));
-            }
-        }
-        if not norm_targets {
-            return;
-        }
-        to_delete: list[str] = [];
-        for k in list(hub.keys()) {
-            if os.path.normcase(str(k)) in norm_targets {
-                to_delete.append(k);
-            }
-        }
-        for k in to_delete {
-            del hub[k];
-        }
-    } except Exception {
-        return;
-    }
+    return ensure_watchdog_common("the WebView");
 }
 
 def _mobile_hmr_on_jac_changed(
@@ -155,7 +82,7 @@ def _mobile_hmr_on_jac_changed(
         } except ValueError {
             return;
         }
-        _mobile_invalidate_runtime_module_cache([pth, str(entry_file)]);
+        invalidate_runtime_module_cache([pth, str(entry_file)]);
         compile_out = cast(Any, compiler.jac_compiler.compile_module(entry_file));
         mod2 = compile_out[1];
         if not mod2 {
@@ -175,22 +102,7 @@ def _mobile_hmr_on_jac_changed(
 def _mobile_start_backend_server(
     entry_file: Path, project_dir: Path, port: int
 ) -> any {
-    import sys;
-    return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "jaclang",
-            "start",
-            str(entry_file),
-            "--port",
-            str(port),
-            "--no_client"
-        ],
-        cwd=str(project_dir),
-        stdout=None,
-        stderr=None
-    );
+    return start_backend_server_common(entry_file, project_dir, port);
 }
 
 def _inject_capacitor_dev_url(project_dir: Path, dev_url: str) -> str | None {
@@ -228,8 +140,7 @@ def _restore_capacitor_config(project_dir: Path, original: str | None) -> None {
 def _run_cap_run_live_reload(
     project_dir: Path, plat: str, _lr_host: str, _lr_port: int
 ) -> int {
-    npx = _resolve_npx();
-    cmd = [npx, "cap", "run", plat];
+    cmd = resolve_node_runner() + ["cap", "run", plat];
     console.print(f"  Running: {' '.join(cmd)}", style="muted");
     console.print("  (Press Ctrl+C to stop)\n", style="muted");
     result = subprocess.run(cmd, cwd=project_dir, check=False);

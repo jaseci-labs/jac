@@ -1,0 +1,325 @@
+name: Release
+
+# The release lifecycle in one workflow:
+#   - action=create-pr (dispatch): bump versions and open the release PR.
+#   - merge of a release/* PR (or action=publish): tag, cut the GitHub Release,
+#     and build + attach the native binaries (build-binaries.yml).
+#   - action=create-github-release (dispatch): recovery -- cut a bare Release
+#     for an existing version; binaries attach via the release.published event.
+# jaclang ships as the native `jac` binary, not PyPI.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        type: choice
+        default: publish
+        options: [publish, create-pr, create-github-release]
+      jaclang:
+        description: "[create-pr] jaclang bump (the native binary / release anchor)"
+        type: choice
+        default: skip
+        options: [skip, patch, minor, major]
+      version:
+        description: "[create-github-release] version (reads jac/jac.toml if empty)"
+        required: false
+        type: string
+
+permissions: {}
+
+jobs:
+  create-release-pr:
+    if: >-
+      github.repository == 'Jaseci-Labs/jaseci' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.action == 'create-pr'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          submodules: true
+
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Validate versions against PyPI
+        run: |
+          jac run scripts/validate_release.jac \
+            --jaclang "${{ inputs.jaclang }}"
+
+      - name: Bump versions
+        id: release
+        run: |
+          jac run scripts/release.jac \
+            --jaclang "${{ inputs.jaclang }}"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create branch and commit
+        env:
+          BRANCH_NAME: ${{ steps.release.outputs.branch_name }}
+          MODIFIED_FILES: ${{ steps.release.outputs.modified_files }}
+          PR_TITLE: ${{ steps.release.outputs.pr_title }}
+        run: |
+          git checkout -b "$BRANCH_NAME"
+          git add -A
+          git commit -m "$PR_TITLE"
+          git push origin "$BRANCH_NAME"
+
+      - name: Create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_TITLE: ${{ steps.release.outputs.pr_title }}
+          PR_BODY: ${{ steps.release.outputs.pr_body }}
+          BRANCH_NAME: ${{ steps.release.outputs.branch_name }}
+        run: |
+          PR_URL=$(gh pr create \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "$BRANCH_NAME")
+          echo "::notice::Release PR created: $PR_URL"
+
+          # GITHUB_TOKEN-authored PRs never trigger CI (GitHub anti-recursion):
+          # a maintainer must close & reopen the PR to attach checks. See
+          # CONTRIBUTING.md "Release Flow".
+          echo "::notice::Close & reopen this PR to run its checks, then enable auto-merge (see CONTRIBUTING.md)"
+
+  resolve:
+    if: |
+      github.repository == 'Jaseci-Labs/jaseci' && (
+        (github.event_name == 'workflow_dispatch' && inputs.action == 'publish') || (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.merged == true &&
+          startsWith(github.event.pull_request.head.ref, 'release/')
+        )
+      )
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      summary: ${{ steps.ver.outputs.summary }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # jac/jac.toml is the source of truth for the jaclang version.
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          VERSION="$(grep -m1 '^version' jac/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read version from jac/jac.toml"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "summary=jaclang $VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: $VERSION"
+
+  # Human approval gate (release-approval environment required reviewers).
+  approve:
+    needs: resolve
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    environment: release-approval
+    timeout-minutes: 60
+    steps:
+      # Fail closed: a nonexistent environment is auto-created with NO
+      # protection rules, so verify required reviewers actually exist.
+      - name: Verify the gate has required reviewers
+        run: |
+          set -euo pipefail
+          rules="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPOSITORY}/environments/release-approval" \
+            | jq '[.protection_rules[]? | select(.type=="required_reviewers")] | length')"
+          if [ "${rules:-0}" -eq 0 ]; then
+            echo "::error::The release-approval environment has no required reviewers configured; refusing to release without a human gate. Configure reviewers on the environment (Settings -> Environments) and re-run."
+            exit 1
+          fi
+          echo "release-approval has required reviewers; gate is real."
+
+      - name: Approval granted
+        env:
+          SUMMARY: ${{ needs.resolve.outputs.summary }}
+        run: |
+          echo "Release approved: $SUMMARY"
+
+  # Idempotent tag + Release so a recovery re-run converges.
+  tag-and-release:
+    needs: [resolve, approve]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # SHA-pinned: contents:write + persisted credentials push the release tag.
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Never move an existing tag: a published release's assets and notes
+      # describe the commit it was cut from.
+      - name: Create and push tag
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          VTAG="v${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${VTAG}" >/dev/null 2>&1; then
+            echo "Tag ${VTAG} already exists; leaving it in place."
+          else
+            echo "Tagging ${VTAG} at ${GITHUB_SHA}"
+            git tag --annotate --message="jaclang ${VERSION}" "$VTAG" "$GITHUB_SHA"
+            git push origin "refs/tags/${VTAG}"
+          fi
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SUMMARY: ${{ needs.resolve.outputs.summary }}
+        run: |
+          set -euo pipefail
+          VTAG="v${VERSION}"
+
+          {
+            echo "## jaclang ${VERSION} (native \`jac\` binary)"
+            echo ""
+            echo "Install: \`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash\`"
+          } > release_notes.md
+
+          if gh release view "$VTAG" >/dev/null 2>&1; then
+            echo "Release $VTAG exists; updating in place."
+            gh release edit "$VTAG" \
+              --verify-tag \
+              --latest \
+              --title "Release: $SUMMARY" \
+              --notes-file release_notes.md
+          else
+            echo "Creating release $VTAG."
+            gh release create "$VTAG" \
+              --verify-tag \
+              --latest \
+              --title "Release: $SUMMARY" \
+              --notes-file release_notes.md
+          fi
+
+  # Invoked directly (not via release.published: GITHUB_TOKEN can't fire that
+  # event into another workflow).
+  build-binaries:
+    needs: [resolve, tag-and-release]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-binaries.yml
+    with:
+      tag: v${{ needs.resolve.outputs.version }}
+
+  summary:
+    needs: [resolve, tag-and-release, build-binaries]
+    if: always() && needs.resolve.result == 'success'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Release summary
+        env:
+          SUMMARY: ${{ needs.resolve.outputs.summary }}
+          RELEASE: ${{ needs.tag-and-release.result }}
+          BINARIES: ${{ needs.build-binaries.result }}
+        run: |
+          {
+            echo "## Release: $SUMMARY"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Tag + GitHub Release | $RELEASE |"
+            echo "| Native binaries | $BINARIES |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$RELEASE" != "success" ] || [ "$BINARIES" != "success" ]; then
+            echo "::error::Release did not complete (tag/release: $RELEASE, binaries: $BINARIES)"
+            exit 1
+          fi
+
+  # Recovery: cut a bare GitHub Release for an existing version. Binaries
+  # attach via the release.published event (real-user token fires it).
+  create-github-release:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.action == 'create-github-release'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="$(grep -m1 '^version' jac/jac.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Check if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" &>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release v${{ steps.version.outputs.version }} already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "Jac v${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --latest
+          echo "Created release v${{ steps.version.outputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "## Release v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
+            echo "Release already existed — no action taken." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "GitHub Release created. The native \`jac\` binary build is triggered by the release-publish event (build-binaries.yml)." >> "$GITHUB_STEP_SUMMARY"
+          fi
