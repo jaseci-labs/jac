@@ -361,7 +361,6 @@ def write_precompiled_jir(
     return header + empty_payload + section_bytes;
 }
 
-# Source text from a JIR's optional debug section (sealed dev builds).
 def read_debug_source(data: bytes) -> (str | None) {
     try {
         magic_bytes: any = SECTIONS_MAGIC;

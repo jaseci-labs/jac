@@ -1348,38 +1348,40 @@ def _bundle_wheel(config: any, output: str) -> int {
     return 0;
 }
 
-# shutil.copytree ignore callback: drop caches, VCS, and build-output dirs from
-# the seal staging copy (the output dir lives under the project, so copying it
-# back in would recurse; env/build trees are irrelevant to the sealed image).
 def _seal_copy_ignore(_dir: str, items: list) -> list {
-    drop = ["__pycache__", "node_modules", ".jac", "_precompiled", ".git", ".venv", "venv", "dist", "build", ".mypy_cache", ".pytest_cache"];
-    return [it for it in items if it in drop or it.endswith("-seal-stage")];
+    drop = [
+        "__pycache__",
+        "node_modules",
+        ".jac",
+        "_precompiled",
+        ".git",
+        ".venv",
+        "venv",
+        "dist",
+        "build",
+        ".mypy_cache",
+        ".pytest_cache"
+    ];
+    return [
+        it
+        for it in items
+        if it in drop or it.endswith("-seal-stage")
+    ];
 }
 
-# Run the precompiler over `src_dir` with `flags`; returns its exit code.
-# Invokes it as a MODULE, not a file: in a sealed jac binary its own .jac source
-# is stripped, but it is importable from the sealed image. Worker mode (`jac -c`)
-# runs plain Python; set argv and call main().
 def _run_precompiler(src_dir: str, flags: list[str]) -> int {
     import sys;
     import subprocess;
-    # Install the jac finder (and dev-source override) first, exactly as the
-    # payload build's precompile boot does -- worker mode does not run the CLI
-    # boot that would otherwise set this up.
+
     code = (
         "import _jac_finder as _jf; _jf.apply_dev_source_override(); _jf.install(); "
-        "import sys; sys.argv = ['precompile', " + repr(src_dir) + "] + "
-        + repr(list(flags))
-        + "; from jaclang.utils.precompile_bytecode import main; main()"
+        "import sys; sys.argv = ['precompile', " + repr(src_dir) + "] + " + repr(
+            list(flags)
+        ) + "; from jaclang.utils.precompile_bytecode import main; main()"
     );
     return subprocess.call([sys.executable, "-c", code]);
 }
 
-# Build a source-free *sealed image* of the project package into
-# `<parent>/<name>/` and return that package dir (or None on failure). The image
-# is the same manifest+JIR format the jac runtime itself is sealed with, so it
-# loads via the runtime's SealedImageFinder. Seals a COPY so the project's own
-# sources are never stripped.
 def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
     import shutil;
     import tempfile;
@@ -1390,13 +1392,12 @@ def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
         console.error("No project root to seal.");
         return None;
     }
-    # Stage OUTSIDE the project tree: the output dir lives under the project, so
-    # staging there would make the copytree re-include its own destination.
+
     stage = Path(tempfile.mkdtemp(prefix=f"{name}-seal-"));
     try {
         pkg_copy = stage / name;
         shutil.copytree(proj_root, pkg_copy, ignore=_seal_copy_ignore);
-        # A package needs an __init__; synthesize one if the project omits it.
+
         has_init = any((pkg_copy / f).exists() for f in ext_registry.INIT_FILES);
         if not has_init and not (pkg_copy / "__init__.py").exists() {
             (pkg_copy / "__init__.jac").write_text("");
@@ -1420,8 +1421,6 @@ def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
     }
 }
 
-# `jac bundle --target sealed`: a portable source-free package (drop-in
-# `_precompiled/`-bearing dir) a host jac can `register_image()` + import.
 def _bundle_sealed(config: any, output: str) -> int {
     name = config.project.name;
     Path(output).mkdir(parents=True, exist_ok=True);
@@ -1441,13 +1440,6 @@ def _bundle_sealed(config: any, output: str) -> int {
     return 0;
 }
 
-# `jac bundle --target binary`: seal the app, then wrap it onto a copy of the
-# running (sealed) jac binary as a self-contained executable. The running binary
-# is `[stub][runtime.tar.gz][JACBIN01 trailer]`; we rebuild the gzip'd tar with
-# the app's sealed image staged under `site/<app>/` plus a `site/jac_app.json`
-# boot marker, then re-emit `[stub][payload][trailer]`. cli_boot honors the
-# marker (register_image + runpy the entry). No zig toolchain needed at bundle
-# time -- pure trailer surgery on the donor binary.
 def _bundle_binary(config: any, output: str) -> int {
     import sys;
     import os;
@@ -1486,7 +1478,6 @@ def _bundle_binary(config: any, output: str) -> int {
             return 1;
         }
 
-        # Explode the donor runtime payload, splice in the app + boot marker.
         console.print("  Unpacking runtime payload...", style="muted");
         stage = work / "stage";
         with tarfile.open(fileobj=io.BytesIO(gzip.decompress(_payload))) as tf {
@@ -1519,12 +1510,13 @@ def _bundle_binary(config: any, output: str) -> int {
         f"({out_bin.stat().st_size:,} bytes)",
         style="success"
     );
-    console.print(f"  Run it directly: ./{out_bin.relative_to(Path.cwd())} (or {out_bin})", style="muted");
+    console.print(
+        f"  Run it directly: ./{out_bin.relative_to(Path.cwd())} (or {out_bin})",
+        style="muted"
+    );
     return 0;
 }
 
-# Split a jac single binary into (stub, gzip'd tar payload), or (None, None) when
-# it is not a JACBIN01-trailered bundle (dev / link-source donors have none).
 def _split_jac_binary(path: str) -> tuple {
     import struct;
     with open(path, "rb") as f {
@@ -1542,7 +1534,6 @@ def _split_jac_binary(path: str) -> tuple {
     return (data[:start], data[start:end]);
 }
 
-# Deterministic gzip'd tar of `top`'s contents (sorted, fixed mtime) -> bytes.
 def _tar_gz_dir(top: Path) -> bytes {
     import io;
     import gzip;
@@ -1561,10 +1552,6 @@ def _tar_gz_dir(top: Path) -> bytes {
     return gzip.compress(buf.getvalue(), 6, mtime=0);
 }
 
-# Pick the app entry module: the project's configured entry-point (jac.toml
-# [project] entry-point, e.g. "main.jac" -> <pkg>.main) when its module is in the
-# image; else a conventional top-level main/app/__main__; else the package itself
-# (runs its __init__ entry).
 def _app_entry_module(img: Path, name: str, entry_point: str) -> str {
     import from jaclang.jac0core { ext_registry }
     configured = ext_registry.base_stem(entry_point) if entry_point else "";

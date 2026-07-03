@@ -240,7 +240,11 @@ impl AstTool.pass_template -> str {
 
 impl AstTool.init -> None {
     module = sys.modules[uni.__name__];
-    source_code = inspect.getsource(module);
+    try {
+        source_code = inspect.getsource(module);
+    } except (OSError, TypeError) {
+        source_code = "";
+    }
     classes = inspect.getmembers(module, inspect.isclass);
     uni_node_classes = [
         UniNodeInfo(cls)

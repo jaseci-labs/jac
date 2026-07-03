@@ -142,20 +142,11 @@ impl JacCompiler.get_bytecode(
         }
     }
 
-    # Precompiled/sealed bundle lookup. A sealed bundle is source-free and
-    # authoritative, so it applies even under the rebuild/no_precompile dev
-    # knobs (both presuppose a source to recompile); an unsealed cache honors
-    # them.
     allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled_bc = self._get_precompiled_jir_bytecode(
-        full_target, allow_unsealed
-    );
+    precompiled_bc = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
     if precompiled_bc is not None {
         try {
-            import from jaclang.jac0core.jir {
-                write_precompiled_jir,
-                FLAG_PRECOMPILED
-            }
+            import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
             jir_bytes = write_precompiled_jir(
                 precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
             );
@@ -430,9 +421,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
             rel_path = norm_file[len(norm_root) + 1:];
             jir_rel = os.path.splitext(rel_path)[0] + '.jir';
             jir_path = os.path.join(bundle_dir, pyver, jir_rel);
-            # A sealed bundle is trusted by its build-time manifest and applies
-            # unconditionally (it has no source to recompile); an unsealed cache
-            # must re-hash the on-disk source and defers to the caller's knobs.
+
             sealed_img = _sealed.image_for_bundle_dir(bundle_dir);
             if sealed_img is None and not allow_unsealed {
                 break;
