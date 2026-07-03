@@ -286,6 +286,13 @@ for dep in $(kubectl get deployments -n "${NAMESPACE}" -l managed=jac-scale -o n
 done
 
 _t "pods Ready"
+
+echo "=== first-boot compile stats (jir-seed adoption per pod) ==="
+for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
+    line=$(kubectl logs -n "${NAMESPACE}" "${pod}" -c jac-bootstrap 2>/dev/null \
+        | grep -E "adopted [0-9]+ host-precompiled|modules compiled and cached" | tail -2)
+    [ -n "${line}" ] && echo "  ${pod}: $(echo "${line}" | tr '\n' ' ')"
+done
 echo "=== port-forward gateway + curl /health ==="
 GATEWAY_LOCAL_PORT="${GATEWAY_LOCAL_PORT:-18000}"
 kubectl port-forward -n "${NAMESPACE}" svc/gateway-service "${GATEWAY_LOCAL_PORT}:8000" >/dev/null 2>&1 &
