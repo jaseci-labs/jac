@@ -46,19 +46,32 @@ bundled one. A bundled module links through the existing cross-module machinery
   bundled `zlib` floor (no new FFI): `compress(data, compresslevel=9, mtime=0)`
   and `decompress(data)`. gzip is zlib's DEFLATE engine plus an RFC 1952 header,
   CRC-32, and ISIZE trailer, so the surface reuses the `zlib` floor's one-shot
-  `compress2` / `uncompress`. `compress` takes the raw DEFLATE body (the zlib
+  `compress2` / `uncompress2`. `compress` takes the raw DEFLATE body (the zlib
   stream with its 2-byte header + 4-byte adler32 stripped -- the DEFLATE bytes
   are identical under either frame) and wraps it; the result is byte-identical
-  to CPython's `gzip.compress` at the same level/`mtime` (XFL 2/4/0 for level
-  9/1/other, OS byte 255). `decompress` parses the header (incl. the FEXTRA /
-  FNAME / FCOMMENT / FHCRC flags), re-wraps the DEFLATE body as a zlib stream
-  with a placeholder adler32, inflates it through `uncompress` (which fills the
-  output then rejects only the bogus trailer), and re-validates with gzip's own
-  CRC-32 + ISIZE -- the canonical gzip integrity check. Two documented
-  divergences: `mtime` defaults to `0` (reproducible) rather than CPython's
-  wall-clock default, and `decompress` reads a single gzip member (CPython
-  additionally concatenates trailing members). The `GzipFile` class and
-  streaming file API are out of scope.
+  to CPython's `gzip.compress` at the same level/`mtime` (XFL 2 for level 9,
+  4 for level < 2, 0 otherwise -- zlib's gzip-header rule, which CPython
+  reuses -- and OS byte 255; CPython 3.14 also defaults `mtime` to 0, so the
+  defaults agree byte-for-byte). `decompress` walks the members of the stream
+  exactly as CPython does: per member it parses the header (honoring the
+  FEXTRA / FNAME / FCOMMENT skips; the 2 FHCRC bytes are skipped unverified,
+  which is also CPython's behavior), re-frames the remaining input as a zlib
+  stream so the member's own trailer bytes stand in for the adler32, inflates
+  through `uncompress2` -- whose consumed-source count locates the member
+  boundary; the near-certain final adler mismatch (`Z_DATA_ERROR`) and the
+  2^-32 coincidence where the trailer bytes equal the output's adler32
+  (`Z_OK`) are both accepted -- then enforces gzip's own CRC-32 and ISIZE
+  (compared mod 2^32, per RFC 1952, so members over 4 GiB verify the same way
+  CPython does) before concatenating the member outputs. The output buffer
+  starts at the final-ISIZE hint and grows geometrically on `Z_BUF_ERROR` up
+  to DEFLATE's ~1032x expansion ceiling. A member with no end-of-stream
+  marker (including a bare header glued onto a trailer) raises, as does
+  trailing garbage after the last member -- matching CPython. Error-type
+  mapping: the native surface raises `ValueError` with static messages where
+  CPython raises `gzip.BadGzipFile` (an `OSError` subclass: bad magic /
+  unknown method / CRC / length), `EOFError` (truncation), or `zlib.error`
+  (corrupt DEFLATE data). The `GzipFile` class and streaming file API are out
+  of scope.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the
