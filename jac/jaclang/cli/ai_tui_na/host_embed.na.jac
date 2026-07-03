@@ -138,13 +138,15 @@ def _run_embed -> None {
 
     ts: int = jpy_PyEval_SaveThread();
 
-    while tui_loop_once(rt) { }
-
-    jpy_PyEval_RestoreThread(ts);
-    jpy_PyRun_SimpleString("_agent_stop()");
-    tui_leave_screen(state);
-    tty_close();
-    jpy_Py_Finalize();
+    try {
+        while tui_loop_once(rt) { }
+    } finally {
+        jpy_PyEval_RestoreThread(ts);
+        jpy_PyRun_SimpleString("_agent_stop()");
+        tui_leave_screen(state);
+        tty_close();
+        jpy_Py_Finalize();
+    }
 }
 
 
