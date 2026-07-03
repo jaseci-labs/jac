@@ -1,42 +1,7 @@
-import from .state { Event, DisplayRow, TuiState, EventKind }
+import from .state { Event, DisplayRow, TuiState, EventKind, kind_style, RenderMode }
 import from .markdown { md_render }
 import from .tool_block { tool_call_rows, tool_result_rows }
 import from .terminal_image { image_rows, image_fallback }
-
-def event_prefix(ev: Event) -> str {
-    kind = ev.kind;
-    if kind == EventKind.USER {
-        return "> ";
-    }
-    if kind == EventKind.ANSWER {
-        return "  ";
-    }
-    if kind == EventKind.REASONING {
-        return "~ ";
-    }
-    if kind == EventKind.SYSTEM {
-        return "* ";
-    }
-    if kind == EventKind.LOGO {
-        return "";
-    }
-    if kind == EventKind.ERROR {
-        return "! ";
-    }
-    if kind == EventKind.PHASE {
-        return "> ";
-    }
-    if kind == EventKind.CALL {
-        return "# ";
-    }
-    if kind == EventKind.TOOL_RESULT {
-        return "  | ";
-    }
-    if kind == EventKind.IMG {
-        return "  ";
-    }
-    return "  ";
-}
 
 def event_text(ev: Event) -> str {
     kind = ev.kind;
@@ -89,24 +54,11 @@ def _wrap_line(
 
 def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
     kind = ev.kind;
+    style = kind_style(kind);
     body = event_text(ev);
 
-    if kind == EventKind.ANSWER {
-        md_rows = md_render(body, width, 220, 220, 220, 0);
-        i: int = 0;
-        n = len(md_rows);
-        while i < n {
-            out.append(
-                DisplayRow(
-                    text=md_rows[i], kind=kind, is_continuation=i > 0, pre_styled=True
-                )
-            );
-            i = i + 1;
-        }
-        return;
-    }
-    if kind == EventKind.REASONING {
-        md_rows = md_render(body, width, 160, 160, 160, 6);
+    if style.mode == RenderMode.MARKDOWN {
+        md_rows = md_render(body, width, style.r, style.g, style.b, style.attrs);
         i: int = 0;
         n = len(md_rows);
         while i < n {
@@ -120,16 +72,16 @@ def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
         return;
     }
 
-    if kind == EventKind.CALL {
+    if style.mode == RenderMode.TOOL_CALL {
         tool_call_rows(ev.node, body, width, out);
         return;
     }
-    if kind == EventKind.TOOL_RESULT {
+    if style.mode == RenderMode.TOOL_RESULT {
         tool_result_rows(ev.node, body, width, out);
         return;
     }
 
-    if kind == EventKind.IMG {
+    if style.mode == RenderMode.IMAGE {
         img_mime: str = "image/png";
         img_w: int = 0;
         img_h: int = 0;
@@ -166,7 +118,7 @@ def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
         return;
     }
 
-    pre = event_prefix(ev);
+    pre = style.prefix;
     cont = "    ";
     parts = body.split("\n");
     i: int = 0;

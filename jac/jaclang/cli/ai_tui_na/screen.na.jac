@@ -1,4 +1,11 @@
-import from .state { TuiState, DisplayRow, EditorState, EventKind, TuiStatus }
+import from .state {
+    TuiState,
+    DisplayRow,
+    EditorState,
+    EventKind,
+    TuiStatus,
+    kind_style
+}
 import from .feed { build_rows }
 import from .overlay { overlay_build_modal, overlay_composite }
 import from .terminal { ansi_sgr, ansi_reset, term_spaces, term_dashes }
@@ -28,24 +35,12 @@ import from .theme {
     TH_ANSWER_R,
     TH_ANSWER_G,
     TH_ANSWER_B,
-    TH_REASON_R,
-    TH_REASON_G,
-    TH_REASON_B,
-    TH_SYSTEM_R,
-    TH_SYSTEM_G,
-    TH_SYSTEM_B,
-    TH_LOGO_R,
-    TH_LOGO_G,
-    TH_LOGO_B,
     TH_ERROR_R,
     TH_ERROR_G,
     TH_ERROR_B,
     TH_PHASE_R,
     TH_PHASE_G,
     TH_PHASE_B,
-    TH_CALL_R,
-    TH_CALL_G,
-    TH_CALL_B,
     TH_RESULT_R,
     TH_RESULT_G,
     TH_RESULT_B,
@@ -60,7 +55,6 @@ import from .theme {
     TH_AC_DESC_B,
     TH_BOLD,
     TH_DIM,
-    TH_DIM_ITALIC,
     TH_NONE
 }
 
@@ -85,9 +79,6 @@ glob _SB: str = ansi_sgr(
          TH_USER_BG_G,
          TH_USER_BG_B,
          TH_BOLD
-     ),
-     _REASON_MSG: str = ansi_sgr(
-         TH_REASON_R, TH_REASON_G, TH_REASON_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM_ITALIC
      );
 
 glob _AC_SEL: str = ansi_sgr(
@@ -145,50 +136,8 @@ def _cwd_short(cwd: str) -> str {
 }
 
 def _kind_sgr(kind: EventKind) -> str {
-    if kind == EventKind.USER {
-        return ansi_sgr(
-            TH_USER_R, TH_USER_G, TH_USER_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD
-        );
-    }
-    if kind == EventKind.ANSWER {
-        return ansi_sgr(
-            TH_ANSWER_R, TH_ANSWER_G, TH_ANSWER_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_NONE
-        );
-    }
-    if kind == EventKind.REASONING {
-        return _REASON_MSG;
-    }
-    if kind == EventKind.SYSTEM {
-        return ansi_sgr(
-            TH_SYSTEM_R, TH_SYSTEM_G, TH_SYSTEM_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_NONE
-        );
-    }
-    if kind == EventKind.LOGO {
-        return ansi_sgr(
-            TH_LOGO_R, TH_LOGO_G, TH_LOGO_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD
-        );
-    }
-    if kind == EventKind.ERROR {
-        return ansi_sgr(
-            TH_ERROR_R, TH_ERROR_G, TH_ERROR_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD
-        );
-    }
-    if kind == EventKind.PHASE {
-        return ansi_sgr(
-            TH_PHASE_R, TH_PHASE_G, TH_PHASE_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_NONE
-        );
-    }
-    if kind == EventKind.CALL {
-        return ansi_sgr(
-            TH_CALL_R, TH_CALL_G, TH_CALL_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_NONE
-        );
-    }
-    if kind == EventKind.TOOL_RESULT {
-        return ansi_sgr(
-            TH_RESULT_R, TH_RESULT_G, TH_RESULT_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM
-        );
-    }
-    return ansi_sgr(200, 200, 200, TH_BG_R, TH_BG_G, TH_BG_B, TH_NONE);
+    s = kind_style(kind);
+    return ansi_sgr(s.r, s.g, s.b, TH_BG_R, TH_BG_G, TH_BG_B, s.attrs);
 }
 
 def _status_footer_row(state: TuiState, cols: int) -> str {

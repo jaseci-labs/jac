@@ -171,5 +171,5 @@ print(f"   appended {len(suffix)} bytes ([payload]={payload_len} + [trailer]={tl
 PYEOF
 
 echo "==> Done. Self-hosting TUI binary: $SCRIPT_DIR/bin/jac-ai-tui"
-echo "    Boot test (stub agent): ./bin/jac-ai-tui"
-echo "    Real agent:  JAC_AI_TUI_EMBED_REAL=1 ./bin/jac-ai-tui"
+echo "    Boot test (stub agent, no byllm): ./bin/jac-ai-tui"
+echo "    Real agent: set JAC_AI_TUI_BYLLM_SRC + JAC_AI_TUI_DEPS, then ./bin/jac-ai-tui"

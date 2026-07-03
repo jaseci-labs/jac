@@ -32,7 +32,6 @@ impl run_tui_embed(req: AgentRequest) -> int {
 
     _configure_ui_env(r);
     child = dict(os.environ);
-    child["JAC_AI_TUI_EMBED_REAL"] = "1";
 
     seams = _embed_byllm_seams();
     if seams.get("src") {

@@ -1,8 +1,38 @@
 import from .select_list { SelectList }
+import from .theme {
+    TH_USER_R,
+    TH_USER_G,
+    TH_USER_B,
+    TH_ANSWER_R,
+    TH_ANSWER_G,
+    TH_ANSWER_B,
+    TH_REASON_R,
+    TH_REASON_G,
+    TH_REASON_B,
+    TH_SYSTEM_R,
+    TH_SYSTEM_G,
+    TH_SYSTEM_B,
+    TH_LOGO_R,
+    TH_LOGO_G,
+    TH_LOGO_B,
+    TH_ERROR_R,
+    TH_ERROR_G,
+    TH_ERROR_B,
+    TH_PHASE_R,
+    TH_PHASE_G,
+    TH_PHASE_B,
+    TH_CALL_R,
+    TH_CALL_G,
+    TH_CALL_B,
+    TH_RESULT_R,
+    TH_RESULT_G,
+    TH_RESULT_B,
+    TH_NONE,
+    TH_BOLD,
+    TH_DIM,
+    TH_DIM_ITALIC
+}
 
-# Closed option sets for the TUI's kind/status fields. Mirrors the KeyKind
-# pattern in keys.na.jac: keep these as enums so producers/consumers are
-# type-checked instead of sharing magic strings.
 enum EventKind {
     UNKNOWN = 0,
     USER = 1,
@@ -16,6 +46,83 @@ enum EventKind {
     TOOL_RESULT = 9,
     IMG = 10,
     SEP = 11,
+}
+
+enum RenderMode { NORMAL = 0, MARKDOWN = 1, TOOL_CALL = 2, TOOL_RESULT = 3, IMAGE = 4 }
+
+obj KindStyle {
+    has prefix: str = "  ",
+        r: int = 200,
+        g: int = 200,
+        b: int = 200,
+        attrs: int = TH_NONE,
+        mode: RenderMode = RenderMode.NORMAL;
+}
+
+def kind_style(kind: EventKind) -> KindStyle {
+    if kind == EventKind.USER {
+        return KindStyle(
+            prefix="> ", r=TH_USER_R, g=TH_USER_G, b=TH_USER_B, attrs=TH_BOLD
+        );
+    }
+    if kind == EventKind.ANSWER {
+        return KindStyle(
+            prefix="  ",
+            r=TH_ANSWER_R,
+            g=TH_ANSWER_G,
+            b=TH_ANSWER_B,
+            mode=RenderMode.MARKDOWN
+        );
+    }
+    if kind == EventKind.REASONING {
+        return KindStyle(
+            prefix="~ ",
+            r=TH_REASON_R,
+            g=TH_REASON_G,
+            b=TH_REASON_B,
+            attrs=TH_DIM_ITALIC,
+            mode=RenderMode.MARKDOWN
+        );
+    }
+    if kind == EventKind.SYSTEM {
+        return KindStyle(prefix="* ", r=TH_SYSTEM_R, g=TH_SYSTEM_G, b=TH_SYSTEM_B);
+    }
+    if kind == EventKind.LOGO {
+        return KindStyle(
+            prefix="", r=TH_LOGO_R, g=TH_LOGO_G, b=TH_LOGO_B, attrs=TH_BOLD
+        );
+    }
+    if kind == EventKind.ERROR {
+        return KindStyle(
+            prefix="! ", r=TH_ERROR_R, g=TH_ERROR_G, b=TH_ERROR_B, attrs=TH_BOLD
+        );
+    }
+    if kind == EventKind.PHASE {
+        return KindStyle(prefix="> ", r=TH_PHASE_R, g=TH_PHASE_G, b=TH_PHASE_B);
+    }
+    if kind == EventKind.CALL {
+        return KindStyle(
+            prefix="# ",
+            r=TH_CALL_R,
+            g=TH_CALL_G,
+            b=TH_CALL_B,
+            mode=RenderMode.TOOL_CALL
+        );
+    }
+    if kind == EventKind.TOOL_RESULT {
+        return KindStyle(
+            prefix="  | ",
+            r=TH_RESULT_R,
+            g=TH_RESULT_G,
+            b=TH_RESULT_B,
+            attrs=TH_DIM,
+            mode=RenderMode.TOOL_RESULT
+        );
+    }
+    if kind == EventKind.IMG {
+        return KindStyle(prefix="  ", mode=RenderMode.IMAGE);
+    }
+    return KindStyle();
 }
 
 enum TuiStatus { IDLE = 0, RUNNING = 1, UNKNOWN = 2, }

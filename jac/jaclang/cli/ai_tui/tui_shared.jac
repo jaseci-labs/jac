@@ -231,73 +231,100 @@ def _configure_ui_env(r: any) -> dict {
 }
 
 
+def _cmd_send(payload: str, stop_evt: any, proc: any) {
+    import from jaclang.cli.ai_agent { ui_send }
+    try {
+        _debug_log(f"ui_send({payload!r}) -> {ui_send(payload)}");
+    } except Exception as e {
+        _debug_log(f"ui_send({payload!r}) error: {e}");
+    }
+}
+
+def _cmd_stop(payload: str, stop_evt: any, proc: any) {
+    import from jaclang.cli.ai_agent { ui_stop }
+    try {
+        ui_stop();
+        _debug_log("ui_stop()");
+    } except Exception as e {
+        _debug_log(f"ui_stop error: {e}");
+    }
+}
+
+def _cmd_reset(payload: str, stop_evt: any, proc: any) {
+    import from jaclang.cli.ai_agent { ui_reset }
+    try {
+        ui_reset();
+        _debug_log("ui_reset()");
+    } except Exception as e {
+        _debug_log(f"ui_reset error: {e}");
+    }
+}
+
+def _cmd_quit(payload: str, stop_evt: any, proc: any) {
+    import from jaclang.cli.ai_agent { ui_stop }
+    stop_evt.set();
+    try {
+        ui_stop();
+        _debug_log("ui_stop() before quit");
+    } except Exception as e {
+        _debug_log(f"ui_stop before quit error: {e}");
+    }
+    if proc is not None {
+        try {
+            proc.terminate();
+            _debug_log("proc.terminate()");
+        } except Exception as e {
+            _debug_log(f"proc.terminate error: {e}");
+        }
+    }
+}
+
+def _cmd_apply(payload: str, stop_evt: any, proc: any) {
+    import from jaclang.cli.ai_agent { ui_apply_settings }
+    settings: dict = {};
+    for part in payload.split(",") {
+        eq = part.find("=");
+        if eq > 0 {
+            k = part[:eq].strip();
+            v = part[eq + 1:].strip();
+            settings[k] = v;
+        }
+    }
+    try {
+        result = ui_apply_settings(
+            model=settings.get("model", ""),
+            n_ctx=settings.get("n_ctx", ""),
+            api_key=settings.get("api_key", ""),
+            base_url=settings.get("base_url", ""),
+            temperature=settings.get("temperature", ""),
+        );
+        _debug_log(f"ui_apply_settings({settings}) -> {result}");
+    } except Exception as e {
+        _debug_log(f"ui_apply_settings({settings}) error: {e}");
+    }
+}
+
+glob _CMD_HANDLERS: dict = {
+         CMD_SEND: _cmd_send,
+         CMD_STOP: _cmd_stop,
+         CMD_RESET: _cmd_reset,
+         CMD_QUIT: _cmd_quit,
+         CMD_APPLY: _cmd_apply,
+
+     };
+
 def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
-    import from jaclang.cli.ai_agent { ui_send, ui_stop, ui_reset, ui_apply_settings }
-
-    send_prefix = CMD_SEND + ":";
-    apply_prefix = CMD_APPLY + ":";
-
-    if line.startswith(send_prefix) {
-        prompt = line[len(send_prefix):];
-        try {
-            ok = ui_send(prompt);
-            _debug_log(f"ui_send({prompt!r}) -> {ok}");
-        } except Exception as e {
-            _debug_log(f"ui_send({prompt!r}) error: {e}");
-        }
-    } elif line == CMD_STOP {
-        try {
-            ui_stop();
-            _debug_log("ui_stop()");
-        } except Exception as e {
-            _debug_log(f"ui_stop error: {e}");
-        }
-    } elif line == CMD_RESET {
-        try {
-            ui_reset();
-            _debug_log("ui_reset()");
-        } except Exception as e {
-            _debug_log(f"ui_reset error: {e}");
-        }
-    } elif line == CMD_QUIT {
-        stop_evt.set();
-        try {
-            ui_stop();
-            _debug_log("ui_stop() before quit");
-        } except Exception as e {
-            _debug_log(f"ui_stop before quit error: {e}");
-        }
-        if proc is not None {
-            try {
-                proc.terminate();
-                _debug_log("proc.terminate()");
-            } except Exception as e {
-                _debug_log(f"proc.terminate error: {e}");
-            }
-        }
-    } elif line.startswith(apply_prefix) {
-        args_str = line[len(apply_prefix):];
-        settings: dict = {};
-        for part in args_str.split(",") {
-            eq = part.find("=");
-            if eq > 0 {
-                k = part[:eq].strip();
-                v = part[eq + 1:].strip();
-                settings[k] = v;
-            }
-        }
-        try {
-            result = ui_apply_settings(
-                model=settings.get("model", ""),
-                n_ctx=settings.get("n_ctx", ""),
-                api_key=settings.get("api_key", ""),
-                base_url=settings.get("base_url", ""),
-                temperature=settings.get("temperature", ""),
-            );
-            _debug_log(f"ui_apply_settings({settings}) -> {result}");
-        } except Exception as e {
-            _debug_log(f"ui_apply_settings({settings}) error: {e}");
-        }
+    colon = line.find(":");
+    if colon > 0 {
+        token = line[:colon];
+        payload = line[colon + 1:];
+    } else {
+        token = line;
+        payload = "";
+    }
+    handler = _CMD_HANDLERS.get(token);
+    if handler is not None {
+        handler(payload, stop_evt, proc);
     }
 }
 

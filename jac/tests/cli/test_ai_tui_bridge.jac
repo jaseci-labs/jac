@@ -280,6 +280,51 @@ test "_probe_tty on posix falls back to empty device when ttyname raises" {
 }
 
 
+test "na IPC schema mirrors the Python wire constants" {
+    # The host (Python ipc_schema.py) and TUI (native ipc_schema.na.jac glob)
+    # carry the wire protocol in two languages; this pins that the wire *values*
+    # agree, so a silent drift in either file fails CI instead of corrupting
+    # the runtime protocol between the embed host and the native renderer.
+    import re;
+    import importlib;
+    py = importlib.import_module("jaclang.cli.ai_tui.ipc_schema");
+    here = Path(py.__file__).resolve().parent;
+    na_src = (here.parent / "ai_tui_na" / "ipc_schema.na.jac").read_text();
+    na_vals: set = set(re.findall(r':\s*str\s*=\s*"([^"]*)"', na_src));
+    py_vals: set = set();
+    for (name, value) in py.__dict__.items() {
+        if isinstance(value, str) and name.isupper() {
+            py_vals.add(value);
+        }
+    }
+    for v in py_vals {
+        assert v in na_vals , f"wire value {v!r} in ipc_schema.py missing from ipc_schema.na.jac";
+    }
+    for v in na_vals {
+        assert v in py_vals , f"wire value {v!r} in ipc_schema.na.jac missing from ipc_schema.py";
+    }
+}
+
+
+test "embed_agent stub round-trips a frame through _frame_blob's wire shape" {
+    # embed_agent.builds frames via tui_shared._frame_blob; a stub frame must
+    # carry the schema's TYPE/EV tokens so the native parser accepts it.
+    import importlib;
+    shared = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
+    blob = shared._frame_blob(
+        {
+            "full": True,
+            "status": "idle",
+            "model_name": "stub",
+            "events": [{"id": 1, "kind": "system", "node": "stub", "text": "hi"}],
+
+        }
+    );
+    assert "TYPE:full" in blob , blob;
+    assert "EV:1:system:stub:hi" in blob , blob;
+}
+
+
 obj CaptureBus {
     has events: list = [];
 

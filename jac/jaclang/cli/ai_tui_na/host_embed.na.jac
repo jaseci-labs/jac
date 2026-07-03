@@ -32,26 +32,11 @@ glob PY_EVAL: i32 = 258,
      files_env = os.getenv("JAC_AI_UI_FILES"),
      presets_env = os.getenv("JAC_AI_UI_MODEL_PRESETS");
 
-
-def _byllm_runtime_hook_py -> str {
-    return (
-        "_byllm = os.environ.get('JAC_AI_TUI_BYLLM_SRC')\n" + "if _byllm and _byllm not in sys.path:\n" + "    sys.path.insert(0, _byllm)\n" + "_deps = os.environ.get('JAC_AI_TUI_DEPS', '')\n" + "if _deps:\n" + "    for _d in _deps.split(os.pathsep):\n" + "        if _d and _d not in sys.path:\n" + "            sys.path.append(_d)\n"
-    );
-}
-
-
-def _agent_py_real -> str {
-    return (
-        "import os, sys, threading, queue\n" + _byllm_runtime_hook_py() + "try:\n" + "    from jaclang.cli.ai_agent import ui_configure, ui_stream, ui_stop\n" + "    from jaclang.cli.ai_tui.tui_shared import _frame_blob, _dispatch_cmd\n" + "except Exception as _e:\n" + "    sys.stderr.write('jac-ai-tui: embedded agent backend unavailable: ' + repr(_e) + '\\n')\n" + "    sys.stderr.write('  point the embedded interpreter at byllm: set JAC_AI_TUI_BYLLM_SRC=<jac-byllm checkout> and JAC_AI_TUI_DEPS=<dep dirs (litellm, openai, ...)>.\\n')\n" + "    raise\n" + "_q = queue.Queue()\n" + "_stop = threading.Event()\n" + "def _agent_setup():\n" + "    ui_configure()\n" + "    def _feed():\n" + "        try:\n" + "            for frame in ui_stream():\n" + "                if _stop.is_set():\n" + "                    break\n" + "                if frame.get('heartbeat'):\n" + "                    continue\n" + "                _q.put(_frame_blob(frame))\n" + "        except Exception:\n" + "            pass\n" + "    threading.Thread(target=_feed, daemon=True).start()\n" + "def _agent_poll():\n" + "    try:\n" + "        return _q.get_nowait()\n" + "    except queue.Empty:\n" + "        return ''\n" + "def _agent_send(line):\n" + "    _dispatch_cmd(line, _stop, None)\n" + "def _agent_stop():\n" + "    _stop.set()\n" + "    try:\n" + "        ui_stop()\n" + "    except Exception:\n" + "        pass\n"
-    );
-}
-
-
-def _agent_py_stub -> str {
-    return (
-        "import threading, time, queue\n" + "_q = queue.Queue()\n" + "_stop = threading.Event()\n" + "def _agent_setup():\n" + "    def _feed():\n" + "        _q.put('TYPE:full\\nSTATUS:idle\\nACTIVE:\\nMODEL:stub\\nNEEDS_KEY:0\\nKEY_ENV:\\nEV:1:system:stub:embed host booted (stub agent)\\n---')\n" + "        n = 0\n" + "        while not _stop.is_set():\n" + "            n += 1\n" + "            _q.put('TYPE:delta\\nEV:1:system:stub:tick ' + str(n) + '\\n---')\n" + "            time.sleep(1.0)\n" + "    threading.Thread(target=_feed, daemon=True).start()\n" + "def _agent_poll():\n" + "    try:\n" + "        return _q.get_nowait()\n" + "    except queue.Empty:\n" + "        return ''\n" + "def _agent_send(line):\n" + "    _q.put('TYPE:delta\\nEV:2:user:stub:sent ' + line + '\\n---')\n" + "def _agent_stop():\n" + "    _stop.set()\n"
-    );
-}
+glob _BOOTSTRAP_PY: str = (
+         "from jaclang.cli.ai_tui.embed_agent import "
+         "setup as _agent_setup, poll as _agent_poll, "
+         "send as _agent_send, stop as _agent_stop\n"
+     );
 
 
 def _agent_poll(d: int) -> str {
@@ -123,13 +108,7 @@ def _run_embed -> None {
         return;
     }
 
-    agent_src: str = _agent_py_real();
-    use_real = os.getenv("JAC_AI_TUI_EMBED_REAL");
-    if use_real is None {
-        agent_src = _agent_py_stub();
-    }
-
-    def_rc: i32 = jpy_PyRun_SimpleString(agent_src);
+    def_rc: i32 = jpy_PyRun_SimpleString(_BOOTSTRAP_PY);
     main_mod: int = jpy_PyImport_AddModule("__main__");
     d: int = jpy_PyModule_GetDict(main_mod);
     setup_rc: i32 = 0;
