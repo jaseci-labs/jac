@@ -94,6 +94,35 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
+      # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
+      # interpreter config) into subprocesses -- a python-based child spawned
+      # by a jac program must run with its OWN stdlib, and the user's ambient
+      # PYTHONHOME/PYTHONPATH must pass through to children untouched.
+      - name: Smoke test (no env leak into subprocesses)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          cat > "$WORK/leak.jac" <<'EOF'
+          import os;
+          import subprocess;
+          with entry {
+              assert "PYTHONHOME" not in os.environ;
+              assert "PYTHONPATH" not in os.environ or os.environ["PYTHONPATH"] == "/user/own";
+              r = subprocess.run(
+                  ["python3", "-c", "import os, encodings; print('child', os.environ.get('PYTHONPATH'))"],
+                  capture_output=True, text=True
+              );
+              assert r.returncode == 0, r.stderr[:200];
+              print(r.stdout.strip());
+          }
+          EOF
+          # Clean env: nothing leaks in.
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/leak.jac" | grep -qx 'child None'
+          # User-supplied PYTHONPATH: passes through to children untouched.
+          env -i HOME="$WORK" PATH=/usr/bin:/bin PYTHONPATH=/user/own "$BIN" run "$WORK/leak.jac" | grep -qx 'child /user/own'
+
       # Guards #7082: neither the launcher nor the LLVMPY_* shim may reference
       # a glibc symbol newer than the zig_target floor.
       - name: Verify glibc floor (from zig_target)

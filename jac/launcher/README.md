@@ -40,7 +40,9 @@ site/                                  <- jaclang + _jac_finder + llvmlite
 
 > Unlike a static embed, the shared interpreter loads its C extensions from
 > `lib-dynload/` on demand, so that directory is **kept** (a static build prunes
-> it). The launcher points the interpreter at this tree via `PYTHONHOME`.
+> it). The launcher points the interpreter at this tree through the PEP 741
+> init config (`home` / `pythonpath_env`) -- never via `PYTHONHOME`/`PYTHONPATH`
+> environment variables, which children would inherit (#7047).
 
 ## Build
 

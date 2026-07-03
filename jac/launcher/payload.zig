@@ -1062,8 +1062,8 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     );
     // pbs ships the pgo+lto-full libpython UNSTRIPPED (debug info + .llvmbc LTO
     // bitcode) at ~245 MiB. Strip it to ~20 MiB -- the single biggest payload
-    // win. The exported dynamic symbols the launcher dlsym's (Py_Initialize,
-    // Py_BytesMain, ...) live in .dynsym and are kept; only debug / local
+    // win. The exported dynamic symbols the launcher dlsym's (PyInitConfig_*,
+    // Py_RunMain, ...) live in .dynsym and are kept; only debug / local
     // symbols / dead bitcode go, so the PGO+LTO-optimized code is untouched.
     stripBestEffort(io, staged_lib);
 
