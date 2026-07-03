@@ -2,12 +2,9 @@ import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jaclang.runtimelib.client.targets.web_target { WebTarget }
+import from jaclang.runtimelib.client.targets.client_dev_common { _ClientHmrHandler }
 
-obj _MobileHmrHandler {
-    has compiler: any,
-        entry_file: Path,
-        project_dir: Path;
-
+obj _MobileHmrHandler(_ClientHmrHandler) {
     def on_event(evt: FileChangeEvent) -> None;
 }
 

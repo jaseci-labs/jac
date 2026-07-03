@@ -285,6 +285,165 @@ test "unmatched path returns 404" {
     assert resp.status_code == 404;
 }
 
+test "browser navigation to a client route gets the SPA index (history fallback)" {
+    tmp = tempfile.mkdtemp();
+    dist = Path(tmp) / "dist";
+    dist.mkdir(parents=True);
+    (dist / "index.html").write_text("<html><body>spa-shell</body></html>");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=str(dist));
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+
+    resp = client.get("/littlex", headers={"Accept": "text/html"});
+    assert resp.status_code == 200 , (
+        f"a browser deep link into a client-side route must serve the SPA "
+        f"shell, got {resp.status_code}"
+    );
+    assert "spa-shell" in resp.text;
+
+    api_resp = client.get("/littlex", headers={"Accept": "application/json"});
+    assert api_resp.status_code == 404 , (
+        "API clients must keep getting the JSON 404 envelope, not HTML"
+    );
+}
+
+"""Serve `payload` as JSON on every GET; returns (server, port)."""
+def _serve_fragment(payload: dict) -> tuple {
+    import http.server;
+    import json;
+    import threading;
+
+    body = json.dumps(payload).encode();
+
+    def _do_get(handler_self: any) -> None {
+        handler_self.send_response(200);
+        handler_self.send_header("Content-Type", "application/json");
+        handler_self.send_header("Content-Length", str(len(body)));
+        handler_self.end_headers();
+        handler_self.wfile.write(body);
+    }
+
+    def _log_quiet(handler_self: any, fmt: str, *args: any) -> None {}
+
+    handler_cls = type(
+        "_FragmentHandler",
+        (http.server.BaseHTTPRequestHandler, ),
+        {"do_GET": _do_get, "log_message": _log_quiet}
+    );
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler_cls);
+    t = threading.Thread(target=srv.serve_forever, daemon=True);
+    t.start();
+    return (srv, srv.server_address[1]);
+}
+
+test "/graph/data merges the graph fragments of every healthy service" {
+    frag_a = {
+        "version": "1.0",
+        "nodes": [{"id": "r", "label": "root"}, {"id": "a", "label": "A"}],
+        "edges": [{"from": "r", "to": "a"}]
+    };
+    frag_b = {
+        "version": "1.0",
+        "nodes": [{"id": "r", "label": "root"}, {"id": "b", "label": "B"}],
+        "edges": [{"from": "r", "to": "b"}]
+    };
+    (srv_a, port_a) = _serve_fragment(frag_a);
+    (srv_b, port_b) = _serve_fragment(frag_b);
+
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="analytics",
+            file="analytics.jac",
+            prefix="/analytics",
+            port=port_a,
+            url=f"http://127.0.0.1:{port_a}",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    reg.register(
+        ServiceEntry(
+            name="guestbook",
+            file="guestbook.jac",
+            prefix="/guestbook",
+            port=port_b,
+            url=f"http://127.0.0.1:{port_b}",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/graph/data");
+        assert resp.status_code == 200;
+        data = resp.json();
+        node_ids = {n["id"] for n in data["nodes"]};
+        assert node_ids == {"r", "a", "b"} , (
+            f"each service only resolves its own archetypes, so /graph/data "
+            f"must merge ALL services' fragments, got nodes: {node_ids}"
+        );
+        assert len(data["nodes"]) == 3 , (
+            f"shared nodes must be deduplicated by id: {data['nodes']}"
+        );
+        edge_pairs = {(e["from"], e["to"]) for e in data["edges"]};
+        assert edge_pairs == {("r", "a"), ("r", "b")};
+    } finally {
+        srv_a.shutdown();
+        srv_b.shutdown();
+    }
+}
+
+test "/graph/data still answers when one service is down (partial merge)" {
+    frag_a = {
+        "version": "1.0",
+        "nodes": [{"id": "r", "label": "root"}],
+        "edges": []
+    };
+    (srv_a, port_a) = _serve_fragment(frag_a);
+
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="analytics",
+            file="analytics.jac",
+            prefix="/analytics",
+            port=port_a,
+            url=f"http://127.0.0.1:{port_a}",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    reg.register(
+        ServiceEntry(
+            name="guestbook",
+            file="guestbook.jac",
+            prefix="/guestbook",
+            port=1,
+            url="http://127.0.0.1:1",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/graph/data");
+        assert resp.status_code == 200;
+        node_ids = {n["id"] for n in resp.json()["nodes"]};
+        assert node_ids == {"r"};
+    } finally {
+        srv_a.shutdown();
+    }
+}
+
 test "build_gateway_metrics returns a fresh registry with both collectors" {
     import from jaclang.scale.runtime.middleware.metrics { build_gateway_metrics }
     (registry, requests, duration) = build_gateway_metrics();

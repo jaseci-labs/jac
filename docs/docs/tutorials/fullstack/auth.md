@@ -19,7 +19,7 @@ The key concept is **per-user data isolation**: when a function or walker is mar
 Authentication in Jac works across both backend approaches. Use `def:priv` (private functions) or `walker:priv` (private walkers) to create per-user endpoints where each user gets their own isolated data graph. The frontend uses built-in runtime functions to handle login/signup/logout.
 
 !!! tip "See it in action"
-    The [AI Day Planner tutorial (Part 6)](../first-app/build-ai-day-planner.md#part-6-multi-user-support) walks through adding authentication to a complete app, including per-user data isolation.
+    The [AI Day Planner tutorial (Part 6)](../first-app/build-ai-day-planner.md#part-6-authentication-and-multi-file-organization) walks through adding authentication to a complete app, including per-user data isolation.
 
 Jac provides **built-in authentication** with these runtime functions:
 

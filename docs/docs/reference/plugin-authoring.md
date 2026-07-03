@@ -2,7 +2,7 @@
 
 This guide is for developers who want to write a Jaclang plugin: a Python (or Jac) package that extends the `jac` CLI, replaces parts of the runtime, ships project templates, or otherwise customizes how Jac behaves on a user's machine. If you just want to *use* the built-in deployment subsystem, see the [Scale Reference](plugins/jac-scale.md) instead.
 
-The real subsystems in the Jaclang monorepo -- the built-in [scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale) deployment provider (`jaclang.scale`) and the built-in [`jac mcp` server](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp), plus the separate [jac-byllm](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm) plugin -- between them exercise every extension point in this guide. Scale, the MCP server, and the client/desktop framework now ship built into `jaclang` core as built-in providers (rather than separately-installed packages), but they still register through the same hooks and `@registry.command` mechanism shown here, so they remain useful worked examples. Where a recipe references one of them, the file:line citations point to the canonical implementation you can read alongside the explanation.
+The real subsystems in the Jaclang monorepo -- the built-in [scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale) deployment provider (`jaclang.scale`), the built-in [`jac mcp` server](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp), and the built-in [byLLM provider](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/byllm) (`jaclang.byllm`) -- between them exercise every extension point in this guide. Scale, byLLM, the MCP server, and the client/desktop framework now ship built into `jaclang` core as built-in providers (rather than separately-installed packages), but they still register through the same hooks and `@registry.command` mechanism shown here, so they remain useful worked examples. Where a recipe references one of them, the file:line citations point to the canonical implementation you can read alongside the explanation.
 
 ## What a plugin can do
 
@@ -15,7 +15,7 @@ A Jaclang plugin can:
 - **[Ship project templates](#recipe-5-ship-a-project-template)** that show up in `jac create --use <name>`.
 - **[Register custom dependency types](#recipe-6-register-a-custom-dependency-type)** like `npm` alongside the built-in PyPI dependency handler.
 
-All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered as an entry point in `pyproject.toml` under the `jac` group, and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
+All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered under `[entrypoints.jac]` in the plugin's `jac.toml` (the `jac` entry-point group), and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
 
 ## Project layout
 
@@ -28,13 +28,13 @@ jac-myplugin/
 │   ├── plugin.jac            # CLI extension (`JacCmd.create_cmd` hook)
 │   ├── plugin_config.jac     # Config schema, templates, dep types
 │   └── impl/                 # Implementation modules
-└── pyproject.toml            # Dependencies + [project.entry-points."jac"]
+└── jac.toml                  # Metadata + [entrypoints.jac]
 ```
 
-The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points in `pyproject.toml`:
+The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points under `[entrypoints.jac]` in `jac.toml` (written into the wheel's `jac` entry-point group by `jac bundle`, and read directly by `jac install -e`):
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 myplugin = "jac_myplugin.plugin:JacCmd"
 myplugin_plugin_config = "jac_myplugin.plugin_config:JacMypluginPluginConfig"
 ```
@@ -58,7 +58,7 @@ There are three "layers" of hooks a plugin can implement, defined as classes in 
 | **Runtime** | `JacRuntimeInterface` (and its mixins: `JacAPIServer`, `JacConsole`, `JacClientBundle`, `JacByLLM`, …) | Many hooks called throughout program execution. Plugins override individual methods (`get_user_manager`, `create_server`, `get_console`, …) to swap in their own implementations. |
 | **Config / packaging** | `JacPluginConfig` | Metadata, jac.toml schema, project templates, and custom dependency types. Called by `jac plugins`, `jac create`, `jac add`, and config validation. |
 
-A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- `jac-byllm` only implements LLM-related runtime hooks, and the built-in `jac mcp` command (now part of core) only adds a single CLI command.
+A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- the built-in byLLM provider only implements LLM-related runtime hooks, and the built-in `jac mcp` command (now part of core) only adds a single CLI command.
 
 ## Recipes
 
@@ -120,18 +120,21 @@ class JacCmd {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
 [project]
 name = "jac-hello"
 version = "0.1.0"
 
-[project.entry-points."jac"]
+[entrypoints.jac]
 hello = "jac_hello.plugin:JacCmd"
 ```
 
 > Note: plugins do **not** depend on PyPI `jaclang` - `jaclang` is the host runtime provided by the `jac` binary that loads your plugin, so it never belongs in `dependencies`.
+
+!!! warning "Use `jac.toml`, not `pyproject.toml`, for the `jac`-native dev loop"
+    `jac install -e` and `jac bundle` read the plugin's `jac.toml`. A plugin folder with only a `pyproject.toml` declaring `[project.entry-points."jac"]` links without error under `jac install -e`, but the entry point is never registered and the command silently doesn't appear. The `pyproject.toml` form still works for plugins installed into the host Python environment with `pip`.
 
 After `jac install -e .`, `jac --help` will list `hello` in the *general* group and `jac hello Alice --shout` will print `HELLO, ALICE!`.
 
@@ -302,10 +305,10 @@ class JacTimestampPlugin {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 timestamp = "jac_timestamp.plugin:JacTimestampPlugin"
 ```
 
@@ -412,7 +415,7 @@ The `type` field accepts `"str"`, `"int"`, `"float"`, `"bool"`, `"list"`, or `"d
 
 **Real references**:
 
-- [jac-byllm's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-byllm/byllm/plugin_config.jac#L25-L103) -- concise example with model selection, API keys, and LiteLLM passthrough.
+- [byLLM's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/byllm/plugin_config.jac#L25-L103) -- concise example with model selection, API keys, and LiteLLM passthrough.
 - [scale's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/config/plugin_config.jac) -- large, multi-section schema (`jwt`, `sso`, `database`, `kubernetes`, `secrets`, `monitoring`, `sandbox`).
 - [the built-in `jac mcp` command's three-tier fallback](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/cli/commands/impl/mcp.impl.jac) -- command body that resolves CLI arg → jac.toml → CLI default in priority order.
 

@@ -8,6 +8,11 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
+import from jaclang.cli.commands.nacompile {
+    _inject_entry_elf_static,
+    _collect_musl_static,
+    _musl_lib_dir
+}
 import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
@@ -61,14 +66,33 @@ def _emit_for_tm(tm: any, triple: str) -> bytes {
 
 
 def _inject_elf(ir_txt: str) -> str {
-    globals_ir = ""
-        if "__jac_argc" in ir_txt
-        else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
-    exit_decl = ""
-        if ("@exit" in ir_txt or '@"exit"' in ir_txt)
-        else "declare void @exit(i32) noreturn\n\n";
-    return ir_txt + (
-        "\n; --- injected entry point ---\n" + globals_ir + exit_decl + "declare ptr @llvm.stacksave()\n\n" + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n" + "    store i32 %argc, ptr @__jac_argc\n" + "    store ptr %argv, ptr @__jac_argv\n" + "    call void @jac_entry()\n    ret i32 0\n}\n\n" + "define void @_start() naked noreturn {\nentry:\n" + "    %sp = call ptr @llvm.stacksave()\n" + "    %argc = load i32, ptr %sp\n" + "    %argv = getelementptr i8, ptr %sp, i64 8\n" + "    %ret = call i32 @main(i32 %argc, ptr %argv)\n" + "    call void @exit(i32 %ret)\n    unreachable\n}\n"
+    # Linux executables are now fully static against musl, whose crt1.o supplies
+    # `_start`; we inject only `main` (the real path nacompile uses).
+    return _inject_entry_elf_static(ir_txt);
+}
+
+
+def _musl_ok(triple: str) -> bool {
+    return _musl_lib_dir(triple) is not None;
+}
+
+
+def _link_static(relobj: bytes, triple: str, out: str) -> bool {
+    # Static-link against vendored musl (libc.a + libzigc.a + compiler-rt + crt),
+    # exactly as `jac nacompile` does. Returns False if the musl runtime is not
+    # vendored in this environment (callers skip the link/run in that case).
+    musl = _collect_musl_static(relobj, triple);
+    if musl is None {
+        return False;
+    }
+    (members, crt) = musl;
+    return ElfLinker.link(
+        obj_bytes=relobj,
+        output_path=out,
+        needed_libs=[],
+        crt_objects=crt,
+        archive_members=members,
+        static_link=True
     );
 }
 
@@ -120,14 +144,26 @@ test "ELF executable links, runs, and prints through the C ABI" {
     relobj = _emit_object(_inject_elf(_compile_ir(FIXTURE, triple)), triple);
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke");
-    ok = ElfLinker.link(
-        obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-    );
-    assert ok , "ElfLinker.link(shared=False) returned False";
+    if not _musl_ok(triple) {
+        return;
+    }
+    ok = _link_static(relobj, triple, out);
+    assert ok , "ElfLinker static link returned False";
     raw = Path(out).read_bytes();
     assert raw[:4] == b"\x7fELF" , "not an ELF image";
     e_type = struct.unpack_from("<H", raw, 16)[0];
     assert e_type == 2 , f"expected ET_EXEC (2), got {e_type}";
+    # Clean break: the executable must be fully static (no PT_INTERP).
+    phoff = struct.unpack_from("<Q", raw, 32)[0];
+    phnum = struct.unpack_from("<H", raw, 56)[0];
+    has_interp = False;
+    for _pi in range(phnum) {
+        p_type = struct.unpack_from("<I", raw, phoff + _pi * 56)[0];
+        if p_type == 3 {
+            has_interp = True;
+        }
+    }
+    assert not has_interp , "static executable must not request a dynamic interpreter";
 
     if sys.platform.startswith("linux") and ("x86_64" in llvm.get_default_triple()) {
         res = subprocess.run([out], capture_output=True, timeout=30);
@@ -148,16 +184,14 @@ test "multiple `with entry` blocks emit a single jac_entry (issue #6660)" {
 test "concatenated `with entry` blocks run in source order (issue #6660)" {
     triple = llvm.get_default_triple();
 
-    if sys.platform.startswith("linux") and ("x86_64" in triple) {
+    if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(
             _inject_elf(_compile_ir("multi_entry.na.jac", triple)), triple
         );
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry");
-        ok = ElfLinker.link(
-            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-        );
-        assert ok , "ElfLinker.link(shared=False) returned False";
+        ok = _link_static(relobj, triple, out);
+        assert ok , "ElfLinker static link returned False";
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
         i = res.stdout.find(b"FIRST");
@@ -175,14 +209,12 @@ test "a terminating `with entry` block stops later blocks (issue #6660)" {
     n = ir_txt.count('define void @"jac_entry"');
     assert n == 1 , f"expected exactly one jac_entry definition, got {n}";
 
-    if sys.platform.startswith("linux") and ("x86_64" in triple) {
+    if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(_inject_elf(ir_txt), triple);
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry_terminator");
-        ok = ElfLinker.link(
-            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-        );
-        assert ok , "ElfLinker.link(shared=False) returned False";
+        ok = _link_static(relobj, triple, out);
+        assert ok , "ElfLinker static link returned False";
         res = subprocess.run([out], capture_output=True, timeout=30);
 
         assert res.returncode != 0 , f"expected non-zero exit from uncaught raise, got 0: {res.stdout}";
@@ -198,14 +230,12 @@ test "glob-init runs before every `with entry` block (issue #6660)" {
     assert ir_txt.count('define void @"jac_entry"') == 1 , "expected exactly one jac_entry";
     assert "__jac_glob_init" in ir_txt , "expected a __jac_glob_init call in jac_entry";
 
-    if sys.platform.startswith("linux") and ("x86_64" in triple) {
+    if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(_inject_elf(ir_txt), triple);
         d = tempfile.mkdtemp();
         out = os.path.join(d, "multi_entry_glob");
-        ok = ElfLinker.link(
-            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-        );
-        assert ok , "ElfLinker.link(shared=False) returned False";
+        ok = _link_static(relobj, triple, out);
+        assert ok , "ElfLinker static link returned False";
         res = subprocess.run([out], capture_output=True, timeout=30);
 
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
@@ -219,16 +249,14 @@ test "glob-init runs before every `with entry` block (issue #6660)" {
 
 test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
     triple = llvm.get_default_triple();
-    if sys.platform.startswith("linux") and ("x86_64" in triple) {
+    if sys.platform.startswith("linux") and ("x86_64" in triple) and _musl_ok(triple) {
         relobj = _emit_object(
             _inject_elf(_compile_ir("xmod_exc_main.na.jac", triple)), triple
         );
         d = tempfile.mkdtemp();
         out = os.path.join(d, "xmod_exc_main");
-        ok = ElfLinker.link(
-            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-        );
-        assert ok , "ElfLinker.link(shared=False) returned False";
+        ok = _link_static(relobj, triple, out);
+        assert ok , "ElfLinker static link returned False";
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"cross-module raise did not unwind (exit {res.returncode}); stderr={res.stderr}";
         assert b"XMOD_CAUGHT" in res.stdout , f"handler did not catch cross-module raise: {res.stdout}";

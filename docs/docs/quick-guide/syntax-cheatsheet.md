@@ -2,7 +2,7 @@
 
 This page is a **lookup reference**, not a learning guide. For hands-on learning, start with the [AI Day Planner tutorial](../tutorials/first-app/build-ai-day-planner.md) which teaches these concepts progressively.
 
-**Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
+**Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects-classes) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
 
 ```jac
 # ============================================================
@@ -1221,7 +1221,7 @@ sem support_agent = "Answer customer questions about our products.";
 # Multimodal AI
 # ============================================================
 
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 def describe_image(image: Image) -> str by llm;
 

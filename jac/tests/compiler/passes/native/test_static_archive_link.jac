@@ -27,6 +27,11 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.linker_common { select_ar_members }
+import from jaclang.cli.commands.nacompile {
+    _inject_entry_elf_static,
+    _collect_musl_static,
+    _musl_lib_dir
+}
 import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
@@ -87,15 +92,8 @@ def _inject_macho(ir_txt: str) -> str {
 (see test_exec_link). ELF executables need an explicit `_start` that calls
 `main` and `exit`, unlike Mach-O where dyld provides the entry stub."""
 def _inject_elf(ir_txt: str) -> str {
-    globals_ir = ""
-        if "__jac_argc" in ir_txt
-        else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
-    exit_decl = ""
-        if ("@exit" in ir_txt or '@"exit"' in ir_txt)
-        else "declare void @exit(i32) noreturn\n\n";
-    return ir_txt + (
-        "\n; --- injected entry point ---\n" + globals_ir + exit_decl + "declare ptr @llvm.stacksave()\n\n" + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n" + "    store i32 %argc, ptr @__jac_argc\n" + "    store ptr %argv, ptr @__jac_argv\n" + "    call void @jac_entry()\n    ret i32 0\n}\n\n" + "define void @_start() naked noreturn {\nentry:\n" + "    %sp = call ptr @llvm.stacksave()\n" + "    %argc = load i32, ptr %sp\n" + "    %argv = getelementptr i8, ptr %sp, i64 8\n" + "    %ret = call i32 @main(i32 %argc, ptr %argv)\n" + "    call void @exit(i32 %ret)\n    unreachable\n}\n"
-    );
+    # Static musl entry (crt1.o supplies `_start`); see test_exec_link.
+    return _inject_entry_elf_static(ir_txt);
 }
 
 
@@ -238,12 +236,22 @@ test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 
 
     d = tempfile.mkdtemp();
     out = os.path.join(d, "floor_static_elf");
+    if _musl_lib_dir(triple) is None {
+        return;
+    }
+    musl = _collect_musl_static(main_obj, triple);
+    assert musl is not None , "musl runtime unexpectedly unavailable";
+    (members, crt) = musl;
+    # Prepend the member-under-test to the vendored musl members: an unmerged
+    # member would leave `jac_floor_magic` undefined (resolved to 0) and the
+    # program would crash, so a clean run proves the merge.
     ok = ElfLinker.link(
         obj_bytes=main_obj,
         output_path=out,
-        needed_libs=["libc.so.6"],
-        shared=False,
-        archive_members=[member_obj]
+        needed_libs=[],
+        crt_objects=crt,
+        archive_members=[member_obj] + members,
+        static_link=True
     );
     assert ok , "ElfLinker.link with archive_members returned False";
     raw = Path(out).read_bytes();
