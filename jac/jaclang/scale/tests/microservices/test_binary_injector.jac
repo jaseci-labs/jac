@@ -21,11 +21,13 @@ import from jaclang.scale.injector.binary_injector { BinaryInjector }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_runtime_install_commands,
-    runtime_container_env
+    runtime_container_env,
+    build_service_apt_prefix
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.config.config_loader { JacScaleConfig }
 
 
 def _write_toml(body: str) -> str {
@@ -117,6 +119,49 @@ test "runtime_container_env exposes HOME + PATH, no JAC_NO_PRECOMPILE" {
     assert "HOME" in names;
     assert "PATH" in names;
     assert "JAC_NO_PRECOMPILE" not in names;
+}
+
+
+test "[dependencies.system] in jac.toml installs into the service container" {
+    with tempfile.TemporaryDirectory() as project {
+        Path(project, "jac.toml").write_text(
+            "[project]\nname = \"sysdep-app\"\n\n"
+            "[dependencies.system]\ngit = \"*\"\nffmpeg = \"*\"\n"
+        );
+        k8s = JacScaleConfig(project_dir=Path(project)).get_kubernetes_config();
+        assert sorted(k8s["service_dependencies"]) == ["ffmpeg", "git"];
+        cfg = KubernetesConfig.from_dict(KubernetesConfig, k8s);
+        prefix = build_service_apt_prefix(cfg);
+        assert "apt-get install -y" in prefix;
+        assert "git" in prefix;
+        assert "ffmpeg" in prefix;
+        # Chains into app-start so a failed apt aborts the boot (no silent start).
+        assert prefix.endswith("&& ");
+    }
+}
+
+
+test "no [dependencies.system] means no apt install in the service container" {
+    with tempfile.TemporaryDirectory() as project {
+        Path(project, "jac.toml").write_text("[project]\nname = \"plain-app\"\n");
+        k8s = JacScaleConfig(project_dir=Path(project)).get_kubernetes_config();
+        assert k8s["service_dependencies"] == [];
+        assert build_service_apt_prefix(
+            KubernetesConfig.from_dict(KubernetesConfig, k8s)
+        ) == "";
+    }
+}
+
+
+test "invalid system package name is rejected (no shell injection)" {
+    cfg = KubernetesConfig(service_dependencies=["git; rm -rf /"]);
+    caught = False;
+    try {
+        build_service_apt_prefix(cfg);
+    } except ValueError {
+        caught = True;
+    }
+    assert caught;
 }
 
 
