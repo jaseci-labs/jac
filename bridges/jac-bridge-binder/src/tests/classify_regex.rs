@@ -11,7 +11,7 @@ use rustdoc_types::Crate;
 
 use crate::{
     classify,
-    types::{BridgeReturn, Recv, ScalarType, SkipReason, TypeKind, WrapperKind},
+    types::{BridgeReturn, Recv, ScalarType, TypeKind, WrapperKind},
 };
 
 fn load_regex_doc() -> Crate {
@@ -231,18 +231,38 @@ fn find_is_rescued_by_owning_wrapper() {
 }
 
 #[test]
-fn closure_methods_are_skipped() {
+fn replace_all_rescued_as_callback() {
     let doc = load_regex_doc();
     let spec = classify(&doc);
 
-    // replace_all(&self, &'h str, impl Replacer) -> Cow<'h, str>
-    // The named lifetime on the &str param triggers LifetimeBorrow before
-    // we even reach the impl Replacer parameter.
-    let skip = spec.skips.iter().find(|s| s.item == "Regex::replace_all");
-    assert!(skip.is_some(), "Regex::replace_all should be a skip");
+    // replace_all(&self, &'h str, R: Replacer) -> Cow<'h, str> is the CALLBACK
+    // vertical: rescued into a method taking a JacCallback (Rust calls back into
+    // Jac once per match).  No longer a skip.
     assert!(
-        matches!(skip.unwrap().reason, SkipReason::LifetimeBorrow | SkipReason::Closure | SkipReason::Generic),
-        "replace_all should be skipped for lifetime, closure, or generic reason"
+        !spec.skips.iter().any(|s| s.item == "Regex::replace_all"),
+        "Regex::replace_all should be rescued as a callback, not skipped"
+    );
+    let regex = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
+    let ra = regex
+        .methods
+        .iter()
+        .find(|m| m.name == "replace_all")
+        .expect("replace_all method emitted");
+    // Params: the haystack (&str) then the Replacer generic as a JacCallback.
+    assert_eq!(ra.params.len(), 2, "replace_all takes haystack + callback");
+    assert_eq!(ra.params[0].ty, ScalarType::Str);
+    assert_eq!(ra.params[1].ty, ScalarType::Callback);
+    assert!(
+        matches!(&ra.ret, BridgeReturn::ReplacerResult(p) if p == "regex::Captures"),
+        "replace_all returns a ReplacerResult over regex::Captures, got {:?}",
+        ra.ret
+    );
+
+    // `replacen` (an extra usize `limit` param) is NOT a callback shape — it stays
+    // an honest skip, proving the rule is specific, not a blanket generic-rescue.
+    assert!(
+        spec.skips.iter().any(|s| s.item == "Regex::replacen"),
+        "Regex::replacen should remain a skip (extra usize param)"
     );
 }
 

@@ -28,8 +28,13 @@
 # -> Option<String>). Each producer + its synthesized next() counts, +6. `total`
 # rose 73 -> 76: the three iterator methods flipped from skip to bridged (net 0 on
 # total) while the 3 new next() methods add 3 bridged items with no matching skip.
+#
+# The CALLBACK rule then rescued `replace_all` (bridged 18 -> 19): a `<R: Replacer>`
+# closure param becomes a JacCallback (Rust calls BACK into Jac once per match, via
+# the na trampoline / CPython CFUNCTYPE). `total` is unchanged (76): replace_all
+# simply flips from skip to bridged. `replacen` (an extra usize limit) stays a skip.
 [regex]
-bridged = 18
+bridged = 19
 total = 76
 
 [base64]

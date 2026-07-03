@@ -272,6 +272,7 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         let ty = match p.ty {
             ScalarType::Str => "&str",
             ScalarType::Bool => "bool",
+            ScalarType::Callback => "JacCallback",
         };
         sig_parts.push(format!("{}: {}", p.name, ty));
     }
@@ -381,6 +382,31 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         }
         // Drain pull: pop the next owned piece front-to-back. None ends the drain.
         BridgeReturn::OptStr => (" -> Option<String>".into(), "self.items.pop()".into()),
+        // CALLBACK: replace_all with a JacCallback. Rust calls back into Jac once
+        // per match; the callback returns each match's replacement. The closure
+        // can't itself return a Result, so capture the first callback error and
+        // surface it as this method's Err after the walk. Matches the proof crate
+        // (jac-bridge-owning) body exactly.
+        BridgeReturn::ReplacerResult(captures_path) => {
+            // params are [haystack: &str, rep: JacCallback] by construction.
+            let haystack = f.params.first().map(|p| p.name.as_str()).unwrap_or("haystack");
+            let repname = f.params.get(1).map(|p| p.name.as_str()).unwrap_or("rep");
+            let body = format!(
+                "let err: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);\n            \
+                 let out = {recv}.{fname}({haystack}, |caps: &{captures_path}| {{\n                \
+                     let m = caps.get(0).map_or(\"\", |x| x.as_str());\n                \
+                     match {repname}.call(m) {{\n                        \
+                         Ok(s) => s,\n                        \
+                         Err(e) => {{\n                            \
+                             if err.borrow().is_none() {{ *err.borrow_mut() = Some(e); }}\n                            \
+                             String::new()\n                        \
+                         }}\n                    \
+                     }}\n                \
+                 }}).into_owned();\n            \
+                 match err.into_inner() {{ Some(e) => Err(e), None => Ok(out) }}"
+            );
+            (" -> Result<String, String>".into(), body)
+        }
     };
 
     Some(format!(

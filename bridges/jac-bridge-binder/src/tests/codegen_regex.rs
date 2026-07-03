@@ -247,6 +247,33 @@ fn cursor_and_drain_wrappers_emitted() {
     );
 }
 
+#[test]
+fn replace_all_callback_emitted() {
+    let src = generated();
+
+    // The callback method: haystack + a JacCallback, returning a fallible String.
+    assert!(
+        src.contains(
+            "pub fn replace_all(&self, haystack: &str, rep: JacCallback) -> Result<String, String>"
+        ),
+        "missing replace_all callback signature\n{src}"
+    );
+    // The replacer closure walks the crate's Captures, feeds each match's text to
+    // the callback, and splices in the returned replacement.
+    assert!(
+        src.contains("self.0.replace_all(haystack, |caps: &regex::Captures| {")
+            && src.contains("let m = caps.get(0).map_or(\"\", |x| x.as_str());")
+            && src.contains("match rep.call(m) {"),
+        "missing/incorrect replacer closure body\n{src}"
+    );
+    // The first callback error is captured and surfaced as the method's Err.
+    assert!(
+        src.contains("if err.borrow().is_none() { *err.borrow_mut() = Some(e); }")
+            && src.contains("match err.into_inner() { Some(e) => Err(e), None => Ok(out) }"),
+        "missing callback-error propagation\n{src}"
+    );
+}
+
 // ── Cargo.toml emitter ───────────────────────────────────────────────────────
 
 #[test]

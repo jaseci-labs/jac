@@ -172,6 +172,13 @@ pub enum BridgeReturn {
     /// A drain cursor's pull method: `-> Option<String>`, body `self.items.pop()`
     /// (`recv: DrainNext`). None terminates the drain, distinct from a present "".
     OptStr,
+    /// The CALLBACK vertical (`Regex::replace_all` with a closure `Replacer`):
+    /// emit `-> Result<String, String>` whose body calls the owner's replacer
+    /// method with a closure that invokes the `JacCallback` param on each match's
+    /// text and splices in its result, capturing the first callback error to
+    /// surface as the method's `Err`. The string is the crate's captures type
+    /// (e.g. `regex::Captures`) — the closure argument the replacer walks.
+    ReplacerResult(String),
 }
 
 /// Scalar parameter types the v1 ABI can actually carry at the boundary.
@@ -184,6 +191,9 @@ pub enum BridgeReturn {
 pub enum ScalarType {
     Str,
     Bool,
+    /// A callback the Jac side supplies: crosses as `JacCallback` (a C-ABI fn
+    /// pointer). Only appears on a `replace_all`-shaped method's `Replacer` param.
+    Callback,
 }
 
 /// A public item the classifier could not bridge, with a machine-readable reason.

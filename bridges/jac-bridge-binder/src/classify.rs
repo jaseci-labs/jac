@@ -255,6 +255,7 @@ impl<'a> Ctx<'a> {
                         match self
                             .try_owning_wrapper(&method_name, f, bt)
                             .or_else(|| self.try_cursor_wrapper(&method_name, f, bt))
+                            .or_else(|| self.try_callback_wrapper(&method_name, f, bt))
                         {
                             Some((producer, pendings)) => {
                                 bt.methods.push(producer);
@@ -648,6 +649,105 @@ impl<'a> Ctx<'a> {
         }];
         pendings.extend(item_pendings);
         Some((producer, pendings))
+    }
+
+    /// The CALLBACK rule: a `fn(&self, &str, R) -> Cow<str>` where `R: Replacer`
+    /// (`Regex::replace_all`) becomes a callback method taking a `JacCallback`.
+    /// Rust calls back into Jac once per match; the callback returns each match's
+    /// replacement. This is the one vertical where the boundary is crossed
+    /// inward — realized via the na trampoline (a `def:pub` C-ABI thunk) and a
+    /// CPython CFUNCTYPE.  `replacen` (an extra `usize` limit param) stays a skip.
+    fn try_callback_wrapper(
+        &self,
+        method_name: &str,
+        f: &rustdoc_types::Function,
+        bt: &BridgeType,
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
+        if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+            return None;
+        }
+        // A generic type param bounded by a `Replacer` trait — the closure the
+        // caller supplies. (regex: `pub fn replace_all<R: Replacer>(…)`.)
+        let replacer_generic = self.replacer_generic_param(f)?;
+
+        // Params besides self: exactly one `&str` (the haystack) and one generic
+        // param that IS the Replacer generic — nothing else (so `replacen`, with
+        // its extra usize limit, correctly falls through to a skip).
+        let mut haystack: Option<String> = None;
+        let mut callback: Option<String> = None;
+        for (pname, pty) in &f.sig.inputs {
+            if pname == "self" {
+                continue;
+            }
+            match pty {
+                Type::BorrowedRef { type_, .. }
+                    if matches!(type_.as_ref(), Type::Primitive(p) if p == "str") =>
+                {
+                    if haystack.replace(pname.clone()).is_some() {
+                        return None;
+                    }
+                }
+                Type::Generic(g) if *g == replacer_generic => {
+                    if callback.replace(pname.clone()).is_some() {
+                        return None;
+                    }
+                }
+                _ => return None,
+            }
+        }
+        let haystack = haystack?;
+        let callback = callback?;
+
+        // Return must be a `Cow` (owned-or-borrowed string) — replace_all's return.
+        let Some(Type::ResolvedPath(rp)) = &f.sig.output else { return None };
+        if !rp.path.ends_with("Cow") {
+            return None;
+        }
+
+        // The closure argument the replacer walks is the crate's `Captures` type;
+        // derive its path from the owner's inner path (`regex::Regex` -> `regex`).
+        let crate_prefix = bt.inner_path.rsplit_once("::").map_or("", |(p, _)| p);
+        let captures_path = format!("{crate_prefix}::Captures");
+
+        let producer = BridgeFn {
+            name: method_name.to_string(),
+            export_name: None,
+            params: vec![
+                BridgeParam { name: haystack, ty: ScalarType::Str },
+                BridgeParam { name: callback, ty: ScalarType::Callback },
+            ],
+            ret: BridgeReturn::ReplacerResult(captures_path),
+            throws: None,
+            recv: Recv::Field0,
+        };
+        Some((producer, vec![]))
+    }
+
+    /// The name of a generic type param bounded (inline or via a where-clause) by
+    /// a trait whose path ends in `Replacer`, if any.
+    fn replacer_generic_param(&self, f: &rustdoc_types::Function) -> Option<String> {
+        use rustdoc_types::{GenericBound, GenericParamDefKind, WherePredicate};
+        let is_replacer = |bounds: &[GenericBound]| {
+            bounds.iter().any(|b| {
+                matches!(b, GenericBound::TraitBound { trait_, .. }
+                    if trait_.path.ends_with("Replacer"))
+            })
+        };
+        for p in &f.generics.params {
+            if let GenericParamDefKind::Type { bounds, .. } = &p.kind {
+                if is_replacer(bounds) {
+                    return Some(p.name.clone());
+                }
+            }
+        }
+        for wp in &f.generics.where_predicates {
+            if let WherePredicate::BoundPredicate { type_: Type::Generic(g), bounds, .. } = wp {
+                if is_replacer(bounds) {
+                    return Some(g.clone());
+                }
+            }
+        }
+        None
     }
 
     /// The `Item` associated type of an in-crate struct's `impl Iterator`, if it
