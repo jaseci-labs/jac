@@ -27,6 +27,7 @@ import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
+import from jaclang.jac0core.codeinfo { native_safe_sym }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = str(
@@ -173,7 +174,7 @@ def unbox_jacval(jv: JacVal) -> object {
     return None;
 }
 
-def run_native_function(eng: object, func_name: str) -> dict {
+def run_native_function(eng: object, func_name: str, ir: object = None) -> dict {
     class DictStruct(ctypes.Structure) {
         has _fields_: list = [
             ("len", ctypes.c_int64),
@@ -189,11 +190,34 @@ def run_native_function(eng: object, func_name: str) -> dict {
     # back to this module's __jac_glob_init when no `with entry` block emitted a
     # jac_entry. Fixtures carry no entry block, so this only runs initializers.
     init_addr = eng.get_function_address("jac_entry");
-    if init_addr == 0 {
-        init_addr = eng.get_function_address("__jac_glob_init");
-    }
     if init_addr != 0 {
         ctypes.CFUNCTYPE(None)(init_addr)();
+    } else {
+        own_init = eng.get_function_address("__jac_glob_init");
+        if own_init != 0 {
+            ctypes.CFUNCTYPE(None)(own_init)();
+        }
+        # Without a jac_entry nothing has chained the glob inits of linked
+        # native imports (they are renamed to __jac_glob_init_<safe_sym> at
+        # link time), so run them here too -- otherwise an imported module's
+        # runtime-initialized globals (e.g. the bytes alphabets in
+        # na_stdlib/base64.na.jac) are read as null pointers and the JIT'd
+        # fixture segfaults.
+        manifest = ir.gen.interop_manifest if (ir is not None) else None;
+        sources = manifest.native_transitive_sources if manifest else [];
+        seen_srcs: set = set();
+        for src_mod in sources {
+            if src_mod is None or src_mod in seen_srcs {
+                continue;
+            }
+            seen_srcs.add(src_mod);
+            imp_init = eng.get_function_address(
+                "__jac_glob_init_" + native_safe_sym(src_mod)
+            );
+            if imp_init != 0 {
+                ctypes.CFUNCTYPE(None)(imp_init)();
+            }
+        }
     }
     f = get_func(eng, func_name, ctypes.POINTER(DictStruct));
     dict_ptr = f();
@@ -276,8 +300,8 @@ def run_with_both(
     }
     na_keys: int = 0;
     try {
-        (eng, _) = compile_native(fixture);
-        na_result = run_native_function(eng, na_fn);
+        (eng, na_ir) = compile_native(fixture);
+        na_result = run_native_function(eng, na_fn, na_ir);
         na_keys = len(set(py_result.keys()) & set(na_result.keys()));
         compare_results(py_result, na_result, f"{label} [NA]", tolerance);
     } except Exception {
