@@ -90,6 +90,44 @@ spec:
     path: /var/jac-rwx-bundle
     type: DirectoryOrCreate
 YAML
+    # kubelet creates the DirectoryOrCreate hostPath root:root 0755, but the
+    # bundle loader (and app pods) run non-root and can't write it -
+    # "mkdir: can't create directory '/jac-bundles/bundles/': Permission denied".
+    # microk8s' hostpath-provisioner makes its dir world-writable, so match that
+    # with a one-shot root pod that opens the path up (runs in the privileged
+    # namespace so the hostPath mount is admitted).
+    kubectl -n "${NAMESPACE}" delete pod jac-rwx-perms --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n "${NAMESPACE}" apply -f - <<YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jac-rwx-perms
+  labels:
+    managed: jac-scale
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 0
+  containers:
+    - name: fix
+      image: busybox:1.36
+      command: ["sh", "-c", "chmod 0777 /host && echo perms-fixed"]
+      volumeMounts:
+        - { name: host, mountPath: /host }
+  volumes:
+    - name: host
+      hostPath:
+        path: /var/jac-rwx-bundle
+        type: DirectoryOrCreate
+YAML
+    if ! kubectl -n "${NAMESPACE}" wait --for=jsonpath='{.status.phase}'=Succeeded \
+            pod/jac-rwx-perms --timeout=90s; then
+        echo "FAIL: could not open up the RWX hostPath dir for non-root pods"
+        kubectl -n "${NAMESPACE}" logs jac-rwx-perms || true
+        kubectl -n "${NAMESPACE}" describe pod jac-rwx-perms || true
+        exit 1
+    fi
+    kubectl -n "${NAMESPACE}" delete pod jac-rwx-perms --ignore-not-found >/dev/null 2>&1 || true
 }
 
 _T0=$(date +%s)
