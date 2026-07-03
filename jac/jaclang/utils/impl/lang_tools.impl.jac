@@ -240,11 +240,6 @@ impl AstTool.pass_template -> str {
 
 impl AstTool.init -> None {
     module = sys.modules[uni.__name__];
-    try {
-        source_code = inspect.getsource(module);
-    } except (OSError, TypeError) {
-        source_code = "";
-    }
     classes = inspect.getmembers(module, inspect.isclass);
     uni_node_classes = [
         UniNodeInfo(cls)
@@ -287,9 +282,8 @@ impl AstTool.init -> None {
             )
         )
     ];
-    self.ast_classes = sorted(
-        uni_node_classes, key=lambda cls: any : source_code.find(f"class {cls.name}")
-    );
+
+    self.ast_classes = sorted(uni_node_classes, key=lambda cls: any : cls.name);
 }
 
 impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {

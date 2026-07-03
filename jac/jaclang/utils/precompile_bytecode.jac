@@ -54,6 +54,18 @@ def find_package_dir(source_dir: str) -> str | None {
     return None;
 }
 
+def _nested_project_dirs(package_dir: str) -> list[str] {
+    pkg = Path(package_dir);
+    roots: list[str] = [];
+    for toml in pkg.rglob("jac.toml") {
+        d = toml.parent;
+        if d != pkg {
+            roots.append(str(d) + os.sep);
+        }
+    }
+    return roots;
+}
+
 def find_jac_files(package_dir: str) -> list[str] {
     result: list[str] = [];
     pkg = Path(package_dir);
@@ -367,12 +379,14 @@ def main {
     jac_files = find_jac_files(package_dir);
     if exclude_jac0core {
         boot_prefix = str(Path(package_dir) / "jac0core") + os.sep;
+        nested = _nested_project_dirs(package_dir);
         jac_files = [
             p
             for p in jac_files
             if not p.startswith(boot_prefix)
             and not ext_registry.is_native_module(p)
             and not ext_registry.is_client_module(p)
+            and not any(p.startswith(n) for n in nested)
         ];
     }
     console.print(f"  Found {len(jac_files)} .jac files");
