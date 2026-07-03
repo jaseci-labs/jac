@@ -21,13 +21,16 @@
 # Keyed by .so basename (regex and regex_v2 share module `regex` but are distinct
 # fixtures).  A .so absent from a checkout is skipped by the gate, not failed.
 
-# owning: the Option<Ref> owning-wrapper + Option<Str> verticals are fully realized
-# on na — Regex.new/is_match/find/captures + OwnedMatch.as_str + OwnedCaptures.name,
-# 0 skips.  find/captures return `T | None` via adopt-ctor; name returns `str | None`
-# with a null JacBuf.ptr crossing in-band as None (distinct from a present "").
+# owning: the Option<Ref> owning-wrapper + Option<Str> + NESTED-wrapper verticals are
+# fully realized on na — Regex.new/is_match/find/captures + OwnedMatch.as_str +
+# OwnedCaptures.name + OwnedCaptures.name_match, 0 skips.  find/captures/name_match
+# return `T | None` via adopt-ctor; name returns `str | None` with a null JacBuf.ptr
+# crossing in-band as None (distinct from a present "").  name_match is the nested
+# case: a reader on OwnedCaptures produces an OwnedMatch — the synthesizer emits
+# OwnedMatch before OwnedCaptures (dependency order) so the child adopt-ctor resolves.
 [libjac_bridge_owning_so]
-bridged = 6
-total = 6
+bridged = 7
+total = 7
 
 # regex: the M3 golden-spike surface — Regex.new + is_match (message() is consumed
 # into raised-exception text, not a surface method), 0 skips.

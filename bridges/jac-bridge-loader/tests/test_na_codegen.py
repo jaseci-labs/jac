@@ -171,6 +171,10 @@ def test_adopt_ctor_and_wrapper_declared_before_producer(
     order = [ln.split()[1] for ln in src.splitlines() if ln.startswith("obj ")]
     assert order.index("OwnedMatch") < order.index("Regex")
     assert order.index("OwnedCaptures") < order.index("Regex")
+    # NESTED dependency: OwnedCaptures.name_match produces an OwnedMatch, so the
+    # synthesizer's topological emit order must place OwnedMatch before the
+    # OwnedCaptures that produces it (not merely before the root Regex).
+    assert order.index("OwnedMatch") < order.index("OwnedCaptures")
 
 
 def test_opt_str_return_bridges_none_distinct_from_empty(
@@ -207,3 +211,24 @@ def test_non_nullable_methods_still_bridge(
     # (na needs the annotation or it types the result as its i64 fallback and
     # miscompiles string concatenation of the returned value).
     assert "def as_str() -> str {" in src
+
+
+def test_nested_wrapper_producer_bridges(
+    owning_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = owning_meta
+    res = render_na_source(meta, so.name)
+    # name_match is a reader ON a wrapper (OwnedCaptures) that PRODUCES another
+    # wrapper (OwnedMatch) — the nested owning-wrapper case. It bridges through the
+    # exact same Option<Ref> adopt-ctor path as Regex.find, just one level deeper.
+    items = {s.item for s in res.skips}
+    assert "OwnedCaptures.name_match" not in items
+    src = res.source
+    assert "def jac_owning_OwnedCaptures_name_match(" in src
+    # nullable by-handle return of the OTHER wrapper type, bare-constructed via
+    # OwnedMatch's adopt-ctor — the producer lives on OwnedCaptures, not Regex.
+    assert "def name_match(name: str) -> OwnedMatch | None {" in src
+    assert "return OwnedMatch(rh);" in src
+    # the name_match producer sits inside the OwnedCaptures obj body.
+    oc_body = src.split("obj OwnedCaptures {", 1)[1].split("obj ", 1)[0]
+    assert "def name_match(" in oc_body

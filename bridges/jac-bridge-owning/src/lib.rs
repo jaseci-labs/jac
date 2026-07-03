@@ -9,11 +9,16 @@
 //!
 //! This crate is the hand-written exemplar of exactly that shape, so the
 //! mechanism is proven and regression-tested on the Rust side before the binder
-//! generates it. Two things make the `'static` erasure sound:
-//!   1. the owned `String`'s heap buffer is never mutated or moved-out for the
-//!      wrapper's whole life (we only ever read through `inner`), and
+//! generates it. The haystack is held as `Arc<String>` so a *nested* wrapper — a
+//! `Match` produced from a `Captures` (`OwnedCaptures::name_match`) — can SHARE
+//! the parent's buffer via an Arc clone instead of re-owning a copy, and remain
+//! valid after the parent drops. Three things make the `'static` erasure sound:
+//!   1. the `String`'s heap buffer is never mutated or moved-out for the
+//!      wrapper's whole life (we only ever read through `inner`),
 //!   2. field declaration order is borrower-before-owner, so `inner` drops
-//!      before the `String` it points into.
+//!      before the `Arc<String>` it points into, and
+//!   3. every wrapper aliasing the buffer holds its own Arc clone, so the buffer
+//!      outlives the last borrower regardless of drop order between wrappers.
 //!
 //! Producers take `&str` and clone internally, so the wrapper owns its haystack
 //! without needing an owned-`String` param at the ABI. `find`/`captures` return
@@ -35,15 +40,18 @@ mod bridge_impl {
     /// Owning wrapper around `regex::Match<'h>` — rescues `Regex::find`.
     pub struct OwnedMatch {
         // Field order == drop order: the borrower (`inner`) drops before the
-        // owner (`_haystack`) whose heap buffer it points into.
+        // owner (`_haystack`) whose heap buffer it points into.  The haystack is
+        // an `Arc<String>` so a child match produced FROM a `Captures` can SHARE
+        // this exact buffer (an Arc clone) rather than re-owning a copy — keeping
+        // it alive independently of whichever wrapper produced it.
         inner: regex::Match<'static>,
-        _haystack: String,
+        _haystack: std::sync::Arc<String>,
     }
 
     /// Owning wrapper around `regex::Captures<'h>` — rescues `Regex::captures`.
     pub struct OwnedCaptures {
         inner: regex::Captures<'static>,
-        _haystack: String,
+        _haystack: std::sync::Arc<String>,
     }
 
     impl Regex {
@@ -70,12 +78,13 @@ mod bridge_impl {
     impl OwnedMatch {
         // Non-`pub` → not bridged: the ouroboros constructor.
         fn wrap(re: &regex::Regex, text: &str) -> Option<OwnedMatch> {
-            let haystack = text.to_owned();
-            let m = re.find(&haystack)?;
-            // SAFETY: `m` borrows `haystack`'s heap buffer, which is moved into
-            // the returned struct next to `m` and never mutated or moved-out.
-            // Erasing the haystack lifetime to `'static` is therefore sound for
-            // the whole life of the struct (see module docs, invariants 1 & 2).
+            let haystack = std::sync::Arc::new(text.to_owned());
+            let m = re.find(haystack.as_str())?;
+            // SAFETY: `m` borrows the heap buffer of the `String` inside `haystack`,
+            // whose `Arc` is stored next to `m` and never mutated or moved-out. The
+            // buffer lives as long as any Arc clone does, so erasing the haystack
+            // lifetime to `'static` is sound for the whole life of the struct — and
+            // of any child wrapper that clones this Arc (see module docs, inv. 1 & 2).
             let inner: regex::Match<'static> = unsafe { std::mem::transmute(m) };
             Some(OwnedMatch { inner, _haystack: haystack })
         }
@@ -88,8 +97,8 @@ mod bridge_impl {
 
     impl OwnedCaptures {
         fn wrap(re: &regex::Regex, text: &str) -> Option<OwnedCaptures> {
-            let haystack = text.to_owned();
-            let caps = re.captures(&haystack)?;
+            let haystack = std::sync::Arc::new(text.to_owned());
+            let caps = re.captures(haystack.as_str())?;
             // SAFETY: same invariant as OwnedMatch::wrap.
             let inner: regex::Captures<'static> = unsafe { std::mem::transmute(caps) };
             Some(OwnedCaptures { inner, _haystack: haystack })
@@ -100,6 +109,21 @@ mod bridge_impl {
         /// tracked as a skip until the ABI carries integers.)
         pub fn name(&self, name: &str) -> Option<String> {
             self.inner.name(name).map(|m| m.as_str().to_owned())
+        }
+
+        /// The `Match` for the named group `name`, or `None` if the group did not
+        /// participate — the NESTED owning-wrapper case: a reader on one wrapper
+        /// (`OwnedCaptures`) produces another (`OwnedMatch`). The child shares the
+        /// haystack via an `Arc` clone, so it owns its data independently and stays
+        /// valid after the parent `OwnedCaptures` is dropped. This is the faithful
+        /// shape of `regex::Captures::name -> Option<Match>` (the sibling `name`
+        /// above is a text shortcut); the binder synthesizes exactly this producer.
+        pub fn name_match(&self, name: &str) -> Option<OwnedMatch> {
+            // `self.inner` is `Captures<'static>`, so its `Match` is already
+            // `'static` — no transmute; the Arc clone is what upholds that erased
+            // lifetime for the child's whole life.
+            let m = self.inner.name(name)?;
+            Some(OwnedMatch { inner: m, _haystack: std::sync::Arc::clone(&self._haystack) })
         }
     }
 }
@@ -118,7 +142,8 @@ mod tests {
     use super::{
         jac_owning_Regex_new, jac_owning_Regex_find, jac_owning_Regex_captures,
         jac_owning_Regex_drop, jac_owning_OwnedMatch_as_str, jac_owning_OwnedMatch_drop,
-        jac_owning_OwnedCaptures_name, jac_owning_OwnedCaptures_drop,
+        jac_owning_OwnedCaptures_name, jac_owning_OwnedCaptures_name_match,
+        jac_owning_OwnedCaptures_drop,
         jac_owning_error_drop, jac_owning_free_buf,
         __jac_bridge_owning_rt::JacBuf,
     };
@@ -225,6 +250,76 @@ mod tests {
             let buf2 = buf2.assume_init();
             assert!(buf2.ptr.is_null(), "absent group must be a null JacBuf (None)");
             jac_owning_free_buf(buf2); // null-safe
+
+            jac_owning_OwnedCaptures_drop(ch);
+            jac_owning_Regex_drop(re);
+        }
+    }
+
+    /// Nested owning wrapper: a `Match` produced FROM a `Captures` shares the
+    /// haystack via an Arc clone and stays readable after the parent `Captures`
+    /// (and the original `&str`) are both dropped — the child owns its data.
+    #[test]
+    fn name_match_nested_outlives_parent() {
+        unsafe {
+            let re = compile(r"(?P<year>\d{4})-(?P<month>\d{2})");
+            let mut mh = 0u64;
+            let mut e = 0u64;
+            {
+                let text = String::from("date 2026-07");
+                let mut ch = 0u64;
+                let st = jac_owning_Regex_captures(
+                    re, text.as_ptr(), text.len() as u32, &mut ch, &mut e,
+                );
+                assert_eq!(st, STATUS_OK);
+                assert_ne!(ch, 0);
+
+                let name = b"year";
+                let st = jac_owning_OwnedCaptures_name_match(
+                    ch, name.as_ptr(), name.len() as u32, &mut mh, &mut e,
+                );
+                assert_eq!(st, STATUS_OK);
+                assert_ne!(mh, 0, "present group -> Some(match handle)");
+
+                // Drop the PARENT captures while the child match still lives.
+                jac_owning_OwnedCaptures_drop(ch);
+            } // `text` dropped here too — only the child's Arc keeps the buffer alive.
+
+            let mut buf = MaybeUninit::<JacBuf>::uninit();
+            let mut be = 0u64;
+            let st = jac_owning_OwnedMatch_as_str(mh, buf.as_mut_ptr(), &mut be);
+            assert_eq!(st, STATUS_OK);
+            let buf = buf.assume_init();
+            assert_eq!(read_buf(&buf), "2026", "child match must still read its group");
+
+            jac_owning_free_buf(buf);
+            jac_owning_OwnedMatch_drop(mh);
+            jac_owning_Regex_drop(re);
+        }
+    }
+
+    /// Absent named group → `None` (null match handle) on OK status, never an error.
+    #[test]
+    fn name_match_absent_group_is_null() {
+        unsafe {
+            let re = compile(r"(?P<year>\d{4})");
+            let text = "2026";
+            let mut ch = 0u64;
+            let mut e = 0u64;
+            let st = jac_owning_Regex_captures(
+                re, text.as_ptr(), text.len() as u32, &mut ch, &mut e,
+            );
+            assert_eq!(st, STATUS_OK);
+            assert_ne!(ch, 0);
+
+            let mut mh = 999u64; // poison to prove the shim zeroes it
+            let nope = b"month";
+            let st = jac_owning_OwnedCaptures_name_match(
+                ch, nope.as_ptr(), nope.len() as u32, &mut mh, &mut e,
+            );
+            assert_eq!(st, STATUS_OK, "absent group must be OK None, not an error");
+            assert_eq!(mh, 0, "absent group -> null match handle (None)");
+            assert_eq!(e, 0);
 
             jac_owning_OwnedCaptures_drop(ch);
             jac_owning_Regex_drop(re);

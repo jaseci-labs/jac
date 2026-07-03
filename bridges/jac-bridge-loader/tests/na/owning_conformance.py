@@ -19,6 +19,14 @@ an empty (zero-width) match is a real handle whose text is "" (distinct from Non
 and ``name(group)`` returns the group text, ``""`` for a zero-width group, or
 ``None`` for an absent / non-existent group.
 
+``OwnedCaptures.name_match`` is the NESTED owning-wrapper case: a reader on one
+wrapper (Captures) produces ANOTHER (Match), Option<OwnedMatch>.  It carries the
+same text/""/None outcomes as ``name`` but routed through an ``OwnedMatch`` handle
+(``name_match(group).as_str()``) instead of a raw string, proving a
+wrapper-producing-wrapper round-trips identically on both runtimes — and, on na,
+that the child match's adopt-ctor resolves because the synthesizer emits
+``OwnedMatch`` before the ``OwnedCaptures`` that produces it (dependency order).
+
 na side: synthesize Jac source from the .so's metadata, nacompile it with an
 appended probe that prints one line per observation, run the binary, diff the
 output against the CPython loader.  Gated on the LLVM shim; skips without it.
@@ -52,6 +60,17 @@ CAPS_CASES = [
     (r"(?P<a>x)?(?P<b>y)", "y", "a"),  # optional group didn't match -> None
     (r"(?P<z>\d*)", "abc", "z"),  # zero-width group present -> "" (not None)
 ]
+# (pattern, haystack, group) -> captures().name_match(group).as_str(): the NESTED
+# wrapper path (a Captures produces a Match).  Same text/""/None outcomes as the
+# name() path, but routed through an OwnedMatch handle, so it proves a
+# wrapper-producing-wrapper round-trips identically on both runtimes.
+NAME_MATCH_CASES = [
+    (r"(?P<num>\d+)-(?P<rest>\d+)", "12-34 today", "num"),  # present group -> "12"
+    (r"(?P<num>\d+)-(?P<rest>\d+)", "12-34 today", "nope"),  # no such group -> None
+    (r"(?P<a>x)?(?P<b>y)", "y", "a"),  # optional group didn't match -> None
+    (r"(?P<num>\d+)", "nothing here", "num"),  # no match at all -> caps None
+    (r"(?P<z>\d*)", "abc", "z"),  # zero-width group present -> "" (a real handle)
+]
 
 
 def _find_label(pat: str, text: str) -> str:
@@ -60,6 +79,10 @@ def _find_label(pat: str, text: str) -> str:
 
 def _caps_label(pat: str, text: str, group: str) -> str:
     return f"caps {pat!r} {text!r} name({group!r}) = "
+
+
+def _nm_label(pat: str, text: str, group: str) -> str:
+    return f"nmatch {pat!r} {text!r} name_match({group!r}) = "
 
 
 def cpython_side() -> list[str]:
@@ -89,6 +112,21 @@ def cpython_side() -> list[str]:
                 lines.append(label + "None")
             else:
                 lines.append(label + "[" + v + "]")
+            c.close()
+        re.close()
+    for pat, text, group in NAME_MATCH_CASES:
+        label = _nm_label(pat, text, group)
+        re = owning.Regex(pat)
+        c = re.captures(text)
+        if c is None:
+            lines.append(label + "caps=None")
+        else:
+            mm = c.name_match(group)
+            if mm is None:
+                lines.append(label + "None")
+            else:
+                lines.append(label + "[" + mm.as_str() + "]")
+                mm.close()
             c.close()
         re.close()
     return [ln for ln in "\n".join(lines).splitlines() if ln.strip()]
@@ -145,6 +183,30 @@ def na_side() -> list[str]:
         probe.append(
             f"            print({_jac_str(label + '[')} + n + {_jac_str(']')});"
         )
+        probe.append("        } else {")
+        probe.append(f"            print({_jac_str(label + 'None')});")
+        probe.append("        }")
+        probe.append("        oc.close();")
+        probe.append("    } else {")
+        probe.append(f"        print({_jac_str(label + 'caps=None')});")
+        probe.append("    }")
+        probe.append("    re.close();")
+    for pat, text, group in NAME_MATCH_CASES:
+        label = _nm_label(pat, text, group)
+        probe.append(f"    re = Regex({_jac_str(pat)});")
+        probe.append(f"    c = re.captures({_jac_str(text)});")
+        probe.append("    if c is not None {")
+        # Nested wrapper: rebind the OwnedCaptures|None local to dispatch name_match,
+        # which itself returns OwnedMatch|None; rebind THAT before dispatching as_str
+        # (same union-receiver caveat, applied one level deeper).
+        probe.append("        oc: OwnedCaptures = c;")
+        probe.append(f"        mm = oc.name_match({_jac_str(group)});")
+        probe.append("        if mm is not None {")
+        probe.append("            om2: OwnedMatch = mm;")
+        probe.append(
+            f"            print({_jac_str(label + '[')} + om2.as_str() + {_jac_str(']')});"
+        )
+        probe.append("            om2.close();")
         probe.append("        } else {")
         probe.append(f"            print({_jac_str(label + 'None')});")
         probe.append("        }")

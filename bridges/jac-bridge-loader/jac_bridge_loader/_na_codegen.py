@@ -418,11 +418,37 @@ class _Synth:
         out.append("}")
         out.append("")
 
-        # Emit adoption-target wrappers (OwnedMatch/OwnedCaptures) before their
-        # producers (Regex): a producer's signature `-> Wrapper | None` and its
-        # `Wrapper(rh)` ctor call must resolve a type defined earlier, since the na
-        # type resolver is declaration-order sensitive (see na-resolver notes).
-        emit_order = sorted(self.opaque, key=lambda ti: (ti not in self.adoptable, ti))
+        # Emit each opaque type BEFORE any type that produces it by handle: a
+        # producer's `-> Wrapper | None` signature and its `Wrapper(rh)` adopt-ctor
+        # call must resolve a type declared earlier (the na type resolver is
+        # declaration-order sensitive — see na-resolver notes).  This is a
+        # dependency (topological) order, not just adoptable-first: it also handles
+        # NESTED producers — a wrapper method returning another wrapper (e.g.
+        # `OwnedCaptures.name_match -> OwnedMatch`), where the product must precede
+        # the producing WRAPPER, not only the root type.  A `produces` edge ti->p
+        # means "ti returns a handle of opaque type p", so p is emitted first.
+        produces: dict[int, set[int]] = {ti: set() for ti in self.opaque}
+        for ti in self.opaque:
+            for fd in methods_of.get(ti, []):
+                if _is_ref(fd.ret):
+                    p = _ref_index(fd.ret)
+                    if p in self.opaque and p != ti:
+                        produces[ti].add(p)
+        emit_order: list[int] = []
+        visited: set[int] = set()
+
+        def _visit(ti: int) -> None:
+            if ti in visited:
+                return
+            visited.add(ti)
+            for p in sorted(produces[ti]):
+                _visit(p)  # products before their producer
+            emit_order.append(ti)
+
+        # Seed the DFS in the prior deterministic order (adoptable first, then by
+        # index) so a graph with no producer edges lays out exactly as before.
+        for ti in sorted(self.opaque, key=lambda t: (t not in self.adoptable, t)):
+            _visit(ti)
         for ti in emit_order:
             name = self.opaque[ti]
             drop_sym = m.types[ti].drop_sym
