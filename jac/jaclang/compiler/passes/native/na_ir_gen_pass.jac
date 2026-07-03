@@ -280,6 +280,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
+    def _arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None);
     def _codegen_call_args(nd: uni.FuncCall) -> list;
     def _emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None;
     def _codegen_bound_args(
