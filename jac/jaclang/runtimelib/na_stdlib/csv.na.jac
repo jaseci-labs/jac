@@ -7,10 +7,15 @@ def _parse_line(line: str) -> list[str] {
     cur: str = "";
     i: int = 0;
     quoted: bool = False;
+    started: bool = False;
     while i < n {
         c: int = ord(line[i]);
 
         if not quoted {
+            if c == 10 or c == 13 {
+                break;
+            }
+            started = True;
             if c == 34 and cur == "" {
                 quoted = True;
             } elif c == 44 {
@@ -30,6 +35,9 @@ def _parse_line(line: str) -> list[str] {
             cur += line[i];
         }
         i += 1;
+    }
+    if not started {
+        return fields;
     }
     fields.append(cur);
     return fields;

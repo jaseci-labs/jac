@@ -141,6 +141,9 @@ def _format(value: any) -> str {
         out2 += "}";
         return out2;
     }
+    if isinstance(value, set) {
+        raise ValueError("pprint: unsupported value type on native");
+    }
     return "None";
 }
 

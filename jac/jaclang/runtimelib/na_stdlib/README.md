@@ -86,7 +86,13 @@ bundled one. A bundled module links through the existing cross-module machinery
   implemented); string dict keys; no floats (the `json` `str(float)` `%g`
   divergence); bytes > 0x7f pass through unescaped, so *unicode* non-printables
   (e.g. U+00A0, U+200B) are NOT `\uXXXX`-escaped as CPython would -- congruent
-  for ASCII and printable-unicode payloads.
+  for ASCII and printable-unicode payloads. Out-of-scope value types: `set`
+  raises `ValueError("pprint: unsupported value type on native")` instead of
+  silently misrendering; other non-JSON values (e.g. object instances) cannot
+  be type-discriminated from `None` by the native runtime today (JacVal tags 6
+  vs 8 are both invisible to `isinstance`, and `any` truthiness/`is None` are
+  not native-compilable), so they render as `"None"` -- a documented
+  divergence.
 - **`difflib.na.jac`** (#6978 Phase 3) -- `SequenceMatcher`
   (`ratio`/`get_matching_blocks`/`set_seq1`/`set_seq2`, full 4-arg constructor
   including `autojunk`) and `get_close_matches`, a port of CPython's
