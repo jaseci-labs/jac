@@ -222,6 +222,22 @@ impl CMapper._zero_default(inner: object) -> object {
 }
 
 impl CMapper.c_Assignment(nd: object) -> object {
+    if nd.op == "=" and isinstance(nd.rvalue, c_ast.Assignment) {
+        inner = self.conv_stmt(nd.rvalue);
+        inner_stmts: list[object] = [inner] if not isinstance(inner, list) else inner;
+        (line, col) = self._loc(nd);
+        lhs = self.conv_expr(nd.lvalue);
+        lhs_store = self._to_store(lhs);
+        leaf = nd.rvalue;
+        while isinstance(leaf.rvalue, c_ast.Assignment) {
+            leaf = leaf.rvalue;
+        }
+        final_rhs = self.conv_expr(leaf.rvalue);
+        outer = ast3.Assign(targets=[lhs_store], value=final_rhs, type_comment=None);
+        outer_stmt = self._stamp(outer, nd, text="=");
+        return inner_stmts + [outer_stmt];
+    }
+
     lhs = self.conv_expr(nd.lvalue);
 
     rhs = self.conv_expr(nd.rvalue);
@@ -354,7 +370,7 @@ impl CMapper.c_Enum(nd: object) -> object {
 }
 
 impl CMapper._type_ann(decl: object) -> object {
-    name = typename(decl.type);
+    name = elem_typename(decl.type);
     n = ast3.Name(id=name, ctx=ast3.Load());
     return self._stamp(n, decl, text=name);
 }
@@ -367,7 +383,7 @@ impl CMapper._type_ann_from_type(t: object) -> object {
 }
 
 impl CMapper._ret_ann(funcdecl: object) -> object {
-    name = typename(funcdecl.type);
+    name = elem_typename(funcdecl.type);
     n = ast3.Name(id=name, ctx=ast3.Load());
     n.lineno = 1;
     n.col_offset = 0;
