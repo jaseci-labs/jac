@@ -1104,7 +1104,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if _is_raw_int_ptr {
                     self.param_vars.add(var_name);
                 } else {
-                    if not self._is_owned(value) {
+                    if not self._is_owned(value)
+                    and not self._try_move_lower(nd.value) {
                         self._emit_rc_retain(
                             coerced,
                             op="assign",
@@ -1371,7 +1372,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if getattr(value, 'opname', '') == 'inttoptr' {
                     self.param_vars.add(var_name);
                 } else {
-                    if not self._is_owned(value) {
+                    if not self._is_owned(value)
+                    and not self._try_move_lower(nd.value) {
                         self._emit_rc_retain(
                             value,
                             op="assign",
