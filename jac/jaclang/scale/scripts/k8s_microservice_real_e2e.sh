@@ -121,9 +121,33 @@ YAML
 }
 
 _T0=$(date +%s)
-_t() { echo "[TIMING +$(( $(date +%s) - _T0 ))s] $1"; }
+_LAST_T=0
+# label|step_seconds|cumulative_seconds per phase, for the report at the end.
+_PHASE_ROWS=""
+_t() {
+    now=$(( $(date +%s) - _T0 ))
+    step=$(( now - _LAST_T ))
+    echo "[TIMING +${now}s] $1 (+${step}s)"
+    _PHASE_ROWS="${_PHASE_ROWS}${1}|${step}|${now}"$'\n'
+    _LAST_T=${now}
+}
 
-echo "# phase timings printed as [TIMING +Ns] markers"
+print_timing_report() {
+    echo ""
+    echo "======================= E2E PHASE TIMING REPORT ======================="
+    printf "%-38s %10s %12s\n" "PHASE" "STEP (s)" "CUMUL (s)"
+    printf "%-38s %10s %12s\n" "--------------------------------------" "--------" "----------"
+    printf '%s' "${_PHASE_ROWS}" | while IFS='|' read -r label step cumul; do
+        [ -z "${label}" ] && continue
+        printf "%-38s %10s %12s\n" "${label}" "${step}" "${cumul}"
+    done
+    printf "%-38s %10s %12s\n" "--------------------------------------" "--------" "----------"
+    printf "%-38s %10s %12s\n" "TOTAL" "" "${_LAST_T}"
+    echo "======================================================================="
+    echo "# CLUSTER_TYPE=${CLUSTER_TYPE}  services=$(printf '%s' "${ROUTES:-}" | grep -c . || echo 0)"
+}
+
+echo "# phase timings printed as [TIMING +Ns] markers; full report at the end"
 _t "deploy start"
 echo "=== deploy via KubernetesMicroserviceTarget (no-Docker: host-built binary + source over PVC) ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -241,9 +265,11 @@ echo "=== verify per-service routing ==="
 # we reached a healthy service that just doesn't have that walker.
 ROUTES=$(jac -c "
 import tomllib
+from jaclang.scale.runtime.discovery.discovery import resolve_routes
 with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
     cfg = tomllib.load(f)
-for prefix in cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {}).values():
+explicit = cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {})
+for prefix in resolve_routes('${PROJECT_DIR}', dict(explicit)).values():
     print(prefix)
 ")
 for prefix in ${ROUTES}; do
@@ -497,9 +523,11 @@ run_zero_downtime_assertion "gateway" \
 FIRST_PREFIX=$(echo "${ROUTES}" | head -n1)
 FIRST_SVC=$(jac -c "
 import tomllib
+from jaclang.scale.runtime.discovery.discovery import resolve_routes
 with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
     cfg = tomllib.load(f)
-for name, prefix in cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {}).items():
+explicit = cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {})
+for name, prefix in resolve_routes('${PROJECT_DIR}', dict(explicit)).items():
     if prefix == '${FIRST_PREFIX}':
         print(name.replace('_', '-'))
         break
@@ -517,4 +545,5 @@ else
 fi
 
 _t "ALL DONE"
+print_timing_report
 echo "=== K8s microservice REAL e2e PASSED ==="

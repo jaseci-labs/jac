@@ -39,12 +39,10 @@ boot_health_timeout = 300.0
 boot_max_wait = 300
 health_monitor_interval = 10.0
 
-# Map module name -> gateway prefix. Services NOT listed here still work
-# for internal `sv import` calls; this only controls public URL routing.
-[plugins.scale.microservices.routes]
-products_app = "/products"
-orders_app = "/orders"
-cart_app = "/cart"
+# No [plugins.scale.microservices.routes] table: services are auto-discovered
+# from `sv import` and their public prefixes derived (products_app -> /products,
+# cart_app -> /cart, ...), so a microservice app deploys with zero route
+# boilerplate. Add a routes table only to override a specific prefix.
 
 # Gateway memory. The gateway loads the admin portal, LLM-telemetry, log
 # wiring and runtime OpenAPI aggregation that service pods don't, so its
