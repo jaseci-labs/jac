@@ -45,35 +45,44 @@ def _http_get_bytes(url: str) -> bytes {
 
 def download_release_binary(channel: str, arch: str) -> bytes {
     repo = "jaseci-labs/jaseci";
-    api = (
-        f"https://api.github.com/repos/{repo}/releases/tags/dev"
-            if channel == "dev"
-            else f"https://api.github.com/repos/{repo}/releases/latest"
-    );
-    meta = json.loads(_http_get_bytes(api).decode("utf-8"));
-
     suffix = f"-linux-{arch}";
     binary_url = "";
     checksum_url = "";
-    for asset in meta.get("assets", []) {
-        name = str(asset.get("name", ""));
-        url = str(asset.get("browser_download_url", ""));
-        if not name.startswith("jac-") {
-            continue;
+
+    if channel == "dev" {
+        # The rolling `dev` prerelease has a FIXED tag and fixed asset names, so
+        # build the release-download URLs directly and skip the api.github.com
+        # asset lookup entirely. Those API calls are anonymous (60 req/hr per IP)
+        # and CI runners exhaust them ("HTTP 403: rate limit exceeded"); the
+        # release-download host (objects storage) is not API-rate-limited.
+        base = f"https://github.com/{repo}/releases/download/dev";
+        binary_url = f"{base}/jac-dev{suffix}";
+        checksum_url = f"{binary_url}.sha256";
+    } else {
+        # Stable asset names carry the release version, so the latest tag + asset
+        # list still have to be resolved through the API.
+        api = f"https://api.github.com/repos/{repo}/releases/latest";
+        meta = json.loads(_http_get_bytes(api).decode("utf-8"));
+        for asset in meta.get("assets", []) {
+            name = str(asset.get("name", ""));
+            url = str(asset.get("browser_download_url", ""));
+            if not name.startswith("jac-") {
+                continue;
+            }
+            if name.endswith(suffix + ".sha256") {
+                checksum_url = url;
+            } elif name.endswith(suffix) {
+                binary_url = url;
+            }
         }
-        if name.endswith(suffix + ".sha256") {
-            checksum_url = url;
-        } elif name.endswith(suffix) {
-            binary_url = url;
+        if not binary_url {
+            tag = meta.get("tag_name", "latest");
+            raise RuntimeError(
+                f"No `jac-*{suffix}` asset on the {channel} release ({tag}). The "
+                f"node arch may be unpublished; set JAC_NODE_ARCH or check "
+                f"https://github.com/{repo}/releases."
+            );
         }
-    }
-    if not binary_url {
-        tag = "dev" if channel == "dev" else meta.get("tag_name", "latest");
-        raise RuntimeError(
-            f"No `jac-*{suffix}` asset on the {channel} release ({tag}). The node "
-            f"arch may be unpublished; set JAC_NODE_ARCH or check "
-            f"https://github.com/{repo}/releases."
-        );
     }
 
     payload = _http_get_bytes(binary_url);

@@ -112,12 +112,34 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
+def _shared_first_boot_install -> str {
+    # All app pods share the RWX bundle PVC and would each cold-run `jac install`
+    # (resolve the venv + compile the jaclang overlay) simultaneously, thrashing
+    # the node CPU on identical work. Elect one pod via an atomic mkdir lock on
+    # the PVC to do it first; the others wait for the lock to clear, then their
+    # own `jac install` is a near no-op against the now-warm shared venv and the
+    # content-keyed `.jir` cache. Fully best-effort: concurrent installs are
+    # already safe, a waiter that times out just installs itself, and a stale
+    # lock from a dead leader is cleared - so this is never slower than before.
+    lock = f"{APP_MOUNT_PATH}/.jac/.bootstrap.lock";
+    return (
+        f'mkdir -p {APP_MOUNT_PATH}/.jac; '
+        f'if mkdir "{lock}" 2>/dev/null; then '
+        f'jac install; rc=$?; rmdir "{lock}" 2>/dev/null || true; exit $rc; '
+        f'else '
+        f'n=0; while [ -d "{lock}" ] && [ $n -lt 210 ]; do sleep 2; n=$((n+1)); done; '
+        f'rmdir "{lock}" 2>/dev/null || true; jac install; '
+        f'fi'
+    );
+}
+
+
 def build_bootstrap_init_container(
     k8s_config: KubernetesConfig, base_image: str, overlay_source: bool = False
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config, overlay_source);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    commands.append('jac install');
+    commands.append(_shared_first_boot_install());
     script = ' && '.join(commands);
     return {
         "name": "jac-bootstrap",

@@ -86,7 +86,11 @@ impl IdentityStorage.create_user(
         'created_at': now,
         'updated_at': now
     };
-    self._store_user(user_doc);
+    try {
+        self._store_user(user_doc);
+    } except IdentityTakenError {
+        return {'error': "Identity is already registered", 'code': 'IDENTITY_TAKEN'};
+    }
 
     return {'user_id': user_id, 'message': 'User registered successfully'};
 }
