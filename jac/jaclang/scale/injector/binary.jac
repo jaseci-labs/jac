@@ -188,7 +188,74 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 }
 
 
+def ensure_admin_dist_built(source_root: Path) -> None {
+    # The gateway serves the admin/ops console from a pre-built `_dist` shipped
+    # beside the admin package. A wheel install bakes it in at package time, but
+    # the dev SOURCE overlay carries none, so the gateway would build it from
+    # source on-pod - a heavy `bun` build that gets the container OOM-killed
+    # under a busy single node (mongo + redis + the app fleet + observability),
+    # crash-looping the gateway. Build it here on the host (as the client bundle
+    # is built) so the pod just copies the finished dist and starts fast.
+    admin = source_root / "jaclang" / "scale" / "admin";
+    dist = admin / "_dist";
+    if (dist / "index.html").is_file() {
+        return;
+    }
+    ui = admin / "ui";
+    if not (ui / "main.jac").is_file() {
+        logger.warning(
+            f"Admin UI source not found at {ui}; the gateway will build the "
+            f"admin console on-pod instead."
+        );
+        return;
+    }
+    logger.info(
+        "Building the admin console on the host (ships pre-built to the gateway)."
+    );
+    try {
+        result = subprocess.run(
+            ["jac", "build", "main.jac"],
+            cwd=str(ui),
+            capture_output=True,
+            text=True,
+            timeout=_SUBPROCESS_TIMEOUT
+        );
+        if result.returncode != 0 {
+            logger.warning(
+                f"Host admin build failed ({result.stderr.strip()}); the gateway "
+                f"will build it on-pod instead."
+            );
+            return;
+        }
+    } except Exception as e {
+        logger.warning(
+            f"Host admin build error ({e}); the gateway will build it on-pod."
+        );
+        return;
+    }
+    built = ui / ".jac" / "client" / "dist";
+    if not (built / "index.html").is_file() {
+        logger.warning(f"Host admin build produced no dist at {built}.");
+        return;
+    }
+    dist.mkdir(parents=True, exist_ok=True);
+    for item in built.iterdir() {
+        target = dist / item.name;
+        if item.is_dir() {
+            if target.exists() {
+                shutil.rmtree(target);
+            }
+            shutil.copytree(item, target);
+        } else {
+            shutil.copy2(item, target);
+        }
+    }
+    logger.info("Admin console built; shipping it in the overlay.");
+}
+
+
 def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
+    ensure_admin_dist_built(source_root);
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
