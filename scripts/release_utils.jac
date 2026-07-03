@@ -26,7 +26,7 @@ class PackageInfo(NamedTuple) {
     # jaclang ships as the native `jac` binary, not a PyPI wheel. It does not
     # publish to PyPI (publish_pypi=False) and it anchors the GitHub Release
     # (is_anchor=True): a release that bumps jaclang creates the v<version> tag,
-    # which fires release-jaclang.yml to build + attach the binaries.
+    # which fires build-binaries.yml to build + attach the binaries.
     has publish_pypi: bool = True;
     has is_anchor: bool = False;
 }

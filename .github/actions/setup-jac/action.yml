@@ -22,7 +22,7 @@ runs:
       uses: actions/cache@v4
       with:
         # Also cache the gitignored typeshed stdlib stubs: they are materialized
-        # during `zig build` and test-binary.yml publishes them as an artifact for
+        # during `zig build` and ci.yml publishes them as an artifact for
         # the compiler suite. Without them here, a binary cache hit skips the
         # build and the upload step fails on a fresh checkout.
         path: |
