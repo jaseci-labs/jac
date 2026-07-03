@@ -109,16 +109,6 @@ def precompile_unit(
     );
 }
 
-# (fullname, is_package) for a module file relative to its package dir.
-def module_fullname(pkg_name: str, pkg_dir: Path, jac_path: str) -> tuple[str, bool] {
-    rel = Path(jac_path).relative_to(pkg_dir);
-    parts = [pkg_name] + list(rel.parts[:-1]);
-    if rel.name in ext_registry.INIT_FILES {
-        return (".".join(parts), True);
-    }
-    return (".".join(parts + [ext_registry.base_stem(rel.name)]), False);
-}
-
 # Annex (.impl.jac / .test.jac / variant / style) files belonging to a module,
 # folded into its JIR at compile time and thus removable from a sealed image.
 def _annex_files(jac_path: str) -> list[str] {
@@ -138,22 +128,15 @@ def _annex_files(jac_path: str) -> list[str] {
     return out;
 }
 
-# Delete exactly the .jac sources that were sealed (module files + their annexes
-# + frozen bootstrap sources/impls). Data/template .jac (e.g. project scaffolds)
-# are never in the sealed set, so they survive. Runs last, after every jaclang
-# module the precompiler needs is already imported and cached. Returns count.
-def strip_sealed_sources(
-    module_paths: list[str], bootstrap_srcs: list[str]
-) -> int {
-    import from jaclang.jac0 { discover_impl_files as jac0_impls }
+# Delete exactly the .jac sources that were sealed (module files + their
+# annexes). Data/template .jac (e.g. project scaffolds) are never in the sealed
+# set, so they survive. Runs last, after every jaclang module the precompiler
+# needs is already imported and cached. Returns count.
+def strip_sealed_sources(source_paths: list[str]) -> int {
     victims: set[str] = set();
-    for jac_path in module_paths {
+    for jac_path in source_paths {
         victims.add(jac_path);
         victims.update(_annex_files(jac_path));
-    }
-    for src in bootstrap_srcs {
-        victims.add(src);
-        victims.update(jac0_impls(src));
     }
     removed = 0;
     for p in sorted(victims) {
@@ -167,28 +150,26 @@ def strip_sealed_sources(
     return removed;
 }
 
-# jac0-compile every jac0core bootstrap module to a sentinel-patched marshalled
-# .jbc under _precompiled/bootstrap/. Returns (manifest entries keyed by
-# fullname, failure count). Mirrors meta_importer._bootstrap_compile so frozen
-# and live bootstrap semantics are identical.
-def freeze_bootstrap(
-    pkg_dir: Path, precompiled_dir: Path
-) -> tuple[dict[str, dict], int] {
+# jac0-compile every jac0core bootstrap module into the SAME JIR container as the
+# full-compiler modules (SEC_BYTECODE + FLAG_BOOTSTRAP), written under
+# _precompiled/<tag>/jac0core/. The bootstrap tier keeps jac0 as its compiler
+# (the full compiler depends on jac0core, and reading a JIR needs jir.jac -- both
+# cycles), but shares one on-disk format + manifest; sealed.py loads these via a
+# pure-Python section reader that needs no .jac machinery. Returns
+# (bootstrap source .jac files incl. impls, failure count).
+def seal_bootstrap(
+    pkg_dir: Path, out_dir: Path, embed_src: bool
+) -> tuple[list[str], int] {
     import from jaclang.jac0 {
         compile_jac as jac0_compile,
         discover_impl_files as jac0_impls
     }
     boot_dir = pkg_dir / "jac0core";
-    out_dir = precompiled_dir / "bootstrap";
-    entries: dict[str, dict] = {};
+    boot_sources: list[str] = [];
     failed = 0;
     if not boot_dir.is_dir() {
-        return (entries, failed);
+        return (boot_sources, failed);
     }
-    if out_dir.is_dir() {
-        shutil.rmtree(out_dir);
-    }
-    out_dir.mkdir(parents=True, exist_ok=True);
     for jac_file in sorted(boot_dir.rglob("*.jac")) {
         if ext_registry.is_annex(str(jac_file)) {
             continue;
@@ -199,10 +180,10 @@ def freeze_bootstrap(
         ) {
             continue;
         }
-        (fullname, _) = module_fullname(pkg_dir.name, pkg_dir, str(jac_file));
         try {
+            impl_paths = jac0_impls(str(jac_file));
             impl_sources: list[tuple[str, str]] = [];
-            for impl_path in jac0_impls(str(jac_file)) {
+            for impl_path in impl_paths {
                 impl_sources.append(
                     (Path(impl_path).read_text(encoding="utf-8"), impl_path)
                 );
@@ -213,23 +194,27 @@ def freeze_bootstrap(
                 impl_sources=impl_sources or None
             );
             code = compile(py_source, str(jac_file), "exec");
-            raw = patch_co_filenames_bytes(
+            bc = patch_co_filenames_bytes(
                 marshal.dumps(code), str(pkg_dir), PRECOMPILE_SENTINEL
             );
-            src_rel = jac_file.relative_to(pkg_dir).as_posix();
-            jbc_name = fullname.removeprefix(pkg_dir.name + ".") + ".jbc";
-            (out_dir / jbc_name).write_bytes(raw);
-            entries[fullname] = {
-                "path": f"bootstrap/{jbc_name}",
-                "src": src_rel,
-                "sha256": hashlib.sha256(raw).hexdigest()
-            };
+            extra: dict[int, bytes] | None = None;
+            if embed_src {
+                extra = {SEC_DEBUG_SRC: zlib.compress(jac_file.read_bytes(), 9)};
+            }
+            jir_rel = jac_file.relative_to(pkg_dir).with_suffix(".jir");
+            jir_path = out_dir / jir_rel;
+            jir_path.parent.mkdir(parents=True, exist_ok=True);
+            jir_path.write_bytes(
+                write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra)
+            );
+            boot_sources.append(str(jac_file));
+            boot_sources.extend(impl_paths);
         } except Exception as e {
             console.error(f"BOOTSTRAP FAIL: {jac_file.name} - {e}");
             failed += 1;
         }
     }
-    return (entries, failed);
+    return (boot_sources, failed);
 }
 
 # (source_rel, fullname, is_pkg) for a generated .jir, keyed off its path
@@ -259,52 +244,61 @@ def seal_finalize(
     pkg_path: Path, precompiled_dir: Path, pkg_name: str, pyver: str, embed_src: bool
 ) -> int {
     out_dir = precompiled_dir / pyver;
+
+    # Drop a stale pre-unification bootstrap/ dir (old format shipped jac0core as
+    # raw .jbc there; it is now JIR under <tag>/jac0core/).
+    stale_boot = precompiled_dir / "bootstrap";
+    if stale_boot.is_dir() {
+        shutil.rmtree(stale_boot, ignore_errors=True);
+    }
+
+    # Freeze the jac0core bootstrap tier into the same JIR tree first, so the
+    # single scan below sees both tiers and emits one manifest.
+    console.print("  Freezing jac0core bootstrap layer...");
+    (boot_sources, boot_failed) = seal_bootstrap(pkg_path, out_dir, embed_src);
+    if boot_failed > 0 {
+        console.error(f"Seal aborted: {boot_failed} bootstrap module(s) failed.");
+        return 1;
+    }
+    console.print(f"  Frozen {len(set(boot_sources))} bootstrap source files");
+
+    # One manifest, built by scanning every JIR (full-compiler + bootstrap). A
+    # jac0core/ path marks the bootstrap tier so the runtime loads it via the
+    # pure-Python reader; the scan needs no source, so it survives a compile
+    # crash and runs correctly after stripping.
     manifest_modules: dict[str, dict] = {};
-    sealed_sources: list[str] = [];
+    sealed_sources: list[str] = list(boot_sources);
+    n_boot = 0;
     for jir in sorted(out_dir.rglob("*.jir")) {
         rel_jir = jir.relative_to(out_dir).as_posix();
-        # jac0core is frozen as bootstrap .jbc, never a manifest JIR module.
-        if rel_jir.startswith("jac0core/") {
-            continue;
-        }
         (source_rel, fullname, is_pkg) = jir_to_module(pkg_name, rel_jir);
-        manifest_modules[source_rel] = {
+        entry = {
             "module": fullname,
             "jir": rel_jir,
             "package": is_pkg,
             "sha256": hashlib.sha256(jir.read_bytes()).hexdigest()
         };
+        if rel_jir.startswith("jac0core/") {
+            entry["bootstrap"] = True;
+            n_boot += 1;
+        }
+        manifest_modules[source_rel] = entry;
         sealed_sources.append(str(pkg_path / source_rel));
     }
-    console.print(f"  Sealed modules in manifest: {len(manifest_modules)}");
-
-    console.print("  Freezing jac0core bootstrap layer...");
-    (bootstrap_entries, boot_failed) = freeze_bootstrap(pkg_path, precompiled_dir);
     console.print(
-        f"  Frozen {len(bootstrap_entries)} bootstrap modules ({boot_failed} failed)"
+        f"  Manifest modules: {len(manifest_modules)} ({n_boot} bootstrap)"
     );
-    if boot_failed > 0 {
-        console.error("Seal aborted: bootstrap freeze had failures.");
-        return 1;
-    }
 
-    write_manifest(
-        precompiled_dir, pkg_name, pyver, manifest_modules, bootstrap_entries
-    );
+    write_manifest(precompiled_dir, pkg_name, pyver, manifest_modules);
     console.print(f"  Manifest: {precompiled_dir / MANIFEST_NAME}");
 
-    boot_srcs = [str(pkg_path / e["src"]) for e in bootstrap_entries.values()];
-    removed = strip_sealed_sources(sealed_sources, boot_srcs);
+    removed = strip_sealed_sources(sealed_sources);
     console.print(f"  Stripped {removed} sealed .jac source files");
     return 0;
 }
 
 def write_manifest(
-    precompiled_dir: Path,
-    pkg_name: str,
-    pyver: str,
-    modules: dict[str, dict],
-    bootstrap: dict[str, dict]
+    precompiled_dir: Path, pkg_name: str, pyver: str, modules: dict[str, dict]
 ) -> None {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -318,8 +312,7 @@ def write_manifest(
         "python_tag": pyver,
         "jir_format_version": FORMAT_VERSION,
         "jaclang_version": jac_ver,
-        "modules": modules,
-        "bootstrap": bootstrap
+        "modules": modules
     };
     (precompiled_dir / MANIFEST_NAME).write_text(
         json.dumps(manifest, sort_keys=True, indent=1) + "\n", encoding="utf-8"
@@ -384,11 +377,20 @@ def main {
 
     jac_files = find_jac_files(package_dir);
     if exclude_jac0core {
-        # The jac0core bootstrap layer never routes through the full compiler
-        # at runtime (meta_importer execs it via jac0); in sealed images it is
-        # frozen as .jbc bootstrap entries instead of .jir modules.
+        # Under seal, drop two families from the full-compiler JIR set:
+        #  - jac0core/*: the bootstrap layer is jac0-compiled (the full compiler
+        #    depends on it), then written into the SAME JIR tree by seal_bootstrap
+        #    with a "bootstrap" manifest flag -- never full-compiled here.
+        #  - *.na.jac: native-codespace modules are lowered via nacompile (LLVM)
+        #    and loaded through the native engine, not JIR bytecode. They are the
+        #    native-seed's domain (#6852), not JIR sealing (#7135 non-goal), and
+        #    precompiling some of them segfaults the process (libcrypto/native
+        #    codegen), which would truncate the whole best-effort run.
         boot_prefix = str(Path(package_dir) / "jac0core") + os.sep;
-        jac_files = [p for p in jac_files if not p.startswith(boot_prefix)];
+        jac_files = [
+            p for p in jac_files
+            if not p.startswith(boot_prefix) and not ext_registry.is_native_module(p)
+        ];
     }
     console.print(f"  Found {len(jac_files)} .jac files");
 

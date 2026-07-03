@@ -1051,6 +1051,10 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
     // bundle fail validation at runtime and every module recompiles on first run.
     // JAC_NO_DEV_SOURCE keeps pkg_version reading the staged dist-info we ship.
     try env.put("JAC_NO_DEV_SOURCE", "1");
+    // The staged jaclang imports itself to run the precompiler; it must run
+    // UNSEALED (from source), never sealed-load the manifest it is regenerating
+    // (which may still be a seeded, older-format image). #7135.
+    try env.put("JAC_NO_SEAL", "1");
 
     _ = runChild(io, &.{ py, "-S", boot }, &env, true); // non-zero exit is by design
 

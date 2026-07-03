@@ -2,22 +2,27 @@
 
 A *sealed image* is a ``_precompiled/`` bundle promoted from "cache that must
 justify itself against source" to "artifact trusted by construction": a
-build-time ``MANIFEST.json`` maps module fullnames to precompiled JIR (full
-compiler) and frozen ``.jbc`` (jac0 bootstrap) entries, so the runtime resolves
-modules by *name* with no ``.jac`` sources on disk and no per-load source
-re-hashing. Integrity comes from the payload's sha256 trailer at
+build-time ``MANIFEST.json`` maps module fullnames to precompiled JIR, so the
+runtime resolves modules by *name* with no ``.jac`` sources on disk and no
+per-load source re-hashing. Integrity comes from the payload's sha256 trailer at
 materialization time; the extracted tree is immutable. See issue #7135
 (#6852 Phase 4).
 
-This module is **plain Python with no jaclang dependencies** (like the sibling
-``cache_paths.py`` / ``ext_registry.py``) because the frozen-bootstrap path
-must work before any ``.jac`` module -- including ``modresolver`` and the
-compiler itself -- can load.
+Both compile tiers share ONE JIR container and ONE manifest tree. Full-compiler
+modules carry a normal JIR; jac0-compiled bootstrap modules (jac0core/*, which
+the full compiler depends on and whose JIR reader is itself a jac0core module)
+carry a JIR flagged ``"bootstrap": true`` and are loaded by ``bootstrap_code``
+via the pure-Python section reader below -- no ``.jac`` machinery, so the tier
+works before any ``.jac`` (including ``modresolver`` / ``jir`` / the compiler)
+can load. jac0 stays the compiler for that tier; only the container is unified.
 
-Manifest layout (``_precompiled/MANIFEST.json``, format 1)::
+This module is therefore **plain Python with no jaclang dependencies** (like the
+sibling ``cache_paths.py`` / ``ext_registry.py``).
+
+Manifest layout (``_precompiled/MANIFEST.json``, format 2)::
 
     {
-      "format": 1,
+      "format": 2,
       "package": "jaclang",
       "python_tag": "cpython-314",
       "jir_format_version": 13,
@@ -28,13 +33,13 @@ Manifest layout (``_precompiled/MANIFEST.json``, format 1)::
           "jir": "compiler/program.jir",   # relative to _precompiled/<tag>/
           "package": false,
           "sha256": "..."                  # build-time audit; not re-checked
-        }, ...
-      },
-      "bootstrap": {                    # key: module fullname (jac0 layer)
-        "jaclang.jac0core.modresolver": {
-          "path": "bootstrap/jac0core.modresolver.jbc",  # rel. _precompiled/
-          "src": "jac0core/modresolver.jac",
-          "sha256": "..."
+        },
+        "jac0core/modresolver.jac": {
+          "module": "jaclang.jac0core.modresolver",
+          "jir": "jac0core/modresolver.jir",
+          "package": false,
+          "sha256": "...",
+          "bootstrap": true                # jac0 tier; load via bootstrap_code
         }, ...
       }
     }
@@ -59,20 +64,24 @@ from pathlib import Path
 from jaclang.jac0core import ext_registry
 
 MANIFEST_NAME = "MANIFEST.json"
-MANIFEST_FORMAT = 1
+MANIFEST_FORMAT = 2
 # Must match jaclang.jac0core.jir.* ; kept literal here because this module
-# must import before any .jac module (including jir.jac) can.
+# must import before any .jac module (including jir.jac) can. This is the whole
+# point of the bootstrap tier: jac0core modules are loaded from their JIR by the
+# pure-Python section reader below, so they need none of the .jac machinery
+# (jir.jac's reader is itself a jac0core module).
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
 JIR_FORMAT_VERSION = 13
 _HEADER_SIZE = 32
 _SECTIONS_MAGIC = b"JIRX"
+_SEC_BYTECODE = 0x02
 _SEC_DEBUG_SRC = 0x09
 _SEC_TERMINATOR = 0xFF
 
 
-def _read_debug_section(data: bytes) -> str | None:
-    """Extract the zlib'd SEC_DEBUG_SRC section from JIR bytes (pure-Python
-    twin of ``jir.read_debug_source``, usable during bootstrap)."""
+def _read_section(data: bytes, want: int) -> bytes | None:
+    """Return the raw bytes of JIR section ``want``, or None. Pure-Python twin of
+    ``jir.read_sections`` usable during bootstrap (before any .jac can load)."""
     try:
         pos = data.find(_SECTIONS_MAGIC, _HEADER_SIZE)
         if pos < 0:
@@ -87,8 +96,8 @@ def _read_debug_section(data: bytes) -> str | None:
             pos += 4
             if pos + sec_len > len(data):
                 break
-            if sec_type == _SEC_DEBUG_SRC:
-                return zlib.decompress(data[pos : pos + sec_len]).decode("utf-8")
+            if sec_type == want:
+                return data[pos : pos + sec_len]
             pos += sec_len
     except Exception:
         return None
@@ -124,8 +133,10 @@ class SealedImage:
         self.manifest = manifest
         self.package: str = manifest.get("package", "")
         self.jir_dir = precompiled_dir / manifest.get("python_tag", python_tag())
-        # fullname -> ("jir" | "bootstrap", entry, src_relpath)
-        self.index: dict[str, tuple[str, dict, str]] = {}
+        # fullname -> (entry, src_relpath). One tree: full-compiler modules and
+        # jac0-compiled bootstrap modules share the JIR container + manifest;
+        # ``entry["bootstrap"]`` flags the jac0 tier (loaded via bootstrap_code).
+        self.index: dict[str, tuple[dict, str]] = {}
         self._build_index()
 
     def _build_index(self) -> None:
@@ -150,19 +161,11 @@ class SealedImage:
             entry = modules[src]
             fullname = entry.get("module")
             if fullname and fullname not in self.index:
-                self.index[fullname] = ("jir", entry, src)
-        for fullname, entry in self.manifest.get("bootstrap", {}).items():
-            # Bootstrap wins over any full-compiler jir for the same name:
-            # the jac0 layer must never route through the full compiler.
-            self.index[fullname] = ("bootstrap", entry, entry.get("src", ""))
+                self.index[fullname] = (entry, src)
 
-    def find(self, fullname: str) -> tuple[str, dict, str] | None:
-        """Return ``(kind, entry, src_relpath)`` for a sealed module, or None."""
+    def find(self, fullname: str) -> tuple[dict, str] | None:
+        """Return ``(entry, src_relpath)`` for a sealed module, or None."""
         return self.index.get(fullname)
-
-    def owns(self, fullname: str) -> bool:
-        """True when ``fullname`` falls under this image's package namespace."""
-        return fullname == self.package or fullname.startswith(self.package + ".")
 
     def virtual_origin(self, src_relpath: str) -> str:
         """The path the module *would* have if sources were shipped. Used for
@@ -172,11 +175,14 @@ class SealedImage:
     def jir_path(self, entry: dict) -> Path:
         return self.jir_dir / entry["jir"]
 
-    def jir_bytes(self, fullname: str) -> bytes | None:
-        found = self.find(fullname)
-        if found is None or found[0] != "jir":
+    def _jir_bytes(self, fullname: str) -> bytes | None:
+        found = self.index.get(fullname)
+        if found is None:
             return None
-        return self.jir_path(found[1]).read_bytes()
+        try:
+            return self.jir_path(found[0]).read_bytes()
+        except OSError:
+            return None
 
     def debug_source(self, fullname: str) -> str | None:
         """Source text from a sealed JIR's optional debug section, or None.
@@ -185,20 +191,25 @@ class SealedImage:
         strip it. Used by the loader's ``get_source`` so ``linecache`` can show
         real source lines in tracebacks without shipping ``.jac`` files.
         """
-        found = self.find(fullname)
-        if found is None or found[0] != "jir":
+        data = self._jir_bytes(fullname)
+        if data is None:
             return None
-        try:
-            data = self.jir_path(found[1]).read_bytes()
-        except OSError:
-            return None
-        return _read_debug_section(data)
+        sec = _read_section(data, _SEC_DEBUG_SRC)
+        return zlib.decompress(sec).decode("utf-8") if sec is not None else None
 
     def bootstrap_code(self, fullname: str) -> types.CodeType | None:
-        found = self.find(fullname)
-        if found is None or found[0] != "bootstrap":
+        """Code object for a bootstrap-tier module, extracted from its JIR's
+        bytecode section by the pure-Python reader -- no jir.jac, no running
+        jaclang. This is what makes the jac0core layer loadable at boot."""
+        found = self.index.get(fullname)
+        if found is None or not found[0].get("bootstrap"):
             return None
-        raw = (self.precompiled_dir / found[1]["path"]).read_bytes()
+        data = self._jir_bytes(fullname)
+        if data is None:
+            return None
+        raw = _read_section(data, _SEC_BYTECODE)
+        if raw is None:
+            return None
         code = marshal.loads(raw)  # noqa: S302 -- trusted sealed artifact
         return _patch_code_filenames(code, PRECOMPILE_SENTINEL, str(self.pkg_dir))
 
@@ -248,10 +259,15 @@ def _jaclang_image() -> SealedImage | None:
     global _jaclang_probed
     if not _jaclang_probed:
         _jaclang_probed = True
-        pkg_dir = Path(__file__).resolve().parent.parent
-        image = load_image(pkg_dir / "_precompiled")
-        if image is not None:
-            _images.insert(0, image)
+        # JAC_NO_SEAL disables sealed loading so jaclang runs from source. It is
+        # set while BUILDING the seal: the staged jaclang imports itself to run
+        # the precompiler, and must not sealed-load the very manifest it is about
+        # to (re)generate -- which may still be an older/incompatible format.
+        if not os.environ.get("JAC_NO_SEAL"):
+            pkg_dir = Path(__file__).resolve().parent.parent
+            image = load_image(pkg_dir / "_precompiled")
+            if image is not None:
+                _images.insert(0, image)
     for img in _images:
         if img.package == "jaclang":
             return img
@@ -271,10 +287,10 @@ def is_sealed() -> bool:
     return _jaclang_image() is not None
 
 
-def find_module(fullname: str) -> tuple[SealedImage, str, dict, str] | None:
+def find_module(fullname: str) -> tuple[SealedImage, dict, str] | None:
     """Resolve ``fullname`` across all sealed images.
 
-    Returns ``(image, kind, entry, src_relpath)`` or None.
+    Returns ``(image, entry, src_relpath)`` or None.
     """
     _jaclang_image()  # ensure lazy probe ran
     for img in _images:
@@ -290,15 +306,6 @@ def source_for(fullname: str) -> str | None:
     if found is None:
         return None
     return found[0].debug_source(fullname)
-
-
-def owner_image(fullname: str) -> SealedImage | None:
-    """The sealed image whose package namespace covers ``fullname``, if any."""
-    _jaclang_image()
-    for img in _images:
-        if img.owns(fullname):
-            return img
-    return None
 
 
 def image_for_bundle_dir(bundle_dir: str | Path) -> SealedImage | None:

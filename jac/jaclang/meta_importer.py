@@ -107,10 +107,10 @@ def _bootstrap_compile(
 _jac0core_dir = os.path.join(os.path.dirname(__file__), "jac0core")
 _modresolver_jac = os.path.join(_jac0core_dir, "modresolver.jac")
 _frozen_modresolver = _sealed.find_module("jaclang.jac0core.modresolver")
-if _frozen_modresolver is not None and _frozen_modresolver[1] == "bootstrap":
+if _frozen_modresolver is not None and _frozen_modresolver[1].get("bootstrap"):
     _mr_image = _frozen_modresolver[0]
     _modresolver_code = _mr_image.bootstrap_code("jaclang.jac0core.modresolver")
-    _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[3])
+    _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
 else:
     with open(_modresolver_jac, encoding="utf-8") as _f:
         _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
@@ -210,13 +210,9 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         found = _sealed.find_module(fullname)
         if found is None:
             return None
-        image, kind, entry, src_rel = found
+        image, entry, src_rel = found
         origin = image.virtual_origin(src_rel)
-        is_pkg = (
-            entry.get("package", False)
-            if kind == "jir"
-            else os.path.basename(src_rel) in ext_registry.INIT_FILES
-        )
+        is_pkg = entry.get("package", False)
         spec = importlib.machinery.ModuleSpec(
             fullname, self, origin=origin, is_package=is_pkg
         )
@@ -241,7 +237,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # Sealed image: the bootstrap code object is frozen in the manifest;
         # there is no .jac source to transpile.
         frozen = _sealed.find_module(module.__name__)
-        if frozen is not None and frozen[1] == "bootstrap":
+        if frozen is not None and frozen[1].get("bootstrap"):
             code = frozen[0].bootstrap_code(module.__name__)
             if code is not None:
                 exec(code, module.__dict__)  # noqa: S102
@@ -272,8 +268,13 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         file_path = module.__spec__.origin
 
-        # Bootstrap path: .jac files inside jaclang/ are compiled with jac0
-        if self._is_bootstrap_jac(file_path):
+        # Bootstrap tier: a sealed module the manifest flags as bootstrap, or (in
+        # an unsealed tree) a .jac under jaclang/jac0core/. Either way it is
+        # compiled/loaded via jac0, never the full compiler.
+        sealed = _sealed.find_module(module.__name__)
+        if (sealed is not None and sealed[1].get("bootstrap")) or self._is_bootstrap_jac(
+            file_path
+        ):
             self._exec_bootstrap(module, file_path)
             return
 
@@ -376,7 +377,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         sealed_spec = self._sealed_spec(fullname)
         if sealed_spec is not None and sealed_spec.origin:
             found = _sealed.find_module(fullname)
-            if found is not None and found[1] == "bootstrap":
+            if found is not None and found[1].get("bootstrap"):
                 return found[0].bootstrap_code(fullname)
             return Jac.get_compiler().get_bytecode(
                 full_target=sealed_spec.origin,
