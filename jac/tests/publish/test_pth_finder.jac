@@ -102,13 +102,24 @@ def _load_finder -> object {
 
 """Run apply_dev_source_override with baked/toml sources patched, restoring
 sys.path and env afterwards; returns the resulting sys.path[0]."""
-def _override_result(baked: (str | None), toml_src: (str | None)) -> str {
+def _override_result(
+    baked: (str | None), toml_src: (str | None), no_dev_env: bool = False
+) -> str {
     _jac_finder = _load_finder();
     import from unittest.mock { patch }
     saved_path = list(sys.path);
     saved_dev = os.environ.get("JAC_DEV_SOURCE");
     saved_pre = os.environ.get("JAC_NO_PRECOMPILE");
+    saved_no_dev = os.environ.get("JAC_NO_DEV_SOURCE");
     try {
+        # CI's binary jobs export JAC_NO_DEV_SOURCE=1 globally, which would
+        # suppress the toml loop under test -- so the flag is controlled
+        # HERE, per call, never inherited from the environment.
+        if no_dev_env {
+            os.environ["JAC_NO_DEV_SOURCE"] = "1";
+        } else {
+            os.environ.pop("JAC_NO_DEV_SOURCE", None);
+        }
         with patch.object(_jac_finder, "_baked_source_dir", return_value=baked), patch.object(
             _jac_finder, "_dev_source_from_toml", return_value=toml_src
         ) {
@@ -124,6 +135,11 @@ def _override_result(baked: (str | None), toml_src: (str | None)) -> str {
         }
         if saved_pre is None {
             os.environ.pop("JAC_NO_PRECOMPILE", None);
+        }
+        if saved_no_dev is None {
+            os.environ.pop("JAC_NO_DEV_SOURCE", None);
+        } else {
+            os.environ["JAC_NO_DEV_SOURCE"] = saved_no_dev;
         }
     }
 }
@@ -147,13 +163,11 @@ test "dev override prefers the repo's own toml stanza over a baked link" {
 test "JAC_NO_DEV_SOURCE disables the toml loop but keeps a linked binary alive" {
     baked = _fake_source();
     toml_src = _fake_source();
-    os.environ["JAC_NO_DEV_SOURCE"] = "1";
     try {
         # A linked binary has no bundled jaclang: the baked path must apply
         # even under JAC_NO_DEV_SOURCE, or `import jaclang` bricks.
-        assert _override_result(baked, toml_src) == baked , "JAC_NO_DEV_SOURCE must suppress the toml loop, not the baked link";
+        assert _override_result(baked, toml_src, no_dev_env=True) == baked , "JAC_NO_DEV_SOURCE must suppress the toml loop, not the baked link";
     } finally {
-        os.environ.pop("JAC_NO_DEV_SOURCE", None);
         shutil.rmtree(baked, ignore_errors=True);
         shutil.rmtree(toml_src, ignore_errors=True);
     }

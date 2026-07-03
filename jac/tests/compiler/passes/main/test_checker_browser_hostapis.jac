@@ -65,8 +65,9 @@ test "client browser host apis check cleanly and stay strict" {
     "one deliberate error (resp.nope()), "
     f"got {len(program.errors_had)} diagnostic(s):\n{pretty}";
     only = program.errors_had[0];
-    assert only.code is not None and only.code.code == "E1030"
-        and "nope" in only.pretty_print() , "the single expected error is E1030 on resp.nope() (Response has "
+    assert only.code is not None
+    and only.code.code == "E1030"
+    and "nope" in only.pretty_print() , "the single expected error is E1030 on resp.nope() (Response has "
     f"no attribute nope), got:\n{pretty}";
 }
 

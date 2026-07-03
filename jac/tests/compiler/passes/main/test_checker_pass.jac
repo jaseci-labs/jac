@@ -5578,8 +5578,7 @@ test "builtin_inference_regressions" {
     # dict[<Unknown>, dict[K, V]] instead of dict[K, V].
     program = JacProgram();
     program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_builtin_inference.jac"),
-        type_check=True
+        os.path.join(CHECKER_FIXTURES, "checker_builtin_inference.jac"), type_check=True
     );
     pretty = "\n".join([e.pretty_print() for e in program.errors_had]);
     assert len(program.errors_had) == 0 , "round() results and **spread dict literals must infer cleanly, "
