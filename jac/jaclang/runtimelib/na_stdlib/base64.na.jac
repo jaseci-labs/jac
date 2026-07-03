@@ -2,7 +2,11 @@ glob _B16: bytes = b"0123456789ABCDEF",
      _B32: bytes = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
      _B64: bytes = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
      _B85: bytes = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~",
-     _PAD: int = 61;
+     _PAD: int = 61,
+     _rev_b16: list[int] = [],
+     _rev_b32: list[int] = [],
+     _rev_b64: list[int] = [],
+     _rev_b85: list[int] = [];
 
 
 def _make_rev(alphabet: bytes) -> list[int] {
@@ -22,6 +26,19 @@ def _make_rev(alphabet: bytes) -> list[int] {
 }
 
 
+def _rev_for(alphabet: bytes, cache: list[int]) -> list[int] {
+    if len(cache) == 0 {
+        built: list[int] = _make_rev(alphabet);
+        k: int = 0;
+        while k < 256 {
+            cache.append(built[k]);
+            k += 1;
+        }
+    }
+    return cache;
+}
+
+
 def _casefold_rev(rev: list[int], alphabet: bytes) {
     n: int = len(alphabet);
     j: int = 0;
@@ -32,6 +49,17 @@ def _casefold_rev(rev: list[int], alphabet: bytes) {
         }
         j += 1;
     }
+}
+
+
+def _copy_rev(rev: list[int]) -> list[int] {
+    out: list[int] = [];
+    k: int = 0;
+    while k < 256 {
+        out.append(rev[k]);
+        k += 1;
+    }
+    return out;
 }
 
 
@@ -96,8 +124,9 @@ def:pub b16encode(s: bytes) -> bytes {
 
 
 def:pub b16decode(s: bytes, casefold: bool = False) -> bytes {
-    rev: list[int] = _make_rev(_B16);
+    rev: list[int] = _rev_for(_B16, _rev_b16);
     if casefold {
+        rev = _copy_rev(rev);
         _casefold_rev(rev, _B16);
     }
     return _decode_bits(s, rev, 4, padded=False);
@@ -110,8 +139,9 @@ def:pub b32encode(s: bytes) -> bytes {
 
 
 def:pub b32decode(s: bytes, casefold: bool = False) -> bytes {
-    rev: list[int] = _make_rev(_B32);
+    rev: list[int] = _rev_for(_B32, _rev_b32);
     if casefold {
+        rev = _copy_rev(rev);
         _casefold_rev(rev, _B32);
     }
     return _decode_bits(s, rev, 5);
@@ -119,7 +149,10 @@ def:pub b32decode(s: bytes, casefold: bool = False) -> bytes {
 
 
 def _b64_alphabet(altchars: bytes) -> bytes {
-    if len(altchars) == 2 {
+    if len(altchars) != 0 {
+        if len(altchars) != 2 {
+            raise ValueError("altchars must be exactly 2 bytes");
+        }
         return _B64[0:62] + altchars;
     }
     return _B64;
@@ -132,6 +165,9 @@ def:pub b64encode(s: bytes, altchars: bytes = b"") -> bytes {
 
 
 def:pub b64decode(s: bytes, altchars: bytes = b"") -> bytes {
+    if len(altchars) == 0 {
+        return _decode_bits(s, _rev_for(_B64, _rev_b64), 6);
+    }
     return _decode_bits(s, _make_rev(_b64_alphabet(altchars)), 6);
 }
 
@@ -198,7 +234,7 @@ def:pub b85encode(b: bytes, pad: bool = False) -> bytes {
 
 
 def:pub b85decode(b: bytes) -> bytes {
-    rev: list[int] = _make_rev(_B85);
+    rev: list[int] = _rev_for(_B85, _rev_b85);
     n: int = len(b);
     padding: int = (5 - (n % 5)) % 5;
     out: list[int] = [];
