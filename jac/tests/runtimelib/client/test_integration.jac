@@ -1020,21 +1020,19 @@ test "generated host source contains required elements" {
     assert "_PH_DISPATCH" in src;
     assert "wv.bind" in src;
     assert "BOOTSTRAP_JS" in src;
-    assert "SERVE_PY" in src;
+    assert "BOOT_PY" in src;
     assert "__jac_invoke" in src;
     assert "TestApp" in src;
     assert "800" in src;
     assert "600" in src;
-    # Plugin configs must be baked in
+    # Boot behavior is delegated to the runtime host_boot module; the host
+    # bakes only configuration (as JSON) into the boot statement.
+    assert "host_boot.boot(" in src;
     assert "path" in src;
-    assert "True" in src;
+    assert "true" in src;
     # Bridge must be inlined (not imported from separate file)
     assert "PyGILState_Ensure" in src;
     assert "respond" in src;
-    # Plugin bootstrap must use os.path.join(_root, ...) -- Jac f-strings with
-    # nested quotes produced spec_from_file_location('mod, mod.py') (null loader).
-    assert "os.path.join(_root," in src;
-    assert "desktop_plugin, desktop_plugin.py" not in src;
     assert "_stash_wv_in_python" in src;
     assert "run_main_loop()" in src;
     assert "webview_create(0, 0)" in src;
@@ -1063,8 +1061,8 @@ test "generated host source with no plugins" {
     assert "NoPlugins" in src;
     # Bridge must be inlined
     assert "_jac_invoke_handler" in src;
-    # Plugin registration should use registry bootstrap
-    assert "bootstrap_plugins" in src;
+    # Plugin registration happens inside host_boot.boot(), not in generated code
+    assert "host_boot.boot(" in src;
     assert "_pc.get" not in src;  # old hand-written registration removed
 }
 
@@ -1383,10 +1381,9 @@ test "plugin bridge links with full native stack" {
 # ---------------------------------------------------------------------------
 # 9. Full build pipeline smoke test (transpile + stage + generate)
 # ---------------------------------------------------------------------------
-"""Build pipeline (fused runtime): the generated host imports the plugins,
-oauth_broker, and inprocess_dispatch from the bundled jaclang tree -- no
-transpiled .py staged beside the binary. Verify the generated bootstrap wires
-the runtime-import path (not spec_from_file_location)."""
+"""Build pipeline (fused runtime): the generated host boots through the
+runtime host_boot module from the bundled jaclang tree -- no transpiled .py
+staged beside the binary, no behavior baked into generated strings."""
 test "build pipeline wires the runtime-imported bootstrap" {
     import sys;
     mod_name = "jaclang.runtimelib.client.targets.desktop.native_desktop_target";
@@ -1402,13 +1399,14 @@ test "build pipeline wires the runtime-imported bootstrap" {
         app_name="smoke-test",
         plugin_configs={"path": True, "notification": True}
     );
-    # No transpiled-plugin staging: plugins are imported from the runtime.
+    # No transpiled-plugin staging: everything imports from the runtime.
     assert "spec_from_file_location" not in host_src , "must not load staged .py via spec_from_file_location";
-    assert "import manifest, desktop_plugin, webview_lib, plugin_host, registry" in host_src;
-    assert "bootstrap_plugins" in host_src;
-    # oauth_broker + inprocess_dispatch also come from the fused runtime.
-    assert "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker" in host_src;
-    assert "from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch" in host_src;
+    # The one generated Python statement: host_boot.boot(<config json>).
+    assert "from jaclang.runtimelib.client.targets.desktop.native import host_boot" in host_src;
+    assert "host_boot.boot(" in host_src;
+    # Plugin bootstrap / broker / dispatch wiring live in host_boot, not here.
+    assert "bootstrap_plugins" not in host_src;
+    assert "make_handler" not in host_src;
     # Bridge + JS SDK still present.
     assert "_jac_invoke_handler" in host_src;
     assert "_PH_DISPATCH" in host_src;

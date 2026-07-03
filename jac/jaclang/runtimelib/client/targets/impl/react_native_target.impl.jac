@@ -19,6 +19,7 @@ import from jaclang.runtimelib.client.targets.react_native.scaffold {
 import from jaclang.runtimelib.client.targets.react_native.build {
     lint_native_incompatible_usage,
     lint_unmapped_tags,
+    read_user_js_sources,
     run_expo_prebuild,
     run_gradle_assemble,
     run_eas_local_build,
@@ -29,8 +30,8 @@ import from jaclang.runtimelib.client.targets.react_native.build {
     strip_css_imports,
     write_native_entry
 }
+import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 import from jaclang.runtimelib.client.targets.react_native.config {
-    _load_react_native_config,
     _resolve_rn_android_builder,
     _resolve_rn_eas_profile,
     _resolve_rn_eas_update_branch,
@@ -106,11 +107,11 @@ impl ReactNativeTarget.setup(project_dir: Path) -> None {
         "  Dev:             jac start --client react-native --dev", style="muted"
     );
     console.print(
-        "  EAS Build:       cd mobile-rn && npx eas build --platform android",
+        f"  EAS Build:       cd {rn_dir} && npx eas build --platform android",
         style="muted"
     );
     console.print(
-        "  EAS Update:      cd mobile-rn && npx eas update --branch preview",
+        f"  EAS Update:      cd {rn_dir} && npx eas update --branch preview",
         style="muted"
     );
 }
@@ -125,10 +126,12 @@ impl ReactNativeTarget.build(
             "Use --platform android or --platform ios."
         );
     }
-    rn_cfg = _load_react_native_config(project_dir);
+    client_cfg = JacClientConfig(project_dir);
+    rn_cfg = client_cfg.get_react_native_config();
     release = _resolve_rn_release(rn_cfg);
     build_label = "release" if release else "debug";
     ios_builder = _resolve_rn_ios_builder(rn_cfg);
+    rn_dir = resolve_rn_project_dir(project_dir, client_cfg);
 
     console.print(
         f"\n📱 Building React Native app ({plat}, {build_label})", style="bold"
@@ -144,18 +147,17 @@ impl ReactNativeTarget.build(
                 "  2) Use EAS Build cloud from any OS:\n"
                 "     npx eas build --platform ios --profile production --non-interactive\n"
                 "  3) Set [plugins.client.react_native].ios_builder = \"eas\" and run "
-                "the same EAS command from mobile-rn/"
+                f"the same EAS command from {rn_dir}"
             );
         }
         raise RuntimeError(
             "iOS EAS local builds require macOS (Xcode toolchain).\n"
             "On Linux/Windows, use EAS Build cloud instead:\n"
             "  npx eas build --platform ios --profile production --non-interactive\n"
-            "Run that command inside mobile-rn/."
+            f"Run that command inside {rn_dir}."
         );
     }
 
-    rn_dir = resolve_rn_project_dir(project_dir);
     if not (rn_dir / "package.json").exists() {
         console.print("  Scaffold not found — running setup first...", style="muted");
         self.setup(project_dir);
@@ -163,8 +165,9 @@ impl ReactNativeTarget.build(
 
     (_, compiled_dir) = self._compile_native_jac_modules(entry_file);
 
-    lint_unmapped_tags(compiled_dir);
-    lint_native_incompatible_usage(compiled_dir);
+    js_sources = read_user_js_sources(compiled_dir);
+    lint_unmapped_tags(compiled_dir, sources=js_sources);
+    lint_native_incompatible_usage(compiled_dir, sources=js_sources);
     strip_css_imports(compiled_dir);
 
     entry_module: str = entry_file.stem;
@@ -265,8 +268,9 @@ impl ReactNativeTarget.dev(
     );
 
     (jac_compiler, compiled_dir) = self._compile_native_jac_modules(entry_file);
-    lint_unmapped_tags(compiled_dir);
-    lint_native_incompatible_usage(compiled_dir);
+    js_sources = read_user_js_sources(compiled_dir);
+    lint_unmapped_tags(compiled_dir, sources=js_sources);
+    lint_native_incompatible_usage(compiled_dir, sources=js_sources);
     strip_css_imports(compiled_dir);
 
     entry_module: str = entry_file.stem;
@@ -361,12 +365,7 @@ impl ReactNativeTarget._compile_native_jac_modules(
     if not mod {
         raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
     }
-    jac_compiler.compile(
-        mod,
-        entry_file,
-        runtime_filename="client_runtime_native.cl.jac",
-        target_name="react-native"
-    );
+    jac_compiler.compile(mod, entry_file, target_name="react-native");
     console.print("  ✔ Jac modules compiled with native runtime", style="success");
     return (jac_compiler, compiled_dir);
 }
@@ -378,7 +377,7 @@ impl ReactNativeTarget.start(
         normalize_rn_platform
     }
 
-    rn_cfg = _load_react_native_config(project_dir);
+    rn_cfg = JacClientConfig(project_dir).get_react_native_config();
     default_plat = str(rn_cfg.get("default_platform", "") or "android").strip().lower();
     plat = normalize_rn_platform(default_plat);
 
@@ -451,13 +450,14 @@ def _start_android(apk_path: Path, project_dir: Path) -> None {
 
 def _start_ios(artifact_path: Path, project_dir: Path) {
     import json;
+    rn_dir = resolve_rn_project_dir(project_dir);
     if platform_mod.system() != "Darwin" {
         raise RuntimeError(
             "iOS install & launch requires macOS with Xcode.\n"
             "On Linux/Windows, use EAS Build cloud and TestFlight:\n"
             "  npx eas build --platform ios --profile preview\n"
             "  npx eas submit --platform ios\n"
-            "Run inside mobile-rn/."
+            f"Run inside {rn_dir}."
         );
     }
 
@@ -468,7 +468,6 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
         );
     }
 
-    rn_dir = resolve_rn_project_dir(project_dir);
     bundle_id: str | None = None;
     try {
         app_cfg = json.loads((rn_dir / "app.json").read_text(encoding="utf-8"));

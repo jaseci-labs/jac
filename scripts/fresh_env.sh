@@ -16,13 +16,11 @@
 # runner (pytest + xdist), so `jac test` needs no system Python. For a fully
 # self-contained release binary instead, run a plain `cd jac && zig build`.
 #
-# Plugins (byllm/scale) are still ordinary Python packages. We install them
-# with `--global` so their source + deps land in the binary's own jac-owned site
-# (never the host) and are importable from any directory -- including each
-# plugin's own dir when you `cd jac-scale && jac test .`. Without --global an
-# editable install would target the current project's .jac/venv only, invisible
-# from the plugin dirs. jaclang itself is provided by the binary, never installed.
-# (The MCP server is built into core now -- no separate jac-mcp install.)
+# scale, byLLM, and the MCP server are all built into the jac binary now
+# (jaclang.scale / jaclang.byllm / jaclang.cli.mcp), so there are no separate
+# plugin packages to install -- jaclang itself is provided by the binary. byLLM's
+# heavy deps arrive per-project via the `llm` capability (`jac install`); install
+# them globally below only if you want to run byLLM end-to-end from a fresh env.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -51,10 +49,13 @@ echo "Built: $JAC_BIN"
 echo "Add it to PATH, e.g.:  export PATH=\"$PWD/jac/zig-out/bin:\$PATH\""
 export PATH="$PWD/jac/zig-out/bin:$PATH"
 
-# Plugins (editable, global): importable from anywhere, including each plugin dir.
-# scale and the MCP server are built into the jac binary (jaclang.scale /
-# jaclang.cli.mcp), so byllm is the only separately-installed plugin.
-jac install -e jac-byllm --global
+# byLLM's `llm` capability deps (global so they're importable from anywhere).
+# Pins mirror jac/jaclang/project/capabilities.jac. Optional: drop this line if
+# you don't need to run `by llm()` flows in this env.
+jac install \
+  "litellm>=1.70.0,<=1.82.6" "pillow>=12.0.0,<13.0.0" \
+  "httpx>=0.27.0" "loguru>=0.7.2,<0.8.0" \
+  --global
 
 # pre-commit is a standalone contributor tool (not part of the jac toolchain).
 # Its jac hooks shell out to the `jac` binary on PATH, so all it needs is the

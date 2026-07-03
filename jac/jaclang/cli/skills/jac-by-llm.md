@@ -6,7 +6,7 @@ description: Delegating a function's body to an LLM call - structured outputs (o
 `by llm(...)` replaces a function body with an LLM call. The signature declares typed args and a return type; at call time the LLM generates a value matching the return type, optionally using any functions listed in `tools=[...]` as ReAct helpers. Describe every LLM-visible thing - the function itself, each parameter, each field of a return obj - with `sem` statements, not docstrings. `sem` is the prompt the LLM sees.
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 
 glob llm: Model = Model(model_name="gpt-4o");
 
@@ -95,7 +95,7 @@ def stream_story(topic: str) -> str by llm(stream=True);
 Runs without API keys - mock outputs are consumed sequentially, one per `by` call. For typed returns put pre-built instances in `outputs` (e.g. `Priority.HIGH`, `[Task(...)]`). See `jac-testing` for `jac test` mechanics.
 
 ```jac
-import from byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM }
 
 glob llm = MockLLM(model_name="mockllm", config={"outputs": ["Bonjour", "Salut"]});
 
@@ -116,7 +116,7 @@ test "mock outputs consumed in order" {
 ## Images & video
 
 ```jac
-import from byllm.lib { Image, Video }
+import from jaclang.byllm.lib { Image, Video }
 
 def parse_receipt(img: Image) -> Receipt by llm();   # structured output straight from an image
 def describe_clip(v: Video) -> str by llm();

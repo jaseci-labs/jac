@@ -2,7 +2,7 @@
 # the build reads version/metadata here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.30.3"
+version = "0.30.5"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"
@@ -44,6 +44,9 @@ exclude = [
     # comments (k8s/deploy/observability logic) are kept, not deslopped. This is
     # the config that governs jac/jaclang/scale/** (nearest jac.toml wins).
     "*/scale/*",
+    # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale
+    # -- a large self-contained subsystem whose inline comments are kept.
+    "*/byllm/*",
     "console.impl.jac",
     "cli_boot.jac",
     # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:

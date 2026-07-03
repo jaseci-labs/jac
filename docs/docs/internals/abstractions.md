@@ -111,10 +111,10 @@ The consolidated `__all__` covers:
 - **Concurrency**: `thread_run`, `thread_wait`
 - **Compiler/test plumbing**: `field`, `impl_patch_filename`, `jac_test`, `jsx`, `log_report`, `assign_all`, `safe_subscript`
 
-### byLLM (`jac-byllm/byllm/`)
+### byLLM (`jac/jaclang/byllm/`)
 
-[`byllm/lib.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-byllm/byllm/lib.jac)
-exposes its own `__all__` under the `byllm` namespace:
+[`byllm/lib.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/byllm/lib.jac)
+exposes its own `__all__` under the `jaclang.byllm` namespace:
 
 - **Runtime**: `by` (the `by` operator entry point), `MockLLM`, `Model`, `ModelPool`, `MTIR`, `MTRuntime`
 - **Message/tool types**: `Message`, `MessageRole`, `Tool`, `ToolCallResultMsg`, `Image`, `Video`, `StreamEvent`, `IterationAction`, `IterationContext`, `MockToolCall`
@@ -175,10 +175,10 @@ holds everywhere, but the four library packages do not share a common shape:
 | Package | `lib.jac` | Style |
 |---|---|---|
 | `jaclang` | yes | single consolidated `__all__` re-exporting `jac0core/jaclib.jac` |
-| `byllm` | yes | own `__all__` in own namespace |
+| `jaclang.byllm` | yes | own `__all__` in own namespace |
 | `jaclang.scale` | yes (minimal) | `persistence/lib.jac` exposes only `kvstore`; substantive abstractions in `abstractions/` directory |
-| `jac_client` | no | plugin-based, no curated re-export |
-| `jac_mcp` | no | plugin-based, no curated re-export |
+| `jaclang.runtimelib.client` | no | built into core; no curated re-export |
+| `mcp` (`jaclang.cli.mcp`) | no | built into core; no curated re-export |
 
 For someone learning the ecosystem, this means the surface for "what's
 importable from this package" is discovered differently for each package. If

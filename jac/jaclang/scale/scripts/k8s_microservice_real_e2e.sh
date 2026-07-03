@@ -1,21 +1,6 @@
 #!/usr/bin/env bash
 # Real-app K8s e2e for jac-scale microservice mode (NO-DOCKER path).
 #
-# Deploys the fixture with the same pipeline `jac start --scale --experimental`
-# uses: a host-built self-contained `jac` binary + precompiled plugin source are
-# shipped into the cluster over a ReadWriteMany PVC (no image build, no
-# registry), jac is installed at pod startup, then KubernetesMicroserviceTarget
-# rolls out the gateway + per-service deployments. Verifies rollout -> gateway
-# /health -> per-service routing -> observability stack -> rolling-restart
-# zero-downtime assertion.
-#
-# Usage: bash k8s_microservice_real_e2e.sh <PROJECT_DIR>
-#
-# Env: CLUSTER_TYPE (minikube | microk8s; default microk8s; only affects the
-# Ingress IP probe), ROLLOUT_TIMEOUT (default 600s).
-#
-# Requires: `jac` on PATH (with jac-scale importable) and `zig` 0.16.0 on PATH
-# (BinaryInjector shells out to `zig build` to produce the shipped binary).
 
 set -euo pipefail
 
@@ -31,8 +16,12 @@ if [ ! -f "${PROJECT_DIR}/jac.toml" ]; then
 fi
 
 NAMESPACE="${NAMESPACE:-jac-e2e}"
-# microk8s (host containerd) or minikube; only affects the Ingress IP probe.
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
+case "${CLUSTER_TYPE}" in
+    microk8s) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-microk8s-hostpath}" ;;
+    minikube) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-standard}" ;;
+    *)        BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-}" ;;
+esac
 # 600s rollout = 10x typical; a fail is a real bug, not infra slowness.
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-600s}"
 DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
@@ -41,27 +30,23 @@ DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 # levels up.
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 
-# The no-Docker `--experimental` path ships the LOCAL scale source (built into
-# jaclang as jaclang.scale): PyPI lags the K-track rearchitecture, so PR-time CI
-# must exercise the in-repo code.
 if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/plugin.jac" ]; then
     echo "FAIL: jaclang.scale source not found under ${REPO_ROOT}" >&2
     exit 1
 fi
-# BinaryInjector builds the shipped binary with zig; fail early with a clear
-# message instead of a deep RuntimeError mid-deploy if it is missing.
-if ! command -v zig >/dev/null 2>&1; then
-    echo "FAIL: zig not on PATH (the --experimental binary-ship build needs zig 0.16.0)" >&2
-    exit 1
-fi
 
 cleanup() {
-    echo "=== cleanup ==="
+    rc="${1:-0}"
+    echo "=== cleanup (rc=${rc}) ==="
     if [ -n "${PORT_FORWARD_PID:-}" ]; then
         kill "${PORT_FORWARD_PID}" 2>/dev/null || true
     fi
     if [ -n "${LOKI_PORT_FORWARD_PID:-}" ]; then
         kill "${LOKI_PORT_FORWARD_PID}" 2>/dev/null || true
+    fi
+    if [ "${rc}" != "0" ] && [ "${E2E_KEEP_NS_ON_FAIL:-1}" = "1" ]; then
+        echo "=== e2e failed (rc=${rc}); KEEPING namespace '${NAMESPACE}' for inspection (set E2E_KEEP_NS_ON_FAIL=0 to force cleanup) ==="
+        return
     fi
     kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout="${DELETE_TIMEOUT}" || true
     # Alloy's ClusterRole + ClusterRoleBinding are cluster-scoped so the
@@ -69,7 +54,7 @@ cleanup() {
     kubectl delete clusterrole,clusterrolebinding \
         -l managed=jac-scale --ignore-not-found 2>/dev/null || true
 }
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
 
 echo "=== deploy via KubernetesMicroserviceTarget (no-Docker: host-built binary + source over PVC) ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -81,10 +66,24 @@ kubectl label namespace "${NAMESPACE}" \
 
 cd "${PROJECT_DIR}"
 jac - <<PYEOF
-import logging, sys, jaclang  # noqa: F401
+import logging, os, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
+from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_DEV
+
+_want = os.path.realpath("${REPO_ROOT}/jac")
+_got = os.path.realpath(os.path.dirname(os.path.dirname(jaclang.__file__)))
+if _got != _want:
+    print(
+        f"FATAL: host jac is running jaclang from {_got}, not the checkout at "
+        f"{_want}. The editable dev overlay did not activate, so this run would "
+        f"validate the wrong code. Set [dev] jaclang_source (or use a -Ddev "
+        f"binary) before running.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+print(f"host jaclang overlay active: {_got}", file=sys.stderr)
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
@@ -100,19 +99,21 @@ class StderrLogger:
         pass
 
 # No python_image override: the default base (python:3.12-slim) is a plain
-# runtime. The app source + a host-built self-contained jac binary + precompiled
-# plugin JIRs ship over the bundle PVC (experimental=True -> BinaryInjector), and
-# jac is installed at pod startup. No image build, no registry.
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
         namespace="${NAMESPACE}",
         container_port=8000,
+        bundle_storage_class="${BUNDLE_STORAGE_CLASS}",
     ),
     logger=StderrLogger(),
 )
 result = target.deploy(
-    AppConfig(code_folder=".", app_name="jac-e2e", experimental=True)
+    AppConfig(
+        code_folder=".",
+        app_name="jac-e2e",
+        dev=DevDeploy(channel=CHANNEL_DEV, jaclang_source="${REPO_ROOT}/jac"),
+    )
 )
 if not result.success:
     print(f"deploy failed: {result.message}", file=sys.stderr)
@@ -371,7 +372,7 @@ run_zero_downtime_assertion() {
         done
     ) &
     local hammer_pid=$!
-    trap 'kill '"${hammer_pid}"' 2>/dev/null || true; cleanup' EXIT
+    trap 'rc=$?; kill '"${hammer_pid}"' 2>/dev/null || true; cleanup "$rc"' EXIT
 
     # Second-attempt success logs [FLAKE_RECOVERED] for greppable CI signal.
     kubectl rollout restart "deployment/${deployment}" -n "${NAMESPACE}"
