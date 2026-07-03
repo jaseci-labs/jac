@@ -2666,8 +2666,6 @@ impl PyastGenPass._remove_lambda_param_annotations(
 
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     if nd.is_borrow {
-        # A borrow (`&x` / `&mut x`) is a transparent alias in managed memory:
-        # it lowers to the operand itself, leaving runtime behavior unchanged.
         nd.gen.py_ast = nd.operand.gen.py_ast;
         return;
     }

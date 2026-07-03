@@ -456,9 +456,6 @@ impl DocIRGenPass.exit_sub_tag(nd: uni.SubTag) -> None {
             colon_tok = i.gen.doc_ir;
             seen_colon = True;
         } elif seen_colon {
-            # Ownership prefixes (`own`, `&`, `&mut`) sit between the colon and
-            # the type as separate tokens; separate them with a space, except
-            # right after `&`, which hugs its type/`mut` (`&Buffer`, `&mut T`).
             if after_colon
             and not (
                 isinstance(prev_after, uni.Token) and (prev_after.name == Tok.BW_AND)
@@ -1197,7 +1194,6 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
 
 impl DocIRGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     if nd.is_mut_borrow {
-        # `&mut <expr>`: `&` hugs `mut`, single space before the operand.
         nd.gen.doc_ir = self.group(
             self.concat(
                 [
