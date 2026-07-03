@@ -564,8 +564,8 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
-| **Loki** _(optional)_ | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
-| **Grafana Alloy** _(optional)_ | DaemonSet that tails `/var/log/pods` on every node and ships to Loki (replaces Promtail, which went EOL on 2026-03-02) |
+| **Loki** *(optional)* | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
+| **Grafana Alloy** *(optional)* | DaemonSet that tails `/var/log/pods` on every node and ships to Loki (replaces Promtail, which went EOL on 2026-03-02) |
 
 **Defaults:**
 
