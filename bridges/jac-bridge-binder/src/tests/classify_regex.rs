@@ -11,7 +11,7 @@ use rustdoc_types::Crate;
 
 use crate::{
     classify,
-    types::{BridgeReturn, ScalarType, SkipReason, TypeKind},
+    types::{BridgeReturn, Recv, ScalarType, SkipReason, TypeKind},
 };
 
 fn load_regex_doc() -> Crate {
@@ -87,18 +87,67 @@ fn no_duplicate_types() {
 }
 
 #[test]
-fn lifetime_borrow_methods_are_skipped() {
+fn cursor_and_unreadable_borrows_are_skipped() {
     let doc = load_regex_doc();
     let spec = classify(&doc);
-
-    // Regex::find returns Option<Match<'h>> — lifetime borrow, must be skipped.
-    let find_skip = spec.skips.iter().find(|s| s.item == "Regex::find");
-    assert!(find_skip.is_some(), "Regex::find should be a skip");
-    assert_eq!(find_skip.unwrap().reason, SkipReason::LifetimeBorrow);
 
     // Regex::captures_iter returns CaptureMatches<'r,'h> — cursor, must be skipped.
     let iter_skip = spec.skips.iter().find(|s| s.item == "Regex::captures_iter");
     assert!(iter_skip.is_some(), "Regex::captures_iter should be a skip");
+
+    // Regex::captures returns Option<Captures<'h>>, but Captures has no int-free
+    // reader (get/name return Option<Match>, len is usize), so the owning-wrapper
+    // rule declines it and it stays a precise lifetime-borrow skip.
+    let cap_skip = spec.skips.iter().find(|s| s.item == "Regex::captures");
+    assert!(cap_skip.is_some(), "Regex::captures should stay a skip (no reader)");
+    assert_eq!(cap_skip.unwrap().reason, SkipReason::LifetimeBorrow);
+    // And no OwnedCaptures wrapper should have been synthesized.
+    assert!(
+        spec.types.iter().all(|t| t.name != "OwnedCaptures"),
+        "OwnedCaptures must not be synthesized — Captures has no reader"
+    );
+}
+
+#[test]
+fn find_is_rescued_by_owning_wrapper() {
+    let doc = load_regex_doc();
+    let spec = classify(&doc);
+
+    // Regex::find (returns Option<Match<'h>>) is no longer a skip — it becomes a
+    // producer method whose return is the synthesized OwnedMatch wrapper.
+    assert!(
+        spec.skips.iter().all(|s| s.item != "Regex::find"),
+        "Regex::find should be rescued, not skipped"
+    );
+    let regex_type = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
+    let find = regex_type.methods.iter().find(|m| m.name == "find").expect("find producer");
+    assert_eq!(find.ret, BridgeReturn::OptWrapper("OwnedMatch".into()));
+    assert_eq!(find.params.len(), 1);
+    assert_eq!(find.params[0].ty, ScalarType::Str);
+
+    // The OwnedMatch wrapper exists, is opaque, and carries the ouroboros metadata.
+    let owned = spec.types.iter().find(|t| t.name == "OwnedMatch").expect("OwnedMatch type");
+    assert_eq!(owned.kind, TypeKind::Opaque);
+    let w = owned.wrapper.as_ref().expect("wrapper metadata");
+    assert_eq!(w.borrowed_path, "regex::Match");
+    assert_eq!(w.lifetimes, 1);
+    assert_eq!(w.owner_inner_path, "regex::Regex");
+    assert_eq!(w.producer_call, "find");
+
+    // Its readers are Match's int-free methods, delegating through self.inner.
+    let mut reader_names: Vec<&str> = owned.methods.iter().map(|m| m.name.as_str()).collect();
+    reader_names.sort_unstable();
+    assert_eq!(reader_names, vec!["as_str", "is_empty"]);
+    assert!(owned.methods.iter().all(|m| m.recv == Recv::Inner));
+    let as_str = owned.methods.iter().find(|m| m.name == "as_str").unwrap();
+    assert_eq!(as_str.ret, BridgeReturn::Str); // &'h str, copied to owned String
+    let is_empty = owned.methods.iter().find(|m| m.name == "is_empty").unwrap();
+    assert_eq!(is_empty.ret, BridgeReturn::Bool);
+
+    // Match's integer-returning methods are honestly recorded as skips.
+    for m in ["Match::start", "Match::end", "Match::len", "Match::range"] {
+        assert!(spec.skips.iter().any(|s| s.item == m), "{m} should be a recorded skip");
+    }
 }
 
 #[test]

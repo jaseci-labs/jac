@@ -1,6 +1,8 @@
 use std::fmt::Write;
 
-use crate::types::{BridgeFn, BridgeReturn, BridgeSpec, BridgeType, ScalarType, TypeKind};
+use crate::types::{
+    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, ScalarType, TypeKind,
+};
 
 /// Emit a `Cargo.toml` for the generated bridge crate.
 ///
@@ -65,6 +67,9 @@ pub fn emit(spec: &BridgeSpec) -> String {
         first = false;
 
         match bt.kind {
+            TypeKind::Opaque if bt.wrapper.is_some() => {
+                emit_wrapper_struct(&mut out, bt, bt.wrapper.as_ref().unwrap());
+            }
             TypeKind::Opaque => {
                 writeln!(out, "    pub struct {}(pub {});", bt.name, bt.inner_path).unwrap();
             }
@@ -83,11 +88,18 @@ pub fn emit(spec: &BridgeSpec) -> String {
             continue;
         }
 
+        // Synthesized wrappers get a non-pub `wrap` constructor (the ouroboros
+        // lifetime-erasure) emitted before their readers.
+        let wrap_src = bt.wrapper.as_ref().map(|w| emit_wrap(w, bt));
         let ctor_src = bt.ctor.as_ref().and_then(|f| emit_fn(f, bt, true));
         let method_srcs: Vec<String> =
             bt.methods.iter().filter_map(|f| emit_fn(f, bt, false)).collect();
 
-        if ctor_src.is_none() && method_srcs.is_empty() && bt.injected_source.is_empty() {
+        if wrap_src.is_none()
+            && ctor_src.is_none()
+            && method_srcs.is_empty()
+            && bt.injected_source.is_empty()
+        {
             continue;
         }
 
@@ -95,7 +107,7 @@ pub fn emit(spec: &BridgeSpec) -> String {
         writeln!(out, "    impl {} {{", bt.name).unwrap();
 
         let mut first_fn = true;
-        for src in ctor_src.into_iter().chain(method_srcs) {
+        for src in wrap_src.into_iter().chain(ctor_src).chain(method_srcs) {
             if !first_fn {
                 writeln!(out).unwrap();
             }
@@ -143,6 +155,51 @@ fn error_bridge_name(name: &str, module_name: &str) -> String {
     }
 }
 
+/// `<'static>` (or `<'static, 'static>`, …) for an `n`-lifetime borrowed type.
+fn static_args(n: usize) -> String {
+    if n == 0 {
+        return String::new();
+    }
+    let lts = vec!["'static"; n].join(", ");
+    format!("<{lts}>")
+}
+
+/// Emit the ouroboros struct for a synthesized owning wrapper: the borrowing
+/// value (lifetime erased to `'static`) declared before the owned input it
+/// points into, so it drops first.
+fn emit_wrapper_struct(out: &mut String, bt: &BridgeType, w: &OwningWrapper) {
+    writeln!(out, "    pub struct {} {{", bt.name).unwrap();
+    writeln!(
+        out,
+        "        inner: {}{},",
+        w.borrowed_path,
+        static_args(w.lifetimes)
+    )
+    .unwrap();
+    writeln!(out, "        _input: String,").unwrap();
+    writeln!(out, "    }}").unwrap();
+}
+
+/// Emit the non-pub `wrap` constructor: clone the input, produce the borrowed
+/// value from it, erase the lifetime, and store both.
+fn emit_wrap(w: &OwningWrapper, bt: &BridgeType) -> String {
+    let static_ty = format!("{}{}", w.borrowed_path, static_args(w.lifetimes));
+    format!(
+        "        fn wrap(owner: &{owner}, input: &str) -> Option<{wname}> {{\n\
+         \x20           let owned = input.to_owned();\n\
+         \x20           let inner = owner.{producer}(&owned)?;\n\
+         \x20           // SAFETY: `inner` borrows `owned`, which is moved into the returned\n\
+         \x20           // struct beside it and never mutated or moved-out; the borrower drops\n\
+         \x20           // before the owner. Erasing to 'static is sound for the value's life.\n\
+         \x20           let inner: {static_ty} = unsafe {{ std::mem::transmute(inner) }};\n\
+         \x20           Some({wname} {{ inner, _input: owned }})\n\
+         \x20       }}",
+        owner = w.owner_inner_path,
+        wname = bt.name,
+        producer = w.producer_call,
+    )
+}
+
 /// Render one function (constructor or method) as indented bridge source.
 ///
 /// `classify` only admits params `ScalarType` can represent (`&str`, `bool`);
@@ -169,13 +226,19 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     // (possibly overlay-renamed) name so the Jac side sees the nicer identifier.
     let fname = &f.name;
     let exposed = f.exposed();
+    // Receiver a method body delegates through: the newtype field for ordinary
+    // methods, the erased borrowing value for a synthesized wrapper's readers.
+    let recv = match f.recv {
+        Recv::Field0 => "self.0",
+        Recv::Inner => "self.inner",
+    };
 
     let (ret_ann, body): (String, String) = match &f.ret {
         BridgeReturn::Void => {
             let call = if is_ctor {
                 format!("{}::{}({})", inner, fname, args_str)
             } else {
-                format!("self.0.{}({})", fname, args_str)
+                format!("{}.{}({})", recv, fname, args_str)
             };
             (String::new(), call)
         }
@@ -183,7 +246,7 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             let call = if is_ctor {
                 format!("{}::{}({})", inner, fname, args_str)
             } else {
-                format!("self.0.{}({})", fname, args_str)
+                format!("{}.{}({})", recv, fname, args_str)
             };
             (" -> bool".into(), call)
         }
@@ -192,7 +255,7 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             let call = if is_ctor {
                 format!("{}::{}({}).to_string()", inner, fname, args_str)
             } else {
-                format!("self.0.{}({}).to_string()", fname, args_str)
+                format!("{}.{}({}).to_string()", recv, fname, args_str)
             };
             (" -> String".into(), call)
         }
@@ -200,7 +263,7 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             let call = if is_ctor {
                 format!("Self({}::{}({}))", inner, fname, args_str)
             } else {
-                format!("Self(self.0.{}({}))", fname, args_str)
+                format!("Self({}.{}({}))", recv, fname, args_str)
             };
             (" -> Self".into(), call)
         }
@@ -212,11 +275,17 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
                 )
             } else {
                 format!(
-                    "self.0.{}({}).map(Self).map_err(|e| e.to_string())",
-                    fname, args_str
+                    "{}.{}({}).map(Self).map_err(|e| e.to_string())",
+                    recv, fname, args_str
                 )
             };
             (" -> Result<Self, String>".into(), call)
+        }
+        BridgeReturn::OptWrapper(wrapper) => {
+            // Producer of an owning wrapper: delegate to the wrapper's `wrap`
+            // ctor, which owns the input and erases the borrow. Always a method.
+            let call = format!("{}::wrap(&self.0, {})", wrapper, args_str);
+            (format!(" -> Option<{}>", wrapper), call)
         }
     };
 

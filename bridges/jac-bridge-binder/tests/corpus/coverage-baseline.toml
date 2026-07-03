@@ -12,9 +12,12 @@
 # scalar/str/bool/void, str returns. The low ratios are the whole point —
 # they are what M4 Phase B exists to move.
 
+# regex: owning-wrapper synthesis (M4 Phase B v1) rescued `find` -> OwnedMatch
+# (readers as_str/is_empty), lifting bridged 7 -> 10. `captures` stays a skip:
+# Captures has no int-free reader (get/name return Option<Match>, len is usize).
 [regex]
-bridged = 7
-total = 60
+bridged = 10
+total = 66
 
 [base64]
 bridged = 1

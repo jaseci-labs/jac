@@ -9,28 +9,74 @@ use std::collections::HashMap;
 use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
 
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, ScalarType, Skip, SkipReason,
-    TypeKind,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, ScalarType,
+    Skip, SkipReason, TypeKind,
 };
 
 pub fn classify(doc: &Crate) -> BridgeSpec {
     let module_name = doc.index[&doc.root].name.clone().unwrap_or_default();
     let crate_version = doc.crate_version.clone().unwrap_or_else(|| "0.0.0".into());
 
-    let mut ctx = Ctx { doc, module_name: module_name.clone(), skips: vec![] };
+    let mut ctx =
+        Ctx { doc, module_name: module_name.clone(), skips: vec![], pending_wrappers: vec![] };
 
     let mut types = ctx.find_types();
     for bt in &mut types {
         ctx.classify_impl(bt);
     }
 
+    // Materialize synthesized owning wrappers (M4 Phase B v1). A wrapper is
+    // requested once per qualifying producer; dedupe by the borrowed type so two
+    // producers targeting the same wrapper (e.g. `find`/`find_iter`-style) add it
+    // once. Their reader-skips land in the global skip list for honest coverage.
+    let mut seen_borrowed: Vec<u32> = vec![];
+    for pw in std::mem::take(&mut ctx.pending_wrappers) {
+        if seen_borrowed.contains(&pw.borrowed_id) {
+            continue;
+        }
+        seen_borrowed.push(pw.borrowed_id);
+        ctx.skips.extend(pw.reader_skips);
+        types.push(BridgeType {
+            name: pw.wrapper_name,
+            kind: TypeKind::Opaque,
+            inner_path: pw.wrapper.borrowed_path.clone(),
+            item_id: pw.borrowed_id,
+            ctor: None,
+            methods: pw.readers,
+            injected_source: vec![],
+            wrapper: Some(pw.wrapper),
+        });
+    }
+    sort_types(&mut types);
+
     BridgeSpec { module_name, crate_version, types, skips: ctx.skips }
+}
+
+/// Deterministic type order: opaque types first, then error types, each by name.
+fn sort_types(types: &mut [BridgeType]) {
+    types.sort_by(|a, b| {
+        let k = |t: &BridgeType| match t.kind {
+            TypeKind::Opaque => 0u8,
+            TypeKind::Error => 1,
+        };
+        k(a).cmp(&k(b)).then(a.name.cmp(&b.name))
+    });
+}
+
+/// A wrapper synthesis request, deferred until after all owner types are walked.
+struct PendingWrapper {
+    wrapper_name: String,
+    borrowed_id: u32,
+    wrapper: OwningWrapper,
+    readers: Vec<BridgeFn>,
+    reader_skips: Vec<Skip>,
 }
 
 struct Ctx<'a> {
     doc: &'a Crate,
     module_name: String,
     skips: Vec<Skip>,
+    pending_wrappers: Vec<PendingWrapper>,
 }
 
 impl<'a> Ctx<'a> {
@@ -70,13 +116,7 @@ impl<'a> Ctx<'a> {
             .filter_map(|((_depth, _pen), item)| self.classify_type(item))
             .collect();
 
-        out.sort_by(|a, b| {
-            let k = |t: &BridgeType| match t.kind {
-                TypeKind::Opaque => 0u8,
-                TypeKind::Error => 1,
-            };
-            k(a).cmp(&k(b)).then(a.name.cmp(&b.name))
-        });
+        sort_types(&mut out);
         out
     }
 
@@ -112,6 +152,7 @@ impl<'a> Ctx<'a> {
                     ctor: None,
                     methods: vec![],
                     injected_source: vec![],
+                    wrapper: None,
                 })
             }
             ItemEnum::Enum(_) if name.ends_with("Error") => Some(BridgeType {
@@ -122,6 +163,7 @@ impl<'a> Ctx<'a> {
                 ctor: None,
                 methods: vec![],
                 injected_source: vec![],
+                wrapper: None,
             }),
             _ => None,
         }
@@ -171,7 +213,17 @@ impl<'a> Ctx<'a> {
                         }
                     }
                     Err(reason) => {
-                        self.skips.push(Skip { item: item_path, reason });
+                        // Before recording the skip, try the owning-wrapper rule:
+                        // a `fn(&self, &str) -> Option<Borrowed<'_>>` whose borrowed
+                        // type has a readable surface becomes a producer + wrapper
+                        // instead of a lifetime-borrow skip.
+                        match self.try_owning_wrapper(&method_name, f, bt) {
+                            Some((producer, pending)) => {
+                                bt.methods.push(producer);
+                                self.pending_wrappers.push(pending);
+                            }
+                            None => self.skips.push(Skip { item: item_path, reason }),
+                        }
                     }
                 }
             }
@@ -203,6 +255,7 @@ impl<'a> Ctx<'a> {
             params,
             ret,
             throws: None,
+            recv: Recv::Field0,
         })
     }
 
@@ -293,6 +346,213 @@ impl<'a> Ctx<'a> {
         match ok_ty {
             Some(Type::ResolvedPath(ok_rp)) if ok_rp.path == bt.name => Ok(BridgeReturn::OwnSelfResult),
             _ => Err(SkipReason::UnsupportedType(format!("{args:?}"))),
+        }
+    }
+
+    // ── owning-wrapper synthesis (M4 Phase B v1) ──────────────────────────────
+
+    /// Attempt to rescue a borrowed return via an owning wrapper.
+    ///
+    /// The mechanical rule: an owner method `fn(&self, input: &str) ->
+    /// Option<Borrowed<'_>>` where `Borrowed` is an in-crate struct carrying a
+    /// lifetime, *and* `Borrowed` exposes at least one int-free reader. Returns
+    /// the producer `BridgeFn` (emitted on the owner) plus the deferred wrapper
+    /// request. `None` if any condition fails — the caller then records the
+    /// original skip, so a wrapper with no readable surface (e.g. `Captures`,
+    /// whose readers are all `usize`/nested `Match`) stays a precise skip.
+    fn try_owning_wrapper(
+        &self,
+        method_name: &str,
+        f: &rustdoc_types::Function,
+        bt: &BridgeType,
+    ) -> Option<(BridgeFn, PendingWrapper)> {
+        // Must be a method (has a receiver), not a constructor.
+        if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+            return None;
+        }
+        // Exactly one non-self param, and it must be the `&str` the wrapper owns.
+        // (A single owned input keeps the ouroboros unambiguous; multi-`&str`
+        // producers would need to own several buffers — deferred.)
+        let mut params = vec![];
+        for (pname, pty) in &f.sig.inputs {
+            if pname == "self" {
+                continue;
+            }
+            match self.classify_param_type(pty) {
+                Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                Err(_) => return None,
+            }
+        }
+        if params.len() != 1 || params[0].ty != ScalarType::Str {
+            return None;
+        }
+
+        // Return must be `Option<Borrowed<'_>>` with `Borrowed` an in-crate
+        // lifetime-bearing struct.
+        let (borrowed_id, borrowed_name, lifetimes) = self.option_borrowed_struct(&f.sig.output)?;
+
+        // The wrapper is viable only if the borrowed type has a readable surface.
+        let (readers, reader_skips) = self.discover_readers(borrowed_id, &borrowed_name);
+        if readers.is_empty() {
+            return None;
+        }
+
+        let wrapper_name = format!("Owned{borrowed_name}");
+        let producer = BridgeFn {
+            name: method_name.to_string(),
+            export_name: None,
+            params,
+            ret: BridgeReturn::OptWrapper(wrapper_name.clone()),
+            throws: None,
+            recv: Recv::Field0,
+        };
+        let pending = PendingWrapper {
+            wrapper_name,
+            borrowed_id,
+            wrapper: OwningWrapper {
+                borrowed_path: format!("{}::{}", self.module_name, borrowed_name),
+                lifetimes,
+                owner_inner_path: bt.inner_path.clone(),
+                producer_call: method_name.to_string(),
+            },
+            readers,
+            reader_skips,
+        };
+        Some((producer, pending))
+    }
+
+    /// If `output` is `Option<T>` with `T` an own-crate struct that has ≥1
+    /// lifetime param, return `(id, name, lifetime_count)`. Otherwise `None`.
+    fn option_borrowed_struct(&self, output: &Option<Type>) -> Option<(u32, String, usize)> {
+        let Some(Type::ResolvedPath(rp)) = output else { return None };
+        if rp.path != "Option" {
+            return None;
+        }
+        let args = rp.args.as_ref()?;
+        let rustdoc_types::GenericArgs::AngleBracketed { args, .. } = args.as_ref() else {
+            return None;
+        };
+        let inner = args.iter().find_map(|a| match a {
+            rustdoc_types::GenericArg::Type(Type::ResolvedPath(inner_rp)) => Some(inner_rp),
+            _ => None,
+        })?;
+        let item = self.doc.index.get(&inner.id)?;
+        let ItemEnum::Struct(s) = &item.inner else { return None };
+        let lifetimes = s
+            .generics
+            .params
+            .iter()
+            .filter(|p| matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. }))
+            .count();
+        if lifetimes == 0 {
+            return None;
+        }
+        let name = item.name.clone()?;
+        Some((inner.id.0, name, lifetimes))
+    }
+
+    /// Walk a borrowed type's inherent impls, splitting its public `&self`
+    /// methods into int-free readers (str/bool returns, delegated through
+    /// `self.inner`) and recorded skips (everything else — `usize`, nested
+    /// borrows, …), so a wrapped type's whole surface stays honestly counted.
+    fn discover_readers(&self, borrowed_id: u32, borrowed_name: &str) -> (Vec<BridgeFn>, Vec<Skip>) {
+        let impl_ids: Vec<Id> = self
+            .doc
+            .index
+            .get(&Id(borrowed_id))
+            .and_then(|item| match &item.inner {
+                ItemEnum::Struct(s) => Some(s.impls.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        let mut readers: Vec<BridgeFn> = vec![];
+        let mut skips: Vec<Skip> = vec![];
+        let mut seen: Vec<String> = vec![];
+
+        for impl_id in impl_ids {
+            let Some(impl_item) = self.item(&impl_id) else { continue };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else { continue };
+            if impl_block.trait_.is_some() {
+                continue;
+            }
+            for method_id in &impl_block.items {
+                let Some(method) = self.item(method_id) else { continue };
+                let ItemEnum::Function(f) = &method.inner else { continue };
+                if matches!(
+                    method.visibility,
+                    rustdoc_types::Visibility::Crate | rustdoc_types::Visibility::Restricted { .. }
+                ) {
+                    continue;
+                }
+                // Readers must borrow the wrapped value — skip associated fns.
+                if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+                    continue;
+                }
+                let mname = method.name.clone().unwrap_or_default();
+                if mname.is_empty() || seen.contains(&mname) {
+                    continue;
+                }
+                seen.push(mname.clone());
+                let item_path = format!("{borrowed_name}::{mname}");
+
+                // Params must all cross the boundary.
+                let mut params = vec![];
+                let mut param_err = None;
+                for (pname, pty) in &f.sig.inputs {
+                    if pname == "self" {
+                        continue;
+                    }
+                    match self.classify_param_type(pty) {
+                        Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                        Err(r) => {
+                            param_err = Some(r);
+                            break;
+                        }
+                    }
+                }
+                if let Some(reason) = param_err {
+                    skips.push(Skip { item: item_path, reason });
+                    continue;
+                }
+
+                match self.classify_reader_return(&f.sig.output) {
+                    Ok(ret) => readers.push(BridgeFn {
+                        name: mname,
+                        export_name: None,
+                        params,
+                        ret,
+                        throws: None,
+                        recv: Recv::Inner,
+                    }),
+                    Err(reason) => skips.push(Skip { item: item_path, reason }),
+                }
+            }
+        }
+
+        readers.sort_by(|a, b| a.name.cmp(&b.name));
+        skips.sort_by(|a, b| a.item.cmp(&b.item));
+        (readers, skips)
+    }
+
+    /// Return classifier for a wrapper reader. Unlike [`Self::classify_return`],
+    /// a `&str` return with a *named* lifetime is fine — the reader immediately
+    /// copies it to an owned `String` (the wrapper owns the borrowed-from buffer),
+    /// so `Match::as_str -> &'h str` is a reader, not a lifetime-borrow skip. Only
+    /// `bool` and `&str` cross; everything else stays a recorded skip.
+    fn classify_reader_return(&self, output: &Option<Type>) -> Result<BridgeReturn, SkipReason> {
+        let Some(ty) = output else {
+            return Err(SkipReason::UnsupportedType("() reader".into()));
+        };
+        match ty {
+            Type::Primitive(p) if p == "bool" => Ok(BridgeReturn::Bool),
+            Type::Primitive(p) => Err(SkipReason::UnsupportedType(p.clone())),
+            Type::BorrowedRef { type_, .. } => match type_.as_ref() {
+                Type::Primitive(p) if p == "str" => Ok(BridgeReturn::Str),
+                _ => Err(SkipReason::LifetimeBorrow),
+            },
+            Type::ResolvedPath(rp) => Err(SkipReason::UnsupportedType(rp.path.clone())),
+            _ => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
         }
     }
 }

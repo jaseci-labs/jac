@@ -106,6 +106,42 @@ fn integer_param_methods_not_emitted() {
     );
 }
 
+// ── owning-wrapper synthesis (M4 Phase B v1) ───────────────────────────────────
+
+#[test]
+fn owned_match_wrapper_emitted() {
+    let src = generated();
+    // The ouroboros struct: borrower (lifetime erased) before the owned input.
+    assert!(
+        src.contains("pub struct OwnedMatch {")
+            && src.contains("inner: regex::Match<'static>,")
+            && src.contains("_input: String,"),
+        "missing OwnedMatch ouroboros struct\n{src}"
+    );
+    // The non-pub wrap ctor clones the input, produces from it, erases the borrow.
+    assert!(
+        src.contains("fn wrap(owner: &regex::Regex, input: &str) -> Option<OwnedMatch>")
+            && src.contains("let inner = owner.find(&owned)?;")
+            && src.contains("let inner: regex::Match<'static> = unsafe { std::mem::transmute(inner) };"),
+        "missing/incorrect wrap ctor\n{src}"
+    );
+    // The producer on Regex returns the wrapper.
+    assert!(
+        src.contains("pub fn find(&self, haystack: &str) -> Option<OwnedMatch>")
+            && src.contains("OwnedMatch::wrap(&self.0, haystack)"),
+        "missing find producer\n{src}"
+    );
+    // Readers delegate through self.inner (the erased borrowing value).
+    assert!(
+        src.contains("pub fn as_str(&self) -> String") && src.contains("self.inner.as_str().to_string()"),
+        "missing OwnedMatch::as_str reader\n{src}"
+    );
+    assert!(
+        src.contains("pub fn is_empty(&self) -> bool") && src.contains("self.inner.is_empty()"),
+        "missing OwnedMatch::is_empty reader\n{src}"
+    );
+}
+
 // ── Cargo.toml emitter ───────────────────────────────────────────────────────
 
 #[test]

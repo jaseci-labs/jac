@@ -24,6 +24,31 @@ pub struct BridgeType {
     /// Raw Rust method source blocks injected by an overlay, emitted verbatim
     /// inside the `impl` block after auto-generated methods.
     pub injected_source: Vec<String>,
+    /// Set on a synthesized owning wrapper (M4 Phase B v1): instead of the
+    /// `pub struct T(pub inner)` newtype, codegen emits an ouroboros struct that
+    /// owns a copy of the borrowed-from input plus the borrowing value with its
+    /// lifetime erased to `'static`. `None` for ordinary opaque/error types.
+    pub wrapper: Option<OwningWrapper>,
+}
+
+/// Describes how to synthesize an owning wrapper around a borrowed return.
+///
+/// A method `fn(&self, input: &str) -> Option<Borrowed<'_>>` on the owner type
+/// (where `Borrowed` is an in-crate struct carrying a lifetime) can't cross the
+/// ABI as-is. The wrapper owns the input `String` and the borrowing value (its
+/// lifetime transmuted to `'static`); it is sound because the owned buffer is
+/// never mutated or moved-out and the borrower field drops before the owner.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OwningWrapper {
+    /// The borrowed inner type's path with no lifetime args, e.g. `regex::Match`.
+    pub borrowed_path: String,
+    /// Number of lifetime params on the borrowed type — each erased to `'static`
+    /// in the stored field (`Match<'static>`, `Captures<'static>`, …).
+    pub lifetimes: usize,
+    /// The owner type's inner path, e.g. `regex::Regex` — the `wrap` ctor's first arg.
+    pub owner_inner_path: String,
+    /// The owner method that produces the borrowed value, e.g. `find`.
+    pub producer_call: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +71,20 @@ pub struct BridgeFn {
     pub ret: BridgeReturn,
     /// Index into `BridgeSpec::types` for the error type, if the function is fallible.
     pub throws: Option<usize>,
+    /// Which receiver expression the emitted body calls through. Ordinary methods
+    /// delegate to the newtype field (`self.0`); synthesized wrapper readers
+    /// delegate to the erased borrowing value (`self.inner`).
+    pub recv: Recv,
+}
+
+/// The receiver expression a method body delegates through.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum Recv {
+    /// `self.0` — the opaque newtype's wrapped value (the common case).
+    #[default]
+    Field0,
+    /// `self.inner` — an owning wrapper's lifetime-erased borrowing value.
+    Inner,
 }
 
 impl BridgeFn {
@@ -72,6 +111,10 @@ pub enum BridgeReturn {
     OwnSelf,
     /// Returns `Result<Self, E>` — bridge source emits `-> Result<Self, String>`.
     OwnSelfResult,
+    /// Producer of a synthesized owning wrapper: the method returns
+    /// `Option<Wrapper>` and its body delegates to `Wrapper::wrap(&self.0, …)`.
+    /// The string is the wrapper type name (e.g. `OwnedMatch`).
+    OptWrapper(String),
 }
 
 /// Scalar parameter types the v1 ABI can actually carry at the boundary.
