@@ -117,36 +117,10 @@ test "_list_project_files enumerates files under a project dir" {
 }
 
 
-test "_configure_ui_env restore unwinds every mutated JAC_AI_UI_* key" {
-    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
-    configure = getattr(shared_mod, "_configure_ui_env");
-    prior = {
-        "JAC_AI_UI_PROJECT": "/old/project",
-        "JAC_AI_UI_MODEL": "old-model",
-        "JAC_AI_UI_NCTX": "8192",
-        "JAC_AI_UI_FILES": "old.txt",
-        "JAC_AI_UI_MODEL_PRESETS": "preset-a",
-        "JAC_AI_UI_ACTIVE": "0",
-
-    };
-    for (key, value) in prior.items() {
-        os.environ[key] = value;
-    }
-    env = configure(
-        AgentRequest(tui=True, cwd=os.getcwd(), model="new-model", n_ctx=4096,)
-    );
-    assert os.environ.get("JAC_AI_UI_ACTIVE") == "1";
-    assert os.environ.get("JAC_AI_UI_MODEL") == "new-model";
-    env["restore"]();
-    for (key, value) in prior.items() {
-        assert os.environ.get(key) == value , (
-            f"{key}: expected {value!r}, got {os.environ.get(key)!r}"
-        );
-    }
-}
-
-
-test "_configure_ui_env restore removes keys that were unset before configure" {
+test "_configure_ui_env populates every JAC_AI_UI_* key from the request" {
+    # run_tui_embed copies os.environ into the child and os.execve's the native
+    # host immediately after this, so the env is write-only here -- the contract
+    # is just "all five keys land with the request's values".
     shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     configure = getattr(shared_mod, "_configure_ui_env");
     keys = [
@@ -155,20 +129,82 @@ test "_configure_ui_env restore removes keys that were unset before configure" {
         "JAC_AI_UI_NCTX",
         "JAC_AI_UI_FILES",
         "JAC_AI_UI_MODEL_PRESETS",
-        "JAC_AI_UI_ACTIVE",
 
     ];
-    for key in keys {
-        os.environ.pop(key, None);
+    try {
+        for key in keys {
+            os.environ.pop(key, None);
+        }
+        configure(
+            AgentRequest(tui=True, cwd=os.getcwd(), model="new-model", n_ctx=4096,)
+        );
+        assert os.environ.get("JAC_AI_UI_MODEL") == "new-model";
+        assert os.environ.get("JAC_AI_UI_NCTX") == "4096";
+        assert os.environ.get("JAC_AI_UI_PROJECT") == os.getcwd();
+        for key in keys {
+            assert key in os.environ , f"expected {key} to be set by configure";
+        }
+    } finally {
+        for key in keys {
+            os.environ.pop(key, None);
+        }
     }
-    env = configure(AgentRequest(tui=True, cwd=os.getcwd()));
-    for key in keys {
-        assert key in os.environ , f"expected {key} to be set during configure";
+}
+
+
+test "every producer event kind is recognized by the native parser (no silent UNKNOWN drift)" {
+    # Tripwire for the event-kind duplication flagged in the #6355 review:
+    # the producer (ai_agent.impl.jac) emits kind strings via bus.emit/emit_stream,
+    # the serializer (_ev_line) passes them through verbatim, and the native
+    # parser (ipc.na.jac::parse_event_kind) maps a CLOSED set to EventKind --
+    # anything else silently becomes UNKNOWN. This scans both sources so a new
+    # producer kind fails CI here instead of rendering as a blank UNKNOWN row.
+    import re;
+
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
+    cli_dir = Path(shared_mod.__file__).resolve().parent.parent;
+    producer_src = (cli_dir / "impl" / "ai_agent.impl.jac").read_text();
+    parser_src = (cli_dir / "ai_tui_na" / "ipc.na.jac").read_text();
+
+    producer_kinds = set(re.findall(r'\.emit(?:_stream)?\("([a-z_]+)"', producer_src));
+
+    # Scope to parse_event_kind only -- parse_tui_status also matches `s == "..."`
+    # but is a different closed set (idle/running).
+    func_match = re.search(r'def parse_event_kind\b.*?\n\}', parser_src, re.S);
+    assert func_match is not None , "could not locate parse_event_kind -- regex stale?";
+    parser_kinds = set(re.findall(r's == "([a-z_]+)"', func_match.group(0)));
+
+    assert producer_kinds , "no producer kinds extracted -- regex stale?";
+    assert parser_kinds , "no parser kinds extracted -- regex stale?";
+    for k in (
+        "user",
+        "answer",
+        "reasoning",
+        "system",
+        "error",
+        "phase",
+        "call",
+        "tool_result"
+    ) {
+        assert k in producer_kinds , f"expected producer kind {k!r} missing -- regex stale?";
+        assert k in parser_kinds , f"expected parser kind {k!r} missing -- regex stale?";
     }
-    env["restore"]();
-    for key in keys {
-        assert key not in os.environ , f"expected {key} to be removed after restore";
-    }
+
+    # "status" is carried out-of-band by FIELD_STATUS, not as a transcript
+    # event, so it is intentionally absent from parse_event_kind.
+    out_of_band = {"status"};
+
+    unknown = producer_kinds.difference(parser_kinds).difference(out_of_band);
+    assert not unknown , (
+        f"producer emits kind(s) {sorted(unknown)} that parse_event_kind maps to "
+        f"UNKNOWN; teach ipc.na.jac::parse_event_kind or carry them out-of-band"
+    );
+
+    stale = out_of_band.difference(producer_kinds);
+    assert not stale , (
+        f"out-of-band kind(s) {sorted(stale)} are no longer emitted; drop them "
+        f"from the out_of_band set"
+    );
 }
 
 

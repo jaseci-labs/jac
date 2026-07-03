@@ -1,6 +1,5 @@
 import from .state { TuiState, AcItem, TuiStatus }
 import from .select_list { SelectItem }
-import from .ipc { ipc_send_cmd }
 import from .ipc_schema {
     IPC_CMD_SEND,
     IPC_CMD_STOP,
@@ -56,14 +55,14 @@ obj CmdDef {
         }
 
         if self.kind == CmdKind.IPC_RESET {
-            ipc_send_cmd(rt.cmd_queue, state.ipc_fd, self.ipc_name);
+            rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
             state.reset_events();
             state.dirty = True;
             return "handled";
         }
 
         if self.kind == CmdKind.IPC {
-            ipc_send_cmd(rt.cmd_queue, state.ipc_fd, self.ipc_name);
+            rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
             if self.ipc_name == IPC_CMD_QUIT {
                 return "quit";
             }
@@ -284,7 +283,7 @@ def slash_submit(text: str, rt: TuiRuntime) -> str {
     state = rt.state;
     if text.startswith("/settings ") {
         args = text[10:].strip();
-        ipc_send_cmd(rt.cmd_queue, state.ipc_fd, IPC_CMD_APPLY + ":" + args);
+        rt.cmd_queue.send(state.ipc_fd, IPC_CMD_APPLY + ":" + args);
         return "handled";
     }
     value = resolve_slash_line(text);
@@ -368,6 +367,6 @@ def file_items(state: TuiState) -> list[SelectItem] {
 
 def apply_model(model: str, rt: TuiRuntime) {
     state = rt.state;
-    ipc_send_cmd(rt.cmd_queue, state.ipc_fd, IPC_CMD_APPLY + ":model=" + model);
+    rt.cmd_queue.send(state.ipc_fd, IPC_CMD_APPLY + ":model=" + model);
     state.dirty = True;
 }

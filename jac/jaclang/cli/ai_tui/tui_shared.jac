@@ -176,18 +176,7 @@ def _require_tty -> str | None {
 }
 
 
-def _restore_ui_env_var(key: str, prev: str | None) {
-    import os;
-
-    if prev is None {
-        os.environ.pop(key, None);
-    } else {
-        os.environ[key] = prev;
-    }
-}
-
-
-def _configure_ui_env(r: any) -> dict {
+def _configure_ui_env(r: any) {
     import os;
 
     project = os.path.normpath(str(r?.cwd or os.getcwd()));
@@ -198,36 +187,11 @@ def _configure_ui_env(r: any) -> dict {
         presets_env = "\n".join(_MODEL_PRESETS);
     } except Exception { }
 
-    old_project = os.environ.get("JAC_AI_UI_PROJECT", None);
-    old_model = os.environ.get("JAC_AI_UI_MODEL", None);
-    old_nctx = os.environ.get("JAC_AI_UI_NCTX", None);
-    old_files = os.environ.get("JAC_AI_UI_FILES", None);
-    old_presets = os.environ.get("JAC_AI_UI_MODEL_PRESETS", None);
-    old_active = os.environ.get("JAC_AI_UI_ACTIVE", None);
-
     os.environ["JAC_AI_UI_PROJECT"] = project;
     os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
     os.environ["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
     os.environ["JAC_AI_UI_FILES"] = files_env;
     os.environ["JAC_AI_UI_MODEL_PRESETS"] = presets_env;
-    os.environ["JAC_AI_UI_ACTIVE"] = "1";
-
-    def _restore_ui_env {
-        _restore_ui_env_var("JAC_AI_UI_PROJECT", old_project);
-        _restore_ui_env_var("JAC_AI_UI_MODEL", old_model);
-        _restore_ui_env_var("JAC_AI_UI_NCTX", old_nctx);
-        _restore_ui_env_var("JAC_AI_UI_FILES", old_files);
-        _restore_ui_env_var("JAC_AI_UI_MODEL_PRESETS", old_presets);
-        _restore_ui_env_var("JAC_AI_UI_ACTIVE", old_active);
-    }
-
-    return {
-        "restore": _restore_ui_env,
-        "project": project,
-        "files_env": files_env,
-        "presets_env": presets_env,
-
-    };
 }
 
 

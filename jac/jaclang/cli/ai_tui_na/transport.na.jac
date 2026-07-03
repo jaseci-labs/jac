@@ -93,9 +93,3 @@ obj TtyFdTransport(Transport) {
 
     def send_cmd(cmd: str) { }
 }
-
-obj ExternalDriverTransport(TtyFdTransport) {
-    def recv_blob -> str {
-        return "";
-    }
-}

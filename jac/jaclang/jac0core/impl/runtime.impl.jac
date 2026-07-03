@@ -1590,7 +1590,7 @@ impl JacServe.get_sv_registry -> dict[str, str] {
 
 impl JacServe.create_server(
     jac_server: JacServer, host: str, port: int, max_retries: int = 10
-) -> HTTPServer {
+) -> ThreadingHTTPServer {
     import from http.server { ThreadingHTTPServer }
     handler_class = jac_server.create_handler();
     current_port = port;

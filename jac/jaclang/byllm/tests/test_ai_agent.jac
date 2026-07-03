@@ -322,12 +322,10 @@ test "ui sessions suppress tool error results from the live transcript" {
 
 
 test "ui mode keeps model stream on the bus and off stdout" {
-    import os;
     ai.agent.cfg.verbose = True;
     ai.agent.bus.events = [];
     ai.agent.bus._next_id = 1;
     ai.agent.bus.active_feed = True;
-    prior = os.environ.get("JAC_AI_UI_ACTIVE");
     stream = [
         StreamEv(event_type="thought", data={"content": "Planning the change. "}),
         StreamEv(event_type="chunk", data={"content": "Done."}),
@@ -335,15 +333,9 @@ test "ui mode keeps model stream on the bus and off stdout" {
     ];
     events_snapshot: list = [];
     try {
-        os.environ["JAC_AI_UI_ACTIVE"] = "1";
         out = capturing(lambda : ai.agent.view.render_stream(stream));
         events_snapshot = list(ai.agent.bus.events);
     } finally {
-        if prior is None {
-            os.environ.pop("JAC_AI_UI_ACTIVE", None);
-        } else {
-            os.environ["JAC_AI_UI_ACTIVE"] = prior;
-        }
         ai.agent.bus.active_feed = False;
         ai.agent.bus.events = [];
         ai.agent.bus._next_id = 1;
@@ -370,12 +362,10 @@ test "ui mode keeps model stream on the bus and off stdout" {
 
 
 test "ui mode routes tool invocations to call events for the transcript" {
-    import os;
     ai.agent.cfg.verbose = True;
     ai.agent.bus.events = [];
     ai.agent.bus._next_id = 1;
     ai.agent.bus.active_feed = True;
-    prior = os.environ.get("JAC_AI_UI_ACTIVE");
     stream = [
         StreamEv(
             event_type="tool_call",
@@ -388,15 +378,9 @@ test "ui mode routes tool invocations to call events for the transcript" {
     ];
     events_snapshot: list = [];
     try {
-        os.environ["JAC_AI_UI_ACTIVE"] = "1";
         out = capturing(lambda : ai.agent.view.render_stream(stream));
         events_snapshot = list(ai.agent.bus.events);
     } finally {
-        if prior is None {
-            os.environ.pop("JAC_AI_UI_ACTIVE", None);
-        } else {
-            os.environ["JAC_AI_UI_ACTIVE"] = prior;
-        }
         ai.agent.bus.active_feed = False;
         ai.agent.bus.events = [];
         ai.agent.bus._next_id = 1;

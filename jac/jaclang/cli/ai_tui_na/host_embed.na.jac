@@ -1,7 +1,6 @@
 import from .libc_tty { tty_open, tty_close }
 import from .state { TuiState }
 import from .select_list { SelectList, SelectItem }
-import from .ipc { ipc_clear_cmd_queue, ipc_next_command }
 import from .diff { DiffEngine }
 import from .terminal_image { term_hyperlink, image_rows }
 import from .transport { TtyFdTransport, CmdQueue }
@@ -78,10 +77,10 @@ obj EmbedPyTransport(TtyFdTransport) {
     }
 
     def flush_outbound_cmds(cmd_queue: CmdQueue) {
-        cmd: str = ipc_next_command(cmd_queue);
+        cmd: str = cmd_queue.drain();
         while len(cmd) > 0 {
             _agent_send(self.py_dict, cmd);
-            cmd = ipc_next_command(cmd_queue);
+            cmd = cmd_queue.drain();
         }
     }
 }
@@ -123,11 +122,12 @@ def _run_embed -> None {
     rt = TuiRuntime();
     rt.transport = embed_transport;
     state = rt.state;
-    ipc_clear_cmd_queue(rt.cmd_queue);
+    rt.cmd_queue.clear();
     state.ipc_fd = -1;
     fd: int = tty_open();
     if fd < 0 {
         jpy_PyRun_SimpleString("_agent_stop()");
+        jpy_Py_Finalize();
         return;
     }
     state.render_fd = fd;

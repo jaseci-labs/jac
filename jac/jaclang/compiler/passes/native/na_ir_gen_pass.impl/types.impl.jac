@@ -553,7 +553,15 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if type_expr.type is None {
             try {
                 self.prog.get_type_evaluator().get_type_of_expression(type_expr);
-            } except Exception { }
+            } except Exception as _type_err {
+                import logging as _logging;
+                _logging.getLogger("jaclang.native").debug(
+                    "[NaIRGenPass] on-demand type resolution failed for %r: %r",
+                    type_expr,
+                    _type_err,
+                    exc_info=True,
+                );
+            }
         }
         if type_expr.type is None {
             _prim = self._resolve_primitive_name(type_expr);

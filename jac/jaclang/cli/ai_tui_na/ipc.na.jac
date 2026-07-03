@@ -13,9 +13,6 @@ import from .ipc_schema {
     IPC_FTYPE_HB,
     IPC_SEP
 }
-import from .transport { CmdQueue }
-import from .libc_tty { tty_read_line }
-import from .blob_reader { read_blob }
 
 def parse_event_kind(s: str) -> EventKind {
     if s == "user" {
@@ -59,18 +56,6 @@ def parse_tui_status(s: str) -> TuiStatus {
         return TuiStatus.RUNNING;
     }
     return TuiStatus.UNKNOWN;
-}
-
-def ipc_send_cmd(cmd_queue: CmdQueue, fd: int, cmd: str) {
-    cmd_queue.send(fd, cmd);
-}
-
-def ipc_next_command(cmd_queue: CmdQueue) -> str {
-    return cmd_queue.drain();
-}
-
-def ipc_clear_cmd_queue(cmd_queue: CmdQueue) {
-    cmd_queue.clear();
 }
 
 def _unescape(s: str) -> str {
@@ -223,19 +208,4 @@ def ipc_parse_frame(state: TuiState, blob: str) -> bool {
     }
 
     return True;
-}
-
-def ipc_read_frame_v2(state: TuiState) -> bool {
-    raw = tty_read_line();
-    if len(raw) == 0 {
-        return False;
-    }
-    first = raw.strip();
-
-    result = read_blob(first);
-    if result.eof and len(result.text) == 0 {
-        return False;
-    }
-
-    return ipc_parse_frame(state, result.text);
 }

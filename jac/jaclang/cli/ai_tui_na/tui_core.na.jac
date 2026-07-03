@@ -1,15 +1,6 @@
 import os;
 
-import from .libc_tty {
-    tty_open,
-    tty_close,
-    tty_update_size,
-    tty_rows,
-    tty_cols,
-    tty_write,
-    tty_setup_stdio_contract,
-    tty_restore_stdio
-}
+import from .libc_tty { tty_update_size, tty_rows, tty_cols }
 import from .terminal {
     term_enter_alt_screen,
     term_leave_alt_screen,
@@ -88,38 +79,4 @@ def tui_render_once(rt: TuiRuntime) -> bool {
     rt.diff.paint(lines, state.term_cols, state.render_fd, rt.paint_buf);
     state.dirty = False;
     return True;
-}
-
-def tui_setup(state: TuiState, project: str, files_env: str, presets_env: str) -> int {
-    tty_write(2, "[tui] starting\r\n");
-
-    raw_fd: int = tty_open();
-    if raw_fd < 0 {
-        tty_write(
-            2, "[tui] tty open failed (set JAC_AI_TUI_TTY or run from a terminal)\r\n"
-        );
-        return -1;
-    }
-    tty_write(2, "[tui] tty_open ok\r\n");
-
-    contract = tty_setup_stdio_contract();
-    if contract.ok == 0 {
-        tty_write(2, "[tui] stdio remap failed\r\n");
-        tty_close();
-        return -1;
-    }
-
-    state.render_fd = contract.render_fd;
-    state.ipc_fd = contract.ipc_fd;
-
-    tui_populate_state(state, project, files_env, presets_env);
-    tui_enter_screen(state);
-
-    return 0;
-}
-
-def tui_teardown(state: TuiState) {
-    tui_leave_screen(state);
-    tty_restore_stdio();
-    tty_close();
 }
