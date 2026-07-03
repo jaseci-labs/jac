@@ -21,8 +21,10 @@ import from jaclang.project.capabilities {
     capability_for_package,
     command_capabilities,
     derive_capabilities,
+    ensure_global_capability,
     get_capability,
     get_capability_registry,
+    missing_capability_dists,
     missing_capability_error,
     package_missing_error,
     resolve_closure,
@@ -150,6 +152,13 @@ test "scale serve defaults to the mongo user-store when no [database] is set" {
     );
 }
 
+test "scale serve with NO scale section still defaults data.mongo (#7137)" {
+    caps = derive_capabilities({}, command_capabilities("serve", scale=True));
+    assert "data.mongo" in caps;
+    # a plain local serve with no intent stays lean
+    assert "data.mongo" not in derive_capabilities({}, command_capabilities("serve"));
+}
+
 # ===== command_capabilities =====
 test "command_capabilities maps action and scale flag" {
     assert command_capabilities("serve") == ["serve"];
@@ -264,6 +273,20 @@ test "resolve_config_closures reads [scale] intent from jac.toml" {
     }
 }
 
+test "resolve_config_closures defaults mongo for scale with no scale sections (#7137)" {
+    reset_config();
+    (tmp, project_dir) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        closures = resolve_config_closures(config, action="serve", scale=True);
+        assert "pymongo" in closures[RUNTIME].deps;
+        assert "pymongo" in closures[DEPLOY].deps;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
 test "scale_intent_from_config empty when no scale section" {
     reset_config();
     (tmp, project_dir) = make_project('[project]\nname = "svc"\nversion = "0.1.0"\n');
@@ -371,6 +394,69 @@ test "sync_capabilities on empty closure is a no-op success" {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
+}
+
+# ===== Global capability sync (deploy tooling on the operator machine) =====
+test "missing_capability_dists reports pinned specs for absent distributions" {
+    import from importlib { metadata }
+    with patch("importlib.metadata.distribution") as mock_dist {
+        mock_dist.side_effect = metadata.PackageNotFoundError("gone");
+        missing = missing_capability_dists("deploy.k8s");
+        assert missing == ["docker>=7.1.0,<8.0.0", "kubernetes>=34.1.0,<35.0.0"];
+    }
+    assert missing_capability_dists("bogus") == [];
+}
+
+test "ensure_global_capability pip-installs only the missing deploy tooling" {
+    import sys;
+    import from importlib { metadata }
+    with patch("importlib.metadata.distribution") as mock_dist, patch(
+        "subprocess.run"
+    ) as mock_run {
+        # first sweep: kubernetes present, docker absent; recheck: both present
+        mock_dist.side_effect = [
+            object(),
+            metadata.PackageNotFoundError("docker"),
+            object(),
+            object()
+        ];
+        mock_run.return_value.returncode = 0;
+        assert ensure_global_capability("deploy.k8s");
+        mock_run.assert_called_once();
+        cmd: list = list(mock_run.call_args[0][0]);
+        assert cmd == [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--quiet",
+            "docker>=7.1.0,<8.0.0"
+        ];
+    }
+}
+
+test "ensure_global_capability reports failure and logs when pip errors" {
+    import from importlib { metadata }
+    with patch("importlib.metadata.distribution") as mock_dist, patch(
+        "subprocess.run"
+    ) as mock_run, patch("logging.Logger.warning") as mock_warn {
+        mock_dist.side_effect = metadata.PackageNotFoundError("gone");
+        mock_run.return_value.returncode = 1;
+        mock_run.return_value.stderr = "No matching distribution found";
+        assert not ensure_global_capability("deploy.k8s");
+        mock_warn.assert_called_once();
+        assert "No matching distribution found" in mock_warn.call_args[0][0];
+    }
+}
+
+test "ensure_global_capability is a no-op when tooling is already present" {
+    with patch("importlib.metadata.distribution"), patch(
+        "subprocess.run"
+    ) as mock_run {
+        assert ensure_global_capability("deploy.k8s");
+        mock_run.assert_not_called();
+    }
+    assert not ensure_global_capability("bogus");
 }
 
 # ===== Install wiring (capability_specs_for_install) =====

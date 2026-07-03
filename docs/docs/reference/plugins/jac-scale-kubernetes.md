@@ -476,9 +476,27 @@ busybox_image = "busybox:1.35"
 
 ---
 
+### System Dependencies
+
+OS (apt) packages your app needs at runtime, e.g. `git` for an app that shells out to it. Declare them at the top level under `[dependencies.system]`; keys are apt package names (version specs are ignored on Debian). They are `apt-get install`ed into the **service container** at startup, so the binaries are present where your app actually runs.
+
+**Default:** `[]` (none)
+
+**To add in `jac.toml`:**
+
+```toml
+[dependencies.system]
+git = "*"
+ffmpeg = "*"
+```
+
+Debian only: every jac-scale base image is Debian-based (`python:*-slim`). For fast-starting pods, prefer a base image that already carries these packages (`python_image`).
+
+---
+
 ### Additional Packages
 
-Install extra pip packages into the pod at startup, alongside the standard Jaseci stack.
+Extra apt packages installed into the **bootstrap init container** (the layer that clones/unpacks the runtime). These are *not* present in the running app; for runtime binaries, use [`[dependencies.system]`](#system-dependencies) instead.
 
 **Default:** `[]` (none)
 
@@ -486,10 +504,8 @@ Install extra pip packages into the pod at startup, alongside the standard Jasec
 
 ```toml
 [plugins.scale.kubernetes]
-additional_packages = ["pandas", "scikit-learn", "python-dotenv"]
+additional_packages = ["xz-utils", "zstd"]
 ```
-
-Packages are installed at pod startup before the application starts. For frequently-updated packages, prefer building a custom Docker image with `--build` instead to keep startup times short.
 
 ---
 
@@ -548,8 +564,8 @@ Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-m
 | **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
-| **Loki** _(optional)_ | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
-| **Grafana Alloy** _(optional)_ | DaemonSet that tails `/var/log/pods` on every node and ships to Loki (replaces Promtail, which went EOL on 2026-03-02) |
+| **Loki** *(optional)* | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
+| **Grafana Alloy** *(optional)* | DaemonSet that tails `/var/log/pods` on every node and ships to Loki (replaces Promtail, which went EOL on 2026-03-02) |
 
 **Defaults:**
 

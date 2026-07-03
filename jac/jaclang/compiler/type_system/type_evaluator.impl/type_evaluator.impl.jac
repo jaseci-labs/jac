@@ -234,11 +234,30 @@ impl TypeEvaluator._get_type_of_expression_core(
                             and not self._type_in_list(kt, key_types) {
                                 key_types.append(kt);
                             }
-                        }
-                        vt = self.get_type_of_expression(_kv.value);
-                        if not isinstance(vt, types.UnknownType)
-                        and not self._type_in_list(vt, val_types) {
-                            val_types.append(vt);
+                            vt = self.get_type_of_expression(_kv.value);
+                            if not isinstance(vt, types.UnknownType)
+                            and not self._type_in_list(vt, val_types) {
+                                val_types.append(vt);
+                            }
+                        } else {
+                            st = self.get_type_of_expression(_kv.value);
+                            if (
+                                isinstance(st, types.ClassType)
+                                and st.is_builtin("dict")
+                                and st.private.type_args
+                                and len(st.private.type_args) >= 2
+                            ) {
+                                skt = st.private.type_args[0];
+                                if not isinstance(skt, types.UnknownType)
+                                and not self._type_in_list(skt, key_types) {
+                                    key_types.append(skt);
+                                }
+                                svt = st.private.type_args[1];
+                                if not isinstance(svt, types.UnknownType)
+                                and not self._type_in_list(svt, val_types) {
+                                    val_types.append(svt);
+                                }
+                            }
                         }
                     }
 
@@ -2958,6 +2977,8 @@ impl TypeEvaluator.assign_type(
             "SupportsBytes": "__bytes__",
             "SupportsAbs": "__abs__",
             "SupportsRound": "__round__",
+            "_SupportsRound1": "__round__",
+            "_SupportsRound2": "__round__",
             "Sized": "__len__",
             "Hashable": "__hash__",
             "Iterable": "__iter__",

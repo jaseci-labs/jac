@@ -57,7 +57,8 @@ obj MicroserviceManifestBuilder {
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
-            proj
+            proj,
+            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else "")
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
@@ -94,6 +95,7 @@ obj MicroserviceManifestBuilder {
     }
 
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
+        self.project_dir = self.project_dir or app_config.code_folder;
         injector = self._prepare_injector(app_config);
         self._bundle_object_key = injector._object_key;
 
@@ -755,6 +757,9 @@ obj MicroserviceManifestBuilder {
 
     def _pod_entrypoint -> dict[str, any] {
         import from jaclang.scale.injector.bundle { APP_MOUNT_PATH }
+        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+            build_service_apt_prefix
+        }
         gw_prefix = "";
         client_entry = self._client_entry();
         if client_entry {
@@ -765,11 +770,13 @@ obj MicroserviceManifestBuilder {
                 f'fi; '
             );
         }
+        apt_prefix = build_service_apt_prefix(self.k8s_config);
         return {
             "command": ["bash", "-c"],
             "args": [
                 "set -euo pipefail; "
                 f"cd {APP_MOUNT_PATH}; "
+                f"{apt_prefix}"
                 "export JAC_SV_SIBLING=1; "
                 'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
                 f"  {gw_prefix}"

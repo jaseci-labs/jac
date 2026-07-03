@@ -1144,12 +1144,60 @@ impl NaIRGenPass._codegen_instantiation(
     }
     if init_fn is not None {
         init_args: list[ir.Value] = [obj_ptr];
-        for param in params {
-            if not isinstance(param, uni.KWPair) {
-                val = self._codegen_expr(param);
-                if val is not None {
-                    init_args.append(val);
+        init_sig = self._arch_init_sig_of(type_name) if _is_call else None;
+        if init_sig is not None {
+            _init_pos: list = [];
+            _init_kw: dict = {};
+            for param in params {
+                if isinstance(param, uni.KWPair) {
+                    _k = param.key.sym_name if param.key is not None else None;
+                    if _k is not None {
+                        _init_kw[_k] = param.value;
+                    }
+                } else {
+                    _init_pos.append(param);
                 }
+            }
+            _sig_params = init_sig.get_parameters();
+            for (pix, sp) in enumerate(_sig_params) {
+                _slot = 1 + pix;
+                _expected = init_fn.args[_slot].type
+                    if _slot < len(init_fn.args)
+                    else ir.IntType(64);
+                _chosen: (uni.Expr | None) = None;
+                if pix < len(_init_pos) {
+                    _chosen = _init_pos[pix];
+                } elif sp.name.sym_name in _init_kw {
+                    _chosen = _init_kw[sp.name.sym_name];
+                } elif sp.value is not None {
+                    _chosen = sp.value;
+                }
+                _val = self._codegen_expr(_chosen) if _chosen is not None else None;
+                if _val is not None {
+                    init_args.append(_val);
+                } else {
+                    init_args.append(self._default_arg_fallback(_expected));
+                }
+            }
+            for pix in range(len(_sig_params), len(_init_pos)) {
+                _extra = self._codegen_expr(_init_pos[pix]);
+                if _extra is not None {
+                    init_args.append(_extra);
+                }
+            }
+        } else {
+            for param in params {
+                if not isinstance(param, uni.KWPair) {
+                    val = self._codegen_expr(param);
+                    if val is not None {
+                        init_args.append(val);
+                    }
+                }
+            }
+            _fill = len(init_args);
+            while _fill < len(init_fn.args) {
+                init_args.append(self._default_arg_fallback(init_fn.args[_fill].type));
+                _fill += 1;
             }
         }
 

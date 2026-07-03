@@ -10,6 +10,7 @@ import tarfile;
 import tempfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
+import from urllib.error { HTTPError }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 
 glob logger = logging.getLogger(__name__);
@@ -45,38 +46,53 @@ def _http_get_bytes(url: str) -> bytes {
 
 def download_release_binary(channel: str, arch: str) -> bytes {
     repo = "jaseci-labs/jaseci";
-    api = (
-        f"https://api.github.com/repos/{repo}/releases/tags/dev"
-            if channel == "dev"
-            else f"https://api.github.com/repos/{repo}/releases/latest"
-    );
-    meta = json.loads(_http_get_bytes(api).decode("utf-8"));
-
     suffix = f"-linux-{arch}";
     binary_url = "";
     checksum_url = "";
-    for asset in meta.get("assets", []) {
-        name = str(asset.get("name", ""));
-        url = str(asset.get("browser_download_url", ""));
-        if not name.startswith("jac-") {
-            continue;
+
+    if channel == "dev" {
+        # The rolling `dev` prerelease has fixed asset names, so build the URL directly and skip the API (anonymous, 60 req/hr, exhausted on CI).
+        base = f"https://github.com/{repo}/releases/download/dev";
+        binary_url = f"{base}/jac-dev{suffix}";
+        checksum_url = f"{binary_url}.sha256";
+    } else {
+        # Stable asset names carry the release version, so resolve them through the API.
+        api = f"https://api.github.com/repos/{repo}/releases/latest";
+        meta = json.loads(_http_get_bytes(api).decode("utf-8"));
+        for asset in meta.get("assets", []) {
+            name = str(asset.get("name", ""));
+            url = str(asset.get("browser_download_url", ""));
+            if not name.startswith("jac-") {
+                continue;
+            }
+            if name.endswith(suffix + ".sha256") {
+                checksum_url = url;
+            } elif name.endswith(suffix) {
+                binary_url = url;
+            }
         }
-        if name.endswith(suffix + ".sha256") {
-            checksum_url = url;
-        } elif name.endswith(suffix) {
-            binary_url = url;
+        if not binary_url {
+            tag = meta.get("tag_name", "latest");
+            raise RuntimeError(
+                f"No `jac-*{suffix}` asset on the {channel} release ({tag}). The "
+                f"node arch may be unpublished; set JAC_NODE_ARCH or check "
+                f"https://github.com/{repo}/releases."
+            );
         }
-    }
-    if not binary_url {
-        tag = "dev" if channel == "dev" else meta.get("tag_name", "latest");
-        raise RuntimeError(
-            f"No `jac-*{suffix}` asset on the {channel} release ({tag}). The node "
-            f"arch may be unpublished; set JAC_NODE_ARCH or check "
-            f"https://github.com/{repo}/releases."
-        );
     }
 
-    payload = _http_get_bytes(binary_url);
+    try {
+        payload = _http_get_bytes(binary_url);
+    } except HTTPError as e {
+        if e.code == 404 {
+            raise RuntimeError(
+                f"No `jac-*{suffix}` binary published for this arch on the "
+                f"{channel} release; set JAC_NODE_ARCH or check "
+                f"https://github.com/{repo}/releases."
+            );
+        }
+        raise;
+    }
     if checksum_url {
         parts = _http_get_bytes(checksum_url).decode("utf-8").split();
         if not parts {
@@ -179,7 +195,68 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 }
 
 
+def ensure_admin_dist_built(source_root: Path) -> None {
+    # Build the admin console `_dist` on the host (like the client bundle) so the gateway ships it pre-built instead of doing a heavy on-pod `bun` build that can OOM-kill the container.
+    admin = source_root / "jaclang" / "scale" / "admin";
+    dist = admin / "_dist";
+    if (dist / "index.html").is_file() {
+        return;
+    }
+    ui = admin / "ui";
+    if not (ui / "main.jac").is_file() {
+        logger.warning(
+            f"Admin UI source not found at {ui}; the gateway will build the "
+            f"admin console on-pod instead."
+        );
+        return;
+    }
+    logger.info(
+        "Building the admin console on the host (ships pre-built to the gateway)."
+    );
+    try {
+        result = subprocess.run(
+            ["jac", "build", "main.jac"],
+            cwd=str(ui),
+            capture_output=True,
+            text=True,
+            timeout=_SUBPROCESS_TIMEOUT
+        );
+        if result.returncode != 0 {
+            logger.warning(
+                f"Host admin build failed ({result.stderr.strip()}); the gateway "
+                f"will build it on-pod instead."
+            );
+            return;
+        }
+    } except Exception as e {
+        logger.warning(
+            f"Host admin build error ({e}); the gateway will build it on-pod."
+        );
+        return;
+    }
+    built = ui / ".jac" / "client" / "dist";
+    if not (built / "index.html").is_file() {
+        logger.warning(f"Host admin build produced no dist at {built}.");
+        return;
+    }
+    dist.mkdir(parents=True, exist_ok=True);
+    for item in built.iterdir() {
+        target = dist / item.name;
+        if item.is_dir() {
+            if target.exists() {
+                shutil.rmtree(target);
+            }
+            shutil.copytree(item, target);
+        } else {
+            shutil.copy2(item, target);
+        }
+    }
+    logger.info("Admin console built; shipping it in the overlay.");
+}
+
+
 def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
+    ensure_admin_dist_built(source_root);
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");

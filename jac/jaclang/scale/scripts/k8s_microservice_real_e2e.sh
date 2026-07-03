@@ -20,6 +20,7 @@ CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
 case "${CLUSTER_TYPE}" in
     microk8s) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-microk8s-hostpath}" ;;
     minikube) BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-standard}" ;;
+    kind)     BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-jac-rwx}" ;;
     *)        BUNDLE_STORAGE_CLASS="${BUNDLE_STORAGE_CLASS-}" ;;
 esac
 # 600s rollout = 10x typical; a fail is a real bug, not infra slowness.
@@ -56,6 +57,74 @@ cleanup() {
 }
 trap 'cleanup "$?"' EXIT
 
+provision_kind_rwx_storage() {
+    # kind's local-path StorageClass is RWO-only; on single-node kind a static hostPath PV satisfies the RWX bundle PVC. Recreate it each run so a Released PV can't block binding.
+    echo "=== provisioning RWX hostPath storage for kind (class=${BUNDLE_STORAGE_CLASS}) ==="
+    kubectl delete pv -l managed=jac-scale-e2e --ignore-not-found >/dev/null 2>&1 || true
+    kubectl apply -f - <<YAML
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ${BUNDLE_STORAGE_CLASS}
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jac-rwx-bundle-pv
+  labels:
+    managed: jac-scale-e2e
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ${BUNDLE_STORAGE_CLASS}
+  hostPath:
+    path: /var/jac-rwx-bundle
+    type: DirectoryOrCreate
+YAML
+    # kubelet makes the hostPath dir root:0755 but the pods run non-root; a one-shot root pod opens it up (0777 is fine on this ephemeral single-node test cluster).
+    kubectl -n "${NAMESPACE}" delete pod jac-rwx-perms --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n "${NAMESPACE}" apply -f - <<YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jac-rwx-perms
+  labels:
+    managed: jac-scale
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 0
+  containers:
+    - name: fix
+      image: busybox:1.36
+      command: ["sh", "-c", "chmod 0777 /host && echo perms-fixed"]
+      volumeMounts:
+        - { name: host, mountPath: /host }
+  volumes:
+    - name: host
+      hostPath:
+        path: /var/jac-rwx-bundle
+        type: DirectoryOrCreate
+YAML
+    if ! kubectl -n "${NAMESPACE}" wait --for=jsonpath='{.status.phase}'=Succeeded \
+            pod/jac-rwx-perms --timeout=90s; then
+        echo "FAIL: could not open up the RWX hostPath dir for non-root pods"
+        kubectl -n "${NAMESPACE}" logs jac-rwx-perms || true
+        kubectl -n "${NAMESPACE}" describe pod jac-rwx-perms || true
+        exit 1
+    fi
+    kubectl -n "${NAMESPACE}" delete pod jac-rwx-perms --ignore-not-found >/dev/null 2>&1 || true
+}
+
+_T0=$(date +%s)
+_t() { echo "[TIMING +$(( $(date +%s) - _T0 ))s] $1"; }
+
+echo "# phase timings printed as [TIMING +Ns] markers"
+_t "deploy start"
 echo "=== deploy via KubernetesMicroserviceTarget (no-Docker: host-built binary + source over PVC) ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 # node-exporter + Alloy mount /proc, /sys, and /var/log/pods, which PodSecurity
@@ -63,6 +132,10 @@ kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply
 kubectl label namespace "${NAMESPACE}" \
     pod-security.kubernetes.io/enforce=privileged \
     --overwrite
+
+if [ "${CLUSTER_TYPE}" = "kind" ]; then
+    provision_kind_rwx_storage
+fi
 
 cd "${PROJECT_DIR}"
 jac - <<PYEOF
@@ -128,6 +201,7 @@ if obs_err:
 print(f"deploy: {result.message}")
 PYEOF
 
+_t "deploy applied; waiting pods"
 echo "=== wait for pods Ready ==="
 dump_pod_state() {
     kubectl get pods -n "${NAMESPACE}" -o wide || true
@@ -148,6 +222,7 @@ for dep in $(kubectl get deployments -n "${NAMESPACE}" -l managed=jac-scale -o n
     fi
 done
 
+_t "pods Ready"
 echo "=== port-forward gateway + curl /health ==="
 GATEWAY_LOCAL_PORT="${GATEWAY_LOCAL_PORT:-18000}"
 kubectl port-forward -n "${NAMESPACE}" svc/gateway-service "${GATEWAY_LOCAL_PORT}:8000" >/dev/null 2>&1 &
@@ -160,6 +235,7 @@ if ! curl -fsS "http://localhost:${GATEWAY_LOCAL_PORT}/health" >/dev/null; then
 fi
 echo "  /health OK"
 
+_t "health OK"
 echo "=== verify per-service routing ==="
 # 503 from the gateway means upstream service unreachable; 404/405 means
 # we reached a healthy service that just doesn't have that walker.
@@ -180,6 +256,7 @@ for prefix in ${ROUTES}; do
     echo "  ${prefix}/walker/__missing__ -> ${code}"
 done
 
+_t "routing OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
 # When [plugins.scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which
@@ -284,6 +361,7 @@ else
     LOKI_PORT_FORWARD_PID=""
 fi
 
+_t "observability OK"
 echo "=== optional Ingress test ==="
 INGRESS_INFO=$(jac - <<PYEOF
 import tomllib
@@ -321,6 +399,7 @@ else
         case "${CLUSTER_TYPE}" in
             minikube)  INGRESS_IP=$(minikube ip 2>/dev/null || echo "") ;;
             microk8s)  INGRESS_IP="127.0.0.1" ;;
+            kind)      INGRESS_IP="127.0.0.1" ;;
             *)         INGRESS_IP="" ;;
         esac
         HOST_HEADER="${INGRESS_HOST:-localhost}"
@@ -437,4 +516,5 @@ else
         "200|404|405|000" "${FIRST_SVC}-deployment" "" "5"
 fi
 
+_t "ALL DONE"
 echo "=== K8s microservice REAL e2e PASSED ==="

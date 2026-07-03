@@ -154,6 +154,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         total = len(names);
         elapsed = 0;
         ready = 0;
+        # console.status is an in-place spinner that never streams on a non-TTY log (CI); fall back to plain lines so progress isn't stuck at "0/{total}".
+        interactive = bool(getattr(console, "is_terminal", False));
+        last_line = "";
 
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
@@ -202,10 +205,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     raise Exception(crash);
                 }
                 detail = ", ".join(phases) if phases else "scheduling pods";
-                st.update(
+                line = (
                     f"Rolling out fleet: {ready}/{total} ready - {elapsed}s "
                     f"elapsed ({detail}) - pods install jac + start the app"
                 );
+                st.update(line);
+                # Emit to CI when the count moves or ~every 30s; dedupe to avoid spam.
+                if not interactive {
+                    stamp = f"{ready}/{total} {detail}";
+                    if stamp != last_line or elapsed % 30 == 0 {
+                        console.print(line);
+                        last_line = stamp;
+                    }
+                }
                 time.sleep(10);
                 elapsed += 10;
             }
