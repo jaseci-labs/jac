@@ -56,9 +56,7 @@ def:pub decompress(data: bytes) -> bytes {
                 }
                 continue;
             }
-            # A valid stream can legitimately exceed the growth ceiling (bzip2
-            # ratios reach ~1e6:1 on long runs); distinguish that from corrupt
-            # or truncated input.
+
             raise ValueError(
                 "bz2.decompress: decompressed output exceeds the one-shot API limit"
             );
