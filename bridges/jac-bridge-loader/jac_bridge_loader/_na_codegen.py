@@ -19,8 +19,12 @@ Marshaling recipe (proven natively — see the golden spike):
   * opaque handle stored in ``has __handle: int``; ``def __del__`` is the RC dtor.
 
 Scope: opaque types, constructors, and methods whose params are scalar/str and
-whose return is void / bool / opaque-handle / **str**.  A JacBuf string return is
-read into an owned Jac str via the ``__jac_str_from_raw`` na intrinsic and the
+whose return is void / bool / opaque-handle / **str**.  A by-handle return
+bare-constructs its wrapper via a synthesized adopt-ctor (``def init(raw: int)``);
+a nullable ``Option<Ref>`` return is typed ``-> T | None`` and a null handle on OK
+status crosses in-band as a Jac ``None`` (na lowers the union to ``T*`` and None to
+a null pointer — see the ``xmod_unionret`` native fixture).  A JacBuf string return
+is read into an owned Jac str via the ``__jac_str_from_raw`` na intrinsic and the
 bridge buffer freed via ``jac_<module>_free_buf`` (passed as two ints — the
 by-value ABI of a ``{ptr,len,cap}`` struct).  The error type's ``message()`` is
 consumed the same way: its text is decoded and raised on the exception, so na
@@ -93,6 +97,29 @@ class _Synth:
         self.skips: list[Skip] = []
         # opaque type index -> Jac type name
         self.opaque = {td.index: td.name for td in meta.types if td.kind == KIND_OPAQUE}
+        # Opaque types some FN_CTOR constructs directly (real Rust constructor).
+        ctor_targets = {
+            _ref_index(fd.ret)
+            for fd in meta.fns
+            if fd.kind == FN_CTOR
+            and _is_ref(fd.ret)
+            and _ref_index(fd.ret) in self.opaque
+        }
+        # Opaque types produced by-handle from a method return (plain -> T or
+        # nullable -> T | None).  These bare-construct a wrapper around the raw
+        # handle via a synthesized adopt-ctor.  A type that ALSO has a real ctor
+        # can't host one (init signature clash), so such producers stay honest
+        # skips.  na represents None as a null pointer and lowers `T | None` to
+        # `T` (proven by the xmod_unionret native fixture), so a null handle on
+        # OK status crosses in-band as a Jac None.
+        self.adoptable = {
+            _ref_index(fd.ret)
+            for fd in meta.fns
+            if fd.kind == FN_METHOD
+            and _is_ref(fd.ret)
+            and _ref_index(fd.ret) in self.opaque
+            and _ref_index(fd.ret) not in ctor_targets
+        }
         self.error_drop = _drop_sym_for(meta, KIND_ERROR)
         # An error handle (user error OR panic) is a Box<String>; its message()
         # fn decodes it into a JacBuf.  We read that text natively (via the
@@ -205,13 +232,20 @@ class _Synth:
             f'            raise RuntimeError("{fd.name} called after close()");'
         )
         lines.append("        }")
-        # out slots. A nullable Option<T> return is deferred on na: Option<Ref>
-        # needs the (missing) bare-construct path, and Option<Str> would need Jac
-        # optional typing to distinguish None from "" — mapping null->"" would
-        # silently conflate the two. Both stay honest skips until na verification.
-        if _is_opt(fd.ret):
+        # out slots. An opaque-handle return (plain -> T or nullable -> T | None)
+        # bare-constructs its wrapper via the target's adopt-ctor; a null handle on
+        # OK status lowers to a Jac None (na represents None as a null pointer and
+        # lowers `T | None` to `T` — proven by the xmod_unionret native fixture).
+        # Option<Str> stays a skip: str|None nullability isn't verified on na yet,
+        # and mapping null->"" would silently conflate "absent" with "empty".
+        if _is_ref(fd.ret):
+            if _ref_index(fd.ret) not in self.adoptable:
+                return None
+            lines.append('        out_h = struct.pack("<Q", 0);')
+            call.append("out_h")
+        elif _is_opt(fd.ret):
             return None
-        if fd.ret == TAG_BOOL:
+        elif fd.ret == TAG_BOOL:
             lines.append('        out_b = struct.pack("<B", 0);')
             call.append("out_b")
         elif fd.ret == TAG_STR:
@@ -219,9 +253,6 @@ class _Synth:
             call.append("out_buf")
             self._bridged_str_method = True
         elif fd.ret != TAG_VOID:
-            # opaque-handle return: needs constructing an obj around a raw handle
-            # WITHOUT re-running its ctor (no na "bare construct" path yet).
-            # Deferred in v1.
             return None
         lines.append('        out_e = struct.pack("<Q", 0);')
         call.append("out_e")
@@ -231,7 +262,17 @@ class _Synth:
         lines.append('            err_h = struct.unpack("<Q", out_e)[0];')
         lines.extend(self._drain_and_raise(fd.name))
         lines.append("        }")
-        if fd.ret == TAG_BOOL:
+        if _is_ref(fd.ret):
+            # bare-construct the wrapper around the raw handle via its adopt-ctor.
+            target = self.opaque[_ref_index(fd.ret)]
+            lines.append('        rh = struct.unpack("<Q", out_h)[0];')
+            if _is_opt(fd.ret):
+                # Option<Ref> None: a null handle on OK status maps to Jac None.
+                lines.append("        if rh == 0 {")
+                lines.append("            return None;")
+                lines.append("        }")
+            lines.append(f"        return {target}(rh);")
+        elif fd.ret == TAG_BOOL:
             lines.append('        return struct.unpack("<B", out_b)[0] != 0;')
         elif fd.ret == TAG_STR:
             # JacBuf out-slot -> owned Jac str; free the bridge buffer after copy.
@@ -298,15 +339,14 @@ class _Synth:
                 shim_fds.append(fd)
             elif fd.kind == FN_METHOD and fd.self_type in self.opaque:
                 if self._shim_decl(fd) is None or self._method_body(fd) is None:
-                    if _is_opt(fd.ret) and _is_ref(fd.ret):
-                        reason = "returns Option<opaque handle> (no na bare-construct path yet)"
-                    elif _is_opt(fd.ret) and _base(fd.ret) == TAG_STR:
-                        reason = "returns Option<str> (nullable->None mapping deferred on na)"
-                    elif fd.ret == TAG_STR:
-                        reason = "returns a string (JacBuf->str read not yet supported on na)"
-                    elif _is_ref(fd.ret):
+                    if _is_opt(fd.ret) and _base(fd.ret) == TAG_STR:
                         reason = (
-                            "returns an opaque handle (no na bare-construct path yet)"
+                            "returns Option<str> (None-vs-empty not yet verified on na)"
+                        )
+                    elif _is_ref(fd.ret) and _ref_index(fd.ret) not in self.adoptable:
+                        reason = (
+                            "returns an opaque handle whose type has its own "
+                            "constructor (na adopt-ctor signature clash)"
                         )
                     else:
                         reason = "unbridgeable param/return"
@@ -366,7 +406,13 @@ class _Synth:
         out.append("}")
         out.append("")
 
-        for ti, name in self.opaque.items():
+        # Emit adoption-target wrappers (OwnedMatch/OwnedCaptures) before their
+        # producers (Regex): a producer's signature `-> Wrapper | None` and its
+        # `Wrapper(rh)` ctor call must resolve a type defined earlier, since the na
+        # type resolver is declaration-order sensitive (see na-resolver notes).
+        emit_order = sorted(self.opaque, key=lambda ti: (ti not in self.adoptable, ti))
+        for ti in emit_order:
+            name = self.opaque[ti]
             drop_sym = m.types[ti].drop_sym
             out.append(f"obj {name} {{")
             out.append("    has __handle: int = 0;")
@@ -377,6 +423,15 @@ class _Synth:
                 sig = self._ctor_params(ctor)
                 out.append(f"    def init({sig}) {{")
                 out.extend(self._ctor_body(ctor))
+                out.append("    }")
+                out.append("")
+            elif ti in self.adoptable:
+                # adopt-ctor: bare-construct a wrapper around a raw handle produced
+                # by a by-handle return (e.g. find/captures).  Same-class field
+                # writes only — mirrors the proven golden-spike init shape.
+                out.append("    def init(raw: int) {")
+                out.append("        self.__handle = raw;")
+                out.append("        self.__closed = False;")
                 out.append("    }")
                 out.append("")
             for fd in methods_of.get(ti, []):
@@ -421,10 +476,19 @@ class _Synth:
         return ", ".join(self._jac_param(p) for p in fd.params)
 
     def _ret_ann(self, fd: FnDesc) -> str:
-        if fd.ret == TAG_BOOL:
+        if _base(fd.ret) == TAG_BOOL:
             return " -> bool"
+        if _base(fd.ret) == TAG_STR:
+            # A str return MUST be annotated: without it the native backend types
+            # the call result as its i64 primitive fallback, so `"x" + m.as_str()`
+            # miscompiles to an integer add (i8* vs i64).  (Option<Str> stays a
+            # skip and never reaches here.)
+            return " -> str"
         if _is_ref(fd.ret):
-            return " -> " + self.opaque.get(_ref_index(fd.ret), "object")
+            t = self.opaque.get(_ref_index(fd.ret), "object")
+            # nullable by-handle return -> `T | None` (na lowers the union to T*,
+            # None to a null pointer — the caller narrows with `is not None`).
+            return f" -> {t} | None" if _is_opt(fd.ret) else f" -> {t}"
         return ""
 
 

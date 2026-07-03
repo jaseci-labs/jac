@@ -126,21 +126,51 @@ def test_no_fragile_from_handle(regex_meta: tuple[Path, BridgeMeta]) -> None:
     assert "_from_handle" not in render_na_source(meta, so.name).source
 
 
-# ── nullable Option<T> returns (owning bridge): honest skips on na ────────────
+# ── nullable Option<Ref> returns (owning bridge): bridged via adopt-ctor ──────
 
 
-def test_opt_ref_returns_are_skipped_with_honest_reason(
+def test_opt_ref_returns_bridge_via_adopt_ctor(
     owning_meta: tuple[Path, BridgeMeta],
 ) -> None:
     so, meta = owning_meta
     res = render_na_source(meta, so.name)
-    reasons = {s.item: s.reason for s in res.skips}
-    # find / captures return Option<opaque handle> — deferred (no bare-construct).
-    assert "no na bare-construct path yet" in reasons["Regex.find"]
-    assert "no na bare-construct path yet" in reasons["Regex.captures"]
-    # Their shims must NOT leak into the source.
-    assert "jac_owning_Regex_find(" not in res.source
-    assert "jac_owning_Regex_captures(" not in res.source
+    # find / captures return Option<opaque handle> — now bridged: na lowers the
+    # `T | None` union to a nullable pointer, so a null handle on OK status crosses
+    # in-band as a Jac None (proven by the xmod_unionret native fixture).
+    items = {s.item for s in res.skips}
+    assert "Regex.find" not in items
+    assert "Regex.captures" not in items
+    src = res.source
+    # their shims are now emitted...
+    assert "def jac_owning_Regex_find(" in src
+    assert "def jac_owning_Regex_captures(" in src
+    # ...with a nullable union return type,
+    assert "def find(text: str) -> OwnedMatch | None {" in src
+    assert "def captures(text: str) -> OwnedCaptures | None {" in src
+    # ...a null-handle -> None mapping on the raw out-slot,
+    assert 'rh = struct.unpack("<Q", out_h)[0];' in src
+    assert "if rh == 0 {" in src
+    assert "return None;" in src
+    # ...and a bare-construct of the wrapper via its adopt-ctor.
+    assert "return OwnedMatch(rh);" in src
+    assert "return OwnedCaptures(rh);" in src
+
+
+def test_adopt_ctor_and_wrapper_declared_before_producer(
+    owning_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = owning_meta
+    src = render_na_source(meta, so.name).source
+    # a by-handle-produced wrapper (no real Rust ctor) gets a same-class adopt-ctor
+    # that stores the raw handle — the proven golden-spike init shape.
+    assert "def init(raw: int) {" in src
+    assert "self.__handle = raw;" in src
+    assert "self.__closed = False;" in src
+    # adoption targets are declared BEFORE their producer, since the na type
+    # resolver is declaration-order sensitive.
+    order = [ln.split()[1] for ln in src.splitlines() if ln.startswith("obj ")]
+    assert order.index("OwnedMatch") < order.index("Regex")
+    assert order.index("OwnedCaptures") < order.index("Regex")
 
 
 def test_opt_str_return_is_skipped_not_conflated_with_empty(
@@ -149,10 +179,10 @@ def test_opt_str_return_is_skipped_not_conflated_with_empty(
     so, meta = owning_meta
     res = render_na_source(meta, so.name)
     reasons = {s.item: s.reason for s in res.skips}
-    # Option<str> is NOT silently mapped to "" — it's an honest skip until na can
-    # express the None/"" distinction.
+    # Option<str> is NOT silently mapped to "" — it's an honest skip until na's
+    # str|None nullability is verified (None vs "" must stay distinguishable).
     assert "OwnedCaptures.name" in reasons
-    assert "nullable" in reasons["OwnedCaptures.name"].lower()
+    assert "none-vs-empty" in reasons["OwnedCaptures.name"].lower()
     assert "jac_owning_OwnedCaptures_name(" not in res.source
 
 
@@ -165,5 +195,7 @@ def test_non_nullable_methods_still_bridge(
     assert "obj Regex {" in src
     assert "def is_match(text: str) -> bool {" in src
     assert "jac_owning_Regex_is_match(" in src
-    # OwnedMatch.as_str is a plain String return -> still bridged as a method.
-    assert "def as_str() {" in src
+    # OwnedMatch.as_str is a plain String return -> bridged, annotated `-> str`
+    # (na needs the annotation or it types the result as its i64 fallback and
+    # miscompiles string concatenation of the returned value).
+    assert "def as_str() -> str {" in src
