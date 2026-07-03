@@ -792,6 +792,34 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _emit_rc_collect_cycles -> None;
+    def _emit_rc_color_load(
+        b: ir.IRBuilder, obj_i8: ir.Value
+    ) -> tuple[ir.Value, ir.Value];
+    def _emit_rc_color_store(
+        b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
+    ) -> None;
+    def _emit_rc_trace_dispatch(
+        fn: ir.Function,
+        b: ir.IRBuilder,
+        obj_i8: ir.Value,
+        visitor_fn: ir.Function,
+        done_block: ir.Block
+    ) -> None;
+
+    def _emit_rc_mark_gray_phase -> ir.Function;
+    def _emit_rc_scan_black_phase -> ir.Function;
+    def _emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function;
+    def _emit_rc_collect_white_phase -> ir.Function;
+    def _emit_rc_root_pass(
+        prefix: str,
+        count: ir.Value,
+        next_bb: ir.Block,
+        phase_fn: ir.Function,
+        clear_purple: bool
+    ) -> ir.Block;
+    def _emit_rc_collect_loop(
+        mark_gray_fn: ir.Function, scan_fn: ir.Function, collect_white_fn: ir.Function
+    ) -> None;
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;

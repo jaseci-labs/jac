@@ -256,6 +256,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return None;
         }
 
+        if func_name == "__rc_collect_cycles" {
+            # Direct test hook: force one trial-deletion sweep over the buffered
+            # cycle roots instead of waiting for RC_CYCLE_THRESHOLD to overflow.
+            if self.rc_alloc_fn is None {
+                self._emit_rc_helpers();
+            }
+            self.builder.call(self.rc_collect_cycles_fn, []);
+            return None;
+        }
+
         if func_name == "__float_bits" {
             params_l = nd.params or [];
             if params_l {

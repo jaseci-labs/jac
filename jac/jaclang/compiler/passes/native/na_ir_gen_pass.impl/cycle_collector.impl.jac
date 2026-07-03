@@ -102,15 +102,70 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     self._emit_rc_collect_cycles();
 }
 
-impl NaIRGenPass._emit_rc_collect_cycles -> None {
+impl NaIRGenPass._emit_rc_color_load(
+    b: ir.IRBuilder, obj_i8: ir.Value
+) -> tuple[ir.Value, ir.Value] {
+    i64 = ir.IntType(64);
+    csp = b.gep(obj_i8, [ir.Constant(i64, HDR_COLOR_OFF)], name="csp");
+    cb = b.load(csp, name="cb");
+    return (csp, cb);
+}
+
+impl NaIRGenPass._emit_rc_color_store(
+    b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
+) -> None {
     i8 = ir.IntType(8);
-    i8_ptr = i8.as_pointer();
-    i8_ptr_ptr = i8_ptr.as_pointer();
+    b.store(
+        b.or_(
+            b.and_(cb, ir.Constant(i8, 0xFC), name="clr"),
+            ir.Constant(i8, color),
+            name="ncolor"
+        ),
+        csp
+    );
+}
+
+impl NaIRGenPass._emit_rc_trace_dispatch(
+    fn: ir.Function,
+    b: ir.IRBuilder,
+    obj_i8: ir.Value,
+    visitor_fn: ir.Function,
+    done_block: ir.Block
+) -> None {
+    i8_ptr = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     i64_ptr = i64.as_pointer();
-
     trace_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, i8_ptr]);
     trace_fn_ptype = trace_fnty.as_pointer();
+
+    call_block = fn.append_basic_block("trace_call");
+    _ti = b.load(
+        b.bitcast(
+            b.gep(obj_i8, [ir.Constant(i64, HDR_TRACE_OFF)], name="tsp"),
+            i64_ptr,
+            name="tptr"
+        ),
+        name="ti"
+    );
+    b.cbranch(
+        b.icmp_unsigned("==", _ti, ir.Constant(i64, 0), name="tnull"),
+        done_block,
+        call_block
+    );
+
+    cb = ir.IRBuilder(call_block);
+    cb.call(
+        cb.inttoptr(_ti, trace_fn_ptype, name="tfn"),
+        [obj_i8, cb.bitcast(visitor_fn, i8_ptr, name="vis")]
+    );
+    cb.branch(done_block);
+}
+
+impl NaIRGenPass._emit_rc_mark_gray_phase -> ir.Function {
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i64 = ir.IntType(64);
+    i64_ptr = i64.as_pointer();
     phase_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
 
     mark_gray_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_mark_gray");
@@ -119,22 +174,6 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         self.llvm_module, phase_fnty, name="__rc_mark_gray_visitor"
     );
     mg_vis_fn.linkage = "internal";
-    scan_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan");
-    scan_fn.linkage = "internal";
-    scan_vis_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan_visitor");
-    scan_vis_fn.linkage = "internal";
-    scan_black_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan_black");
-    scan_black_fn.linkage = "internal";
-    sb_vis_fn = ir.Function(
-        self.llvm_module, phase_fnty, name="__rc_scan_black_visitor"
-    );
-    sb_vis_fn.linkage = "internal";
-    cw_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_collect_white");
-    cw_fn.linkage = "internal";
-    cw_vis_fn = ir.Function(
-        self.llvm_module, phase_fnty, name="__rc_collect_white_visitor"
-    );
-    cw_vis_fn.linkage = "internal";
 
     mg_vis_fn.args[0].name = "child";
     mgv_null = mg_vis_fn.append_basic_block("null");
@@ -173,7 +212,6 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     mg_null = mark_gray_fn.append_basic_block("null");
     mg_check = mark_gray_fn.append_basic_block("check");
     mg_set = mark_gray_fn.append_basic_block("set");
-    mg_call = mark_gray_fn.append_basic_block("call");
     mg_done = mark_gray_fn.append_basic_block("done");
 
     b = ir.IRBuilder(mg_null);
@@ -185,10 +223,7 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         mg_check
     );
     b = ir.IRBuilder(mg_check);
-    _mg_csp = b.gep(
-        mark_gray_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="csp"
-    );
-    _mg_cb = b.load(_mg_csp, name="cb");
+    (_mg_csp, _mg_cb) = self._emit_rc_color_load(b, mark_gray_fn.args[0]);
     b.cbranch(
         b.icmp_unsigned(
             "==",
@@ -200,35 +235,29 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         mg_set
     );
     b = ir.IRBuilder(mg_set);
-    b.store(
-        b.or_(
-            b.and_(_mg_cb, ir.Constant(i8, 0xFC), name="clr"),
-            ir.Constant(i8, RC_COLOR_GRAY),
-            name="ngray"
-        ),
-        _mg_csp
+    self._emit_rc_color_store(b, _mg_csp, _mg_cb, RC_COLOR_GRAY);
+    self._emit_rc_trace_dispatch(
+        mark_gray_fn, b, mark_gray_fn.args[0], mg_vis_fn, mg_done
     );
-    _mg_ti = b.load(
-        b.bitcast(
-            b.gep(mark_gray_fn.args[0], [ir.Constant(i64, HDR_TRACE_OFF)], name="tsp"),
-            i64_ptr,
-            name="tptr"
-        ),
-        name="ti"
-    );
-    b.cbranch(
-        b.icmp_unsigned("==", _mg_ti, ir.Constant(i64, 0), name="tnull"),
-        mg_done,
-        mg_call
-    );
-    b = ir.IRBuilder(mg_call);
-    b.call(
-        b.inttoptr(_mg_ti, trace_fn_ptype, name="tfn"),
-        [mark_gray_fn.args[0], b.bitcast(mg_vis_fn, i8_ptr, name="vis")]
-    );
-    b.branch(mg_done);
     b = ir.IRBuilder(mg_done);
     b.ret_void();
+
+    return mark_gray_fn;
+}
+
+impl NaIRGenPass._emit_rc_scan_black_phase -> ir.Function {
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i64 = ir.IntType(64);
+    i64_ptr = i64.as_pointer();
+    phase_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+
+    scan_black_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan_black");
+    scan_black_fn.linkage = "internal";
+    sb_vis_fn = ir.Function(
+        self.llvm_module, phase_fnty, name="__rc_scan_black_visitor"
+    );
+    sb_vis_fn.linkage = "internal";
 
     sb_vis_fn.args[0].name = "child";
     sbv_null = sb_vis_fn.append_basic_block("null");
@@ -255,7 +284,6 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     sb_set = scan_black_fn.append_basic_block("set");
     sb_incr = scan_black_fn.append_basic_block("incr");
     sb_trace = scan_black_fn.append_basic_block("trace");
-    sb_call = scan_black_fn.append_basic_block("call");
     sb_done = scan_black_fn.append_basic_block("done");
 
     b = ir.IRBuilder(sb_null);
@@ -267,10 +295,7 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         sb_check
     );
     b = ir.IRBuilder(sb_check);
-    _sb_csp = b.gep(
-        scan_black_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="csp"
-    );
-    _sb_cb = b.load(_sb_csp, name="cb");
+    (_sb_csp, _sb_cb) = self._emit_rc_color_load(b, scan_black_fn.args[0]);
     b.cbranch(
         b.icmp_unsigned(
             "==",
@@ -282,14 +307,7 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         sb_set
     );
     b = ir.IRBuilder(sb_set);
-    b.store(
-        b.or_(
-            b.and_(_sb_cb, ir.Constant(i8, 0xFC), name="clr"),
-            ir.Constant(i8, RC_COLOR_BLACK),
-            name="nblack"
-        ),
-        _sb_csp
-    );
+    self._emit_rc_color_store(b, _sb_csp, _sb_cb, RC_COLOR_BLACK);
     _sb_rp = b.bitcast(
         b.gep(scan_black_fn.args[0], [ir.Constant(i64, HDR_RC_OFF)], name="rsp"),
         i64_ptr,
@@ -305,27 +323,26 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     b.store(b.add(_sb_rc, ir.Constant(i64, 1), name="nrc"), _sb_rp);
     b.branch(sb_trace);
     b = ir.IRBuilder(sb_trace);
-    _sb_ti = b.load(
-        b.bitcast(
-            b.gep(scan_black_fn.args[0], [ir.Constant(i64, HDR_TRACE_OFF)], name="tsp"),
-            i64_ptr,
-            name="tptr"
-        ),
-        name="ti"
+    self._emit_rc_trace_dispatch(
+        scan_black_fn, b, scan_black_fn.args[0], sb_vis_fn, sb_done
     );
-    b.cbranch(
-        b.icmp_unsigned("==", _sb_ti, ir.Constant(i64, 0), name="tnull"),
-        sb_done,
-        sb_call
-    );
-    b = ir.IRBuilder(sb_call);
-    b.call(
-        b.inttoptr(_sb_ti, trace_fn_ptype, name="tfn"),
-        [scan_black_fn.args[0], b.bitcast(sb_vis_fn, i8_ptr, name="vis")]
-    );
-    b.branch(sb_done);
     b = ir.IRBuilder(sb_done);
     b.ret_void();
+
+    return scan_black_fn;
+}
+
+impl NaIRGenPass._emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function {
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i64 = ir.IntType(64);
+    i64_ptr = i64.as_pointer();
+    phase_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+
+    scan_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan");
+    scan_fn.linkage = "internal";
+    scan_vis_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan_visitor");
+    scan_vis_fn.linkage = "internal";
 
     scan_vis_fn.args[0].name = "child";
     sv_null = scan_vis_fn.append_basic_block("null");
@@ -352,7 +369,6 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     sc_rc = scan_fn.append_basic_block("rc_check");
     sc_dosb = scan_fn.append_basic_block("do_scan_black");
     sc_white = scan_fn.append_basic_block("mark_white");
-    sc_call = scan_fn.append_basic_block("call_trace");
     sc_done = scan_fn.append_basic_block("done");
 
     b = ir.IRBuilder(sc_null);
@@ -362,8 +378,7 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         sc_check
     );
     b = ir.IRBuilder(sc_check);
-    _sc_csp = b.gep(scan_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="csp");
-    _sc_cb = b.load(_sc_csp, name="cb");
+    (_sc_csp, _sc_cb) = self._emit_rc_color_load(b, scan_fn.args[0]);
     b.cbranch(
         b.icmp_unsigned(
             "==",
@@ -392,35 +407,26 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     b.call(scan_black_fn, [scan_fn.args[0]]);
     b.branch(sc_done);
     b = ir.IRBuilder(sc_white);
-    b.store(
-        b.or_(
-            b.and_(_sc_cb, ir.Constant(i8, 0xFC), name="clr"),
-            ir.Constant(i8, RC_COLOR_WHITE),
-            name="nwhite"
-        ),
-        _sc_csp
-    );
-    _sc_ti = b.load(
-        b.bitcast(
-            b.gep(scan_fn.args[0], [ir.Constant(i64, HDR_TRACE_OFF)], name="tsp"),
-            i64_ptr,
-            name="tptr"
-        ),
-        name="ti"
-    );
-    b.cbranch(
-        b.icmp_unsigned("==", _sc_ti, ir.Constant(i64, 0), name="tnull"),
-        sc_done,
-        sc_call
-    );
-    b = ir.IRBuilder(sc_call);
-    b.call(
-        b.inttoptr(_sc_ti, trace_fn_ptype, name="tfn"),
-        [scan_fn.args[0], b.bitcast(scan_vis_fn, i8_ptr, name="vis")]
-    );
-    b.branch(sc_done);
+    self._emit_rc_color_store(b, _sc_csp, _sc_cb, RC_COLOR_WHITE);
+    self._emit_rc_trace_dispatch(scan_fn, b, scan_fn.args[0], scan_vis_fn, sc_done);
     b = ir.IRBuilder(sc_done);
     b.ret_void();
+
+    return scan_fn;
+}
+
+impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i64 = ir.IntType(64);
+    phase_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+
+    cw_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_collect_white");
+    cw_fn.linkage = "internal";
+    cw_vis_fn = ir.Function(
+        self.llvm_module, phase_fnty, name="__rc_collect_white_visitor"
+    );
+    cw_vis_fn.linkage = "internal";
 
     cw_vis_fn.args[0].name = "child";
     cwv_null = cw_vis_fn.append_basic_block("null");
@@ -445,7 +451,6 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     cw_null = cw_fn.append_basic_block("null");
     cw_check = cw_fn.append_basic_block("check");
     cw_set = cw_fn.append_basic_block("set");
-    cw_call = cw_fn.append_basic_block("call_trace");
     cw_free = cw_fn.append_basic_block("free_raw");
     cw_done = cw_fn.append_basic_block("done");
 
@@ -456,8 +461,7 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         cw_check
     );
     b = ir.IRBuilder(cw_check);
-    _cw_csp = b.gep(cw_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="csp");
-    _cw_cb = b.load(_cw_csp, name="cb");
+    (_cw_csp, _cw_cb) = self._emit_rc_color_load(b, cw_fn.args[0]);
     b.cbranch(
         b.icmp_unsigned(
             "==",
@@ -469,26 +473,10 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
         cw_done
     );
     b = ir.IRBuilder(cw_set);
+
     b.store(ir.Constant(i8, RC_COLOR_BLACK), _cw_csp);
-    _cw_ti = b.load(
-        b.bitcast(
-            b.gep(cw_fn.args[0], [ir.Constant(i64, HDR_TRACE_OFF)], name="tsp"),
-            i64_ptr,
-            name="tptr"
-        ),
-        name="ti"
-    );
-    b.cbranch(
-        b.icmp_unsigned("==", _cw_ti, ir.Constant(i64, 0), name="tnull"),
-        cw_free,
-        cw_call
-    );
-    b = ir.IRBuilder(cw_call);
-    b.call(
-        b.inttoptr(_cw_ti, trace_fn_ptype, name="tfn"),
-        [cw_fn.args[0], b.bitcast(cw_vis_fn, i8_ptr, name="vis")]
-    );
-    b.branch(cw_free);
+    self._emit_rc_trace_dispatch(cw_fn, b, cw_fn.args[0], cw_vis_fn, cw_free);
+
     b = ir.IRBuilder(cw_free);
     b.call(
         self.free_fn,
@@ -498,19 +486,64 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     b = ir.IRBuilder(cw_done);
     b.ret_void();
 
+    return cw_fn;
+}
+
+impl NaIRGenPass._emit_rc_root_pass(
+    prefix: str,
+    count: ir.Value,
+    next_bb: ir.Block,
+    phase_fn: ir.Function,
+    clear_purple: bool
+) -> ir.Block {
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i8_ptr_ptr = i8_ptr.as_pointer();
+    i64 = ir.IntType(64);
+    collect_fn = self.rc_collect_cycles_fn;
+
+    pre = collect_fn.append_basic_block(f"{prefix}pre");
+    hdr = collect_fn.append_basic_block(f"{prefix}hdr");
+    body = collect_fn.append_basic_block(f"{prefix}body");
+
+    b = ir.IRBuilder(pre);
+    buf = b.load(self.rc_roots_buf_gv, name=f"{prefix}buf");
+    b.branch(hdr);
+
+    b = ir.IRBuilder(hdr);
+    idx = b.phi(i64, name=f"{prefix}i");
+    idx.add_incoming(ir.Constant(i64, 0), pre);
+    b.cbranch(b.icmp_unsigned(">=", idx, count, name=f"{prefix}done"), next_bb, body);
+
+    b = ir.IRBuilder(body);
+    slot = b.gep(
+        buf,
+        [b.mul(idx, ir.Constant(i64, 8), name=f"{prefix}off")],
+        name=f"{prefix}slot"
+    );
+    optr = b.load(b.bitcast(slot, i8_ptr_ptr, name=f"{prefix}pp"), name=f"{prefix}obj");
+    if clear_purple {
+        (csp, cb) = self._emit_rc_color_load(b, optr);
+        b.store(b.and_(cb, ir.Constant(i8, 0xFB), name=f"{prefix}clr"), csp);
+    }
+    b.call(phase_fn, [optr]);
+    nxt = b.add(idx, ir.Constant(i64, 1), name=f"{prefix}next");
+    idx.add_incoming(nxt, body);
+    b.branch(hdr);
+
+    return pre;
+}
+
+impl NaIRGenPass._emit_rc_collect_loop(
+    mark_gray_fn: ir.Function, scan_fn: ir.Function, collect_white_fn: ir.Function
+) -> None {
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+
     collect_fn = self.rc_collect_cycles_fn;
 
     cc_entry = collect_fn.append_basic_block("entry");
     cc_start = collect_fn.append_basic_block("start");
-    cc_p1pre = collect_fn.append_basic_block("p1pre");
-    cc_p1hdr = collect_fn.append_basic_block("p1hdr");
-    cc_p1body = collect_fn.append_basic_block("p1body");
-    cc_p2pre = collect_fn.append_basic_block("p2pre");
-    cc_p2hdr = collect_fn.append_basic_block("p2hdr");
-    cc_p2body = collect_fn.append_basic_block("p2body");
-    cc_p3pre = collect_fn.append_basic_block("p3pre");
-    cc_p3hdr = collect_fn.append_basic_block("p3hdr");
-    cc_p3body = collect_fn.append_basic_block("p3body");
     cc_finish = collect_fn.append_basic_block("finish");
     cc_done = collect_fn.append_basic_block("done");
 
@@ -529,80 +562,17 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
     b = ir.IRBuilder(cc_start);
     b.store(ir.Constant(i8, 1), self.rc_collecting_gv);
     _cc_count = b.load(self.rc_roots_count_gv, name="count");
+
+    p3pre = self._emit_rc_root_pass(
+        "cc_p3", _cc_count, cc_finish, collect_white_fn, True
+    );
+    p2pre = self._emit_rc_root_pass("cc_p2", _cc_count, p3pre, scan_fn, False);
+    p1pre = self._emit_rc_root_pass("cc_p1", _cc_count, p2pre, mark_gray_fn, False);
     b.cbranch(
         b.icmp_unsigned("==", _cc_count, ir.Constant(i64, 0), name="empty"),
         cc_finish,
-        cc_p1pre
+        p1pre
     );
-
-    b = ir.IRBuilder(cc_p1pre);
-    _cc_buf1 = b.load(self.rc_roots_buf_gv, name="buf1");
-    b.branch(cc_p1hdr);
-
-    b = ir.IRBuilder(cc_p1hdr);
-    _p1i = b.phi(i64, name="p1i");
-    _p1i.add_incoming(ir.Constant(i64, 0), cc_p1pre);
-    b.cbranch(
-        b.icmp_unsigned(">=", _p1i, _cc_count, name="p1done"), cc_p2pre, cc_p1body
-    );
-
-    b = ir.IRBuilder(cc_p1body);
-    _p1slot = b.gep(
-        _cc_buf1, [b.mul(_p1i, ir.Constant(i64, 8), name="p1off")], name="p1slot"
-    );
-    b.call(
-        mark_gray_fn,
-        [b.load(b.bitcast(_p1slot, i8_ptr_ptr, name="p1pp"), name="p1obj")]
-    );
-    _p1next = b.add(_p1i, ir.Constant(i64, 1), name="p1next");
-    _p1i.add_incoming(_p1next, cc_p1body);
-    b.branch(cc_p1hdr);
-
-    b = ir.IRBuilder(cc_p2pre);
-    _cc_buf2 = b.load(self.rc_roots_buf_gv, name="buf2");
-    b.branch(cc_p2hdr);
-
-    b = ir.IRBuilder(cc_p2hdr);
-    _p2i = b.phi(i64, name="p2i");
-    _p2i.add_incoming(ir.Constant(i64, 0), cc_p2pre);
-    b.cbranch(
-        b.icmp_unsigned(">=", _p2i, _cc_count, name="p2done"), cc_p3pre, cc_p2body
-    );
-
-    b = ir.IRBuilder(cc_p2body);
-    _p2slot = b.gep(
-        _cc_buf2, [b.mul(_p2i, ir.Constant(i64, 8), name="p2off")], name="p2slot"
-    );
-    b.call(
-        scan_fn, [b.load(b.bitcast(_p2slot, i8_ptr_ptr, name="p2pp"), name="p2obj")]
-    );
-    _p2next = b.add(_p2i, ir.Constant(i64, 1), name="p2next");
-    _p2i.add_incoming(_p2next, cc_p2body);
-    b.branch(cc_p2hdr);
-
-    b = ir.IRBuilder(cc_p3pre);
-    _cc_buf3 = b.load(self.rc_roots_buf_gv, name="buf3");
-    b.branch(cc_p3hdr);
-
-    b = ir.IRBuilder(cc_p3hdr);
-    _p3i = b.phi(i64, name="p3i");
-    _p3i.add_incoming(ir.Constant(i64, 0), cc_p3pre);
-    b.cbranch(
-        b.icmp_unsigned(">=", _p3i, _cc_count, name="p3done"), cc_finish, cc_p3body
-    );
-
-    b = ir.IRBuilder(cc_p3body);
-    _p3slot = b.gep(
-        _cc_buf3, [b.mul(_p3i, ir.Constant(i64, 8), name="p3off")], name="p3slot"
-    );
-    _p3obj = b.load(b.bitcast(_p3slot, i8_ptr_ptr, name="p3pp"), name="p3obj");
-    _p3csp = b.gep(_p3obj, [ir.Constant(i64, HDR_COLOR_OFF)], name="p3csp");
-    _p3cb = b.load(_p3csp, name="p3cb");
-    b.store(b.and_(_p3cb, ir.Constant(i8, 0xFB), name="p3clr"), _p3csp);
-    b.call(cw_fn, [_p3obj]);
-    _p3next = b.add(_p3i, ir.Constant(i64, 1), name="p3next");
-    _p3i.add_incoming(_p3next, cc_p3body);
-    b.branch(cc_p3hdr);
 
     b = ir.IRBuilder(cc_finish);
     b.store(ir.Constant(i64, 0), self.rc_roots_count_gv);
@@ -611,4 +581,12 @@ impl NaIRGenPass._emit_rc_collect_cycles -> None {
 
     b = ir.IRBuilder(cc_done);
     b.ret_void();
+}
+
+impl NaIRGenPass._emit_rc_collect_cycles -> None {
+    mark_gray_fn = self._emit_rc_mark_gray_phase();
+    scan_black_fn = self._emit_rc_scan_black_phase();
+    scan_fn = self._emit_rc_scan_phase(scan_black_fn);
+    collect_white_fn = self._emit_rc_collect_white_phase();
+    self._emit_rc_collect_loop(mark_gray_fn, scan_fn, collect_white_fn);
 }
