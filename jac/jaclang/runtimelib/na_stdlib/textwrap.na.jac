@@ -100,6 +100,9 @@ def _split_chunks(s: str) -> list[str] {
 
 def _wrap_chunks(chunks: list[str], width: int) -> list[str] {
     lines: list[str] = [];
+    if width <= 0 {
+        raise ValueError("invalid width " + str(width) + " (must be > 0)");
+    }
     pos: int = 0;
     n: int = len(chunks);
     while pos < n {
@@ -122,6 +125,13 @@ def _wrap_chunks(chunks: list[str], width: int) -> list[str] {
         }
 
         if pos < n and len(chunks[pos]) > w {
+            # CPython >= 3.14 _handle_long_word: break the long word only
+            # when space_left > 0 (3.13 and earlier appended the EMPTY slice
+            # chunk[:0] too, which shielded a trailing-whitespace chunk from
+            # the drop below -- e.g. wrap("bb  quicksand", 4) is
+            # ['bb', 'quic', 'ksan', 'd'] on >= 3.14 but
+            # ['bb  ', 'quic', 'ksan', 'd'] on <= 3.13). The bundled sv
+            # runtime is CPython 3.14, so congruence targets these semantics.
             space_left: int = 1 if w < 1 else w - cur_len;
             if space_left > 0 {
                 chunk: str = chunks[pos];

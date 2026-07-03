@@ -9,6 +9,8 @@ def _zeros(n: int) -> list[int] {
 }
 
 
+# NOTE: duplicated in pprint.na.jac (see the note there on why it is not
+# factored into a shared module).
 def _str_gt(a: str, b: str) -> bool {
     m: int = len(a);
     if len(b) < m {
@@ -27,8 +29,38 @@ def _str_gt(a: str, b: str) -> bool {
 }
 
 
+def _popular_flags(b: str, autojunk: bool) -> list[int] {
+    # CPython SequenceMatcher.__chain_b popular-element pruning: when
+    # autojunk is on and len(b) >= 200, elements occurring more than
+    # ntest = len(b) // 100 + 1 times are dropped from b2j, so they can
+    # never SEED a match (they still extend one -- only bjunk blocks the
+    # extension loops, and with isjunk=None bjunk is empty).
+    n: int = len(b);
+    flags: list[int] = _zeros(n);
+    if not autojunk or n < 200 {
+        return flags;
+    }
+    counts: dict[str, int] = {};
+    i: int = 0;
+    while i < n {
+        ch: str = b[i];
+        counts[ch] = counts.get(ch, 0) + 1;
+        i += 1;
+    }
+    ntest: int = n // 100 + 1;
+    j: int = 0;
+    while j < n {
+        if counts.get(b[j], 0) > ntest {
+            flags[j] = 1;
+        }
+        j += 1;
+    }
+    return flags;
+}
+
+
 def _find_longest_match(
-    a: str, b: str, alo: int, ahi: int, blo: int, bhi: int
+    a: str, b: str, alo: int, ahi: int, blo: int, bhi: int, popular: list[int]
 ) -> list[int] {
     besti: int = alo;
     bestj: int = blo;
@@ -41,7 +73,7 @@ def _find_longest_match(
         ai: int = ord(a[i]);
         j: int = blo;
         while j < bhi {
-            if ord(b[j]) == ai {
+            if popular[j] == 0 and ord(b[j]) == ai {
                 pv: int = 0;
                 if j > blo {
                     pv = prev[j - 1];
@@ -73,9 +105,10 @@ def _find_longest_match(
 }
 
 
-def _matching_blocks(a: str, b: str) -> list[list[int]] {
+def _matching_blocks(a: str, b: str, autojunk: bool) -> list[list[int]] {
     la: int = len(a);
     lb: int = len(b);
+    popular: list[int] = _popular_flags(b, autojunk);
     queue: list[list[int]] = [[0, la, 0, lb]];
     raw: list[list[int]] = [];
     while len(queue) > 0 {
@@ -84,7 +117,7 @@ def _matching_blocks(a: str, b: str) -> list[list[int]] {
         ahi: int = box[1];
         blo: int = box[2];
         bhi: int = box[3];
-        m: list[int] = _find_longest_match(a, b, alo, ahi, blo, bhi);
+        m: list[int] = _find_longest_match(a, b, alo, ahi, blo, bhi, popular);
         i: int = m[0];
         j: int = m[1];
         k: int = m[2];
@@ -155,8 +188,8 @@ def _sort_blocks(blocks: list[list[int]]) {
 }
 
 
-def _ratio(a: str, b: str) -> float {
-    blocks: list[list[int]] = _matching_blocks(a, b);
+def _ratio(a: str, b: str, autojunk: bool) -> float {
+    blocks: list[list[int]] = _matching_blocks(a, b, autojunk);
     m: int = 0;
     idx: int = 0;
     while idx < len(blocks) {
@@ -174,13 +207,16 @@ def _ratio(a: str, b: str) -> float {
 obj:pub SequenceMatcher {
     has a: str = "",
         b: str = "",
-        _isjunk: any = None;
+        _isjunk: any = None,
+        _autojunk: bool = True;
 
-    def init(isjunk: any = None, a: str = "", b: str = "") {
-        super.init();
+    def init(isjunk: any = None, a: str = "", b: str = "", autojunk: bool = True) {
+        # No super.init(): SequenceMatcher has no base archetype, and a bare
+        # super.init() silently aborts native module IR generation.
         self._isjunk = isjunk;
         self.a = a;
         self.b = b;
+        self._autojunk = autojunk;
     }
 
     def set_seq1(a: str) {
@@ -192,11 +228,11 @@ obj:pub SequenceMatcher {
     }
 
     def get_matching_blocks -> list[list[int]] {
-        return _matching_blocks(self.a, self.b);
+        return _matching_blocks(self.a, self.b, self._autojunk);
     }
 
     def ratio -> float {
-        return _ratio(self.a, self.b);
+        return _ratio(self.a, self.b, self._autojunk);
     }
 }
 
@@ -215,13 +251,19 @@ def _before(ra: float, wa: str, rb: float, wb: str) -> bool {
 def:pub get_close_matches(
     word: str, possibilities: list[str], n: int = 3, cutoff: float = 0.6
 ) -> list[str] {
+    if n <= 0 {
+        raise ValueError("n must be > 0: " + str(n));
+    }
+    if cutoff < 0.0 or cutoff > 1.0 {
+        raise ValueError("cutoff must be in [0.0, 1.0]: " + str(cutoff));
+    }
     words: list[str] = [];
     ratios: list[float] = [];
     pi: int = 0;
     pn: int = len(possibilities);
     while pi < pn {
         x: str = possibilities[pi];
-        r: float = _ratio(x, word);
+        r: float = _ratio(x, word, True);
         if r >= cutoff {
             words.append(x);
             ratios.append(r);

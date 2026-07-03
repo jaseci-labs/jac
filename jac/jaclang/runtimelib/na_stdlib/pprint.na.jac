@@ -1,3 +1,9 @@
+def _hex2(c: int) -> str {
+    digits: str = "0123456789abcdef";
+    return digits[c // 16] + digits[c % 16];
+}
+
+
 def _repr_str(s: str) -> str {
     has_single: bool = False;
     has_double: bool = False;
@@ -32,6 +38,12 @@ def _repr_str(s: str) -> str {
             out += "\\t";
         } elif c2 == 13 {
             out += "\\r";
+        } elif c2 < 32 or c2 == 127 {
+            # Python repr escapes all other C0 controls and DEL as \xNN.
+            # Non-ASCII (> 0x7f) is kept as-is: printable unicode matches
+            # CPython; unicode NON-printables are a documented divergence
+            # (see na_stdlib/README.md).
+            out += "\\x" + _hex2(c2);
         } else {
             out += s[j];
         }
@@ -42,6 +54,9 @@ def _repr_str(s: str) -> str {
 }
 
 
+# NOTE: duplicated in difflib.na.jac. Bundled modules only cross-import
+# public (def:pub) surfaces (e.g. urllib -> socket/ssl); there is no
+# established pattern for sharing private helpers, so the twin stays.
 def _str_gt(a: str, b: str) -> bool {
     m: int = len(a);
     if len(b) < m {
