@@ -210,7 +210,6 @@ obj TypeEvaluator {
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
-        _flow_cycle_cuts: int = 0,
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
@@ -537,6 +536,15 @@ obj TypeEvaluator {
 
     def _get_type_from_flow_node(
         target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+    ) -> TypeBase | None;
+
+    def _loop_exit_narrowed_type(
+        loop_node: uni.UniNode, target: NarrowingTarget, entry_type: TypeBase | None
+    ) -> TypeBase | None;
+
+    def _is_within(child: uni.UniNode, ancestor: uni.UniNode) -> bool;
+    def _assignment_narrowed_type(
+        value_type: TypeBase | None, declared_type: TypeBase
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;

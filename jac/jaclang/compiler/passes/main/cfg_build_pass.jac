@@ -19,7 +19,6 @@ obj CFGBuildPass(UniPass) {
     ) -> uni.LoopExitNode;
 
     def _loop_exit(nd: uni.UniCFGNode) -> (uni.LoopExitNode | None);
-    def _is_within(child: uni.UniNode, ancestor: uni.UniNode) -> bool;
     def _is_terminal(nd: uni.UniNode) -> bool;
     def _find_parent_of_types(
         nd: uni.UniNode, types: tuple[type[uni.UniCFGNode], ...]

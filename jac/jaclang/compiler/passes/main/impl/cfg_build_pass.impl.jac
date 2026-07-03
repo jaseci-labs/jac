@@ -694,11 +694,6 @@ impl CFGBuildPass._link_body_tails_to_header(
 
     j = self._loop_exit(nd);
     if j is not None {
-        for pred in list(nd.bb_in) {
-            if self._is_within(pred, nd) {
-                self.link_bbs(pred, j);
-            }
-        }
         self.link_bbs(nd, j);
     }
 }
@@ -720,16 +715,6 @@ impl CFGBuildPass._loop_exit(nd: uni.UniCFGNode) -> (uni.LoopExitNode | None) {
     return None;
 }
 
-impl CFGBuildPass._is_within(child: uni.UniNode, ancestor: uni.UniNode) -> bool {
-    cur: uni.UniNode | None = child;
-    while cur is not None {
-        if cur is ancestor {
-            return True;
-        }
-        cur = cur.parent;
-    }
-    return False;
-}
 
 impl CFGBuildPass.exit_in_for_stmt(nd: uni.InForStmt) -> None {
     has_else = (
