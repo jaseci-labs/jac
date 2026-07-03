@@ -272,9 +272,9 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # an unsealed tree) a .jac under jaclang/jac0core/. Either way it is
         # compiled/loaded via jac0, never the full compiler.
         sealed = _sealed.find_module(module.__name__)
-        if (sealed is not None and sealed[1].get("bootstrap")) or self._is_bootstrap_jac(
-            file_path
-        ):
+        if (
+            sealed is not None and sealed[1].get("bootstrap")
+        ) or self._is_bootstrap_jac(file_path):
             self._exec_bootstrap(module, file_path)
             return
 
