@@ -1146,11 +1146,6 @@ impl NaIRGenPass._codegen_instantiation(
         init_args: list[ir.Value] = [obj_ptr];
         init_sig = self._arch_init_sig_of(type_name) if _is_call else None;
         if init_sig is not None {
-            # Bind like _codegen_bound_args: positional first, then keyword,
-            # then the init signature's default expression, then a zero-value
-            # fallback -- so an instantiation omitting defaulted trailing
-            # params (`SequenceMatcher(None, a, b)` with a 4-param init) no
-            # longer emits a call with too few arguments.
             _init_pos: list = [];
             _init_kw: dict = {};
             for param in params {
@@ -1201,9 +1196,7 @@ impl NaIRGenPass._codegen_instantiation(
             }
             _fill = len(init_args);
             while _fill < len(init_fn.args) {
-                init_args.append(
-                    self._default_arg_fallback(init_fn.args[_fill].type)
-                );
+                init_args.append(self._default_arg_fallback(init_fn.args[_fill].type));
                 _fill += 1;
             }
         }

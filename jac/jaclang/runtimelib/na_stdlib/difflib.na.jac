@@ -9,8 +9,6 @@ def _zeros(n: int) -> list[int] {
 }
 
 
-# NOTE: duplicated in pprint.na.jac (see the note there on why it is not
-# factored into a shared module).
 def _str_gt(a: str, b: str) -> bool {
     m: int = len(a);
     if len(b) < m {
@@ -30,11 +28,6 @@ def _str_gt(a: str, b: str) -> bool {
 
 
 def _popular_flags(b: str, autojunk: bool) -> list[int] {
-    # CPython SequenceMatcher.__chain_b popular-element pruning: when
-    # autojunk is on and len(b) >= 200, elements occurring more than
-    # ntest = len(b) // 100 + 1 times are dropped from b2j, so they can
-    # never SEED a match (they still extend one -- only bjunk blocks the
-    # extension loops, and with isjunk=None bjunk is empty).
     n: int = len(b);
     flags: list[int] = _zeros(n);
     if not autojunk or n < 200 {
@@ -211,8 +204,6 @@ obj:pub SequenceMatcher {
         _autojunk: bool = True;
 
     def init(isjunk: any = None, a: str = "", b: str = "", autojunk: bool = True) {
-        # No super.init(): SequenceMatcher has no base archetype, and a bare
-        # super.init() silently aborts native module IR generation.
         self._isjunk = isjunk;
         self.a = a;
         self.b = b;
