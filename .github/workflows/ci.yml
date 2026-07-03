@@ -158,6 +158,10 @@ jobs:
         run: |
           chmod +x "$PWD/bin/jac"
           echo "$PWD/bin" >> "$GITHUB_PATH"
+      - name: Set up Node.js (ES backend for the equivalence suite)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Set up Zig 0.16.0 (vendor static-musl runtime)
         uses: mlugg/setup-zig@v2
         with:
@@ -177,6 +181,27 @@ jobs:
             echo "## binary compiler-suite result"
             echo '```'
             grep -E '^(FAILED|ERROR)|passed|failed' /tmp/compiler.log | tail -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: Cross-backend equivalence suite (py/es/native congruence)
+        working-directory: jac
+        # The suite's cross-module tests build fixture paths under jac/tests/
+        # from jaclang.__file__, which only resolve in the checkout, not in the
+        # binary's bundled site copy. Run this one step through the checkout's
+        # `[dev] jaclang_source` loop (as k8s-real-e2e does) so the suite
+        # exercises THIS checkout's compiler and harness.
+        env:
+          JAC_NO_DEV_SOURCE: ""
+        run: |
+          set -uxo pipefail
+          WORK="$(mktemp -d)"
+          rc=0
+          HOME="$WORK" JAC_TEST_JOBS=auto jac test jaclang/compiler/tests | tee /tmp/equivalence.log || rc=$?
+          {
+            echo "## binary equivalence-suite result"
+            echo '```'
+            grep -E '^(FAILED|ERROR)|passed|failed' /tmp/equivalence.log | tail -60 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
