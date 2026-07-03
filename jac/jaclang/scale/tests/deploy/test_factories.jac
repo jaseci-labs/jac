@@ -10,9 +10,7 @@ import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.deploy.target.kubernetes {
-    kubernetes_target as kt_module
-}
+import from jaclang.scale.deploy.target.kubernetes { kubernetes_target as kt_module }
 
 test "deployment target factory creates kubernetes target" {
     config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
