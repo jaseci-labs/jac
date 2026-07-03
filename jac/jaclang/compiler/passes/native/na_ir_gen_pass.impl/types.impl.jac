@@ -474,9 +474,7 @@ impl NaIRGenPass._resolve_primitive_name(
         if isinstance(expr, uni.Null) {
             return ir.VoidType();
         }
-    } except NameError {
-        pass;
-    }
+    } except NameError { }
 
     if isinstance(expr, uni.Name) {
         name = expr.value;

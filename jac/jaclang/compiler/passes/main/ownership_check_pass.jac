@@ -1,29 +1,60 @@
 import from collections.abc { Callable, Sequence }
+import from enum { Enum }
+import from typing { TypeAlias }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 
+"""Stable identity key for a `uni.Symbol`. Named apart from a raw
+`int` so signatures say which integers key symbol-level bookkeeping — a CFG-node
+id (`id(node)`) is also an `int` but is a different domain and never a `SymId`."""
+glob SymId: TypeAlias = int;
+
+"""Transfer-function shape shared by the forward and backward dataflow solvers:
+`(node, incoming_symbol_set) -> outgoing_symbol_set`."""
+glob DataflowTransfer: TypeAlias = Callable[[uni.UniCFGNode, set[SymId]], set[SymId]];
+
+"""Syntactic role a `Name` occurrence plays where it appears in the tree."""
+enum AccessKind {
+    ASSIGN_TARGET = "assign_target",
+    ATTR_TARGET = "attr_target",
+    SUBSCRIPT_TARGET = "subscript_target",
+    DESTRUCTURE_TARGET = "destructure_target",
+    DELETE_TARGET = "delete_target",
+    CALL_ARG = "call_arg",
+    RETURN_VALUE = "return_value",
+    READ = "read"
+}
+
+"""Per-borrow-symbol bookkeeping, keyed by `SymId` in `OwnershipCheckPass.borrow_meta`."""
+obj BorrowMeta {
+    has name: str,
+        owner: (SymId | None) = None,
+        is_mut: bool = False;
+}
+
 obj OwnershipCheckPass(UniPass) {
-    has owned_syms: set[int] = set(),
-        owned_decl: dict[int, uni.Name] = {},
-        consumed_syms: set[int] = set(),
-        proven_unique_syms: set[int] = set(),
-        borrow_syms: set[int] = set(),
-        param_borrow_syms: set[int] = set(),
-        borrow_names: dict[int, str] = {},
-        borrow_owner: dict[int, int] = {},
-        borrow_is_mut: dict[int, bool] = {},
-        e1304_borrow_ids: set[int] = set(),
-        in_consumed: dict[int, set[int]] = {},
-        in_live_borrows: dict[int, set[int]] = {},
-        in_reaching_borrows: dict[int, set[int]] = {};
+    has owned_syms: set[SymId] = set(),
+        owned_decl: dict[SymId, uni.Name] = {},
+        consumed_syms: set[SymId] = set(),
+        proven_unique_syms: set[SymId] = set(),
+        borrow_syms: set[SymId] = set(),
+        param_borrow_syms: set[SymId] = set(),
+        borrow_meta: dict[SymId, BorrowMeta] = {},
+        e1304_borrow_ids: set[SymId] = set(),
+        in_consumed: dict[int, set[SymId]] = {},
+        in_live_borrows: dict[int, set[SymId]] = {},
+        in_reaching_borrows: dict[int, set[SymId]] = {},
+        consumed_at: dict[SymId, uni.UniNode] = {},
+        borrow_created_at: dict[SymId, uni.UniNode] = {},
+        loop_depth_flagged_names: set[int] = set();
 
     def before_pass -> None;
     def _collect_owned(tree: uni.UniNode) -> None;
     def _collect_borrows(tree: uni.UniNode) -> None;
     def _collect_params(tree: uni.UniNode) -> None;
     def _return_roots_at_param_borrow(nd: uni.Expr | None) -> bool;
-    def _borrow_region(sym_id: int) -> (uni.UniScopeNode | None);
+    def _borrow_region(sym_id: SymId) -> (uni.UniScopeNode | None);
     def _region_strictly_outlives(
         dest: uni.UniScopeNode | None, region: uni.UniScopeNode | None
     ) -> bool;
@@ -33,34 +64,47 @@ obj OwnershipCheckPass(UniPass) {
     def _is_borrow_decl(nd: uni.Assignment) -> (uni.Name | None);
     def _borrow_target(nd: uni.Assignment) -> (uni.Name | None);
     def _borrow_source_owner(nd: uni.Assignment) -> (uni.Name | None);
-    def _assign_kill_gen(nd: uni.Assignment) -> tuple[set[int], set[int]];
-    def _call_move_gen(nd: uni.UniCFGNode) -> set[int];
-    def _return_move_gen(nd: uni.UniCFGNode) -> set[int];
-    def _solve_dataflow(
-        cfg_nodes: list[uni.UniCFGNode], backward: bool, transfer: Callable
-    ) -> dict[int, set[int]];
+    def _assign_kill_gen(nd: uni.Assignment) -> tuple[set[SymId], set[SymId]];
+    def _call_move_gen(nd: uni.UniCFGNode) -> set[SymId];
+    def _return_move_gen(nd: uni.UniCFGNode) -> set[SymId];
+    def _solve_forward_dataflow(
+        cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
+    ) -> dict[int, set[SymId]];
+    def _solve_backward_dataflow(
+        cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
+    ) -> dict[int, set[SymId]];
 
-    def _transfer(nd: uni.UniCFGNode, in_set: set[int]) -> set[int];
+    def _transfer(nd: uni.UniCFGNode, in_set: set[SymId]) -> set[SymId];
     def _run_dataflow(cfg_nodes: list[uni.UniCFGNode]) -> None;
-    def _borrow_read_gen(nd: uni.UniCFGNode) -> set[int];
-    def _borrow_assign_kill_gen(nd: uni.UniCFGNode) -> tuple[set[int], set[int]];
-    def _reaching_transfer(nd: uni.UniCFGNode, in_set: set[int]) -> set[int];
-    def _live_transfer(nd: uni.UniCFGNode, out_set: set[int]) -> set[int];
+    def _borrow_read_gen(nd: uni.UniCFGNode) -> set[SymId];
+    def _borrow_assign_kill_gen(nd: uni.UniCFGNode) -> tuple[set[SymId], set[SymId]];
+    def _reaching_transfer(nd: uni.UniCFGNode, in_set: set[SymId]) -> set[SymId];
+    def _live_transfer(nd: uni.UniCFGNode, out_set: set[SymId]) -> set[SymId];
     def _run_borrow_liveness(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _run_reaching_borrows(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _nearest_cfg(nd: uni.UniNode) -> (uni.UniCFGNode | None);
     def _nearest_scope(nd: uni.UniNode) -> (uni.UniScopeNode | None);
     def _is_ancestor(ancestor: uni.UniNode, nd: uni.UniNode) -> bool;
+    def _loop_depth(nd: uni.UniNode) -> int;
+    def _emit_loop_move_diagnostics(tree: uni.UniNode) -> None;
     def _emit_diagnostics(tree: uni.UniNode) -> None;
     def _emit_borrow_diagnostics(tree: uni.UniNode) -> None;
     def _emit_leak_diagnostics -> None;
     def _emit_escape_diagnostics(tree: uni.UniNode) -> None;
     def _escaping_borrow_owner(nd: uni.Expr | None) -> (str | None);
-    def _owned_sym_of(nd: uni.UniNode | None) -> (int | None);
-    def _borrow_sym_of(nd: uni.UniNode | None) -> (int | None);
-    def _owned_name(sym_id: int, fallback: str) -> str;
+    def _owner_decl_related(
+        borrow_id: (SymId | None), owner_name: str
+    ) -> (list[tuple[str, uni.UniNode]] | None);
+    def _sym_id(nd: uni.UniNode | None) -> (SymId | None);
+    def _owned_sym_of(nd: uni.UniNode | None) -> (SymId | None);
+    def _borrow_sym_of(nd: uni.UniNode | None) -> (SymId | None);
+    def _owned_name(sym_id: SymId, fallback: str) -> str;
+    def _borrow_owner_of(borrow_id: SymId) -> (SymId | None);
+    def _borrow_is_mut_of(borrow_id: SymId) -> bool;
+    def _borrow_display_name(borrow_id: SymId, fallback: str) -> str;
+    def _classify_access(nd: uni.Name) -> AccessKind;
     def _is_write_target(nd: uni.Name) -> bool;
     def _is_read_name(nd: uni.Name) -> bool;
-    def _target_owner_sym(nd: uni.Expr) -> (int | None);
+    def _target_owner_sym(nd: uni.Expr) -> (SymId | None);
     def _call_params(call: uni.FuncCall) -> Sequence[uni.Expr | uni.KWPair];
 }
