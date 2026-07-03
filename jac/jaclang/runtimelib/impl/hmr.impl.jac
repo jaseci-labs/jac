@@ -134,6 +134,10 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
     if not self.client_compiler {
         return;
     }
+
+    if self._overlay_entry {
+        return;
+    }
     base_dir = Path(self.base_path).resolve();
     pages_dir = base_dir / 'pages';
     changed = Path(file_path);
@@ -241,6 +245,7 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         self.record_error(file_path, errors);
     } except Exception as e {
         console.error(f"Compile error in {file_path}: {e}");
+        self._emit_client_error_overlay(file_path, str(e));
         self.record_error(file_path, str(e));
     }
 }
