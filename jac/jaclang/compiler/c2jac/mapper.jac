@@ -129,6 +129,7 @@ obj CMapper {
     def _zero_default(inner: object) -> object;
     def c_Assignment(nd: object) -> object;
     def c_Struct(nd: object) -> object;
+    def _struct_classdef(snode: object, name: str, origin: object) -> object;
     def _struct_field(mem: object) -> object | None;
     def c_Typedef(nd: object) -> object;
     def _decl_array(nd: object) -> object;
