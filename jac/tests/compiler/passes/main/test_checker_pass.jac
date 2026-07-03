@@ -5568,3 +5568,19 @@ test "mobui_hello_example_discovers_kind_and_stays_e1105_clean" {
         )
     );
 }
+
+test "builtin_inference_regressions" {
+    # Two regressions from the this_is_jac showcase QA (fixture documents
+    # both): `round(...)` failed E1054 everywhere because typeshed declares
+    # it against the PRIVATE protocols `_SupportsRound1/2`, which the
+    # evaluator's structural-protocol table did not know by name; and
+    # `{**c}` folded the spread dict in as a single entry VALUE, inferring
+    # dict[<Unknown>, dict[K, V]] instead of dict[K, V].
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_builtin_inference.jac"), type_check=True
+    );
+    pretty = "\n".join([e.pretty_print() for e in program.errors_had]);
+    assert len(program.errors_had) == 0 , "round() results and **spread dict literals must infer cleanly, "
+    f"got {len(program.errors_had)} diagnostic(s):\n{pretty}";
+}

@@ -11,6 +11,33 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 
 
+def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
+    # apt install for the service container (not the discarded init layer).
+    packages = k8s_config.service_dependencies;
+    if not packages {
+        return "";
+    }
+    import re;
+    valid = re.compile(r"^[a-z0-9][a-z0-9.+\-]*$");
+    for pkg in packages {
+        if not valid.match(pkg) {
+            raise ValueError(
+                f"[dependencies.system] package name {pkg!r} is not a valid "
+                "Debian package name (allowed characters: a-z 0-9 . + -)."
+            );
+        }
+    }
+    pkg_list = ' '.join(sorted(set(packages)));
+    # Trailing ` && ` (not `;`) chains the install into the app-start command so
+    # a failed apt aborts the container boot instead of starting without the deps.
+    return (
+        "export DEBIAN_FRONTEND=noninteractive && "
+        "apt-get update && apt-get install -y --no-install-recommends "
+        f"{pkg_list} && "
+    );
+}
+
+
 def build_runtime_install_commands(
     k8s_config: KubernetesConfig, overlay_source: bool = False
 ) -> list[str] {
@@ -85,12 +112,27 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
+def _shared_first_boot_install -> str {
+    # Elect one pod via an atomic mkdir lock on the shared PVC to warm the venv + `.jir` cache first; the rest wait then no-op. Best-effort: a timed-out waiter or stale lock just installs itself.
+    lock = f"{APP_MOUNT_PATH}/.jac/.bootstrap.lock";
+    return (
+        f'mkdir -p {APP_MOUNT_PATH}/.jac; '
+        f'if mkdir "{lock}" 2>/dev/null; then '
+        f'jac install; rc=$?; rmdir "{lock}" 2>/dev/null || true; exit $rc; '
+        f'else '
+        f'n=0; while [ -d "{lock}" ] && [ $n -lt 210 ]; do sleep 2; n=$((n+1)); done; '
+        f'rmdir "{lock}" 2>/dev/null || true; jac install; '
+        f'fi'
+    );
+}
+
+
 def build_bootstrap_init_container(
     k8s_config: KubernetesConfig, base_image: str, overlay_source: bool = False
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config, overlay_source);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    commands.append('jac install');
+    commands.append(_shared_first_boot_install());
     script = ' && '.join(commands);
     return {
         "name": "jac-bootstrap",

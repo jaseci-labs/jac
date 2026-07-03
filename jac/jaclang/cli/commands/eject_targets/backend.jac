@@ -342,6 +342,81 @@ def _model_class_name(name: str, suffix: str) -> str {
 }
 
 
+glob _JSON_SAFE_TYPE_NAMES: set = {
+         "str",
+         "int",
+         "float",
+         "bool",
+         "bytes",
+         "complex",
+         "list",
+         "dict",
+         "tuple",
+         "set",
+         "frozenset",
+         "None",
+         "Any",
+         "object",
+         "Optional",
+         "Union",
+         "List",
+         "Dict",
+         "Tuple",
+         "Set",
+         "Sequence",
+         "Mapping",
+         "Iterable",
+         "Literal"
+     };
+
+
+def _safe_model_type(ftype: str) -> str {
+    try {
+        tree = ast.parse(ftype, mode="eval");
+    } except Exception {
+        return "Any";
+    }
+    for sub in ast.walk(tree) {
+        if isinstance(sub, ast.Name) and (sub.id not in _JSON_SAFE_TYPE_NAMES) {
+            return "Any";
+        }
+    }
+    return ftype;
+}
+
+
+def _safe_model_default(default_src: str) -> str {
+    try {
+        expr = ast.parse(default_src, mode="eval").body;
+    } except Exception {
+        return "None";
+    }
+    if isinstance(expr, ast.Call)
+    and isinstance(expr.func, ast.Name)
+    and (expr.func.id == "field") {
+        inner = None;
+        for kw in expr.keywords {
+            if (kw.arg in ["factory", "default_factory"])
+            and isinstance(kw.value, ast.Lambda) {
+                inner = kw.value.body;
+            } elif kw.arg == "default" {
+                inner = kw.value;
+            }
+        }
+        if inner is None {
+            return "None";
+        }
+        expr = inner;
+    }
+    try {
+        ast.literal_eval(expr);
+    } except Exception {
+        return "None";
+    }
+    return ast.unparse(expr);
+}
+
+
 def _emit_main_py(
     backend_dir: Path,
     project_name: str,
@@ -357,6 +432,9 @@ def _emit_main_py(
         'import inspect',
         'import json',
         'import os',
+        'from typing import '
+        'Any, Dict, Iterable, List, Literal, Mapping, '
+        'Optional, Sequence, Set, Tuple, Union',
         '',
         'from fastapi import FastAPI, Header, HTTPException',
         'from fastapi.middleware.cors import CORSMiddleware',
@@ -545,10 +623,12 @@ def _emit_main_py(
         if w["fields"] {
             for fld in w["fields"] {
                 fname = str(fld["name"]);
-                ftype = str(fld["type"]);
+                ftype = _safe_model_type(str(fld["type"]));
                 if fld["has_default"] {
                     lines.append(
-                        "    " + fname + ": " + ftype + " = " + str(fld["default"])
+                        "    " + fname + ": " + ftype + " = " + _safe_model_default(
+                            str(fld["default"])
+                        )
                     );
                 } else {
                     lines.append("    " + fname + ": " + ftype);
@@ -583,10 +663,12 @@ def _emit_main_py(
         if f["params"] {
             for p in f["params"] {
                 pname = str(p["name"]);
-                ptype = str(p["type"]);
+                ptype = _safe_model_type(str(p["type"]));
                 if p["has_default"] {
                     lines.append(
-                        "    " + pname + ": " + ptype + " = " + str(p["default"])
+                        "    " + pname + ": " + ptype + " = " + _safe_model_default(
+                            str(p["default"])
+                        )
                     );
                 } else {
                     lines.append("    " + pname + ": " + ptype);

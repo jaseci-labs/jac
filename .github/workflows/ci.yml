@@ -158,6 +158,10 @@ jobs:
         run: |
           chmod +x "$PWD/bin/jac"
           echo "$PWD/bin" >> "$GITHUB_PATH"
+      - name: Set up Node.js (ES backend for the equivalence suite)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Set up Zig 0.16.0 (vendor static-musl runtime)
         uses: mlugg/setup-zig@v2
         with:
@@ -177,6 +181,27 @@ jobs:
             echo "## binary compiler-suite result"
             echo '```'
             grep -E '^(FAILED|ERROR)|passed|failed' /tmp/compiler.log | tail -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: Cross-backend equivalence suite (py/es/native congruence)
+        working-directory: jac
+        # The suite's cross-module tests build fixture paths under jac/tests/
+        # from jaclang.__file__, which only resolve in the checkout, not in the
+        # binary's bundled site copy. Run this one step through the checkout's
+        # `[dev] jaclang_source` loop (as k8s-real-e2e does) so the suite
+        # exercises THIS checkout's compiler and harness.
+        env:
+          JAC_NO_DEV_SOURCE: ""
+        run: |
+          set -uxo pipefail
+          WORK="$(mktemp -d)"
+          rc=0
+          HOME="$WORK" JAC_TEST_JOBS=auto jac test jaclang/compiler/tests | tee /tmp/equivalence.log || rc=$?
+          {
+            echo "## binary equivalence-suite result"
+            echo '```'
+            grep -E '^(FAILED|ERROR)|passed|failed' /tmp/equivalence.log | tail -60 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
@@ -1046,17 +1071,16 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
 
-  # Heavy microk8s e2e (~25 min); PR-only when jac core changed, never on push.
-  # Not a required check.
+  # Real-app microservice e2e on kind (not microk8s) so it runs on the fast blacksmith runner, whose minimal kernel lacks the ipset modules microk8s' calico needs. PR-only on core changes; not a required check.
   k8s-real-e2e:
-    name: microk8s real-app smoke
+    name: microservice e2e (k8s)
     needs: changes
     if: >-
       github.event_name != 'push' &&
       (github.event_name != 'pull_request' || needs.changes.outputs.core == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 40
     env:
       # This job overlays the checkout's jaclang onto the downloaded dev binary
       # via `[dev] jaclang_source`, so the workflow-level opt-out must be unset.
@@ -1098,25 +1122,35 @@ jobs:
             "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
             --global
 
-      - name: Set up microk8s
+      - name: Set up kind cluster
+        # Single node labelled ingress-ready + host 80/443 mapped so ingress-nginx's kind provider can bind them.
         run: |
-          sudo snap install microk8s --classic --channel=1.30/stable
-          sudo microk8s status --wait-ready --timeout 180
-          sudo microk8s enable dns:8.8.8.8,1.1.1.1
-          # hostpath-storage provides the default StorageClass; without it the
-          # bundle PVC never binds and the loader pod hangs Pending.
-          sudo microk8s enable hostpath-storage
-          sudo microk8s status --wait-ready --timeout 180
-          sudo usermod -aG microk8s "$USER"
-          mkdir -p "$HOME/.kube"
-          sudo microk8s config | sudo tee "$HOME/.kube/config" >/dev/null
-          sudo chown "$USER" "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
-          kubectl -n kube-system set env daemonset/calico-node IP_AUTODETECTION_METHOD=can-reach=8.8.8.8
-          kubectl -n kube-system rollout restart daemonset/calico-node
-          kubectl -n kube-system rollout status daemonset/calico-node --timeout=240s || true
-          kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=calico-node --timeout=240s || echo "WARN: calico-node not Ready"
-          kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=kube-dns --timeout=120s || echo "WARN: coredns not Ready"
+          # Fetch kind + kubectl and verify their published SHA256 before installing with sudo.
+          curl -fsSL -o ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64
+          curl -fsSL -o ./kind.sha256 https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64.sha256sum
+          echo "$(cut -d' ' -f1 ./kind.sha256)  ./kind" | sha256sum -c -
+          chmod +x ./kind && sudo mv ./kind /usr/local/bin/kind
+          curl -fsSL -o kubectl https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl
+          curl -fsSL -o kubectl.sha256 https://dl.k8s.io/release/v1.30.0/bin/linux/amd64/kubectl.sha256
+          echo "$(cat kubectl.sha256)  kubectl" | sha256sum -c -
+          sudo install kubectl /usr/local/bin/kubectl
+          cat > /tmp/kind.yaml <<'EOF'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+            - role: control-plane
+              kubeadmConfigPatches:
+                - |
+                  kind: InitConfiguration
+                  nodeRegistration:
+                    kubeletExtraArgs:
+                      node-labels: "ingress-ready=true"
+              extraPortMappings:
+                - { containerPort: 80, hostPort: 80, protocol: TCP }
+                - { containerPort: 443, hostPort: 443, protocol: TCP }
+          EOF
+          kind create cluster --name jac --config /tmp/kind.yaml --wait 150s
+          kubectl get nodes -o wide
 
       - name: Verify pod DNS + egress (fail fast)
         run: |
@@ -1133,18 +1167,19 @@ jobs:
           kubectl logs netcheck
           kubectl delete pod netcheck --ignore-not-found
 
-      - name: Pre-pull + enable addons (best-effort)
+      - name: Deploy ingress-nginx + metrics-server (kind, best-effort)
         continue-on-error: true
         run: |
-          for img in registry.k8s.io/metrics-server/metrics-server:v0.7.2 \
-                     registry.k8s.io/ingress-nginx/controller:v1.10.1; do
-            for _ in 1 2 3; do sudo microk8s ctr images pull "$img" && break; sleep 5; done
-          done
-          sudo microk8s enable metrics-server || echo "WARN: metrics-server enable failed"
-          sudo microk8s enable ingress || echo "WARN: ingress enable failed"
-          kubectl wait --namespace ingress --for=condition=ready pod \
-              --selector=name=nginx-ingress-microk8s --timeout=180s \
-              || echo "WARN: ingress controller not ready; K10 path will skip"
+          # ingress-nginx kind provider binds hostPort 80/443, exposed at 127.0.0.1 for the e2e's ingress probe.
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.5/deploy/static/provider/kind/deploy.yaml
+          kubectl wait --namespace ingress-nginx --for=condition=ready pod \
+              --selector=app.kubernetes.io/component=controller --timeout=180s \
+              || echo "WARN: ingress controller not ready; ingress path will skip"
+          # metrics-server for HPA; kind's kubelet serves a self-signed cert.
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+          kubectl -n kube-system patch deployment metrics-server --type=json \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' \
+            || echo "WARN: metrics-server patch failed"
 
       - name: Show cluster info
         run: |
@@ -1155,7 +1190,7 @@ jobs:
 
       - name: Run K8s microservice real-app e2e
         env:
-          CLUSTER_TYPE: microk8s
+          CLUSTER_TYPE: kind
         run: |
           bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
               jac/jaclang/scale/tests/fixtures/k8s_e2e
@@ -1185,7 +1220,7 @@ jobs:
           done
           echo "=== ingress status ==="; kubectl describe ingress -n "${NS}" || true
           echo "=== ingress controller logs ==="
-          kubectl logs -n ingress -l name=nginx-ingress-microk8s --tail=50 || true
+          kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50 || true
 
   installer-test:
     needs: changes

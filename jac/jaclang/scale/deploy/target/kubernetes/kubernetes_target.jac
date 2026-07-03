@@ -36,7 +36,8 @@ import from jaclang.scale._optdeps.optional_deps { require_optional }
 import from jaclang.scale._optdeps.kubernetes {
     client,
     config as k8s_cluster_config,
-    ApiException
+    ApiException,
+    ConfigException
 }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
@@ -177,11 +178,16 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def _build_runtime_setup_command(app_config: AppConfig) -> list[str] {
+        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+            build_service_apt_prefix
+        }
+        apt_prefix = build_service_apt_prefix(self.k8s_config);
         commands = [
             f"cd {self.k8s_config.app_mount_path}",
             f"jac start {app_config.file_name}"
         ];
-        return ['bash', '-c', ' && '.join(commands)];
+        script = ' && '.join(commands);
+        return ['bash', '-c', apt_prefix + script];
     }
 
     def _build_container_config(
@@ -1011,7 +1017,10 @@ obj KubernetesTarget(DeploymentTarget) {
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
-                app_config.code_folder
+                app_config.code_folder,
+                provisioned_database=(
+                    "mongo" if self.k8s_config.mongodb_enabled else ""
+                )
             );
             ensure_pvc_exists(
                 core_v1,

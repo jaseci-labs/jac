@@ -1,3 +1,7 @@
+def _isNil(x: any) -> bool {
+    return x is None or x is undefined;
+}
+
 impl __jacWirePlatformAdapters -> None {
     globalThis.__jacGetRenderer__ = __jacGetRenderer;
     globalThis.__jacGetApiBaseUrl__ = __getApiBaseUrl;
@@ -31,50 +35,27 @@ impl __jacGetRenderer -> any {
 }
 
 impl __jacNativeCreate(tag: any, props: dict = {}, children: any = []) -> JsxElement {
-    if tag == None {
+    if tag is None {
         tag = React.Fragment;
     }
-    childrenArray = [];
-    if children != None {
-        if Array.isArray(children) {
-            childrenArray = children;
-        } else {
-            childrenArray = [children];
-        }
-    }
-    flat = [];
-    for child in childrenArray {
-        if child == None or child == undefined {
-            continue;
-        }
-        flat.append(child);
-    }
-    if typeof(tag) != "string" {
-        args = [tag, props];
-        for child in flat {
-            args.append(child);
-        }
-        return React.createElement.apply(React, args);
+    flat = [
+        c
+        for c in _toChildrenArray(children)
+        if not _isNil(c)
+    ];
+    if not isinstance(tag, str) {
+        return React.createElement(tag, props, *flat);
     }
     adapted = _adaptProps(tag, props);
-    if _VIEW_TAGS.includes(tag) {
-        args = [RNView, adapted];
-        for child in flat {
-            args.append(child);
-        }
-        return React.createElement.apply(React, args);
+    if tag in _VIEW_TAGS {
+        return React.createElement(RNView, adapted, *flat);
     }
-    if _TEXT_TAGS.includes(tag) {
-        args = [RNText, adapted];
-        for child in flat {
-            args.append(child);
-        }
-        return React.createElement.apply(React, args);
+    if tag in _TEXT_TAGS {
+        return React.createElement(RNText, adapted, *flat);
     }
     if tag == "button" {
-        text_props = {"style": _textStyleFrom(adapted["style"])};
-        textChild = React.createElement.apply(
-            React, _prepend_args(RNText, text_props, flat)
+        textChild = React.createElement(
+            RNText, {"style": _textStyleFrom(adapted["style"])}, *flat
         );
         return React.createElement(RNPressable, adapted, textChild);
     }
@@ -90,7 +71,7 @@ impl __jacNativeCreate(tag: any, props: dict = {}, children: any = []) -> JsxEle
     if tag == "a" {
         return _makeNativeLink(adapted, flat);
     }
-    if not _UNMAPPED_WARNED[tag] {
+    if tag not in _UNMAPPED_WARNED {
         _UNMAPPED_WARNED[tag] = True;
         console.warn(
             f"[jac-native-runtime] Unmapped HTML tag <{tag}>. Rendering as "
@@ -105,16 +86,12 @@ impl __jacNativeCreate(tag: any, props: dict = {}, children: any = []) -> JsxEle
             "borderColor": "red",
             "borderStyle": "dashed"
         };
-        debug_adapted = Object.assign({}, adapted);
+        debug_adapted = {** adapted};
         debug_adapted["style"] = [unmapped_style, existing_style]
             if existing_style
             else unmapped_style;
     }
-    args = [RNView, debug_adapted];
-    for child in flat {
-        args.append(child);
-    }
-    return React.createElement.apply(React, args);
+    return React.createElement(RNView, debug_adapted, *flat);
 }
 
 impl _adaptProps(tag: str, props: dict) -> dict {
@@ -122,16 +99,12 @@ impl _adaptProps(tag: str, props: dict) -> dict {
         return {};
     }
     out = {};
-    keys = Object.keys(props);
-    for key in keys {
-        value = props[key];
-        if value == None or value == undefined {
+    for (key, value) in props.items() {
+        if _isNil(value) {
             continue;
         }
         if key == "class" or key == "className" {
             out["accessibilityLabel"] = str(value);
-        } elif key == "style" {
-            out["style"] = value;
         } elif key == "onClick" {
             out["onPress"] = value;
         } elif key == "onChange" {
@@ -139,15 +112,7 @@ impl _adaptProps(tag: str, props: dict) -> dict {
             out["onChangeText"] = lambda text: any { user_on_change(
                 {"target": {"value": text}}
             ); };
-        } elif key == "value"
-        or key == "placeholder"
-        or key == "editable"
-        or key == "multiline"
-        or key == "secureTextEntry"
-        or key == "key"
-        or key == "ref" {
-            out[key] = value;
-        } elif key.startsWith("data-") or key.startsWith("aria-") {
+        } elif key.startswith("data-") or key.startswith("aria-") {
             continue;
         } else {
             out[key] = value;
@@ -158,7 +123,7 @@ impl _adaptProps(tag: str, props: dict) -> dict {
 
 impl _textStyleFrom(style: any) -> dict {
     out = {};
-    if style == None or style == undefined {
+    if _isNil(style) {
         return out;
     }
     text_keys = [
@@ -173,14 +138,14 @@ impl _textStyleFrom(style: any) -> dict {
         "textDecorationLine",
         "textTransform"
     ];
-    sources = style if Array.isArray(style) else [style];
+    sources = style if isinstance(style, list) else [style];
     for src in sources {
-        if src == None or src == undefined {
+        if _isNil(src) {
             continue;
         }
         for key in text_keys {
             value = src[key];
-            if value != None and value != undefined {
+            if not _isNil(value) {
                 out[key] = value;
             }
         }
@@ -201,22 +166,22 @@ impl _isAbsoluteImageUri(src: str) -> bool {
 }
 
 impl _adaptImageProps(props: dict) -> dict {
-    out = Object.assign({}, props or {});
+    out = {** (props or {})};
     src = out["src"] if out["src"] else None;
     if out["alt"] and not out["accessibilityLabel"] {
         out["accessibilityLabel"] = str(out["alt"]);
     }
-    if src != None and out["source"] == None {
+    if src is not None and out["source"] is None {
         if typeof(src) == "number" {
             out["source"] = src;
         } else {
             uri = str(src);
             asset_map = globalThis.__JAC_RN_ASSET_MAP__ or {};
             mapped_asset = asset_map[uri] if asset_map else None;
-            if mapped_asset != None {
+            if mapped_asset is not None {
                 out["source"] = mapped_asset;
             } elif uri.startswith("__jac_rn_asset__:") {
-                if not _RELATIVE_IMG_SRC_WARNED[uri] {
+                if uri not in _RELATIVE_IMG_SRC_WARNED {
                     _RELATIVE_IMG_SRC_WARNED[uri] = True;
                     console.warn(
                         "[jac-native-runtime] Missing Metro asset mapping for token " + str(
@@ -232,7 +197,7 @@ impl _adaptImageProps(props: dict) -> dict {
                 }
                 out["source"] = {"uri": uri};
             } elif not _isAbsoluteImageUri(uri) {
-                if not _RELATIVE_IMG_SRC_WARNED[uri] {
+                if uri not in _RELATIVE_IMG_SRC_WARNED {
                     _RELATIVE_IMG_SRC_WARNED[uri] = True;
                     console.warn(
                         "[jac-native-runtime] Relative <img src> path " + str(uri) + " cannot be bundled reliably on React Native. " + "Use imported assets, /static/... URLs, absolute URLs, " + "or pass source={{uri: ...}}."
@@ -244,28 +209,20 @@ impl _adaptImageProps(props: dict) -> dict {
             }
         }
     }
-    if out["src"] != None {
-        Reflect.deleteProperty(out, "src");
+    if out["src"] is not None {
+        out.pop("src", None);
     }
-    if out["alt"] != None {
-        Reflect.deleteProperty(out, "alt");
+    if out["alt"] is not None {
+        out.pop("alt", None);
     }
     return out;
 }
 
-impl _prepend_args(comp: any, props: any, children: list) -> list {
-    args = [comp, props];
-    for child in children {
-        args.append(child);
-    }
-    return args;
-}
-
 impl _makeNativeLink(props: dict, children: list) -> JsxElement {
     href = props["href"] if props["href"] else None;
-    rest = Object.assign({}, props);
+    rest = {** props};
     if rest["href"] {
-        Reflect.deleteProperty(rest, "href");
+        rest.pop("href", None);
     }
     if href {
         rest["onPress"] = lambda { if href.startswith("http://")
@@ -279,18 +236,14 @@ impl _makeNativeLink(props: dict, children: list) -> JsxElement {
             navigate(href);
         } };
     }
-    args = [RNText, rest];
-    for child in children {
-        args.append(child);
-    }
-    return React.createElement.apply(React, args);
+    return React.createElement(RNText, rest, *children);
 }
 
 impl _toChildrenArray(children: any) -> list {
-    if children == None or children == undefined {
+    if _isNil(children) {
         return [];
     }
-    if Array.isArray(children) {
+    if isinstance(children, list) {
         return children;
     }
     return [children];
@@ -330,13 +283,11 @@ impl _splitRouteParts(path: str) -> list[str] {
     if text == "/" {
         return [];
     }
-    parts = [];
-    for part in text.split("/") {
-        if part != "" {
-            parts.append(part);
-        }
-    }
-    return parts;
+    return [
+        part
+        for part in text.split("/")
+        if part != ""
+    ];
 }
 
 impl _buildRouteName(path: str) -> str {
@@ -348,17 +299,15 @@ impl _buildRouteName(path: str) -> str {
     return normalized[1:].replace(":", "$");
 }
 
-impl _cacheNativeRoutes(route_defs: list) {
-    slim = [];
-    for route in route_defs {
-        slim.append({"name": route["name"], "path": route["path"]});
-    }
-    globalThis.__jacNativeRouteDefs__ = slim;
+impl _cacheNativeRoutes(route_defs: list[RouteDef]) {
+    globalThis.__jacNativeRouteDefs__ = [
+        {"name": route.name, "path": route.path} for route in route_defs
+    ];
 }
 
 impl _getNativeRoutes -> list {
     routes = globalThis.__jacNativeRouteDefs__;
-    if routes and Array.isArray(routes) {
+    if routes and isinstance(routes, list) {
         return routes;
     }
     return [];
@@ -384,17 +333,17 @@ impl _matchRoutePattern(pattern_path: str, actual_path: str) -> (dict | None) {
     return params;
 }
 
-impl _lookupRouteByPath(path: str) -> (dict | None) {
+impl _lookupRouteByPath(path: str) -> (RouteMatch | None) {
     normalized = _normalizeRoutePath(path);
     for route in _getNativeRoutes() {
         if route["path"] == normalized {
-            return {"name": route["name"], "path": route["path"], "params": {}};
+            return RouteMatch(name=route["name"], path=route["path"]);
         }
     }
     for route in _getNativeRoutes() {
         params = _matchRoutePattern(route["path"], normalized);
         if params is not None {
-            return {"name": route["name"], "path": route["path"], "params": params};
+            return RouteMatch(name=route["name"], path=route["path"], params=params);
         }
     }
     return None;
@@ -415,7 +364,7 @@ impl _hydratePath(pattern_path: str, params: any) -> str {
     for part in parts {
         if part.startswith(":") {
             key = part[1:];
-            value = params[key] if params and params[key] != None else "";
+            value = params[key] if params and params[key] is not None else "";
             hydrated.append(encodeURIComponent(str(value)));
         } else {
             hydrated.append(part);
@@ -425,21 +374,18 @@ impl _hydratePath(pattern_path: str, params: any) -> str {
 }
 
 impl _stripMetaParams(params: any) -> dict {
-    result = {};
     if not params {
-        return result;
+        return {};
     }
-    for key in Object.keys(params) {
-        if key.startswith("__jac") {
-            continue;
-        }
-        result[key] = params[key];
-    }
-    return result;
+    return {
+        key: value
+        for (key, value) in params.items()
+        if not key.startswith("__jac")
+    };
 }
 
 impl _performNavigation(nav: any, target: any, options: dict = {}) -> None {
-    if nav == None {
+    if nav is None {
         console.warn("[jac-native-runtime] navigation is unavailable.");
         return;
     }
@@ -459,12 +405,12 @@ impl _performNavigation(nav: any, target: any, options: dict = {}) -> None {
     normalized = to;
     query = "";
     fragment = "";
-    hash_idx = normalized.indexOf("#");
+    hash_idx = normalized.find("#");
     if hash_idx >= 0 {
         fragment = normalized[hash_idx + 1:];
         normalized = normalized[:hash_idx];
     }
-    q_idx = normalized.indexOf("?");
+    q_idx = normalized.find("?");
     if q_idx >= 0 {
         query = normalized[q_idx + 1:];
         normalized = normalized[:q_idx];
@@ -477,32 +423,29 @@ impl _performNavigation(nav: any, target: any, options: dict = {}) -> None {
         );
         return;
     }
-    params = Object.assign({}, route_match["params"] or {});
+    params = {** (route_match.params or {})};
     if query != "" {
         params["__jacSearch"] = "?" + query;
     }
     if fragment != "" {
         params["__jacHash"] = "#" + fragment;
     }
-    if options and options["state"] != None {
+    if options and options["state"] is not None {
         params["__jacState"] = options["state"];
     }
     if options and options["replace"] {
         nav.dispatch(
             JacCommonActions.reset(
-                {
-                    "index": 0,
-                    "routes": [{"name": route_match["name"], "params": params}]
-                }
+                {"index": 0, "routes": [{"name": route_match.name, "params": params}]}
             )
         );
         return;
     }
-    nav.navigate(route_match["name"], params);
+    nav.navigate(route_match.name, params);
 }
 
 impl _collectNativeRoutes(
-    children: any, parent_path: str, wrappers: list, out_routes: list
+    children: any, parent_path: str, wrappers: list, out_routes: list[RouteDef]
 ) {
     for child in _toChildrenArray(children) {
         if not React.isValidElement(child) {
@@ -515,20 +458,20 @@ impl _collectNativeRoutes(
         route_path = str(props.path) if props.path else "";
         route_element = props.element;
         full_path = _joinRoutePath(parent_path, route_path);
-        if route_path != "" and route_element != None {
+        if route_path != "" and route_element is not None {
             out_routes.append(
-                {
-                    "name": _buildRouteName(full_path),
-                    "path": full_path,
-                    "element": route_element,
-                    "wrappers": wrappers
-                }
+                RouteDef(
+                    name=_buildRouteName(full_path),
+                    path=full_path,
+                    element=route_element,
+                    wrappers=wrappers
+                )
             );
         }
         next_wrappers = wrappers;
-        if route_element != None and props.children {
+        if route_element is not None and props.children {
             next_wrappers = wrappers + [route_element];
-        } elif route_element != None and route_path == "" {
+        } elif route_element is not None and route_path == "" {
             next_wrappers = wrappers + [route_element];
         }
         next_parent = full_path if route_path != "" else parent_path;
@@ -540,11 +483,9 @@ impl _collectNativeRoutes(
     }
 }
 
-impl _makeNativeRouteScreen(route: dict) -> any {
-    wrappers = route["wrappers"] if route["wrappers"] else [];
-    element = route["element"]
-        if route["element"]
-        else React.createElement(RNView, None);
+impl _makeNativeRouteScreen(route: RouteDef) -> any {
+    wrappers = route.wrappers or [];
+    element = route.element or React.createElement(RNView, None);
     return lambda -> JsxElement {
         content = element;
         idx = len(wrappers) - 1;
@@ -580,7 +521,7 @@ impl __nativeRouter(props: dict = {}) -> JsxElement {
 impl __nativeRoutes(props: dict = {}) -> JsxElement {
     routes = React.useMemo(
         lambda -> list {
-            out = [];
+            out: list[RouteDef] = [];
             _collectNativeRoutes(props.children, "/", [], out);
             return out;
         },
@@ -589,22 +530,16 @@ impl __nativeRoutes(props: dict = {}) -> JsxElement {
     React.useEffect(lambda { _cacheNativeRoutes(routes); }, [routes]);
 
     screens = React.useMemo(
-        lambda -> list {
-            out = [];
-            for route in routes {
-                out.append(
-                    React.createElement(
-                        _JAC_NATIVE_STACK.Screen,
-                        {
-                            "key": route["name"],
-                            "name": route["name"],
-                            "component": _makeNativeRouteScreen(route)
-                        }
-                    )
-                );
-            }
-            return out;
-        },
+        lambda -> list { return [
+            React.createElement(
+                _JAC_NATIVE_STACK.Screen,
+                {
+                    "key": route.name,
+                    "name": route.name,
+                    "component": _makeNativeRouteScreen(route)
+                }
+            ) for route in routes
+        ]; },
         [routes]
     );
     if len(routes) == 0 {
@@ -618,28 +553,26 @@ impl __nativeRoutes(props: dict = {}) -> JsxElement {
             )
         );
     }
-    args = [_JAC_NATIVE_STACK.Navigator, {"initialRouteName": routes[0]["name"]}];
-    for screen in screens {
-        args.append(screen);
-    }
-    return React.createElement.apply(React, args);
+    return React.createElement(
+        _JAC_NATIVE_STACK.Navigator, {"initialRouteName": routes[0].name}, *screens
+    );
 }
 
-impl __nativeRoute(props: dict = {}) -> JsxElement {
+impl __nativeRoute(props: dict = {}) -> (JsxElement | None) {
     return None;
 }
 
 impl __nativeLink(props: dict = {}) -> JsxElement {
-    to = props.to or (props.href or "/");
-    rest = Object.assign({}, props);
+    to = props.get("to", None) or (props.get("href", None) or "/");
+    rest = {** props};
     if rest["to"] {
-        Reflect.deleteProperty(rest, "to");
+        rest.pop("to", None);
     }
     if rest["href"] {
-        Reflect.deleteProperty(rest, "href");
+        rest.pop("href", None);
     }
     if rest["replace"] {
-        Reflect.deleteProperty(rest, "replace");
+        rest.pop("replace", None);
     }
     user_press = rest["onPress"] if rest["onPress"] else None;
     nav_fn = useNavigate();
@@ -647,28 +580,31 @@ impl __nativeLink(props: dict = {}) -> JsxElement {
         if user_press {
             user_press();
         }
-        nav_fn(to, {"replace": props.replace == True});
+        nav_fn(to, {"replace": props.get("replace", None) == True});
     };
-    children = _toChildrenArray(props.children or to);
+    children = _toChildrenArray(props.get("children", None) or to);
 
-    label = React.createElement.apply(
-        React, _prepend_args(RNText, {"style": _textStyleFrom(rest["style"])}, children)
+    label = React.createElement(
+        RNText, {"style": _textStyleFrom(rest["style"])}, *children
     );
     return React.createElement(RNPressable, rest, label);
 }
 
-impl __nativeNavigate(props: dict = {}) -> JsxElement {
-    target = props.to if props and props.to else "/";
-    should_replace = props.replace == True if props else False;
+impl __nativeNavigate(props: dict = {}) -> (JsxElement | None) {
+    opts = props or {};
+    target = opts.get("to", None) or "/";
+    should_replace = opts.get("replace", None) == True;
     nav_fn = useNavigate();
     reactUseEffect(
-        lambda { nav_fn(target, {"replace": should_replace, "state": props.state}); },
+        lambda { nav_fn(
+            target, {"replace": should_replace, "state": opts.get("state", None)}
+        ); },
         [target, should_replace]
     );
     return None;
 }
 
-impl __nativeOutlet(props: dict = {}) -> JsxElement {
+impl __nativeOutlet(props: dict = {}) -> (JsxElement | None) {
     return React.useContext(_JAC_NATIVE_OUTLET_CONTEXT);
 }
 
@@ -680,9 +616,9 @@ impl useRouter -> dict {
         "navigate": nav_fn,
         "location": location,
         "params": params,
-        "pathname": location.pathname,
-        "search": location.search,
-        "hash": location.hash
+        "pathname": location["pathname"],
+        "search": location["search"],
+        "hash": location["hash"]
     };
 }
 
@@ -712,7 +648,7 @@ impl useLocation -> dict {
     if params and params["__jacHash"] {
         hash = str(params["__jacHash"]);
     }
-    if params and params["__jacState"] != None {
+    if params and params["__jacState"] is not None {
         state = params["__jacState"];
     }
     return {"pathname": pathname, "search": search, "hash": hash, "state": state};
@@ -727,7 +663,7 @@ impl useParams -> dict {
 impl navigate(path: str) -> None {
     nav_ref = globalThis.__jacNativeNavigationRef__;
     nav = nav_ref.current if nav_ref and nav_ref.current else None;
-    if nav == None {
+    if nav is None {
         globalThis.__jacPendingNavigation__ = path;
         return;
     }
@@ -783,7 +719,7 @@ impl __setLocalStorage(key: str, value: str) -> None {
 }
 
 impl __removeLocalStorage(key: str) -> None {
-    Reflect.deleteProperty(_nativeStorageCache(), key);
+    _nativeStorageCache().pop(key, None);
     SecureStore.deleteItemAsync(key).catch(
         lambda e: any { console.warn("SecureStore.deleteItemAsync failed", e); }
     );
@@ -801,7 +737,7 @@ impl __setLocalStorageAsync(key: str, value: str) -> None {
 }
 
 impl __removeLocalStorageAsync(key: str) -> None {
-    Reflect.deleteProperty(_nativeStorageCache(), key);
+    _nativeStorageCache().pop(key, None);
     await SecureStore.deleteItemAsync(key);
 }
 
@@ -848,7 +784,7 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
     return React.createElement(__nativeNavigate, {"to": redirect, "replace": True});
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
+impl ErrorFallback(error: any, resetErrorBoundary: any) -> JsxElement {
     err_obj = error.error if error and error.error else error;
     msg = err_obj.message if err_obj and err_obj.message else str(err_obj);
     reset_fn = error.resetErrorBoundary
@@ -944,213 +880,248 @@ def _getEnumOptions(field_schema: any) -> list {
     return [];
 }
 
+def _setFormField(form: any, field_name: str, value: any) {
+    form.setValue(
+        field_name,
+        value,
+        {"shouldDirty": True, "shouldTouch": True, "shouldValidate": True}
+    );
+}
+
+def _fieldErrorMessage(errors: any, field_name: str) -> str {
+    err = errors[field_name] if errors and errors[field_name] else None;
+    if not err {
+        return "";
+    }
+    if err.message {
+        return str(err.message);
+    }
+    return "Invalid value";
+}
+
+def _renderSelectField(
+    form: any, field_name: str, selected_value: str, options: list, placeholder: str
+) -> JsxElement {
+    option_children = [];
+    if placeholder and selected_value == "" {
+        option_children.append(
+            React.createElement(
+                RNText,
+                {
+                    "key": "__placeholder__",
+                    "style": {
+                        "marginBottom": 8,
+                        "color": "#6b7280",
+                        "fontStyle": "italic"
+                    }
+                },
+                placeholder
+            )
+        );
+    }
+    for opt in options {
+        opt_value = str(opt);
+        is_selected = selected_value == opt_value;
+        option_children.append(
+            React.createElement(
+                RNPressable,
+                {
+                    "key": f"{field_name}:{opt_value}",
+                    "onPress": lambda { _setFormField(form, field_name, opt_value); },
+                    "style": {
+                        "borderWidth": 1,
+                        "borderColor": ("#2563eb" if is_selected else "#d1d5db"),
+                        "paddingVertical": 10,
+                        "paddingHorizontal": 12,
+                        "borderRadius": 6,
+                        "marginBottom": 6,
+                        "backgroundColor": ("#eff6ff" if is_selected else "#ffffff")
+                    }
+                },
+                React.createElement(RNText, {"style": {"color": "#111827"}}, opt_value)
+            )
+        );
+    }
+    return React.createElement(RNView, {"style": {"marginTop": 2}}, *option_children);
+}
+
+def _renderRadioField(
+    form: any, field_name: str, selected_value: str, options: list
+) -> JsxElement {
+    option_children = [];
+    for opt in options {
+        opt_value = str(opt);
+        is_selected = selected_value == opt_value;
+        option_children.append(
+            React.createElement(
+                RNPressable,
+                {
+                    "key": f"{field_name}:{opt_value}",
+                    "onPress": lambda { _setFormField(form, field_name, opt_value); },
+                    "style": {
+                        "flexDirection": "row",
+                        "alignItems": "center",
+                        "paddingVertical": 8
+                    }
+                },
+                React.createElement(
+                    RNText,
+                    {
+                        "style": {
+                            "fontSize": 16,
+                            "color": "#2563eb" if is_selected else "#9ca3af",
+                            "marginRight": 8
+                        }
+                    },
+                    "◉" if is_selected else "○"
+                ),
+                React.createElement(RNText, {"style": {"color": "#111827"}}, opt_value)
+            )
+        );
+    }
+    return React.createElement(RNView, {"style": {"marginTop": 2}}, *option_children);
+}
+
+def _renderTextField(
+    field: any,
+    placeholder: str,
+    value: str,
+    on_change: any,
+    secure: bool,
+    has_error: bool
+) -> JsxElement {
+    return React.createElement(
+        RNTextInput,
+        {
+            "placeholder": placeholder,
+            "value": value,
+            "onChangeText": on_change,
+            "onBlur": field.onBlur,
+            "secureTextEntry": secure,
+            "style": {
+                "borderWidth": 1,
+                "borderColor": "#ef4444" if has_error else "#e5e7eb",
+                "padding": 10,
+                "borderRadius": 6,
+                "backgroundColor": "#ffffff",
+                "flex": 1
+            }
+        }
+    );
+}
+
+def _renderPasswordRow(
+    input_row: JsxElement, is_visible: bool, on_toggle: any
+) -> JsxElement {
+    toggle = React.createElement(
+        RNPressable,
+        {
+            "onPress": on_toggle,
+            "style": {"marginLeft": 8, "paddingVertical": 8, "paddingHorizontal": 10}
+        },
+        React.createElement(
+            RNText,
+            {"style": {"color": "#2563eb", "fontWeight": "600"}},
+            "Hide" if is_visible else "Show"
+        )
+    );
+    return React.createElement(
+        RNView,
+        {"style": {"flexDirection": "row", "alignItems": "center"}},
+        input_row,
+        toggle
+    );
+}
+
+def _renderSubmitButton(
+    is_submitting: bool, is_dirty: bool, submit_label: str, on_press: any
+) -> JsxElement {
+    return React.createElement(
+        RNPressable,
+        {
+            "onPress": on_press,
+            "disabled": is_submitting or not is_dirty,
+            "style": {
+                "backgroundColor": "#2563eb"
+                    if (is_dirty and not is_submitting)
+                    else "#9ca3af",
+                "padding": 12,
+                "borderRadius": 6,
+                "marginTop": 12
+            }
+        },
+        React.createElement(
+            RNText,
+            {"style": {"color": "white", "textAlign": "center", "fontWeight": "600"}},
+            "Submitting..." if is_submitting else submit_label
+        )
+    );
+}
+
 impl JacForm(props: dict) -> JsxElement {
-    schema = props.schema;
-    onSubmit = props.onSubmit;
-    validate_mode = props.validateMode || "onTouched";
-    submitLabel = props.submitLabel || "Submit";
-    field_config = props.field_config || {};
+    schema = props["schema"];
+    onSubmit = props["onSubmit"];
+    validate_mode = props.get("validateMode", None) or "onTouched";
+    submitLabel = props.get("submitLabel", None) or "Submit";
+    field_config = props.get("field_config", None) or {};
     actualSchema = schema;
     try {
         if schema._def and schema._def.schema {
             actualSchema = schema._def.schema;
         }
     } except Exception { }
-    schemaShape = actualSchema.shape || {};
+    schemaShape = actualSchema.shape or {};
     fieldNames = Object.keys(schemaShape);
     form = useJacForm(validate_mode, schema);
     errors = form.formState.errors;
     isSubmitting = form.formState.isSubmitting;
     isDirty = form.formState.isDirty;
     [passwordVisible, setPasswordVisible] = useState({});
-    def _fieldErrorMessage(field_name: str) -> str {
-        err = errors[field_name] if errors and errors[field_name] else None;
-        if not err {
-            return "";
-        }
-        if err.message {
-            return str(err.message);
-        }
-        return "Invalid value";
-    }
     fields = [];
     for fieldName in fieldNames {
-        config = field_config[fieldName] if field_config[fieldName] else {};
-        label = config.label or fieldName;
-        placeholder = config.placeholder or "";
-        field_type = str(config.type or config.key or "text");
-        field_schema = schemaShape[fieldName];
-        field_options = _getEnumOptions(field_schema);
+        config = field_config.get(fieldName, None) or {};
+        label = config.get("label", None) or fieldName;
+        placeholder = config.get("placeholder", None) or "";
+        field_type = str(config.get("type", None) or config.get("key", None) or "text");
+        field_options = _getEnumOptions(schemaShape[fieldName]);
         if field_type == "text"
         and ("password" in fieldName.lower() or "pass" in fieldName.lower()) {
             field_type = "password";
         }
         current_value = form.watch(fieldName);
-        selected_value = "" if current_value == None else str(current_value);
-        message = _fieldErrorMessage(fieldName);
+        selected_value = "" if current_value is None else str(current_value);
+        message = _fieldErrorMessage(errors, fieldName);
         is_password = field_type == "password";
         is_visible = passwordVisible[fieldName] == True if passwordVisible else False;
-        secure = is_password and not is_visible;
         field = form.register(fieldName, {});
-        on_change = lambda text: any { form.setValue(
-            fieldName,
-            text,
-            {"shouldDirty": True, "shouldTouch": True, "shouldValidate": True}
-        ); };
         input_row: JsxElement;
         if field_type == "select" {
-            option_children = [];
-            if placeholder and selected_value == "" {
-                option_children.append(
-                    React.createElement(
-                        RNText,
-                        {
-                            "key": "__placeholder__",
-                            "style": {
-                                "marginBottom": 8,
-                                "color": "#6b7280",
-                                "fontStyle": "italic"
-                            }
-                        },
-                        placeholder
-                    )
-                );
-            }
-            for opt in field_options {
-                opt_value = str(opt);
-                is_selected = selected_value == opt_value;
-                option_children.append(
-                    React.createElement(
-                        RNPressable,
-                        {
-                            "key": f"{fieldName}:{opt_value}",
-                            "onPress": lambda { form.setValue(
-                                fieldName,
-                                opt_value,
-                                {
-                                    "shouldDirty": True,
-                                    "shouldTouch": True,
-                                    "shouldValidate": True
-                                }
-                            ); },
-                            "style": {
-                                "borderWidth": 1,
-                                "borderColor": (
-                                    "#2563eb" if is_selected else "#d1d5db"
-                                ),
-                                "paddingVertical": 10,
-                                "paddingHorizontal": 12,
-                                "borderRadius": 6,
-                                "marginBottom": 6,
-                                "backgroundColor": (
-                                    "#eff6ff" if is_selected else "#ffffff"
-                                )
-                            }
-                        },
-                        React.createElement(
-                            RNText, {"style": {"color": "#111827"}}, opt_value
-                        )
-                    )
-                );
-            }
-            args = [RNView, {"style": {"marginTop": 2}}];
-            for child in option_children {
-                args.append(child);
-            }
-            input_row = React.createElement.apply(React, args);
+            input_row = _renderSelectField(
+                form, fieldName, selected_value, field_options, placeholder
+            );
         } elif field_type == "radio" {
-            option_children = [];
-            for opt in field_options {
-                opt_value = str(opt);
-                is_selected = selected_value == opt_value;
-                option_children.append(
-                    React.createElement(
-                        RNPressable,
-                        {
-                            "key": f"{fieldName}:{opt_value}",
-                            "onPress": lambda { form.setValue(
-                                fieldName,
-                                opt_value,
-                                {
-                                    "shouldDirty": True,
-                                    "shouldTouch": True,
-                                    "shouldValidate": True
-                                }
-                            ); },
-                            "style": {
-                                "flexDirection": "row",
-                                "alignItems": "center",
-                                "paddingVertical": 8
-                            }
-                        },
-                        React.createElement(
-                            RNText,
-                            {
-                                "style": {
-                                    "fontSize": 16,
-                                    "color": "#2563eb" if is_selected else "#9ca3af",
-                                    "marginRight": 8
-                                }
-                            },
-                            "◉" if is_selected else "○"
-                        ),
-                        React.createElement(
-                            RNText, {"style": {"color": "#111827"}}, opt_value
-                        )
-                    )
-                );
-            }
-            args = [RNView, {"style": {"marginTop": 2}}];
-            for child in option_children {
-                args.append(child);
-            }
-            input_row = React.createElement.apply(React, args);
+            input_row = _renderRadioField(
+                form, fieldName, selected_value, field_options
+            );
         } else {
-            input_row = React.createElement(
-                RNTextInput,
-                {
-                    "placeholder": placeholder,
-                    "value": selected_value,
-                    "onChangeText": on_change,
-                    "onBlur": field.onBlur,
-                    "secureTextEntry": secure,
-                    "style": {
-                        "borderWidth": 1,
-                        "borderColor": "#e5e7eb" if message == "" else "#ef4444",
-                        "padding": 10,
-                        "borderRadius": 6,
-                        "backgroundColor": "#ffffff",
-                        "flex": 1
-                    }
-                }
+            input_row = _renderTextField(
+                field,
+                placeholder,
+                selected_value,
+                lambda text: any { _setFormField(form, fieldName, text); },
+                is_password and not is_visible,
+                message != ""
             );
         }
         if field_type == "password" {
-            toggle = React.createElement(
-                RNPressable,
-                {
-                    "onPress": lambda {
-                        next_visible = Object.assign({}, passwordVisible);
-                        next_visible[fieldName] = not is_visible;
-                        setPasswordVisible(next_visible);
-                    },
-                    "style": {
-                        "marginLeft": 8,
-                        "paddingVertical": 8,
-                        "paddingHorizontal": 10
-                    }
-                },
-                React.createElement(
-                    RNText,
-                    {"style": {"color": "#2563eb", "fontWeight": "600"}},
-                    "Hide" if is_visible else "Show"
-                )
-            );
-            input_row = React.createElement(
-                RNView,
-                {"style": {"flexDirection": "row", "alignItems": "center"}},
+            input_row = _renderPasswordRow(
                 input_row,
-                toggle
+                is_visible,
+                lambda {
+                    next_visible = {** passwordVisible};
+                    next_visible[fieldName] = not is_visible;
+                    setPasswordVisible(next_visible);
+                }
             );
         }
         error_view = None;
@@ -1173,40 +1144,12 @@ impl JacForm(props: dict) -> JsxElement {
             )
         );
     }
-    submit_handler = lambda { form.handleSubmit(onSubmit)(); };
-    args = [RNView, {"style": {"padding": 12}}];
-    for f in fields {
-        args.append(f);
-    }
-    args.append(
-        React.createElement(
-            RNPressable,
-            {
-                "onPress": submit_handler,
-                "disabled": isSubmitting or not isDirty,
-                "style": {
-                    "backgroundColor": "#2563eb"
-                        if (isDirty and not isSubmitting)
-                        else "#9ca3af",
-                    "padding": 12,
-                    "borderRadius": 6,
-                    "marginTop": 12
-                }
-            },
-            React.createElement(
-                RNText,
-                {
-                    "style": {
-                        "color": "white",
-                        "textAlign": "center",
-                        "fontWeight": "600"
-                    }
-                },
-                "Submitting..." if isSubmitting else submitLabel
-            )
-        )
+    submit_button = _renderSubmitButton(
+        isSubmitting, isDirty, submitLabel, lambda { form.handleSubmit(onSubmit)(); }
     );
-    return React.createElement.apply(React, args);
+    return React.createElement(
+        RNView, {"style": {"padding": 12}}, *(fields + [submit_button])
+    );
 }
 
 impl __jacInstallErrorHandlers -> None {

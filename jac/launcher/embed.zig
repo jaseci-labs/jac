@@ -8,28 +8,33 @@
 //! soname instead. Both now route through here, so "where does the interpreter
 //! come from" has a single source of responsibility.
 //!
-//! What it owns (and nothing more -- no argv, no BOOT_SRC, no worker mode; those
-//! belong to each frontend):
+//! What it owns (and nothing more -- no BOOT_SRC, no worker mode; those belong
+//! to each frontend):
 //!
 //!   1. materialize the trailer payload to `<cache>/rt/<hash16>-<pathhash>/` (runtime.zig),
-//!   2. set the hermetic PYTHONHOME/PYTHONPATH/JAC_* env so a foreign/venv
-//!      interpreter can never be adopted,
-//!   3. dlopen the bundled libpython (RTLD_NOW|GLOBAL) -- GLOBAL so the embedded
+//!   2. dlopen the bundled libpython (RTLD_NOW|GLOBAL) -- GLOBAL so the embedded
 //!      interpreter's own C-extensions resolve against it,
-//!   4. pin the program name to the host binary (pre-Py_Initialize) so getpath
-//!      cannot fall back to a PATH `python3` / venv prefix.
+//!   3. configure + initialize the interpreter via the PEP 741 stable-ABI init
+//!      API (`initInterpreter`): home / module search paths / program name are
+//!      handed to CPython DIRECTLY, never through the process environment, so a
+//!      foreign/venv interpreter can never be adopted AND nothing leaks into
+//!      subprocesses the app spawns (#7047: PYTHONHOME/PYTHONPATH in environ
+//!      killed every python-based child -- `aws` exec-credentials, plain
+//!      `python3`, ...). Only jac-namespaced JAC_* markers go into the env.
 //!
-//! It deliberately does NOT call Py_Initialize: the launcher's worker mode
-//! (Py_BytesMain) forks between dlopen and init, and the desktop host wants to
-//! resolve a few symbols of its own first. Callers drive Py_Initialize via the
-//! resolved symbols. The interpreter is otherwise hermetic and self-contained.
+//! `open` deliberately does NOT initialize: the desktop host wants to resolve a
+//! few symbols of its own between dlopen and init. Callers run `initInterpreter`
+//! (or drive the resolved symbols themselves). The interpreter is fully hermetic:
+//! ambient PYTHON* env vars are ignored (`use_environment=0`) and pass through
+//! to children untouched.
 
 const std = @import("std");
 const builtin = @import("builtin");
 const runtime = @import("runtime.zig");
 const Io = std.Io;
 
-/// libc env mutation (not surfaced by std); must run before Py init reads env.
+/// libc env mutation (not surfaced by std); JAC_* markers only -- interpreter
+/// config must NEVER go through the environment (children inherit it, #7047).
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
 /// Bundled CPython minor version. Must stay in lockstep with payload.zig
@@ -43,23 +48,43 @@ pub const lib_basename = switch (builtin.os.tag) {
     else => "libpython" ++ py_ver ++ ".so",
 };
 
+/// `py_ver` with the dot removed -- names the stdlib zip (python314.zip).
+const py_ver_compact = compact: {
+    var buf: [py_ver.len]u8 = undefined;
+    var n: usize = 0;
+    for (py_ver) |ch| {
+        if (ch != '.') {
+            buf[n] = ch;
+            n += 1;
+        }
+    }
+    const out: [n]u8 = buf[0..n].*;
+    break :compact &out;
+};
+
 // ── CPython C-API entry points resolved via dlsym ───────────────────────────
-// Opaque pointers stand in for wchar_t* so we never need Python.h / CPython
-// struct layouts. Shared so every frontend types its symbols identically.
-pub const Py_Initialize_t = *const fn () callconv(.c) void;
-pub const Py_DecodeLocale_t = *const fn (arg: [*:0]const u8, size: ?*usize) callconv(.c) ?*anyopaque;
-pub const Py_SetProgramName_t = *const fn (name: ?*anyopaque) callconv(.c) void;
-pub const PySys_SetArgvEx_t = *const fn (argc: c_int, argv: ?[*]?*anyopaque, updatepath: c_int) callconv(.c) void;
-pub const PyMem_RawFree_t = *const fn (p: ?*anyopaque) callconv(.c) void;
+// Opaque pointers stand in for CPython structs so we never need Python.h.
+// Shared so every frontend types its symbols identically. Initialization goes
+// through the PEP 741 stable-ABI config API (available since the bundled 3.14):
+// opaque PyInitConfig handle + string-keyed setters, so no struct layouts and
+// no PYTHON* environment variables are ever involved.
 pub const PyRun_SimpleString_t = *const fn (cmd: [*:0]const u8) callconv(.c) c_int;
 pub const Py_FinalizeEx_t = *const fn () callconv(.c) c_int;
-pub const Py_BytesMain_t = *const fn (argc: c_int, argv: [*c][*c]u8) callconv(.c) c_int;
+pub const Py_RunMain_t = *const fn () callconv(.c) c_int;
+pub const PyInitConfig_Create_t = *const fn () callconv(.c) ?*anyopaque;
+pub const PyInitConfig_Free_t = *const fn (cfg: ?*anyopaque) callconv(.c) void;
+pub const PyInitConfig_GetError_t = *const fn (cfg: ?*anyopaque, err: *?[*:0]const u8) callconv(.c) c_int;
+pub const PyInitConfig_SetInt_t = *const fn (cfg: ?*anyopaque, name: [*:0]const u8, value: i64) callconv(.c) c_int;
+pub const PyInitConfig_SetStr_t = *const fn (cfg: ?*anyopaque, name: [*:0]const u8, value: [*:0]const u8) callconv(.c) c_int;
+pub const PyInitConfig_SetStrList_t = *const fn (cfg: ?*anyopaque, name: [*:0]const u8, length: usize, items: [*]const [*:0]const u8) callconv(.c) c_int;
+pub const Py_InitializeFromInitConfig_t = *const fn (cfg: ?*anyopaque) callconv(.c) c_int;
 
 pub const Error = error{
     PathTooLong,
     EnvSetupFailed,
     DlopenFailed,
     MissingSymbol,
+    InitFailed,
 };
 
 const MAX_PATH = Io.Dir.max_path_bytes;
@@ -85,23 +110,117 @@ pub const Embed = struct {
         return self.sym(T, name) orelse Error.MissingSymbol;
     }
 
-    /// Pin the interpreter's program name to `exe_z` (the host binary) BEFORE
-    /// Py_Initialize. Otherwise getpath, unable to recover the embedding host's
-    /// path, searches PATH for `python3` and an activated venv's pyvenv.cfg can
-    /// shift sys.prefix to a foreign environment. PYTHONHOME pins base_prefix, but
-    /// only an explicit program name stops the venv-prefix takeover. The decoded
-    /// string is intentionally not freed -- CPython retains it.
-    pub fn setProgramName(self: *const Embed, exe_z: [*:0]const u8) Error!void {
-        const Py_DecodeLocale = try self.symOrErr(Py_DecodeLocale_t, "Py_DecodeLocale");
-        const Py_SetProgramName = try self.symOrErr(Py_SetProgramName_t, "Py_SetProgramName");
-        const wexe = Py_DecodeLocale(exe_z, null) orelse return Error.EnvSetupFailed;
-        Py_SetProgramName(wexe);
+    /// Configure and initialize the embedded interpreter via PEP 741
+    /// (Py_InitializeFromInitConfig). This is the ONE place the hermetic paths
+    /// (home, stdlib search path) and the program-name pin are established --
+    /// as *config values*, never environment variables, so:
+    ///
+    ///   * getpath can never adopt a PATH `python3` / activated-venv prefix
+    ///     (explicit `program_name` + `home` stop the venv-prefix takeover), and
+    ///   * NOTHING leaks into subprocesses (#7047): the app's children see the
+    ///     exact environment the user launched the host with, including their
+    ///     own PYTHONHOME/PYTHONPATH if they had any.
+    ///
+    /// `use_environment=0` makes hermeticity total: ambient PYTHON* vars cannot
+    /// perturb the bundled runtime either. `opts` carries the per-frontend argv
+    /// split (CLI boot vs `python`-compatible worker mode vs desktop host).
+    pub fn initInterpreter(self: *const Embed, exe_z: [*:0]const u8, opts: InitOpts) Error!void {
+        const Create = try self.symOrErr(PyInitConfig_Create_t, "PyInitConfig_Create");
+        const Free = try self.symOrErr(PyInitConfig_Free_t, "PyInitConfig_Free");
+        const GetError = try self.symOrErr(PyInitConfig_GetError_t, "PyInitConfig_GetError");
+        const SetInt = try self.symOrErr(PyInitConfig_SetInt_t, "PyInitConfig_SetInt");
+        const SetStr = try self.symOrErr(PyInitConfig_SetStr_t, "PyInitConfig_SetStr");
+        const SetStrList = try self.symOrErr(PyInitConfig_SetStrList_t, "PyInitConfig_SetStrList");
+        const InitFromConfig = try self.symOrErr(Py_InitializeFromInitConfig_t, "Py_InitializeFromInitConfig");
+
+        var b_home: [MAX_PATH]u8 = undefined;
+        const pyhome = std.fmt.bufPrintZ(&b_home, "{s}/python", .{self.rt}) catch return Error.PathTooLong;
+        // The FULL module search path, spelled out (with use_environment=0,
+        // getpath ignores `pythonpath_env`, so the env-free way to inject the
+        // bundled site dir is to own the whole list). Same order the env-based
+        // bring-up produced: the jac site first, then the stdlib triplet. The
+        // lib-dynload entry guards pbs flavors that ship stdlib C-extensions
+        // as shared .so.
+        var b_site: [MAX_PATH]u8 = undefined;
+        var b_dyn: [MAX_PATH]u8 = undefined;
+        var b_zip: [MAX_PATH]u8 = undefined;
+        var b_std: [MAX_PATH]u8 = undefined;
+        var b_pkgs: [MAX_PATH]u8 = undefined;
+        const search_paths = [_][*:0]const u8{
+            std.fmt.bufPrintZ(&b_site, "{s}/site", .{self.rt}) catch return Error.PathTooLong,
+            std.fmt.bufPrintZ(&b_dyn, "{s}/python/lib/python" ++ py_ver ++ "/lib-dynload", .{self.rt}) catch return Error.PathTooLong,
+            std.fmt.bufPrintZ(&b_zip, "{s}/python/lib/python" ++ py_ver_compact ++ ".zip", .{self.rt}) catch return Error.PathTooLong,
+            std.fmt.bufPrintZ(&b_std, "{s}/python/lib/python" ++ py_ver, .{self.rt}) catch return Error.PathTooLong,
+            std.fmt.bufPrintZ(&b_pkgs, "{s}/python/lib/python" ++ py_ver ++ "/site-packages", .{self.rt}) catch return Error.PathTooLong,
+        };
+
+        const cfg = Create() orelse return Error.InitFailed;
+        defer Free(cfg);
+        // Check every call as it happens: the config stores only the most
+        // recent error, so accumulating return codes and reporting at the end
+        // could print the wrong failure (or none at all).
+        const check = struct {
+            fn f(get_error: PyInitConfig_GetError_t, c: ?*anyopaque, rc: c_int) Error!void {
+                if (rc == 0) return;
+                var err: ?[*:0]const u8 = null;
+                if (get_error(c, &err) != 0) {
+                    if (err) |msg| std.debug.print("jac (embed): python init failed: {s}\n", .{msg});
+                }
+                return Error.InitFailed;
+            }
+        }.f;
+
+        try check(GetError, cfg, SetStr(cfg, "program_name", exe_z));
+        try check(GetError, cfg, SetStr(cfg, "home", pyhome));
+        try check(GetError, cfg, SetStrList(cfg, "module_search_paths", search_paths.len, &search_paths));
+        // Total hermeticity + no-leak (the point of this API): ignore ambient
+        // PYTHON* entirely; never read/write user site or bytecode caches.
+        try check(GetError, cfg, SetInt(cfg, "use_environment", 0));
+        try check(GetError, cfg, SetInt(cfg, "user_site_directory", 0));
+        try check(GetError, cfg, SetInt(cfg, "write_bytecode", 0));
+        // Force UTF-8 regardless of locale; pin stdio explicitly too -- utf8_mode
+        // alone does not pin stdout/stderr under embedding, so a C/POSIX locale
+        // would crash on non-ASCII output.
+        try check(GetError, cfg, SetInt(cfg, "utf8_mode", 1));
+        try check(GetError, cfg, SetStr(cfg, "stdio_encoding", "utf-8"));
+        // PyInitConfig_Create starts from the *isolated* preset, which also turns
+        // these off; the previous Py_Initialize/Py_BytesMain bring-up had them on
+        // (Ctrl-C -> KeyboardInterrupt, buffered C stdio). Keep that behavior,
+        // and keep sys.flags.isolated=0 as apps observed it before.
+        try check(GetError, cfg, SetInt(cfg, "install_signal_handlers", 1));
+        try check(GetError, cfg, SetInt(cfg, "configure_c_stdio", 1));
+        try check(GetError, cfg, SetInt(cfg, "isolated", 0));
+        if (opts.argv) |argv| {
+            try check(GetError, cfg, SetStrList(cfg, "argv", argv.len, argv.ptr));
+        }
+        // parse_argv=1 == behave like the `python` CLI (worker mode: interpret
+        // -c/-m/script from argv). parse_argv=0 == argv verbatim into sys.argv.
+        // safe_path stays 0 (the isolated preset flips it to 1): worker mode
+        // must keep python's path0 semantics -- '' for -c, cwd for -m -- or
+        // `jac -m <module-in-cwd>` re-spawns break (tests/compiler/
+        // test_importer.jac). The CLI boot never runs Py_RunMain, so no path0
+        // is ever computed there and sys.path stays exactly module_search_paths
+        // (same as the old PySys_SetArgvEx(updatepath=0) boot).
+        try check(GetError, cfg, SetInt(cfg, "parse_argv", @intFromBool(opts.parse_argv)));
+        try check(GetError, cfg, SetInt(cfg, "safe_path", 0));
+
+        try check(GetError, cfg, InitFromConfig(cfg));
     }
 };
 
-/// Materialize the runtime, set the hermetic env, and dlopen the bundled
-/// libpython. Returns a handle the caller drives Py_Initialize / Py_BytesMain
-/// through. Does NOT initialize the interpreter (see the module doc comment).
+/// Frontend-specific initialization knobs for `Embed.initInterpreter`.
+pub const InitOpts = struct {
+    /// Process argv (argv[0] included) to hand the interpreter; null leaves
+    /// CPython's default (`sys.argv == ['']`, the embedded-host convention).
+    argv: ?[]const [*:0]const u8 = null,
+    /// Parse argv like the `python` binary (-c/-m/script...). Worker mode only.
+    parse_argv: bool = false,
+};
+
+/// Materialize the runtime and dlopen the bundled libpython. Returns a handle
+/// the caller initializes via `initInterpreter` (see the module doc comment).
+/// The ONLY env this sets is jac-namespaced (JAC_*); all interpreter
+/// configuration is passed through the init config, never the environment.
 ///
 /// `exe_path` is the running host binary (carries the trailer payload and is the
 /// program-name pin); `exe_z` is the same path NUL-terminated for env/getpath.
@@ -133,26 +252,14 @@ pub fn open(
         rt_out,
     );
 
-    // 2. Hermetic env. PYTHONHOME/PYTHONPATH are load-bearing: without them
-    //    Py_Initialize would adopt a foreign/absent interpreter. The lib-dynload
-    //    entry guards pbs flavors that ship stdlib C-extensions as shared .so.
-    var b_home: [MAX_PATH]u8 = undefined;
-    var b_pp: [2 * MAX_PATH]u8 = undefined;
+    // 2. Env: jac-namespaced markers ONLY. The interpreter's own configuration
+    //    (home, search paths, utf8, ...) goes through initInterpreter's PEP 741
+    //    config so it can never leak into subprocesses (#7047).
     var b_lib: [MAX_PATH]u8 = undefined;
-    const pyhome = std.fmt.bufPrintZ(&b_home, "{s}/python", .{rt}) catch return Error.PathTooLong;
-    const pythonpath = std.fmt.bufPrintZ(&b_pp, "{s}/site:{s}/python/lib/python" ++ py_ver ++ "/lib-dynload", .{ rt, rt }) catch return Error.PathTooLong;
     const libpath = std.fmt.bufPrintZ(&b_lib, "{s}/python/lib/{s}", .{ rt, lib_basename }) catch return Error.PathTooLong;
 
-    if (setenv("PYTHONHOME", pyhome, 1) != 0) return Error.EnvSetupFailed;
-    if (setenv("PYTHONPATH", pythonpath, 1) != 0) return Error.EnvSetupFailed;
-    _ = setenv("PYTHONUTF8", "1", 1);
-    // Force UTF-8 stdio directly: PYTHONUTF8 alone does not pin stdout/stderr
-    // encoding under embedding, so a C/POSIX locale would crash on non-ASCII.
-    _ = setenv("PYTHONIOENCODING", "utf-8", 1);
-    _ = setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
-    _ = setenv("PYTHONNOUSERSITE", "1", 1);
     // Marker so code can tell it runs under the self-contained binary.
-    _ = setenv("JAC_STANDALONE", "1", 1);
+    if (setenv("JAC_STANDALONE", "1", 1) != 0) return Error.EnvSetupFailed;
     // Path to the host binary, consumed by callers (CLI BOOT_SRC) to pin
     // sys.executable so re-spawns come back through the bundled interpreter.
     _ = setenv("JAC_EXECUTABLE", exe_z, 1);
