@@ -28,9 +28,19 @@
 # crossing in-band as None (distinct from a present "").  name_match is the nested
 # case: a reader on OwnedCaptures produces an OwnedMatch — the synthesizer emits
 # OwnedMatch before OwnedCaptures (dependency order) so the child adopt-ctor resolves.
+#
+# The CURSOR + Vec-as-DRAIN verticals then added 4 more surface fns (7 -> 11):
+# Regex.find_iter -> OwnedMatches (a cursor) + OwnedMatches.next -> OwnedMatch|None
+# (a pull-queue; each item a nested share), and Regex.split -> OwnedSplit (a drain) +
+# OwnedSplit.next -> str|None (draining an owned Vec<String>).  Both `next` methods
+# are ordinary Opt(Ref)/Opt(Str) returns — no new na machinery, just more handles +
+# methods — and the topological emit-order already places each product before its
+# producing cursor.  Still 0 skips; proven by owning_conformance.py (22 observations
+# identical na≡CPython, incl. empty streams and empty drain pieces kept distinct
+# from the None that terminates each pull).
 [libjac_bridge_owning_so]
-bridged = 7
-total = 7
+bridged = 11
+total = 11
 
 # regex: the M3 golden-spike surface — Regex.new + is_match (message() is consumed
 # into raised-exception text, not a surface method), 0 skips.

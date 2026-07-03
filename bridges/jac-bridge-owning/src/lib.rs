@@ -1,4 +1,5 @@
-//! Owning-wrapper mechanism demo — M4 Phase B, vertical 1 ("rescues `captures`").
+//! Owning-wrapper mechanism demo — M4 Phase B ("rescues `find`/`captures`,
+//! plus the iterator/cursor and `Vec`-as-drain classes").
 //!
 //! Borrowed returns (`Regex::find`/`captures` borrow the haystack) can't cross
 //! the boundary as-is: the ABI only carries owned, `Send`, lifetime-free values.
@@ -23,6 +24,16 @@
 //! Producers take `&str` and clone internally, so the wrapper owns its haystack
 //! without needing an owned-`String` param at the ABI. `find`/`captures` return
 //! `Option<Wrapper>` — `None` (no match) crosses in-band as a null handle.
+//!
+//! The same owning discipline scales to the two remaining borrowed-return classes,
+//! and both reduce to "one more opaque handle + a pull method" — no new ABI tag:
+//!   * ITERATORS/CURSORS (`Regex::find_iter -> Matches<'r,'h>`): the cursor owns
+//!     the regex and haystack via `Arc`, erases the iterator's lifetimes, and
+//!     exposes `next -> Option<OwnedMatch>` (a pull-queue). Each pulled match
+//!     clones the haystack `Arc`, so it outlives the cursor.
+//!   * `Vec`-AS-DRAIN (`Regex::split -> Split<'h>`): the pieces are copied into an
+//!     owned `Vec<String>` up front (no lifetime survives) and drained via
+//!     `next -> Option<String>`.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -54,6 +65,30 @@ mod bridge_impl {
         _haystack: std::sync::Arc<String>,
     }
 
+    /// Owning CURSOR over `regex::Matches<'r,'h>` — rescues `Regex::find_iter`.
+    /// The iterator borrows BOTH the compiled regex AND the haystack, so the
+    /// cursor owns each via an `Arc` and erases the iterator's two lifetimes to
+    /// `'static`. `next` pulls one match at a time (a pull-queue), each item an
+    /// `OwnedMatch` sharing this cursor's haystack `Arc` — the nested-wrapper
+    /// rule applied to the iterator's items. Field order is borrower(`iter`)-
+    /// before-owners so the iterator drops before the buffers it points into.
+    pub struct OwnedMatches {
+        iter: regex::Matches<'static, 'static>,
+        _re: std::sync::Arc<regex::Regex>,
+        _haystack: std::sync::Arc<String>,
+    }
+
+    /// Owning DRAIN cursor over an eagerly-collected `Vec<String>` — rescues
+    /// `Regex::split`, whose native form yields `&str` slices borrowing the
+    /// haystack. We copy each piece into an owned `String` up front (no
+    /// lifetimes survive), then `next` drains them front-to-back. This is the
+    /// `Vec<T>`-as-drain-cursor shape: an owned collection reduced to a handle +
+    /// a pull method, no new ABI tag needed (`next -> Option<String>`).
+    pub struct OwnedSplit {
+        // Stored reversed so `next` is an O(1) `pop()` while draining front-to-back.
+        items: Vec<String>,
+    }
+
     impl Regex {
         /// Compile `pattern`. Returns STATUS_ERR on invalid syntax.
         pub fn new(pattern: &str) -> Result<Self, String> {
@@ -72,6 +107,18 @@ mod bridge_impl {
         /// Capture groups for the leftmost-first match, or `None`.
         pub fn captures(&self, text: &str) -> Option<OwnedCaptures> {
             OwnedCaptures::wrap(&self.0, text)
+        }
+
+        /// Cursor over every non-overlapping match — rescues `find_iter`. Unlike
+        /// `find` (nullable, single), a cursor is always constructed (an empty
+        /// stream is a live handle whose first `next` is `None`).
+        pub fn find_iter(&self, text: &str) -> OwnedMatches {
+            OwnedMatches::wrap(&self.0, text)
+        }
+
+        /// Drain cursor over the substrings between matches — rescues `split`.
+        pub fn split(&self, text: &str) -> OwnedSplit {
+            OwnedSplit::collect(&self.0, text)
         }
     }
 
@@ -126,6 +173,50 @@ mod bridge_impl {
             Some(OwnedMatch { inner: m, _haystack: std::sync::Arc::clone(&self._haystack) })
         }
     }
+
+    impl OwnedMatches {
+        // Non-`pub` → not bridged: the ouroboros cursor constructor.
+        fn wrap(re: &regex::Regex, text: &str) -> OwnedMatches {
+            let re = std::sync::Arc::new(re.clone());
+            let haystack = std::sync::Arc::new(text.to_owned());
+            // SAFETY: `iter` borrows `*re` and `*haystack`, both owned via `Arc`
+            // stored next to it and never mutated or moved-out for the cursor's
+            // life. Erasing both lifetimes to `'static` is sound (module inv. 1-2);
+            // each yielded item clones the haystack `Arc`, so a match outlives the
+            // cursor (inv. 3). `Matches: Send` is asserted by the generated shims.
+            let iter: regex::Matches<'static, 'static> =
+                unsafe { std::mem::transmute(re.find_iter(haystack.as_str())) };
+            OwnedMatches { iter, _re: re, _haystack: haystack }
+        }
+
+        /// Pull the next match, or `None` once the stream is exhausted. The item
+        /// shares this cursor's haystack `Arc`, so it stays valid after the cursor
+        /// is dropped — the nested-wrapper rule, applied per iteration.
+        #[allow(clippy::should_implement_trait)] // a pull-queue method, not Iterator
+        pub fn next(&mut self) -> Option<OwnedMatch> {
+            // `self.iter` is `Matches<'static,'static>`, so its item is already
+            // `Match<'static>` — no transmute; the Arc clone upholds that lifetime.
+            let m = self.iter.next()?;
+            Some(OwnedMatch { inner: m, _haystack: std::sync::Arc::clone(&self._haystack) })
+        }
+    }
+
+    impl OwnedSplit {
+        // Non-`pub` → not bridged: eagerly copy each &str piece into an owned
+        // String so no haystack lifetime survives, then store reversed for O(1)
+        // front-to-back draining.
+        fn collect(re: &regex::Regex, text: &str) -> OwnedSplit {
+            let mut items: Vec<String> = re.split(text).map(|s| s.to_owned()).collect();
+            items.reverse();
+            OwnedSplit { items }
+        }
+
+        /// Drain the next piece front-to-back, or `None` once exhausted.
+        #[allow(clippy::should_implement_trait)] // a pull-queue method, not Iterator
+        pub fn next(&mut self) -> Option<String> {
+            self.items.pop()
+        }
+    }
 }
 
 // ─── tests ──────────────────────────────────────────────────────────────────
@@ -141,9 +232,12 @@ mod tests {
 
     use super::{
         jac_owning_Regex_new, jac_owning_Regex_find, jac_owning_Regex_captures,
+        jac_owning_Regex_find_iter, jac_owning_Regex_split,
         jac_owning_Regex_drop, jac_owning_OwnedMatch_as_str, jac_owning_OwnedMatch_drop,
         jac_owning_OwnedCaptures_name, jac_owning_OwnedCaptures_name_match,
         jac_owning_OwnedCaptures_drop,
+        jac_owning_OwnedMatches_next, jac_owning_OwnedMatches_drop,
+        jac_owning_OwnedSplit_next, jac_owning_OwnedSplit_drop,
         jac_owning_error_drop, jac_owning_free_buf,
         __jac_bridge_owning_rt::JacBuf,
     };
@@ -326,12 +420,118 @@ mod tests {
         }
     }
 
+    /// Cursor: `find_iter` yields a live handle; `next` pulls each match in order
+    /// and finally `None`. The cursor owns its haystack (built in an inner scope
+    /// that ends before we drain), and a pulled match outlives the cursor drop.
+    #[test]
+    fn find_iter_cursor_pulls_all_matches() {
+        unsafe {
+            let re = compile(r"\d+");
+            let mut ch = 0u64;
+            let mut e = 0u64;
+            {
+                let text = String::from("a1 b22 c333");
+                let st =
+                    jac_owning_Regex_find_iter(re, text.as_ptr(), text.len() as u32, &mut ch, &mut e);
+                assert_eq!(st, STATUS_OK);
+                assert_ne!(ch, 0, "find_iter always yields a live cursor handle");
+            } // haystack dropped — the cursor owns its own Arc copy.
+
+            let expected = ["1", "22", "333"];
+            let mut last_match = 0u64;
+            for want in expected {
+                let mut mh = 0u64;
+                let st = jac_owning_OwnedMatches_next(ch, &mut mh, &mut e);
+                assert_eq!(st, STATUS_OK);
+                assert_ne!(mh, 0, "expected a match handle for {want}");
+
+                let mut buf = MaybeUninit::<JacBuf>::uninit();
+                let mut be = 0u64;
+                let st = jac_owning_OwnedMatch_as_str(mh, buf.as_mut_ptr(), &mut be);
+                assert_eq!(st, STATUS_OK);
+                let buf = buf.assume_init();
+                assert_eq!(read_buf(&buf), want);
+                jac_owning_free_buf(buf);
+
+                if last_match != 0 {
+                    jac_owning_OwnedMatch_drop(last_match);
+                }
+                last_match = mh; // keep the LAST match alive past the cursor drop
+            }
+
+            // Stream exhausted → None (null handle) on OK status, forever.
+            let mut done = 42u64;
+            let st = jac_owning_OwnedMatches_next(ch, &mut done, &mut e);
+            assert_eq!(st, STATUS_OK);
+            assert_eq!(done, 0, "exhausted cursor must yield None (null handle)");
+
+            // Drop the cursor while the last pulled match still lives, then read it.
+            jac_owning_OwnedMatches_drop(ch);
+            let mut buf = MaybeUninit::<JacBuf>::uninit();
+            let mut be = 0u64;
+            let st = jac_owning_OwnedMatch_as_str(last_match, buf.as_mut_ptr(), &mut be);
+            assert_eq!(st, STATUS_OK);
+            let buf = buf.assume_init();
+            assert_eq!(read_buf(&buf), "333", "last match must outlive the cursor");
+            jac_owning_free_buf(buf);
+            jac_owning_OwnedMatch_drop(last_match);
+
+            jac_owning_Regex_drop(re);
+        }
+    }
+
+    /// Drain cursor: `split` collects owned pieces up front; `next` drains them
+    /// front-to-back and then `None`. The pieces are owned Strings, so the drain
+    /// is valid after the original haystack is gone.
+    #[test]
+    fn split_drain_pulls_all_pieces() {
+        unsafe {
+            let re = compile(r",\s*");
+            let mut dh = 0u64;
+            let mut e = 0u64;
+            {
+                let text = String::from("a, bb,ccc, ");
+                let st =
+                    jac_owning_Regex_split(re, text.as_ptr(), text.len() as u32, &mut dh, &mut e);
+                assert_eq!(st, STATUS_OK);
+                assert_ne!(dh, 0);
+            } // haystack dropped — the drain owns copies.
+
+            // split on ",\s*" over "a, bb,ccc, " → ["a", "bb", "ccc", ""].
+            let expected = ["a", "bb", "ccc", ""];
+            for want in expected {
+                let mut buf = MaybeUninit::<JacBuf>::uninit();
+                let mut be = 0u64;
+                let st = jac_owning_OwnedSplit_next(dh, buf.as_mut_ptr(), &mut be);
+                assert_eq!(st, STATUS_OK);
+                let buf = buf.assume_init();
+                assert!(!buf.ptr.is_null(), "piece {want:?} must be Some, not None");
+                assert_eq!(read_buf(&buf), want);
+                jac_owning_free_buf(buf);
+            }
+
+            // Exhausted → None (null JacBuf) on OK status.
+            let mut buf = MaybeUninit::<JacBuf>::uninit();
+            let mut be = 0u64;
+            let st = jac_owning_OwnedSplit_next(dh, buf.as_mut_ptr(), &mut be);
+            assert_eq!(st, STATUS_OK);
+            let buf = buf.assume_init();
+            assert!(buf.ptr.is_null(), "exhausted drain must yield None (null JacBuf)");
+            jac_owning_free_buf(buf); // null-safe
+
+            jac_owning_OwnedSplit_drop(dh);
+            jac_owning_Regex_drop(re);
+        }
+    }
+
     #[test]
     fn drops_are_zero_safe() {
         unsafe {
             jac_owning_Regex_drop(0);
             jac_owning_OwnedMatch_drop(0);
             jac_owning_OwnedCaptures_drop(0);
+            jac_owning_OwnedMatches_drop(0);
+            jac_owning_OwnedSplit_drop(0);
             jac_owning_error_drop(0);
         }
     }

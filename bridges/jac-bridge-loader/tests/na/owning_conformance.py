@@ -71,6 +71,37 @@ NAME_MATCH_CASES = [
     (r"(?P<num>\d+)", "nothing here", "num"),  # no match at all -> caps None
     (r"(?P<z>\d*)", "abc", "z"),  # zero-width group present -> "" (a real handle)
 ]
+# (pattern, haystack) -> find_iter cursor drained to exhaustion, each match's text
+# joined with a trailing '|'.  The cursor is the iterator/cursor vertical: a pull
+# method (next -> OwnedMatch|None) exhausts to None.  An empty stream (no match) is
+# a live handle whose first next is None, so it renders "[]" — distinct from any
+# error.  Each pulled item is a nested OwnedMatch handle (as_str), proving the
+# per-iteration nested-wrapper share round-trips identically on both runtimes.
+CURSOR_CASES = [
+    (r"\d+", "a1 b22 c333"),  # -> 1|22|333|
+    (r"\d+", "no digits at all"),  # empty stream -> "" (renders [])
+    (r"\w+", "hi there world"),  # -> hi|there|world|
+    (r"x", ""),  # empty haystack, empty stream -> []
+]
+# (pattern, haystack) -> split drain cursor exhausted, each owned piece joined with
+# a trailing '|'.  The Vec-as-drain vertical: an eagerly-collected Vec<String>
+# reduced to a handle + a pull method (next -> str|None -> None at end).  Cases
+# include empty leading/trailing pieces ("") to prove a present-empty piece stays
+# DISTINCT from the None that terminates the drain.
+SPLIT_CASES = [
+    (r",\s*", "a, bb,ccc"),  # -> a|bb|ccc|
+    (r"-", "x-y-z"),  # -> x|y|z|
+    (r"\d+", "no numbers here"),  # no delimiter -> whole string, one piece
+    (r"\d+", "1a2b3"),  # leading/trailing digits -> |a|b|| (empty ends kept)
+]
+
+
+def _cursor_label(pat: str, text: str) -> str:
+    return f"iter {pat!r} {text!r} = "
+
+
+def _split_label(pat: str, text: str) -> str:
+    return f"split {pat!r} {text!r} = "
 
 
 def _find_label(pat: str, text: str) -> str:
@@ -128,6 +159,29 @@ def cpython_side() -> list[str]:
                 lines.append(label + "[" + mm.as_str() + "]")
                 mm.close()
             c.close()
+        re.close()
+    for pat, text in CURSOR_CASES:
+        re = owning.Regex(pat)
+        cur = re.find_iter(text)
+        acc = ""
+        m = cur.next()
+        while m is not None:
+            acc = acc + m.as_str() + "|"
+            m.close()
+            m = cur.next()
+        lines.append(_cursor_label(pat, text) + "[" + acc + "]")
+        cur.close()
+        re.close()
+    for pat, text in SPLIT_CASES:
+        re = owning.Regex(pat)
+        dr = re.split(text)
+        acc = ""
+        s = dr.next()
+        while s is not None:
+            acc = acc + s + "|"
+            s = dr.next()
+        lines.append(_split_label(pat, text) + "[" + acc + "]")
+        dr.close()
         re.close()
     return [ln for ln in "\n".join(lines).splitlines() if ln.strip()]
 
@@ -214,6 +268,43 @@ def na_side() -> list[str]:
         probe.append("    } else {")
         probe.append(f"        print({_jac_str(label + 'caps=None')});")
         probe.append("    }")
+        probe.append("    re.close();")
+    for pat, text in CURSOR_CASES:
+        label = _cursor_label(pat, text)
+        probe.append(f"    re = Regex({_jac_str(pat)});")
+        # find_iter returns a plain OwnedMatches (never a union), so `cur` is
+        # directly dispatchable.  Its `next()` returns OwnedMatch|None; rebind the
+        # narrowed item to a plain-typed local before calling as_str (the same
+        # union-receiver caveat, once per pulled item).  Drain to None building the
+        # same trailing-'|' accumulator the CPython side does.
+        probe.append(f"    cur = re.find_iter({_jac_str(text)});")
+        probe.append('    acc = "";')
+        probe.append("    m = cur.next();")
+        probe.append("    while m is not None {")
+        probe.append("        om: OwnedMatch = m;")
+        probe.append('        acc = acc + om.as_str() + "|";')
+        probe.append("        om.close();")
+        probe.append("        m = cur.next();")
+        probe.append("    }")
+        probe.append(f"    print({_jac_str(label + '[')} + acc + {_jac_str(']')});")
+        probe.append("    cur.close();")
+        probe.append("    re.close();")
+    for pat, text in SPLIT_CASES:
+        label = _split_label(pat, text)
+        probe.append(f"    re = Regex({_jac_str(pat)});")
+        # split returns a plain OwnedSplit; its `next()` returns str|None.  A null
+        # JacBuf.ptr narrows to None (drain end); a non-null buffer decodes to the
+        # piece text (possibly "").  No rebind needed: str|None concat/narrow is
+        # verified natively.
+        probe.append(f"    dr = re.split({_jac_str(text)});")
+        probe.append('    acc = "";')
+        probe.append("    s = dr.next();")
+        probe.append("    while s is not None {")
+        probe.append('        acc = acc + s + "|";')
+        probe.append("        s = dr.next();")
+        probe.append("    }")
+        probe.append(f"    print({_jac_str(label + '[')} + acc + {_jac_str(']')});")
+        probe.append("    dr.close();")
         probe.append("    re.close();")
     probe.append("}")
     src = src + "\n".join(probe)

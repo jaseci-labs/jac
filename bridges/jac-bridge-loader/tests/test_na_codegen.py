@@ -232,3 +232,36 @@ def test_nested_wrapper_producer_bridges(
     # the name_match producer sits inside the OwnedCaptures obj body.
     oc_body = src.split("obj OwnedCaptures {", 1)[1].split("obj ", 1)[0]
     assert "def name_match(" in oc_body
+
+
+def test_cursor_and_drain_bridge(
+    owning_meta: tuple[Path, BridgeMeta],
+) -> None:
+    so, meta = owning_meta
+    res = render_na_source(meta, so.name)
+    items = {s.item for s in res.skips}
+
+    # CURSOR: Regex.find_iter -> OwnedMatches (a plain, non-nullable handle: a
+    # cursor is always constructed), whose next() pulls Option<OwnedMatch>.
+    assert "Regex.find_iter" not in items
+    assert "OwnedMatches.next" not in items
+    src = res.source
+    assert "def find_iter(text: str) -> OwnedMatches {" in src
+    # next is an ordinary Opt(Ref) return, bare-constructed via OwnedMatch's
+    # adopt-ctor — no new machinery, just the nested-share pattern per pull.
+    om_next_body = src.split("obj OwnedMatches {", 1)[1].split("obj ", 1)[0]
+    assert "def next() -> OwnedMatch | None {" in om_next_body
+    assert "return OwnedMatch(rh);" in om_next_body
+
+    # DRAIN: Regex.split -> OwnedSplit, whose next() drains Option<Str>.
+    assert "Regex.split" not in items
+    assert "OwnedSplit.next" not in items
+    assert "def split(text: str) -> OwnedSplit {" in src
+    os_next_body = src.split("obj OwnedSplit {", 1)[1].split("obj ", 1)[0]
+    assert "def next() -> str | None {" in os_next_body
+
+    # Topological emit order: each product precedes its producing cursor.
+    order = [ln.split()[1] for ln in src.splitlines() if ln.startswith("obj ")]
+    assert order.index("OwnedMatch") < order.index("OwnedMatches")  # next's product
+    assert order.index("OwnedMatches") < order.index("Regex")  # find_iter's product
+    assert order.index("OwnedSplit") < order.index("Regex")  # split's product
