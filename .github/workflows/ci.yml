@@ -438,9 +438,9 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/check-release-notes.sh
 
-  test-solid-jsdom:
+  test-solid-and-desktop:
     needs: [changes, build-jac]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.desktop == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -463,6 +463,9 @@ jobs:
       env:
         JAC_CLIENT_INTEGRATION: "1"
       run: jac test jac/tests/runtimelib/test_solid_jsdom.jac -x
+
+    - name: Run dependency-free desktop tests
+      run: jac test jac/tests/runtimelib/client/test_desktop_binding.jac
 
   test-client:
     needs: build-jac
@@ -549,22 +552,6 @@ jobs:
       working-directory: docs
       # Browser rendering is timing-flaky on CI; retry once (#6528, #6756).
       run: jac test tests/e2e/test_code_blocks.jac -x || jac test tests/e2e/test_code_blocks.jac -x
-
-  test-desktop-native:
-    needs: [changes, build-jac]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.desktop == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
-
-    - name: Run dependency-free desktop tests
-      run: jac test jac/tests/runtimelib/client/test_desktop_binding.jac
 
   test-native-macos:
     needs: changes
@@ -1200,15 +1187,6 @@ jobs:
           echo "=== ingress controller logs ==="
           kubectl logs -n ingress -l name=nginx-ingress-microk8s --tail=50 || true
 
-  installer-shellcheck:
-    name: ShellCheck install.sh
-    needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.installer == 'true') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - run: shellcheck scripts/install.sh
-
   installer-test:
     name: "Install: ${{ matrix.platform }}"
     needs: changes
@@ -1224,6 +1202,10 @@ jobs:
             platform: macos-aarch64
     steps:
       - uses: actions/checkout@v5
+
+      - name: ShellCheck install.sh
+        if: runner.os == 'Linux'
+        run: shellcheck scripts/install.sh
 
       # A missing asset on the latest release is a release regression that
       # breaks `curl ... | bash` -- fail loudly instead of skipping.
