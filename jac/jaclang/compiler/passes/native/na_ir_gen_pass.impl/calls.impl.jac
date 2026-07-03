@@ -25,11 +25,7 @@ impl NaIRGenPass._callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None) 
             decl = cand.parent;
         }
     }
-    # A native call always dispatches to the linked native definition, but the
-    # symbol can also carry a typeshed `.pyi` decl for the same name (the sv
-    # backend of a dual-bound module such as na_stdlib/base64). The stub's
-    # CPython defaults (e.g. `altchars=None`) would lower to null pointers
-    # here, so swap in the first non-stub decl when one exists.
+
     if decl is not None
     and str(decl.loc.mod_path).endswith(".pyi")
     and sym is not None
@@ -112,13 +108,6 @@ impl NaIRGenPass._codegen_bound_args(
             chosen = sp.value;
             if isinstance(chosen, uni.Null)
             and str(chosen.loc.mod_path).endswith(".pyi") {
-                # The resolved signature is a typeshed stub (the sv view of a
-                # dual-bound module such as na_stdlib/base64) using CPython's
-                # `None` sentinel for an optional arg (e.g. `altchars=None`).
-                # `None` lowers to a null pointer that the linked native
-                # definition would dereference; use the type-driven fallback
-                # (empty bytes for jacbytes params) instead. Scalar stub
-                # defaults (ints, bools) stay as written.
                 chosen = None;
             }
         }
