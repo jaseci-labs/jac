@@ -289,6 +289,35 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return ir.Constant(ir.DoubleType(), 0.0);
         }
 
+        if func_name == "__jac_str_from_raw" {
+            params_l = nd.params or [];
+            if len(params_l) < 2 {
+                return self._make_global_string("", name_prefix=".jbuf.empty");
+            }
+            ptr_v = self._codegen_expr(params_l[0]);
+            len_v = self._codegen_expr(params_l[1]);
+            if ptr_v is None or len_v is None {
+                return self._make_global_string("", name_prefix=".jbuf.empty");
+            }
+            _i8 = ir.IntType(8);
+            _i8p = ir.IntType(8).as_pointer();
+            _i64 = ir.IntType(64);
+            src_i = self._coerce_type(ptr_v, _i64);
+            src = self.builder.inttoptr(src_i, _i8p, name="jbuf.src");
+            dlen = self._coerce_type(len_v, _i64);
+            bufsz = self.builder.add(dlen, ir.Constant(_i64, 1), name="jbuf.bufsz");
+            self._set_rc_ctx("str_from_raw", "");
+            raw = self._rc_alloc(bufsz, name="jbuf.raw");
+            self._clear_rc_ctx();
+            memcpy_fn = self._get_or_declare_extern("memcpy", _i8p, [_i8p, _i8p, _i64]);
+            self.builder.call(memcpy_fn, [raw, src, dlen]);
+            nul_ptr = self.builder.gep(raw, [dlen], name="jbuf.nul");
+            self.builder.store(ir.Constant(_i8, 0), nul_ptr);
+            self._emit_set_type_tag(self.builder, raw, "str");
+            self._mark_owned(raw);
+            return raw;
+        }
+
         if func_name == "isinstance" {
             return self._emit_isinstance(nd);
         }

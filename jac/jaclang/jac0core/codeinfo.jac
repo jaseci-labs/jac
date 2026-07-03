@@ -112,8 +112,16 @@ def native_stdlib_root -> (str | None) {
 
 def is_bundled_native_module(module_name: str) -> bool {
     import os;
+    if not module_name {
+        return False;
+    }
+
+    import from jaclang.compiler.rust_bridge { is_bridge_module }
+    if is_bridge_module(module_name) {
+        return True;
+    }
     root = native_stdlib_root();
-    if root is None or not module_name {
+    if root is None {
         return False;
     }
     path_name = module_name.lstrip('.').replace('.', os.sep);
@@ -125,6 +133,15 @@ def resolve_native_module(
 ) -> tuple[(str | None, str | None)] {
     import os;
     clean = module_name.lstrip('.');
+
+    import from jaclang.compiler.rust_bridge { is_bridge_module, materialize_bridge }
+    if is_bridge_module(clean) {
+        path = materialize_bridge(clean);
+        if path {
+            return (f"{clean}.na", path);
+        }
+        return (None, None);
+    }
 
     na_jac = os.path.join(base_dir, f"{clean}.na.jac");
     if os.path.exists(na_jac) {

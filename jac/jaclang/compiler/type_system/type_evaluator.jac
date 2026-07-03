@@ -225,6 +225,7 @@ obj TypeEvaluator {
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def _type_from_union_annotation_arg(val: uni.Expr) -> TypeBase;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
+    def _try_resolve_rust_bridge(node_: uni.ModulePath) -> types.TypeBase | None;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
     def _resolve_star_import_symbol(
         mod: uni.Module, name: str, visited: set[int] | None = None

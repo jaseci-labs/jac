@@ -525,6 +525,11 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         self._process_clib_imports(imported_mod);
     }
 
+    if self._clib_paths {
+        self.ir_in.gen._clib_paths = self._clib_paths;
+        self.ir_in.gen._clib_symbol_lib = self._clib_symbol_lib;
+    }
+
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_type_names(imported_mod);
     }

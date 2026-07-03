@@ -74,6 +74,9 @@ demo/
 
 node_modules
 
+# Cargo build artifacts
+bridges/target/
+
 # Zig build artifacts. jac/.gitignore covers the in-tree binary build under jac/,
 # but `jac run` invoking the native backend emits a .zig-cache/ at the *repo
 # root* (its cwd) too -- and a release `git add -A` (release.yml) will
