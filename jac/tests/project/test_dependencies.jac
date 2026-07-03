@@ -1750,32 +1750,38 @@ test "DependencyInstaller install_flags passed to pip" {
     }
 }
 
-# ===== pip_command (bundled pip only) =====
-# The single binary bundles pip/ensurepip; every install runs the project venv's
-# own python against bundled pip. No external package manager (uv) and no host
-# python are ever consulted, so the command is identical regardless of host state.
+# ===== pip_command (bundled pip fallback) =====
+# When uv is unavailable (or opted out via use_uv=False), every install runs
+# the project venv's own python against bundled pip.
 test "pip_command always uses the venv python's bundled pip" {
-    cmd = pip_command("/path/to/python", ["install", "requests"]);
-    assert cmd[0] == "/path/to/python";
-    assert cmd[1] == "-m";
-    assert cmd[2] == "pip";
-    assert cmd[3] == "install";
-    assert "requests" in cmd;
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = None;
+        cmd = pip_command("/path/to/python", ["install", "requests"]);
+        assert cmd[0] == "/path/to/python";
+        assert cmd[1] == "-m";
+        assert cmd[2] == "pip";
+        assert cmd[3] == "install";
+        assert "requests" in cmd;
+    }
 }
 
 test "pip_command passes flags through unchanged" {
-    cmd = pip_command(
-        "/path/to/python", ["install", "--force-reinstall", "--prefer-binary", "pkg"]
-    );
-    assert cmd == [
-        "/path/to/python",
-        "-m",
-        "pip",
-        "install",
-        "--force-reinstall",
-        "--prefer-binary",
-        "pkg"
-    ];
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = None;
+        cmd = pip_command(
+            "/path/to/python",
+            ["install", "--force-reinstall", "--prefer-binary", "pkg"]
+        );
+        assert cmd == [
+            "/path/to/python",
+            "-m",
+            "pip",
+            "install",
+            "--force-reinstall",
+            "--prefer-binary",
+            "pkg"
+        ];
+    }
 }
 
 test "pip_command warn_fn called for dropped flag" {
