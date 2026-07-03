@@ -1495,7 +1495,7 @@ def _bundle_binary(config: any, output: str) -> int {
         digest = hashlib.sha256(payload).hexdigest();
         trailer = b"JACBIN01" + struct.pack("<Q", len(payload)) + digest.encode();
 
-        out_bin = Path(output) / name;
+        out_bin: Path = Path(output) / name;
         with open(out_bin, "wb") as f {
             f.write(stub);
             f.write(payload);
@@ -1510,10 +1510,7 @@ def _bundle_binary(config: any, output: str) -> int {
         f"({out_bin.stat().st_size:,} bytes)",
         style="success"
     );
-    console.print(
-        f"  Run it directly: ./{out_bin.relative_to(Path.cwd())} (or {out_bin})",
-        style="muted"
-    );
+    console.print(f"  Run it directly: {out_bin.resolve()}", style="muted");
     return 0;
 }
 
