@@ -102,6 +102,88 @@ def _register_builtin_shadcn_provider() -> None:
 
 _register_builtin_shadcn_provider()
 
+
+def _register_builtin_scale_provider() -> None:
+    """Register the built-in scale provider (serve / deploy / microservices).
+
+    This shipped as the separate ``jac-scale`` plugin; it is now part of core and
+    registers directly (no entry point, no separate package). Importing
+    ``jaclang.scale.plugin`` runs its ``with entry`` block, which registers the
+    ``JacScalePlugin`` hook implementations; we additionally register the scale
+    CLI command provider (``JacCmd`` -> ``--scale`` / ``destroy`` / ``status`` /
+    ``scale``) and the ``[scale.*]`` config-schema provider. All heavy third-party
+    imports (fastapi/uvicorn/pymongo/...) are deferred into the hook bodies, so this
+    registration never pulls the serve runtime closure at ``import jaclang`` time;
+    those deps arrive in the project ``.jac/venv`` via the capability registry.
+    """
+    try:
+        from jaclang.scale.config.plugin_config import JacScalePluginConfig
+        from jaclang.scale.plugin import JacCmd
+    except Exception as exc:  # keep core usable if scale fails to import
+        import warnings
+
+        warnings.warn(f"Built-in scale provider unavailable: {exc}", stacklevel=2)
+        return
+    for _provider in (JacCmd, JacScalePluginConfig):
+        if not plugin_manager.is_registered(_provider):
+            plugin_manager.register(_provider)
+
+
+_register_builtin_scale_provider()
+
+
+def _register_builtin_mcp_provider() -> None:
+    """Register the built-in MCP server's config provider.
+
+    This shipped as the separate ``jac-mcp`` plugin; it is now part of core and
+    registers directly (no entry point, no separate package, and -- since the
+    protocol is reimplemented on the standard library in ``jaclang.cli.mcp`` --
+    no external ``mcp``/pydantic/starlette/uvicorn dependency). The ``jac mcp``
+    command itself auto-registers when ``jaclang.cli.commands.mcp`` is imported
+    during CLI init; registering the plugin class here contributes the
+    ``[plugins.mcp]`` config schema and plugin metadata.
+    """
+    try:
+        from jaclang.cli.mcp.plugin_config import JacMcpPluginConfig
+    except Exception as exc:  # keep core usable if the MCP provider fails to import
+        import warnings
+
+        warnings.warn(f"Built-in MCP provider unavailable: {exc}", stacklevel=2)
+        return
+    if not plugin_manager.is_registered(JacMcpPluginConfig):
+        plugin_manager.register(JacMcpPluginConfig)
+
+
+_register_builtin_mcp_provider()
+
+
+def _register_builtin_byllm_provider() -> None:
+    """Register the built-in byLLM provider (the ``by llm()`` feature).
+
+    This shipped as the separate ``jac-byllm`` plugin; it is now part of core and
+    registers directly (no entry point, no separate package). All heavy
+    third-party imports (litellm/openai/pydantic/pillow/loguru) are deferred behind
+    ``jaclang.byllm._optdeps`` shims and a ``require_optional`` guard in
+    ``Model.postinit``, so this registration never pulls the ``llm`` capability
+    closure at ``import jaclang`` time; those deps arrive in the project
+    ``.jac/venv`` via the capability registry when ``[plugins.byllm]`` is declared.
+    """
+    try:
+        from jaclang.byllm.cli import JacCmd
+        from jaclang.byllm.plugin import JacRuntime as JacByllmRuntime
+        from jaclang.byllm.plugin_config import JacByllmPluginConfig
+    except Exception as exc:  # keep core usable if byllm fails to import
+        import warnings
+
+        warnings.warn(f"Built-in byLLM provider unavailable: {exc}", stacklevel=2)
+        return
+    for _provider in (JacByllmRuntime, JacCmd, JacByllmPluginConfig):
+        if not plugin_manager.is_registered(_provider):
+            plugin_manager.register(_provider)
+
+
+_register_builtin_byllm_provider()
+
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:
     from jaclang.project.config import get_config as _get_jac_config

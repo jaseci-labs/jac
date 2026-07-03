@@ -8,6 +8,9 @@ Learn Jac's unique graph-based programming paradigm with nodes, edges, and walke
 > - Recommended: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (gentler introduction)
 > - Time: ~45 minutes
 
+!!! tip "This is the hands-on tutorial"
+    This page teaches OSP by building things step by step. For the complete, authoritative specification of node/edge/walker syntax, see the [OSP reference](../../reference/language/osp.md).
+
 !!! warning "Graph Persistence Between Runs"
     `jac run` persists graph state to a `.jac/` directory. If you run an example multiple times, you may see duplicate nodes or `NodeAnchor ... is not a valid reference!` errors. To start fresh, clean the `.jac/` directory: `jac clean --all`
 
@@ -30,21 +33,6 @@ graph TD
         W2(["Walker moves<br/>to connected nodes"]) -.-> N2
     end
 ```
-
----
-
-> **Quick Reference: Graph Operators**
->
-> | Operator | Meaning | Example |
-> |----------|---------|---------|
-> | `++>` | Create/connect node | `root ++> Person()` |
-> | `[-->]` | Query outgoing edges | `[node -->]` |
-> | `[<--]` | Query incoming edges | `[node <--]` |
-> | `spawn` | Start walker at node | `node spawn Walker()` |
-> | `visit` | Move walker to nodes | `visit [-->]` |
-> | `report` | Return data from walker | `report here` |
->
-> See [Graph Operations](../../reference/language/osp.md) for complete reference.
 
 ---
 
@@ -134,15 +122,7 @@ with entry {
 }
 ```
 
-### Edge Operators
-
-| Operator | Meaning |
-|----------|---------|
-| `++>` | Connect with generic edge |
-| `+>: EdgeType() :+>` | Connect with typed edge |
-| `-->` | Query forward connections |
-| `<--` | Query backward connections |
-| `<-->` | Query both directions |
+A typed edge stores its own data on the connection itself, so "Alice *knows* Bob *since 2020*" lives on the edge rather than on either node. For the full set of connection operators (generic, typed, bidirectional) and typed edge endpoints, see the [Edges reference](../../reference/language/osp.md#edges).
 
 ---
 
@@ -176,32 +156,7 @@ with entry {
 }
 ```
 
-### Query Syntax
-
-```jac
-node Person {
-    has name: str;
-}
-
-edge Knows {
-    has since: int;
-}
-
-def query_examples(src: Person, alice: Person) {
-    # Basic queries
-    [src -->];           # All forward connections
-    [src <--];           # All backward connections
-    [src <-->];          # Both directions
-
-    # Type filtering
-    [src -->][?:Person];           # Only Person nodes
-    [src ->:Knows:->];             # Only via Knows edges
-    [src ->:Knows:->][?:Person];   # Knows edges to Person nodes
-
-    # Chained traversal
-    [alice ->:Knows:-> ->:Knows:->];  # Friends of friends
-}
-```
+The same edge-reference bracket syntax does a lot: filter by edge type (`[src ->:Knows:->]`), filter results by node type (`[?:Person]`), filter by attribute (`[?age >= 18]`), and chain hops for friends-of-friends (`[alice ->:Knows:-> ->:Knows:->]`). For the complete query grammar, see the [Object Spatial Queries reference](../../reference/language/osp.md#object-spatial-queries).
 
 ---
 
@@ -298,13 +253,7 @@ Hello, Carol!
 
 ## Walker Context Variables
 
-Inside a walker ability:
-
-| Variable | Meaning |
-|----------|---------|
-| `here` | The current node |
-| `self` | The walker instance |
-| `visitor` | Only defined in *node* abilities, where it names the visiting walker. Using it inside a walker ability is a runtime `NameError` |
+Inside a walker ability, `here` is the current node and `self` is the walker instance. (`visitor` is the mirror image -- it only exists inside *node* abilities, where it names the visiting walker.) For the full table of which special reference is valid in which context, see [Special References](../../reference/language/osp.md#8-special-references).
 
 ```jac
 node Room {
@@ -454,6 +403,8 @@ walker DataProcessor {
 }
 ```
 
+For the complete event-clause forms (typed entries, `exit` abilities, walker-type unions), see [Node Entry/Exit Abilities](../../reference/language/osp.md#2-node-entryexit-abilities).
+
 ---
 
 ## Practical Example: Social Network
@@ -556,15 +507,9 @@ walker add_todo {
         report new_todo;
     }
 }
-
-walker list_todos {
-    can list with Root entry {
-        for todo in [-->][?:Todo] {
-            report todo;
-        }
-    }
-}
 ```
+
+Every public walker becomes an endpoint: its `has` properties become the request body and its `report` values become the response. See [Walkers as REST APIs](../../reference/language/osp.md#walkers-as-rest-apis) for the full treatment.
 
 !!! note
     `main.jac` is the default entry point. If your file has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
@@ -583,20 +528,12 @@ curl -X POST http://localhost:8000/walker/add_todo \
 
 ## When to Use Functions vs Walkers
 
-Jac gives you two ways to expose server logic: `def:pub` functions and `walker` types.
-
-| | `def:pub` Functions | Walkers |
-|---|---|---|
-| **Best for** | Simple stateless CRUD, quick prototyping | Graph traversal, per-user data, production apps |
-| **Auth** | Shared data (no user isolation) | Per-user root node (`walker:priv` enforces auth) |
-| **Data access** | Direct: `[root -->]` | Traversal: `visit [-->]`, `here` |
-| **API style** | Function call → HTTP endpoint | Spawn walker at node |
-| **State** | Stateless | Carries state across nodes via `has` properties |
+Jac gives you two ways to expose server logic: `def:pub` functions and `walker` types. The short version: `def:pub` functions are great for simple, stateless CRUD and quick prototyping, while walkers shine for graph traversal, per-user data isolation, and production apps where state accumulates across nodes. For the full side-by-side comparison, see [When to Use Walkers vs Functions](../../reference/language/osp.md#when-to-use-walkers-vs-functions) in the reference.
 
 !!! tip "Rule of thumb"
     Start with `def:pub` to prototype quickly. Switch to walkers when you need authentication, per-user data isolation, or multi-step graph traversal.
 
-The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pub` in the early parts, then refactors to walkers in [Part 6](../first-app/build-ai-day-planner.md#part-6-multi-user-support) -- showing exactly when and why to make the switch.
+The [AI Day Planner Tutorial](../first-app/build-ai-day-planner.md) uses `def:pub` in the early parts, then refactors to walkers in [Part 6](../first-app/build-ai-day-planner.md#part-6-authentication-and-multi-file-organization) -- showing exactly when and why to make the switch.
 
 ---
 

@@ -89,8 +89,8 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 
 # Individual plugins
 jac install byllm        # LLM integration
-jac install jac-scale    # Production deployment
-# (full-stack web + native-desktop app building ships with the jac binary)
+# (Production deployment & scaling and full-stack web + native-desktop app
+#  building ship with the jac binary -- no separate install)
 ```
 
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.
@@ -142,7 +142,7 @@ my_project/
 | `.impl.jac` | Implementation file (annex) |
 | `.test.jac` | Test file (annex) |
 
-Files sharing the same base name form a single logical module. For example, `mymod.jac`, `mymod.sv.jac`, `mymod.cl.jac`, `mymod.impl.jac`, and `mymod.test.jac` are all part of the `mymod` module. Variant files (`.sv.jac`, `.cl.jac`, `.na.jac`) are automatically discovered and merged during compilation -- see [Variant Modules](functions-objects.md#variant-modules) for details.
+Files sharing the same base name form a single logical module. For example, `mymod.jac`, `mymod.sv.jac`, `mymod.cl.jac`, `mymod.impl.jac`, and `mymod.test.jac` are all part of the `mymod` module. Variant files (`.sv.jac`, `.cl.jac`, `.na.jac`) are automatically discovered and merged during compilation -- see [Variant Modules](functions-objects.md#4-variant-modules) for details.
 
 ### 4 Editor Setup
 

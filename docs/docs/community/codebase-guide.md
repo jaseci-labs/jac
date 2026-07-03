@@ -39,7 +39,8 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Fix a runtime bug | `jac/jaclang/runtimelib/` |
 | Improve the formatter/linter | `jac/jaclang/compiler/passes/tool/` |
 | Improve IDE support | `jac/jaclang/lsp/` + `langserve/` |
-| Work on a plugin | `jac-byllm/`, `jac-scale/`, etc. |
+| Work on the scale subsystem | `jac/jaclang/scale/` (built-in deployment provider) |
+| Work on a built-in subsystem | `jac/jaclang/byllm/`, `jac/jaclang/cli/mcp/`, `jac/jaclang/scale/`, etc. |
 | Write or fix docs | `docs/docs/reference/` (most features go here) |
 | Add a test | `jac/tests/` (mirror the directory of the code you're testing) |
 
@@ -47,15 +48,13 @@ Here's a quick map from contribution type to the right part of the codebase:
 
 ## Repository Layout
 
-The repo is a **monorepo** with the core language and a family of plugins:
+The repo is a **monorepo**; the core language and all first-party subsystems live under `jac/`:
 
 ```
 jaseci/
-├── jac/                  # Core language: compiler, runtime, CLI, LSP, full-stack client/desktop framework
-├── jac-byllm/            # Plugin: LLM integration (Meaning Typed Programming)
-├── jac-scale/            # Plugin: cloud deployment (FastAPI, Kubernetes, Docker)
-├── jac-mcp/              # Plugin: MCP server for AI-assisted development
-├── jac-plugins/          # Additional community plugins
+├── jac/                  # Core language + built-in subsystems: compiler, runtime, CLI, LSP,
+│                         #   MCP server (jaclang/cli/mcp/), byLLM (jaclang/byllm/),
+│                         #   full-stack client/desktop framework, scale subsystem (jaclang/scale/)
 ├── docs/                 # MkDocs documentation site
 └── scripts/              # Release, CI, and utility scripts
 ```
@@ -196,11 +195,12 @@ Registration happens in `pyproject.toml`:
 <feature> = "<module>:<Class>"
 ```
 
-| Plugin | What it adds |
+| Subsystem | What it adds |
 |--------|-------------|
-| `jac-byllm` | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Depends on `litellm`. |
-| `jac-scale` | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. |
-| `jac-mcp` | Exposes the Jac project as an MCP server so AI coding assistants can query it. |
+| `byllm` (built into core, `jac/jaclang/byllm/`) | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Ships inside `jaclang`; `litellm` and other model deps are optional, pulled per-project via `[plugins.byllm]` config + `jac install`. |
+| `scale` (built into core, `jac/jaclang/scale/`) | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. Ships inside `jaclang`; its optional deps are pulled per-project via `[scale.*]` config + `jac install`. |
+
+(The MCP server -- `jac mcp`, exposing the Jac project to AI coding assistants -- is built into core, not a plugin. See [its source](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp) and the [MCP reference](../reference/mcp.md).)
 
 For the full how-to on writing your own plugin -- CLI extension, runtime hook overrides, jac.toml schemas, project templates, and the entry-point setup -- see the [Plugin Authoring Guide](../reference/plugin-authoring.md).
 
@@ -274,17 +274,13 @@ python docs/scripts/mkdocs_serve.py
 
 GitHub Actions workflows in `.github/workflows/`:
 
-| Workflow | What it checks |
+| Workflow | What it does |
 |----------|---------------|
-| `test-binary.yml` | Builds the `jac` binary and runs the full suite through it (the test gate) |
-| `test-jaseci.yml` | Plugin and runtime test jobs (run through the binary) |
-| `jac-check.yml` | Lint and format enforcement |
-| `docs-validation.yml` | Documentation builds without errors |
-| `test-installer.yml` | Clean install from scratch works |
-| `create-release-pr.yml` | Automated version bump PRs |
-| `release-jaclang.yml` | Build + release the native `jac` binary |
-| `release-byllm.yml` / `release-scale.yml` / `release-mcp.yml` | Per-plugin PyPI publishing |
-| `publish-release.yml` | Tiered plugin PyPI publish on release merge |
+| `ci.yml` | All PR/push checks: builds the `jac` binary once, then fans out the full test suite, plugin/client/scale jobs, lint + format enforcement, docs validation, contribution checks, and the installer/k8s e2e jobs (path-gated) |
+| `release.yml` | The release lifecycle: version-bump PRs, and on merge the tag + GitHub Release + binary publish (human-approved) |
+| `build-binaries.yml` | Builds the per-platform native `jac` binaries and attaches them to a release |
+| `release-dev.yml` | Rolling `dev` prerelease binaries on every push to main |
+| `nightly.yml` | Cron canaries: notes-app CEF smoke and the live-release installer check |
 | `deploy-docs.yml` | Deploy docs site to production |
 
 Pre-commit hooks run formatting and linting on every commit locally. See `.pre-commit-config.yaml` for the full hook list.

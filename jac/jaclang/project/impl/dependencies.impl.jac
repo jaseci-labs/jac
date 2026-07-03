@@ -34,6 +34,7 @@ impl DependencyInstaller.ensure_venv -> None {
             }
             raise;
         }
+        self._seed_build_backend(target);
     }
     if self.venv_dir.exists() {
         pyvenv_cfg = self.venv_dir / "pyvenv.cfg";
@@ -61,6 +62,38 @@ impl DependencyInstaller.ensure_venv -> None {
     site_packages = str(get_venv_site_packages(self.venv_dir));
     if site_packages not in sys.path {
         sys.path.insert(0, site_packages);
+    }
+}
+
+impl DependencyInstaller._seed_build_backend(target: Path) -> None {
+    import subprocess;
+    import sys;
+    if sys.platform == "win32" {
+        venv_python = str(target / "Scripts" / "python.exe");
+    } else {
+        venv_python = str(target / "bin" / "python");
+    }
+    cmd = [
+        venv_python,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "pip",
+        "setuptools",
+        "wheel"
+    ];
+    try {
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300);
+        if result.returncode != 0 and self.verbose {
+            console.print(
+                f"Warning: could not seed build backend in venv: {result.stderr.strip()}"
+            );
+        }
+    } except Exception as e {
+        if self.verbose {
+            console.print(f"Warning: could not seed build backend in venv: {e}");
+        }
     }
 }
 
@@ -154,6 +187,37 @@ impl DependencyInstaller.get_extra_package_specs(groups: list[str]) -> list[str]
         }
     }
     return [self._make_pip_spec(name, ver) for (name, ver) in resolved.items()];
+}
+
+impl capability_specs_for_install(
+    config: JacConfig, installer: DependencyInstaller, scale: bool = False
+) -> list[str] {
+    import from jaclang.project.kinds { plan_project_run }
+    import from jaclang.project.capabilities {
+        resolve_config_closures,
+        RUNTIME,
+        DEPLOY
+    }
+    proj_root = str(config.project_root) if config.project_root else ".";
+    plan = plan_project_run(config, proj_root);
+    action = plan.action if plan else "execute";
+    closures = resolve_config_closures(config, action, scale);
+    closure = closures[DEPLOY] if scale else closures[RUNTIME];
+    return installer.get_capability_specs(closure);
+}
+
+impl DependencyInstaller.get_capability_specs(closure: CapabilityClosure) -> list[str] {
+    return [
+        self._make_pip_spec(name, ver) for (name, ver) in sorted(closure.deps.items())
+    ];
+}
+
+impl DependencyInstaller.sync_capabilities(closure: CapabilityClosure) -> bool {
+    specs = self.get_capability_specs(closure);
+    if not specs {
+        return True;
+    }
+    return self.install_package(specs);
 }
 
 impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {

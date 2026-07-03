@@ -10,6 +10,8 @@
 
 Jac provides a library mode that enables developers to express all Jac language features as standard Python code. This mode provides complete access to Jac's object-spatial programming capabilities through the `jaclang.lib` package, allowing developers to work entirely within Python syntax.
 
+This page focuses on what is unique to library mode: the `jaclang.lib` API surface and the `jac jac2py` workflow. For how Jac compiles to and interoperates with Python in general (bytecode transpilation, bidirectional imports, type-only imports), see [Python Integration](python-integration.md#jac-compiles-to-python-bytecode). Library mode itself corresponds to adoption [Pattern 5: Pure Python + Jac Library](python-integration.md#pattern-5-pure-python-jac-library).
+
 Library mode is designed for:
 
 - **Python-first teams** wanting to adopt Jac's graph-native and AI capabilities without learning new syntax
@@ -22,11 +24,7 @@ Library mode is designed for:
 
 ### **Converting Jac Code to Pure Python**
 
-The `jac jac2py` command transpiles Jac source files into equivalent Python code. The generated output:
-
-1. Provides clean, ergonomic imports from `jaclang.lib` with full IDE autocomplete support
-2. Generates idiomatic Python code with proper type hints and docstrings
-3. Ensures full compatibility with Python tooling, linters, formatters, and static analyzers
+The `jac jac2py` command transpiles Jac source files into equivalent Python code, emitting clean `jaclang.lib` imports with type hints and docstrings so the output works with standard Python IDEs, linters, and formatters. (The same transpilation pipeline underpins all Jac→Python compilation -- see [How it Works: Transpilation to Native Python](python-integration.md#how-it-works-transpilation-to-native-python).)
 
 ---
 
@@ -169,11 +167,13 @@ Run `jac jac2py friends.jac` to generate:
     ```
 
 !!! note
-    The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally. The public API `jaclang.lib` re-exports the same symbols and is the recommended import path for library-mode usage.
+    The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally; the public `jaclang.lib` re-exports the same symbols and is the recommended import path. See [Python Integration](python-integration.md#how-it-works-transpilation-to-native-python).
 
 ---
 
 ## **Key Concepts Explained**
+
+The mappings below show how each Jac construct is expressed against the `jaclang.lib` API. This is the inverse of the general transpilation reference in [Python Integration](python-integration.md#jac-compiles-to-python-bytecode) -- here the focus is the hand-written library-mode form, not the compiler output.
 
 ### **1. Nodes and Edges**
 
@@ -201,7 +201,7 @@ class Friend(Edge):
     pass
 ```
 
-Graph nodes are implemented by inheriting from the `Node` base class, while relationships between nodes inherit from the `Edge` base class. Data fields are defined using standard Python class attributes with type annotations.
+Subclass `Node` for graph nodes and `Edge` for relationships; declare data fields as standard typed class attributes.
 
 ### **2. Walkers**
 
@@ -223,7 +223,7 @@ class FriendFinder(Walker):
     started: bool = False
 ```
 
-Walkers are graph traversal agents implemented by inheriting from the `Walker` base class. Walkers navigate through the graph structure and execute logic at each visited node or edge.
+Subclass `Walker` for traversal agents that navigate the graph and run logic at each visited node or edge.
 
 ### **3. Abilities (Event Handlers)**
 
@@ -246,7 +246,7 @@ def report_friend(self, here: Person) -> None:
     print(f"{here.name} is a friend")
 ```
 
-Abilities define event handlers that execute when a walker interacts with nodes or edges. The `@on_entry` decorator marks methods that execute when a walker enters a node or edge, while `@on_exit` marks exit handlers. The `here` parameter represents the current node or edge being visited, and the `visitor` parameter (in node/edge abilities) represents the traversing walker.
+`@on_entry`/`@on_exit` mark methods that run when a walker enters or exits a node or edge. `here` is the current node/edge; `visitor` (in node/edge abilities) is the traversing walker.
 
 ### **4. Connecting Nodes**
 
@@ -280,7 +280,7 @@ connect(left=p1, right=p2, edge=Friend)
 connect(left=p2, right=[p1, p3], edge=Family)
 ```
 
-The `connect()` function creates directed edges between nodes. The `edge` parameter specifies the edge type class, defaulting to a generic edge if omitted. The function supports connecting a single source node to either a single target node or a list of target nodes.
+`connect()` creates directed edges; `edge` names the edge class (generic if omitted), and `right` accepts a single node or a list.
 
 ### **5. Spawning Walkers**
 
@@ -306,7 +306,7 @@ from jaclang.lib import spawn, root
 result = spawn(FriendFinder(), root())
 ```
 
-The `spawn()` function initiates a walker at a specified node and begins traversal. The `root()` function returns the root node of the current graph. The `spawn()` function returns the walker instance after traversal completion.
+`spawn()` starts a walker at a node and returns the walker after traversal; `root()` returns the current graph's root node.
 
 ### **6. Visiting Nodes**
 
@@ -334,7 +334,7 @@ visit(
 )
 ```
 
-The `OPath()` class constructs traversal paths from a given node. The `edge_out()` method specifies outgoing edges to follow, while `edge_in()` specifies incoming edges. The `edge()` method filters the path to include only edges, excluding destination nodes. The `visit()` method marks the constructed path for the walker to traverse, and `refs()` converts the path into concrete node or edge references.
+`OPath(node)` builds a traversal path: `edge_out()`/`edge_in()` select direction, `edge()` keeps edges only (no destination nodes), and `visit()` marks the path; `refs()` resolves it to concrete node/edge references for `visit()`.
 
 ---
 
@@ -347,7 +347,7 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 | Name | Type | Description |
 |------|------|-------------|
-| `TYPE_CHECKING` | bool | Python typing constant for type checking blocks. Use it in `if TYPE_CHECKING { ... }` guards to break circular imports for type-only references. |
+| `TYPE_CHECKING` | bool | Python typing constant; guards type-only references to break circular imports (see [Type-Only Imports](python-integration.md#type-only-imports)). |
 | `EdgeDir` | Enum | Edge direction enum (IN, OUT, ANY) |
 | `DSFunc` | Type | Object spatial function type alias |
 
@@ -492,20 +492,9 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 ## **Best Practices**
 
-### **1. Type Hints**
+Standard Python hygiene applies: annotate fields for IDE support, and import only the `jaclang.lib` names you use (avoid `from jaclang.lib import *`). The patterns below are specific to library-mode object-spatial code.
 
-Always use type hints for better IDE support:
-
-```python
-from typing import Optional
-
-
-class Person(Node):
-    name: str
-    age: Optional[int] = None
-```
-
-### **2. Walker State**
+### **1. Walker State**
 
 Keep walker state minimal and immutable when possible:
 
@@ -518,7 +507,7 @@ class Counter(Walker):
         self.count += 1
 ```
 
-### **3. Path Filtering**
+### **2. Path Filtering**
 
 Use lambda functions for flexible filtering:
 
@@ -536,48 +525,16 @@ visit(
 )
 ```
 
-### **4. Clean Imports**
-
-Import only what you need:
-
-```python
-# Good
-from jaclang.lib import Node, Walker, spawn, visit, on_entry
-
-# Avoid
-from jaclang.lib import *
-```
-
----
-
-## **Migration Guide**
-
-### **From Jac to Library Mode**
-
-| Jac Syntax | Library Mode Python |
-|------------|---------------------|
-| `node Person { has name: str; }` | `class Person(Node):`<br>&nbsp;&nbsp;&nbsp;&nbsp;`name: str` |
-| `edge Friend {}` | `class Friend(Edge):`<br>&nbsp;&nbsp;&nbsp;&nbsp;`pass` |
-| `walker W { has x: int; }` | `class W(Walker):`<br>&nbsp;&nbsp;&nbsp;&nbsp;`x: int` |
-| `root ++> node` | `connect(root(), node)` |
-| `a +>: Edge :+> b` | `connect(a, b, Edge)` |
-| `W() spawn root` | `spawn(W(), root())` |
-| `visit [-->]` | `visit(self, refs(OPath(here).edge_out().visit()))` |
-| `visit [<--]` | `visit(self, refs(OPath(here).edge_in().visit()))` |
-| `visit [--]` | `visit(self, refs(OPath(here).edge_any().visit()))` |
-| `can f with T entry {}` | `@on_entry`<br>`def f(self, here: T): ...` |
-| `disengage;` | `disengage(self)` |
+> The full Jac syntax → library-mode mapping is covered in [Key Concepts Explained](#key-concepts-explained) above. For the general Jac↔Python interop story (importing `.jac` files, inline Python, type compatibility), see [Python Integration](python-integration.md#seamless-interoperability-import-jac-files-like-python-modules).
 
 ---
 
 ## **Summary**
 
-Library mode provides a pure Python implementation of Jac's object-spatial programming model through the `jaclang.lib` package. This approach offers several advantages:
+Library mode provides a pure Python implementation of Jac's object-spatial programming model through the `jaclang.lib` package, distinguished by:
 
 - **Complete Feature Parity**: All Jac language features are accessible through the library interface
-- **Idiomatic Python**: Implementation uses standard Python classes, decorators, and functions without runtime magic
-- **Full Tooling Support**: Generated code includes proper type hints, enabling IDE autocomplete, static analysis, and debugging
-- **Seamless Integration**: The library can be incorporated into existing Python projects without requiring build system modifications
-- **Maintainable Output**: Transpiled code is readable and follows Python best practices
+- **Idiomatic Python**: Standard Python classes, decorators, and functions with full tooling support (type hints, IDE autocomplete, static analysis)
+- **Zero-Friction Integration**: Drop into existing Python projects with no build-system changes
 
-Library mode enables developers to leverage Jac's graph-native and AI-integrated programming model while maintaining full compatibility with the Python ecosystem and development workflow.
+Use it when you want Jac's graph-native and AI-integrated programming model while staying entirely in Python syntax.

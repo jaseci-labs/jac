@@ -284,7 +284,7 @@ def:pub agent_stop -> bool {
     return True;
 }
 
-"""Live event stream (SSE). Returning a generator makes jac-scale serve this as
+"""Live event stream (SSE). Returning a generator makes the scale backend serve this as
 `text/event-stream`, one `data: {json}` frame per bus emit -- so the client gets
 reasoning/answer tokens as they are generated, plus phase/tool/status/stats
 deltas. The client reads it with a fetch stream-reader (see frontend)."""

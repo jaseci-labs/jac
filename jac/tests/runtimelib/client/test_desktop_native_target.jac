@@ -119,8 +119,8 @@ test "desktop dispatch config loads from jac.toml" {
 
 """The host brings up the fused runtime via the libjacpyembed shim (jac_engine_boot)
 instead of binding the build machine's libpython, and never bakes build-machine
-state. DISPATCH_PY's jac-scale seam is a slim runtime-only hook (no user-site/
-getsitepackages baking)."""
+state. All boot behavior lives in the host_boot runtime module; the generated
+source only carries configuration plus the native bridge."""
 test "host source boots the fused runtime and bakes no build-machine state" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
         _generate_host_source
@@ -131,25 +131,68 @@ test "host source boots the fused runtime and bakes no build-machine state" {
     assert "import from jacpyembed" in src , "host must import the libjacpyembed shim";
     assert "jac_engine_boot()" in src , "host must boot the fused runtime";
     assert "libpython" not in src , "host must not bind a libpython soname";
-    assert "DISPATCH_PY" in src , "host source must declare DISPATCH_PY";
-    assert "inprocess_dispatch.boot" in src , "DISPATCH_PY must call boot()";
+    # Thin boot contract: one BOOT_PY statement into the host_boot module.
+    assert "BOOT_PY" in src , "host source must declare BOOT_PY";
+    assert "host_boot.boot(" in src , "BOOT_PY must call host_boot.boot()";
     # No build-machine site-package baking (the old _builder_dep_site_dirs path).
     assert "getusersitepackages" not in src , "must not reference user-site packages";
     assert "getsitepackages" not in src , "must not bake interpreter site-packages";
     assert "_baked_dep_sites" not in src , "must not bake builder site dirs";
+    assert "JAC_DESKTOP_SCALE_SRC" not in src , "separate scale-source seam is gone (scale is folded into jaclang)";
 }
 
-"""DISPATCH_PY's jac-scale seam is runtime-only and portable: it reads
-JAC_DESKTOP_SCALE_SRC / JAC_DESKTOP_DEPS at runtime, with no build-time baking,
-so the one binary stays portable until jac-scale is bundled into the runtime."""
-test "DISPATCH_PY jac-scale hook is the slim runtime-only seam" {
-    import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
-        _generate_host_source
-    }
+"""host_boot's deps seam is runtime-only and portable: it reads JAC_DESKTOP_DEPS
+at boot time with no build-time baking. Exercise the real code path instead of
+grepping generated strings."""
+test "host_boot applies the runtime extra-deps seam" {
+    import os;
+    import sys;
+    import from jaclang.runtimelib.client.targets.desktop.native { host_boot }
 
-    src = _generate_host_source("T", 800, 600, "test-app");
-    assert "JAC_DESKTOP_SCALE_SRC" in src , "host must read the runtime jac-scale source seam";
-    assert "JAC_DESKTOP_DEPS" in src , "host must read the runtime deps seam";
+    _saved_path = list(sys.path);
+    _saved_env = os.environ.get("JAC_DESKTOP_DEPS");
+    fake_a = os.path.join(os.sep, "nonexistent-jac-deps-a");
+    fake_b = os.path.join(os.sep, "nonexistent-jac-deps-b");
+    try {
+        os.environ["JAC_DESKTOP_DEPS"] = fake_a + os.pathsep + fake_b;
+        host_boot._apply_extra_deps();
+        assert fake_a in sys.path , "first JAC_DESKTOP_DEPS entry must join sys.path";
+        assert fake_b in sys.path , "second JAC_DESKTOP_DEPS entry must join sys.path";
+        # Idempotent: applying twice must not duplicate entries.
+        host_boot._apply_extra_deps();
+        assert sys.path.count(fake_a) == 1 , "deps seam must not duplicate sys.path entries";
+    } finally {
+        sys.path[:] = _saved_path;
+        if _saved_env is None {
+            os.environ.pop("JAC_DESKTOP_DEPS", None);
+        } else {
+            os.environ["JAC_DESKTOP_DEPS"] = _saved_env;
+        }
+    }
+}
+
+"""host_boot.runtime_payload is the single routing decision between the
+in-process Jac runtime and the plugin host. Pin the wire forms it must accept:
+raw payload dicts, and the webview bind form (a one-element argument array
+holding the payload as a JSON string). Plugin-style requests fall through."""
+test "host_boot routes runtime payloads and passes plugin requests through" {
+    import json;
+    import from jaclang.runtimelib.client.targets.desktop.native { host_boot }
+
+    walker_req = json.dumps({"kind": "walker", "name": "w", "fields": {}});
+    func_req = json.dumps({"kind": "function", "name": "f", "fields": {}});
+    # Raw dict payloads route to the runtime as-is.
+    assert host_boot.runtime_payload(walker_req) == walker_req;
+    assert host_boot.runtime_payload(func_req) == func_req;
+    # Webview bind form: one-element args array holding the payload string.
+    wrapped = json.dumps([walker_req]);
+    assert host_boot.runtime_payload(wrapped) == walker_req;
+    # Plugin wire forms fall through to the plugin host (None = not runtime).
+    assert host_boot.runtime_payload(json.dumps(["jac.fs", "read_file", {}])) is None;
+    assert host_boot.runtime_payload(json.dumps({"plugin": "jac.fs"})) is None;
+    # Garbage falls through too (the plugin host owns the error envelope).
+    assert host_boot.runtime_payload("not json") is None;
+    assert host_boot.runtime_payload(json.dumps(["not json either"])) is None;
 }
 
 """Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
@@ -193,15 +236,13 @@ test "na/LLVM backend is first-class in the desktop fused runtime" {
 }
 
 """The desktop host imports its bootstrap modules from the fused runtime -- no
-transpiled .py staged beside the binary. Prove it by running the generated plugin
+transpiled .py staged beside the binary. Prove it by running host_boot's plugin
 bootstrap + the broker/dispatch imports in THIS runtime (the same fused runtime a
 desktop app boots): the closest dependency-free proxy for the embedded host,
 catching an import-from-runtime regression without a display."""
 test "host bootstrap modules import + run from the fused runtime" {
-    import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
-        _make_plugin_bootstrap_py
-    }
     import from jaclang.runtimelib.client.targets.desktop.native {
+        host_boot,
         oauth_broker,
         inprocess_dispatch
     }
@@ -216,10 +257,8 @@ test "host bootstrap modules import + run from the fused runtime" {
     try {
         # The plugin bootstrap loads the plugins from the runtime + wires the
         # dispatch host (registry.bootstrap_plugins) in the fused runtime.
-        _pp = _make_plugin_bootstrap_py({"path": True});
-        _ns = {};
-        exec(_pp, _ns);
-        assert callable(_ns.get("_dispatch_fn")) , "plugin bootstrap must yield a dispatch callable from the runtime";
+        _host = host_boot._bootstrap_plugin_host({"path": True});
+        assert callable(_host.dispatch) , "plugin bootstrap must yield a dispatch callable from the runtime";
         # oauth_broker + inprocess_dispatch resolve from the runtime too (no staging).
         assert hasattr(oauth_broker, "make_handler") , "oauth_broker must import from the runtime";
         assert hasattr(inprocess_dispatch, "boot")
@@ -246,9 +285,7 @@ test "dev launch detects editable worktree roots" {
     if (Path(os.environ.get("JAC_DESKTOP_JAC_SRC", "")) / "jaclang").exists() {
         assert "JAC_DESKTOP_JAC_SRC" in roots , "editable jaclang root should be detected";
     }
-    if (
-        Path(os.environ.get("JAC_DESKTOP_SCALE_SRC", "")) / "jac_scale" / "inprocess.jac"
-    ).exists() {
-        assert "JAC_DESKTOP_SCALE_SRC" in roots , "editable jac-scale root should be detected";
-    }
+    # Scale is folded into jaclang (jaclang.scale), so the editable jaclang root
+    # carries it; there is no separate JAC_DESKTOP_SCALE_SRC root to detect.
+    assert "JAC_DESKTOP_SCALE_SRC" not in roots , "no separate scale root (scale is part of jaclang)";
 }

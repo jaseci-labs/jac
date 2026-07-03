@@ -84,7 +84,7 @@ def _boot_impl(entry_file: str, graph_path: str) {
     }
     import jaclang;
     _ensure_jac_meta_importer();
-    import from jac_scale.inprocess { prepare_inprocess_runtime }
+    import from jaclang.scale.server.inprocess { prepare_inprocess_runtime }
 
     _runtime = prepare_inprocess_runtime(
         entry_file,
@@ -202,6 +202,54 @@ def dispatch(payload_json: str) -> str {
     }
     return json.dumps(
         {"status": resp.status_code, "ok": resp.is_success, "body": body}
+    );
+}
+
+
+def _dispatch_sync_run(payload_json: str, box: dict, done: any) {
+    try {
+        box["v"] = dispatch(payload_json);
+    } except Exception as e {
+        box["v"] = _error_envelope(
+            "NATIVE_DISPATCH_ERROR", str(e), traceback.format_exc()
+        );
+    } finally {
+        done.set();
+    }
+}
+
+
+def dispatch_sync(payload_json: str, timeout_s: float = 0.0) -> str {
+    if _BOOT_ERROR {
+        return _error_envelope(
+            "NATIVE_BOOT_ERROR", "in-process backend failed to start", _BOOT_ERROR
+        );
+    }
+    if _tc is None {
+        return _error_envelope(
+            "NOT_BOOTED", "in-process dispatch called before boot()"
+        );
+    }
+    if timeout_s <= 0.0 {
+        timeout_s = _timeout_s;
+    }
+    box: dict = {"v": None};
+    done = threading.Event();
+    th = threading.Thread(
+        target=_dispatch_sync_run,
+        args=(payload_json, box, done),
+        name="jac-inprocess-dispatch-sync",
+        daemon=True
+    );
+    th.start();
+
+    done.wait(timeout_s);
+    if box["v"] is not None {
+        return box["v"] as str;
+    }
+    return _error_envelope(
+        "NATIVE_DISPATCH_TIMEOUT",
+        "in-process dispatch exceeded " + str(timeout_s) + "s"
     );
 }
 

@@ -597,7 +597,7 @@ curl -X POST http://localhost:8000/walker/add_todo \
   -d '{"title": "Learn OSP"}'
 ```
 
-Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and [jac-scale Reference](../plugins/jac-scale.md) for full API documentation.
+Walker `has` properties become the request body. The `report` values become the response. See [Part IV: Full-Stack](../plugins/jac-client.md) and the [Scale Reference](../plugins/jac-scale.md) for full API documentation.
 
 ### 7 Walker Inheritance
 
@@ -627,10 +627,10 @@ These keywords have special meaning in specific contexts:
 | `here` | Walker ability | Current node the walker is visiting | [Walkers](#walkers) |
 | `visitor` | Node ability | The walker that triggered this ability | [Nodes](#nodes) |
 | `root` | Anywhere | Root node of the current graph | [Graph Construction](#graph-construction) |
-| `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#2-inheritance) |
+| `super` | Subclass method | Parent class reference | [Part II](functions-objects.md#3-inheritance) |
 | `init` | Object body | Constructor method name | [Part II](functions-objects.md#1-objects-classes) |
 | `postinit` | Object body | Post-constructor hook | [Part I](foundation.md#2-instance-variables-has) |
-| `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-blocks) |
+| `props` | JSX context | Component props reference | [Part IV: Full-Stack](../plugins/jac-client.md#client-sections) |
 
 **Usage examples:**
 

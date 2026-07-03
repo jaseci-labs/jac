@@ -2739,7 +2739,7 @@ Now that you have the foundation, here are advanced Jac features to explore:
    <div class="code-block">
 
    ```jac
-   import from byllm.lib { Model }
+   import from jaclang.byllm.lib { Model }
 
    glob llm = Model(model_name="gpt-4o");
 

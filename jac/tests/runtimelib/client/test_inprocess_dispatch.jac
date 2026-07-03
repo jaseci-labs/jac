@@ -10,11 +10,11 @@ runtime routing a call through `window.__jac_invoke` instead of `fetch`) is
 covered by `jac/tests/runtimelib/test_native_invoke.cl.jac`. Together they prove
 the full round-trip without a live webview, a display, or `nacompile`.
 
-The round-trip needs the jac-scale backend (starlette + jac_scale). The lean
-`jac test` desktop CI step does NOT install it, so the heavy imports are lazy
-(module import + collection stay backend-free) and each test self-skips when the
-backend is absent. It runs for real in the jac-scale-backed CI step -- see
-`.github/workflows/test-jaseci.yml`.
+The round-trip needs the built-in scale backend (starlette + jaclang.scale). The
+lean `jac test` desktop CI step does NOT install starlette, so the heavy imports
+are lazy (module import + collection stay backend-free) and each test self-skips
+when the backend deps are absent. It runs for real in the scale-backed CI step
+-- see `.github/workflows/ci.yml`.
 """
 
 import os;
@@ -28,16 +28,16 @@ import from pathlib { Path }
 glob _FIXTURE: str = str(Path(__file__).parent / "fixtures" / "inprocess_app.jac"),
      # Boot the in-process app exactly ONCE for the whole module, then reuse it across
      # tests -- this mirrors the real host (boot at startup, dispatch many times) and
-     # avoids the jac-scale in-process module-reload quirk where a second boot() in
+     # avoids the scale in-process module-reload quirk where a second boot() in
      # the same interpreter degrades the function executor.
      _BOOTED: bool = False;
 
 
-"""True when the in-process backend (starlette + jac_scale) is importable."""
+"""True when the in-process backend (starlette + jaclang.scale) is importable."""
 def _backend_available -> bool {
     try {
         import starlette.testclient;
-        import jac_scale.serve;
+        import jaclang.scale.server.serve;
         return True;
     } except ImportError {
         return False;
@@ -78,7 +78,7 @@ def _dispatch_request(request: dict) -> dict {
 
 test "walker call round-trips in-process and returns its report" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     reply = _dispatch_request(
@@ -101,7 +101,7 @@ test "walker call round-trips in-process and returns its report" {
 
 test "function call round-trips in-process and returns its result" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     reply = _dispatch_request(
@@ -128,7 +128,7 @@ test "function call round-trips in-process and returns its result" {
 # backs `root.shared` for unauthenticated desktop calls.
 test "root.shared round-trips a write then read on the desktop path (P1-D / #6685)" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     saved = _dispatch_request(
@@ -161,7 +161,7 @@ booting the fixture once on first use; returns `(status, body_text, content_type
 `forward()` is the CEF half of the `cl` -> `sv` path: the page leaves
 __JAC_NATIVE__ unset and POSTs to the loopback, which hands the request here and
 echoes our return straight back -- so unlike `dispatch()` this returns the
-jac-scale response VERBATIM (real status + raw {ok,data,error} body), not the
+scale response VERBATIM (real status + raw {ok,data,error} body), not the
 {status,ok,body} envelope."""
 def _forward_request(method: str, path: str, body: bytes, token: str = "") -> tuple {
     global _BOOTED;
@@ -186,7 +186,7 @@ def _forward_request(method: str, path: str, body: bytes, token: str = "") -> tu
 
 test "forward() passes a walker call through to the in-process app verbatim" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     (status, body, ctype) = _forward_request(
@@ -204,7 +204,7 @@ test "forward() passes a walker call through to the in-process app verbatim" {
 
 test "forward() surfaces the real non-200 status for an unknown walker" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     # Proves the raw-passthrough contract: dispatch()'s wrapper would always ride
@@ -295,7 +295,7 @@ def _error_code_for(id_bytes: bytes) -> str {
 
 """Slow dispatch stub: sleep past the test's timeout, then return a normal-
 looking envelope. Installed in place of the module's real `dispatch` so the
-timeout/late-reply tests need no jac-scale backend (the worker calls the module
+timeout/late-reply tests need no scale backend (the worker calls the module
 global `dispatch`, so reassigning it is enough)."""
 def _slow_dispatch(payload_json: str) -> str {
     import time;
@@ -527,10 +527,10 @@ test "error envelopes gate the traceback behind debug and always carry a request
 }
 
 
-# Backend-free in BOTH lanes: a bad entry fails boot() at jac_scale import (lean
+# Backend-free in BOTH lanes: a bad entry fails boot() at the scale backend import (lean
 # lane) or at jac_import (backend lane). Either way boot() must record the reason
-# and RE-RAISE, so the host's PyRun_SimpleString(DISPATCH_PY) sees != 0 and shows
-# the error page (P1-B).
+# and RE-RAISE, so the host's PyRun_SimpleString(BOOT_PY) (via host_boot.boot)
+# sees != 0 and shows the error page (P1-B).
 test "boot() records the failure reason and re-raises (P1-B)" {
     import from importlib { import_module }
     import tempfile;
@@ -1166,6 +1166,181 @@ test "_boot_impl closes a prior runtime before re-booting" {
         );
     } finally {
         ipd._runtime = orig_runtime;
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+    }
+}
+
+test "dispatch_sync() returns the result for a fast call" {
+    import from importlib { import_module }
+    import from unittest.mock { MagicMock }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    try {
+        mock_resp = MagicMock();
+        mock_resp.status_code = 200;
+        mock_resp.is_success = True;
+        mock_resp.json.return_value = {"ok": True, "data": {"result": 42}};
+        mock_client = MagicMock();
+        mock_client.post.return_value = mock_resp;
+
+        ipd._tc = mock_client;
+        ipd._BOOT_ERROR = "";
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "function", "name": "add", "fields": {"a": 2, "b": 40}})
+        );
+        env = json.loads(raw);
+        assert env["status"] == 200 , "dispatch_sync must return the wrapped envelope";
+        assert env["body"]["data"]["result"] == 42 , (
+            "the fast dispatch result must round-trip through the worker thread"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+    }
+}
+
+
+# Backend-free: the whole point of dispatch_sync(). A slow dispatch stub stands
+# in for a walker that stalls past the timeout; dispatch_sync must reject with
+# NATIVE_DISPATCH_TIMEOUT and return promptly (it must NOT block for the full
+# slow duration).
+test "dispatch_sync() times out a slow call with NATIVE_DISPATCH_TIMEOUT" {
+    import time;
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    orig_dispatch = ipd.dispatch;
+    orig_timeout = ipd._timeout_s;
+    try {
+        ipd._tc = object();  # truthy: clears the not-booted guard
+        ipd._BOOT_ERROR = "";
+        ipd._timeout_s = 30.0;  # default; the explicit timeout_s below wins
+        ipd.dispatch = _slow_dispatch;  # sleeps 0.6s
+
+        t0 = time.monotonic();
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "slow", "fields": {}, "token": ""}),
+            timeout_s=0.2
+        );
+        elapsed = time.monotonic() - t0;
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] == "NATIVE_DISPATCH_TIMEOUT" , (
+            "a call exceeding timeout_s must reject with NATIVE_DISPATCH_TIMEOUT"
+        );
+        assert "0.2s" in env["body"]["error"]["message"] , (
+            "the timeout message must report the applied threshold"
+        );
+        assert elapsed < 1.0 , (
+            "dispatch_sync must return promptly after the timeout, not wait for "
+            "the slow call to finish"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+        ipd.dispatch = orig_dispatch;
+        ipd._timeout_s = orig_timeout;
+    }
+}
+
+
+# Backend-free: timeout_s <= 0 means "use the configured _timeout_s". Drive a
+# slow stub with _timeout_s set short and timeout_s left at its default.
+test "dispatch_sync() falls back to _timeout_s when timeout_s <= 0" {
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    orig_dispatch = ipd.dispatch;
+    orig_timeout = ipd._timeout_s;
+    try {
+        ipd._tc = object();
+        ipd._BOOT_ERROR = "";
+        ipd._timeout_s = 0.2;
+        ipd.dispatch = _slow_dispatch;  # 0.6s -- past the configured 0.2s
+
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "slow", "fields": {}, "token": ""})
+        );
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] == "NATIVE_DISPATCH_TIMEOUT" , (
+            "timeout_s <= 0 must apply the configured _timeout_s"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+        ipd.dispatch = orig_dispatch;
+        ipd._timeout_s = orig_timeout;
+    }
+}
+
+
+# Backend-free: when the underlying dispatch() raises, dispatch_sync must catch
+# it on the worker thread and return a NATIVE_DISPATCH_ERROR envelope (never let
+# the exception escape and freeze the host's GIL-held invoke handler).
+test "dispatch_sync() returns NATIVE_DISPATCH_ERROR when dispatch() raises" {
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    orig_dispatch = ipd.dispatch;
+    try {
+        ipd._tc = object();
+        ipd._BOOT_ERROR = "";
+        ipd.dispatch = _raising_dispatch;  # always raises RuntimeError
+
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "x", "fields": {}, "token": ""}),
+            timeout_s=5.0
+        );
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] == "NATIVE_DISPATCH_ERROR" , (
+            "a dispatch() exception must surface as NATIVE_DISPATCH_ERROR"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+        ipd.dispatch = orig_dispatch;
+    }
+}
+
+
+# Backend-free: dispatch_sync() shares dispatch()'s not-booted / boot-error
+# guards. When boot() never ran it must reply NOT_BOOTED (not raise / hang).
+test "dispatch_sync() replies NOT_BOOTED when boot() never ran" {
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    try {
+        ipd._tc = None;
+        ipd._BOOT_ERROR = "";
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "x", "fields": {}, "token": ""})
+        );
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] != "NATIVE_BOOT_ERROR" , (
+            "a fresh module must not report a stale boot error"
+        );
+        assert ipd._tc is None , "test must not leave a fake client behind";
+    } finally {
         ipd._tc = orig_tc;
         ipd._BOOT_ERROR = orig_err;
     }

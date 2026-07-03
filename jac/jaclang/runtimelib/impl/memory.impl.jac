@@ -590,6 +590,7 @@ impl SqliteMemory._ensure_connection -> None {
     self.__conn__ = sqlite3.connect(self.path, check_same_thread=False);
     self.__conn__.execute("PRAGMA journal_mode=WAL");
     self.__conn__.execute("PRAGMA synchronous=NORMAL");
+    self.__conn__.execute("PRAGMA busy_timeout=5000");
 
     if _is_new_schema(self.__conn__) {
         _create_new_schema(self.__conn__);
@@ -673,6 +674,14 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
                     else None
             );
             if cls_resolved is None {
+                if os.environ.get("JAC_SV_SIBLING") == "1" {
+                    logger.debug(
+                        f"SqliteMemory: class {arch_module}.{arch_type} not "
+                        f"loaded in this sibling service; skipping anchor {id} "
+                        "(owned by a peer service)."
+                    );
+                    return None;
+                }
                 reason = f"class {arch_module}.{arch_type} unresolvable";
                 logger.warning(
                     f"SqliteMemory: class {arch_module}.{arch_type} unresolvable "

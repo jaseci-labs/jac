@@ -12,8 +12,9 @@ cd jac/examples/todo_app
 jac start --client desktop
 ```
 
-Editable installs of `jaclang` and `jac-scale` are auto-wired by
-the runner; no manual `JAC_DESKTOP_*` or `LD_LIBRARY_PATH` setup is needed.
+An editable install of `jaclang` (which now includes the built-in `scale`
+subsystem) is auto-wired by the runner; no manual `JAC_DESKTOP_*` or
+`LD_LIBRARY_PATH` setup is needed.
 
 ## Backend smoke test (no window)
 

@@ -154,10 +154,21 @@ def create(
             short="",
             dest="install_global"
         ),
+        Arg.create(
+            "scale",
+            typ=bool,
+            default=False,
+            help="Materialize the deploy-time capability closure (adds deploy-only clients like kubernetes/docker) instead of just the runtime closure",
+            short=""
+        ),
 
     ],
     examples=[
         ("jac install", "Install all dependencies from jac.toml"),
+        (
+            "jac install --scale",
+            "Also install deploy-time capabilities (kubernetes/docker) for the operator machine"
+        ),
         ("jac install numpy", "Install numpy into the project venv"),
         (
             "jac install numpy pandas scipy",
@@ -166,7 +177,7 @@ def create(
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         (
-            "jac install -e ./jac-byllm ./jac-scale -e ./jac-client",
+            "jac install -e ./my-plugin -e ./my-lib",
             "Install multiple packages in editable mode (space-separated or repeated -e)"
         ),
         ("jac install --dev", "Include dev dependencies"),
@@ -179,7 +190,7 @@ def create(
         ("jac install --no-deps", "Install packages without their dependencies"),
         ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
         (
-            "jac install -e ./jac-byllm --global",
+            "jac install -e ./my-plugin --global",
             "Install a plugin into the global site so it's importable from any project"
         ),
 
@@ -199,7 +210,8 @@ def install(
     no_deps: bool = False,
     quiet: bool = False,
     prefer_binary: bool = False,
-    install_global: bool = False
+    install_global: bool = False,
+    scale: bool = False
 ) -> int;
 
 @registry.command(
@@ -402,7 +414,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
 @registry.command(
     name="bundle",
-    help="Build a .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
+    help="Build a pure-Python .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
     args=[
         Arg.create(
             "output",
@@ -413,13 +425,13 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
         Arg.create(
             "target",
             default="wheel",
-            help="Build target: 'wheel' (PyPI), 'npm' (npmjs), 'all', or 'npm-runtime'",
+            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'all', or 'npm-runtime'",
             short="t"
         ),
 
     ],
     examples=[
-        ("jac bundle", "Build wheel into dist/"),
+        ("jac bundle", "Build a pure-Python wheel into dist/ (.jac transpiled to .py)"),
         ("jac bundle --target npm", "Build an npm .tgz into dist/"),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 

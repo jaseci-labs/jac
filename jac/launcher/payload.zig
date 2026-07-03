@@ -64,11 +64,13 @@ const BUN_BASE = "https://github.com/oven-sh/bun/releases/download";
 
 const MAX_PATH = Dir.max_path_bytes;
 
-const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", mkpayload, @"typeshed-sha" };
+const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", mkpayload, @"typeshed-sha" };
 
-// LLVM release whose static archives the LLVMPY_* shim (jac/native) links
-// against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
-const LLVM_VER = "22.1.8";
+// The pinned LLVM release + per-platform slice table lives in llvm_release.zig
+// (shared with build.zig, so the fetch and the build can't drift).
+const llvm_release = @import("llvm_release.zig");
+const LLVM_VER = llvm_release.LLVM_VER;
+const LlvmRelease = llvm_release.LlvmRelease;
 
 // jaseci-labs/llvm-slice repackages the official LLVM release into a per-member,
 // HTTP-range-fetchable zip. fetchLlvmSlice pulls only the ~84 MB the shim needs
@@ -79,44 +81,9 @@ const LLVM_VER = "22.1.8";
 const SLICE_BASE = "https://github.com/jaseci-labs/llvm-slice/releases/download";
 const SLICE_TAG = "v" ++ LLVM_VER;
 
-// The release is selected per host. `dirname` is the release's top-level dir (also
-// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync).
-// `triple`/`manifest_sha256`/`zip_size` drive the slice fetch. Add a row to
-// support another host platform.
-const LlvmRelease = struct {
-    dirname: []const u8,
-    triple: []const u8,
-    manifest_sha256: []const u8,
-    zip_size: u64,
-};
+// The release is selected for the build host (this tool runs on it).
 fn llvmRelease() ?LlvmRelease {
-    return switch (builtin.os.tag) {
-        .linux => switch (builtin.cpu.arch) {
-            .x86_64 => .{
-                .dirname = "LLVM-22.1.8-Linux-X64",
-                .triple = "x86_64-linux",
-                .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
-                .zip_size = 970350875,
-            },
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-Linux-ARM64",
-                .triple = "aarch64-linux",
-                .manifest_sha256 = "b1aae9c16de5feff6fd4441f0bf32671b27c6dda98382ee389d305db6351e598",
-                .zip_size = 932506999,
-            },
-            else => null,
-        },
-        .macos => switch (builtin.cpu.arch) {
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-macOS-ARM64",
-                .triple = "aarch64-apple-darwin",
-                .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
-                .zip_size = 743879473,
-            },
-            else => null,
-        },
-        else => null,
-    };
+    return llvm_release.llvmRelease(builtin.os.tag, builtin.cpu.arch);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -156,12 +123,16 @@ pub fn main(init: std.process.Init) !void {
             if (n < 4) die("usage: payload fetch-bun <os-arch> <dest-dir>", .{});
             try fetchBun(io, gpa, a, argv[2], argv[3]);
         },
+        .@"build-musl" => {
+            if (n < 5) die("usage: payload build-musl <os-arch> <dest-dir> <zig-exe>", .{});
+            try buildMusl(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4]);
+        },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--pyembed=PATH] [--skip-precompile] [--skip-tui] [--bundle-byllm=PATH] [--link-source=PATH]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--pyembed=PATH] [--skip-precompile] [--skip-tui] [--bundle-byllm=PATH] [--link-source=PATH] [--musl=PATH] [--precompiled-cache=DIR]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
@@ -170,6 +141,8 @@ pub fn main(init: std.process.Init) !void {
             var skip_tui = false;
             var byllm_root: ?[]const u8 = null;
             var link_source: ?[]const u8 = null;
+            var musl_dir: ?[]const u8 = null;
+            var precompiled_cache: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
                 const arg = argv[i];
@@ -187,9 +160,13 @@ pub fn main(init: std.process.Init) !void {
                     byllm_root = arg["--bundle-byllm=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
                     link_source = arg["--link-source=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--musl=")) {
+                    musl_dir = arg["--musl=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--precompiled-cache=")) {
+                    precompiled_cache = arg["--precompiled-cache=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, skip_tui, byllm_root, link_source);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, skip_tui, byllm_root, link_source, musl_dir, precompiled_cache);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -568,6 +545,96 @@ fn fetchBun(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
     log("fetch-bun: ready at {s} ({d} MiB)", .{ out_path, bun_bytes.len >> 20 });
 }
 
+// =============================================================== build-musl ===
+
+/// Harvest a complete static-musl runtime (libc.a + libzigc.a + compiler-rt +
+/// crt) into `dest`, so `jac nacompile` can fully static-link Linux executables
+/// against musl with no toolchain at compile time. Unlike the other vendored
+/// deps this is BUILT, not downloaded: the bundled Zig already ships musl, so we
+/// link a tiny stub for the target (which materializes the archives into an
+/// isolated Zig cache) and copy the artifacts out. Idempotent; only meaningful
+/// for Linux targets.
+fn buildMusl(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, osarch: []const u8, dest: []const u8, zig_exe: []const u8) !void {
+    const ztarget = if (std.mem.eql(u8, osarch, "linux-x86_64"))
+        "x86_64-linux-musl"
+    else if (std.mem.eql(u8, osarch, "linux-aarch64"))
+        "aarch64-linux-musl"
+    else
+        die("build-musl: unsupported osarch '{s}' (need linux-x86_64|linux-aarch64)", .{osarch});
+
+    // crt1 + libc.a + libzigc.a are mandatory; compiler-rt + crti/crtn optional
+    // (musl's modern startup uses init-array, not legacy _init).
+    const ARTIFACTS = [_][]const u8{
+        "libc.a", "libzigc.a", "libcompiler_rt.a", "crt1.o", "crti.o", "crtn.o",
+    };
+
+    try Dir.cwd().createDirPath(io, dest);
+    // Idempotent: a complete set already present -> nothing to do.
+    // Skip only when the MANDATORY set is present. A generic count can pass with
+    // the optional artifacts (compiler-rt + crti/crtn) while libc.a/libzigc.a are
+    // missing, leaving an unusable runtime.
+    const MANDATORY = [_][]const u8{ "libc.a", "libzigc.a", "crt1.o" };
+    var have_all = true;
+    for (MANDATORY) |name| {
+        if (!fileExists(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, name }))) have_all = false;
+    }
+    if (have_all) {
+        log("==> musl runtime already vendored in {s}; skipping", .{dest});
+        return;
+    }
+
+    // Isolated scratch: a stub + a private Zig cache, so the harvest grabs only
+    // the artifacts THIS link produced (never a stale global-cache copy).
+    const work = try std.fmt.allocPrint(a, "{s}.musl-work", .{dest});
+    Dir.cwd().deleteTree(io, work) catch {};
+    defer Dir.cwd().deleteTree(io, work) catch {};
+    const cache = try std.fmt.allocPrint(a, "{s}/cache", .{work});
+    try Dir.cwd().createDirPath(io, cache);
+    const stub = try std.fmt.allocPrint(a, "{s}/stub.c", .{work});
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = stub,
+        // Touch a spread of subsystems so Zig materializes the full musl, its
+        // helper archive (libzigc), and compiler-rt.
+        .data = "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <math.h>\nint main(int c, char **v){char b[8];snprintf(b,sizeof b,\"%d\",c);void*p=malloc(8);free(p);return (int)(strncmp(b,\"x\",1)+(long)sin((double)v[0][0]));}\n",
+    });
+    const stub_out = try std.fmt.allocPrint(a, "{s}/stub", .{work});
+
+    var env = try cloneEnv(gpa, parent_env);
+    defer env.deinit();
+    try env.put("ZIG_GLOBAL_CACHE_DIR", cache);
+    log("==> building static musl ({s}) via {s} ...", .{ ztarget, zig_exe });
+    if (!runChild(io, &.{ zig_exe, "cc", "-target", ztarget, "-static", "-o", stub_out, stub }, &env, false))
+        die("build-musl: `zig cc -target {s} -static` failed", .{ztarget});
+
+    // Harvest: walk the isolated cache and pick out the named artifacts.
+    var found = std.StringHashMap([]const u8).init(gpa);
+    defer found.deinit();
+    {
+        var cdir = Dir.cwd().openDir(io, cache, .{ .iterate = true }) catch
+            die("build-musl: zig cache dir missing at {s}", .{cache});
+        defer cdir.close(io);
+        var walker = cdir.walk(gpa) catch die("build-musl: cache walk failed", .{});
+        defer walker.deinit();
+        while (walker.next(io) catch null) |entry| {
+            if (entry.kind != .file) continue;
+            const base = std.fs.path.basename(entry.path);
+            for (ARTIFACTS) |name| {
+                if (std.mem.eql(u8, base, name) and !found.contains(name))
+                    found.put(name, try std.fmt.allocPrint(a, "{s}/{s}", .{ cache, entry.path })) catch {};
+            }
+        }
+    }
+
+    var staged: usize = 0;
+    for (ARTIFACTS) |name| {
+        const src = found.get(name) orelse continue;
+        try Dir.cwd().copyFile(src, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, name }), io, .{});
+        staged += 1;
+    }
+    log("==> staged {d} musl artifact(s) -> {s}", .{ staged, dest });
+    if (staged < 4) die("build-musl: incomplete harvest ({d}/6 artifacts)", .{staged});
+}
+
 /// Extract the single zip member whose name ends with `suffix` from an in-memory
 /// zip, returning its decompressed bytes (caller frees). Reuses the central-
 /// directory parsing helpers from the llvm-slice path; bun's zips are small so
@@ -736,6 +803,19 @@ fn mkPayload(
     // marker reroutes `import jaclang` to this dir at startup (see _jac_finder.py
     // apply_dev_source_override). Implies skip_precompile and a tiny, fast build.
     link_source: ?[]const u8,
+    // The vendored static-musl runtime dir (scripts/vendor_musl.sh output:
+    // libc.a + libzigc.a + compiler-rt + crt). Bundled so an installed binary can
+    // fully static-link Linux executables against musl at `nacompile` time, with
+    // no toolchain. Null for mac/windows builds (musl is Linux-only).
+    musl_dir: ?[]const u8,
+    // Persistent JIR precompile cache dir. When set, site/jaclang/_precompiled
+    // is seeded from it before the precompile and the refreshed tree is copied
+    // back after -- the precompiler validates every seeded .jir by its
+    // content-addressed module key and recompiles only stale ones, so the
+    // multi-minute full precompile shrinks to just the changed modules. A
+    // stale or partial dir is harmless (it only misses reuse), which is why
+    // CI can restore it with prefix-fallback keys unlike the binary cache.
+    precompiled_cache: ?[]const u8,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -879,7 +959,22 @@ fn mkPayload(
     if (skip_precompile or link_source != null) {
         log("==> skipping JIR precompile; modules compile on first run", .{});
     } else {
+        const site_pre = try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site});
+        if (precompiled_cache) |pc| {
+            if (Dir.cwd().openDir(io, pc, .{ .iterate = true })) |d| {
+                var seed = d;
+                defer seed.close(io);
+                log("==> seeding JIR precompile from {s}", .{pc});
+                try copyTree(io, gpa, a, seed, site_pre, skipNone);
+            } else |_| {} // no seed yet; first build populates it below
+        }
         try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
+        if (precompiled_cache) |pc| {
+            Dir.cwd().deleteTree(io, pc) catch {};
+            var fresh = try Dir.cwd().openDir(io, site_pre, .{ .iterate = true });
+            defer fresh.close(io);
+            try copyTree(io, gpa, a, fresh, pc, skipNone);
+        }
     }
 
     // Bundle runtime helpers (pytest/-xdist -> `jac test`, watchdog -> `jac start
@@ -896,7 +991,7 @@ fn mkPayload(
     // Linked-source builds never get here (build.zig omits --bundle-byllm then).
     if (byllm_root) |br| try buildByllm(io, gpa, a, py, br, site);
 
-    try stageTree(io, gpa, a, pbs_py_dir, site, stage);
+    try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir);
 
     log("==> packing tar | gzip", .{});
     try tarGzDir(io, gpa, a, stage, out);
@@ -1216,7 +1311,7 @@ fn countJir(io: Io, gpa: Allocator, dir_path: []const u8) usize {
 }
 
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
-fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8) !void {
+fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
     const lib_dst = try std.fmt.allocPrint(a, "{s}/python/lib", .{stage});
     try Dir.cwd().createDirPath(io, lib_dst);
@@ -1275,6 +1370,10 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // Static C-floor archives + CA bundle so an installed binary can static-link
     // a bundled C floor at `nacompile` time, not just dev builds (#6978 0.2).
     try stageFloor(io, gpa, a, pbs_py_dir, stage);
+
+    // Vendored static-musl runtime, so an installed binary can fully static-link
+    // Linux executables against musl at `nacompile` time (no glibc/loader dep).
+    if (musl_dir) |md| try stageMusl(io, a, md, stage);
 }
 
 /// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names
@@ -1336,6 +1435,30 @@ fn stageFloor(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, stag
     } else {
         log("   no CA bundle found under pbs site-packages; ssl floor will fall back to a system bundle", .{});
     }
+}
+
+/// Stage the vendored static-musl runtime into the payload so an installed
+/// (non-dev) binary can fully static-link Linux executables against musl at
+/// `nacompile` time -- no glibc/loader dependency, runs on Alpine/scratch/any
+/// glibc. Mirrors stageFloor: artifacts land arch-keyed under
+/// `python/floor/<osarch>/musl/`, exactly where nacompile's _musl_lib_dir looks
+/// in a shipped binary. Best-effort per file (compiler-rt + crti/crtn are
+/// optional); the dev/source path reads the same set straight from `.pbs-build`.
+fn stageMusl(io: Io, a: Allocator, musl_dir: []const u8, stage: []const u8) !void {
+    const osarch = hostOsArch();
+    const dst = try std.fmt.allocPrint(a, "{s}/python/floor/{s}/musl", .{ stage, osarch });
+    try Dir.cwd().createDirPath(io, dst);
+    const ARTIFACTS = [_][]const u8{
+        "libc.a", "libzigc.a", "libcompiler_rt.a", "crt1.o", "crti.o", "crtn.o",
+    };
+    var staged: usize = 0;
+    for (ARTIFACTS) |name| {
+        const src = try std.fmt.allocPrint(a, "{s}/{s}", .{ musl_dir, name });
+        if (!fileExists(io, src)) continue;
+        try Dir.cwd().copyFile(src, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst, name }), io, .{});
+        staged += 1;
+    }
+    log("==> staged {d} musl runtime artifact(s) -> python/floor/{s}/musl", .{ staged, osarch });
 }
 
 /// Locate certifi's `cacert.pem` in the pbs tree (pip vendors it). Tries the

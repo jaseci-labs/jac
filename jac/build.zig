@@ -25,27 +25,19 @@
 //! the binary is just larger. The shipped binary needs none of these.
 
 const std = @import("std");
+// Pinned LLVM slice table (dirname/triple/hash/size per platform), shared with
+// launcher/payload.zig so fetch-llvm and this build can't drift.
+const llvm_release = @import("launcher/llvm_release.zig");
 
-// Where `zig build fetch-llvm` extracts the pinned LLVM -- one dir per host
-// platform (see payload.zig llvmRelease; keep the dirnames in sync). Used as the
-// default -Dllvm-dir for the jacllvm shim. Returns null for hosts we don't pin a
-// release for, so addLlvmShim degrades gracefully (the build then fails at
-// mkpayload with a "run `zig build fetch-llvm`" message).
+// Where `zig build fetch-llvm` extracts the pinned LLVM -- one dir per platform
+// (llvm_release.zig). Used as the default -Dllvm-dir for the jacllvm shim.
+// Returns null for platforms we don't pin a release for, so addLlvmShim degrades
+// gracefully (the build then fails at mkpayload with a "run `zig build
+// fetch-llvm`" message).
 const LLVM_CACHE_BASE = ".llvm-build";
 fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
-    const dirname = switch (target.result.os.tag) {
-        .linux => switch (target.result.cpu.arch) {
-            .x86_64 => "LLVM-22.1.8-Linux-X64",
-            .aarch64 => "LLVM-22.1.8-Linux-ARM64",
-            else => return null,
-        },
-        .macos => switch (target.result.cpu.arch) {
-            .aarch64 => "LLVM-22.1.8-macOS-ARM64",
-            else => return null,
-        },
-        else => return null,
-    };
-    return b.fmt("{s}/{s}", .{ LLVM_CACHE_BASE, dirname });
+    const rel = llvm_release.llvmRelease(target.result.os.tag, target.result.cpu.arch) orelse return null;
+    return b.fmt("{s}/{s}", .{ LLVM_CACHE_BASE, rel.dirname });
 }
 
 // The built LLVMPY_* shim: `bin` is bundled into the payload (--shim); `place`
@@ -172,6 +164,24 @@ pub fn build(b: *std.Build) void {
             .dependOn(&fetch_bun.step);
     }
 
+    // Standalone: harvest a static-musl runtime (libc.a + libzigc.a + compiler-rt
+    // + crt) from the bundled Zig toolchain into .pbs-build/<osarch>/musl/lib, so
+    // `jac nacompile` can fully static-link Linux executables against musl with
+    // NO external toolchain at compile time (the libpython-floor vendoring model,
+    // but produced from Zig's own musl instead of a download -- via the payload
+    // tool's `build-musl`, same plumbing as fetch-pbs/fetch-bun). Idempotent;
+    // only meaningful for Linux. Editable/source checkouts and the test suite
+    // resolve it straight from .pbs-build via _musl_lib_dir.
+    if (osArchString(b.graph.host.result)) |host_osarch| {
+        if (std.mem.startsWith(u8, host_osarch, "linux-")) {
+            const vendor_musl = b.addRunArtifact(tool);
+            vendor_musl.addArgs(&.{ "build-musl", host_osarch, b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{host_osarch})), b.graph.zig_exe });
+            vendor_musl.has_side_effects = true;
+            b.step("vendor-musl", "Harvest a static-musl runtime from Zig into .pbs-build/<osarch>/musl/lib")
+                .dependOn(&vendor_musl.step);
+        }
+    }
+
     const osarch = osArchString(target.result) orelse {
         // Unsupported target for a full binary; stub + test steps still work.
         return;
@@ -282,12 +292,27 @@ pub fn build(b: *std.Build) void {
             mk.addArg(b.fmt("--bundle-byllm={s}", .{byllm_dir}));
         }
 
+        // Persistent JIR precompile cache (mirrors .pbs-build/.llvm-build/
+        // .bun-build): mkpayload seeds site/_precompiled from this dir and
+        // writes the refreshed tree back, so a repack after a small jaclang
+        // edit recompiles only the changed modules instead of all ~700.
+        // Deliberately NOT a tracked input: every seeded .jir is validated by
+        // its content-addressed module key, so the dir's content can never
+        // change the payload -- only how fast it packs. Skipped in
+        // linked-source mode (no bundled compiler, no precompile).
+        if (link_dir == null) {
+            mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build")}));
+        }
+
         // Contained bun runtime: fetch the pinned bun for the target and bundle
         // it inside the client package via --bun. Mirrors the fetch-pbs pattern
-        // (download + sha256-verify, all in the payload tool). Skipped in
-        // linked-source/dev mode -- there get_bun() resolves a contained,
-        // on-demand .jac/bin copy instead. A BUN_VERSION bump lands in
-        // payload.zig (tracked below), so it invalidates the cached payload.
+        // (download + sha256-verify, all in the payload tool). A BUN_VERSION
+        // bump lands in payload.zig (tracked below), so it invalidates the
+        // cached payload. In linked-source/dev mode there is no bundled copy to
+        // fall back on -- get_bun() resolves from the linked tree -- so place
+        // bun INTO that tree instead, exactly like the LLVM shim's `place`
+        // step. Every jac binary gets bun, not just releases: jac's JS tooling
+        // runs exclusively on the bundled bun (no Node.js fallback).
         if (link_dir == null) {
             const bun_dir = b.pathFromRoot(b.fmt(".bun-build/{s}", .{osarch}));
             const bun_basename = if (target.result.os.tag == .windows) "bun.exe" else "bun";
@@ -296,6 +321,25 @@ pub fn build(b: *std.Build) void {
             fetch_bun.has_side_effects = true;
             mk.step.dependOn(&fetch_bun.step);
             mk.addArg(b.fmt("--bun={s}/{s}", .{ bun_dir, bun_basename }));
+        } else if (osArchString(b.graph.host.result)) |host_osarch| {
+            const fetch_bun = b.addRunArtifact(tool);
+            fetch_bun.addArgs(&.{ "fetch-bun", host_osarch, b.fmt("{s}/jaclang/runtimelib/client/_bun", .{link_dir.?}) });
+            fetch_bun.has_side_effects = true;
+            mk.step.dependOn(&fetch_bun.step);
+        }
+
+        // Linux: harvest a static-musl runtime for the target from the bundled
+        // Zig (payload tool's `build-musl`) and bundle it so the shipped binary
+        // can fully static-link Linux executables against musl at nacompile time
+        // -- no glibc/loader dep. Mirrors the fetch-bun pattern; the payload
+        // tool's stageMusl places it under python/floor/<osarch>/musl.
+        if (link_dir == null and std.mem.startsWith(u8, osarch, "linux-")) {
+            const musl_lib = b.pathFromRoot(b.fmt(".pbs-build/{s}/musl/lib", .{osarch}));
+            const vendor_musl = b.addRunArtifact(tool);
+            vendor_musl.addArgs(&.{ "build-musl", osarch, musl_lib, b.graph.zig_exe });
+            vendor_musl.has_side_effects = true;
+            mk.step.dependOn(&vendor_musl.step);
+            mk.addArg(b.fmt("--musl={s}", .{musl_lib}));
         }
 
         // Track the payload's real inputs so it repacks when any source changes.
@@ -318,6 +362,8 @@ pub fn build(b: *std.Build) void {
         mk.addFileInput(b.path("sitecustomize.py"));
         mk.addFileInput(b.path("jac.toml"));
         mk.addFileInput(b.path("launcher/payload.zig"));
+        // The slice pins (dirname/hash/size) moved here; a bump must repack.
+        mk.addFileInput(b.path("launcher/llvm_release.zig"));
         break :payload out;
     };
 
@@ -365,6 +411,30 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
 /// future `fetch-llvm` step downloads it at a pinned version (mirrors fetch-pbs).
 /// The Jac binding loads the result via ctypes (JAC_LLVM_SHIM / payload path).
 fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?Shim {
+    const shim_file = switch (target.result.os.tag) {
+        .windows => "jacllvm.dll",
+        .macos => "libjacllvm.dylib",
+        else => "libjacllvm.so",
+    };
+
+    // -Dshim-bin: bundle a PREBUILT shim (path relative to jac/ or absolute),
+    // skipping the LLVM fetch and the static link entirely -- the shim is the
+    // single most expensive compile artifact (it links ~0.5 GB of LLVM archives)
+    // and depends only on native/**, this file, and the pinned slice, NOT on
+    // jaclang/**. CI (setup-jac) uses this to reuse a shim across compiler-only
+    // changes, keyed on exactly those inputs; the -Dpayload option is the same
+    // idea one level up. Invalidation is the CALLER's responsibility -- a plain
+    // `zig build` (no option) always links from source.
+    if (b.option([]const u8, "shim-bin", "Prebuilt LLVMPY_* shim to bundle (skips the LLVM fetch + link)")) |p| {
+        const bin: std.Build.LazyPath = .{ .cwd_relative = p };
+        const place = b.addUpdateSourceFiles();
+        place.addCopyFileToSource(bin, b.fmt("jaclang/compiler/passes/native/llvm/{s}", .{shim_file}));
+        const jacllvm_step = b.step("jacllvm", "Build the LLVMPY_* shim (jac/native), static-link LLVM, place it in-tree");
+        jacllvm_step.dependOn(&b.addInstallLibFile(bin, shim_file).step);
+        jacllvm_step.dependOn(&place.step);
+        return .{ .bin = bin, .place = &place.step };
+    }
+
     // -Dllvm-dir wins; otherwise use the fetch-llvm cache (.llvm-build). If
     // neither has LLVM, return null and the build fails at mkpayload with a
     // "run `zig build fetch-llvm`" message (so fetch-llvm itself still configures
@@ -401,18 +471,13 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     const bin: std.Build.LazyPath = if (target.result.os.tag == .macos)
         macosShim(b, target, optimize, &dir, llvm_dir, libdir, &shim_srcs, &shim_flags)
     else
-        linuxShim(b, optimize, &dir, llvm_dir, libdir, &shim_srcs, &shim_flags);
+        linuxShim(b, target, optimize, &dir, llvm_dir, libdir, &shim_srcs, &shim_flags);
 
     // Also write the built shim back into the source tree (gitignored) so the
     // editable dev loop -- which runs jaclang from source, not from the binary's
     // payload -- finds it via ffi.jac's __file__-relative lookup. Mirrors how
     // fetch-typeshed materializes gitignored stubs into the tree. mkpayload's
     // jaclang copy skips this file (it ships the shim via --shim instead).
-    const shim_file = switch (target.result.os.tag) {
-        .windows => "jacllvm.dll",
-        .macos => "libjacllvm.dylib",
-        else => "libjacllvm.so",
-    };
     const place = b.addUpdateSourceFiles();
     place.addCopyFileToSource(bin, b.fmt("jaclang/compiler/passes/native/llvm/{s}", .{shim_file}));
 
@@ -422,16 +487,31 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     return .{ .bin = bin, .place = &place.step };
 }
 
-/// Linux link path for the LLVMPY_* shim. The official LLVM 22 Linux release is
-/// built against GNU libstdc++ (LLVM 20 used libc++), so the shim must be compiled
-/// + linked with the system g++/libstdc++ to match the archives' `std::__cxx11::*`
-/// ABI -- a Zig `link_libcpp` (libc++) build leaves LLVM's API calls unresolved.
-/// `-static-libstdc++ -static-libgcc` bundles the C++ runtime so the shipped shim
-/// stays self-contained (no host libstdc++.so dependency, same as the old libc++
-/// build). The Linux release archives are native ELF objects (not ThinLTO bitcode
-/// like macOS), so no libLTO dance is needed. Returns the emitted .so as a LazyPath.
+/// Linux link path for the LLVMPY_* shim. Which path a target takes is decided by
+/// the C++ runtime of its pinned slice (llvm_release.isLibcxx), not the arch, so
+/// flipping a target to the libc++/zig path is a table edit in llvm_release.zig.
+///
+/// A `*-libcxx` slice (jaseci-labs/llvm-slice, a stock LLVM built
+/// `-DLLVM_ENABLE_LIBCXX=ON`) links with `zig c++`: zig uses libc++, so its
+/// `std::__1::*` ABI matches the slice's archives, and `-target <triple>` pins
+/// BOTH the C++ runtime and the glibc floor (e.g. 2.17 via -Dtarget) for the
+/// shim's own TUs -- the slice's archives are already floored at the same 2.17 by
+/// the identical zig pin used to build them. zig links libc++/compiler-rt
+/// statically (no -static-libstdc++ needed), and the libc++ slice is configured
+/// with zlib/zstd/libxml2 OFF, so the shim references only the libc trio. This is
+/// what drops libjacllvm.so from requiring GLIBC_2.38 to a clean 2.17 floor
+/// (#7082). Both Linux targets (x86_64, aarch64) use libc++ slices today.
+///
+/// A stock (libstdc++) slice takes the system g++/libstdc++ path: it must be
+/// compiled + linked with g++ to match the archives' `std::__cxx11::*` ABI (a
+/// libc++ build leaves LLVM's API calls unresolved), `-static-libstdc++
+/// -static-libgcc` bundles the C++ runtime, and the stock archives still
+/// reference zlib/zstd/libxml2. No pinned Linux target uses this path anymore;
+/// it is kept for linking official LLVM releases (e.g. a new platform before its
+/// libc++ slice exists). Returns the emitted .so as a LazyPath.
 fn linuxShim(
     b: *std.Build,
+    target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     dir: *std.Io.Dir,
     llvm_dir: []const u8,
@@ -440,7 +520,34 @@ fn linuxShim(
     shim_flags: []const []const u8,
 ) std.Build.LazyPath {
     const io = b.graph.io;
-    const cc = b.addSystemCommand(&.{"c++"});
+    // libc++ slice -> `zig c++` (libc++ ABI + glibc floor from -Dtarget); stock
+    // slice -> system g++/libstdc++. An explicit -Dllvm-dir still follows the
+    // pinned slice's runtime for its target (there is no other signal for the
+    // custom dir's ABI, and matching the pin is the only supported layout).
+    const rel = llvm_release.llvmRelease(target.result.os.tag, target.result.cpu.arch);
+    const use_zig = if (rel) |r| llvm_release.isLibcxx(r) else false;
+    const cc = if (use_zig)
+        b.addSystemCommand(&.{ b.graph.zig_exe, "c++" })
+    else
+        b.addSystemCommand(&.{"c++"});
+    if (use_zig) {
+        // One flag pins both the C++ runtime (zig's libc++, matching the libc++
+        // slice's std::__1::*) and the glibc floor (e.g. x86_64-linux-gnu.2.17),
+        // exactly the same `-target` the slice itself was built with.
+        const triple = target.query.zigTriple(b.allocator) catch @panic("jacllvm: zigTriple failed");
+        cc.addArgs(&.{ "-target", triple });
+        // The -target triple does NOT carry the CPU: zig cc treats a host-equal
+        // triple (e.g. plain x86_64-linux-gnu when no -Dtarget is passed, as in
+        // the test-binary CI) as native and emits the BUILD machine's ISA
+        // extensions (AVX-512 on newer runners) into the shim -- which then
+        // SIGILLs when the cached binary runs on an older CPU. Pin baseline,
+        // mirroring the launcher's baseline-CPU rationale at the top of build();
+        // an explicit -Dcpu still wins.
+        switch (target.query.cpu_model) {
+            .explicit => |m| cc.addArg(b.fmt("-mcpu={s}", .{m.name})),
+            else => cc.addArg("-mcpu=baseline"),
+        }
+    }
     cc.addArgs(&.{ "-shared", "-fPIC" });
     cc.addArg(switch (optimize) {
         .Debug => "-O0",
@@ -450,13 +557,19 @@ fn linuxShim(
     });
     // Hide everything; the LLVMPY_* API is annotated default-visibility (native/
     // core.h API_EXPORT) so it stays exported. --exclude-libs,ALL keeps the static
-    // LLVM/libstdc++ symbols out of the dynamic table (no clash with a host LLVM).
+    // LLVM + C++ runtime symbols out of the dynamic table (no clash with a host LLVM).
     cc.addArgs(&.{ "-fvisibility=hidden", "-fvisibility-inlines-hidden" });
     cc.addArgs(shim_flags); // -std=c++17 -fno-rtti -fno-exceptions -DNDEBUG
-    cc.addArgs(&.{ "-static-libstdc++", "-static-libgcc" });
+    // zig links its libc++/compiler-rt statically already; the system path needs the
+    // GNU runtime bundled explicitly so the shipped shim has no host libstdc++.so dep.
+    if (!use_zig) cc.addArgs(&.{ "-static-libstdc++", "-static-libgcc" });
     cc.addArg(b.fmt("-I{s}/include", .{llvm_dir}));
     // Shim sources passed directly (not as a .a) so their LLVMPY_* symbols survive.
     for (shim_srcs) |f| cc.addFileArg(b.path(b.fmt("native/{s}", .{f})));
+    // zig/2.17 path only: fold in the glibc-floor compat TU (weak rseq
+    // descriptors) so the libc++ LLVM archives' newer-glibc refs resolve without
+    // raising the floor above 2.17 (#7082). Harmless if unreferenced (weak, hidden).
+    if (use_zig) cc.addFileArg(b.path("native/glibc_compat.cpp"));
     // Link every LLVM static archive inside a group (their refs are circular); the
     // linker drops what the shim never references.
     cc.addArg("-Wl,--start-group");
@@ -468,9 +581,20 @@ fn linuxShim(
         }
     }
     cc.addArg("-Wl,--end-group");
-    // LLVM's system deps (dynamic): zlib, libxml2, zstd, plus the usual pthread/dl/m.
-    cc.addArgs(&.{ "-lz", "-lxml2", "-lzstd", "-lpthread", "-ldl", "-lm" });
-    cc.addArg("-Wl,--exclude-libs,ALL");
+    // LLVM's system deps. The libc++ slice is built with zlib/zstd/libxml2 OFF, so the
+    // zig path needs only the libc trio; the stock slice still references them.
+    if (use_zig)
+        cc.addArgs(&.{ "-lpthread", "-ldl", "-lm" })
+    else
+        cc.addArgs(&.{ "-lz", "-lxml2", "-lzstd", "-lpthread", "-ldl", "-lm" });
+    // Keep the static LLVM/C++ symbols out of the dynamic table. zig's linker-arg
+    // allowlist rejects -Wl,--exclude-libs, so the zig path uses a version script
+    // that exports only the LLVMPY_* C ABI (matching the macOS -exported_symbol
+    // path); the system-c++ path keeps --exclude-libs,ALL.
+    if (use_zig)
+        cc.addPrefixedFileArg("-Wl,--version-script,", b.path("native/jacllvm.exports"))
+    else
+        cc.addArg("-Wl,--exclude-libs,ALL");
     cc.addArg("-o");
     return cc.addOutputFileArg("libjacllvm.so");
 }

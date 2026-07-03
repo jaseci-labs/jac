@@ -3,9 +3,10 @@
 AI coding assistants are good at Jac's *ideas* but often wrong about its *syntax* -- the language has evolved, and models routinely confuse Jac with Python or JSX. The `jac` CLI ships the corrective reference built in, so there is nothing to install.
 
 - **`jac guide`** -- curated reference guides bundled with the compiler. They are the authoritative spec for writing correct, idiomatic Jac, and any agent that can run a shell command can read them.
-- **The `jac-mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs. It also serves the same guides as MCP resources.
+- **The `jac mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs. It also serves the same guides as MCP resources.
+- **`jac ai`** -- Jac's own built-in coding agent, if you'd rather not bring an external assistant at all. It knows the guides already and works with fully local models, so it runs without an API key.
 
-The two are complementary: the guides tell the model *how* Jac works; MCP lets it *verify* what it wrote against the real compiler.
+These are complementary: the guides tell a model *how* Jac works; MCP lets it *verify* what it wrote against the real compiler; `jac ai` packages both into a ready-made agent.
 
 ## `jac guide` -- the built-in reference
 
@@ -48,7 +49,7 @@ Claude Code, Cursor, and the Claude Agent SDK can *auto-load* [Agent Skills](htt
 
 ## MCP server (any MCP client)
 
-The `jac-mcp` plugin runs a Model Context Protocol server that exposes the Jac compiler -- grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac -- to any MCP-capable assistant.
+The built-in `jac mcp` server runs a Model Context Protocol server that exposes the Jac compiler -- grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac -- to any MCP-capable assistant.
 
 Start it with:
 
@@ -65,19 +66,39 @@ claude mcp add jac -- jac mcp
 Other clients (Claude Desktop, Cursor, Windsurf, VS Code) use a JSON configuration block. The **[MCP Server reference](../reference/mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
 
 !!! tip
-    Already installed Jac via the install script? `jac-mcp` is likely bundled -- run `jac --version` to check. If it is missing, install it with `jac install jac-mcp`.
+    The MCP server is built into the `jac` binary -- there is nothing to install. Just run `jac mcp`. (It has no third-party dependencies; the protocol is implemented on the Python standard library.)
+
+## `jac ai` -- the built-in coding agent
+
+If you want an agent *now*, without wiring up an external assistant, the CLI ships one:
+
+```bash
+jac ai                                   # interactive session (project's configured model)
+jac ai "add a walker that lists todos"   # one-shot request
+jac ai -m local:gemma-4-e4b              # fully local -- no API key
+jac ai --ui                              # web UI with a live phase-graph visualizer
+```
+
+It uses your `[plugins.byllm.model]` configuration (falling back to the bundled local model), reads the same built-in guides, and can edit files and run code in your project -- pass `--safe` to approve every write and command. See the [`jac ai` reference](../reference/cli/index.md#jac-ai).
+
+## Structured code access for agents
+
+Two more commands exist mainly to make your project legible to agents (yours or an external one):
+
+- **`jac code`** -- compiler-backed structural queries (`symbol`, `uses`, `map`, `walkers`, `slice`, `diag`) that return JSON. An agent can ask "which walkers touch `Todo` nodes?" instead of grepping. See the [`jac code` reference](../reference/cli/index.md#jac-code).
+- **`jac browse`** -- headless-browser automation over CDP (navigate, click, snapshot, screenshot), so an agent can drive and visually verify the web app it just built. See the [`jac browse` reference](../reference/cli/index.md#jac-browse).
 
 ## Which to use
 
-| | `jac guide` | `jac guide --export` | MCP (`jac-mcp`) |
+| | `jac guide` | `jac guide --export` | MCP (`jac mcp`) |
 |---|---|---|---|
 | Provides | Reference knowledge, on demand | Auto-loading Agent Skills | Reference + live compiler tools |
 | Discovery | Agent runs the CLI | Assistant loads by frontmatter | Client lists MCP resources/tools |
 | Setup | None -- built in | One `--export` command | Run a server, register it |
 | Best for | Any agent that runs a shell | Claude Code, Cursor, Agent SDK | Any MCP client; verifying code |
 
-For the strongest setup, export the guides so your assistant *writes* idiomatic Jac, and connect `jac-mcp` so it can *validate and run* what it writes against the real compiler before handing the code back to you.
+For the strongest setup, export the guides so your assistant *writes* idiomatic Jac, and connect `jac mcp` so it can *validate and run* what it writes against the real compiler before handing the code back to you.
 
 ---
 
-**Related:** [Installation](install.md) · [MCP Server reference](../reference/mcp.md) · [Import Anything](import-anything.md)
+**Related:** [Installation](install.md) · [AI-Assisted Development tutorial](../tutorials/ai/mcp-quickstart.md) · [MCP Server reference](../reference/mcp.md) · [Import Anything](import-anything.md)

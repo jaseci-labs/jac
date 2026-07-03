@@ -1,20 +1,4 @@
-import os;
 import json;
-import hashlib;
-
-
-def _scale_runtime_hook_py -> str {
-    return (
-        "_scale = os.environ.get('JAC_DESKTOP_SCALE_SRC')\n"
-        "if _scale and _scale not in sys.path:\n"
-        "    sys.path.insert(0, _scale)\n"
-        "_extra = os.environ.get('JAC_DESKTOP_DEPS', '')\n"
-        "if _extra:\n"
-        "    for _d in _extra.split(os.pathsep):\n"
-        "        if _d and _d not in sys.path:\n"
-        "            sys.path.append(_d)\n"
-    );
-}
 
 
 def _jacpyembed_import_block -> str {
@@ -40,41 +24,32 @@ def _jacpyembed_import_block -> str {
 }
 
 
-def _make_plugin_bootstrap_py(plugin_configs: dict) -> str {
-    py = (
-        "import jaclang, os, sys\n"
-        "_pdir = os.path.join(os.path.dirname(jaclang.__file__),\n"
-        "    'runtimelib', 'client', 'targets', 'desktop', 'plugin')\n"
-        "if _pdir not in sys.path:\n"
-        "    sys.path.insert(0, _pdir)\n"
-        "import manifest, desktop_plugin, webview_lib, plugin_host, registry\n"
-    );
-    py += f"_pc = {repr(plugin_configs)}\n";
-    py += (
-        "_host = registry.bootstrap_plugins(_pc, sys.modules)\n"
-        "_dispatch_fn = _host.dispatch\n"
-    );
-    return py;
-}
-
-
-def _dispatch_boot_py(
+def _host_boot_py(
+    app_name: str,
+    mode: str,
     entry_rel: str = "",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
-    dispatch_debug: bool = False
+    dispatch_debug: bool = False,
+    plugin_configs: dict = None
 ) -> str {
+    config = {
+        "app_name": app_name,
+        "mode": mode,
+        "entry_rel": entry_rel,
+        "dispatch": {
+            "timeout_s": dispatch_timeout_s,
+            "max_queue": dispatch_max_queue,
+            "debug": dispatch_debug
+        },
+        "plugins": plugin_configs if plugin_configs is not None else {}
+    };
+    config_literal = json.dumps(
+        json.dumps(config, ensure_ascii=False), ensure_ascii=False
+    );
     return (
-        "import sys, os\n"
-        f"_ENTRY_REL = {json.dumps(entry_rel, ensure_ascii=False)}\n"
-        "_ENTRY_FILE = os.path.join(_root, 'sv', _ENTRY_REL)\n"
-    ) + _scale_runtime_hook_py() + (
-        "from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch\n"
-        "inprocess_dispatch.boot(_ENTRY_FILE,\n"
-        "    os.path.join(_data, '.jac', 'desktop', 'graph'),\n"
-        f"    timeout_s={dispatch_timeout_s}, max_queue={dispatch_max_queue},\n"
-        f"    debug={dispatch_debug})\n"
-        "_jac_dispatch = inprocess_dispatch.handle\n"
+        "from jaclang.runtimelib.client.targets.desktop.native import host_boot\n"
+        f"_ctx = host_boot.boot({config_literal})\n"
     );
 }
 
@@ -90,39 +65,15 @@ def _generate_host_source(
     dispatch_debug: bool = False,
     plugin_configs: dict = None
 ) -> str {
-    pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-    serve_py = (
-        "import os\n"
-        "_exe = os.path.realpath('/proc/self/exe')\n"
-        "_root = os.path.dirname(_exe)\n"
-        "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "import socketserver, threading\n"
-        "_dir = os.path.join(_root, 'dist')\n"
-        "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker as _broker\n"
-        "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n"
-        "_H = _broker.make_handler(_dir, _store)\n"
-        "socketserver.TCPServer.allow_reuse_address = True\n"
-        f"_pref = {pref_port}\n"
-        "_srv = None; _port = None\n"
-        "for _i in range(64):\n"
-        "    try:\n"
-        "        _srv = socketserver.TCPServer(('127.0.0.1', _pref + _i), _H)\n"
-        "        _port = _pref + _i; break\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "if _srv is None:\n"
-        "    _srv = socketserver.TCPServer(('127.0.0.1', 0), _H)\n"
-        "    _port = _srv.server_address[1]\n"
-        "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
-        "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
+    boot_py = _host_boot_py(
+        app_name,
+        "webview",
+        entry_rel,
+        dispatch_timeout_s,
+        dispatch_max_queue,
+        dispatch_debug,
+        plugin_configs
     );
-
-    dispatch_py = _dispatch_boot_py(
-        entry_rel, dispatch_timeout_s, dispatch_max_queue, dispatch_debug
-    );
-    _pc = plugin_configs if plugin_configs is not None else {};
-    plugin_py = _make_plugin_bootstrap_py(_pc);
 
     bootstrap_js = (
         "(function(){try{"
@@ -152,9 +103,7 @@ def _generate_host_source(
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
         "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
-        f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
-        f"glob PLUGIN_PY: str = {json.dumps(plugin_py, ensure_ascii=False)};\n"
-        f"glob DISPATCH_PY: str = {json.dumps(dispatch_py, ensure_ascii=False)};\n"
+        f"glob BOOT_PY: str = {json.dumps(boot_py, ensure_ascii=False)};\n"
         f"glob BOOTSTRAP_JS: str = {json.dumps(bootstrap_js, ensure_ascii=False)};\n"
         f"glob BOOT_ERROR_HTML: str = {json.dumps(
             boot_error_html, ensure_ascii=False
@@ -179,26 +128,22 @@ def _generate_host_source(
         "    jpy_PyGILState_Release(gstate);\n"
         "}\n"
         "def _stash_wv_in_python(h: int) {\n"
-        "    jpy_PyRun_SimpleString(f\"_wv_handle = {h}\");\n"
-        "    jpy_PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
+        "    jpy_PyRun_SimpleString(f\"_ctx.setup_webview({h})\");\n"
         "}\n"
         "with entry {\n"
         "    engine_rc: i32 = jac_engine_boot();\n"
-        "    serve_rc: i32 = -1;\n"
-        "    plugin_rc: i32 = -1;\n"
         "    boot_rc: i32 = -1;\n"
         "    main_mod: int = 0;\n"
         "    d: int = 0;\n"
+        "    url = \"\";\n"
         "    if engine_rc == 0 {\n"
-        "        serve_rc = jpy_PyRun_SimpleString(SERVE_PY);\n"
-        "        plugin_rc = jpy_PyRun_SimpleString(PLUGIN_PY);\n"
-        "        boot_rc = jpy_PyRun_SimpleString(DISPATCH_PY);\n"
+        "        boot_rc = jpy_PyRun_SimpleString(BOOT_PY);\n"
+        "    }\n"
+        "    if engine_rc == 0 and boot_rc == 0 {\n"
         "        main_mod = jpy_PyImport_AddModule(\"__main__\");\n"
         "        d = jpy_PyModule_GetDict(main_mod);\n"
-        "    }\n"
-        "    url = \"\";\n"
-        "    if engine_rc == 0 and serve_rc == 0 {\n"
-        "        port = jpy_PyLong_AsLong(jpy_PyRun_String(\"_port\", PY_EVAL, d, d));\n"
+        "        _PH_DISPATCH = jpy_PyRun_String(\"_ctx.dispatch\", PY_EVAL, d, d);\n"
+        "        port = jpy_PyLong_AsLong(jpy_PyRun_String(\"_ctx.port\", PY_EVAL, d, d));\n"
         "        url = f\"http://127.0.0.1:{port}/\";\n"
         "    }\n"
         "    _wv_raw = webview_create(0, 0);\n"
@@ -208,7 +153,7 @@ def _generate_host_source(
         f"    wv.size({width}, {height}, HINT_NONE);\n"
         "    wv.on_load(BOOTSTRAP_JS);\n"
         "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
-        "    healthy: bool = engine_rc == 0 and serve_rc == 0 and plugin_rc == 0 and boot_rc == 0;\n"
+        "    healthy: bool = engine_rc == 0 and boot_rc == 0;\n"
         "    if healthy {\n"
         "        _stash_wv_in_python(_wv_raw);\n"
         "        wv.navigate(url);\n"

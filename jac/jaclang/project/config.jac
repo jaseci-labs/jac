@@ -5,6 +5,8 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
+glob VALID_CLIENT_KINDS: list[str] = ["web", "mobui"];
+
 obj PersonConfig {
     has name: str = "",
         email: str = "";
@@ -18,6 +20,7 @@ obj PackageIncludeConfig {
 obj ProjectConfig {
     has name: str = "",
         version: str = "0.1.0",
+        client_kind: str = "web",
         description: str = "",
         authors: list[PersonConfig] = [],
         maintainers: list[PersonConfig] = [],
@@ -196,6 +199,7 @@ obj JacConfig {
     def apply_profile_overlay(profile_name: str | None = None) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, any];
     def get_plugin_config(plugin_name: str) -> dict[str, any];
+    def get_section(name: str) -> dict[str, any] | None;
     def get_build_dir -> Path;
     def get_cache_dir -> Path;
     def get_venv_dir -> Path;

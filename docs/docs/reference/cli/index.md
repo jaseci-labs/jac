@@ -2,9 +2,39 @@
 
 The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac format`, `jac lint`), managing dependencies (`jac add`, `jac install`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
 
-The CLI is extensible through plugins. When you install a plugin like `jac-scale`, it adds new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment. The built-in full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins, now part of `jaclang` core) contributes others, such as `jac build --client desktop` for desktop app packaging.
+The CLI is extensible through plugins, and several capabilities are built into core. The built-in `scale` subsystem (formerly the `jac-scale` plugin, now part of `jaclang` core) adds deployment commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment. The built-in full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins, now part of `jaclang` core) contributes others, such as `jac build --client desktop` for desktop app packaging. Installable plugins like `byllm` add their own commands the same way.
 
 > **💡 Enhanced Output**: All CLI commands render beautiful, colorful Rich-style output out of the box -- themes, panels, and spinners are built into jaclang by default, with no extra install needed.
+
+## I want to…
+
+A task-first index into the commands below. The full alphabetical list follows in [Quick Reference](#quick-reference).
+
+| I want to… | Command(s) |
+|---|---|
+| Run a program | `jac run` (no filename → runs the project by its `kind`) · `jac enter` |
+| Start a web/API server | `jac start` |
+| Deploy to Kubernetes | `jac start --scale` · `jac status` · `jac destroy` |
+| Create a new project | `jac create` |
+| Set up / build a client target (web, desktop, mobile) | `jac setup` · `jac build` |
+| Compile a native binary or C-ABI shared library | `jac nacompile` |
+| Build a distributable package | `jac bundle` (wheel/npm) |
+| Add, remove, or update dependencies | `jac add` · `jac remove` · `jac update` |
+| Install project dependencies | `jac install` |
+| Run an installed CLI tool under Jac | `jac x` |
+| Type-check, format, or lint | `jac check` · `jac format` · `jac lint` · `jac precommit` |
+| Run tests | `jac test` |
+| Debug or visualize a graph | `jac debug` · `jac dot` · `jac browse` |
+| Have an AI agent write or edit code in my project | `jac ai` |
+| Query code structure (definitions, uses, walkers) | `jac code` |
+| Inspect or recover the persistence DB | `jac db` |
+| Manage config, plugins, or profiles | `jac config` · `jac plugins` |
+| Manage byLLM local models | `jac model` |
+| Use Jac from an AI assistant | `jac guide` · `jac mcp` |
+| Convert between Python, Jac, and JS | `jac py2jac` · `jac jac2py` · `jac jac2js` |
+| Clean caches / artifacts | `jac clean` · `jac purge` |
+
+---
 
 ## Quick Reference
 
@@ -24,11 +54,16 @@ The CLI is extensible through plugins. When you install a plugin like `jac-scale
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
 | `jac browse` | Automate a headless browser over CDP (navigate, click, snapshot, screenshot) |
+| `jac ai` | Launch an interactive Jac coding agent (works with local models, no API key) |
+| `jac code` | Query code structure via the compiler (symbols, uses, walkers, slices) |
+| `jac mcp` | Start the MCP server so AI assistants can use the live Jac compiler |
+| `jac completions` | Generate (and optionally install) shell completions |
+| `jac nacompile` | Compile the native (`na`) subset to a binary, shared library, or WebAssembly |
 | `jac plugins` | Manage plugins |
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
-| `jac destroy` | Remove Kubernetes deployment (jac-scale) |
-| `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
+| `jac destroy` | Remove Kubernetes deployment (scale) |
+| `jac status` | Show deployment status of Kubernetes resources (scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies from `jac.toml`, or `jac install <pkg>` to install packages into the project's `.jac/venv` |
 | `jac x` | Run an installed CLI tool (Python console-script or npm tool) under the `jac` runtime |
@@ -69,9 +104,9 @@ _/ |\__,_|\___|    Python 3.12.3
 
 🔌 Plugins Detected:
    byllm==0.4.15
-   jac-client==0.2.11
-   jac-scale==0.2.1
 ```
+
+(Scale and the full-stack client framework ship inside the binary as built-in core providers, so they are not listed here as separately-installed plugins.)
 
 ---
 
@@ -180,7 +215,7 @@ jac run greet.jac --name Alice
 
 ### jac start
 
-Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
+Start a Jac application as an HTTP API server. Use `--scale` to deploy to Kubernetes (handled by the built-in `scale` subsystem; the first `--scale` run resolves its deploy deps via `jac install`). Use `--dev` for Hot Module Replacement (HMR) during development; live-reload is powered by the `watchdog` library bundled in the `jac` binary, so no extra install is needed.
 
 ```bash
 jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa,mobile}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-b] [--no-build] [filename]
@@ -199,7 +234,7 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--client` | Client build target (`web`, `desktop`, `pwa`, `mobile`) | None |
 | `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
 | `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
-| `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
+| `--scale` | Deploy to Kubernetes (built-in scale subsystem) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
 **Examples:**
@@ -226,7 +261,7 @@ jac start main.jac --client mobile --dev --platform ios
 # Mobile dev with explicit host override
 jac start main.jac --client mobile --dev --host 192.168.1.25
 
-# Deploy to Kubernetes (requires jac-scale plugin)
+# Deploy to Kubernetes (built-in scale subsystem)
 jac start --scale
 
 # Build and deploy to Kubernetes
@@ -462,7 +497,7 @@ jac lint .
 jac lint . --ignore fixtures
 ```
 
-> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. See [Lint Rules](../diagnostics.md#lint-rules-w3xxx--e3xxx) for the full list with diagnostic codes.
+> **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. See [Lint Rules](../diagnostics.md#lint-rules-w3xxx-e3xxx) for the full list with diagnostic codes.
 
 ---
 
@@ -752,6 +787,89 @@ jac browse close
 
 ---
 
+## AI-Assisted Development
+
+Three commands make Jac projects legible to (and drivable by) AI agents -- including Jac's own built-in coding agent. See also [Agent Skills & MCP](../../quick-guide/agent-skills-and-mcp.md) for the workflow overview.
+
+### jac ai
+
+Launch an interactive Jac coding agent in your project. Runs against your configured byLLM model -- including fully local models, so it works without an API key.
+
+```bash
+jac ai [prompt] [-m MODEL] [--n_ctx N] [--safe] [-q] [--ui]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `prompt` | Optional one-shot request; omit for an interactive session | interactive |
+| `-m, --model` | Model to use, e.g. `local:gemma-4-e4b` or `openai/gpt-4o` | from `jac.toml` |
+| `-n, --n_ctx` | Context-window size for local models (tokens) | model default |
+| `-s, --safe` | Confirm every file write and code execution | off |
+| `-q, --quiet` | Compact output: hide live reasoning, timings, and step detail | off |
+| `-u, --ui` | Open the agent in a web UI with a live phase-graph visualizer | off |
+
+**Examples:**
+
+```bash
+# Interactive session using the project's configured model
+jac ai
+
+# One-shot request
+jac ai "add a walker that lists all Todo nodes"
+
+# Fully local, no API key
+jac ai -m local:gemma-4-e4b
+
+# Web UI with live phase-graph visualization
+jac ai --ui
+```
+
+### jac code
+
+Query code structure via the compiler -- grep's structural successor. Returns JSON by default (for tools and agents); pass `--text` for human-readable output.
+
+```bash
+jac code <action> [target] [-t] [-d DEPTH]
+```
+
+| Action | Description |
+|--------|-------------|
+| `symbol <name>` | Definitions and use-sites of a symbol |
+| `uses <name>` | All reads/writes of a symbol |
+| `map [kind]` | Structural overview of nodes, walkers, edges, objs (optionally filtered by kind) |
+| `walkers <node-type>` | Walkers whose traversals visit a given node type |
+| `slice <name> [-d N]` | Typed neighbourhood of a symbol to depth N (built for prompt assembly) |
+| `diag [file]` | Structured compiler errors and warnings |
+
+**Examples:**
+
+```bash
+jac code map                    # what's in this project?
+jac code symbol Todo --text     # where is Todo defined and used?
+jac code walkers Todo           # which walkers touch Todo nodes?
+jac code slice add_todo -d 2    # everything an agent needs to edit add_todo
+```
+
+### jac mcp
+
+Start the Model Context Protocol server so any MCP client (Claude Code, Claude Desktop, Cursor, ...) can lint, transpile, run, and explain Jac code through the live compiler.
+
+```bash
+jac mcp [-t stdio|sse|streamable-http] [-p PORT] [--host HOST] [--mode lite|standard|full] [--inspect]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-t, --transport` | Transport protocol | `stdio` |
+| `-p, --port` | Port for SSE/HTTP transports | `3001` |
+| `--host` | Bind address for SSE/HTTP transports | `127.0.0.1` |
+| `--mode` | Tool/prompt exposure level for the connecting model | `full` |
+| `--inspect` | Print inventory of resources, tools, and prompts, then exit | off |
+
+See the [MCP Server Reference](../mcp.md) for the full tool catalog and per-client setup snippets.
+
+---
+
 ## Plugin Management
 
 ### jac plugins
@@ -800,9 +918,9 @@ jac plugins disabled
 >
 > **💡 Popular Plugins**:
 >
-> - **jac-scale**: Kubernetes deployment and scaling (`jac install jac-scale`)
+> - **byllm**: LLM integration (`jac install byllm`)
 >
-> (Full-stack web and native-desktop app building ships with `jaclang` core -- no plugin install needed.)
+> (Kubernetes deployment and scaling ships with `jaclang` core as the built-in `scale` subsystem -- no plugin install needed; its optional deps are pulled per-project via `[scale.*]` config + `jac install`. Full-stack web and native-desktop app building likewise ships with `jaclang` core.)
 
 ---
 
@@ -860,7 +978,7 @@ Local model cache: /home/you/.cache/jac/models
 
 ## Database Operations
 
-The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), `MongoBackend` (with `jac-scale`), or any plugin-provided backend that implements the interface -- through the same set of subcommands.
+The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), the built-in scale `MongoBackend`, or any plugin-provided backend that implements the interface -- through the same set of subcommands.
 
 For the architectural background (fingerprints, drift detection, quarantine philosophy, alias decorator), see [Persistence & Schema Migration](../persistence.md).
 
@@ -1150,11 +1268,11 @@ jac config list -o toml
 
 ---
 
-## Deployment (jac-scale)
+## Deployment (scale)
 
 ### jac start --scale
 
-Deploy to Kubernetes using the jac-scale plugin. See the [`jac start`](#jac-start) command above for full options.
+Deploy to Kubernetes using the built-in `scale` subsystem. See the [`jac start`](#jac-start) command above for full options.
 
 ```bash
 jac start --scale           # Deploy without building
@@ -1753,7 +1871,7 @@ By default the object graph persists to a local SQLite file via the jaclang runt
 driver = "sqlalchemy"   # or "sqlite"
 ```
 
-This vendors a `backend/_jac_sqldb.py` SQLAlchemy `PersistentMemory` backend and registers it through the runtime's `get_persistent_memory` hook, and adds `SQLAlchemy` to `requirements.txt`. The connection URL defaults to a SQLite file under `backend/` and is overridable at runtime with `JAC_DB_URL` (e.g. `postgresql://...`). This is a single-writer backend (correct for one uvicorn worker); for multi-process writers use jac-scale.
+This vendors a `backend/_jac_sqldb.py` SQLAlchemy `PersistentMemory` backend and registers it through the runtime's `get_persistent_memory` hook, and adds `SQLAlchemy` to `requirements.txt`. The connection URL defaults to a SQLite file under `backend/` and is overridable at runtime with `JAC_DB_URL` (e.g. `postgresql://...`). This is a single-writer backend (correct for one uvicorn worker); for multi-process writers use the built-in scale `MongoBackend`.
 
 **Examples**
 
@@ -1968,6 +2086,37 @@ jac tool ir sym main.jac
 
 # View generated Python
 jac tool ir py main.jac
+```
+
+---
+
+### jac lsp
+
+Start the Jac language server (LSP over stdio) for editor/IDE integration.
+
+```bash
+jac lsp
+```
+
+Editors normally launch this for you; configure your editor's LSP client to run `jac lsp` for `.jac` files.
+
+---
+
+### jac completions
+
+Generate a shell completion script for `jac`.
+
+```bash
+jac completions [-s bash|zsh|fish] [-i]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-s, --shell` | Shell to generate completions for | `bash` |
+| `-i, --install` | Append the completions to your shell config (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`) | off |
+
+```bash
+jac completions --shell zsh --install
 ```
 
 ---
@@ -2220,5 +2369,5 @@ jac destroy main.jac
 ## See Also
 
 - [Project Configuration](../config/index.md)
-- [jac-scale Documentation](../plugins/jac-scale.md)
+- [Scale Documentation](../plugins/jac-scale.md)
 - [Testing Guide](../testing.md)

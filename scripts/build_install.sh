@@ -25,9 +25,10 @@
 #   --uninstall   Remove the installed jac binary
 #   --help        Print usage
 #
-# Plugins (byllm, jac-scale, jac-mcp) are installed separately once `jac` is on
-# PATH:
-#   jac install byllm jac-scale jac-mcp
+# scale and the MCP server ship built into jac (jaclang.scale /
+# jaclang.cli.mcp). Other plugins (byllm) are installed separately once `jac`
+# is on PATH:
+#   jac install byllm
 
 set -euo pipefail
 
@@ -87,7 +88,7 @@ OPTIONS:
 
 PLUGINS:
     Once 'jac' is on PATH, install plugins with the binary's own installer:
-        jac install byllm jac-scale jac-mcp
+        jac install byllm
 EOF
 }
 
@@ -217,7 +218,7 @@ build_and_install() {
         info "  jac --help"
         info ""
         info "Add plugins (AI, deployment, MCP) when you need them:"
-        info "  jac install byllm jac-scale jac-mcp"
+        info "  jac install byllm"
         info ""
     else
         warn "Binary installed to ${INSTALL_DIR}/jac but 'jac' is not on PATH."

@@ -1414,7 +1414,7 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     import time;
     import threading;
     import urllib.request;
-    import from http.server { HTTPServer }
+    import from http.server { ThreadingHTTPServer }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.server { JacAPIServer as CoreJacAPIServer }
     if module_name in sv_client._registry {
@@ -1449,7 +1449,7 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     srv.port = port;
     srv.load_module();
     handler_class = srv.create_handler();
-    httpd = HTTPServer(('127.0.0.1', port), handler_class);
+    httpd = ThreadingHTTPServer(('127.0.0.1', port), handler_class);
     srv.server = httpd;
     thread = threading.Thread(target=httpd.serve_forever, daemon=True);
     thread.start();
@@ -1479,7 +1479,12 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
 
 impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
     import from jaclang.runtimelib { sv_client }
-    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
+
+    import from jaclang.runtimelib.sv_sse {
+        sv_http_post,
+        wrap_sse_keepalive,
+        wrap_sse_keepalive_conn
+    }
 
     func_label = f"{module_name}.{func_name}";
 
@@ -1489,7 +1494,7 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
         resp = stream_cm.__enter__();
         ct = resp.headers.get("content-type", "");
         if ct.startswith("text/event-stream") {
-            return _wrap_sse_keepalive(stream_cm, resp, None, func_label);
+            return wrap_sse_keepalive(stream_cm, resp, None, func_label);
         }
         try {
             resp.read();
@@ -1498,27 +1503,20 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
             stream_cm.__exit__(None, None, None);
         }
     } else {
+        import json;
         url = sv_client.resolve_url(module_name);
-        try {
-            import httpx;
-        } except ImportError {
-            raise RuntimeError(
-                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
-            );
-        }
-        client = httpx.Client();
-        stream_cm = client.stream("POST", f"{url}/function/{func_name}", json=args);
-        resp = stream_cm.__enter__();
-        ct = resp.headers.get("content-type", "");
+        (resp, conn) = sv_http_post(url, f"/function/{func_name}", args);
+        ct = resp.headers.get("Content-Type", "") or "";
         if ct.startswith("text/event-stream") {
-            return _wrap_sse_keepalive(stream_cm, resp, client, func_label);
+            if conn.sock is not None {
+                conn.sock.settimeout(None);
+            }
+            return wrap_sse_keepalive_conn(resp, conn, func_label);
         }
         try {
-            resp.read();
-            data = resp.json();
+            data = json.loads(resp.read().decode('utf-8'));
         } finally {
-            stream_cm.__exit__(None, None, None);
-            client.close();
+            conn.close();
         }
     }
 
@@ -1541,6 +1539,7 @@ impl JacServe.sv_walker_call(
     module_name: str, walker_name: str, args: dict, stub_cls: any
 ) -> any {
     import from jaclang.runtimelib { sv_client }
+    import from jaclang.runtimelib.sv_sse { sv_http_post }
 
     label = f"{module_name}.{walker_name}";
 
@@ -1549,20 +1548,13 @@ impl JacServe.sv_walker_call(
         resp = client.post(f"/walker/{walker_name}", json=args);
         data = resp.json();
     } else {
+        import json;
         url = sv_client.resolve_url(module_name);
+        (resp, conn) = sv_http_post(url, f"/walker/{walker_name}", args);
         try {
-            import httpx;
-        } except ImportError {
-            raise RuntimeError(
-                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
-            );
-        }
-        client = httpx.Client();
-        try {
-            resp = client.post(f"{url}/walker/{walker_name}", json=args);
-            data = resp.json();
+            data = json.loads(resp.read().decode('utf-8'));
         } finally {
-            client.close();
+            conn.close();
         }
     }
 
@@ -1591,30 +1583,6 @@ impl JacServe.sv_walker_call(
 }
 
 
-def _wrap_sse_keepalive(
-    stream_cm: any, resp: any, client: any, func_label: str
-) -> any {
-    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
-    try {
-        for ev in consume_sse_stream(resp, func_label) {
-            yield ev;
-        }
-    } finally {
-        try {
-            stream_cm.__exit__(None, None, None);
-        } except Exception {
-            ;
-        }
-        if client {
-            try {
-                client.close();
-            } except Exception {
-                ;
-            }
-        }
-    }
-}
-
 impl JacServe.get_sv_registry -> dict[str, str] {
     import from jaclang.runtimelib { sv_client }
     return dict(sv_client._registry);
@@ -1623,11 +1591,12 @@ impl JacServe.get_sv_registry -> dict[str, str] {
 impl JacServe.create_server(
     jac_server: JacServer, host: str, port: int, max_retries: int = 10
 ) -> HTTPServer {
+    import from http.server { ThreadingHTTPServer }
     handler_class = jac_server.create_handler();
     current_port = port;
     for _ in range(max_retries) {
         try {
-            server = HTTPServer((host, current_port), handler_class);
+            server = ThreadingHTTPServer((host, current_port), handler_class);
             actual_port = server.server_address[1];
             if actual_port != port {
                 import from jaclang.cli.console { console }

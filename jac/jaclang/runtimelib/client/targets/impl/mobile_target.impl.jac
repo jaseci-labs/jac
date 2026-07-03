@@ -21,7 +21,6 @@ import from jaclang.runtimelib.client.targets.mobile.common {
     DEFAULT_APP_ID,
     DEFAULT_APP_NAME,
     MOBILE_SETUP_MODES,
-    SUBPROCESS_TIMEOUT_SHORT,
     _ensure_android_cleartext_for_lan_dev,
     _normalize_mobile_platform,
     _run_cap_cmd
@@ -56,6 +55,11 @@ import from jaclang.runtimelib.client.targets.mobile.scaffold {
     _ensure_android_platform,
     _ensure_ios_platform,
     _ensure_placeholder_index
+}
+import from jaclang.runtimelib.client.targets.client_dev_common {
+    install_dev_signal_handlers,
+    stop_dev_watcher,
+    terminate_dev_processes
 }
 
 impl MobileTarget.setup(project_dir: Path) -> None {
@@ -221,8 +225,6 @@ impl MobileTarget.dev(
     import from jaclang.runtimelib.client.vite_client_bundle {
         make_client_bundle_builder
     }
-    import signal;
-    import sys;
 
     hot_watcher: any = None;
     (host_override, plat_mode) = _mobile_read_dev_env();
@@ -326,35 +328,12 @@ impl MobileTarget.dev(
 
     def cleanup_servers {
         console.print("\n  Stopping Vite and API server…", style="muted");
-        if hot_watcher {
-            try {
-                hot_watcher.stop();
-            } except Exception { }
-        }
-        if vite_p {
-            try {
-                vite_p.terminate();
-                vite_p.wait(timeout=SUBPROCESS_TIMEOUT_SHORT);
-            } except Exception {
-                vite_p.kill();
-            }
-        }
-        if srv_p {
-            try {
-                srv_p.terminate();
-                srv_p.wait(timeout=SUBPROCESS_TIMEOUT_SHORT);
-            } except Exception {
-                srv_p.kill();
-            }
-        }
+        stop_dev_watcher(hot_watcher);
+        terminate_dev_processes([vite_p, srv_p]);
         console.print("  ✔ Stopped", style="success");
     }
 
-    def on_signal(signum: int, frame: any) {
-        sys.exit(0);
-    }
-    signal.signal(cast(int, signal.SIGINT), on_signal);
-    signal.signal(cast(int, signal.SIGTERM), on_signal);
+    install_dev_signal_handlers();
 
     web_dist_dir = Path(bundler.output_dir).resolve();
     _ensure_capacitor_config(project_dir, web_dist_dir);
