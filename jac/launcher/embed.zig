@@ -101,25 +101,14 @@ pub const Embed = struct {
         Py_SetProgramName(wexe);
     }
 
-    /// Drop PYTHONHOME/PYTHONPATH once the interpreter is up, so they do not leak
-    /// into child processes the app later spawns. They are load-bearing only up
-    /// to Py_Initialize, which reads them to build sys.path and then freezes it in
-    /// memory; afterwards a python-based child (aws/gcloud/kubelogin exec
-    /// credentials, agent-browser, a plain python3) that inherits them adopts our
-    /// bundled CPython tree as its own home and dies importing `encodings`.
-    ///
-    /// Two layers must be cleared. `unsetenv` scrubs the C `environ`, covering
-    /// children spawned with `env=None` (execv inherits `environ` directly). But
-    /// `os.environ` is a dict CPython snapshotted from `environ` during
-    /// Py_Initialize, so `unsetenv` does not reach it; a child spawned with
-    /// `env=os.environ.copy()` -- which the kubernetes exec-credential provider
-    /// does -- would re-leak the stale values. Popping through `os.environ` clears
-    /// that dict (and calls `unsetenv` again under the hood), closing both paths.
-    ///
-    /// Best-effort: callers invoke it right after their Py_Initialize (the CLI
-    /// frontend and the desktop host). Worker mode (Py_BytesMain) skips it -- it
-    /// consumes the env itself and is short-lived. Only these two vars matter; the
-    /// other PYTHON*/JAC_* markers are harmless to inherit.
+    /// Drop PYTHONHOME/PYTHONPATH after Py_Initialize (which has read them into
+    /// sys.path) so children the app spawns don't inherit them and die adopting
+    /// our bundled CPython as their home (`ModuleNotFoundError: encodings`).
+    /// Both layers are needed: `unsetenv` clears the C `environ` for `env=None`
+    /// children, and the `os.environ.pop` clears the dict CPython snapshotted at
+    /// init, without which an `env=os.environ.copy()` child (what the kubernetes
+    /// exec-credential provider does) re-leaks the stale values. Worker mode
+    /// (Py_BytesMain) skips this; it consumes the env itself.
     pub fn sealHermeticEnv(self: *const Embed) void {
         _ = unsetenv("PYTHONHOME");
         _ = unsetenv("PYTHONPATH");
@@ -169,8 +158,7 @@ pub fn open(
     // 2. Hermetic env. PYTHONHOME/PYTHONPATH are load-bearing: without them
     //    Py_Initialize would adopt a foreign/absent interpreter. The lib-dynload
     //    entry guards pbs flavors that ship stdlib C-extensions as shared .so.
-    //    These two are dropped again right after Py_Initialize (sealHermeticEnv)
-    //    so they do not leak into child processes the app later spawns.
+    //    (both are dropped post-init by sealHermeticEnv so children don't inherit.)
     var b_home: [MAX_PATH]u8 = undefined;
     var b_pp: [2 * MAX_PATH]u8 = undefined;
     var b_lib: [MAX_PATH]u8 = undefined;

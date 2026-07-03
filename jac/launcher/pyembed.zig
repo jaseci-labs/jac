@@ -122,9 +122,7 @@ export fn jac_engine_boot() c_int {
     const py_init = emb.symOrErr(embed.Py_Initialize_t, "Py_Initialize") catch return fail("libpython missing symbol: Py_Initialize");
     py_init();
 
-    // sys.path is now frozen; drop PYTHONHOME/PYTHONPATH from the env so
-    // python-based children the host spawns do not inherit our runtime home
-    // (see Embed.sealHermeticEnv).
+    // Clear the now-consumed hermetic env so children don't inherit it.
     emb.sealHermeticEnv();
 
     // Resolve the host-facing C-API once. A missing symbol here is a packaging
