@@ -15,6 +15,31 @@ if [ ! -f "${PROJECT_DIR}/jac.toml" ]; then
     exit 1
 fi
 
+# The committed fixture is deliberately zero-config (#7137/#7140: a plain
+# `sv import` app deploys as-is). The e2e still wants the full feature surface
+# covered, so append the test-only opt-ins here at run time - same pattern as
+# the workflow's [dev] append. Marker-guarded so re-runs don't duplicate tables.
+if ! grep -q "e2e-harness overlay" "${PROJECT_DIR}/jac.toml"; then
+    cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
+
+# --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
+[plugins.scale.microservices.logs]
+enabled = true
+
+[plugins.scale.microservices.ingress]
+enabled = true
+host = "jac-shop.local"
+ingress_class_name = "nginx"
+
+[plugins.scale.microservices.cors]
+allow_origins = ["http://app.example.com"]
+allow_methods = ["GET", "POST", "OPTIONS"]
+allow_headers = ["Authorization", "Content-Type"]
+allow_credentials = true
+TOML
+    echo "# appended the e2e-harness overlay (logs/ingress/cors) to jac.toml"
+fi
+
 NAMESPACE="${NAMESPACE:-jac-e2e}"
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
 case "${CLUSTER_TYPE}" in
@@ -145,6 +170,20 @@ print_timing_report() {
     printf "%-38s %10s %12s\n" "TOTAL" "" "${_LAST_T}"
     echo "======================================================================="
     echo "# CLUSTER_TYPE=${CLUSTER_TYPE}  services=$(printf '%s' "${ROUTES:-}" | grep -c . || echo 0)"
+    # Also surface the report on the GitHub Actions job-summary page.
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        {
+            echo "## E2E phase timing (${CLUSTER_TYPE})"
+            echo ""
+            echo "| Phase | Step (s) | Cumulative (s) |"
+            echo "|---|---:|---:|"
+            printf '%s' "${_PHASE_ROWS}" | while IFS='|' read -r label step cumul; do
+                [ -z "${label}" ] && continue
+                echo "| ${label} | ${step} | ${cumul} |"
+            done
+            echo "| **TOTAL** | | **${_LAST_T}** |"
+        } >> "${GITHUB_STEP_SUMMARY}"
+    fi
 }
 
 echo "# phase timings printed as [TIMING +Ns] markers; full report at the end"
