@@ -1430,7 +1430,7 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 ```bash
 jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
             [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
-            [--no-deps] [--quiet] [--prefer-binary] [--global]
+            [--no-deps] [--quiet] [--prefer-binary] [--no-uv] [--global]
 ```
 
 | Option | Description | Default |
@@ -1447,6 +1447,7 @@ jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
 | `--no-deps` | Don't install package dependencies | `False` |
 | `--quiet` | Suppress pip output | `False` |
 | `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
+| `--no-uv` | Use pip instead of uv, even if uv is available on `PATH` | `False` |
 | `--global` | Install into the binary's own jac-owned site (importable from any project), not the project's `.jac/venv`. Works outside a project. | `False` |
 
 **Examples:**
@@ -1493,13 +1494,18 @@ jac install --dry-run
 
 # Install without using pip's download cache
 jac install --no-cache-dir
+
+# Force pip even if uv is on PATH
+jac install numpy --no-uv
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
-> **Self-contained installs:** `jac install` (and `jac add`, `jac remove`, `jac update`) run through the `jac` binary's own bundled pip against the project's `.jac/venv`. No system Python, `pip`, or external package manager (such as `uv`) is required or consulted -- behaviour is identical regardless of what is installed on the host.
+> **Self-contained installs:** `jac install` (and `jac add`, `jac remove`, `jac update`) run through the `jac` binary's own bundled pip (or `uv pip`, see below) against the project's `.jac/venv`. No system Python or `pip` is required -- behaviour is identical regardless of what's installed on the host, aside from the optional uv speedup.
 >
-> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip. Use `jac update` to upgrade packages to their latest versions.
+> **uv acceleration:** if [`uv`](https://docs.astral.sh/uv/) is found on `PATH`, all install/uninstall commands (`jac install`, `jac add`, `jac remove`, `jac update`) run through `uv pip` instead of the bundled pip for faster resolves and installs. This is automatic and requires no configuration. A pip flag with no `uv pip` equivalent (e.g. `--prefer-binary`) is dropped with a warning rather than passed through incorrectly. Pass `--no-uv` (on `jac install`), or set `JAC_NO_UV=1` in the environment (applies to every command above), to always use the bundled pip instead.
+>
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip, or translated to their `uv pip` equivalent when uv is in use. Use `jac update` to upgrade packages to their latest versions.
 >
 > **Running installed tools:** packages that ship a command-line tool (a Python console-script, or an npm tool in `node_modules/.bin`) are runnable with [`jac x <tool>`](#jac-x) -- no need to put anything on your shell `PATH`.
 

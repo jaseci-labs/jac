@@ -17,7 +17,8 @@ import from jaclang.project.dependencies {
     get_venv_site_packages,
     is_venv_in_path,
     remove_venv_from_path,
-    pip_command
+    pip_command,
+    resolve_use_uv
 }
 
 """Reset global config singleton."""
@@ -1750,32 +1751,88 @@ test "DependencyInstaller install_flags passed to pip" {
     }
 }
 
-# ===== pip_command (bundled pip only) =====
-# The single binary bundles pip/ensurepip; every install runs the project venv's
-# own python against bundled pip. No external package manager (uv) and no host
-# python are ever consulted, so the command is identical regardless of host state.
+# ===== pip_command (bundled pip fallback) =====
+# When uv is unavailable (or opted out via use_uv=False), every install runs
+# the project venv's own python against bundled pip.
 test "pip_command always uses the venv python's bundled pip" {
-    cmd = pip_command("/path/to/python", ["install", "requests"]);
-    assert cmd[0] == "/path/to/python";
-    assert cmd[1] == "-m";
-    assert cmd[2] == "pip";
-    assert cmd[3] == "install";
-    assert "requests" in cmd;
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = None;
+        cmd = pip_command("/path/to/python", ["install", "requests"]);
+        assert cmd[0] == "/path/to/python";
+        assert cmd[1] == "-m";
+        assert cmd[2] == "pip";
+        assert cmd[3] == "install";
+        assert "requests" in cmd;
+    }
 }
 
 test "pip_command passes flags through unchanged" {
-    cmd = pip_command(
-        "/path/to/python", ["install", "--force-reinstall", "--prefer-binary", "pkg"]
-    );
-    assert cmd == [
-        "/path/to/python",
-        "-m",
-        "pip",
-        "install",
-        "--force-reinstall",
-        "--prefer-binary",
-        "pkg"
-    ];
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = None;
+        cmd = pip_command(
+            "/path/to/python",
+            ["install", "--force-reinstall", "--prefer-binary", "pkg"]
+        );
+        assert cmd == [
+            "/path/to/python",
+            "-m",
+            "pip",
+            "install",
+            "--force-reinstall",
+            "--prefer-binary",
+            "pkg"
+        ];
+    }
+}
+
+test "pip_command warn_fn called for dropped flag" {
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = "/usr/bin/uv";
+        warnings: list[str] = [];
+        def collect(msg: str) {
+            warnings.append(msg);
+        }
+        pip_command(
+            "/path/to/python",
+            ["install", "--prefer-binary", "pkg"],
+            use_uv=True,
+            warn_fn=collect
+        );
+        assert len(warnings) == 1;
+        assert "--prefer-binary" in warnings[0];
+        assert "no uv equivalent" in warnings[0];
+    }
+}
+
+# add/update/remove never pass use_uv explicitly, so postinit must resolve
+# JAC_NO_UV on its own.
+test "resolve_use_uv reflects JAC_NO_UV, and DependencyInstaller falls back to it" {
+    saved = os.environ.get("JAC_NO_UV");
+    try {
+        os.environ.pop("JAC_NO_UV", None);
+        assert resolve_use_uv() is True;
+        assert resolve_use_uv(no_uv=True) is False;
+
+        os.environ["JAC_NO_UV"] = "1";
+        assert resolve_use_uv() is False;
+
+        reset_config();
+        (tmp, project_dir) = make_temp_project();
+        try {
+            config = JacConfig.load(project_dir / "jac.toml");
+            assert DependencyInstaller(config=config).use_uv is False;
+            assert DependencyInstaller(config=config, use_uv=True).use_uv is True;
+        } finally {
+            shutil.rmtree(tmp, ignore_errors=True);
+            reset_config();
+        }
+    } finally {
+        if saved is None {
+            os.environ.pop("JAC_NO_UV", None);
+        } else {
+            os.environ["JAC_NO_UV"] = saved;
+        }
+    }
 }
 
 test "update always uses upgrade flag" {
@@ -1817,17 +1874,73 @@ test "update always uses upgrade flag" {
 
 # ===== TestInstallPackageIntoActivatedEnv =====
 test "jac install <pkg> outside a project errors" {
-    # New contract: `jac install <pkg>` installs into the project venv, so it
-    # requires a project. Outside one it errors instead of installing globally.
+    # Direct-package installs default to the project venv tier, so they require
+    # a project. Outside one (and without --global) it errors without ever
+    # invoking pip/uv.
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     original_cwd = os.getcwd();
     try {
         os.chdir(tmp);
-        reset_config();
-        result = proj_cmds.install(packages=["pip"], no_deps=True);
+        with patch("subprocess.run") as mock_run {
+            result = proj_cmds.install(packages=["pip"]);
+        }
         assert result == 1;
+        mock_run.assert_not_called();
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "install --global package failure returns error code" {
+    # Error path: pip failure on the global tier propagates as exit 1.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tmp);
+        mock_result = MagicMock();
+        mock_result.returncode = 1;
+        mock_result.stderr = "ERROR: Could not find a version that satisfies the requirement badpkg";
+        mock_result.stdout = "";
+        with patch("subprocess.run", return_value=mock_result) {
+            result = proj_cmds.install(packages=["badpkg"], install_global=True);
+        }
+        assert result == 1;
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "jac install --global pkg uses uv when uv on PATH" {
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tmp);
+        mock_result = MagicMock();
+        mock_result.returncode = 0;
+        mock_result.stdout = "";
+        mock_result.stderr = "";
+        clean_env = {
+            k: v
+            for (k, v) in os.environ.items()
+            if k != "JAC_NO_UV"
+        };
+        with patch("subprocess.run", return_value=mock_result) as mock_run, patch(
+            "shutil.which", return_value="/usr/bin/uv"
+        ), patch.dict(os.environ, clean_env, clear=True) {
+            result = proj_cmds.install(packages=["numpy"], install_global=True);
+        }
+        assert result == 0;
+        cmd = mock_run.call_args[0][0];
+        assert "uv" in cmd[0];
     } finally {
         os.chdir(original_cwd);
         reset_config();
@@ -1835,29 +1948,29 @@ test "jac install <pkg> outside a project errors" {
     }
 }
 
-test "install package failure returns error code" {
-    # Error path: a failed install into the project venv propagates as exit 1.
-    reset_config();
+test "jac install --global pkg respects JAC_NO_UV" {
     import from jaclang.cli.commands { project as proj_cmds }
-    (tmp, project_dir) = make_temp_project();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
     original_cwd = os.getcwd();
     try {
-        os.chdir(project_dir);
-        reset_config();
-        def fail_install(self: object, specs: object) -> bool {
-            return False;
+        os.chdir(tmp);
+        mock_result = MagicMock();
+        mock_result.returncode = 0;
+        mock_result.stdout = "";
+        mock_result.stderr = "";
+        env_with_no_uv = dict(os.environ) | {"JAC_NO_UV": "1"};
+        with patch("subprocess.run", return_value=mock_result) as mock_run, patch(
+            "shutil.which", return_value="/usr/bin/uv"
+        ), patch.dict(os.environ, env_with_no_uv, clear=True) {
+            result = proj_cmds.install(packages=["numpy"], install_global=True);
         }
-        with patch(
-            "jaclang.project.dependencies.DependencyInstaller.install_package",
-            fail_install
-        ) {
-            result = proj_cmds.install(packages=["badpkg"]);
-        }
-        assert result == 1;
+        assert result == 0;
+        cmd = mock_run.call_args[0][0];
+        assert "uv" not in cmd[0];
+        assert cmd[0] == sys.executable;
     } finally {
         os.chdir(original_cwd);
         reset_config();
         shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
     }
 }

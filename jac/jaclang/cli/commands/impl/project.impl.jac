@@ -487,6 +487,7 @@ impl install(
     no_deps: bool = False,
     quiet: bool = False,
     prefer_binary: bool = False,
+    no_uv: bool = False,
     install_global: bool = False,
     scale: bool = False
 ) -> int {
@@ -495,6 +496,8 @@ impl install(
     import from jaclang.project.dependencies {
         DependencyInstaller,
         get_venv_site_packages,
+        pip_command,
+        resolve_use_uv,
         capability_specs_for_install
     }
     import from jaclang.project.dep_registry { get_dependency_registry }
@@ -514,6 +517,11 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
+    use_uv: bool = resolve_use_uv(no_uv);
+
+    def _warn_dropped_flag(msg: str) {
+        console.print(msg, style="muted");
+    }
 
     if packages {
         if editable {
@@ -534,23 +542,21 @@ impl install(
                 f"\n📦 Installing {len(packages)} package(s) into the global site",
                 style="bold"
             );
-            cmd: list[str] = [
+            cmd: list[str] = pip_command(
                 sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade"
-            ] + install_flags + packages;
+                ["install", "--upgrade"] + install_flags + packages,
+                use_uv=use_uv,
+                warn_fn=_warn_dropped_flag
+            );
             if verbose {
                 console.print(f"  Running: {' '.join(cmd)}", style="muted");
             }
             result = subprocess.run(cmd, capture_output=not verbose, text=True);
             if result.returncode != 0 {
-                console.error(
-                    f"Install failed:\n{result.stderr
-                    or result.stdout
-                    or '(see output above)'}"
-                );
+                err_detail: str = result.stderr
+                or result.stdout
+                or "(see output above)";
+                console.error(f"Install failed:\n{err_detail}");
                 return 1;
             }
             if dry_run {
@@ -572,7 +578,7 @@ impl install(
             return 1;
         }
         installer = DependencyInstaller(
-            config=config, verbose=verbose, install_flags=install_flags
+            config=config, verbose=verbose, install_flags=install_flags, use_uv=use_uv
         );
         console.print(
             f"\n📦 Installing {len(packages)} package(s) into {config.get_venv_dir()}",
@@ -605,7 +611,10 @@ impl install(
                 return 1;
             }
             specs_installer = DependencyInstaller(
-                config=config, verbose=verbose, install_flags=install_flags
+                config=config,
+                verbose=verbose,
+                install_flags=install_flags,
+                use_uv=use_uv
             );
             dep_specs = specs_installer.get_pip_package_specs(include_dev=dev);
             if extras {
@@ -635,17 +644,16 @@ impl install(
                     )} dependencies into the global site...",
                     style="muted"
                 );
-                result = subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "pip",
-                        "install",
-                        "--upgrade"
-                    ] + install_flags + all_dep_specs,
-                    capture_output=not verbose,
-                    text=True,
+                cmd: list[str] = pip_command(
+                    sys.executable,
+                    ["install", "--upgrade"] + install_flags + all_dep_specs,
+                    use_uv=use_uv,
+                    warn_fn=_warn_dropped_flag
                 );
+                if verbose {
+                    console.print(f"  Running: {' '.join(cmd)}", style="muted");
+                }
+                result = subprocess.run(cmd, capture_output=not verbose, text=True);
                 if result.returncode != 0 {
                     console.error(
                         f"Dependency install failed:\n{result.stderr or result.stdout}"
@@ -671,7 +679,10 @@ impl install(
                 return 1;
             }
             host_installer = DependencyInstaller(
-                config=host_config, verbose=verbose, install_flags=install_flags
+                config=host_config,
+                verbose=verbose,
+                install_flags=install_flags,
+                use_uv=use_uv
             );
             if all_dep_specs {
                 console.print(
@@ -708,7 +719,7 @@ impl install(
         return 1;
     }
     installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags
+        config=config, verbose=verbose, install_flags=install_flags, use_uv=use_uv
     );
     console.print(
         f"\n📦 Installing dependencies for {config.project.name}", style="bold"

@@ -1,4 +1,9 @@
+import os;
 import from jaclang.cli.console { console }
+
+impl resolve_use_uv(no_uv: bool = False) -> bool {
+    return not no_uv and not bool(os.environ.get("JAC_NO_UV"));
+}
 
 impl DependencyInstaller.postinit -> None {
     import from jaclang.project.config { get_config }
@@ -13,6 +18,9 @@ impl DependencyInstaller.postinit -> None {
     self.venv_dir = self.config.get_venv_dir();
     if self.install_flags is None {
         self.install_flags = [];
+    }
+    if self.use_uv is None {
+        self.use_uv = resolve_use_uv();
     }
 }
 
@@ -65,6 +73,60 @@ impl DependencyInstaller.ensure_venv -> None {
     }
 }
 
+glob _UV_FLAG_MAP: dict[str, str | None] = {
+         "-y": None,
+         "--force-reinstall": "--reinstall",
+         "--no-cache-dir": "--no-cache",
+         "--pre": "--prerelease=allow",
+         "--prefer-binary": None,
+
+     };
+
+def _pip_flags_for_uv(args: list[str]) -> list[str] {
+    translated: list[str] = [];
+    for arg in args {
+        if arg in _UV_FLAG_MAP {
+            mapped = _UV_FLAG_MAP[arg];
+            if mapped is not None {
+                translated.append(mapped);
+            }
+        } else {
+            translated.append(arg);
+        }
+    }
+    return translated;
+}
+
+impl pip_command(
+    python: str,
+    args: list[str],
+    use_uv: bool = True,
+    warn_fn: (Callable[[str], None] | None) = None
+) -> list[str] {
+    import shutil;
+
+    uv_path = shutil.which("uv") if use_uv else None;
+
+    if uv_path and args {
+        subcommand = args[0];
+        rest = args[1:];
+        if warn_fn is not None {
+            for arg in rest {
+                if _UV_FLAG_MAP.get(arg) is None and arg in _UV_FLAG_MAP {
+                    warn_fn(
+                        f"  note: {arg} has no uv equivalent and will be ignored"
+                        " (pass --no-uv or set JAC_NO_UV=1 to keep it)"
+                    );
+                }
+            }
+        }
+        return [uv_path, "pip", subcommand, "--python", python] + _pip_flags_for_uv(
+            rest
+        );
+    }
+    return [python, "-m", "pip"] + args;
+}
+
 impl DependencyInstaller._seed_build_backend(target: Path) -> None {
     import subprocess;
     import sys;
@@ -97,10 +159,6 @@ impl DependencyInstaller._seed_build_backend(target: Path) -> None {
     }
 }
 
-impl pip_command(python: str, args: list[str]) -> list[str] {
-    return [python, "-m", "pip"] + args;
-}
-
 impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     import subprocess;
     import sys;
@@ -110,7 +168,19 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     } else {
         venv_python = str(self.venv_dir / "bin" / "python");
     }
-    cmd = pip_command(venv_python, args);
+
+    def _warn_once(msg: str) {
+        if not self._warned_uv_flag_drop {
+            self._warned_uv_flag_drop = True;
+            console.print(msg, style="muted");
+        }
+    }
+    cmd = pip_command(
+        venv_python,
+        args,
+        use_uv=self.use_uv,
+        warn_fn=_warn_once if self.use_uv else None
+    );
     if self.verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }

@@ -16,7 +16,9 @@ obj DependencyInstaller {
     has config: JacConfig | None = None,
         venv_dir: Path | None = None,
         verbose: bool = False,
-        install_flags: list[str] | None = None;
+        install_flags: list[str] | None = None,
+        use_uv: bool | None = None,
+        _warned_uv_flag_drop: bool = False;
 
     def postinit -> None;
     def ensure_venv -> None;
@@ -45,11 +47,18 @@ obj DependencyResolver {
     def resolve(include_dev: bool = False) -> list[ResolvedDependency];
 }
 
+def pip_command(
+    python: str,
+    args: list[str],
+    use_uv: bool = True,
+    warn_fn: (Callable[[str], None] | None) = None
+) -> list[str];
+
+def resolve_use_uv(no_uv: bool = False) -> bool;
+
 def capability_specs_for_install(
     config: JacConfig, installer: DependencyInstaller, scale: bool = False
 ) -> list[str];
-
-def pip_command(python: str, args: list[str]) -> list[str];
 
 def get_venv_site_packages(venv_dir: Path) -> Path;
 
