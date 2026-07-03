@@ -29,6 +29,8 @@ def csv_py -> dict {
     r8: list = list(reader(["\"abc"]));
     r9: list = list(reader(["\"a,b\nc\""]));
     r10: list = list(reader(["a" + chr(0) + "b,c"]));
+    r11: list = list(reader(["a,b\n", "\n", "c,d\n"]));
+    r12: list = list(reader(["x,\r\n"]));
     return {
         "n1": len(r1),
         "r0c0": r1[0][0],
@@ -55,7 +57,15 @@ def csv_py -> dict {
         "nl0": r9[0][0],
         "nln": len(r9[0]),
         "nul1": r10[0][1],
-        "nuln": len(r10[0])
+        "nuln": len(r10[0]),
+        "tnrows": len(r11),
+        "t0a": r11[0][0],
+        "t0n": len(r11[0]),
+        "t1n": len(r11[1]),
+        "t2d": r11[2][1],
+        "crlf0": r12[0][0],
+        "crlf1": r12[0][1],
+        "crlfn": len(r12[0])
     };
 }
 
@@ -77,6 +87,8 @@ na {
         r8: list[list[str]] = reader(["\"abc"]);
         r9: list[list[str]] = reader(["\"a,b\nc\""]);
         r10: list[list[str]] = reader(["a" + chr(0) + "b,c"]);
+        r11: list[list[str]] = reader(["a,b\n", "\n", "c,d\n"]);
+        r12: list[list[str]] = reader(["x,\r\n"]);
         return {
             "n1": len(r1),
             "r0c0": r1[0][0],
@@ -103,7 +115,15 @@ na {
             "nl0": r9[0][0],
             "nln": len(r9[0]),
             "nul1": r10[0][1],
-            "nuln": len(r10[0])
+            "nuln": len(r10[0]),
+            "tnrows": len(r11),
+            "t0a": r11[0][0],
+            "t0n": len(r11[0]),
+            "t1n": len(r11[1]),
+            "t2d": r11[2][1],
+            "crlf0": r12[0][0],
+            "crlf1": r12[0][1],
+            "crlfn": len(r12[0])
         };
     }
 }
