@@ -19,6 +19,7 @@ obj HotReloader {
     has base_path: str,
         module_name: str,
         watcher: any,
+        client_compiler: any = None,
         _client_output_dir: str = ".jac/client/compiled",
         _running: bool = False,
         _overlay_entry: bool = False,
@@ -42,6 +43,9 @@ obj HotReloader {
         file_path: str, visited: set | None = None, force: bool = True
     ) -> None;
 
+    def _recompile_client_unified(file_path: str) -> None;
+    def _refresh_routing(file_path: str) -> None;
+    def _entry_module_path -> Path;
     def _classify_declarations(file_path: str) -> tuple[bool, bool];
     def _path_to_module(file_path: str) -> str;
     def _get_js_filename(file_path: str) -> str;

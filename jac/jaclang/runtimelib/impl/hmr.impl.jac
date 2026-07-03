@@ -122,6 +122,38 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
         visited: set = set();
         self._recompile_client_code(target_path, visited);
     }
+
+    self._refresh_routing(target_path);
+}
+
+impl HotReloader._entry_module_path -> Path {
+    return Path(self.base_path) / f"{self.module_name}.jac";
+}
+
+impl HotReloader._refresh_routing(file_path: str) -> None {
+    if not self.client_compiler {
+        return;
+    }
+    base_dir = Path(self.base_path).resolve();
+    pages_dir = base_dir / 'pages';
+    changed = Path(file_path);
+    try {
+        changed = changed.resolve();
+    } except OSError { }
+    under_pages = str(changed).startswith(str(pages_dir) + os.sep);
+    jcc = self.client_compiler.jac_client_compiler;
+    routes_file = Path(str(jcc.compiled_dir)) / '_routes.js';
+    routes_missing = pages_dir.is_dir() and not routes_file.exists();
+    if not (under_pages or routes_missing) {
+        return;
+    }
+    try {
+        self.client_compiler._has_pages = jcc.rescan_pages();
+        self.client_compiler.create_entry_file(self._entry_module_path());
+    } except Exception as e {
+        console.error(f"Routing refresh failed for {file_path}: {e}");
+        self.record_error(file_path, f"Routing refresh failed: {e}");
+    }
 }
 
 impl HotReloader._reload_server_module(file_path: str) -> None {
@@ -173,10 +205,54 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
     }
 }
 
+impl HotReloader._recompile_client_unified(file_path: str) -> None {
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.runtimelib.client_bundle { ClientBundleError }
+    try {
+        source_path = Path(file_path).resolve();
+        if not source_path.exists() {
+            return;
+        }
+
+        program = Jac.program;
+        if program is not None {
+            for key in {file_path, str(source_path)} {
+                if key in program.mod.hub {
+                    del program.mod.hub[key];
+                }
+            }
+            program.errors_had.clear();
+        }
+        jcc = self.client_compiler.jac_client_compiler;
+        jcc.compile_dependencies_recursively(
+            source_path, source_root=Path(self.base_path).resolve(), skip_existing=True
+        );
+        if self._overlay_entry {
+            self._update_entry_point();
+        }
+        console.success(
+            f"Recompiled: {file_path} -> {self._get_js_filename(file_path)}"
+        );
+    } except ClientBundleError as e {
+        base_prefix = str(Path(self.base_path).resolve()) + '/';
+        errors = str(e).replace(base_prefix, '');
+        console.error(f"Compile error in {file_path}:\n{errors}");
+        self._emit_client_error_overlay(file_path, errors);
+        self.record_error(file_path, errors);
+    } except Exception as e {
+        console.error(f"Compile error in {file_path}: {e}");
+        self.record_error(file_path, str(e));
+    }
+}
+
 impl HotReloader._recompile_client_code(
     file_path: str, visited: set | None = None, force: bool = True
 ) -> None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    if self.client_compiler {
+        self._recompile_client_unified(file_path);
+        return;
+    }
     try {
         source_path = Path(file_path).resolve();
         source_key = str(source_path);
@@ -393,6 +469,18 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
 }
 
 impl HotReloader._update_entry_point -> None {
+    if self.client_compiler {
+        try {
+            jcc = self.client_compiler.jac_client_compiler;
+            self.client_compiler._has_pages = jcc.rescan_pages();
+            self.client_compiler.create_entry_file(self._entry_module_path());
+            self._overlay_entry = False;
+        } except Exception as e {
+            console.error(f"Entry point regeneration failed: {e}");
+            self.record_error(str(self._entry_module_path()), str(e));
+        }
+        return;
+    }
     import from jaclang.compiler.passes.ecmascript.backends.registry {
         resolve_active_backend
     }
