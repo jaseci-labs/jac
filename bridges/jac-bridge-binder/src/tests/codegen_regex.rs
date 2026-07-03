@@ -178,6 +178,75 @@ fn owned_captures_nested_producer_emitted() {
     );
 }
 
+#[test]
+fn cursor_and_drain_wrappers_emitted() {
+    let src = generated();
+
+    // CURSOR struct: owns the erased iterator + the regex and haystack it borrows,
+    // each via Arc. Field order borrower(iter)-before-owners.
+    assert!(
+        src.contains("pub struct OwnedMatches {")
+            && src.contains("iter: regex::Matches<'static, 'static>,")
+            && src.contains("_owner: std::sync::Arc<regex::Regex>,")
+            && src.contains("_input: std::sync::Arc<String>,"),
+        "missing OwnedMatches cursor struct\n{src}"
+    );
+    // Its wrap clones the regex + haystack into Arcs and transmutes the iterator;
+    // returns the wrapper directly (a cursor is always constructed, no Option).
+    assert!(
+        src.contains("fn wrap(owner: &regex::Regex, input: &str) -> OwnedMatches {")
+            && src.contains("let owner = std::sync::Arc::new(owner.clone());")
+            && src.contains("unsafe { std::mem::transmute(owner.find_iter(owned.as_str())) };"),
+        "missing/incorrect OwnedMatches::wrap\n{src}"
+    );
+    // The pull method: &mut self, pulls one item, shares the input Arc.
+    assert!(
+        src.contains("pub fn next(&mut self) -> Option<OwnedMatch> {")
+            && src.contains("let inner = self.iter.next()?;"),
+        "missing OwnedMatches::next pull\n{src}"
+    );
+    // The producer on Regex returns the cursor directly.
+    assert!(
+        src.contains("pub fn find_iter(&self, haystack: &str) -> OwnedMatches {")
+            && src.contains("OwnedMatches::wrap(&self.0, haystack)"),
+        "missing find_iter producer\n{src}"
+    );
+
+    // captures_iter is a cursor too, whose item wrapper OwnedCaptures is the SAME
+    // type `captures` produces — merged, so OwnedCaptures keeps its root wrap ctor.
+    assert!(
+        src.contains("pub struct OwnedCaptureMatches {")
+            && src.contains("pub fn next(&mut self) -> Option<OwnedCaptures> {"),
+        "missing OwnedCaptureMatches cursor\n{src}"
+    );
+    assert_eq!(
+        src.matches("pub struct OwnedCaptures {").count(),
+        1,
+        "OwnedCaptures must be emitted exactly once (merged)\n{src}"
+    );
+
+    // DRAIN struct: owns only a Vec<String>, drained via pop().
+    assert!(
+        src.contains("pub struct OwnedSplit {") && src.contains("items: Vec<String>,"),
+        "missing OwnedSplit drain struct\n{src}"
+    );
+    assert!(
+        src.contains("fn wrap(owner: &regex::Regex, input: &str) -> OwnedSplit {")
+            && src.contains("owner.split(input).map(|s| s.to_owned()).collect();")
+            && src.contains("items.reverse();"),
+        "missing/incorrect OwnedSplit::wrap collect\n{src}"
+    );
+    assert!(
+        src.contains("pub fn next(&mut self) -> Option<String> {")
+            && src.contains("self.items.pop()"),
+        "missing OwnedSplit::next drain\n{src}"
+    );
+    assert!(
+        src.contains("pub fn split(&self, haystack: &str) -> OwnedSplit {"),
+        "missing split producer\n{src}"
+    );
+}
+
 // ── Cargo.toml emitter ───────────────────────────────────────────────────────
 
 #[test]

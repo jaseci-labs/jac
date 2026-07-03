@@ -10,7 +10,7 @@ use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
 
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, RootProducer,
-    ScalarType, Skip, SkipReason, TypeKind,
+    ScalarType, Skip, SkipReason, TypeKind, WrapperKind,
 };
 
 pub fn classify(doc: &Crate) -> BridgeSpec {
@@ -246,11 +246,16 @@ impl<'a> Ctx<'a> {
                         }
                     }
                     Err(reason) => {
-                        // Before recording the skip, try the owning-wrapper rule:
+                        // Before recording the skip, try the owning-wrapper rules:
                         // a `fn(&self, &str) -> Option<Borrowed<'_>>` whose borrowed
-                        // type has a readable surface becomes a producer + wrapper
-                        // instead of a lifetime-borrow skip.
-                        match self.try_owning_wrapper(&method_name, f, bt) {
+                        // type has a readable surface becomes a producer + wrapper;
+                        // failing that, a `fn(&self, &str) -> Iter<'_>` (an in-crate
+                        // iterator) becomes a cursor or a Vec-as-drain. Either rescues
+                        // what would otherwise be a lifetime-borrow / cursor skip.
+                        match self
+                            .try_owning_wrapper(&method_name, f, bt)
+                            .or_else(|| self.try_cursor_wrapper(&method_name, f, bt))
+                        {
                             Some((producer, pendings)) => {
                                 bt.methods.push(producer);
                                 self.pending_wrappers.extend(pendings);
@@ -453,6 +458,7 @@ impl<'a> Ctx<'a> {
                     owner_inner_path: bt.inner_path.clone(),
                     producer_call: method_name.to_string(),
                 }),
+                kind: WrapperKind::Owning,
             },
             readers,
             reader_skips,
@@ -500,6 +506,7 @@ impl<'a> Ctx<'a> {
                 // Nested-only here; if a root producer (e.g. `find`) also targets
                 // this type, its `root: Some(..)` merges in at materialization.
                 root: None,
+                kind: WrapperKind::Owning,
             },
             readers,
             reader_skips,
@@ -507,6 +514,183 @@ impl<'a> Ctx<'a> {
         let mut pendings = vec![pending];
         pendings.extend(deeper);
         Some((reader, pendings))
+    }
+
+    /// Attempt to rescue an ITERATOR return via a cursor or a Vec-as-drain wrapper.
+    ///
+    /// The rule: an owner method `fn(&self, input: &str) -> Iter<'_,…>` where `Iter`
+    /// is an in-crate struct implementing `Iterator`. The synthesized wrapper owns
+    /// the input (and the owner, for a cursor) and exposes a single `next` pull
+    /// method — always constructed, so the producer returns the wrapper directly
+    /// (not `Option`). Two item shapes:
+    ///   * `Item = &str` → a DRAIN: eagerly collect owned `String`s, `next -> Option<String>`.
+    ///   * `Item = Borrowed<'h>` (an in-crate lifetime struct with a readable
+    ///     surface) → a CURSOR: `next -> Option<Owned<Borrowed>>`, each pulled item
+    ///     an owning wrapper sharing the cursor's input `Arc` (the nested rule, per
+    ///     iteration). The item wrapper is pended (and merges with any root-produced
+    ///     one, e.g. `find`'s `OwnedMatch`).
+    ///
+    /// `None` if the return isn't an in-crate iterator, or its item is an unreadable
+    /// struct — the caller then records the original cursor/lifetime skip.
+    fn try_cursor_wrapper(
+        &self,
+        method_name: &str,
+        f: &rustdoc_types::Function,
+        bt: &BridgeType,
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
+        if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+            return None;
+        }
+        // Exactly one non-self `&str` param — the buffer the wrapper owns.
+        let mut params = vec![];
+        for (pname, pty) in &f.sig.inputs {
+            if pname == "self" {
+                continue;
+            }
+            match self.classify_param_type(pty) {
+                Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                Err(_) => return None,
+            }
+        }
+        if params.len() != 1 || params[0].ty != ScalarType::Str {
+            return None;
+        }
+
+        // Return must be a bare in-crate iterator struct (not Option / Result).
+        let Some(Type::ResolvedPath(rp)) = &f.sig.output else { return None };
+        let iter_name = rp.path.clone();
+        let iter_id = rp.id.0;
+        let iter_lifetimes = self.struct_lifetimes(iter_id)?;
+        let item = self.iterator_item(iter_id)?;
+
+        let wrapper_name = format!("Owned{iter_name}");
+        let root = RootProducer {
+            owner_inner_path: bt.inner_path.clone(),
+            producer_call: method_name.to_string(),
+        };
+
+        // Classify the iterator's Item to pick cursor vs drain.
+        let (next_reader, item_pendings, kind) = match &item {
+            // Item = &str → drain of owned Strings.
+            Type::BorrowedRef { type_, .. } if matches!(type_.as_ref(), Type::Primitive(p) if p == "str") =>
+            {
+                let next = BridgeFn {
+                    name: "next".to_string(),
+                    export_name: None,
+                    params: vec![],
+                    ret: BridgeReturn::OptStr,
+                    throws: None,
+                    recv: Recv::DrainNext,
+                };
+                (next, vec![], WrapperKind::Drain)
+            }
+            // Item = in-crate lifetime struct with readers → cursor of nested wrappers.
+            Type::ResolvedPath(item_rp) => {
+                let item_name = item_rp.path.clone();
+                let item_id = item_rp.id.0;
+                // The item type must itself be a readable in-crate lifetime struct.
+                self.struct_lifetimes(item_id)?;
+                let mut seen = vec![];
+                let (readers, reader_skips, nested) =
+                    self.discover_readers(item_id, &item_name, &mut seen);
+                if readers.is_empty() {
+                    return None;
+                }
+                let item_wrapper = format!("Owned{item_name}");
+                let next = BridgeFn {
+                    name: "next".to_string(),
+                    export_name: None,
+                    params: vec![],
+                    ret: BridgeReturn::OptWrapper(item_wrapper.clone()),
+                    throws: None,
+                    recv: Recv::IterNext,
+                };
+                // Pend the item wrapper (an owning wrapper, built inline by `next`;
+                // root None so it merges with any root producer like `find`).
+                let mut pendings = vec![PendingWrapper {
+                    wrapper_name: item_wrapper.clone(),
+                    borrowed_id: item_id,
+                    wrapper: OwningWrapper {
+                        borrowed_path: format!("{}::{}", self.module_name, item_name),
+                        lifetimes: self.struct_lifetimes(item_id).unwrap_or(1),
+                        root: None,
+                        kind: WrapperKind::Owning,
+                    },
+                    readers,
+                    reader_skips,
+                }];
+                pendings.extend(nested);
+                (next, pendings, WrapperKind::Cursor { item_wrapper })
+            }
+            _ => return None,
+        };
+
+        let producer = BridgeFn {
+            name: method_name.to_string(),
+            export_name: None,
+            params,
+            ret: BridgeReturn::Wrapper(wrapper_name.clone()),
+            throws: None,
+            recv: Recv::Field0,
+        };
+        // The cursor/drain wrapper itself: its only reader is the synthesized `next`.
+        let mut pendings = vec![PendingWrapper {
+            wrapper_name,
+            borrowed_id: iter_id,
+            wrapper: OwningWrapper {
+                borrowed_path: format!("{}::{}", self.module_name, iter_name),
+                lifetimes: iter_lifetimes,
+                root: Some(root),
+                kind,
+            },
+            readers: vec![next_reader],
+            reader_skips: vec![],
+        }];
+        pendings.extend(item_pendings);
+        Some((producer, pendings))
+    }
+
+    /// The `Item` associated type of an in-crate struct's `impl Iterator`, if it
+    /// has one. Reads the assoc-type binding from the iterator's trait impl.
+    fn iterator_item(&self, struct_id: u32) -> Option<Type> {
+        let item = self.doc.index.get(&Id(struct_id))?;
+        let ItemEnum::Struct(s) = &item.inner else { return None };
+        for impl_id in &s.impls {
+            let Some(impl_item) = self.item(impl_id) else { continue };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else { continue };
+            let Some(tr) = &impl_block.trait_ else { continue };
+            if tr.path != "Iterator" {
+                continue;
+            }
+            for assoc_id in &impl_block.items {
+                let Some(assoc) = self.item(assoc_id) else { continue };
+                if assoc.name.as_deref() != Some("Item") {
+                    continue;
+                }
+                if let ItemEnum::AssocType { type_: Some(ty), .. } = &assoc.inner {
+                    return Some(ty.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Lifetime-param count of an in-crate struct, or `None` if it isn't a struct
+    /// or has zero lifetimes (a lifetime-free return isn't a borrowed cursor).
+    fn struct_lifetimes(&self, struct_id: u32) -> Option<usize> {
+        let item = self.doc.index.get(&Id(struct_id))?;
+        let ItemEnum::Struct(s) = &item.inner else { return None };
+        let n = s
+            .generics
+            .params
+            .iter()
+            .filter(|p| matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. }))
+            .count();
+        if n == 0 {
+            None
+        } else {
+            Some(n)
+        }
     }
 
     /// If `output` is `Option<T>` with `T` an own-crate struct that has ≥1

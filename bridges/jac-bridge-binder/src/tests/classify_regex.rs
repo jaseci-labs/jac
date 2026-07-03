@@ -11,7 +11,7 @@ use rustdoc_types::Crate;
 
 use crate::{
     classify,
-    types::{BridgeReturn, Recv, ScalarType, SkipReason, TypeKind},
+    types::{BridgeReturn, Recv, ScalarType, SkipReason, TypeKind, WrapperKind},
 };
 
 fn load_regex_doc() -> Crate {
@@ -126,21 +126,61 @@ fn captures_rescued_by_nested_wrapper() {
 }
 
 #[test]
-fn cursor_and_unreadable_borrows_are_skipped() {
+fn iterators_rescued_as_cursors_and_drains() {
     let doc = load_regex_doc();
     let spec = classify(&doc);
+    let regex_type = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
 
-    // Regex::captures_iter returns CaptureMatches<'r,'h> — cursor, must be skipped.
-    let iter_skip = spec.skips.iter().find(|s| s.item == "Regex::captures_iter");
-    assert!(iter_skip.is_some(), "Regex::captures_iter should be a skip");
+    // Regex::find_iter -> Matches<'r,'h> (Item = Match) becomes a CURSOR producer:
+    // a non-nullable OwnedMatches whose next() pulls OwnedMatch.
+    let find_iter =
+        regex_type.methods.iter().find(|m| m.name == "find_iter").expect("find_iter producer");
+    assert_eq!(find_iter.ret, BridgeReturn::Wrapper("OwnedMatches".into()));
+    let om = spec.types.iter().find(|t| t.name == "OwnedMatches").expect("OwnedMatches cursor");
+    let ocw = om.wrapper.as_ref().expect("cursor wrapper metadata");
+    assert_eq!(ocw.kind, WrapperKind::Cursor { item_wrapper: "OwnedMatch".into() });
+    let next = om.methods.iter().find(|m| m.name == "next").expect("OwnedMatches::next");
+    assert_eq!(next.ret, BridgeReturn::OptWrapper("OwnedMatch".into()));
+    assert_eq!(next.recv, Recv::IterNext);
+    assert!(next.params.is_empty());
 
-    // Regex::captures returns Option<Captures<'h>>. Captures has no DIRECT int-free
-    // reader (get/len are usize), but its `name(&str) -> Option<Match>` is a NESTED
-    // producer of OwnedMatch, which gives Captures a readable surface — so it is now
-    // rescued into an OwnedCaptures wrapper rather than a lifetime-borrow skip.
+    // Regex::captures_iter -> CaptureMatches (Item = Captures) is ALSO a cursor; its
+    // item wrapper is OwnedCaptures, which MERGES with the one `captures` produces.
+    let ci = regex_type.methods.iter().find(|m| m.name == "captures_iter").expect("captures_iter");
+    assert_eq!(ci.ret, BridgeReturn::Wrapper("OwnedCaptureMatches".into()));
+    let ocm = spec.types.iter().find(|t| t.name == "OwnedCaptureMatches").expect("cursor type");
+    assert_eq!(
+        ocm.wrapper.as_ref().unwrap().kind,
+        WrapperKind::Cursor { item_wrapper: "OwnedCaptures".into() }
+    );
+    let occ = spec.types.iter().filter(|t| t.name == "OwnedCaptures").count();
+    assert_eq!(occ, 1, "OwnedCaptures emitted once (captures + captures_iter merged)");
+
+    // Regex::split -> Split (Item = &str) becomes a DRAIN: OwnedSplit.next -> Option<String>.
+    let split = regex_type.methods.iter().find(|m| m.name == "split").expect("split producer");
+    assert_eq!(split.ret, BridgeReturn::Wrapper("OwnedSplit".into()));
+    let os = spec.types.iter().find(|t| t.name == "OwnedSplit").expect("OwnedSplit drain");
+    assert_eq!(os.wrapper.as_ref().unwrap().kind, WrapperKind::Drain);
+    let dnext = os.methods.iter().find(|m| m.name == "next").expect("OwnedSplit::next");
+    assert_eq!(dnext.ret, BridgeReturn::OptStr);
+    assert_eq!(dnext.recv, Recv::DrainNext);
+
+    // None of the three are skips any more.
+    for item in ["Regex::find_iter", "Regex::captures_iter", "Regex::split"] {
+        assert!(spec.skips.iter().all(|s| s.item != item), "{item} should be rescued");
+    }
+
+    // Honest limits still hold: an iterator with NO &str input to own can't be a
+    // cursor under this rule (Captures::iter iterates an already-owned Captures),
+    // and a non-iterator collection return (RegexSet::matches -> SetMatches) stays
+    // a precise skip rather than a silent drop.
     assert!(
-        spec.skips.iter().all(|s| s.item != "Regex::captures"),
-        "Regex::captures should be rescued via the nested-wrapper rule, not skipped"
+        spec.skips.iter().any(|s| s.item == "Captures::iter"),
+        "Captures::iter (no &str param) should remain a recorded skip"
+    );
+    assert!(
+        spec.skips.iter().any(|s| s.item == "RegexSet::matches"),
+        "RegexSet::matches (SetMatches, not an iterator) should remain a skip"
     );
 }
 

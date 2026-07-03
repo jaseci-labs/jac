@@ -20,9 +20,17 @@
 # because Captures' own unbridgeable methods (get/len/expand/extract/iter/get_match)
 # are now each individually recorded as skips instead of hidden behind one
 # `Regex::captures` skip — more honest, not a regression.
+#
+# The CURSOR + Vec-as-DRAIN rule then rescued the three iterator producers, lifting
+# bridged 12 -> 18: find_iter -> OwnedMatches (a cursor, next -> OwnedMatch),
+# captures_iter -> OwnedCaptureMatches (a cursor, next -> OwnedCaptures, which merges
+# with the type `captures` produces), and split -> OwnedSplit (a Vec-as-drain, next
+# -> Option<String>). Each producer + its synthesized next() counts, +6. `total`
+# rose 73 -> 76: the three iterator methods flipped from skip to bridged (net 0 on
+# total) while the 3 new next() methods add 3 bridged items with no matching skip.
 [regex]
-bridged = 12
-total = 73
+bridged = 18
+total = 76
 
 [base64]
 bridged = 1

@@ -41,16 +41,45 @@ pub struct BridgeType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OwningWrapper {
     /// The borrowed inner type's path with no lifetime args, e.g. `regex::Match`.
+    /// For a cursor this is the iterator type (`regex::Matches`); for a drain it
+    /// is the `&str`-yielding iterator (`regex::Split`) — codegen only uses it to
+    /// name the erased iterator field's type in the `Cursor` case.
     pub borrowed_path: String,
     /// Number of lifetime params on the borrowed type — each erased to `'static`
-    /// in the stored field (`Match<'static>`, `Captures<'static>`, …).
+    /// in the stored field (`Match<'static>`, `Matches<'static, 'static>`, …).
     pub lifetimes: usize,
     /// How the wrapper is built from a plain owner type (e.g. `Regex::find`), if
     /// it is. `None` for a wrapper reached ONLY by nesting — produced from another
     /// wrapper's reader (e.g. an `OwnedMatch` returned by `OwnedCaptures::name`) —
     /// which has no owner `&str`-taking method to synthesize a root `wrap` ctor
     /// from; its instances are built inline by the nested producer instead.
+    /// Cursor and drain wrappers always have a root (their iterator-producing
+    /// owner method).
     pub root: Option<RootProducer>,
+    /// Which owning shape codegen emits for this wrapper.
+    pub kind: WrapperKind,
+}
+
+/// The three owning-wrapper shapes, all of which reduce a borrowed return to
+/// "an opaque handle + methods" — no new ABI tag. They differ only in what the
+/// synthesized struct owns and how its readers are built.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum WrapperKind {
+    /// Owns the borrowing value (`inner`, lifetime erased) plus the input
+    /// `Arc<String>`. Readers delegate through `self.inner`. This is the
+    /// find/captures case and every nested reader-producer.
+    #[default]
+    Owning,
+    /// A CURSOR over an iterator return (`Regex::find_iter -> Matches<'r,'h>`):
+    /// owns `Arc<Owner>` + `Arc<String>` + the iterator with both lifetimes
+    /// erased, and exposes a single `next(&mut self) -> Option<item_wrapper>`
+    /// pull method. Each pulled item is an owning wrapper sharing this cursor's
+    /// input `Arc`. `item_wrapper` is that item's `Owned…` type name.
+    Cursor { item_wrapper: String },
+    /// A DRAIN over a `&str`-yielding iterator (`Regex::split -> Split<'r,'h>`):
+    /// eagerly collects the pieces into an owned `Vec<String>` (no lifetime
+    /// survives) and drains them via `next(&mut self) -> Option<String>`.
+    Drain,
 }
 
 /// The root construction path for an owning wrapper: an owner method
@@ -98,6 +127,11 @@ pub enum Recv {
     Field0,
     /// `self.inner` — an owning wrapper's lifetime-erased borrowing value.
     Inner,
+    /// `self.iter.next()` — a cursor's `&mut self` pull method, wrapping each
+    /// pulled item into a nested owning wrapper that shares the cursor's input.
+    IterNext,
+    /// `self.items.pop()` — a drain cursor's `&mut self` pull method.
+    DrainNext,
 }
 
 impl BridgeFn {
@@ -128,8 +162,16 @@ pub enum BridgeReturn {
     /// `Option<Wrapper>`. The string is the wrapper type name (e.g. `OwnedMatch`).
     /// A ROOT producer (`recv: Field0`) delegates to `Wrapper::wrap(&self.0, …)`;
     /// a NESTED producer (`recv: Inner`) builds the wrapper inline from the parent
-    /// wrapper's borrowing value, sharing the owned buffer via an `Arc` clone.
+    /// wrapper's borrowing value, sharing the owned buffer via an `Arc` clone; a
+    /// CURSOR pull (`recv: IterNext`) builds it from `self.iter.next()`.
     OptWrapper(String),
+    /// Producer of a NON-nullable owning wrapper: `-> Wrapper`. A cursor/drain is
+    /// always constructed (an empty stream is a live handle), so `find_iter`/
+    /// `split` return the wrapper directly via `Wrapper::wrap(&self.0, …)`.
+    Wrapper(String),
+    /// A drain cursor's pull method: `-> Option<String>`, body `self.items.pop()`
+    /// (`recv: DrainNext`). None terminates the drain, distinct from a present "".
+    OptStr,
 }
 
 /// Scalar parameter types the v1 ABI can actually carry at the boundary.

@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use crate::types::{
     BridgeFn, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, RootProducer, ScalarType,
-    TypeKind,
+    TypeKind, WrapperKind,
 };
 
 /// Emit a `Cargo.toml` for the generated bridge crate.
@@ -177,36 +177,81 @@ fn static_args(n: usize) -> String {
 /// exact same buffer via an Arc clone rather than re-owning a copy.
 fn emit_wrapper_struct(out: &mut String, bt: &BridgeType, w: &OwningWrapper) {
     writeln!(out, "    pub struct {} {{", bt.name).unwrap();
-    writeln!(
-        out,
-        "        inner: {}{},",
-        w.borrowed_path,
-        static_args(w.lifetimes)
-    )
-    .unwrap();
-    writeln!(out, "        _input: std::sync::Arc<String>,").unwrap();
+    match &w.kind {
+        WrapperKind::Owning => {
+            writeln!(out, "        inner: {}{},", w.borrowed_path, static_args(w.lifetimes)).unwrap();
+            writeln!(out, "        _input: std::sync::Arc<String>,").unwrap();
+        }
+        // A cursor owns the iterator (both lifetimes erased) plus the owner and
+        // input it borrows, each via `Arc`. Field order borrower-before-owners.
+        WrapperKind::Cursor { .. } => {
+            let owner = w.root.as_ref().map(|r| r.owner_inner_path.as_str()).unwrap_or("()");
+            writeln!(out, "        iter: {}{},", w.borrowed_path, static_args(w.lifetimes)).unwrap();
+            writeln!(out, "        _owner: std::sync::Arc<{owner}>,").unwrap();
+            writeln!(out, "        _input: std::sync::Arc<String>,").unwrap();
+        }
+        // A drain owns only the eagerly-collected pieces — no lifetime survives.
+        WrapperKind::Drain => {
+            writeln!(out, "        items: Vec<String>,").unwrap();
+        }
+    }
     writeln!(out, "    }}").unwrap();
 }
 
-/// Emit the non-pub `wrap` constructor: clone the input into an `Arc<String>`,
-/// produce the borrowed value from it, erase the lifetime, and store both.
+/// Emit the non-pub `wrap` constructor. The three wrapper kinds each own their
+/// borrowed data differently (see [`WrapperKind`]).
 fn emit_wrap(w: &OwningWrapper, root: &RootProducer, bt: &BridgeType) -> String {
-    let static_ty = format!("{}{}", w.borrowed_path, static_args(w.lifetimes));
-    format!(
-        "        fn wrap(owner: &{owner}, input: &str) -> Option<{wname}> {{\n\
-         \x20           let owned = std::sync::Arc::new(input.to_owned());\n\
-         \x20           let inner = owner.{producer}(owned.as_str())?;\n\
-         \x20           // SAFETY: `inner` borrows the `String` inside `owned`, whose Arc is\n\
-         \x20           // stored beside it and never mutated or moved-out; the borrower drops\n\
-         \x20           // before the owner, and every wrapper aliasing the buffer holds its own\n\
-         \x20           // Arc clone, so erasing to 'static is sound for the value's whole life.\n\
-         \x20           let inner: {static_ty} = unsafe {{ std::mem::transmute(inner) }};\n\
-         \x20           Some({wname} {{ inner, _input: owned }})\n\
-         \x20       }}",
-        owner = root.owner_inner_path,
-        wname = bt.name,
-        producer = root.producer_call,
-    )
+    let owner = &root.owner_inner_path;
+    let producer = &root.producer_call;
+    let wname = &bt.name;
+    match &w.kind {
+        // find/captures: clone the input into an Arc<String>, produce the borrowed
+        // value from it, erase the lifetime, store both. `None` (no match) in-band.
+        WrapperKind::Owning => {
+            let static_ty = format!("{}{}", w.borrowed_path, static_args(w.lifetimes));
+            format!(
+                "        fn wrap(owner: &{owner}, input: &str) -> Option<{wname}> {{\n\
+                 \x20           let owned = std::sync::Arc::new(input.to_owned());\n\
+                 \x20           let inner = owner.{producer}(owned.as_str())?;\n\
+                 \x20           // SAFETY: `inner` borrows the `String` inside `owned`, whose Arc is\n\
+                 \x20           // stored beside it and never mutated or moved-out; the borrower drops\n\
+                 \x20           // before the owner, and every wrapper aliasing the buffer holds its own\n\
+                 \x20           // Arc clone, so erasing to 'static is sound for the value's whole life.\n\
+                 \x20           let inner: {static_ty} = unsafe {{ std::mem::transmute(inner) }};\n\
+                 \x20           Some({wname} {{ inner, _input: owned }})\n\
+                 \x20       }}",
+            )
+        }
+        // find_iter: own the regex and haystack via Arc, build the iterator from
+        // them, erase both its lifetimes. Always constructed (empty stream = live
+        // handle whose first `next` is None), so no Option.
+        WrapperKind::Cursor { .. } => {
+            let static_ty = format!("{}{}", w.borrowed_path, static_args(w.lifetimes));
+            format!(
+                "        fn wrap(owner: &{owner}, input: &str) -> {wname} {{\n\
+                 \x20           let owner = std::sync::Arc::new(owner.clone());\n\
+                 \x20           let owned = std::sync::Arc::new(input.to_owned());\n\
+                 \x20           // SAFETY: `iter` borrows `*owner` and `*owned`, both stored beside it\n\
+                 \x20           // via Arc and never mutated or moved-out; each pulled item clones the\n\
+                 \x20           // input Arc, so erasing both lifetimes to 'static is sound for the\n\
+                 \x20           // cursor's whole life and every item it yields.\n\
+                 \x20           let iter: {static_ty} =\n\
+                 \x20               unsafe {{ std::mem::transmute(owner.{producer}(owned.as_str())) }};\n\
+                 \x20           {wname} {{ iter, _owner: owner, _input: owned }}\n\
+                 \x20       }}",
+            )
+        }
+        // split: eagerly copy each &str piece into an owned String (no lifetime
+        // survives), stored reversed so `next` drains front-to-back via pop().
+        WrapperKind::Drain => format!(
+            "        fn wrap(owner: &{owner}, input: &str) -> {wname} {{\n\
+             \x20           let mut items: Vec<String> =\n\
+             \x20               owner.{producer}(input).map(|s| s.to_owned()).collect();\n\
+             \x20           items.reverse();\n\
+             \x20           {wname} {{ items }}\n\
+             \x20       }}",
+        ),
+    }
 }
 
 /// Render one function (constructor or method) as indented bridge source.
@@ -217,7 +262,11 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     // Signature param list.
     let mut sig_parts: Vec<String> = Vec::new();
     if !is_ctor {
-        sig_parts.push("&self".into());
+        // A cursor/drain pull method mutates the iterator it owns.
+        sig_parts.push(match f.recv {
+            Recv::IterNext | Recv::DrainNext => "&mut self".into(),
+            _ => "&self".into(),
+        });
     }
     for p in &f.params {
         let ty = match p.ty {
@@ -240,6 +289,8 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     let recv = match f.recv {
         Recv::Field0 => "self.0",
         Recv::Inner => "self.inner",
+        Recv::IterNext => "self.iter",
+        Recv::DrainNext => "self.items",
     };
 
     let (ret_ann, body): (String, String) = match &f.ret {
@@ -310,7 +361,26 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
                 );
                 (format!(" -> Option<{}>", wrapper), call)
             }
+            // Cursor pull: take the next item from the owned iterator and wrap it,
+            // sharing the cursor's input Arc — the nested rule, applied per pull.
+            // The item is already 'static (the iterator is), so no transmute.
+            Recv::IterNext => {
+                let call = format!(
+                    "let inner = self.iter.next()?;\n            \
+                     Some({} {{ inner, _input: std::sync::Arc::clone(&self._input) }})",
+                    wrapper
+                );
+                (format!(" -> Option<{}>", wrapper), call)
+            }
+            Recv::DrainNext => unreachable!("DrainNext yields OptStr, not OptWrapper"),
         },
+        // Non-nullable cursor/drain producer: build the wrapper via its `wrap` ctor.
+        BridgeReturn::Wrapper(wrapper) => {
+            let call = format!("{}::wrap(&self.0, {})", wrapper, args_str);
+            (format!(" -> {}", wrapper), call)
+        }
+        // Drain pull: pop the next owned piece front-to-back. None ends the drain.
+        BridgeReturn::OptStr => (" -> Option<String>".into(), "self.items.pop()".into()),
     };
 
     Some(format!(
