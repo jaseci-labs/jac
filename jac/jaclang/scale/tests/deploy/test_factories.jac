@@ -1,5 +1,6 @@
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
+import from kubernetes.config.config_exception { ConfigException }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
@@ -365,8 +366,21 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
     }
 }
 
-test "kubernetes_target binds ConfigException for its kubeconfig fallback" {
-    assert hasattr(kt_module, "ConfigException") , "kubernetes_target must import ConfigException; its except clauses reference it";
-    ce = kt_module.ConfigException;
-    assert isinstance(ce, type) and issubclass(ce, BaseException) , f"ConfigException must be an exception type, got {ce!r}";
+test "kubernetes_target falls back to in-cluster config when kubeconfig is unavailable" {
+    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
+    target = DeploymentTargetFactory.create("kubernetes", config);
+
+    fake_cfg = unittest.mock.MagicMock();
+    # Simulate running in a pod: no ~/.kube/config, so load_kube_config raises.
+    fake_cfg.load_kube_config.side_effect = ConfigException("no kubeconfig");
+    # Halt after the fallback; get_status folds the error into an UNKNOWN status.
+    fake_cfg.load_incluster_config.side_effect = RuntimeError("stop after fallback");
+
+    with unittest.mock.patch.object(kt_module, "k8s_cluster_config", fake_cfg) {
+        target.get_status("test-app");
+    }
+
+    # The except ConfigException clause must catch and reach the in-cluster fallback.
+    fake_cfg.load_kube_config.assert_called_once();
+    fake_cfg.load_incluster_config.assert_called_once();
 }
