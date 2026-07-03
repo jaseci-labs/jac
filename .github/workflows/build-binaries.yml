@@ -1,0 +1,193 @@
+name: Build jac native binaries
+
+# Builds the self-contained `jac` binary per platform and attaches it to a
+# GitHub Release. Primary path: called by release.yml after it cuts the release
+# (a GITHUB_TOKEN-created release emits no release.published event). The
+# release event is the safety net for releases published by a real user.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Canonical release tag v<version> to upload assets to."
+        required: true
+        type: string
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        # Use the canonical `v<version>` tag; a new tag would create a
+        # duplicate release. Empty = build the artifact only, attach nothing.
+        description: "Canonical release tag to upload assets to (e.g. v0.30.1). Empty = artifact only."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # One native runner per target so the smoke test runs on real hardware.
+        # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014);
+        # macOS builds host-native. No Intel-Mac leg: LLVM ships no macOS-x64
+        # prebuilt for the pinned release.
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            zig_target: x86_64-linux-gnu.2.17
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            zig_target: aarch64-linux-gnu.2.17
+          - os: macos-14
+            platform: macos-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      # Check out the release tag, not the caller's ref, so a recovery run
+      # after main advanced still builds the release's own source.
+      # SHA-pinned: this job holds contents:write and ships user-downloaded
+      # binaries, so a re-pointed tag on the action must not reach it.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
+
+      - name: Install host tools (zstd)
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y zstd
+          else
+            brew install zstd
+          fi
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          # Fresh cache each run: a cached payload could ship stale bits.
+          use-cache: false
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # The native backend statically links a pinned LLVM; fetch it per target
+      # before `zig build`.
+      - name: Fetch LLVM for the jacllvm shim
+        working-directory: jac
+        run: zig build fetch-llvm ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
+
+      - name: Build the jac binary (one command)
+        working-directory: jac
+        run: zig build ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
+
+      - name: Smoke test (no system Python)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
+          printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+
+      # Guards #7082: neither the launcher nor the LLVMPY_* shim may reference
+      # a glibc symbol newer than the zig_target floor.
+      - name: Verify glibc floor (from zig_target)
+        if: runner.os == 'Linux'
+        working-directory: jac
+        env:
+          ZIG_TARGET: ${{ matrix.zig_target }}
+        run: |
+          set -euxo pipefail
+          FLOOR="${ZIG_TARGET##*gnu.}"
+          check() {
+            local f="$1" hi
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            hi="$(objdump -T "$f" 2>/dev/null | grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' | sed 's/GLIBC_//' | sort -V | tail -1)"
+            : "${hi:=0}"
+            echo "$f -> max GLIBC_$hi (floor $FLOOR)"
+            if [ "$(printf '%s\n%s\n' "$FLOOR" "$hi" | sort -V | tail -1)" != "$FLOOR" ]; then
+              echo "::error::$f requires GLIBC_$hi (> $FLOOR)"; exit 1
+            fi
+          }
+          check zig-out/bin/jac
+          SHIM="jaclang/compiler/passes/native/llvm/libjacllvm.so"
+          [ -f "$SHIM" ] || zig build jacllvm -Dtarget=${{ matrix.zig_target }} --summary all
+          [ -f "$SHIM" ] || SHIM="zig-out/lib/libjacllvm.so"
+          check "$SHIM"
+
+      - name: Package asset (+ checksum)
+        id: pkg
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
+          mkdir -p dist
+          cp zig-out/bin/jac "dist/$ASSET"
+          # No codesign on macOS: the payload tarball appended past the Mach-O
+          # end fails codesign's strict validation; the zig linker's ad-hoc
+          # signature is content-based and survives cp.
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+          gh release upload "$TAG" \
+            "dist/${{ steps.pkg.outputs.asset }}" \
+            "dist/${{ steps.pkg.outputs.asset }}.sha256" \
+            --clobber
+
+      # With this platform's asset attached, `scripts/install.sh` must resolve,
+      # download, checksum-verify, and run it -- catches release-tag/installer
+      # drift at release time on the target hardware.
+      - name: Verify install.sh can fetch + run this release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          JAC_VER: ${{ steps.ver.outputs.version }}
+          ASSET: ${{ steps.pkg.outputs.asset }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euxo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+
+          # The assets API lags uploads by a few seconds; wait for this asset.
+          echo "Waiting for asset $ASSET to appear on release $TAG..."
+          deadline=$(( SECONDS + 120 ))
+          until gh release view "$TAG" --json assets \
+                  --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$ASSET did not appear on release $TAG within 120s"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Asset $ASSET is visible; verifying install path."
+
+          HOME="$(mktemp -d)"; export HOME
+          bash scripts/install.sh --version "$JAC_VER"
+          BIN="$HOME/.local/bin/jac"
+          test -x "$BIN"
+          "$BIN" --version
+          printf 'with entry { print("installed ok"); }\n' > "$HOME/h.jac"
+          "$BIN" run "$HOME/h.jac" | grep -q "installed ok"
+          bash scripts/install.sh --uninstall
+          ! test -e "$BIN"
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.asset }}
+          path: jac/dist/*

@@ -208,7 +208,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 You can also override the model per-file when needed:
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 glob llm = Model(model_name="gpt-4o");  # overrides the builtin for this file
 ```
 
@@ -342,7 +342,7 @@ with entry {
 Use MockLLM for deterministic tests:
 
 ```jac
-import from byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM }
 
 glob llm = MockLLM(
     model_name="mockllm",

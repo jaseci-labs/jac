@@ -1,5 +1,6 @@
 """Tests for webhook walkers - runs both without and with MongoDB."""
 
+import atexit;
 import contextlib;
 import gc;
 import glob;
@@ -18,6 +19,7 @@ import from pathlib { Path }
 import from typing { cast }
 
 import from testcontainers.mongodb { MongoDbContainer }
+import from pymongo { MongoClient }
 
 import from jaclang.scale.tests.scale_test_client {
     ScaleTestClient,
@@ -508,7 +510,61 @@ def run_webhook_scoped_api_key_test(base_url: str) {
 # Uses ScaleTestClient (in-process, no subprocess)
 # =========================================================================
 glob wh_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
-     wh_test_file: Path = wh_fixtures_dir / "test_api.jac";
+     wh_test_file: Path = wh_fixtures_dir / "test_api.jac",
+     _wh_mongo_container: MongoDbContainer | None = None;
+
+"""Start the shared MongoDB container on first use and return its connection URI."""
+def _shared_mongo_uri -> str {
+    global _wh_mongo_container;
+    if _wh_mongo_container is None {
+        _wh_mongo_container = MongoDbContainer("mongo:latest");
+        _wh_mongo_container.start();
+        atexit.register(_stop_shared_mongo);
+    }
+    return _wh_mongo_container.get_connection_url();
+}
+
+"""Stop the shared MongoDB container at process exit."""
+def _stop_shared_mongo {
+    global _wh_mongo_container;
+    if _wh_mongo_container is not None {
+        with contextlib.suppress(Exception) {
+            _wh_mongo_container.stop();
+        }
+        _wh_mongo_container = None;
+    }
+}
+
+"""Drop jac_db so each test starts from clean Mongo state in the shared container."""
+def _reset_shared_mongo(uri: str) {
+    client = MongoClient(uri);
+    try {
+        client.drop_database('jac_db');
+    } finally {
+        client.close();
+    }
+}
+
+"""Run a webhook test against a fresh server backed by the shared MongoDB container."""
+def _run_with_shared_mongo(run_test: Callable[[str], None]) {
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    uri = _shared_mongo_uri();
+    os.environ["MONGODB_URI"] = uri;
+    _cleanup_db_files(wh_fixtures_dir);
+    sp = None;
+    try {
+        sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+        run_test(base_url);
+    } finally {
+        if sp is not None {
+            _stop_server(sp);
+        }
+        os.environ.pop("MONGODB_URI", None);
+        _reset_shared_mongo(uri);
+        _cleanup_db_files(wh_fixtures_dir);
+    }
+}
 
 test "webhook without mongo - endpoint exists" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
@@ -1076,191 +1132,41 @@ test "webhook without mongo - api key rejected as user session token" {
 # Test class 2: Webhook tests WITH MongoDB (via testcontainers)
 # =========================================================================
 test "webhook with mongo - endpoint exists" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_webhook_endpoint_exists_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_webhook_endpoint_exists_test);
 }
 
 test "webhook with mongo - normal walker not in webhook" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_normal_walker_not_in_webhook_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_normal_walker_not_in_webhook_test);
 }
 
 test "webhook with mongo - normal walker accessible via walker endpoint" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_normal_walker_accessible_via_walker_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_normal_walker_accessible_via_walker_test);
 }
 
 test "webhook with mongo - requires api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_webhook_requires_api_key_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_webhook_requires_api_key_test);
 }
 
 test "webhook with mongo - invalid api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_webhook_invalid_api_key_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_webhook_invalid_api_key_test);
 }
 
 test "webhook with mongo - minimal webhook with valid api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_minimal_webhook_with_valid_api_key_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_minimal_webhook_with_valid_api_key_test);
 }
 
 test "webhook with mongo - payment received with fields" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_webhook_payment_received_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_webhook_payment_received_test);
 }
 
 test "webhook with mongo - not accessible via walker endpoint" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_webhook_not_accessible_via_walker_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_webhook_not_accessible_via_walker_test);
 }
 
 test "webhook with mongo - revoked api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_webhook_revoked_api_key_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_webhook_revoked_api_key_test);
 }
 
 test "webhook with mongo - scoped api key" {
-    port = get_free_port();
-    base_url = f"http://localhost:{port}";
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
-    os.environ["MONGODB_URI"] = mongo_uri;
-    _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
-    try {
-        run_webhook_scoped_api_key_test(base_url);
-    } finally {
-        _stop_server(sp);
-        os.environ.pop("MONGODB_URI", None);
-        mongo_container.stop();
-        _cleanup_db_files(wh_fixtures_dir);
-    }
+    _run_with_shared_mongo(run_webhook_scoped_api_key_test);
 }

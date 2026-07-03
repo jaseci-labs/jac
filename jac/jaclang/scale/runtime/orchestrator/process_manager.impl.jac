@@ -37,6 +37,23 @@ def _remove_pidfile(name: str) {
     }
 }
 
+def _log_tail(name: str, lines: int = 8) -> str {
+    try {
+        content = (_Path(".jac/logs") / f"{name}.log").read_text(
+            encoding="utf-8", errors="replace"
+        );
+        return "\n".join(content.strip().splitlines()[-lines:]);
+    } except OSError {
+        return "";
+    }
+}
+
+def _report_exit(name: str, exit_code: int, context: str) {
+    tail = _log_tail(name);
+    suffix = f"; last log lines:\n{tail}" if tail else "";
+    logger.error(f"{name} exited with code {exit_code} {context}{suffix}");
+}
+
 def _pid_alive(pid: int) -> bool {
     import os;
     if pid <= 0 {
@@ -150,9 +167,17 @@ impl ServiceProcessManager.start_all -> None {
                 entry.url, lambda : proc.poll() is None, timeout=timeout
             );
             if not ok {
-                logger.warning(
-                    f"{name} did not become healthy within {timeout:.0f}s; proceeding"
-                );
+                exit_code = proc.poll();
+                if exit_code is not None {
+                    entry.status = ServiceStatus.STOPPED;
+                    entry.pid = None;
+                    _report_exit(name, exit_code, "during startup");
+                } else {
+                    logger.warning(
+                        f"{name} did not become healthy within {timeout:.0f}s; "
+                        "proceeding"
+                    );
+                }
             }
         }
     }
@@ -262,6 +287,18 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
     results: dict[str, bool] = {};
 
     for (name, entry) in self.registry.entries.items() {
+        proc = self.processes.get(name);
+        exit_code = proc.poll() if proc else None;
+        if exit_code is not None {
+            if entry.status != ServiceStatus.STOPPED {
+                entry.status = ServiceStatus.STOPPED;
+                entry.pid = None;
+                _report_exit(name, exit_code, "and will not become healthy");
+            }
+            results[name] = False;
+            continue;
+        }
+
         healthy = self.check_health(name);
         results[name] = healthy;
 
@@ -271,12 +308,14 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
         } else {
             self._failure_counts[name] = self._failure_counts.get(name, 0) + 1;
             if self._failure_counts[name] >= self._max_failures {
+                if entry.status != ServiceStatus.UNHEALTHY {
+                    logger.warning(
+                        f"{name} is UNHEALTHY ({self._failure_counts[
+                            name
+                        ]} consecutive failures)"
+                    );
+                }
                 entry.status = ServiceStatus.UNHEALTHY;
-                logger.warning(
-                    f"{name} is UNHEALTHY ({self._failure_counts[
-                        name
-                    ]} consecutive failures)"
-                );
             }
         }
     }
