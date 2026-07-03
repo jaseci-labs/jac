@@ -208,8 +208,11 @@ def seal_bootstrap(
             jir_path = out_dir / jir_rel;
             jir_path.parent.mkdir(parents=True, exist_ok=True);
             jir_path.write_bytes(write_precompiled_jir(bc, "", FLAG_BOOTSTRAP, extra));
-            boot_sources.append(str(jac_file));
-            boot_sources.extend(impl_paths);
+
+            if jac_file.name != "jir_registry.jac" {
+                boot_sources.append(str(jac_file));
+                boot_sources.extend(impl_paths);
+            }
         } except Exception as e {
             console.error(f"BOOTSTRAP FAIL: {jac_file.name} - {e}");
             failed += 1;
