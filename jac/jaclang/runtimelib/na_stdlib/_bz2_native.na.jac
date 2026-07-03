@@ -1,9 +1,12 @@
+# libbz2's one-shot buffer API takes sourceLen by value as C `unsigned int`
+# (4 bytes, unlike zlib's LP64 8-byte `uLong`), so `slen` must lower to u32;
+# the surface guards len(data) <= 0xFFFFFFFF before every call.
 import from bz2 {
     def BZ2_bzBuffToBuffCompress(
         dst: bytes,
         dlen: bytes,
         src: bytes,
-        slen: u64,
+        slen: u32,
         block_size: i32,
         verbosity: i32,
         work_factor: i32
@@ -11,7 +14,7 @@ import from bz2 {
 }
 import from bz2 {
     def BZ2_bzBuffToBuffDecompress(
-        dst: bytes, dlen: bytes, src: bytes, slen: u64, small: i32, verbosity: i32
+        dst: bytes, dlen: bytes, src: bytes, slen: u32, small: i32, verbosity: i32
     ) -> i32;
 }
 

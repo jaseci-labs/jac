@@ -26,6 +26,9 @@ def:pub decompress(data: bytes) -> bytes {
     if source_len == 0 {
         return b"";
     }
+    if source_len > 4294967295 {
+        raise ValueError("bz2.decompress: input too large for libbz2 one-shot API");
+    }
     cap: int = source_len * 4;
     if cap < 256 {
         cap = 256;
@@ -45,12 +48,20 @@ def:pub decompress(data: bytes) -> bytes {
         if rc == BZ_OK {
             return dest[0:int.from_bytes(dest_len, "little")];
         }
-        if rc == BZ_OUTBUFF_FULL and cap < ceiling {
-            cap = cap * 2;
-            if cap > ceiling {
-                cap = ceiling;
+        if rc == BZ_OUTBUFF_FULL {
+            if cap < ceiling {
+                cap = cap * 2;
+                if cap > ceiling {
+                    cap = ceiling;
+                }
+                continue;
             }
-            continue;
+            # A valid stream can legitimately exceed the growth ceiling (bzip2
+            # ratios reach ~1e6:1 on long runs); distinguish that from corrupt
+            # or truncated input.
+            raise ValueError(
+                "bz2.decompress: decompressed output exceeds the one-shot API limit"
+            );
         }
         raise ValueError(
             "bz2.decompress: invalid or truncated stream (libbz2 error code " + str(
