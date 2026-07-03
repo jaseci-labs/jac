@@ -10,7 +10,7 @@ import from .overlay {
     overlay_open_model,
     overlay_open_file
 }
-import from .commands { slash_submit }
+import from .commands { slash_submit, CmdResult }
 import from .editor {
     editor_insert,
     editor_backspace,
@@ -75,18 +75,18 @@ def _handle_submit(rt: TuiRuntime) -> bool {
     }
 
     result = slash_submit(text, rt);
-    if result == "quit" {
+    if result == CmdResult.QUIT {
         return True;
     }
-    if result == "open_model" {
+    if result == CmdResult.OPEN_MODEL {
         overlay_open_model(state);
         return False;
     }
-    if result == "open_file" {
+    if result == CmdResult.OPEN_FILE {
         overlay_open_file(state);
         return False;
     }
-    if result == "handled" {
+    if result == CmdResult.HANDLED {
         return False;
     }
 
@@ -351,7 +351,7 @@ def _handle_edit_key(k: Key, rt: TuiRuntime) -> bool {
     }
 
     if k.kind == KeyKind.CHAR {
-        if len(ed.get_text()) < 4096 {
+        if ed.text_len() < 4096 {
             editor_insert(ed, chr(k.code));
             editor_update_scroll(ed, ew, emr);
             ac_update(state);

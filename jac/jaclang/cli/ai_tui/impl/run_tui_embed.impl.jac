@@ -14,15 +14,14 @@ impl run_tui_embed(req: AgentRequest) -> int {
     cli_root = Path(__file__).resolve().parent.parent;
 
     ensured = _ensure_embed_host(cli_root);
-    if not ensured.get("ok") {
-        console.error(str(ensured.get("error", "failed to build embed TUI host")));
-        hint = str(ensured.get("hint", ""));
-        if hint {
-            console.error(hint);
+    if not ensured.ok {
+        console.error(str(ensured.error or "failed to build embed TUI host"));
+        if ensured.hint {
+            console.error(str(ensured.hint));
         }
         return 1;
     }
-    host_bin = str(ensured["path"]);
+    host_bin = str(ensured.path);
 
     if _require_tty() is None {
         return 1;

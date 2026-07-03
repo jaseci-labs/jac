@@ -204,6 +204,20 @@ obj EditorState {
         return result;
     }
 
+    def text_len -> int {
+        total: int = 0;
+        i: int = 0;
+        n = len(self.lines);
+        while i < n {
+            total = total + len(self.lines[i]);
+            i = i + 1;
+        }
+        if n > 1 {
+            total = total + (n - 1);
+        }
+        return total;
+    }
+
     def clear {
         self.lines = [""];
         self.cursor_line = 0;

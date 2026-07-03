@@ -495,9 +495,20 @@ def ui_stream -> any;
 def ui_call_detail(call_id: int) -> dict;
 def ui_phase_context(phase: str) -> dict;
 def ui_settings -> dict;
+
+
+obj ApplySettingsResult {
+    has ok: bool = False,
+        error: str = "",
+        model: str = "",
+        needs_key: bool = False,
+        key_env: str = "";
+}
+
+
 def ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
-) -> dict;
+) -> ApplySettingsResult;
 
 def _run_ui_server(r: any) -> int;
 

@@ -2675,16 +2675,16 @@ impl ui_settings -> dict {
 
 impl ui_apply_settings(
     model: str, api_key: str, base_url: str, temperature: str, n_ctx: str
-) -> dict {
+) -> ApplySettingsResult {
     global agent_model;
 
     if agent.bus.status == "running" or agent.bus.status == "stopping" {
-        return {
-            "ok": False,
-            "error": "Cannot apply settings while a turn is running -- stop it first.",
-            "needs_key": agent.bus.needs_key,
-            "key_env": agent.bus.key_env
-        };
+        return ApplySettingsResult(
+            ok=False,
+            error="Cannot apply settings while a turn is running -- stop it first.",
+            needs_key=agent.bus.needs_key,
+            key_env=agent.bus.key_env
+        );
     }
     if api_key.strip() {
         agent.cfg.api_key = api_key.strip();
@@ -2718,24 +2718,24 @@ impl ui_apply_settings(
             "system", {"text": f"Settings applied; using {agent_model.model_name}."}
         );
         agent.bus.publish_full();
-        return {
-            "ok": True,
-            "error": "",
-            "model": str(agent_model.model_name),
-            "needs_key": agent.bus.needs_key,
-            "key_env": agent.bus.key_env
-        };
+        return ApplySettingsResult(
+            ok=True,
+            error="",
+            model=str(agent_model.model_name),
+            needs_key=agent.bus.needs_key,
+            key_env=agent.bus.key_env
+        );
     } except Exception as e {
         _refresh_key_status();
         agent.bus.emit("error", {"text": f"Settings error: {e}"});
         agent.bus.publish_full();
-        return {
-            "ok": False,
-            "error": str(e),
-            "model": "",
-            "needs_key": agent.bus.needs_key,
-            "key_env": agent.bus.key_env
-        };
+        return ApplySettingsResult(
+            ok=False,
+            error=str(e),
+            model="",
+            needs_key=agent.bus.needs_key,
+            key_env=agent.bus.key_env
+        );
     }
 }
 

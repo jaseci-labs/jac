@@ -15,6 +15,8 @@ import from .theme {
     TH_DIM
 }
 
+enum SelectAction { NONE = 0, CHANGED = 1, SELECT = 2, CANCEL = 3, }
+
 obj SelectItem {
     has value: str = "",
         label: str = "",
@@ -260,49 +262,49 @@ obj SelectList {
         return lines;
     }
 
-    def handle_key(k: Key) -> str {
+    def handle_key(k: Key) -> SelectAction {
         if k.kind == KeyKind.UP {
             self.move_up();
-            return "changed";
+            return SelectAction.CHANGED;
         }
         if k.kind == KeyKind.DOWN {
             self.move_down();
-            return "changed";
+            return SelectAction.CHANGED;
         }
 
         if k.kind == KeyKind.ENTER {
             if len(self.filtered) > 0 {
-                return "select";
+                return SelectAction.SELECT;
             }
-            return "none";
+            return SelectAction.NONE;
         }
 
         if k.kind == KeyKind.ESCAPE {
-            return "cancel";
+            return SelectAction.CANCEL;
         }
         if k.kind == KeyKind.CTRL {
             ch = chr(k.code);
             if ch == "c" or ch == "q" {
-                return "cancel";
+                return SelectAction.CANCEL;
             }
-            return "none";
+            return SelectAction.NONE;
         }
 
         if k.kind == KeyKind.BACKSPACE {
             if len(self.filter_text) > 0 {
                 self.filter_text = self.filter_text[:len(self.filter_text) - 1];
                 self.set_filter(self.filter_text);
-                return "changed";
+                return SelectAction.CHANGED;
             }
-            return "none";
+            return SelectAction.NONE;
         }
 
         if k.kind == KeyKind.CHAR {
             self.filter_text = self.filter_text + chr(k.code);
             self.set_filter(self.filter_text);
-            return "changed";
+            return SelectAction.CHANGED;
         }
 
-        return "none";
+        return SelectAction.NONE;
     }
 }

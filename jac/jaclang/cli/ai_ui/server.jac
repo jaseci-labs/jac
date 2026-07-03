@@ -417,10 +417,6 @@ def:pub agent_apply_settings(
 ) -> SettingsResult {
     r = ui_apply_settings(model, api_key, base_url, temperature, n_ctx);
     return SettingsResult(
-        ok=bool(r.get("ok", False)),
-        error=str(r.get("error", "")),
-        model=str(r.get("model", "")),
-        needs_key=bool(r.get("needs_key", False)),
-        key_env=str(r.get("key_env", ""))
+        ok=r.ok, error=r.error, model=r.model, needs_key=r.needs_key, key_env=r.key_env
     );
 }

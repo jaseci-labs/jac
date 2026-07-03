@@ -41,10 +41,15 @@ def _esc_text(text: str) -> str {
 }
 
 
+def _esc_field(text: str) -> str {
+    return _esc_text(text).replace(":", "\\c");
+}
+
+
 def _ev_line(ev: dict) -> str {
     ev_id = str(ev.get("id", 0));
     ev_kind = str(ev.get("kind", ""));
-    ev_node = str(ev.get("node", ""));
+    ev_node = _esc_field(str(ev.get("node", "")));
     ev_text = _esc_text(str(ev.get("text", "")));
     return f"{FIELD_EV}:{ev_id}:{ev_kind}:{ev_node}:{ev_text}";
 }
@@ -107,7 +112,9 @@ def _list_project_files(project: str) -> str {
                 }
             }
         }
-    } except Exception { }
+    } except Exception as e {
+        _debug_log(f"_list_project_files: git ls-files failed: {e}");
+    }
 
     if not out_lines {
         try {
@@ -127,7 +134,9 @@ def _list_project_files(project: str) -> str {
                     break;
                 }
             }
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"_list_project_files: os.walk fallback failed: {e}");
+        }
     }
 
     return "\n".join(out_lines);
@@ -368,8 +377,49 @@ def _embed_byllm_seams -> dict {
 }
 
 
-def _ensure_embed_host(cli_root: any) -> dict {
+obj EmbedHostResult {
+    has ok: bool = False,
+        path: str = "",
+        error: str = "",
+        hint: str = "";
+}
+
+
+def _embed_sources_newest_mtime(na_dir: str) -> float {
     import os;
+    import glob;
+
+    newest: float = 0.0;
+    pattern = os.path.join(na_dir, "**", "*.na.jac");
+    for path in glob.glob(pattern, recursive=True) {
+        try {
+            m = os.path.getmtime(path);
+            if m > newest {
+                newest = m;
+            }
+        } except Exception { }
+    }
+    return newest;
+}
+
+
+def _embed_host_fresh(artifact: str, newest_src: float, force: bool) -> bool {
+    import os;
+
+    if force or not os.path.exists(artifact) {
+        return False;
+    }
+    try {
+        return os.path.getmtime(artifact) >= newest_src;
+    } except Exception {
+        return False;
+    }
+}
+
+
+def _ensure_embed_host(cli_root: any) -> EmbedHostResult {
+    import os;
+    import fcntl;
     import subprocess;
     import from jaclang.cli.console { console }
 
@@ -385,75 +435,118 @@ def _ensure_embed_host(cli_root: any) -> dict {
         "yes",
         "on"
     );
-    exists = os.path.exists(artifact);
-    if exists and not force {
-        return {"ok": True, "path": artifact, "error": "", "hint": ""};
+    newest_src = _embed_sources_newest_mtime(na_dir);
+
+    if _embed_host_fresh(artifact, newest_src, force) {
+        return EmbedHostResult(ok=True, path=artifact);
     }
     if not os.path.isfile(source) or not os.path.isfile(build_sh) {
-        if exists {
-            return {"ok": True, "path": artifact, "error": "", "hint": ""};
+        if os.path.exists(artifact) {
+            return EmbedHostResult(ok=True, path=artifact);
         }
-        return {
-            "ok": False,
-            "path": artifact,
-            "error": f"embed TUI host not found at {artifact}",
-            "hint": f"Build it with: {manual_hint}",
+        return EmbedHostResult(
+            ok=False,
+            path=artifact,
+            error=f"embed TUI host not found at {artifact}",
+            hint=f"Build it with: {manual_hint}"
+        );
+    }
 
-        };
-    }
-    if force and exists {
-        console.print(
-            "[tui] JAC_AI_TUI_REBUILD set; rebuilding embed host ...", style="dim"
-        );
-    } else {
-        console.print(
-            "[tui] embed host missing; compiling (first run, ~1-2 min) ...", style="dim"
-        );
-    }
-    build_env = dict(os.environ);
-    jac_bin = _resolve_jac_build_bin(cli_root);
-    if jac_bin {
-        build_env["JAC_BIN"] = jac_bin;
-    }
+    bindir = os.path.dirname(artifact);
     try {
-        res = subprocess.run(
-            ["bash", build_sh],
-            cwd=na_dir,
-            env=build_env,
-            capture_output=True,
-            text=True,
-            timeout=900,
+        os.makedirs(bindir, exist_ok=True);
+    } except Exception { }
+    lock_fd: int = -1;
+    try {
+        lock_fd = os.open(
+            os.path.join(bindir, ".build.lock"), os.O_CREAT | os.O_RDWR, 0o644
         );
-        if res.returncode != 0 {
-            detail = (res.stderr or res.stdout or "").strip();
-            if detail {
-                console.error(detail);
-            }
-            return {
-                "ok": False,
-                "path": artifact,
-                "error": "embed TUI host compile failed",
-                "hint": f"Run manually: {manual_hint}",
+    } except Exception {
+        lock_fd = -1;
+    }
 
-            };
+    try {
+        if lock_fd >= 0 {
+            try {
+                fcntl.flock(lock_fd, fcntl.LOCK_EX);
+            } except Exception { }
         }
-    } except Exception as e {
-        return {
-            "ok": False,
-            "path": artifact,
-            "error": f"embed TUI host compile failed: {e}",
-            "hint": f"Run manually: {manual_hint}",
 
-        };
-    }
-    if not os.path.exists(artifact) {
-        return {
-            "ok": False,
-            "path": artifact,
-            "error": f"embed TUI host not found at {artifact} after compile",
-            "hint": f"Run manually: {manual_hint}",
+        if _embed_host_fresh(artifact, newest_src, force) {
+            return EmbedHostResult(ok=True, path=artifact);
+        }
 
-        };
+        pre_existed = os.path.exists(artifact);
+        if force and pre_existed {
+            console.print(
+                "[tui] JAC_AI_TUI_REBUILD set; rebuilding embed host ...", style="dim"
+            );
+        } elif pre_existed {
+            console.print(
+                "[tui] embed host is stale; recompiling "
+                "(native build, this can take a few minutes) ...",
+                style="dim"
+            );
+        } else {
+            console.print(
+                "[tui] embed host missing; compiling "
+                "(first run, native build, this can take a few minutes) ...",
+                style="dim"
+            );
+        }
+
+        build_env = dict(os.environ);
+        jac_bin = _resolve_jac_build_bin(cli_root);
+        if jac_bin {
+            build_env["JAC_BIN"] = jac_bin;
+        }
+        try {
+            res = subprocess.run(
+                ["bash", build_sh],
+                cwd=na_dir,
+                env=build_env,
+                capture_output=True,
+                text=True,
+                timeout=900,
+            );
+            if res.returncode != 0 {
+                detail = (res.stderr or res.stdout or "").strip();
+                if detail {
+                    console.error(detail);
+                }
+
+                return EmbedHostResult(
+                    ok=False,
+                    path=artifact,
+                    error="embed TUI host compile failed",
+                    hint=f"Run manually: {manual_hint}"
+                );
+            }
+        } except Exception as e {
+            return EmbedHostResult(
+                ok=False,
+                path=artifact,
+                error=f"embed TUI host compile failed: {e}",
+                hint=f"Run manually: {manual_hint}"
+            );
+        }
+        if not os.path.exists(artifact) {
+            return EmbedHostResult(
+                ok=False,
+                path=artifact,
+                error=f"embed TUI host not found at {artifact} after compile",
+                hint=f"Run manually: {manual_hint}"
+            );
+        }
+        return EmbedHostResult(ok=True, path=artifact);
+    } finally {
+        if lock_fd >= 0 {
+            try {
+                fcntl.flock(lock_fd, fcntl.LOCK_UN);
+            } except Exception { }
+            try {
+                os.close(lock_fd);
+            } except Exception { }
+        }
     }
-    return {"ok": True, "path": artifact, "error": "", "hint": ""};
 }

@@ -18,6 +18,8 @@ enum CmdKind {
     IPC = 5,
 }
 
+enum CmdResult { NONE = 0, HANDLED = 1, QUIT = 2, OPEN_MODEL = 3, OPEN_FILE = 4, }
+
 obj CmdDef {
     has value: str = "",
         slash_labels: list[str] = [],
@@ -29,48 +31,48 @@ obj CmdDef {
         running_only: bool = False,
         palette_label: str = "";
 
-    def execute(rt: TuiRuntime) -> str {
+    def execute(rt: TuiRuntime) -> CmdResult {
         state = rt.state;
 
         if self.kind == CmdKind.OVERLAY {
             if self.value == "open_model" {
-                return "open_model";
+                return CmdResult.OPEN_MODEL;
             }
             if self.value == "open_file" {
-                return "open_file";
+                return CmdResult.OPEN_FILE;
             }
-            return "";
+            return CmdResult.NONE;
         }
 
         if self.kind == CmdKind.SCROLL_BOTTOM {
             state.scroll_to_bottom();
-            return "handled";
+            return CmdResult.HANDLED;
         }
 
         if self.kind == CmdKind.SCROLL_TOP {
             state.viewport_top = 0;
             state.follow_tail = False;
             state.dirty = True;
-            return "handled";
+            return CmdResult.HANDLED;
         }
 
         if self.kind == CmdKind.IPC_RESET {
             rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
             state.reset_events();
             state.dirty = True;
-            return "handled";
+            return CmdResult.HANDLED;
         }
 
         if self.kind == CmdKind.IPC {
             rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
             if self.ipc_name == IPC_CMD_QUIT {
-                return "quit";
+                return CmdResult.QUIT;
             }
             state.dirty = True;
-            return "handled";
+            return CmdResult.HANDLED;
         }
 
-        return "";
+        return CmdResult.NONE;
     }
 }
 
@@ -271,30 +273,30 @@ def resolve_slash_line(text: str) -> str {
     return "";
 }
 
-def command_dispatch(cmd: str, rt: TuiRuntime) -> str {
+def command_dispatch(cmd: str, rt: TuiRuntime) -> CmdResult {
     d = _find_def(cmd);
     if d is None {
-        return "";
+        return CmdResult.NONE;
     }
     return d.execute(rt);
 }
 
-def slash_submit(text: str, rt: TuiRuntime) -> str {
+def slash_submit(text: str, rt: TuiRuntime) -> CmdResult {
     state = rt.state;
     if text.startswith("/settings ") {
         args = text[10:].strip();
         rt.cmd_queue.send(state.ipc_fd, IPC_CMD_APPLY + ":" + args);
-        return "handled";
+        return CmdResult.HANDLED;
     }
     value = resolve_slash_line(text);
     if len(value) == 0 {
-        return "";
+        return CmdResult.NONE;
     }
     return command_dispatch(value, rt);
 }
 
 def run_command(cmd: str, rt: TuiRuntime) -> bool {
-    return command_dispatch(cmd, rt) == "quit";
+    return command_dispatch(cmd, rt) == CmdResult.QUIT;
 }
 
 def palette_commands(state: TuiState) -> list[SelectItem] {

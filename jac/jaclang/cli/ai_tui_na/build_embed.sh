@@ -128,19 +128,25 @@ fi
 cp "$PLAT" tty_plat.na.jac
 cp tty/libc_tty_base.na.jac libc_tty.na.jac
 cp "$SHIM_SRC" "$SHIM"
-trap "rm -f tty_plat.na.jac libc_tty.na.jac '$SCRIPT_DIR/$SHIM'" EXIT
 
 mkdir -p bin
 
+# Build into a temp path and atomically rename into place only on success, so a
+# killed or failed compile never leaves a partial/corrupt binary at OUT (a stale
+# reader booting against a live writer). The trap sweeps the temp on any exit.
+OUT="bin/jac-ai-tui"
+TMP="bin/.jac-ai-tui.partial.$$"
+trap "rm -f tty_plat.na.jac libc_tty.na.jac '$SCRIPT_DIR/$SHIM' '$SCRIPT_DIR/$TMP'" EXIT
+
 # ── 1. nacompile the embed host ───────────────────────────────────────────────
 echo "==> Compiling jac-ai-tui (embed host) ..."
-"${JAC[@]}" nacompile host_embed.na.jac ${XFLAGS:+$XFLAGS} -o bin/jac-ai-tui
-echo "==> Compiled: $SCRIPT_DIR/bin/jac-ai-tui"
+"${JAC[@]}" nacompile host_embed.na.jac ${XFLAGS:+$XFLAGS} -o "$TMP"
+echo "==> Compiled: $SCRIPT_DIR/$TMP"
 
 # ── 2. stage the shim $ORIGIN-adjacent (next to the binary) + set $ORIGIN rpath ─
 cp "$SHIM_SRC" "bin/$SHIM"
 if command -v patchelf >/dev/null 2>&1; then
-    patchelf --set-rpath '$ORIGIN' bin/jac-ai-tui || \
+    patchelf --set-rpath '$ORIGIN' "$TMP" || \
         echo "==> patchelf rpath patch failed; rely on a sibling $SHIM at runtime"
 else
     echo "==> patchelf not found; the native backend's emitted \$ORIGIN runpath is used"
@@ -148,14 +154,15 @@ fi
 
 # ── 3. append the fused-runtime [payload][trailer] (mirror _bundle_runtime) ────
 if [ -n "$NO_TRAILER" ]; then
+    mv -f "$TMP" "$OUT"
     echo "==> --no-trailer: emitting runtime-borrowing host (no trailer appended)"
-    echo "==> Done. Trailerless TUI host: $SCRIPT_DIR/bin/jac-ai-tui (+ bin/$SHIM)"
+    echo "==> Done. Trailerless TUI host: $SCRIPT_DIR/$OUT (+ bin/$SHIM)"
     echo "    Boots only with JAC_RT_DIR pointing at a materialized rt (payload use)."
     exit 0
 fi
 
 echo "==> Appending fused-runtime trailer payload ..."
-"$PY" - "$FUSED_JAC" bin/jac-ai-tui <<'PYEOF'
+"$PY" - "$FUSED_JAC" "$TMP" <<'PYEOF'
 import sys
 src, host = sys.argv[1], sys.argv[2]
 data = open(src, "rb").read()
@@ -170,6 +177,7 @@ with open(host, "ab") as f:
 print(f"   appended {len(suffix)} bytes ([payload]={payload_len} + [trailer]={tlen})")
 PYEOF
 
-echo "==> Done. Self-hosting TUI binary: $SCRIPT_DIR/bin/jac-ai-tui"
+mv -f "$TMP" "$OUT"
+echo "==> Done. Self-hosting TUI binary: $SCRIPT_DIR/$OUT"
 echo "    Boot test (stub agent, no byllm): ./bin/jac-ai-tui"
 echo "    Real agent: set JAC_AI_TUI_BYLLM_SRC + JAC_AI_TUI_DEPS, then ./bin/jac-ai-tui"

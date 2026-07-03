@@ -78,32 +78,30 @@ obj ScoredEntry {
 }
 
 def _sort_entries_by_score(entries: list[ScoredEntry]) -> list[AcItem] {
-    result: list[AcItem] = [];
-    rem: list[ScoredEntry] = entries;
-
-    while len(rem) > 0 {
-        best: int = 0;
-        j: int = 1;
-        while j < len(rem) {
-            if rem[j].score < rem[best].score {
-                best = j;
+    n = len(entries);
+    i: int = 1;
+    while i < n {
+        cur = entries[i];
+        j: int = i - 1;
+        while j >= 0 {
+            if entries[j].score <= cur.score {
+                break;
             }
-            j = j + 1;
+            entries[j + 1] = entries[j];
+            j = j - 1;
         }
-        entry = rem[best];
+        entries[j + 1] = cur;
+        i = i + 1;
+    }
+
+    result: list[AcItem] = [];
+    k: int = 0;
+    while k < n {
+        entry = entries[k];
         result.append(
             AcItem(value=entry.value, label=entry.label, description=entry.description)
         );
-
-        new_rem: list[ScoredEntry] = [];
-        k: int = 0;
-        while k < len(rem) {
-            if k != best {
-                new_rem.append(rem[k]);
-            }
-            k = k + 1;
-        }
-        rem = new_rem;
+        k = k + 1;
     }
     return result;
 }

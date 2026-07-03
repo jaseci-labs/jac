@@ -5,11 +5,12 @@ import from .commands {
     model_items,
     file_items,
     command_dispatch,
-    apply_model
+    apply_model,
+    CmdResult
 }
 import from .runtime { TuiRuntime }
 import from .editor { editor_insert_text }
-import from .select_list { SelectItem }
+import from .select_list { SelectItem, SelectAction }
 import from .width { visible_width, ansi_trunc, ansi_pad }
 import from .terminal { ansi_sgr, ansi_reset, term_spaces, term_dashes }
 import from .theme {
@@ -82,16 +83,16 @@ def overlay_handle_key(k: Key, rt: TuiRuntime) -> bool {
     state = rt.state;
     sl = state.select_list;
     action = sl.handle_key(k);
-    if action == "cancel" {
+    if action == SelectAction.CANCEL {
         overlay_close(state);
         return False;
     }
-    if action == "changed" {
+    if action == SelectAction.CHANGED {
         state.overlay_filter = sl.filter_text;
         state.dirty = True;
         return False;
     }
-    if action == "select" {
+    if action == SelectAction.SELECT {
         item = sl.current();
         if item is None {
             return False;
@@ -111,15 +112,15 @@ def overlay_handle_key(k: Key, rt: TuiRuntime) -> bool {
         }
 
         result = command_dispatch(item.value, rt);
-        if result == "open_model" {
+        if result == CmdResult.OPEN_MODEL {
             overlay_open_model(state);
             return False;
         }
-        if result == "open_file" {
+        if result == CmdResult.OPEN_FILE {
             overlay_open_file(state);
             return False;
         }
-        should_quit = result == "quit";
+        should_quit = result == CmdResult.QUIT;
         overlay_close(state);
         return should_quit;
     }

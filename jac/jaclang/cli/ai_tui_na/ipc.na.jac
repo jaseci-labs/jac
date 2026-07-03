@@ -76,6 +76,11 @@ def _unescape(s: str) -> str {
                 i = i + 2;
                 continue;
             }
+            if nc == "c" {
+                result = result + ":";
+                i = i + 2;
+                continue;
+            }
         }
         result = result + c;
         i = i + 1;
@@ -102,7 +107,7 @@ def _parse_ev_val(state: TuiState, val: str) -> None {
     if i3 < 0 {
         return;
     }
-    node_name = rest2[:i3];
+    node_name = _unescape(rest2[:i3]);
     text_esc = rest2[i3 + 1:];
     text = _unescape(text_esc);
 
