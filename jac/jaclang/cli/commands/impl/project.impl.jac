@@ -497,6 +497,7 @@ impl install(
         DependencyInstaller,
         get_venv_site_packages,
         pip_command,
+        resolve_use_uv,
         capability_specs_for_install
     }
     import from jaclang.project.dep_registry { get_dependency_registry }
@@ -516,7 +517,7 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
-    use_uv: bool = not no_uv and not bool(os.environ.get("JAC_NO_UV"));
+    use_uv: bool = resolve_use_uv(no_uv);
 
     def _warn_dropped_flag(msg: str) {
         console.print(msg, style="muted");

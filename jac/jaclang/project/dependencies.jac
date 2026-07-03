@@ -17,7 +17,7 @@ obj DependencyInstaller {
         venv_dir: Path | None = None,
         verbose: bool = False,
         install_flags: list[str] | None = None,
-        use_uv: bool = True,
+        use_uv: bool | None = None,
         _warned_uv_flag_drop: bool = False;
 
     def postinit -> None;
@@ -53,6 +53,8 @@ def pip_command(
     use_uv: bool = True,
     warn_fn: (Callable[[str], None] | None) = None
 ) -> list[str];
+
+def resolve_use_uv(no_uv: bool = False) -> bool;
 
 def capability_specs_for_install(
     config: JacConfig, installer: DependencyInstaller, scale: bool = False

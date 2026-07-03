@@ -1,4 +1,9 @@
+import os;
 import from jaclang.cli.console { console }
+
+impl resolve_use_uv(no_uv: bool = False) -> bool {
+    return not no_uv and not bool(os.environ.get("JAC_NO_UV"));
+}
 
 impl DependencyInstaller.postinit -> None {
     import from jaclang.project.config { get_config }
@@ -13,6 +18,9 @@ impl DependencyInstaller.postinit -> None {
     self.venv_dir = self.config.get_venv_dir();
     if self.install_flags is None {
         self.install_flags = [];
+    }
+    if self.use_uv is None {
+        self.use_uv = resolve_use_uv();
     }
 }
 

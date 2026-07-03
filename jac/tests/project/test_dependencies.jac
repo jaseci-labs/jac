@@ -17,7 +17,8 @@ import from jaclang.project.dependencies {
     get_venv_site_packages,
     is_venv_in_path,
     remove_venv_from_path,
-    pip_command
+    pip_command,
+    resolve_use_uv
 }
 
 """Reset global config singleton."""
@@ -1803,6 +1804,36 @@ test "pip_command warn_fn called for dropped flag" {
     }
 }
 
+# add/update/remove never pass use_uv explicitly, so postinit must resolve
+# JAC_NO_UV on its own.
+test "resolve_use_uv reflects JAC_NO_UV, and DependencyInstaller falls back to it" {
+    saved = os.environ.get("JAC_NO_UV");
+    try {
+        os.environ.pop("JAC_NO_UV", None);
+        assert resolve_use_uv() is True;
+        assert resolve_use_uv(no_uv=True) is False;
+
+        os.environ["JAC_NO_UV"] = "1";
+        assert resolve_use_uv() is False;
+
+        reset_config();
+        (tmp, project_dir) = make_temp_project();
+        try {
+            config = JacConfig.load(project_dir / "jac.toml");
+            assert DependencyInstaller(config=config).use_uv is False;
+            assert DependencyInstaller(config=config, use_uv=True).use_uv is True;
+        } finally {
+            shutil.rmtree(tmp, ignore_errors=True);
+            reset_config();
+        }
+    } finally {
+        if saved is None {
+            os.environ.pop("JAC_NO_UV", None);
+        } else {
+            os.environ["JAC_NO_UV"] = saved;
+        }
+    }
+}
 
 test "update always uses upgrade flag" {
     reset_config();
