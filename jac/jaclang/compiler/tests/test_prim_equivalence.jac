@@ -199,7 +199,7 @@ test "gzip bundled" {
 test "bz2 bundled" {
     run_with_both("prim_bz2.jac", "bz2_py", "bz2_cl", "bz2_na", require=["na"]);
 }
-    
+
 test "fractions bundled" {
     run_with_both(
         "prim_fractions.jac",
