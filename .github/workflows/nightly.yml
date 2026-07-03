@@ -74,7 +74,6 @@ jobs:
   # usually caused by release/tag changes elsewhere, which the PR-time check in
   # ci.yml (path-gated on scripts/install.sh) can never catch.
   installer-live:
-    name: "Install: ${{ matrix.platform }}"
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 8 * * *' }}
     runs-on: ${{ matrix.os }}
     strategy:

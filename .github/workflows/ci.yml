@@ -1188,7 +1188,6 @@ jobs:
           kubectl logs -n ingress -l name=nginx-ingress-microk8s --tail=50 || true
 
   installer-test:
-    name: "Install: ${{ matrix.platform }}"
     needs: changes
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.installer == 'true') }}
     runs-on: ${{ matrix.os }}
