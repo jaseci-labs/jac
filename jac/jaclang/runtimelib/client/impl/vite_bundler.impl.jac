@@ -392,7 +392,9 @@ impl ViteBundler._generate_vite_config_content(
     api_port: int = 8000,
     for_mobile_dev: bool = False,
     mobile_hmr_host: str = "",
-    mobile_hmr_port: int = 0
+    mobile_hmr_port: int = 0,
+    for_desktop_dev: bool = False,
+    desktop_broker_port: int = 0
 ) -> str {
     build_dir = self._get_client_dir();
     vite_config_data = self.config_loader.get_vite_config();
@@ -507,20 +509,40 @@ impl ViteBundler._generate_vite_config_content(
             if (isinstance(server_config, dict) and server_config)
             else '';
 
+        reload_enabled: bool = for_mobile_dev or for_desktop_dev;
         if for_mobile_dev and mobile_hmr_host {
             hmr_host = mobile_hmr_host;
             hmr_port = mobile_hmr_port or 5173;
             mobile_hmr_str = (
                 f'\n    hmr: {{ protocol: "ws", host: "{hmr_host}", port: {hmr_port}, clientPort: {hmr_port}, overlay: false }},'
             );
-        } elif for_mobile_dev {
+        } elif reload_enabled {
             mobile_hmr_str = "\n    hmr: { overlay: false },";
         } else {
             mobile_hmr_str = "";
         }
         mobile_plug_in: str = "\n    jacMobileCompiledReload(),"
-            if for_mobile_dev
+            if reload_enabled
             else "";
+        if for_mobile_dev and mobile_hmr_host {
+            host_value = f'"{mobile_hmr_host}"';
+        } elif for_desktop_dev {
+            host_value = '"127.0.0.1"';
+        } else {
+            host_value = 'true';
+        }
+        desktop_server_extras: str = "";
+        desktop_proxy_str: str = "";
+        if for_desktop_dev {
+            desktop_server_extras = "\n    strictPort: true,";
+            broker_port: int = desktop_broker_port or 8000;
+            desktop_proxy_str = (
+                f'\n      "/__jac": {{'
+                f'\n        target: "http://127.0.0.1:{broker_port}",'
+                '\n        changeOrigin: true,'
+                '\n      },'
+            );
+        }
 
         mobile_compiled_block: str = (
             r'''
@@ -581,7 +603,7 @@ function jacMobileCompiledReload() {
   };
 }
 '''
-                if for_mobile_dev
+                if reload_enabled
                 else ""
         );
         config_content = f'''import {{ defineConfig }} from "vite";
@@ -658,9 +680,7 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages{build_overrides_str}
   }},
   server: {{
-    host: {f'"{mobile_hmr_host}"'
-            if (for_mobile_dev and mobile_hmr_host)
-            else 'true'},
+    host: {host_value},
     watch: {{
       usePolling: true,
       interval: 100,
@@ -710,9 +730,9 @@ export default defineConfig({{
       "/assets": {{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
-      }},
+      }},{desktop_proxy_str}
     }},
-{server_config_str}{mobile_hmr_str}
+{server_config_str}{mobile_hmr_str}{desktop_server_extras}
   }},
   resolve: {{
     alias: {{
@@ -856,7 +876,9 @@ impl ViteBundler.create_vite_config(
     api_port: int = 8000,
     for_mobile_dev: bool = False,
     mobile_hmr_host: str = "",
-    mobile_hmr_port: int = 0
+    mobile_hmr_port: int = 0,
+    for_desktop_dev: bool = False,
+    desktop_broker_port: int = 0
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
@@ -874,7 +896,9 @@ impl ViteBundler.create_vite_config(
         api_port=api_port,
         for_mobile_dev=for_mobile_dev,
         mobile_hmr_host=mobile_hmr_host,
-        mobile_hmr_port=mobile_hmr_port
+        mobile_hmr_port=mobile_hmr_port,
+        for_desktop_dev=for_desktop_dev,
+        desktop_broker_port=desktop_broker_port
     );
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;

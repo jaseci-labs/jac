@@ -159,8 +159,98 @@ impl NativeDesktopTarget.start(
 impl NativeDesktopTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    console.print(
-        "  desktop --dev: building and launching (HMR not yet wired)", style="muted"
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
+    import from jaclang.runtimelib.watcher { JacFileWatcher }
+    import from jaclang.runtimelib.client.targets.client_dev_common {
+        _ClientHmrHandler,
+        resolve_port_or_next_available,
+        ensure_watchdog_common,
+        stop_dev_watcher,
+        terminate_dev_processes,
+        install_dev_signal_handlers
+    }
+
+    console.print("\n🖥️  Desktop dev (native webview + Vite HMR)", style="bold");
+    ensure_dev_build_env();
+
+    broker_port = resolve_port_or_next_available(port, "broker");
+    vite_port = resolve_port_or_next_available(5173, "Vite", reserved=[broker_port]);
+
+    console.print("  Preparing compilation for Vite dev…", style="muted");
+    bundler = ViteBundler(project_dir=project_dir);
+    package_json_path = bundler._get_client_dir() / "configs" / "package.json";
+    if not package_json_path.exists() {
+        bundler.create_package_json();
+    }
+    builder = make_client_bundle_builder(project_dir);
+    if not builder.vite_package_json or not builder.vite_package_json.exists() {
+        builder.vite_package_json = package_json_path;
+    }
+    compiler = builder._get_compiler();
+    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
+    (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
+    if not mod {
+        raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
+    }
+    compiler.compile(mod, entry_file);
+    console.print("  ✔ Client modules compiled for dev mode", style="success");
+
+    bundler.create_vite_config(
+        entry_file,
+        is_dev=True,
+        api_port=broker_port,
+        for_desktop_dev=True,
+        desktop_broker_port=broker_port
     );
-    self.start(entry_file, project_dir, api_port);
+    console.print(f"  Starting Vite dev server (port {vite_port})…", style="muted");
+    vite_process = bundler.start_dev_server(port=vite_port, host="127.0.0.1");
+    if not vite_process {
+        raise RuntimeError("Failed to start Vite dev server");
+    }
+
+    console.print("  Building native host (once for dev session)…", style="muted");
+    binary = self.build(entry_file, project_dir, None);
+
+    env = desktop_app_runtime_env();
+    env["JAC_DESKTOP_DEV_PORT"] = str(vite_port);
+    env["JAC_DESKTOP_BROKER_PORT"] = str(broker_port);
+
+    console.print(
+        f"\n🚀 Launching {binary.name} (Vite HMR on :{vite_port})", style="bold green"
+    );
+    binary_proc = subprocess.Popen([str(binary)], cwd=str(binary.parent), env=env);
+
+    hot_watcher = None;
+    if ensure_watchdog_common("the webview") {
+        hmr_handler = _ClientHmrHandler(
+            compiler=compiler, entry_file=entry_file, project_dir=project_dir
+        );
+        hot_watcher = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
+        hot_watcher.add_callback(hmr_handler.on_event);
+        hot_watcher.start();
+    }
+
+    console.print("\n  Press Ctrl+C to stop\n", style="muted");
+    vite_p = vite_process;
+    bproc = binary_proc;
+    watcher = hot_watcher;
+    def cleanup_dev {
+        console.print("\n  Stopping desktop app and Vite…", style="muted");
+        stop_dev_watcher(watcher);
+        terminate_dev_processes([bproc, vite_p]);
+        console.print("  ✔ Stopped", style="success");
+    }
+
+    install_dev_signal_handlers();
+
+    try {
+        binary_proc.wait();
+    } except KeyboardInterrupt {
+        console.print("\n  Interrupted.", style="muted");
+    } finally {
+        cleanup_dev();
+    }
 }

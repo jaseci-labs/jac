@@ -41,7 +41,6 @@ import from jaclang.runtimelib.client.targets.mobile.dev {
     _get_api_base_url_str,
     _inject_capacitor_dev_url,
     _mobile_ensure_watchdog,
-    _mobile_hmr_on_jac_changed,
     _mobile_read_dev_env,
     _mobile_setup_android_port_reverse,
     _mobile_start_backend_server,
@@ -57,6 +56,7 @@ import from jaclang.runtimelib.client.targets.mobile.scaffold {
     _ensure_placeholder_index
 }
 import from jaclang.runtimelib.client.targets.client_dev_common {
+    _ClientHmrHandler,
     install_dev_signal_handlers,
     stop_dev_watcher,
     terminate_dev_processes
@@ -313,7 +313,7 @@ impl MobileTarget.dev(
     if _mobile_ensure_watchdog() {
         import from jaclang.runtimelib.watcher { JacFileWatcher }
 
-        hmr_handler = _MobileHmrHandler(
+        hmr_handler = _ClientHmrHandler(
             compiler=compiler, entry_file=entry_file, project_dir=project_dir
         );
         hot_watcher = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
@@ -407,8 +407,4 @@ impl MobileTarget.start(
 
     _run_cap_cmd(project_dir, ["sync", plat], f"cap sync {plat}");
     _run_cap_cmd(project_dir, ["run", plat], f"cap run {plat}");
-}
-
-impl _MobileHmrHandler.on_event(evt: FileChangeEvent) -> None {
-    _mobile_hmr_on_jac_changed(evt, self.compiler, self.entry_file, self.project_dir);
 }

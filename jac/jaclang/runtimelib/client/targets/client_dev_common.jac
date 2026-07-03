@@ -3,7 +3,7 @@ import shutil;
 import socket;
 import subprocess;
 import from pathlib { Path }
-import from typing { Optional }
+import from typing { Any, Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.build_common { SUBPROCESS_TIMEOUT_SHORT }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
@@ -142,7 +142,31 @@ obj _ClientHmrHandler {
         entry_file: Path,
         project_dir: Path;
 
-    def on_event(evt: FileChangeEvent) -> None abs;
+    def on_event(evt: FileChangeEvent) -> None {
+        try {
+            pth = evt.path or "";
+            if not pth or not pth.endswith(".jac") {
+                return;
+            }
+            try {
+                Path(pth).resolve().relative_to(self.project_dir.resolve());
+            } except ValueError {
+                return;
+            }
+            invalidate_runtime_module_cache([pth, str(self.entry_file)]);
+            compile_out = cast(
+                Any, self.compiler.jac_compiler.compile_module(self.entry_file)
+            );
+            mod2 = compile_out[1];
+            if not mod2 {
+                return;
+            }
+            self.compiler.compile(mod2, self.entry_file);
+            console.print("  ✔ Client recompiled after save", style="success");
+        } except Exception as e {
+            console.error(f"  HMR recompile failed: {e}");
+        }
+    }
 }
 
 def invalidate_runtime_module_cache(paths: list[str]) -> None {
