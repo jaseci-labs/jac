@@ -677,10 +677,15 @@ impl precommit(
                 );
                 fmt_targets = [os.path.join(tmp_root, rel) for rel in rel_targets];
                 console.print("[precommit] Verifying staged content (index checkout).");
-            } except Exception {
+            } except Exception as e {
                 shutil.rmtree(tmp_root, ignore_errors=True);
                 tmp_root = None;
                 fmt_targets = targets;
+                console.warning(
+                    f"[precommit] Could not check out the staged blobs ({e}); "
+                    "verifying the WORKTREE copies instead -- staged content "
+                    "that differs from the worktree was NOT verified."
+                );
             }
         }
     }

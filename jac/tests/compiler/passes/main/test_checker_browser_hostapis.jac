@@ -32,6 +32,9 @@ glob CHECKER_FIXTURES = os.path.join(
 def compile_and_check(fixture_name: str) -> JacProgram {
     program = JacProgram();
     mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
+    assert mod is not None , f"fixture '{fixture_name}' failed to parse:\n" + "\n".join(
+        str(e) for e in program.errors_had
+    );
     TypeCheckPass(ir_in=mod, prog=program);
     return program;
 }
