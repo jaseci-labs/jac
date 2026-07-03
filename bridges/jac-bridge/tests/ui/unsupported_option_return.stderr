@@ -1,0 +1,5 @@
+error: unsupported Option return: only Option<&OpaqueType> and Option<String> can signal None in-band
+  --> tests/ui/unsupported_option_return.rs:11:30
+   |
+11 |         pub fn bad(&self) -> Option<bool> {
+   |                              ^^^^^^

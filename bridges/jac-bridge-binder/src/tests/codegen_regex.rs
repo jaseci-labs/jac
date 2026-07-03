@@ -1,0 +1,145 @@
+use std::path::PathBuf;
+
+use rustdoc_types::Crate;
+
+use crate::{classify, emit, emit_cargo_toml};
+
+fn load_regex_doc() -> Crate {
+    let candidates = [
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/regex-1.12.4.json"),
+        PathBuf::from(env!("HOME")).join(
+            ".cargo/registry/src/index.crates.io-1949cf8c6b5b557f/regex-1.12.4/target/doc/regex.json",
+        ),
+    ];
+    for p in &candidates {
+        if p.exists() {
+            let data = std::fs::read_to_string(p).expect("read rustdoc json");
+            return serde_json::from_str(&data).expect("parse rustdoc json");
+        }
+    }
+    panic!(
+        "regex rustdoc JSON not found — run: cargo +nightly rustdoc -Z unstable-options \
+         --output-format json --manifest-path \
+         ~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/regex-1.12.4/Cargo.toml"
+    );
+}
+
+fn generated() -> String {
+    let doc = load_regex_doc();
+    let spec = classify(&doc);
+    emit(&spec)
+}
+
+// ── structural checks ─────────────────────────────────────────────────────────
+
+#[test]
+fn has_bridge_attribute() {
+    let src = generated();
+    assert!(src.contains("#[bridge(module = \"regex\")]"), "missing bridge attribute\n{}", src);
+}
+
+#[test]
+fn regex_struct_wraps_inner() {
+    let src = generated();
+    assert!(
+        src.contains("pub struct Regex(pub regex::Regex);"),
+        "missing opaque struct\n{}",
+        src
+    );
+}
+
+#[test]
+fn error_struct_renamed_to_regex_error() {
+    let src = generated();
+    assert!(src.contains("#[jac_error]"), "missing #[jac_error]\n{}", src);
+    assert!(src.contains("pub struct RegexError;"), "missing RegexError\n{}", src);
+    // Original "Error" name must not appear as a bare struct (it becomes RegexError).
+    assert!(
+        !src.contains("pub struct Error;"),
+        "bare Error struct leaked into output\n{}",
+        src
+    );
+}
+
+#[test]
+fn ctor_new_emitted_correctly() {
+    let src = generated();
+    // The param name comes from rustdoc; regex 1.12.4 uses `re` not `pattern`.
+    assert!(
+        src.contains("-> Result<Self, String>"),
+        "missing Result<Self,String> return on new\n{}",
+        src
+    );
+    assert!(
+        src.contains(".map(Self).map_err(|e| e.to_string())"),
+        "missing fallible ctor body pattern\n{}",
+        src
+    );
+}
+
+#[test]
+fn method_is_match_emitted_correctly() {
+    let src = generated();
+    // The param name comes from rustdoc; regex 1.12.4 uses `haystack`.
+    assert!(
+        src.contains("pub fn is_match(&self,") && src.contains("-> bool"),
+        "missing is_match signature\n{}",
+        src
+    );
+    assert!(
+        src.contains("self.0.is_match("),
+        "missing is_match body\n{}",
+        src
+    );
+}
+
+// ── integer-param methods are silently dropped ─────────────────────────────────
+
+#[test]
+fn integer_param_methods_not_emitted() {
+    let src = generated();
+    // is_match_at(&self, &str, usize) — usize param, must be absent from bridge source.
+    assert!(
+        !src.contains("is_match_at"),
+        "integer-param method leaked into codegen output\n{}",
+        src
+    );
+}
+
+// ── Cargo.toml emitter ───────────────────────────────────────────────────────
+
+#[test]
+fn cargo_toml_correct_shape() {
+    let doc = load_regex_doc();
+    let spec = classify(&doc);
+    let toml = emit_cargo_toml(&spec, "../jac-bridge");
+
+    assert!(toml.contains("name = \"jac-bridge-regex\""), "wrong crate name\n{}", toml);
+    assert!(toml.contains("crate-type = [\"cdylib\", \"rlib\"]"), "missing cdylib\n{}", toml);
+    // Pinned exact version so generated crates are reproducible.
+    assert!(
+        toml.contains("regex = \"=1.12.4\""),
+        "missing exact-version pin for regex\n{}",
+        toml
+    );
+    assert!(
+        toml.contains("jac-bridge = { path = \"../jac-bridge\" }"),
+        "missing jac-bridge path dep\n{}",
+        toml
+    );
+}
+
+// ── lifetime-bearing types excluded ───────────────────────────────────────────
+
+#[test]
+fn cursor_types_not_emitted() {
+    let src = generated();
+    for name in &["Match", "Captures", "CaptureMatches", "Matches", "Split", "SplitN"] {
+        assert!(
+            !src.contains(&format!("pub struct {}(", name)),
+            "cursor type {} leaked into codegen output\n{}",
+            name,
+            src
+        );
+    }
+}

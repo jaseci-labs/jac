@@ -1,0 +1,5 @@
+error: unsupported return type: `i32`
+ --> tests/ui/unsupported_return_type.rs:9:30
+  |
+9 |         pub fn bad(&self) -> i32 {
+  |                              ^^^

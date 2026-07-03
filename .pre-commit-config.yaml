@@ -52,7 +52,8 @@ repos:
               ^jac/jaclang/byllm/tests/fixtures/image\.jpg$|
               ^jac/jaclang/byllm/tests/fixtures/math_question\.jpg$|
               ^jac/jaclang/byllm/tests/fixtures/webp_image_of_person\.webp$|
-              ^jac/examples/littleX/assets/littlex-logo\.png$
+              ^jac/examples/littleX/assets/littlex-logo\.png$|
+              ^bridges/reference/regex\.jacbridge$
           )
 
       - id: validate-fragments

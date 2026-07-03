@@ -1,0 +1,5 @@
+error: unsupported bridge type: `i32`
+ --> tests/ui/unsupported_param_type.rs:9:30
+  |
+9 |         pub fn bad(&self, x: i32) -> bool {
+  |                              ^^^

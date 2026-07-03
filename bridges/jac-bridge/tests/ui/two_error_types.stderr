@@ -1,0 +1,5 @@
+error: bridge module must have at most one #[jac_error] type
+ --> tests/ui/two_error_types.rs:5:5
+  |
+5 | mod m {
+  |     ^

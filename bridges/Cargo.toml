@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "jac-bridge-schema",
+    "jac-bridge",
+    "jac-bridge-regex",
+    "jac-bridge-regex-v2",
+    "jac-bridge-owning",
+    "jac-bridge-inspect",
+    "jac-bridge-binder",
+]
+resolver = "2"
+
+[profile.release]
+panic = "unwind"

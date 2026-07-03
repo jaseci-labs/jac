@@ -1,0 +1,17 @@
+[package]
+name = "jac-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Proc macro: #[jac_bridge::bridge] — generate C-ABI shims and D2 metadata from annotated Rust impl blocks"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn  = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+jac-bridge-schema = { path = "../jac-bridge-schema" }
+
+[dev-dependencies]
+trybuild = "1"

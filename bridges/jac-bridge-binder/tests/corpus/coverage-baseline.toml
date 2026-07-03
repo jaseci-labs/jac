@@ -1,0 +1,35 @@
+# Coverage floor for the binder corpus — the north-star metric's ratchet (D6).
+#
+# The corpus gate (`tests/corpus.rs::coverage_does_not_regress`) fails if any
+# crate bridges FEWER items than its floor here. Raise these as Phase B lands
+# owning-wrappers, cursors, Vec/slices, and callbacks; never lower one without a
+# recorded reason (a genuine upstream API removal on a fixture bump).
+#
+#   bridged = constructors + methods emitted into the bridge source
+#   total   = bridged + skipped (every public item classify considered)
+#
+# Current numbers reflect the v1 (M3) rule set: opaque types, ctors,
+# scalar/str/bool/void, str returns. The low ratios are the whole point —
+# they are what M4 Phase B exists to move.
+
+[regex]
+bridged = 7
+total = 60
+
+[base64]
+bridged = 1
+total = 7
+
+[chrono]
+bridged = 11
+total = 264
+
+[uuid]
+bridged = 0
+total = 6
+
+# sha2's hashers are `CoreWrapper` type aliases behind the `Digest` trait, so
+# classify finds no plain structs. A real gap, honestly recorded as zero.
+[sha2]
+bridged = 0
+total = 0

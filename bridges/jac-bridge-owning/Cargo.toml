@@ -1,0 +1,15 @@
+# Owning-wrapper mechanism demo (M4 Phase B, vertical 1). Hand-written to prove
+# the exact ouroboros shape the binder will emit for borrowed returns; the
+# workspace CI compiles + round-trips it like any other bridge crate.
+[package]
+name = "jac-bridge-owning"
+version = "0.1.0"
+edition = "2021"
+description = "Owning-wrapper (lifetime-erasure) bridge demo — rescues borrowed returns like Regex::find/captures"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }
+regex = "1"
