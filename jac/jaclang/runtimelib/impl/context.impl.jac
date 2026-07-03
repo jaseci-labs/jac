@@ -5,6 +5,7 @@ import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.jac0core.constant { Constants as Con }
+import from jaclang.runtimelib.exceptions { MissingAnchorError }
 import from jaclang.runtimelib.memory { TieredMemory }
 
 impl ExecutionContext.postinit -> None {
@@ -48,7 +49,7 @@ impl ExecutionContext._get_anchor(anchor_id: str) -> NodeAnchor {
 
     anchor = self.mem.get(id);
     if not isinstance(anchor, NodeAnchor) {
-        raise ValueError(f"Invalid anchor id {anchor_id} !");
+        raise MissingAnchorError(anchor_id=anchor_id);
     }
     return anchor;
 }
@@ -108,7 +109,7 @@ impl ExecutionContext._aget_anchor(anchor_id: str) -> NodeAnchor {
     id = UUID(anchor_id);
     anchor = await self.mem.aget(id);
     if not isinstance(anchor, NodeAnchor) {
-        raise ValueError(f"Invalid anchor id {anchor_id} !");
+        raise MissingAnchorError(anchor_id=anchor_id);
     }
     return anchor;
 }

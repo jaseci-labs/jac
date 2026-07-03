@@ -1,5 +1,6 @@
 import marshal;
 import os;
+import shutil;
 import sys;
 
 import from pathlib { Path }
@@ -9,6 +10,7 @@ import from jaclang.jac0core.jir {
     write_precompiled_jir,
     FLAG_PRECOMPILED,
     compute_module_key,
+    jir_matches_source,
     PRECOMPILE_SENTINEL
 }
 
@@ -129,21 +131,42 @@ def main {
     out_dir = precompiled_dir / pyver;
     out_dir.mkdir(parents=True, exist_ok=True);
 
-    compiled = 0;
-    failed = 0;
+    for stale_dir in sorted(precompiled_dir.iterdir()) {
+        if stale_dir.is_dir() and stale_dir.name != pyver {
+            shutil.rmtree(stale_dir, ignore_errors=True);
+        }
+    }
     pkg_path = Path(package_dir);
+    expected: set[str] = {
+        str(Path(p).relative_to(pkg_path).with_suffix(".jir")) for p in jac_files
+    };
+    for old_jir in sorted(out_dir.rglob("*.jir")) {
+        if str(old_jir.relative_to(out_dir)) not in expected {
+            old_jir.unlink();
+        }
+    }
+
+    compiled = 0;
+    reused = 0;
+    failed = 0;
 
     for jac_path in jac_files {
         rel = Path(jac_path).relative_to(pkg_path);
         jir_rel = rel.with_suffix(".jir");
         jir_path = out_dir / jir_rel;
 
-        done = compiled + failed;
+        done = compiled + reused + failed;
         label = str(rel)[:60].ljust(60);
         sys.stderr.write(f"\r  [{done + 1}/{len(jac_files)}] {label}");
         sys.stderr.flush();
 
         try {
+            if jir_path.is_file()
+            and jir_matches_source(jir_path.read_bytes(), jac_path) {
+                reused += 1;
+                continue;
+            }
+
             jir_bytes = precompile_unit(jac_path, package_dir);
             if jir_bytes is None {
                 console.print(f"  SKIP (no bytecode): {rel}");
@@ -164,7 +187,7 @@ def main {
     sys.stderr.flush();
 
     console.print(
-        f"\nDone! Compiled {compiled}/{len(jac_files)} modules ({failed} failed)"
+        f"\nDone! Compiled {compiled}/{len(jac_files)} modules" + f" ({reused} reused, {failed} failed)"
     );
     console.print(f"  Output: {precompiled_dir}");
     console.print(f"  Python version: {pyver}");

@@ -202,7 +202,7 @@ impl generate_pyproject_toml(config: JacConfig) -> str {
     pkg = config.project;
     lines: list[str] = [
         "[build-system]",
-        'requires = ["jaclang"]',
+        "requires = []",
         'build-backend = "_jac_build"',
         'backend-path = ["."]',
         "",

@@ -1,6 +1,21 @@
 glob _JSX_RESERVED_ATTRS: set[str] = {"key", "ref"};
 
 
+impl TypeEvaluator._is_mobui_module(nd: uni.UniNode) -> bool {
+    mod_path = nd.loc.mod_path if nd.loc else "";
+    if not mod_path {
+        return False;
+    }
+    if mod_path not in self._mobui_module_cache {
+        import from jaclang.project.client_kind { mobui_enforced_for }
+        opts = self.program._compile_options;
+        self._mobui_module_cache[mod_path] = mobui_enforced_for(
+            mod_path, opts.project_kind, opts.project_root
+        );
+    }
+    return self._mobui_module_cache[mod_path];
+}
+
 impl TypeEvaluator._resolve_jsx_component_type(
     name: uni.JsxElementName
 ) -> types.FunctionType | None {
@@ -14,8 +29,11 @@ impl TypeEvaluator._resolve_jsx_component_type(
     } elif isinstance(first_part, uni.Token) {
         component_name = first_part.value or "";
     }
+    if not component_name {
+        return None;
+    }
 
-    if not component_name or not component_name[0].isupper() {
+    if (not component_name[0].isupper() and not self._is_mobui_module(name)) {
         return None;
     }
 
@@ -80,19 +98,27 @@ impl TypeEvaluator._validate_jsx_props(
     tag_name = first_part.value
         if isinstance(first_part, (uni.Name, uni.Token))
         else "";
-    is_component = tag_name and tag_name[0].isupper();
-
-    if is_component {
-        self._validate_component_jsx_props(expr, tag_name);
+    if self._is_mobui_module(expr) {
+        func_type = self._resolve_jsx_component_type(expr.name);
+        if func_type is not None {
+            self._validate_component_jsx_props(expr, tag_name, func_type=func_type);
+        }
     } else {
-        self._validate_intrinsic_jsx_props(expr, tag_name);
+        is_component = tag_name and tag_name[0].isupper();
+        if is_component {
+            self._validate_component_jsx_props(expr, tag_name);
+        } else {
+            self._validate_intrinsic_jsx_props(expr, tag_name);
+        }
     }
 }
 
 impl TypeEvaluator._validate_component_jsx_props(
-    expr: uni.JsxElement, component_name: str
+    expr: uni.JsxElement,
+    component_name: str,
+    func_type: types.FunctionType | None = None
 ) -> None {
-    func_type = self._resolve_jsx_component_type(expr.name);
+    func_type = func_type or self._resolve_jsx_component_type(expr.name);
     if not func_type or not func_type.parameters {
         return;
     }

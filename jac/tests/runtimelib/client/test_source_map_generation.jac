@@ -32,9 +32,10 @@ def _compile_then_clear_hub(module_path: any) -> any {
     return result;
 }
 
-"""Build a ViteCompiler over a fresh temp project containing `app.cl.jac`, with
-`compile_module` wrapped to clear the hub after each compile. Returns the
-compiler and the compiled-output directory."""
+"""Build the shared client compile engine (JacClientCompiler) over a fresh
+temp project containing `app.cl.jac`, with `compile_module` wrapped to clear
+the hub after each compile. Returns the compiler and the compiled-output
+directory."""
 def _make_compiler(proj: Path) -> tuple[any, Path] {
     import from jaclang.runtimelib.client.vite_client_bundle { ViteClientBundleBuilder }
     (proj / "package.json").write_text('{"name":"t","version":"0.0.0"}');
@@ -53,7 +54,7 @@ def _make_compiler(proj: Path) -> tuple[any, Path] {
         '}\n'  # 8
     );
     builder = ViteClientBundleBuilder(vite_package_json=proj / "package.json");
-    compiler = builder._get_compiler();
+    compiler = builder._get_compiler().jac_client_compiler;
     out_dir = proj / "out";
     compiler.compiled_dir = out_dir;
     global _orig_compile_module;

@@ -193,8 +193,8 @@ impl JacProgram.release_compile_closure(self: JacProgram) -> None {
     self.warnings_had.clear();
 }
 
-impl JacProgram._search_hubs(self: JacProgram) -> list[dict] {
-    hubs: list[dict] = [self.mod.hub];
+impl JacProgram._search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]] {
+    hubs: list[dict[(str, uni.Module)]] = [self.mod.hub];
     internal = self._get_compiler().internal_program;
     if internal is not self {
         hubs.append(internal.mod.hub);

@@ -66,9 +66,11 @@ const MAX_PATH = Dir.max_path_bytes;
 
 const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", mkpayload, @"typeshed-sha" };
 
-// LLVM release whose static archives the LLVMPY_* shim (jac/native) links
-// against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
-const LLVM_VER = "22.1.8";
+// The pinned LLVM release + per-platform slice table lives in llvm_release.zig
+// (shared with build.zig, so the fetch and the build can't drift).
+const llvm_release = @import("llvm_release.zig");
+const LLVM_VER = llvm_release.LLVM_VER;
+const LlvmRelease = llvm_release.LlvmRelease;
 
 // jaseci-labs/llvm-slice repackages the official LLVM release into a per-member,
 // HTTP-range-fetchable zip. fetchLlvmSlice pulls only the ~84 MB the shim needs
@@ -79,44 +81,9 @@ const LLVM_VER = "22.1.8";
 const SLICE_BASE = "https://github.com/jaseci-labs/llvm-slice/releases/download";
 const SLICE_TAG = "v" ++ LLVM_VER;
 
-// The release is selected per host. `dirname` is the release's top-level dir (also
-// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync).
-// `triple`/`manifest_sha256`/`zip_size` drive the slice fetch. Add a row to
-// support another host platform.
-const LlvmRelease = struct {
-    dirname: []const u8,
-    triple: []const u8,
-    manifest_sha256: []const u8,
-    zip_size: u64,
-};
+// The release is selected for the build host (this tool runs on it).
 fn llvmRelease() ?LlvmRelease {
-    return switch (builtin.os.tag) {
-        .linux => switch (builtin.cpu.arch) {
-            .x86_64 => .{
-                .dirname = "LLVM-22.1.8-Linux-X64",
-                .triple = "x86_64-linux",
-                .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
-                .zip_size = 970350875,
-            },
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-Linux-ARM64",
-                .triple = "aarch64-linux",
-                .manifest_sha256 = "b1aae9c16de5feff6fd4441f0bf32671b27c6dda98382ee389d305db6351e598",
-                .zip_size = 932506999,
-            },
-            else => null,
-        },
-        .macos => switch (builtin.cpu.arch) {
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-macOS-ARM64",
-                .triple = "aarch64-apple-darwin",
-                .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
-                .zip_size = 743879473,
-            },
-            else => null,
-        },
-        else => null,
-    };
+    return llvm_release.llvmRelease(builtin.os.tag, builtin.cpu.arch);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -165,7 +132,7 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
@@ -173,6 +140,7 @@ pub fn main(init: std.process.Init) !void {
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
             var musl_dir: ?[]const u8 = null;
+            var precompiled_cache: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
                 const arg = argv[i];
@@ -188,9 +156,11 @@ pub fn main(init: std.process.Init) !void {
                     link_source = arg["--link-source=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--musl=")) {
                     musl_dir = arg["--musl=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--precompiled-cache=")) {
+                    precompiled_cache = arg["--precompiled-cache=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, precompiled_cache);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -823,6 +793,14 @@ fn mkPayload(
     // fully static-link Linux executables against musl at `nacompile` time, with
     // no toolchain. Null for mac/windows builds (musl is Linux-only).
     musl_dir: ?[]const u8,
+    // Persistent JIR precompile cache dir. When set, site/jaclang/_precompiled
+    // is seeded from it before the precompile and the refreshed tree is copied
+    // back after -- the precompiler validates every seeded .jir by its
+    // content-addressed module key and recompiles only stale ones, so the
+    // multi-minute full precompile shrinks to just the changed modules. A
+    // stale or partial dir is harmless (it only misses reuse), which is why
+    // CI can restore it with prefix-fallback keys unlike the binary cache.
+    precompiled_cache: ?[]const u8,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -954,7 +932,22 @@ fn mkPayload(
     if (skip_precompile or link_source != null) {
         log("==> skipping JIR precompile; modules compile on first run", .{});
     } else {
+        const site_pre = try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site});
+        if (precompiled_cache) |pc| {
+            if (Dir.cwd().openDir(io, pc, .{ .iterate = true })) |d| {
+                var seed = d;
+                defer seed.close(io);
+                log("==> seeding JIR precompile from {s}", .{pc});
+                try copyTree(io, gpa, a, seed, site_pre, skipNone);
+            } else |_| {} // no seed yet; first build populates it below
+        }
         try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
+        if (precompiled_cache) |pc| {
+            Dir.cwd().deleteTree(io, pc) catch {};
+            var fresh = try Dir.cwd().openDir(io, site_pre, .{ .iterate = true });
+            defer fresh.close(io);
+            try copyTree(io, gpa, a, fresh, pc, skipNone);
+        }
     }
 
     // Bundle runtime helpers (pytest/-xdist -> `jac test`, watchdog -> `jac start
