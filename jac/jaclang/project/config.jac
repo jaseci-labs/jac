@@ -79,6 +79,10 @@ obj FormatConfig {
     has outfile: str = "";
 }
 
+obj PrecommitConfig {
+    has typecheck: bool = True;
+}
+
 obj LintConfig {
     has select: list[str] = ["default"],
         ignore: list[str] = [],
@@ -160,6 +164,7 @@ obj JacConfig {
         test: TestConfig = TestConfig(),
         serve: ServeConfig = ServeConfig(),
         format: FormatConfig = FormatConfig(),
+        precommit: PrecommitConfig = PrecommitConfig(),
         check: CheckConfig = CheckConfig(),
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),

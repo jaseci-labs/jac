@@ -240,10 +240,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 val_types.append(vt);
                             }
                         } else {
-                            # A keyless pair is a `**spread`: its ENTRIES are
-                            # merged into the literal, so contribute the spread
-                            # dict's own key/value args -- not its whole type
-                            # as one entry value.
                             st = self.get_type_of_expression(_kv.value);
                             if (
                                 isinstance(st, types.ClassType)
@@ -2981,8 +2977,6 @@ impl TypeEvaluator.assign_type(
             "SupportsBytes": "__bytes__",
             "SupportsAbs": "__abs__",
             "SupportsRound": "__round__",
-            # typeshed's `round()` overloads are declared against these
-            # PRIVATE protocols, not the public SupportsRound.
             "_SupportsRound1": "__round__",
             "_SupportsRound2": "__round__",
             "Sized": "__len__",

@@ -172,12 +172,22 @@ def format(
             default=False,
             help="Install a git pre-commit hook that runs this command"
         ),
+        Arg.create(
+            "force",
+            typ=bool,
+            default=False,
+            help="With --install: replace an existing foreign hook (a backup is kept)"
+        ),
 
     ],
     examples=[
         ("jac precommit", "Format (lintfix) and check the whole project"),
         ("jac precommit --staged", "Run on staged '.jac' files only"),
         ("jac precommit --install", "Install a .git/hooks/pre-commit hook"),
+        (
+            "jac precommit --install --force",
+            "Replace an existing hook (kept as pre-commit.bak)"
+        ),
 
     ],
     group="analysis"
@@ -186,7 +196,8 @@ def precommit(
     paths: (list | None) = None,
     staged: bool = False,
     verify: bool = False,
-    install: bool = False
+    install: bool = False,
+    force: bool = False
 ) -> int;
 
 @registry.command(
