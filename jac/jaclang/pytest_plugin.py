@@ -388,10 +388,9 @@ class JacFile(pytest.File):
                     raise self.CollectError(
                         f"failed to import Jac test module {self.path}: {exc!r}"
                     ) from exc
-                print(
+                sys.stderr.write(
                     f"jac: skipping test file that failed to import: "
-                    f"{self.path}: {exc!r}",
-                    file=sys.stderr,
+                    f"{self.path}: {exc!r}\n"
                 )
                 return []
         finally:
