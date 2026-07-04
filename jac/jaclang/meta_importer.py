@@ -102,19 +102,22 @@ def _bootstrap_compile(
 
 # Bootstrap modresolver.jac before JacMetaImporter is registered. This module
 # must be available for find_spec()/get_code(), but normal .jac imports are not
-# yet operational at this point. In a sealed image (source-free), its code
-# object is served frozen from the manifest; otherwise jac0 transpiles it live.
+# yet operational at this point. In a sealed image its code object is served
+# frozen from the manifest; a missing/corrupt JIR falls back to the retained
+# source, which jac0 transpiles live.
 _jac0core_dir = os.path.join(os.path.dirname(__file__), "jac0core")
 _modresolver_jac = os.path.join(_jac0core_dir, "modresolver.jac")
+_modresolver_code = None
+_modresolver_origin = _modresolver_jac
 _frozen_modresolver = _sealed.find_module("jaclang.jac0core.modresolver")
 if _frozen_modresolver is not None and _frozen_modresolver[1].get("bootstrap"):
     _mr_image = _frozen_modresolver[0]
     _modresolver_code = _mr_image.bootstrap_code("jaclang.jac0core.modresolver")
-    _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
-else:
+    if _modresolver_code is not None:
+        _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
+if _modresolver_code is None:
     with open(_modresolver_jac, encoding="utf-8") as _f:
         _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
-    _modresolver_origin = _modresolver_jac
 _modresolver = types.ModuleType("jaclang.jac0core.modresolver")
 _modresolver.__file__ = _modresolver_origin
 _modresolver.__package__ = "jaclang.jac0core"
