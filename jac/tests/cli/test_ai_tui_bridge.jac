@@ -9,6 +9,7 @@ that host runs. The trailing block covers the byLLM provider-error capture in
 
 import importlib;
 import os;
+import pytest;
 import from pathlib { Path }
 import jaclang.cli.ai_agent as ai_mod;
 import from jaclang.cli.agent_api { AgentRequest }
@@ -373,6 +374,7 @@ obj CaptureBus {
 
 
 test "ui output capture dedups provider loguru errors after agent registration" {
+    pytest.importorskip("loguru", reason="This test requires loguru to be installed");
     import from jaclang.cli.ai_agent {
         _install_ui_provider_capture,
         register_ui_provider_error
@@ -392,6 +394,7 @@ test "ui output capture dedups provider loguru errors after agent registration" 
 
 
 test "ui output capture dedups when the loguru sink fires before the worker emit" {
+    pytest.importorskip("loguru", reason="This test requires loguru to be installed");
     import from jaclang.cli.ai_agent {
         _install_ui_provider_capture,
         register_ui_provider_error
@@ -432,6 +435,7 @@ test "ui output capture dedups when the loguru sink fires before the worker emit
 
 
 test "ui output capture removes loguru's default sink and gags litellm" {
+    pytest.importorskip("loguru", reason="This test requires loguru to be installed");
     import from jaclang.cli.ai_agent { _install_ui_provider_capture }
     import from loguru { logger }
 
