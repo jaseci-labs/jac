@@ -650,6 +650,95 @@ test "other root access" {
     }
 }
 
+test "get object read access" {
+    _tmpdir = mkdtemp();
+    _orig_base = Jac.get_base_path_dir();
+    Jac.set_base_path(_tmpdir);
+    try {
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="create_other_root",
+            args=[]
+        );
+        root1 = capture_get(captured).strip();
+
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="create_other_root",
+            args=[]
+        );
+        root2 = capture_get(captured).strip();
+
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="create_node",
+            args=[1],
+            **{"root": root1}
+        );
+        node_id = capture_get(captured).strip();
+
+        # ---------- OWNER READS OWN NODE ---------- #
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root1}
+        );
+        assert capture_get(captured).strip() == "A(val=1)";
+
+        # ------- OTHER ROOT DENIED BY-ID READ ----- #
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root2}
+        );
+        assert capture_get(captured).strip() == "None";
+
+        # -------- GRANT READ, THEN READABLE ------- #
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="allow_other_root_access",
+            args=[root2, 0],
+            **{"root": root1},
+            nd=node_id
+        );
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root2}
+        );
+        assert capture_get(captured).strip() == "A(val=1)";
+
+        # ------- REVOKE, DENIED AGAIN ------------- #
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="disallow_other_root_access",
+            args=[root2],
+            **{"root": root1},
+            nd=node_id
+        );
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root2}
+        );
+        assert capture_get(captured).strip() == "None";
+    } finally {
+        Jac.set_base_path(_orig_base);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
 test "savable object" {
     _tmpdir = mkdtemp();
     _orig_base = Jac.get_base_path_dir();
