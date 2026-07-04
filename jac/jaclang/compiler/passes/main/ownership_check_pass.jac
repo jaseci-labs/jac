@@ -90,7 +90,6 @@ obj OwnershipCheckPass(UniPass) {
     def _emit_loop_move_diagnostics -> None;
     def _emit_diagnostics -> None;
     def _emit_borrow_diagnostics -> None;
-    def _emit_leak_diagnostics -> None;
     def _emit_escape_diagnostics -> None;
     def _escaping_borrow_owner(nd: uni.Expr | None) -> (str | None);
     def _owner_decl_related(

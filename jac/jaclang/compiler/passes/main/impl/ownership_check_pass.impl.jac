@@ -1,6 +1,6 @@
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.diagnostics { E1301, E1302, E1303, E1304, E1305, E1306 }
+import from jaclang.jac0core.diagnostics { E1301, E1302, E1303, E1304, E1306 }
 
 impl OwnershipCheckPass.before_pass -> None {
     self.owned_syms = set();
@@ -48,7 +48,6 @@ impl OwnershipCheckPass.before_pass -> None {
     self._emit_loop_move_diagnostics();
     self._emit_diagnostics();
     self._emit_borrow_diagnostics();
-    self._emit_leak_diagnostics();
     self._emit_escape_diagnostics();
 }
 
@@ -831,18 +830,6 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                     break;
                 }
             }
-        }
-    }
-}
-
-impl OwnershipCheckPass._emit_leak_diagnostics -> None {
-    for owner_id in self.owned_syms {
-        if owner_id not in self.consumed_syms and owner_id in self.owned_decl {
-            self.emit(
-                E1305,
-                node_override=self.owned_decl[owner_id],
-                name=self._owned_name(owner_id, "")
-            );
         }
     }
 }
