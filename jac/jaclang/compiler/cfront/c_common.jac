@@ -281,6 +281,10 @@ def jac_id(name: str) -> str {
     return f"`{name}" if name in _JAC_KW_IDS else name;
 }
 
+def c_field(nd: object, field: str) -> object {
+    return getattr(nd, field, None);
+}
+
 obj EnumVal {
     has value: int,
         simple: bool;
