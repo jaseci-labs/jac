@@ -63,7 +63,9 @@ def pre_build_hook(**kwargs: dict) -> None:
         import traceback
 
         traceback.print_exc()
-        print("Warning: failed to build playground zip; docs will ship WITHOUT a playground.")
+        print(
+            "Warning: failed to build playground zip; docs will ship WITHOUT a playground."
+        )
 
     if is_file_older_than_minutes(UNIIR_NODE_DOC, 5):
         with open(UNIIR_NODE_DOC, "w") as f:
