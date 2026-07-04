@@ -65,7 +65,7 @@ spawn ::= "spawn" unpack | unpack ("spawn" unpack)*
 
 unpack ::= "*" ref | ref
 
-ref ::= "&" await_expr | await_expr
+ref ::= "&" NAME? await_expr | await_expr
 
 await_expr ::= "await" pipe_call | pipe_call
 
@@ -221,8 +221,7 @@ lambda_expr ::=
 lambda_params ::= ("*" | "/" | lambda_param)*
 
 lambda_param ::=
-    ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
+    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 jsx_element ::=
@@ -410,8 +409,10 @@ global_stmt ::= "global" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
 nonlocal_stmt ::= "nonlocal" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
+ownership_prefix ::= NAME | "&" NAME?
+
 assignment_with_target ::=
-    (":" pipe)? (
+    (":" ownership_prefix pipe)? (
         "=" (yield_stmt | expression) ("=" (yield_stmt | expression))*
         | (
               (
@@ -489,9 +490,8 @@ func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 func_params ::= ("*" | "/" | param_var)*
 
 param_var ::=
-    ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
-    (":" pipe)? ("=" expression)?
+    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
+    (":" ownership_prefix pipe)? ("=" expression)?
 
 enum ::=
     ("@" atomic_chain)* "enum" access_tag (NAME | KWESC_NAME)
