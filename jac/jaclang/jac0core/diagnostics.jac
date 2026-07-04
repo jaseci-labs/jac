@@ -27,6 +27,17 @@ obj DiagnosticInfo {
             return f"{self.message_template} (missing key: {e})";
         }
     }
+
+    def format_help(**kwargs: object) -> (str | None) {
+        if self.help_text is None {
+            return None;
+        }
+        try {
+            return self.help_text.format(**kwargs);
+        } except (KeyError, ValueError, IndexError) {
+            return self.help_text;
+        }
+    }
 }
 
 glob DIAGNOSTICS: dict[str, DiagnosticInfo] = {};
