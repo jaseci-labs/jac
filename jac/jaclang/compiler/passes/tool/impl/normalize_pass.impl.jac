@@ -247,6 +247,36 @@ impl NormalizePass.enter_import(nd: uni.Import) -> None {
     if nd.doc {
         new_kid.append(nd.doc);
     }
+    if nd.clib_header is not None and nd.from_loc and nd.from_loc.path {
+        new_kid.append(nd.gen_token(Tok.KW_IMPORT));
+        new_kid.append(nd.gen_token(Tok.KW_FROM));
+        new_kid.append(nd.gen_token(Tok.NAME, "clib"));
+        new_kid.append(nd.gen_token(Tok.LPAREN));
+        new_kid.append(nd.gen_token(Tok.STRING, nd.from_loc.path[0].value));
+        new_kid.append(nd.gen_token(Tok.COMMA));
+        new_kid.append(nd.gen_token(Tok.NAME, "header"));
+        new_kid.append(nd.gen_token(Tok.EQ));
+        new_kid.append(nd.gen_token(Tok.STRING, nd.clib_header.value));
+        new_kid.append(nd.gen_token(Tok.RPAREN));
+        new_kid.append(nd.gen_token(Tok.LBRACE));
+        names: list[str] = [];
+        for decl in (nd.clib_decls or []) {
+            if isinstance(decl, uni.Ability) and decl.name_ref {
+                names.append(decl.name_ref.sym_name);
+            } elif isinstance(decl, uni.Archetype) {
+                names.append(decl.name.sym_name);
+            }
+        }
+        for idx in range(len(names)) {
+            new_kid.append(nd.gen_token(Tok.NAME, names[idx]));
+            if idx < len(names) - 1 {
+                new_kid.append(nd.gen_token(Tok.COMMA));
+            }
+        }
+        new_kid.append(nd.gen_token(Tok.RBRACE));
+        nd.set_kids(nodes=new_kid);
+        return;
+    }
     ctx_tok = nd._source_context_token();
     if nd.code_context == CodeContext.CLIENT
     and (ctx_tok is not None or not nd.in_client_context()) {

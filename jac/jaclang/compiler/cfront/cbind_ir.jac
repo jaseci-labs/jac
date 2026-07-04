@@ -212,6 +212,32 @@ def _const_global(src: uni.Source, cd: ConstDesc) -> uni.GlobalVars {
 }
 
 
+def attach_synthesized_decls(imp: uni.Import, decls: list) {
+    src = imp.loc.orig_src;
+    imp_kw = _tok(src, Tok.KW_IMPORT, "import");
+    from_kw = _tok(src, Tok.KW_FROM, "from");
+    lbrace = _tok(src, Tok.LBRACE, "{");
+    rbrace = _tok(src, Tok.RBRACE, "}");
+    imp.items = [];
+    imp.clib_decls = decls;
+    imp.set_kids(nodes=[imp_kw, from_kw, imp.from_loc, lbrace, *decls, rbrace]);
+}
+
+
+def build_clib_decls(
+    src: uni.Source, funcs: list[FuncDesc], structs: list[StructDesc]
+) -> list {
+    decls: list[uni.UniNode] = [];
+    for sd in structs {
+        decls.append(_archetype(src, sd));
+    }
+    for fd in funcs {
+        decls.append(_ability(src, fd));
+    }
+    return decls;
+}
+
+
 def build_binding_module(
     lib: str,
     funcs: list[FuncDesc],
