@@ -31,6 +31,15 @@ def jac2py(filename: str) -> int;
 def jac2js(filename: str) -> int;
 
 @registry.command(
+    name="jac2c",
+    help="Convert Jac code to C source",
+    args=[Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"), ],
+    examples=[("jac jac2c myprogram.jac", "Convert a Jac file to C"), ],
+    group="transform"
+)
+def jac2c(filename: str) -> int;
+
+@registry.command(
     name="c2jac",
     help="Convert C code to Jac (writes Jac to stdout; best-effort sites are flagged inline in the output)",
     args=[
