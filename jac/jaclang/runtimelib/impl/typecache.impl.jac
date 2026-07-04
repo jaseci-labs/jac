@@ -1,7 +1,14 @@
 import from dataclasses { fields, is_dataclass }
-import from typing { get_type_hints }
+import from typing { cast }
 
 glob _cache: dict[type, dict[str, object]] = {};
+
+def _resolve_hints(cls: type) -> dict[str, object] {
+    import typing;
+
+    hints_fn = getattr(typing, 'get_type_hints');
+    return cast(dict[str, object], hints_fn(cls));
+}
 
 impl get_field_types(cls: type) -> dict[str, object] {
     if (cached := _cache.get(cls)) is not None {
@@ -12,10 +19,10 @@ impl get_field_types(cls: type) -> dict[str, object] {
         return {};
     }
     try {
-        hints = get_type_hints(cls);
+        hints = _resolve_hints(cls);
         resolved = True;
     } except Exception {
-        hints = getattr(cls, '__annotations__', {}) or {};
+        hints = cast(dict[str, object], getattr(cls, '__annotations__', {}) or {});
         resolved = False;
     }
     out: dict[str, object] = {};
@@ -35,7 +42,7 @@ impl warm(cls: type) -> None {
         return;
     }
     try {
-        hints = get_type_hints(cls);
+        hints = _resolve_hints(cls);
     } except Exception {
         return;
     }
