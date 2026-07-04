@@ -1,10 +1,12 @@
-"""Move-vs-copy fixture driven by OwnershipFacts.
+"""Move-vs-copy fixture driven by OwnershipFacts callee conventions.
 
-`Holder` stores a fresh constructor result into its field: the value is owned, so
-its refcount moves into the field and the retain is elided. `Wrap` stores a
-borrowed constructor parameter: the value is aliased, so it is copied and
-retained. Both are released once by the destructor, so neither leaks nor
-double-frees.
+`Holder` stores a fresh constructor result into its field: owned, so its refcount
+moves into the field and the retain is elided. `Wrap.init` consumes its parameter
+(it escapes into the sole field and is used nowhere else), so the whole call is a
+move: the caller hands the owned `Counter(9)` straight in and `Wrap__new` stores it
+without retaining. `Keep.init` also reads its parameter, so the parameter is only
+borrowed: `Keep__new` retains on store and the caller releases its owned temporary
+once the statement completes. All three balance -- nothing leaks or double-frees.
 """
 
 obj Counter {
@@ -43,8 +45,23 @@ obj Wrap {
     }
 }
 
+obj Keep {
+    has c: Counter;
+    has seed: int;
+
+    def init(inner: Counter) {
+        self.seed = inner.get();
+        self.c = inner;
+    }
+
+    def total -> int {
+        return (self.seed + self.c.get());
+    }
+}
+
 def run_move -> int {
     h = Holder();
     w = Wrap(Counter(9));
-    return (h.peek() + w.peek());
+    k = Keep(Counter(4));
+    return ((h.peek() + w.peek()) + k.total());
 }

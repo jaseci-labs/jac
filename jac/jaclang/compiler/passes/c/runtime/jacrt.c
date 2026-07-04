@@ -14,6 +14,7 @@
 typedef char jac_hdr_size_check[(sizeof(jac_header) == JAC_HDR_TOTAL) ? 1 : -1];
 
 static int64_t jac_alloc_id_counter = 0;
+static int64_t jac_live_counter = 0;
 
 jac_header *jac_rc_hdr(void *user) {
     return (jac_header *)((char *)user + JAC_HDR_ALLOC_ID_OFF);
@@ -30,7 +31,12 @@ void *jac_rc_alloc(size_t size, int64_t type_id, jac_dtor_fn dtor) {
     h->tag = (JAC_HDR_MAGIC << 32) | (type_id & 0xffffffffLL);
     h->rc = 1;
     h->dtor = dtor;
+    jac_live_counter += 1;
     return user;
+}
+
+int64_t jac_rc_live(void) {
+    return jac_live_counter;
 }
 
 void jac_rc_retain(void *user) {
@@ -51,6 +57,7 @@ void jac_rc_release(void *user) {
             h->dtor(user);
         }
         free(h);
+        jac_live_counter -= 1;
     }
 }
 

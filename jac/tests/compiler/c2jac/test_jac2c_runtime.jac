@@ -184,26 +184,40 @@ def _fn_body(c_src: str, sig: str) -> str {
     return c_src[start:end];
 }
 
-test "jac2c uses OwnershipFacts to move owned field stores and copy borrowed ones" {
+test "jac2c uses OwnershipFacts callee conventions to move or copy across calls" {
     c_src = _emit_c(os.path.join(FIXTURES, "obj_move.jac"));
     # Holder stores a fresh Counter(5): owned -> moved, no retain.
     holder = _fn_body(c_src, "struct Holder *Holder__new(void)");
     assert "Counter__new(5)" in holder , f"missing constructor store:\n{holder}";
     assert "jac_rc_retain(" not in holder , f"owned store should move, not retain:\n{holder}";
-    # Wrap stores a borrowed parameter: copied -> retained.
+    # Wrap consumes its parameter (stored once, used nowhere else): the callee
+    # takes ownership, so no retain on store.
     wrap = _fn_body(c_src, "struct Wrap *Wrap__new(struct Counter * inner)");
-    assert "jac_rc_retain(" in wrap , f"borrowed store should retain:\n{wrap}";
+    assert "jac_rc_retain(" not in wrap , f"consumed param should move, not retain:\n{wrap}";
+    # Keep also reads its parameter, so it only borrows: retain on store.
+    keep = _fn_body(c_src, "struct Keep *Keep__new(struct Counter * inner)");
+    assert "jac_rc_retain(" in keep , f"borrowed param should retain:\n{keep}";
+    # Caller: the owned Counter(9) moves into the consuming Wrap (passed inline,
+    # no temp), while the owned Counter(4) handed to the borrowing Keep is hoisted
+    # into a temp and released after the call.
+    run = _fn_body(c_src, "int run_move(void)");
+    assert "Wrap__new(Counter__new(9))" in run , f"consumed arg should move inline:\n{run}";
+    assert "jac_rc_release(_arg" in run , f"borrowed owned arg should be released:\n{run}";
 }
 
-test "jac2c move optimization stays behaviorally correct with cc" {
+test "jac2c callee-convention moves and copies stay balanced under cc" {
     if _cc() is None {
         return;
     }
     out = _build_run(
-        "obj_move.jac", "extern int run_move(void);\n", "\"%d\\n\", run_move()"
+        "obj_move.jac",
+        "#include \"jacrt.h\"\nextern int run_move(void);\n",
+        "\"%d %lld\\n\", run_move(), (long long)jac_rc_live()"
     );
-    # Holder().peek()==5 plus Wrap(Counter(9)).peek()==9.
-    assert out == "14" , f"got {out!r}";
+    # Holder().peek()==5, Wrap(Counter(9)).peek()==9, Keep(Counter(4)).total()==8.
+    # Every allocation is released exactly once, so no objects stay live: the
+    # earlier Wrap(Counter(9)) leak would have left jac_rc_live() positive.
+    assert out == "22 0" , f"got {out!r}";
 }
 
 test "jac2c copies an aliased reference local but moves it at its last use" {
@@ -223,11 +237,13 @@ test "jac2c reference-local aliasing is refcount-balanced under cc" {
     }
     out = _build_run(
         "obj_alias.jac",
-        "extern int run_alias(void);\nextern int run_transfer(void);\n",
-        "\"%d %d\\n\", run_alias(), run_transfer()"
+        "#include \"jacrt.h\"\nextern int run_alias(void);\n"
+        "extern int run_transfer(void);\n",
+        "\"%d %d %lld\\n\", run_alias(), run_transfer(), (long long)jac_rc_live()"
     );
-    # run_alias: 3+3==6 (no double free). run_transfer: 7.
-    assert out == "6 7" , f"got {out!r}";
+    # run_alias: 3+3==6 (no double free). run_transfer: 7. jac_rc_live()==0
+    # proves the aliased retain and the last-use move both stay balanced.
+    assert out == "6 7 0" , f"got {out!r}";
 }
 
 test "jac2c exceptions catch, propagate, and pass through with cc" {

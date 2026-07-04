@@ -3,7 +3,8 @@ import from jaclang.jac0core.passes.transform { Transform }
 
 obj OwnershipFacts {
     has value_category: dict[int, str] = {},
-        last_uses: dict[int, bool] = {};
+        last_uses: dict[int, bool] = {},
+        consumed_params: dict[str, object] = {};
 
     def category_of(nd: object) -> str {
         return self.value_category.get(id(nd), "borrowed");
@@ -15,6 +16,11 @@ obj OwnershipFacts {
 
     def is_last_use(nd: object) -> bool {
         return id(nd) in self.last_uses;
+    }
+
+    def is_consumed(key: str, idx: int) -> bool {
+        s = self.consumed_params.get(key, None);
+        return s is not None and idx in s;
     }
 }
 
@@ -140,9 +146,128 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
         for st in body {
             self.categorize_stmt(st);
         }
+        self.compute_consumed(ab, cls, body);
         if self.is_straight_line(body) {
             self.mark_last_uses(body);
         }
+    }
+
+    def compute_consumed(ab: uni.Ability, cls: str, body: list) {
+        sig = ab.signature;
+        if not (sig and sig.params) {
+            return;
+        }
+        if not self.is_straight_line(body) {
+            return;
+        }
+        key = self.callee_key(ab, cls);
+        idx = 0;
+        for p in sig.params {
+            pname = p.name.value;
+            if self.tag_name(p.type_tag) in self.ref_types {
+                store = self.sole_field_store(body, pname);
+                if store is not None and self.count_name(body, pname) == 1 {
+                    s = self.facts.consumed_params.get(key, None);
+                    if s is None {
+                        s = set();
+                        self.facts.consumed_params[key] = s;
+                    }
+                    s.add(idx);
+                    self.facts.value_category[id(store)] = "owned";
+                }
+            }
+            idx += 1;
+        }
+    }
+
+    def callee_key(ab: uni.Ability, cls: str) -> str {
+        nm = ab.name_ref.value if ab.name_ref is not None else "";
+        if nm == "init" and cls {
+            return cls;
+        }
+        if cls {
+            return cls + "." + nm;
+        }
+        return nm;
+    }
+
+    def sole_field_store(body: list, pname: str) -> object {
+        found = None;
+        count = 0;
+        for st in body {
+            if isinstance(st, uni.Assignment) and st.value is not None {
+                tgt = st.target[0];
+                if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
+                    v = st.value;
+                    if isinstance(v, uni.AtomUnit) {
+                        v = v.value;
+                    }
+                    if isinstance(v, uni.Name) and v.value == pname {
+                        count += 1;
+                        found = st.value;
+                    }
+                }
+            }
+        }
+        if count == 1 {
+            return found;
+        }
+        return None;
+    }
+
+    def count_name(body: list, pname: str) -> int {
+        c = 0;
+        for st in body {
+            if isinstance(st, uni.Assignment) and st.value is not None {
+                c += self.count_in_expr(st.value, pname);
+            } elif isinstance(st, uni.ExprStmt) {
+                c += self.count_in_expr(st.expr, pname);
+            } elif isinstance(st, uni.ReturnStmt) and st.expr is not None {
+                c += self.count_in_expr(st.expr, pname);
+            }
+        }
+        return c;
+    }
+
+    def count_in_expr(e: object, pname: str) -> int {
+        if isinstance(e, uni.AtomUnit) {
+            return self.count_in_expr(e.value, pname);
+        }
+        if isinstance(e, uni.Name) {
+            return 1 if e.value == pname else 0;
+        }
+        if isinstance(e, uni.FuncCall) {
+            c = self.count_in_expr(e.target, pname);
+            for p in (e.params or []) {
+                if isinstance(p, uni.Expr) {
+                    c += self.count_in_expr(p, pname);
+                }
+            }
+            return c;
+        }
+        if isinstance(e, uni.BinaryExpr) {
+            return self.count_in_expr(e.left, pname) + self.count_in_expr(
+                e.right, pname
+            );
+        }
+        if isinstance(e, uni.CompareExpr) {
+            c = self.count_in_expr(e.left, pname);
+            for r in e.rights {
+                c += self.count_in_expr(r, pname);
+            }
+            return c;
+        }
+        if isinstance(e, uni.AtomTrailer) {
+            c = self.count_in_expr(e.target, pname);
+            if not e.is_attr {
+                c += self.count_in_expr(e.right, pname);
+            }
+            return c;
+        }
+        if isinstance(e, uni.UnaryExpr) {
+            return self.count_in_expr(e.operand, pname);
+        }
+        return 0;
     }
 
     def is_straight_line(body: list) -> bool {
