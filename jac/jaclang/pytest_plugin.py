@@ -251,6 +251,8 @@ class JacFile(pytest.File):
     def collect(self) -> list[JacTestItem]:  # noqa: C901
         from jaclang.runtimelib.test import JacTestCheck
 
+        reg = _ext_registry()
+
         _ensure_jac_runtime()
         _fresh_jac_state()
         JacTestCheck.reset()
@@ -278,7 +280,13 @@ class JacFile(pytest.File):
                     pass
 
             base_dir = str(Path(filepath).parent)
-            mod_name = Path(filepath).stem
+            # Derive the importable module name via the extension registry's
+            # canonical longest-suffix matcher: a compound codespace suffix
+            # (``foo.na.jac`` / ``foo.sv.jac``) imports as module ``foo``, so a
+            # bare ``Path.stem`` would leave the ``.na`` component and the
+            # importer would read it as a package path and fail to resolve the
+            # file (issue #7150).
+            mod_name = reg.base_stem(Path(filepath).name)
 
             # Import the test module under a synthetic namespace package so
             # that relative imports (``from .sibling import ...``) resolve
@@ -289,9 +297,15 @@ class JacFile(pytest.File):
             try:
                 with _scoped_syspath(base_dir):
                     importlib.import_module(qualified_name)
-            except Exception:
-                # Import failure -- nothing to collect from this file.
-                return []
+            except Exception as exc:
+                # A test file that was explicitly collected but fails to import
+                # is a collection *error*, not an empty result. Swallowing it
+                # would convert a broken test module into a silently passing run
+                # (issue #7150). Surface it so the session reports and exits
+                # non-zero.
+                raise self.CollectError(
+                    f"failed to import Jac test module {self.path}: {exc!r}"
+                ) from exc
         finally:
             sys.stdout.close()
             sys.stdout = old_stdout
@@ -313,7 +327,7 @@ class JacFile(pytest.File):
         # test_server.py vs test_server.jac).  We intentionally keep other
         # modules (vendored libs, compiler internals) so that class identity
         # (isinstance checks) and forward-reference resolution remain intact.
-        test_mod_name = Path(self.path).stem
+        test_mod_name = reg.base_stem(self.path.name)
         for name in list(sys.modules.keys()):
             if name not in modules_before and (
                 name == test_mod_name or name.endswith(f".{test_mod_name}")

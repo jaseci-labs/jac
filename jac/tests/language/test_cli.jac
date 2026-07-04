@@ -527,6 +527,49 @@ test "run test" {
     assert "run_test.jac" in out;
 }
 
+test "run test native codespace file" {
+    # A compound-codespace test file (`foo.na.jac`) must collect and run its
+    # `test` blocks. Regression for issue #7150: the pytest collector derived
+    # the module name with `Path(...).stem`, leaving the `.na` suffix so the
+    # import resolved as a package path, failed, and was silently swallowed --
+    # 0 items collected, exit 0, CI green while running nothing.
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        analysis.test(fixture_path("native_run_test.na.jac"), maxfail=2);
+        out = captured.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+    }
+
+    assert "native_run_test.na.jac" in out;
+    # One block passes and one fails -- proving both were actually collected
+    # and executed (not silently skipped as "no tests ran").
+    assert "1 failed" in out;
+    assert "1 passed" in out;
+    assert "no tests ran" not in out;
+}
+
+test "run test native broken import surfaces error" {
+    # A test file that was explicitly collected but fails to import must be a
+    # collection error, not an empty (silently passing) result (issue #7150).
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        rc = analysis.test(fixture_path("native_broken_import_test.na.jac"));
+        out = captured.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+    }
+
+    # Non-zero exit and a visible error -- never a silent green pass.
+    assert rc != 0;
+    assert "this_module_does_not_exist_7150" in out;
+    assert "passed" not in out;
+}
+
 test "run test with directory filter" {
     # Directory discovery + glob filter over fixture files is native-runner
     # behavior (the pytest collector skips fixtures/ and non-test_ names).
