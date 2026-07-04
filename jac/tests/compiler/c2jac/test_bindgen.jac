@@ -3,12 +3,18 @@
 Phase 0 (function prototypes) was shipped without an output test; this file
 locks that down *and* covers Phase 1 (named integer constants — enum
 enumerators + object-like #define ints → `glob NAME: int = N;`). Bindings are
-native-FFI `.na.jac` (an `import from <lib>` block), so we assert on structure
-rather than recompiling — module resolution of the foreign lib is out of scope.
+native-FFI `.na.jac` (an `import from <lib>` block); most tests assert on
+structure, but the final two close the #7055 acceptance loop by feeding the
+generated bindings through `nacompile` and executing a real extern call against
+libm through the JIT.
 """
 
+import os;
+import ctypes;
+import tempfile;
 import from tests.compiler.c2jac.support { read_fixture }
 import from jaclang.compiler.c2jac.bindgen { bindings_from_source }
+import from jaclang.jac0core.program { JacProgram }
 
 def _bind(
     name: str, lib: str, allow: list | None = None, block: list | None = None
@@ -212,4 +218,72 @@ test "Phase 4 extern var blocks appear before function bindings" {
         fn_pos = out.index("def ") if "def " in out else len(out);
         assert glob_pos < fn_pos , "extern globs must appear before function defs";
     }
+}
+
+# ---------------------------------------------------------------------------- #
+# #7055 acceptance — generated bindings must be real nacompile input, not just  #
+# well-formed text: they compile through the native front-end and a generated   #
+# binding drives a real extern call against libm through the JIT.               #
+# ---------------------------------------------------------------------------- #
+def _libm -> str | None {
+    # First present libm on this host, or None (non-Linux CI: exec tests skip).
+    for cand in [
+        "/usr/lib/libm.so.6",
+        "/lib/x86_64-linux-gnu/libm.so.6",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6"
+    ] {
+        if os.path.exists(cand) {
+            return cand;
+        }
+    }
+    return None;
+}
+
+def _compile_bindings(src: str) -> tuple {
+    # Write generated `.na.jac` (optionally with a consumer) to a temp file and
+    # run it through the native compiler. Returns (prog, ir).
+    out_dir = tempfile.mkdtemp();
+    path = os.path.join(out_dir, "bind_probe.na.jac");
+    with open(path, "w") as f {
+        f.write(src);
+    }
+    prog = JacProgram();
+    ir = prog.compile(file_path=path);
+    return (prog, ir);
+}
+
+test "generated FFI bindings compile through nacompile (#7055 acceptance)" {
+    libm = _libm();
+    if libm is None {
+        return;
+    }
+    (out, _rep) = bindings_from_source("double sqrt(double x);\n", "libm.h", libm);
+    assert f'import from "{libm}"' in out , out;
+    (prog, ir) = _compile_bindings(out);
+    assert not prog.errors_had , f"nacompile rejected generated bindings: {[
+        str(e) for e in prog.errors_had
+    ]}";
+    assert 'declare double @"sqrt"' in str(ir.gen.llvm_ir) , "sqrt not declared extern in IR";
+}
+
+test "a generated binding makes a real extern call through the JIT (#7055)" {
+    libm = _libm();
+    if libm is None {
+        return;
+    }
+    (out, _rep) = bindings_from_source("double sqrt(double x);\n", "libm.h", libm);
+    consumer = out + "\ndef:pub jac_call_sqrt(x: f64) -> f64 {\n    return sqrt(x);\n}\n\nwith entry {}\n";
+    (prog, ir) = _compile_bindings(consumer);
+    assert not prog.errors_had , f"nacompile errors: {[
+        str(e) for e in prog.errors_had
+    ]}";
+    eng = ir.gen.native_engine;
+    if eng is None {
+        return;
+    }
+    addr = eng.get_function_address("jac_call_sqrt");
+    assert addr != 0 , "jac_call_sqrt not linked into the JIT engine";
+    fn = ctypes.CFUNCTYPE(ctypes.c_double, ctypes.c_double)(addr);
+    got = fn(9.0);
+    assert got == 3.0 , f"expected sqrt(9.0)==3.0 through the generated FFI binding, got {got}";
 }

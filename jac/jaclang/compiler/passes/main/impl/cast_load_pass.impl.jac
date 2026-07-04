@@ -1,7 +1,6 @@
 impl CastBuildPass.postinit -> None {
     self.orig_src = self.ir_in.orig_src;
     self.enum_verdicts = build_enum_map(self.ir_in.ast);
-    self.c_diag_records = [];
     self._list_bound = set();
     self._enum_member_owner = self._build_member_owner_map();
     self._var_types = {};
@@ -80,9 +79,15 @@ impl CastBuildPass.emit_c_diag(
     diag = DIAGNOSTICS[twin];
     self.cur_node = loc_node;
     self.emit(diag, node_override=loc_node, **kw);
-    self.c_diag_records.append(
-        (diag.code, diag.format_message(**kw), loc_node.loc.first_line)
-    );
+}
+
+impl CastBuildPass.c_diags -> list[tuple[str, str, int]] {
+    out: list[tuple[str, str, int]] = [];
+    for al in self.warnings_had + self.errors_had {
+        code = al.code.code if al.code is not None else "";
+        out.append((code, al.msg, al.loc.first_line));
+    }
+    return out;
 }
 
 impl CastBuildPass._coord(c_node: object) -> tuple[int, int] {

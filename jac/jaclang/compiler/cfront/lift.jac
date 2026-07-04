@@ -28,7 +28,7 @@ def lift_c_str(c_src: str, filename: str, lenient_c: bool = True) -> LiftResult 
         prog=JacProgram(),
         lenient_c=lenient_c
     );
-    return LiftResult(module=pass_.ir_out, diags=pass_.c_diag_records);
+    return LiftResult(module=pass_.ir_out, diags=pass_.c_diags());
 }
 
 def transpile_c_str(c_src: str, filename: str, lenient_c: bool = True) -> str {

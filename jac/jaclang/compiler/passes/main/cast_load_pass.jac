@@ -101,7 +101,6 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
         lenient_c: bool = False,
         orig_src: uni.Source by postinit,
         enum_verdicts: EnumVerdicts by postinit,
-        c_diag_records: list[tuple[str, str, int]] by postinit,
         _list_bound: set[str] by postinit,
         _enum_member_owner: dict[str, str] by postinit,
         _var_types: dict[str, object] by postinit,
@@ -118,6 +117,7 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
         c_node: object, num: int, anchor: uni.UniNode | None = None, **kw: object
     ) -> None;
 
+    def c_diags -> list[tuple[str, str, int]];
     def _coord(c_node: object) -> tuple[int, int];
     def _name(c_node: object, value: str) -> uni.Name;
     def _ident(c_node: object, value: str) -> uni.Name;
