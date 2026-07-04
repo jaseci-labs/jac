@@ -293,7 +293,8 @@ mod tests {
     /// via the bridge's own `make_buf` (so `replace_all` frees it with the same
     /// allocator).
     unsafe fn upper_cb(
-        ptr: *const u8, len: u32, out_buf: *mut JacBuf, _out_err: *mut u64,
+        _ctx: *mut std::ffi::c_void, ptr: *const u8, len: u32,
+        out_buf: *mut JacBuf, _out_err: *mut u64,
     ) -> i32 {
         let s = std::str::from_utf8(std::slice::from_raw_parts(ptr, len as usize)).unwrap();
         let up = s.to_uppercase();
@@ -304,12 +305,18 @@ mod tests {
     /// A callback that always fails (nonzero status) — proves the error channel
     /// aborts the replacement and surfaces as `replace_all`'s Err.
     unsafe fn failing_cb(
-        _ptr: *const u8, _len: u32, _out_buf: *mut JacBuf, _out_err: *mut u64,
+        _ctx: *mut std::ffi::c_void, _ptr: *const u8, _len: u32,
+        _out_buf: *mut JacBuf, _out_err: *mut u64,
     ) -> i32 {
         7
     }
 
-    unsafe fn call_replace_all(re: u64, text: &str, cb: u64) -> Result<String, i32> {
+    /// The callback crosses as a pointer to a `{call, ctx}` record (the ABI the
+    /// na compiler and CPython loader build).  `cb_fn` is the thunk's address;
+    /// module-level thunks like these carry a null `ctx`.
+    unsafe fn call_replace_all(re: u64, text: &str, cb_fn: usize) -> Result<String, i32> {
+        let rec: [usize; 2] = [cb_fn, 0];
+        let cb = rec.as_ptr() as u64;
         let mut buf = MaybeUninit::<JacBuf>::uninit();
         let mut e = 0u64;
         let st = jac_owning_Regex_replace_all(
@@ -616,7 +623,7 @@ mod tests {
     fn replace_all_invokes_callback_per_match() {
         unsafe {
             let re = compile(r"\w+");
-            let cb = upper_cb as *const () as u64;
+            let cb = upper_cb as *const () as usize;
             // Two matches — the callback fires for each, punctuation untouched.
             assert_eq!(call_replace_all(re, "hello world", cb).unwrap(), "HELLO WORLD");
             // No match — the callback never fires, text passes through verbatim.
@@ -633,7 +640,7 @@ mod tests {
     fn replace_all_propagates_callback_error() {
         unsafe {
             let re = compile(r"\w+");
-            let cb = failing_cb as *const () as u64;
+            let cb = failing_cb as *const () as usize;
             // The callback fails on the first match -> the whole call errors.
             let r = call_replace_all(re, "abc def", cb);
             assert_eq!(r, Err(1), "callback error must surface as a status-1 error");

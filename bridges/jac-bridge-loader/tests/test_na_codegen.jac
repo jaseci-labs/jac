@@ -228,18 +228,22 @@ test "cursor and drain bridge" {
 
 
 test "callback bridge" {
-    # The CALLBACK vertical: replace_all takes a TAG_FN param as an int (a C-ABI
-    # callback fn pointer the caller supplies via `<def:pub thunk> as int`, the na
-    # trampoline) and forwards it to Rust; make_buf is NEED-linked so the thunk can
-    # hand its replacement back as an owned JacBuf.
+    # The CALLBACK vertical: replace_all takes a TAG_FN param as an int, but under
+    # the ctx-carrying ABI that int is the ADDRESS of a two-word {call, ctx} record
+    # (not a bare fn pointer) — the record is built at the na CALL SITE, where the
+    # backend lowers a `lambda` arg to a trampoline + env (see _codegen_callback_arg;
+    # end-to-end coverage lives in the na conformance suite, gated on the LLVM shim).
+    # The synth is ABI-agnostic here: it declares the param as an int and forwards
+    # it verbatim, so make_buf is NEED-linked as the replacement sink.
     res = render_na_source(_OWNING_META, _OWNING_NAME);
     items = {s.item for s in res.skips};
     src = res.source;
 
     assert "Regex.replace_all" not in items , "replace_all must not be skipped";
-    # The callback crosses as a plain int; the str result rides the JacBuf out-slot.
+    # The callback record address crosses as a plain int; the str result rides the
+    # JacBuf out-slot.
     assert "def replace_all(text: str, rep: int) -> str {" in src;
-    # The raw fn-pointer int is forwarded straight to the foreign shim.
+    # The record-address int is forwarded straight to the foreign shim.
     assert "jac_owning_Regex_replace_all(self.__handle, text, strlen(text), rep, out_buf, out_e)" in src;
     # make_buf is declared in the foreign import block (the callback's replacement
     # sink) — only emitted because a bridged method takes a callback.

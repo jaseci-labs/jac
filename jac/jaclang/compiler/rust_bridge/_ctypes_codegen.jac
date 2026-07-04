@@ -6,6 +6,8 @@ import from ctypes {
     CFUNCTYPE,
     POINTER,
     byref,
+    cast,
+    addressof,
     string_at,
     c_uint64,
     c_uint32,
@@ -36,8 +38,15 @@ class _JacBuf(Structure) {
 
 
 glob _CB_TYPE = CFUNCTYPE(
-         c_int, c_void_p, c_uint32, POINTER(_JacBuf), POINTER(c_uint64)
+         c_int, c_void_p, c_void_p, c_uint32, POINTER(_JacBuf), POINTER(c_uint64)
      );
+
+
+class _JacCallback(Structure) {
+    with entry {
+        _fields_ = [('call', c_void_p), ('ctx', c_void_p)];
+    }
+}
 
 
 def _encode(val: object) -> tuple {
@@ -141,7 +150,7 @@ def _wire(lib: object, fd: object) -> object {
         } elif p.tag == TAG_BOOL {
             args.append(c_uint8);
         } elif p.tag == TAG_FN {
-            args.append(_CB_TYPE);
+            args.append(c_uint64);
         } else {
             args.append(c_uint64);
         }
@@ -170,7 +179,9 @@ def _make_trampoline(fn: object, rt: object) -> object {
         raise RuntimeError("bridge has a callback param but exports no make_buf");
     }
 
-    def _trampoline(ptr: int, n: int, out_buf: object, _out_err: object) -> int {
+    def _trampoline(
+        _ctx: object, ptr: int, n: int, out_buf: object, _out_err: object
+    ) -> int {
         try {
             matched = string_at(ptr, n).decode("utf-8", errors="replace");
             result = fn(matched);
@@ -205,8 +216,10 @@ def _call(
             c_args.append(c_uint8(int(bool(v))));
         } elif p.tag == TAG_FN {
             cb = _make_trampoline(v, rt);
+            rec = _JacCallback(cast(cb, c_void_p), None);
             keepalive.append(cb);
-            c_args.append(cb);
+            keepalive.append(rec);
+            c_args.append(c_uint64(addressof(rec)));
         } else {
             c_args.append(c_uint64(int(v)));
         }

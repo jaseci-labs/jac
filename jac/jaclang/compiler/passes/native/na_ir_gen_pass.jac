@@ -287,6 +287,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
     ) -> list;
 
+    def _codegen_callback_arg(nd: uni.LambdaExpr) -> (ir.Value | None);
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;

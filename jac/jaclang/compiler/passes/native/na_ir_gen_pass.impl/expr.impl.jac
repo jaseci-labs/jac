@@ -126,7 +126,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         for p in sig.params {
             p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
 
-            p_type = self._resolve_jac_type(p)
+            p_type = self._resolve_jac_type(p.type_tag)
                 if p?.type_tag and p.type_tag is not None
                 else ir.IntType(64);
             param_types.append(p_type);
@@ -192,7 +192,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         if val is not None {
             self.builder.ret(self._coerce_type(val, ret_type));
         } else {
-            self.builder.ret(ir.Constant(ret_type, 0));
+            self.builder.ret(self._default_arg_fallback(ret_type));
         }
     }
 
@@ -202,7 +202,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
             if ret_type == ir.VoidType() {
                 term_builder.ret_void();
             } else {
-                term_builder.ret(ir.Constant(ret_type, 0));
+                term_builder.ret(self._default_arg_fallback(ret_type));
             }
         }
     }

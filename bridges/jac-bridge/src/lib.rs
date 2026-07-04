@@ -534,23 +534,36 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
                 ::std::boxed::Box::into_raw(::std::boxed::Box::new(msg.to_string())) as u64
             }
 
-            // A callback the Jac side hands us: a C-ABI function pointer with a
-            // fixed signature.  The Jac runtime (na `def:pub` thunk, or a CPython
-            // CFUNCTYPE) supplies the pointer; we invoke it with the match text
-            // and read back an owned replacement JacBuf (allocated Jac-side via
+            // A callback the Jac side hands us.  It crosses as a single u64 that
+            // is a *pointer* to a two-word `{call, ctx}` record (`JacCallbackRaw`):
+            // `call` is the C-ABI thunk, `ctx` an opaque context threaded back into
+            // every invocation.  A plain module-level Jac function has `ctx == null`;
+            // a closure points `ctx` at an environment holding its captured values,
+            // which the na trampoline reads back — this is what lets closures, not
+            // just top-level functions, cross the boundary.  CPython closures capture
+            // natively, so their `ctx` is null too.  We invoke `call` with the match
+            // text and read back an owned replacement JacBuf (allocated Jac-side via
             // `..._make_buf`, freed here after copying — same allocator both ways).
             pub type JacCbFn = unsafe extern "C" fn(
-                *const u8, u32, *mut JacBuf, *mut u64,
+                *mut ::std::ffi::c_void, *const u8, u32, *mut JacBuf, *mut u64,
             ) -> i32;
 
+            #[repr(C)]
+            struct JacCallbackRaw { call: usize, ctx: usize }
+
             #[derive(Clone, Copy)]
-            pub struct JacCallback { func: JacCbFn }
+            pub struct JacCallback { func: JacCbFn, ctx: *mut ::std::ffi::c_void }
 
             impl JacCallback {
                 /// # Safety
-                /// `raw` must be a valid `JacCbFn` pointer for the call's duration.
+                /// `raw` must point to a valid `{call, ctx}` record whose `call`
+                /// is a valid `JacCbFn` for the call's duration.
                 pub unsafe fn from_raw(raw: u64) -> JacCallback {
-                    JacCallback { func: unsafe { ::std::mem::transmute::<usize, JacCbFn>(raw as usize) } }
+                    let rec = unsafe { &*(raw as *const JacCallbackRaw) };
+                    JacCallback {
+                        func: unsafe { ::std::mem::transmute::<usize, JacCbFn>(rec.call) },
+                        ctx: rec.ctx as *mut ::std::ffi::c_void,
+                    }
                 }
 
                 /// Invoke the callback with `arg`; copy the returned buffer into an
@@ -559,7 +572,7 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
                     let mut buf = JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 };
                     let mut err = 0u64;
                     let st = unsafe {
-                        (self.func)(arg.as_ptr(), arg.len() as u32, &mut buf, &mut err)
+                        (self.func)(self.ctx, arg.as_ptr(), arg.len() as u32, &mut buf, &mut err)
                     };
                     if st != 0 {
                         // The callback signalled failure.  We do NOT dereference

@@ -72,6 +72,13 @@ glob REPO = Path(__file__).resolve().parents[4],
          (r"\d+", "a1b22c333"),
          (r"-", "x-y-z"),
          (r"\d+", "no digits")
+     ],
+     # (pattern, haystack, prefix) -> replace_all driven by a CAPTURING closure
+     # (`lambda m : prefix + m`) — proves the {call, ctx} env crosses to Rust.
+     REPLACE_CAPTURE_CASES = [
+         (r"\w+", "hello world", ">>"),
+         (r"\d+", "a1b2c3", "#"),
+         (r"z+", "no zeds here", "X")
      ];
 
 
@@ -197,7 +204,7 @@ def cpython_side -> list {
         pat = case[0];
         text = case[1];
         re = owning.Regex(pat);
-        out = re.replace_all(text, lambda m : m.upper());
+        out = re.replace_all(text, lambda (m: str) -> str : m.upper());
         lines.append(_replace_label(pat, text, "upper") + "[" + out + "]");
         re.close();
     }
@@ -205,8 +212,17 @@ def cpython_side -> list {
         pat = case[0];
         text = case[1];
         re = owning.Regex(pat);
-        out = re.replace_all(text, lambda m : "<" + m + ">");
+        out = re.replace_all(text, lambda (m: str) -> str : "<" + m + ">");
         lines.append(_replace_label(pat, text, "bracket") + "[" + out + "]");
+        re.close();
+    }
+    for case in REPLACE_CAPTURE_CASES {
+        pat = case[0];
+        text = case[1];
+        prefix = case[2];
+        re = owning.Regex(pat);
+        out = re.replace_all(text, lambda (m: str) -> str : prefix + m);
+        lines.append(_replace_label(pat, text, "capture") + "[" + out + "]");
         re.close();
     }
     return [
@@ -227,28 +243,9 @@ def na_side -> list {
     meta = parse(read_jac_bridge_section(str(SO)));
     src = render_na_source(meta, SO.name).source;
 
-    # The na trampoline: module-level `def:pub` C-ABI thunks the callback ABI
-    # calls back into.
-    mb = f"jac_{meta.module_name}_make_buf";
-    thunks = """
-def:pub owning_upper_cb(arg_ptr: int, arg_len: int, out_buf: int, out_err: int) -> i32 {
-    s = __jac_str_from_raw(arg_ptr, arg_len);
-    r = s.upper();
-    __MB__(r, strlen(r), out_buf);
-    return 0;
-}
-
-def:pub owning_bracket_cb(arg_ptr: int, arg_len: int, out_buf: int, out_err: int) -> i32 {
-    s = __jac_str_from_raw(arg_ptr, arg_len);
-    r = "<" + s + ">";
-    __MB__(r, strlen(r), out_buf);
-    return 0;
-}
-""".replace(
-        "__MB__", mb
-    );
-    src = src + thunks;
-
+    # The callback crosses as a real Jac lambda: the na backend lowers it to a
+    # ctx-leading C-ABI trampoline + a {call, ctx} record at the call site (no
+    # hand-written def:pub thunk — that is the whole point of this vertical).
     probe = ["\nwith entry {"];
     for case in FIND_CASES {
         pat = case[0];
@@ -357,14 +354,14 @@ def:pub owning_bracket_cb(arg_ptr: int, arg_len: int, out_buf: int, out_err: int
         probe.append("    dr.close();");
         probe.append("    re.close();");
     }
-    probe.append("    cb_up = owning_upper_cb as int;");
-    probe.append("    cb_br = owning_bracket_cb as int;");
     for case in REPLACE_UPPER_CASES {
         pat = case[0];
         text = case[1];
         label = _replace_label(pat, text, "upper");
         probe.append("    re = Regex(" + _jac_str(pat) + ");");
-        probe.append("    out = re.replace_all(" + _jac_str(text) + ", cb_up);");
+        probe.append(
+            "    out = re.replace_all(" + _jac_str(text) + ", lambda (m: str) -> str : m.upper());"
+        );
         probe.append(
             "    print(" + _jac_str(label + "[") + " + out + " + _jac_str("]") + ");"
         );
@@ -375,18 +372,50 @@ def:pub owning_bracket_cb(arg_ptr: int, arg_len: int, out_buf: int, out_err: int
         text = case[1];
         label = _replace_label(pat, text, "bracket");
         probe.append("    re = Regex(" + _jac_str(pat) + ");");
-        probe.append("    out = re.replace_all(" + _jac_str(text) + ", cb_br);");
+        probe.append(
+            "    out = re.replace_all(" + _jac_str(text) + ", lambda (m: str) -> str : \"<\" + m + \">\");"
+        );
         probe.append(
             "    print(" + _jac_str(label + "[") + " + out + " + _jac_str("]") + ");"
         );
         probe.append("    re.close();");
     }
+    # A CAPTURING closure only "captures" when its free var is a FUNCTION local
+    # (a `with entry` local is module-scoped, hence not a capture), so each capture
+    # case lives in its own `def` helper — the na backend then threads `prefix`
+    # through the {call, ctx} env.  Helpers are emitted before `with entry`.
+    cap_helpers: list = [];
+    for (i, case) in enumerate(REPLACE_CAPTURE_CASES) {
+        pat = case[0];
+        text = case[1];
+        prefix = case[2];
+        label = _replace_label(pat, text, "capture");
+        fname = f"_cap_case_{i}";
+        cap_helpers.append("def " + fname + "() -> str {");
+        cap_helpers.append("    prefix = " + _jac_str(prefix) + ";");
+        cap_helpers.append("    re = Regex(" + _jac_str(pat) + ");");
+        cap_helpers.append(
+            "    out = re.replace_all(" + _jac_str(text) + ", lambda (m: str) -> str : prefix + m);"
+        );
+        cap_helpers.append("    re.close();");
+        cap_helpers.append("    return out;");
+        cap_helpers.append("}");
+        probe.append(
+            "    print(" + _jac_str(label + "[") + " + " + fname + "() + " + _jac_str(
+                "]"
+            ) + ");"
+        );
+    }
     probe.append("}");
-    src = src + "\n".join(probe);
+    src = src + "\n".join(cap_helpers) + "\n" + "\n".join(probe);
 
     td = tempfile.mkdtemp();
     try {
-        jac_file = Path(td) / "owning_conf.jac";
+        # Written as a `.na.jac` native module: the synthesized bridge source is
+        # all-native, and the `.na.jac` suffix skips auto-promotion (a lambda arg
+        # would otherwise flag the module native-incompatible and fall back to the
+        # Python path, which rejects the string-literal FFI imports).
+        jac_file = Path(td) / "owning_conf.na.jac";
         jac_file.write_text(src);
         binp = Path(td) / "owning_conf";
         env = dict(os.environ);
