@@ -77,6 +77,11 @@ void    jac_rc_retain(void *user);
 void    jac_rc_release(void *user);
 int64_t jac_rc_typeid(void *user);
 int64_t jac_rc_count(void *user);
+
+/* Number of live RC allocations (allocated minus freed). Zero after a
+ * balanced program; a leak leaves it positive, a double-free drives it
+ * negative. Intended for conformance/leak assertions. */
+int64_t jac_rc_live(void);
 jac_header *jac_rc_hdr(void *user);
 
 /* --- vtable dispatch ----------------------------------------------------- */

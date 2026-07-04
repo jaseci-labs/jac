@@ -68,6 +68,18 @@ test "proven last uses are recorded for straight-line bodies" {
     )}";
 }
 
+test "callee conventions mark escaping params consumed and read params borrowed" {
+    (mod, facts) = _facts("obj_move.jac");
+    # Wrap.init stores its parameter into the sole field and uses it nowhere
+    # else -> the parameter is consumed (ownership transfers into the object).
+    assert facts.is_consumed("Wrap", 0) , "Wrap.init param should be consumed";
+    # Keep.init also reads its parameter (self.seed = inner.get()) -> it is only
+    # borrowed, so the conservative default holds.
+    assert not facts.is_consumed("Keep", 0) , "Keep.init param should stay borrowed";
+    # An unknown callee falls back to borrowed.
+    assert not facts.is_consumed("Nope", 0) , "unknown callee must be borrowed";
+}
+
 test "facts default to the conservative answer for unknown nodes" {
     fresh = OwnershipFacts();
     # An unknown node (here the facts object itself stands in for one) must fall

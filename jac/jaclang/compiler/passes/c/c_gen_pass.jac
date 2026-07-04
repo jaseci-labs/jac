@@ -33,7 +33,11 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         exc_frames: list[str] = [],
         needs_rt: bool = False,
         layout: object = None,
-        facts: object = None;
+        facts: object = None,
+        arg_pre: list[str] = [],
+        arg_post: list[str] = [],
+        cur_pad: str = "",
+        hoist_ok: bool = False;
 
     def transform(ir_in: uni.Module) -> uni.Module {
         try {
@@ -111,6 +115,10 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             self.facts = None;
         }
         self.needs_rt = len(self.type_ids) > 0;
+        self.arg_pre = [];
+        self.arg_post = [];
+        self.cur_pad = "";
+        self.hoist_ok = False;
         structs: list[str] = [];
         vtables: list[str] = [];
         protos: list[str] = [];
@@ -648,6 +656,33 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
 
     def gen_stmt(st: object, ind: int, is_last: bool) -> str {
         pad = "    " * ind;
+        outer_pre = self.arg_pre;
+        outer_post = self.arg_post;
+        outer_pad = self.cur_pad;
+        outer_hoist = self.hoist_ok;
+        self.arg_pre = [];
+        self.arg_post = [];
+        self.cur_pad = pad;
+        self.hoist_ok = isinstance(st, (uni.Assignment, uni.ExprStmt, uni.ReturnStmt));
+        body = self.render_stmt(st, ind, is_last);
+        pre = self.arg_pre;
+        post = self.arg_post;
+        self.arg_pre = outer_pre;
+        self.arg_post = outer_post;
+        self.cur_pad = outer_pad;
+        self.hoist_ok = outer_hoist;
+        if not pre and not post {
+            return body;
+        }
+        lines: list[str] = [];
+        lines.extend(pre);
+        lines.append(body);
+        lines.extend(post);
+        return "\n".join(lines);
+    }
+
+    def render_stmt(st: object, ind: int, is_last: bool) -> str {
+        pad = "    " * ind;
         if isinstance(st, uni.ReturnStmt) {
             pops = self.exc_pop_lines(pad);
             if st.expr is None {
@@ -661,7 +696,10 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             }
             releases = self.scope_release_lines(pad, skip_name);
             val = self.gen_expr(st.expr);
-            if not releases and not pops {
+
+            argcleanup = self.arg_post;
+            self.arg_post = [];
+            if not releases and not pops and not argcleanup {
                 return pad + "return " + val + ";";
             }
 
@@ -669,6 +707,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             tmp = f"_ret{self.tmp_ctr}";
             lines = [pad + f"{self.cur_ret_cty} {tmp} = {val};"];
             lines.extend(pops);
+            lines.extend(argcleanup);
             lines.extend(releases);
             lines.append(pad + f"return {tmp};");
             return "\n".join(lines);
@@ -1079,15 +1118,10 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     }
 
     def gen_call(e: uni.FuncCall) -> str {
-        args: list[str] = [];
-        for p in (e.params or []) {
-            if isinstance(p, uni.Expr) {
-                args.append(self.gen_expr(p));
-            }
-        }
         tgt = e.target;
 
         if isinstance(tgt, uni.Name) and tgt.value in self.type_ids {
+            args = self.gen_args(e, tgt.value);
             return f"{tgt.value}__new(" + ", ".join(args) + ")";
         }
 
@@ -1097,7 +1131,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         and len(e.params) == 1
         and self.expr_type_name(e.params[0]) == "str" {
             self.needs_rt = True;
-            return "jac_str_len(" + args[0] + ")";
+            return "jac_str_len(" + self.gen_expr(e.params[0]) + ")";
         }
 
         if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
@@ -1105,6 +1139,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             mname = self.attr_name(tgt.right);
             if recv_ty in self.type_ids and mname != "init" {
                 recv = self.gen_expr(tgt.target);
+                args = self.gen_args(e, recv_ty + "." + mname);
                 slot = None;
                 if self.layout is not None {
                     slot = self.layout.get_method_slot(recv_ty, mname);
@@ -1121,7 +1156,49 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
                 return f"{owner}__{mname}(" + ", ".join(call_args) + ")";
             }
         }
+        args = self.gen_args(e, "");
         return self.gen_expr(tgt) + "(" + ", ".join(args) + ")";
+    }
+
+    def gen_args(e: uni.FuncCall, callee_key: str) -> list {
+        args: list[str] = [];
+        idx = 0;
+        for p in (e.params or []) {
+            if isinstance(p, uni.Expr) {
+                args.append(self.emit_arg(p, callee_key, idx));
+                idx += 1;
+            }
+        }
+        return args;
+    }
+
+    def emit_arg(p: uni.Expr, callee_key: str, idx: int) -> str {
+        argstr = self.gen_expr(p);
+        ty = self.expr_type_name(p);
+        if ty not in self.type_ids or self.facts is None or not self.hoist_ok {
+            return argstr;
+        }
+        owned = self.facts.is_owned(p);
+        consumed = callee_key != "" and self.facts.is_consumed(callee_key, idx);
+        cty = self.c_type(ty);
+        if consumed {
+            if owned {
+                return argstr;
+            }
+            self.tmp_ctr += 1;
+            tmp = f"_arg{self.tmp_ctr}";
+            self.arg_pre.append(self.cur_pad + f"{cty} {tmp} = {argstr};");
+            self.arg_pre.append(self.cur_pad + f"jac_rc_retain({tmp});");
+            return tmp;
+        }
+        if owned {
+            self.tmp_ctr += 1;
+            tmp = f"_arg{self.tmp_ctr}";
+            self.arg_pre.append(self.cur_pad + f"{cty} {tmp} = {argstr};");
+            self.arg_post.append(self.cur_pad + f"jac_rc_release({tmp});");
+            return tmp;
+        }
+        return argstr;
     }
 
     def virtual_call(
