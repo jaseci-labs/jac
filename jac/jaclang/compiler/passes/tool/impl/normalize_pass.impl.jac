@@ -274,6 +274,11 @@ impl NormalizePass.enter_import(nd: uni.Import) -> None {
             new_kid.append(nd.gen_token(Tok.COMMA));
         }
     }
+    if nd.clib_decls {
+        for decl in nd.clib_decls {
+            new_kid.append(decl);
+        }
+    }
     if nd.from_loc {
         new_kid.append(nd.gen_token(Tok.RBRACE));
     } else {
