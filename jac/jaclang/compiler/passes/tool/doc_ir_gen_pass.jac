@@ -66,6 +66,7 @@ obj DocIRGenPass(UniPass) {
     def remove_all_spaces(doc_node: doc.DocType) -> doc.DocType;
     def exit_module(nd: uni.Module) -> None;
     def exit_import(nd: uni.Import) -> None;
+    def _gen_clib_import(nd: uni.Import) -> None;
     def exit_module_item(nd: uni.ModuleItem) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
