@@ -13,6 +13,7 @@ import ctypes;
 import tempfile;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
+import from jaclang.jac0core.jir { _clib_header_deps, compute_module_key }
 
 def _libm -> str | None {
     for cand in [
@@ -99,15 +100,57 @@ test "a clib header binding drives a real extern call through the JIT" {
     )}";
 }
 
+test "a bound header is a cache dependency, so editing it flips the module key" {
+    d = tempfile.mkdtemp();
+    hdr_path = os.path.join(d, "hdr.h");
+    with open(hdr_path, "w") as f {
+        f.write("double sqrt(double x);\n");
+    }
+    sub_path = os.path.join(d, "sub.h");
+    with open(sub_path, "w") as f {
+        f.write("int a;\n");
+    }
+    app_path = os.path.join(d, "app.na.jac");
+    with open(app_path, "w") as f {
+        f.write('import from clib("m", header="hdr.h") { sqrt }\n');
+    }
+    deps = [os.path.basename(p) for p in _clib_header_deps(app_path)];
+    assert "hdr.h" in deps , deps;
+    k0 = compute_module_key(app_path);
+
+    # editing the bound header changes the key (cache would be re-synthesized).
+    with open(hdr_path, "w") as f {
+        f.write("double sqrt(double x);\nint frexp(double x);\n");
+    }
+    k1 = compute_module_key(app_path);
+    assert k0 != k1 , "editing the bound header must invalidate the .jir";
+
+    # a quoted-local #include is tracked transitively.
+    with open(hdr_path, "w") as f {
+        f.write('#include "sub.h"\ndouble sqrt(double x);\n');
+    }
+    assert "sub.h" in [os.path.basename(p) for p in _clib_header_deps(app_path)] , "transitive #include must be tracked";
+    k2 = compute_module_key(app_path);
+    with open(sub_path, "w") as f {
+        f.write("int b;\n");
+    }
+    assert compute_module_key(app_path) != k2 , "editing an included header must invalidate";
+
+    # a missing header degrades gracefully (no crash) and still flips the key.
+    os.remove(hdr_path);
+    os.remove(sub_path);
+    assert compute_module_key(app_path) != k2 , "removing a header must invalidate";
+}
+
 test "the compact clib(...) form round-trips through unparse" {
     hdr = "double sqrt(double x);\n";
     app = 'import from clib("m", header="hdr.h") { sqrt }\n';
     (prog, ir) = _build(hdr, app);
     assert not prog.errors_had , f"errors: {[str(e) for e in prog.errors_had]}";
     out = ir.unparse();
-    # the sugar is preserved (not expanded to the full binding decls).
-    assert "clib(" in out.replace(" ", "") , out;
-    assert 'header=' in out.replace(" ", "") , out;
+    # the sugar is preserved (not expanded to the full binding decls) and is
+    # rendered tight (no loose spaces around the parens/`=`), like a call.
+    assert 'clib("m", header="hdr.h")' in out , out;
     assert "sqrt" in out , out;
     # and the round-tripped text still compiles.
     d = tempfile.mkdtemp();
