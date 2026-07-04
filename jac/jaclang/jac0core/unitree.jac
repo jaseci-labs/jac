@@ -467,6 +467,7 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
         is_absorb: bool,
         is_typed: bool = False,
         clib_decls: (Sequence[UniNode] | None) = None,
+        clib_header: (String | None) = None,
         hint: (SubTag[Token] | None) by postinit;
 
     def postinit -> None;
