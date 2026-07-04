@@ -216,3 +216,42 @@ test "a consumed, unborrowed own binding is marked proven-unique" {
     }
     assert proven >= 1 , "expected the consumed, unborrowed own binding to be proven-unique";
 }
+
+# --- Regression: diagnostic help text is a template, formatted with the same
+# kwargs as the message. E1301's help must mention the binding by name, not a
+# literal {name} placeholder. ----------------------------------------------
+test "E1301 help text substitutes the binding name, not a literal placeholder" {
+    prog = compile_fixture("use_after_move.jac");
+    alerts = [
+        a
+        for a in {*(list(prog.errors_had) + list(prog.warnings_had))}
+        if a.code is not None and a.code.code == "E1301"
+    ];
+    assert len(alerts) == 1 , "expected exactly one E1301 alert";
+    rendered = alerts[0].pretty_print();
+    assert "'a' is an `own` binding" in rendered , "help text not formatted with the binding name";
+    assert "{name}" not in rendered , "literal {name} placeholder leaked into rendered help text";
+}
+
+# --- Regression: a borrow expression (&x / &mut x) type-checks as its operand,
+# not <Unknown>. Otherwise valid borrow code spuriously fails with E1001/E1053
+# "Cannot assign <Unknown> ...", which used to mask the borrow checker behind
+# unrelated type noise. -------------------------------------------------------
+test "a borrow-typed program type-checks with no errors" {
+    prog = compile_fixture("param_borrow_passthrough_ok.jac");
+    assert len(prog.errors_had) == 0 , f"expected no errors; got:\n  {render_alerts(
+        prog
+    )}";
+}
+
+test "a borrow-conflict fixture reports only its ownership code, no type fallout" {
+    prog = compile_fixture("two_mut_aliases.jac");
+    fallout = [
+        a
+        for a in list(prog.errors_had)
+        if a.code is not None and not a.code.code.startswith("E13")
+    ];
+    assert len(fallout) == 0 , f"unexpected non-ownership errors: {render_alerts(
+        prog
+    )}";
+}
