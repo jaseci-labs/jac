@@ -162,6 +162,13 @@ test "no E1305 when an own parameter is consumed by return" {
     ]}";
 }
 
+test "no E1301 when an own parameter is returned (the return is not a re-use)" {
+    prog = compile_fixture("own_param_consumed_ok.jac");
+    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
 test "E1305: an own parameter that is never consumed leaks" {
     prog = compile_fixture("own_param_leak.jac");
     assert count_code(prog, "E1305") == 1 , f"expected one E1305, errors={[
@@ -218,6 +225,13 @@ test "E1301: reading an owned value after it is sealed into managed storage" {
 test "E1301: moving a pre-loop own binding inside a loop body is rejected" {
     prog = compile_fixture("move_in_loop.jac");
     assert count_code(prog, "E1301") >= 1 , f"expected E1301 for loop-depth move, errors={[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
+test "no E1301 when a pre-loop own binding is only read (not moved) in a loop" {
+    prog = compile_fixture("read_in_loop_ok.jac");
+    assert count_code(prog, "E1301") == 0 , f"unexpected E1301 for plain read in loop, errors={[
         str(e) for e in prog.errors_had
     ]}";
 }

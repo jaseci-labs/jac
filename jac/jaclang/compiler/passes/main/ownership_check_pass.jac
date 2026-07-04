@@ -64,6 +64,7 @@ obj OwnershipCheckPass(UniPass) {
     def _borrow_target(nd: uni.Assignment) -> (uni.Name | None);
     def _borrow_source_owner(nd: uni.Assignment) -> (uni.Name | None);
     def _assign_kill_gen(nd: uni.Assignment) -> tuple[set[SymId], set[SymId]];
+    def _cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None);
     def _call_move_gen(nd: uni.UniCFGNode) -> set[SymId];
     def _return_move_gen(nd: uni.UniCFGNode) -> set[SymId];
     def _solve_forward_dataflow(
@@ -107,6 +108,7 @@ obj OwnershipCheckPass(UniPass) {
     def _classify_access(nd: uni.Name) -> AccessKind;
     def _is_write_target(nd: uni.Name) -> bool;
     def _is_read_name(nd: uni.Name) -> bool;
+    def _is_move_producing_use(nd: uni.Name) -> bool;
     def _target_owner_sym(nd: uni.Expr) -> (SymId | None);
     def _call_params(call: uni.FuncCall) -> Sequence[uni.Expr | uni.KWPair];
 }
