@@ -97,6 +97,7 @@ obj OwnershipCheckPass(UniPass) {
     ) -> (list[tuple[str, uni.UniNode]] | None);
 
     def _sym_id(nd: uni.UniNode | None) -> (SymId | None);
+    def _name_sym_id(nd: uni.Name) -> SymId;
     def _owned_sym_of(nd: uni.UniNode | None) -> (SymId | None);
     def _borrow_sym_of(nd: uni.UniNode | None) -> (SymId | None);
     def _owned_name(sym_id: SymId, fallback: str) -> str;
