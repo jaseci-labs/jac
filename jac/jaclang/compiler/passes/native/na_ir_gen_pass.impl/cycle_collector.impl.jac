@@ -100,9 +100,7 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
         ir.Constant(i8, 0),
         name="cyc.off"
     );
-    b.cbranch(
-        b.or_(_pr_collecting, _pr_disabled, name="pr.skip"), pr_done, pr_trigger
-    );
+    b.cbranch(b.or_(_pr_collecting, _pr_disabled, name="pr.skip"), pr_done, pr_trigger);
 
     b = ir.IRBuilder(pr_trigger);
     b.call(collect_fn, []);
