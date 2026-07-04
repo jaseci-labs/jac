@@ -286,7 +286,7 @@ impl CastBuildPass.proc_decl(nd: object) -> object {
     if "static" in storage and self._func_depth > 0 {
         self.emit_c_diag(nd, 4206, name=nd.name);
     }
-    if "extern" in storage and nd?.init is None {
+    if "extern" in storage and c_field(nd, "init") is None {
         return [];
     }
     if isinstance(inner, c_ast.FuncDecl) {
@@ -301,7 +301,7 @@ impl CastBuildPass.proc_decl(nd: object) -> object {
 
     self._record_scalar_type(nd.name, inner);
     target = self._ident(nd, nd.name);
-    nd_init = nd?.init;
+    nd_init = c_field(nd, "init");
 
     arr_elem = malloc_array_match(nd_init) if nd_init is not None else None;
     if arr_elem is not None {
@@ -662,14 +662,15 @@ impl CastBuildPass._conv_stmts(items: list) -> list[uni.UniNode] {
 }
 
 impl CastBuildPass._for_promotable(nd: object) -> bool {
-    init_node = nd?.init;
+    init_node = c_field(nd, "init");
     cond_node = nd.cond;
     step_node = nd?.next;
     ok_init = False;
     if isinstance(init_node, c_ast.DeclList) {
-        ok_init = len(init_node.decls) == 1 and init_node.decls[0]?.init is not None;
+        ok_init = len(init_node.decls) == 1
+        and c_field(init_node.decls[0], "init") is not None;
     } elif isinstance(init_node, c_ast.Decl) {
-        ok_init = init_node?.init is not None;
+        ok_init = c_field(init_node, "init") is not None;
     } elif isinstance(init_node, c_ast.Assignment) {
         ok_init = init_node.op == "=";
     }
@@ -703,7 +704,7 @@ impl CastBuildPass._for_clause_stmts(clause_node: object) -> list[uni.UniNode] {
 
 impl CastBuildPass.proc_for(nd: object) -> object {
     promotable = self._for_promotable(nd);
-    init_stmts = self._for_clause_stmts(nd?.init);
+    init_stmts = self._for_clause_stmts(c_field(nd, "init"));
     step_stmts = self._for_clause_stmts(nd?.next);
     body_stmts = self._block(nd.stmt) if nd.stmt is not None else [];
     if promotable and init_stmts and step_stmts {
@@ -1340,7 +1341,7 @@ impl CastBuildPass._decl_array(nd: object) -> object {
     annot = uni.SubTag[uni.Expr](tag=list_ann, kid=[list_ann]);
     target = self._ident(nd, nd.name);
     value: uni.Expr | None = None;
-    nd_init = nd?.init;
+    nd_init = c_field(nd, "init");
     if nd_init is not None {
         iv = self.conv_expr(nd_init);
         value = iv if isinstance(iv, uni.Expr) else None;

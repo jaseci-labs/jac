@@ -48,7 +48,7 @@ import from jaclang.compiler.cfront.enum_prepass {
     EnumShape,
     build_enum_map
 }
-import from jaclang.compiler.cfront.c_common { eval_enumerators, jac_id }
+import from jaclang.compiler.cfront.c_common { eval_enumerators, jac_id, c_field }
 
 glob _CONVERT_OVERRIDE: dict[str, str] = {
          "FileAST": "proc_file_ast",

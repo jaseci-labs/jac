@@ -29,7 +29,7 @@ glob BREADTH: list = [
          ("do_while.c", []),
          ("do_while_continue.c", ["W4203"]),
          ("edge_cases.c", ["W4202", "W4290", "W4290"]),
-         ("edge_cases_2.c", ["W4290"]),
+         ("edge_cases_2.c", ["W4207", "W4290"]),
          ("edge_cases_3.c", ["W4290", "W4290"]),
          ("enum_collision.c", []),
          ("enum_flags.c", []),
@@ -72,7 +72,7 @@ glob BREADTH: list = [
          ("switch_basic.c", []),
          ("switch_fallthrough.c", ["W4202"]),
          ("ternary.c", []),
-         ("cpython/mysnprintf.c", []),
+         ("cpython/mysnprintf.c", ["W4207"]),
          ("cpython/pystrcmp.c", []),
          ("cpython/rotatingtree.c", []),
 
@@ -199,12 +199,13 @@ test "cpython/pystrcmp.c lifts a real-world file (walrus loop cond, ternary)" {
     assert res.diags == [] , res.diags;
 }
 
-test "cpython/mysnprintf.c lifts a scalar typedef to `glob` + keyword param" {
+test "cpython/mysnprintf.c lifts a scalar typedef to `glob` + flags its variadic" {
     res = lift_c_str(_read("cpython/mysnprintf.c"), "cpython/mysnprintf.c");
     out = res.module.unparse(requires_format=True);
     # `typedef ... va_list` -> a module `glob` alias (not a bare assignment)
     assert "glob va_list = " in out , out;
-    assert res.diags == [] , res.diags;
+    # `PyOS_snprintf(..., ...)` is variadic -> the one faithful hole (W4207)
+    assert [d[0] for d in res.diags] == ["W4207"] , res.diags;
 }
 
 test "cpython/rotatingtree.c escapes reserved-keyword C identifiers" {
