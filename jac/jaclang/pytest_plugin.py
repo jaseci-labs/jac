@@ -298,14 +298,26 @@ class JacFile(pytest.File):
                 with _scoped_syspath(base_dir):
                     importlib.import_module(qualified_name)
             except Exception as exc:
-                # A test file that was explicitly collected but fails to import
-                # is a collection *error*, not an empty result. Swallowing it
-                # would convert a broken test module into a silently passing run
-                # (issue #7150). Surface it so the session reports and exits
-                # non-zero.
-                raise self.CollectError(
-                    f"failed to import Jac test module {self.path}: {exc!r}"
-                ) from exc
+                # A test file that fails to import is not an empty result --
+                # swallowing it silently converts a broken test module into a
+                # passing run (issue #7150). When the file was named directly on
+                # the command line (``jac test foo.na.jac``) surface it as a hard
+                # collection error, matching pytest's contract for an
+                # unimportable ``test_*.py``, so a broken target can never
+                # masquerade as a pass. During directory recursion, where one
+                # unrelated broken file should not abort the whole sweep,
+                # downgrade to a non-fatal diagnostic on stderr instead.
+                explicit = str(self.path.resolve()) in _explicit_targets(self.config)
+                if explicit:
+                    raise self.CollectError(
+                        f"failed to import Jac test module {self.path}: {exc!r}"
+                    ) from exc
+                print(
+                    f"jac: skipping test file that failed to import: "
+                    f"{self.path}: {exc!r}",
+                    file=sys.stderr,
+                )
+                return []
         finally:
             sys.stdout.close()
             sys.stdout = old_stdout
