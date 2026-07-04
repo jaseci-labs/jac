@@ -26,6 +26,13 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     collecting_gv.initializer = ir.Constant(i8, 0);
     self.rc_collecting_gv = collecting_gv;
 
+    cycles_enabled_gv = ir.GlobalVariable(
+        self.llvm_module, i8, name="__rc_cycles_enabled"
+    );
+    cycles_enabled_gv.linkage = "weak";
+    cycles_enabled_gv.initializer = ir.Constant(i8, 0);
+    self.rc_cycles_enabled_gv = cycles_enabled_gv;
+
     collect_fnty = ir.FunctionType(ir.VoidType(), []);
     collect_fn = ir.Function(
         self.llvm_module, collect_fnty, name="__rc_collect_cycles"
@@ -84,12 +91,17 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     );
 
     b = ir.IRBuilder(pr_chk_thresh);
+    _pr_collecting = b.icmp_unsigned(
+        "!=", b.load(collecting_gv, name="coll"), ir.Constant(i8, 0), name="coff"
+    );
+    _pr_disabled = b.icmp_unsigned(
+        "==",
+        b.load(cycles_enabled_gv, name="cyc.en"),
+        ir.Constant(i8, 0),
+        name="cyc.off"
+    );
     b.cbranch(
-        b.icmp_unsigned(
-            "!=", b.load(collecting_gv, name="coll"), ir.Constant(i8, 0), name="coff"
-        ),
-        pr_done,
-        pr_trigger
+        b.or_(_pr_collecting, _pr_disabled, name="pr.skip"), pr_done, pr_trigger
     );
 
     b = ir.IRBuilder(pr_trigger);
