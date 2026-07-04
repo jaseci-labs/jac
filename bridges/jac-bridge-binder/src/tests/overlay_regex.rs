@@ -6,6 +6,12 @@ use rustdoc_types::Crate;
 
 use crate::{apply_overlay, classify, emit, parse_overlay};
 
+fn sig_contains(src: &str, pat: &str) -> bool {
+    let a: String = src.chars().filter(|c| !c.is_whitespace()).collect();
+    let b: String = pat.chars().filter(|c| !c.is_whitespace()).collect();
+    a.contains(&b)
+}
+
 fn load_regex_doc() -> Crate {
     let candidates = [
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/regex-1.12.4.json"),
@@ -81,8 +87,8 @@ fn skip_type_removes_from_spec_and_codegen() {
     assert!(!spec.skips.iter().any(|s| s.item.starts_with("RegexSet::")));
 
     let src = emit(&spec);
-    assert!(!src.contains("pub struct RegexSet("), "skipped type leaked\n{src}");
-    assert!(src.contains("pub struct Regex("), "Regex must survive\n{src}");
+    assert!(!sig_contains(&src, "pub struct RegexSet("), "skipped type leaked\n{src}");
+    assert!(sig_contains(&src, "pub struct Regex("), "Regex must survive\n{src}");
 }
 
 #[test]
@@ -103,9 +109,9 @@ fn rename_changes_exposed_name_not_call_target() {
 
     let src = emit(&spec);
     // Exposed name is renamed…
-    assert!(src.contains("pub fn matches(&self,"), "renamed fn missing\n{src}");
+    assert!(sig_contains(&src, "pub fn matches(&self,"), "renamed fn missing\n{src}");
     // …but the Rust call target is still the real method.
-    assert!(src.contains("self.0.is_match("), "call target changed\n{src}");
+    assert!(sig_contains(&src, "self.0.is_match("), "call target changed\n{src}");
     // Regex no longer exposes the old name (RegexSet::is_match is untouched, so
     // check the renamed method's body sits next to the new signature).
     let matches_line = src.find("pub fn matches(&self,").unwrap();
@@ -122,7 +128,7 @@ fn inject_source_appears_in_codegen() {
     apply_overlay(&mut spec, &overlay).unwrap();
 
     let src = emit(&spec);
-    assert!(src.contains("sentinel_method"), "injected method missing\n{src}");
+    assert!(sig_contains(&src, "sentinel_method"), "injected method missing\n{src}");
 }
 
 // ── reserved directives fail loud, not silently ────────────────────────────────
