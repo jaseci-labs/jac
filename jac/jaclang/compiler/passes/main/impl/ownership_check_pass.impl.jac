@@ -2,7 +2,11 @@ import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.diagnostics { E1301, E1302, E1303, E1304, E1306 }
 
-impl OwnershipCheckPass.before_pass -> None {
+impl OwnershipCheckPass.postinit -> None {
+    super.postinit();
+}
+
+impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self.owned_syms = set();
     self.owned_decl = {};
     self.consumed_syms = set();
@@ -24,21 +28,17 @@ impl OwnershipCheckPass.before_pass -> None {
     self.idx_concurrent = [];
     self.name_uses_by_sym = {};
 
-    mod_root = self.ir_in;
-    if mod_root is None {
-        return;
-    }
-    self._build_index(mod_root);
+    self._build_index(ir_in);
     self._collect_owned();
     self._collect_borrows();
     self._collect_params();
     if not self.owned_syms and not self.borrow_syms {
-        return;
+        return ir_in;
     }
 
     cfg_nodes = [
         n
-        for n in mod_root.flatten()
+        for n in ir_in.flatten()
         if isinstance(n, uni.UniCFGNode)
     ];
     self._run_dataflow(cfg_nodes);
@@ -48,7 +48,9 @@ impl OwnershipCheckPass.before_pass -> None {
     self._emit_loop_move_diagnostics();
     self._emit_diagnostics();
     self._emit_borrow_diagnostics();
+    self._emit_move_while_borrowed(cfg_nodes);
     self._emit_escape_diagnostics();
+    return ir_in;
 }
 
 impl OwnershipCheckPass._is_own_decl(nd: uni.Assignment) -> (uni.Name | None) {
@@ -220,7 +222,7 @@ impl OwnershipCheckPass._return_roots_at_param_borrow(nd: uni.Expr | None) -> bo
 impl OwnershipCheckPass._borrow_region(sym_id: SymId) -> (uni.UniScopeNode | None) {
     owner_id = self._borrow_owner_of(sym_id);
     if owner_id is not None and owner_id in self.owned_decl {
-        return self._nearest_scope(self.owned_decl[owner_id]);
+        return self.owned_decl[owner_id].find_parent_of_type(uni.UniScopeNode);
     }
     return None;
 }
@@ -293,7 +295,7 @@ impl OwnershipCheckPass._cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None) 
     if isinstance(sub, uni.UniCFGNode) {
         return sub;
     }
-    return self._nearest_cfg(sub);
+    return sub.find_parent_of_type(uni.UniCFGNode);
 }
 
 impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
@@ -503,28 +505,6 @@ impl OwnershipCheckPass._run_reaching_borrows(cfg_nodes: list[uni.UniCFGNode]) -
     );
 }
 
-impl OwnershipCheckPass._nearest_cfg(nd: uni.UniNode) -> (uni.UniCFGNode | None) {
-    cur = nd.parent;
-    while cur is not None {
-        if isinstance(cur, uni.UniCFGNode) {
-            return cur;
-        }
-        cur = cur.parent;
-    }
-    return None;
-}
-
-impl OwnershipCheckPass._nearest_scope(nd: uni.UniNode) -> (uni.UniScopeNode | None) {
-    cur = nd.parent;
-    while cur is not None {
-        if isinstance(cur, uni.UniScopeNode) {
-            return cur;
-        }
-        cur = cur.parent;
-    }
-    return None;
-}
-
 impl OwnershipCheckPass._is_ancestor(ancestor: uni.UniNode, nd: uni.UniNode) -> bool {
     cur: uni.UniNode | None = nd;
     while cur is not None {
@@ -695,7 +675,7 @@ impl OwnershipCheckPass._emit_loop_move_diagnostics -> None {
         if decl is None {
             continue;
         }
-        cfg_nd = self._nearest_cfg(nd);
+        cfg_nd = nd.find_parent_of_type(uni.UniCFGNode);
         if cfg_nd is not None and owned in self.in_consumed.get(id(cfg_nd), set()) {
             continue;
         }
@@ -723,7 +703,7 @@ impl OwnershipCheckPass._emit_diagnostics -> None {
         if id(nd) in self.loop_depth_flagged_names {
             continue;
         }
-        owner = self._nearest_cfg(nd);
+        owner = nd.find_parent_of_type(uni.UniCFGNode);
         if owner is None {
             continue;
         }
@@ -736,6 +716,101 @@ impl OwnershipCheckPass._emit_diagnostics -> None {
                 if move_site is not None
                 else None;
             self.emit(E1301, node_override=nd, name=sym_name, related=move_related);
+        } else {
+            earlier = self._earlier_move_in_node(nd, sid);
+            if earlier is not None {
+                sym_name = self._owned_name(sid, nd.sym_name);
+                self.emit(
+                    E1301,
+                    node_override=nd,
+                    name=sym_name,
+                    related=[(f"'{sym_name}' was moved here", earlier)]
+                );
+            }
+        }
+    }
+}
+
+impl OwnershipCheckPass._earlier_move_in_node(
+    nd: uni.Name, sid: SymId
+) -> (uni.Name | None) {
+    cfg = nd.find_parent_of_type(uni.UniCFGNode);
+    if cfg is None {
+        return None;
+    }
+    my_pos = nd.loc.pos_start;
+    best: uni.Name | None = None;
+    best_pos = -1;
+    for other in self.name_uses_by_sym.get(sid, []) {
+        if other is nd or other.loc.pos_start >= my_pos {
+            continue;
+        }
+        if other.find_parent_of_type(uni.UniCFGNode) is not cfg {
+            continue;
+        }
+        if self._is_move_producing_use(other) and other.loc.pos_start > best_pos {
+            best = other;
+            best_pos = other.loc.pos_start;
+        }
+    }
+    return best;
+}
+
+impl OwnershipCheckPass._active_borrows_at(cfg: uni.UniCFGNode) -> set[SymId] {
+    return self.in_live_borrows.get(id(cfg), set()).intersection(
+        self.in_reaching_borrows.get(id(cfg), set())
+    );
+}
+
+impl OwnershipCheckPass._consumed_gen_at(nd: uni.UniCFGNode) -> set[SymId] {
+    gen: set[SymId] = set();
+    if isinstance(nd, uni.Assignment) {
+        (_kill, g) = self._assign_kill_gen(nd);
+        for x in g {
+            gen.add(x);
+        }
+    }
+    for x in self._call_move_gen(nd) {
+        gen.add(x);
+    }
+    for x in self._return_move_gen(nd) {
+        gen.add(x);
+    }
+    return gen;
+}
+
+impl OwnershipCheckPass._emit_move_while_borrowed(
+    cfg_nodes: list[uni.UniCFGNode]
+) -> None {
+    for n in cfg_nodes {
+        active = self._active_borrows_at(n);
+        if not active {
+            continue;
+        }
+        entry = self.in_consumed.get(id(n), set());
+        for owner_id in self._consumed_gen_at(n) {
+            if owner_id in entry {
+                continue;
+            }
+            for borrow_id in active {
+                if self._borrow_owner_of(borrow_id) == owner_id
+                and borrow_id not in self.e1304_borrow_ids {
+                    borrow_site = self.borrow_created_at.get(borrow_id);
+                    borrow_name = self._borrow_display_name(borrow_id, "");
+                    e1304_related = [
+                        (f"borrow of '{borrow_name}' created here", borrow_site)
+                    ]
+                        if borrow_site is not None
+                        else None;
+                    self.emit(
+                        E1304,
+                        node_override=n,
+                        name=self._owned_name(owner_id, ""),
+                        related=e1304_related
+                    );
+                    self.e1304_borrow_ids.add(borrow_id);
+                }
+            }
         }
     }
 }
@@ -750,9 +825,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
         if owner is not None and target is not None {
             borrow_id = self._name_sym_id(target);
             owner_id = self._name_sym_id(owner);
-            active = self.in_live_borrows.get(id(cfg), set()).intersection(
-                self.in_reaching_borrows.get(id(cfg), set())
-            );
+            active = self._active_borrows_at(cfg);
             for other in active {
                 if self._borrow_owner_of(other) != owner_id {
                     continue;
@@ -776,7 +849,9 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                     break;
                 }
             }
-            owner_scope = self._nearest_scope(self.owned_decl.get(owner_id, owner));
+            owner_scope = self.owned_decl.get(owner_id, owner).find_parent_of_type(
+                uni.UniScopeNode
+            );
             if owner_scope is not None and borrow_id not in emitted_e1304 {
                 borrow_site = self.borrow_created_at.get(borrow_id);
                 borrow_name = self._borrow_display_name(borrow_id, "");
@@ -806,9 +881,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
             if tgt_owner_id is None {
                 continue;
             }
-            active = self.in_live_borrows.get(id(cfg), set()).intersection(
-                self.in_reaching_borrows.get(id(cfg), set())
-            );
+            active = self._active_borrows_at(cfg);
             for borrow_id in active {
                 if (
                     self._borrow_owner_of(borrow_id) == tgt_owner_id
@@ -941,8 +1014,8 @@ impl OwnershipCheckPass._emit_escape_diagnostics -> None {
             if source_owner is None or source_owner.sym is None {
                 continue;
             }
-            region = self._nearest_scope(source_owner.sym.decl);
-            dest = self._nearest_scope(tgt.sym.decl);
+            region = source_owner.sym.decl.find_parent_of_type(uni.UniScopeNode);
+            dest = tgt.sym.decl.find_parent_of_type(uni.UniScopeNode);
             if self._region_strictly_outlives(dest, region) {
                 owner_id = self._name_sym_id(source_owner);
                 owner_name = self._owned_name(owner_id, tgt.sym_name);

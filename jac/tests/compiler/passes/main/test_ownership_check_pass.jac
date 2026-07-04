@@ -199,6 +199,42 @@ test "a pre-loop own binding only read (not moved) in a loop is clean" {
     expect_ownership_codes(prog, []);
 }
 
+# --- Intra-statement moves (E1301): a single statement is one CFG node, so a
+# value consumed by one sub-expression and re-used by a later one in the SAME
+# statement must still be caught -- the entry-consumed set can't see it. -------
+test "E1301: an own value passed twice to one call is moved twice" {
+    prog = compile_fixture("intra_stmt_double_move_call.jac");
+    expect_ownership_codes(prog, ["E1301"]);
+}
+
+test "E1301: an own value moved then read within one statement" {
+    prog = compile_fixture("intra_stmt_move_then_read.jac");
+    expect_ownership_codes(prog, ["E1301"]);
+}
+
+test "a method receiver read alongside a moved argument is clean (one move)" {
+    prog = compile_fixture("method_recv_and_arg_ok.jac");
+    expect_ownership_codes(prog, []);
+}
+
+# --- Move-out from under a live borrow (E1304): relocating an owner while a
+# borrow of it is still live-and-reaching leaves the borrow dangling. This is
+# the mid-scope move form of "destroyed while borrowed"; the scope-exit form is
+# covered by destroy_while_borrowed.jac. --------------------------------------
+test "E1304: moving an owner out while a borrow of it is still live" {
+    prog = compile_fixture("move_while_borrowed.jac");
+    expect_ownership_codes(prog, ["E1304"]);
+}
+
+test "moving an owner after its borrow is dead (NLL) is clean" {
+    prog = compile_fixture("move_after_borrow_dead_ok.jac");
+    expect_ownership_codes(prog, []);
+}
+
+# Known limitation (issue #6905, deferred): a borrow captured by a closure that
+# escapes its scope (`return (lambda : v)`) is not yet flagged -- closure capture
+# is outside Phase 1 escape analysis. No test pins it until the feature lands.
+
 # --- Phase 2 seed: a consumed, never-borrowed own binding is proven-unique, so
 # the pass stamps `sym.is_proven_unique` for the backend to elide RC churn. ----
 test "a consumed, unborrowed own binding is marked proven-unique" {

@@ -3,7 +3,7 @@ import from enum { Enum }
 import from typing { TypeAlias }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
-import from jaclang.jac0core.passes.uni_pass { UniPass }
+import from jaclang.jac0core.passes.transform { Transform }
 
 glob SymId: TypeAlias = int,
      DataflowTransfer: TypeAlias = Callable[[uni.UniCFGNode, set[SymId]], set[SymId]];
@@ -25,8 +25,11 @@ obj BorrowMeta {
         is_mut: bool = False;
 }
 
-obj OwnershipCheckPass(UniPass) {
-    has owned_syms: set[SymId] = set(),
+obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
+    has ir_in: uni.Module,
+        prog: any,
+        cancel_token: any = None,
+        owned_syms: set[SymId] = set(),
         owned_decl: dict[SymId, uni.Name] = {},
         consumed_syms: set[SymId] = set(),
         proven_unique_syms: set[SymId] = set(),
@@ -47,7 +50,8 @@ obj OwnershipCheckPass(UniPass) {
         idx_concurrent: list[uni.ConcurrentExpr] = [],
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {};
 
-    def before_pass -> None;
+    def postinit -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
     def _build_index(tree: uni.UniNode) -> None;
     def _collect_owned -> None;
     def _collect_borrows -> None;
@@ -83,13 +87,15 @@ obj OwnershipCheckPass(UniPass) {
     def _live_transfer(nd: uni.UniCFGNode, out_set: set[SymId]) -> set[SymId];
     def _run_borrow_liveness(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _run_reaching_borrows(cfg_nodes: list[uni.UniCFGNode]) -> None;
-    def _nearest_cfg(nd: uni.UniNode) -> (uni.UniCFGNode | None);
-    def _nearest_scope(nd: uni.UniNode) -> (uni.UniScopeNode | None);
+    def _active_borrows_at(cfg: uni.UniCFGNode) -> set[SymId];
     def _is_ancestor(ancestor: uni.UniNode, nd: uni.UniNode) -> bool;
     def _loop_depth(nd: uni.UniNode) -> int;
     def _emit_loop_move_diagnostics -> None;
     def _emit_diagnostics -> None;
+    def _earlier_move_in_node(nd: uni.Name, sid: SymId) -> (uni.Name | None);
     def _emit_borrow_diagnostics -> None;
+    def _consumed_gen_at(nd: uni.UniCFGNode) -> set[SymId];
+    def _emit_move_while_borrowed(cfg_nodes: list[uni.UniCFGNode]) -> None;
     def _emit_escape_diagnostics -> None;
     def _escaping_borrow_owner(nd: uni.Expr | None) -> (str | None);
     def _owner_decl_related(
