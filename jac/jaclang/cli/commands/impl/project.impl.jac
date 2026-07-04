@@ -1518,9 +1518,6 @@ def _bundle_binary(config: any, output: str) -> int {
     return 0;
 }
 
-# Single-binary trailer: magic(8) + payload length u64-LE(8) + sha256 hex(64).
-# Authoritative definition: MAGIC / TRAILER_LEN in jac/launcher/runtime.zig --
-# keep byte-for-byte in sync.
 glob _BIN_MAGIC: bytes = b"JACBIN01",
      _BIN_LEN_FMT: str = "<Q",
      _BIN_TRAILER_LEN: int = 8 + 8 + 64;
@@ -1569,9 +1566,7 @@ def _app_entry_module(img: Path, name: str, entry_point: str) -> (str | None) {
             return f"{name}.{cand}";
         }
     }
-    # "main" is the config default, so a missing main.jac keeps the fallback
-    # chain; any other configured entry was set deliberately and failing to
-    # seal it is a build error, not a cue to guess.
+
     if configured and configured != "main" {
         console.error(
             f"Entry point '{entry_point}' from jac.toml has no sealed module "
@@ -1579,9 +1574,7 @@ def _app_entry_module(img: Path, name: str, entry_point: str) -> (str | None) {
         );
         return None;
     }
-    # No launchable module sealed. Never fall back to the bare package: runpy
-    # needs {name}.__main__, which was just checked. Fail the build with the
-    # truth instead of shipping a binary that dies at startup.
+
     tried = ", ".join(f"{name}.{c}" for c in dict.fromkeys(candidates));
     console.error(
         f"No entry module sealed for '{name}' (tried {tried}). "

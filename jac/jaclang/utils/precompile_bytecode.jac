@@ -34,10 +34,6 @@ import from jaclang.jac0core.sealed {
     _SEC_DEBUG_SRC as SEALED_SEC_DEBUG_SRC
 }
 
-# Written at the end of a completed precompile loop (and removed before it
-# starts), so a builder can tell "the precompiler ran to completion" apart
-# from "it crashed mid-loop" without trusting the exit code -- see
-# jac/launcher/payload.zig `precompile`.
 glob RESULT_NAME: str = "PRECOMPILE_RESULT.json";
 
 def find_package_dir(source_dir: str) -> str | None {
@@ -112,9 +108,6 @@ def find_jac_files(package_dir: str) -> list[str] {
     return result;
 }
 
-"""The .jac files a seal must produce a JIR for: everything except the
-jac0core bootstrap tier (frozen separately by seal_bootstrap), native and
-client modules (no CPython bytecode), and nested sub-projects."""
 def sealable_sources(package_dir: str) -> list[str] {
     boot_prefix = str(Path(package_dir) / "jac0core") + os.sep;
     nested = _nested_project_dirs(package_dir);
@@ -228,16 +221,21 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
 def seal_finalize(
     pkg_path: Path, precompiled_dir: Path, pkg_name: str, pyver: str, embed_src: bool
 ) -> int {
-    # sealed.py re-declares the JIR container layout as pure-Python literals
-    # (it must import before any .jac can); refuse to seal if its reader has
-    # drifted from what jir.jac writes -- version AND geometry.
     writes = (
-        FORMAT_VERSION, HEADER_SIZE, SECTIONS_MAGIC,
-        SEC_BYTECODE, SEC_DEBUG_SRC, PRECOMPILE_SENTINEL
+        FORMAT_VERSION,
+        HEADER_SIZE,
+        SECTIONS_MAGIC,
+        SEC_BYTECODE,
+        SEC_DEBUG_SRC,
+        PRECOMPILE_SENTINEL
     );
     reads = (
-        SEALED_JIR_FORMAT_VERSION, SEALED_HEADER_SIZE, SEALED_SECTIONS_MAGIC,
-        SEALED_SEC_BYTECODE, SEALED_SEC_DEBUG_SRC, SEALED_SENTINEL
+        SEALED_JIR_FORMAT_VERSION,
+        SEALED_HEADER_SIZE,
+        SEALED_SECTIONS_MAGIC,
+        SEALED_SEC_BYTECODE,
+        SEALED_SEC_DEBUG_SRC,
+        SEALED_SENTINEL
     );
     if reads != writes {
         console.error(
@@ -341,11 +339,11 @@ def main {
         console.print("\nExamples:");
         console.print("  jac run utils/precompile_bytecode.jac./jac");
         console.print("  jac run utils/precompile_bytecode.jac./jac/jaclang/scale");
-        console.print(
-            "\n--seal: precompile, freeze the jac0core bootstrap, and emit"
-        );
+        console.print("\n--seal: precompile, freeze the jac0core bootstrap, and emit");
         console.print("        MANIFEST.json (JIR-authoritative image; .jac sources");
-        console.print("        stay on disk for tracebacks, never compiled at runtime).");
+        console.print(
+            "        stay on disk for tracebacks, never compiled at runtime)."
+        );
         console.print(
             "--seal-compile: compile only (exclude jac0core), no finalize -- the"
         );
@@ -356,7 +354,9 @@ def main {
         console.print(
             "        (verify completeness, build the manifest, freeze) -- resilient"
         );
-        console.print("        to the best-effort compile crashing on a native module.");
+        console.print(
+            "        to the best-effort compile crashing on a native module."
+        );
         console.print(
             "--debug-src: embed zlib source text in each .jir (dev tracebacks)."
         );
@@ -388,8 +388,8 @@ def main {
 
     jac_files = (
         sealable_sources(package_dir)
-        if exclude_jac0core
-        else find_jac_files(package_dir)
+            if exclude_jac0core
+            else find_jac_files(package_dir)
     );
     console.print(f"  Found {len(jac_files)} .jac files");
 
@@ -470,7 +470,12 @@ def main {
 
     (precompiled_dir / RESULT_NAME).write_text(
         json.dumps(
-            {"total": len(jac_files), "compiled": compiled, "reused": reused, "failed": failed}
+            {
+                "total": len(jac_files),
+                "compiled": compiled,
+                "reused": reused,
+                "failed": failed
+            }
         ) + "\n",
         encoding="utf-8"
     );

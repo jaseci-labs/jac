@@ -40,7 +40,9 @@ test "pure-python section reader agrees with jir.jac on a real JIR" {
     code = compile("X = 41 + 1", "<twin>", "exec");
     raw = marshal.dumps(code);
     src = zlib.compress(b"with entry { X = 42; }");
-    data = write_precompiled_jir(raw, "twin-key", FLAG_PRECOMPILED, {SEC_DEBUG_SRC: src});
+    data = write_precompiled_jir(
+        raw, "twin-key", FLAG_PRECOMPILED, {SEC_DEBUG_SRC: src}
+    );
     assert sealed._read_section(data, SEC_BYTECODE) == raw;
     assert sealed._read_section(data, SEC_DEBUG_SRC) == src;
     assert sealed._read_section(data, 0x7E) is None;
@@ -53,11 +55,21 @@ preserve (marshal bytes are not comparable: two content-equal trees can encode
 string sharing differently)."""
 def _same_code(x: any, y: any) -> bool {
     import types;
-    if x.co_filename != y.co_filename or x.co_code != y.co_code or x.co_name != y.co_name {
+    if x.co_filename != y.co_filename
+    or x.co_code != y.co_code
+    or x.co_name != y.co_name {
         return False;
     }
-    xs = [c for c in x.co_consts if isinstance(c, types.CodeType)];
-    ys = [c for c in y.co_consts if isinstance(c, types.CodeType)];
+    xs = [
+        c
+        for c in x.co_consts
+        if isinstance(c, types.CodeType)
+    ];
+    ys = [
+        c
+        for c in y.co_consts
+        if isinstance(c, types.CodeType)
+    ];
     return len(xs) == len(ys) and all(_same_code(a, b) for (a, b) in zip(xs, ys));
 }
 
@@ -71,10 +83,13 @@ test "co_filename patcher twins are exact inverses" {
     sentinel_code = marshal.loads(outbound);
     assert isinstance(sentinel_code, types.CodeType);
     assert sentinel_code.co_filename == f"{PRECOMPILE_SENTINEL}/mod.jac";
-    nested = [c for c in sentinel_code.co_consts if isinstance(c, types.CodeType)];
-    assert nested and all(
-        c.co_filename == f"{PRECOMPILE_SENTINEL}/mod.jac" for c in nested
-    );
+    nested = [
+        c
+        for c in sentinel_code.co_consts
+        if isinstance(c, types.CodeType)
+    ];
+    assert nested
+    and all(c.co_filename == f"{PRECOMPILE_SENTINEL}/mod.jac" for c in nested);
     back = sealed._patch_code_filenames(
         sentinel_code, PRECOMPILE_SENTINEL, "/repo/pkg"
     );
@@ -98,20 +113,24 @@ test "register_image hash-verifies its JIRs (fail-closed)" {
             marshal.dumps(compile("Y = 1", "<t>", "exec")), "k", FLAG_PRECOMPILED
         );
         (jdir / "mod.jir").write_bytes(data);
-        (pre / sealed.MANIFEST_NAME).write_text(json.dumps({
-            "format": sealed.MANIFEST_FORMAT,
-            "package": "sealed_twin_test_pkg",
-            "python_tag": sealed.python_tag(),
-            "jir_format_version": sealed.JIR_FORMAT_VERSION,
-            "modules": {
-                "mod.jac": {
-                    "module": "sealed_twin_test_pkg.mod",
-                    "jir": "mod.jir",
-                    "package": False,
-                    "sha256": hashlib.sha256(data).hexdigest()
+        (pre / sealed.MANIFEST_NAME).write_text(
+            json.dumps(
+                {
+                    "format": sealed.MANIFEST_FORMAT,
+                    "package": "sealed_twin_test_pkg",
+                    "python_tag": sealed.python_tag(),
+                    "jir_format_version": sealed.JIR_FORMAT_VERSION,
+                    "modules": {
+                        "mod.jac": {
+                            "module": "sealed_twin_test_pkg.mod",
+                            "jir": "mod.jir",
+                            "package": False,
+                            "sha256": hashlib.sha256(data).hexdigest()
+                        }
+                    }
                 }
-            }
-        }));
+            )
+        );
         img = sealed.register_image(pre);
         assert img is not None;
         sealed._images.remove(img);

@@ -21,22 +21,24 @@ glob _PKG_DIR: Path = Path(str(jaclang.__file__)).parent;
 test "_ABI64_ADAPTED matches the adapters defined in jac_abi64.c" {
     c_src = (
         _PKG_DIR / "compiler" / "passes" / "native" / "wasm_rt" / "jac_abi64.c"
-    ).read_text(encoding="utf-8");
+    ).read_text(
+        encoding="utf-8"
+    );
     defined = {str(m) for m in re.findall(r"__jac64_(\w+)\s*\(", c_src)};
     adapted = {str(x) for x in _ABI64_ADAPTED};
-    assert defined == adapted, (
+    assert defined == adapted , (
         f"only in .c: {sorted(defined - adapted)}; "
         f"only in _ABI64_ADAPTED: {sorted(adapted - defined)}"
     );
 }
 
 test "WASM_HOST_ABI matches the host functions in wasm_host.cl.jac" {
-    host_src = (
-        _PKG_DIR / "runtimelib" / "wasm_host.cl.jac"
-    ).read_text(encoding="utf-8");
+    host_src = (_PKG_DIR / "runtimelib" / "wasm_host.cl.jac").read_text(
+        encoding="utf-8"
+    );
     implemented = {str(m) for m in re.findall(r'"(\w+)": lambda', host_src)};
     declared = {str(x) for x in WASM_HOST_ABI};
-    assert implemented == declared, (
+    assert implemented == declared , (
         f"only in host impl: {sorted(implemented - declared)}; "
         f"only in WASM_HOST_ABI: {sorted(declared - implemented)}"
     );
