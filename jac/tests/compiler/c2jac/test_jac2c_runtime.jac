@@ -206,6 +206,30 @@ test "jac2c move optimization stays behaviorally correct with cc" {
     assert out == "14" , f"got {out!r}";
 }
 
+test "jac2c copies an aliased reference local but moves it at its last use" {
+    c_src = _emit_c(os.path.join(FIXTURES, "obj_alias.jac"));
+    # run_alias: `b = a` with a used again -> co-own via retain.
+    alias = _fn_body(c_src, "int run_alias(void)");
+    assert "jac_rc_retain(b)" in alias , f"aliased copy should retain:\n{alias}";
+    # run_transfer: `b = a` at a's last use -> move, no retain, a not released.
+    transfer = _fn_body(c_src, "int run_transfer(void)");
+    assert "jac_rc_retain(" not in transfer , f"last-use copy should move:\n{transfer}";
+    assert "jac_rc_release(a)" not in transfer , f"moved source must not be released:\n{transfer}";
+}
+
+test "jac2c reference-local aliasing is refcount-balanced under cc" {
+    if _cc() is None {
+        return;
+    }
+    out = _build_run(
+        "obj_alias.jac",
+        "extern int run_alias(void);\nextern int run_transfer(void);\n",
+        "\"%d %d\\n\", run_alias(), run_transfer()"
+    );
+    # run_alias: 3+3==6 (no double free). run_transfer: 7.
+    assert out == "6 7" , f"got {out!r}";
+}
+
 test "jac2c exceptions catch, propagate, and pass through with cc" {
     if _cc() is None {
         return;
