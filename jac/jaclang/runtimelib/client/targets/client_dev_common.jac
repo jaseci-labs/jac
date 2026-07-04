@@ -137,6 +137,33 @@ def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) 
     );
 }
 
+def prepare_vite_dev_compilation(project_dir: Path, entry_file: Path) -> tuple {
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    import from jaclang.runtimelib.client.vite_client_bundle {
+        make_client_bundle_builder
+    }
+
+    console.print("  Preparing compilation for Vite dev…", style="muted");
+    bundler = ViteBundler(project_dir=project_dir);
+    package_json_path = bundler._get_client_dir() / "configs" / "package.json";
+    if not package_json_path.exists() {
+        bundler.create_package_json();
+    }
+    builder = make_client_bundle_builder(project_dir);
+    if not builder.vite_package_json or not builder.vite_package_json.exists() {
+        builder.vite_package_json = package_json_path;
+    }
+    compiler = builder._get_compiler();
+    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
+    (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
+    if not mod {
+        raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
+    }
+    compiler.compile(mod, entry_file);
+    console.print("  ✔ Client modules compiled for dev mode", style="success");
+    return (bundler, compiler);
+}
+
 obj _ClientHmrHandler {
     has compiler: any,
         entry_file: Path,

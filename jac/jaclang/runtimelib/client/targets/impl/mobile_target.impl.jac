@@ -57,6 +57,7 @@ import from jaclang.runtimelib.client.targets.mobile.scaffold {
 }
 import from jaclang.runtimelib.client.targets.client_dev_common {
     _ClientHmrHandler,
+    prepare_vite_dev_compilation,
     install_dev_signal_handlers,
     stop_dev_watcher,
     terminate_dev_processes
@@ -221,11 +222,6 @@ impl MobileTarget.build(
 impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
-    import from jaclang.runtimelib.client.vite_client_bundle {
-        make_client_bundle_builder
-    }
-
     hot_watcher: any = None;
     (host_override, plat_mode) = _mobile_read_dev_env();
     vite_port = resolve_mobile_vite_port(project_dir, port);
@@ -258,27 +254,7 @@ impl MobileTarget.dev(
         _ensure_android_cleartext_for_lan_dev(project_dir);
     }
 
-    console.print("  Preparing compilation for Vite dev…", style="muted");
-    bundler = ViteBundler(
-        project_dir=project_dir, output_dir=None, minify=False, config_path=None
-    );
-    package_json_path = bundler._get_client_dir() / "configs" / "package.json";
-    if not package_json_path.exists() {
-        bundler.create_package_json();
-    }
-    builder = make_client_bundle_builder(project_dir);
-    if not builder.vite_package_json or not builder.vite_package_json.exists() {
-        builder.vite_package_json = package_json_path;
-    }
-    compiler = builder._get_compiler();
-    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
-
-    (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
-    if not mod {
-        raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
-    }
-    compiler.compile(mod, entry_file);
-    console.print("  ✔ Client modules compiled for dev mode", style="success");
+    (bundler, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
 
     toml_base_url = _get_api_base_url_str(project_dir);
     server_port = cast(int, resolve_mobile_server_port(toml_base_url, effective_api));

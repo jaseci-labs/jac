@@ -159,13 +159,10 @@ impl NativeDesktopTarget.start(
 impl NativeDesktopTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
-    import from jaclang.runtimelib.client.vite_client_bundle {
-        make_client_bundle_builder
-    }
     import from jaclang.runtimelib.watcher { JacFileWatcher }
     import from jaclang.runtimelib.client.targets.client_dev_common {
         _ClientHmrHandler,
+        prepare_vite_dev_compilation,
         resolve_port_or_next_available,
         ensure_watchdog_common,
         stop_dev_watcher,
@@ -179,24 +176,7 @@ impl NativeDesktopTarget.dev(
     broker_port = resolve_port_or_next_available(port, "broker");
     vite_port = resolve_port_or_next_available(5173, "Vite", reserved=[broker_port]);
 
-    console.print("  Preparing compilation for Vite dev…", style="muted");
-    bundler = ViteBundler(project_dir=project_dir);
-    package_json_path = bundler._get_client_dir() / "configs" / "package.json";
-    if not package_json_path.exists() {
-        bundler.create_package_json();
-    }
-    builder = make_client_bundle_builder(project_dir);
-    if not builder.vite_package_json or not builder.vite_package_json.exists() {
-        builder.vite_package_json = package_json_path;
-    }
-    compiler = builder._get_compiler();
-    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
-    (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
-    if not mod {
-        raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
-    }
-    compiler.compile(mod, entry_file);
-    console.print("  ✔ Client modules compiled for dev mode", style="success");
+    (bundler, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
 
     bundler.create_vite_config(
         entry_file,
