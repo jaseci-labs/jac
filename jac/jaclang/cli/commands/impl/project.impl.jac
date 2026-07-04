@@ -689,7 +689,7 @@ impl install(
     if extras {
         console.print(f"  Extras: {', '.join(extras)}", style="muted");
     }
-    if plan.is_empty() {
+    if plan.is_empty() and not config.rust_bridges {
         console.info("No dependencies to install.");
         return 0;
     }
@@ -727,7 +727,16 @@ impl install(
             plugin_failed = True;
         }
     }
-    if install_success and not plugin_failed {
+    rust_failed = False;
+    if config.rust_bridges {
+        console.print("\n  Installing Rust bridges...", style="muted");
+        for (crate, version) in config.rust_bridges.items() {
+            if _ensure_rust_bridge(crate, version, verbose) == "failed" {
+                rust_failed = True;
+            }
+        }
+    }
+    if install_success and not plugin_failed and not rust_failed {
         console.success("All dependencies installed");
         return 0;
     } else {
@@ -735,6 +744,104 @@ impl install(
         return 1;
     }
 }
+
+def _parse_rust_spec(spec: str) -> tuple {
+    body = spec[len("rust:"):].strip();
+    for sep in ("@", "==") {
+        if sep in body {
+            parts = body.split(sep, 1);
+            return (parts[0].strip(), parts[1].strip());
+        }
+    }
+    return (body, "*");
+}
+
+
+def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> str {
+    import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
+    import from jaclang.compiler.rust_bridge._builder {
+        build_bridge,
+        toolchain_available,
+        workspace_root
+    }
+    import from jaclang.compiler.rust_bridge._registry { registry_url, fetch_bridge }
+    lib = find_bridge_lib(name);
+    if lib is not None {
+        console.print(f"  ✔ rust:{name} ({version})", style="success");
+        if verbose {
+            console.print(f"    cached: {lib}", style="muted");
+        }
+        return "cached";
+    }
+    if registry_url() is not None {
+        try {
+            with console.status(
+                f"Fetching rust:{name} ({version}) from registry...", spinner="dots"
+            ) as _status {
+                dest = fetch_bridge(name, version, verbose);
+            }
+        } except Exception as e {
+            console.error(f"  ✗ rust:{name}: registry fetch failed — {e}");
+            dest = None;
+        }
+        if dest is not None {
+            console.print(f"  ✔ rust:{name} ({version}) — downloaded", style="success");
+            if verbose {
+                console.print(f"    installed: {dest}", style="muted");
+            }
+            return "downloaded";
+        }
+    }
+    if not toolchain_available() or workspace_root() is None {
+        console.print(f"  • rust:{name} ({version})", style="muted");
+        console.print(
+            "    not cached — set JAC_BRIDGE_REGISTRY to fetch, or install the " + "Rust toolchain + JAC_BRIDGE_WORKSPACE to build locally",
+            style="muted"
+        );
+        return "recorded";
+    }
+    try {
+        with console.status(
+            f"Building rust:{name} ({version})...", spinner="dots"
+        ) as _status {
+            dest = build_bridge(name, version);
+        }
+        console.print(f"  ✔ rust:{name} ({version}) — built", style="success");
+        if verbose {
+            console.print(f"    installed: {dest}", style="muted");
+        }
+        return "built";
+    } except Exception as e {
+        console.error(f"  ✗ rust:{name}: {e}");
+        return "failed";
+    }
+}
+
+
+def _add_rust_bridges(config: any, specs: list, verbose: bool) -> int {
+    console.print(f"\n🦀 Adding {len(specs)} Rust bridge(s)", style="bold");
+    failed = False;
+    for spec in specs {
+        (name, version) = _parse_rust_spec(spec);
+        if not name {
+            console.error(f"Invalid rust bridge spec: '{spec}'");
+            return 1;
+        }
+        config.add_dependency(name, version, dep_type="rust");
+        if _ensure_rust_bridge(name, version, verbose) == "failed" {
+            failed = True;
+        }
+    }
+    try {
+        config.save();
+        console.print("\n  ✔ Updated jac.toml [rust-bridges]", style="muted");
+    } except Exception as e {
+        console.error(f"Could not save jac.toml: {e}");
+        return 1;
+    }
+    return 1 if failed else 0;
+}
+
 
 impl add(
     packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
@@ -755,6 +862,25 @@ impl add(
             hint="Use 'jac add <package>' to add a package, or 'jac install' to install all dependencies."
         );
         return 1;
+    }
+    rust_specs = [
+        p
+        for p in packages
+        if isinstance(p, str) and p.startswith("rust:")
+    ];
+    if rust_specs {
+        packages = [
+            p
+            for p in packages
+            if p not in rust_specs
+        ];
+        rust_rc = _add_rust_bridges(config, rust_specs, verbose);
+        if rust_rc != 0 {
+            return rust_rc;
+        }
+        if not packages and not git {
+            return 0;
+        }
     }
     python = get_python_provider();
     ctx = InstallContext(verbose=verbose);
@@ -1380,6 +1506,36 @@ def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
     }
 }
 
+def _copy_rust_bridges(config: any, dest_dir: any, verbose: bool = False) -> int {
+    if not config.rust_bridges {
+        return 0;
+    }
+    import shutil;
+    import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
+    dest = Path(dest_dir);
+    dest.mkdir(parents=True, exist_ok=True);
+    copied = 0;
+    for crate in config.rust_bridges.keys() {
+        lib = find_bridge_lib(crate);
+        if lib is None {
+            console.warning(
+                f"  rust:{crate} not in cache — run 'jac install' before bundling"
+            );
+            continue;
+        }
+        shutil.copy2(lib, dest / lib.name);
+        copied += 1;
+        if verbose {
+            console.print(f"    bundled {lib.name}", style="muted");
+        }
+    }
+    if copied {
+        console.print(f"  ✔ bundled {copied} Rust bridge(s)", style="success");
+    }
+    return copied;
+}
+
+
 def _bundle_sealed(config: any, output: str) -> int {
     name = config.project.name;
     Path(output).mkdir(parents=True, exist_ok=True);
@@ -1388,6 +1544,7 @@ def _bundle_sealed(config: any, output: str) -> int {
     if dest is None {
         return 1;
     }
+    _copy_rust_bridges(config, dest);
     console.print(
         f"  ✔ Sealed image at [cyan]{dest}[/cyan] (JIR-authoritative; _precompiled/MANIFEST.json; sources retained for tracebacks)",
         style="success"
@@ -1473,6 +1630,7 @@ def _bundle_binary(config: any, output: str) -> int {
         f"({out_bin.stat().st_size:,} bytes)",
         style="success"
     );
+    _copy_rust_bridges(config, Path(output));
     console.print(f"  Run it directly: {out_bin.resolve()}", style="muted");
     return 0;
 }

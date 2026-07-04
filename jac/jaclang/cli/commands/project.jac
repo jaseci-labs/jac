@@ -235,6 +235,8 @@ def install(
         ('jac add "numpy>=1.24" pandas', "Add multiple packages with version"),
         ("jac add pytest --dev", "Add dev dependency"),
         ("jac add --git https://github.com/user/plugin.git", "Add from git"),
+        ("jac add rust:regex", "Add a Rust bridge crate to [rust-bridges]"),
+        ("jac add rust:regex@1.11", "Add a Rust bridge crate at a version"),
 
     ],
     group="project"

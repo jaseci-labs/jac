@@ -1812,3 +1812,42 @@ test "discover flags configs found in an ancestor directory" {
         );
     }
 }
+
+
+test "parse rust-bridges section" {
+    # [rust-bridges] populates JacConfig.rust_bridges as crate -> version.
+    toml = "[project]\nname = \"demo\"\n\n[rust-bridges]\nregex = \"1.11\"\nuuid = \"*\"\n";
+    cfg = JacConfig.from_toml_str(toml);
+    assert cfg.rust_bridges == {"regex": "1.11", "uuid": "*"} , cfg.rust_bridges;
+}
+
+
+test "add and remove rust bridge dependency" {
+    cfg = JacConfig.from_toml_str("[project]\nname = \"demo\"\n");
+    cfg.add_dependency("regex", "1.11", dep_type="rust");
+    assert cfg.rust_bridges == {"regex": "1.11"};
+    # rust deps are their own top-level table, not plugin_dependencies.
+    assert "rust" not in cfg.plugin_dependencies;
+    removed = cfg.remove_dependency("regex", dep_type="rust");
+    assert removed;
+    assert cfg.rust_bridges == {};
+    assert not cfg.remove_dependency("regex", dep_type="rust");
+}
+
+
+test "rust-bridges survives save and reload" {
+    with TemporaryDirectory() as tmpdir {
+        p = Path(tmpdir) / "jac.toml";
+        p.write_text("[project]\nname = \"demo\"\n");
+        cfg = JacConfig.load(p);
+        cfg.add_dependency("regex", "1.11", dep_type="rust");
+        cfg.add_dependency("sha2", "0.10", dep_type="rust");
+        cfg.save();
+        reloaded = JacConfig.load(p);
+        assert reloaded.rust_bridges == {"regex": "1.11", "sha2": "0.10"} , (
+            reloaded.rust_bridges
+        );
+        # the persisted file carries a [rust-bridges] table.
+        assert "[rust-bridges]" in p.read_text();
+    }
+}

@@ -355,6 +355,16 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
+    if "rust-bridges" in data {
+        bridges = data["rust-bridges"];
+        if isinstance(bridges, dict) {
+            for (key, value) in bridges.items() {
+                if isinstance(value, str) {
+                    self.rust_bridges[key] = value;
+                }
+            }
+        }
+    }
     if "environments" in data {
         self.environments.update(data["environments"]);
     }
@@ -492,6 +502,12 @@ impl JacConfig.save -> None {
         }
     }
 
+    if self.rust_bridges {
+        doc["rust-bridges"] = dict(self.rust_bridges);
+    } elif "rust-bridges" in doc {
+        del doc["rust-bridges"];
+    }
+
     self.persist_doc(doc);
 }
 
@@ -620,6 +636,8 @@ impl JacConfig.add_dependency(
         }
     } elif dep_type == "git" {
         self.git_dependencies[name] = {"git": version};
+    } elif dep_type == "rust" {
+        self.rust_bridges[name] = version;
     } else {
         if dep_type not in self.plugin_dependencies {
             self.plugin_dependencies[dep_type] = {};
@@ -651,6 +669,11 @@ impl JacConfig.remove_dependency(
     } elif dep_type == "git" {
         if name in self.git_dependencies {
             del self.git_dependencies[name];
+            return True;
+        }
+    } elif dep_type == "rust" {
+        if name in self.rust_bridges {
+            del self.rust_bridges[name];
             return True;
         }
     } elif dep_type in self.plugin_dependencies {
@@ -916,6 +939,16 @@ impl _parse_toml_data(
         for (group, deps) in data["optional-dependencies"].items() {
             if isinstance(deps, dict) {
                 config.optional_dependencies[group] = dict(deps);
+            }
+        }
+    }
+    if "rust-bridges" in data {
+        bridges = data["rust-bridges"];
+        if isinstance(bridges, dict) {
+            for (key, value) in bridges.items() {
+                if isinstance(value, str) {
+                    config.rust_bridges[key] = value;
+                }
             }
         }
     }

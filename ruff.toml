@@ -48,6 +48,8 @@ suppress-none-returning = true
 "**/fixtures/**/*.py" = ["T201"]
 "scripts/**/*.py" = ["T201"]
 "docs/scripts/**/*.py" = ["T201"]
+# Rust-bridge CI helpers are standalone build scripts (registry artifact matrix)
+"bridges/tools/**/*.py" = ["T201"]
 # Bootstrap/low-level files that run before console is available
 "jac/jaclang/compiler/__init__.py" = ["T201"]
 "jac/jaclang/pycore/tsparser.py" = ["T201"]
