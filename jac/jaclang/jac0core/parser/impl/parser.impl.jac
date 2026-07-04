@@ -263,7 +263,7 @@ impl Parser._make_alert(
         pos_end=sloc.pos_end
     );
     loc = CodeLocInfo(tok, tok);
-    return Alert(message, loc, Parser, code=code);
+    return Alert(message, loc, Parser, code=code, help_text=help_text);
 }
 
 impl Parser.error(message: str) {
@@ -282,7 +282,9 @@ impl Parser.emit_diag(
     msg = diag.format_message(**kwargs);
     self.error_count += 1;
     if self.prog is not None {
-        alrt = self._make_alert(msg, sloc, code=diag);
+        alrt = self._make_alert(
+            msg, sloc, code=diag, help_text=diag.format_help(**kwargs)
+        );
         self.prog.errors_had.append(alrt);
     }
 }
@@ -293,7 +295,9 @@ impl Parser.emit_warn(
     sloc = loc if loc is not None else self.current().loc;
     msg = diag.format_message(**kwargs);
     if self.prog is not None {
-        alrt = self._make_alert(msg, sloc, code=diag);
+        alrt = self._make_alert(
+            msg, sloc, code=diag, help_text=diag.format_help(**kwargs)
+        );
         self.prog.warnings_had.append(alrt);
     }
 }
