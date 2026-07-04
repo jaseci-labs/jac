@@ -563,3 +563,10 @@ scripts/jac-gdb-helper.jac
 scripts/release.jac
 scripts/release_utils.jac
 scripts/validate_release.jac
+
+# Type-identity flake: E1100 "Cannot assign list[TweetView] to JSX prop of
+# type list[TweetView]" — the same view class materializes as two distinct
+# type objects depending on module-load order, so this file passes or fails
+# the full-repo check nondeterministically (passed run 28711953731, failed
+# run 28718624475 on identical trees).
+jac/examples/littleX/frontend.cl.jac
