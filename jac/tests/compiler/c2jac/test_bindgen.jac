@@ -1,12 +1,11 @@
-"""cbindgen phase-exit tests.
+"""cbindgen output tests (jaseci #7145, Leg 2).
 
-Phase 0 (function prototypes) was shipped without an output test; this file
-locks that down *and* covers Phase 1 (named integer constants — enum
-enumerators + object-like #define ints → `glob NAME: int = N;`). Bindings are
-native-FFI `.na.jac` (an `import from <lib>` block); most tests assert on
-structure, but the final two close the #7055 acceptance loop by feeding the
-generated bindings through `nacompile` and executing a real extern call against
-libm through the JIT.
+`jac cbindgen` now builds real `Import.clib_decls` UniIR and unparses it, rather
+than concatenating `.na.jac` text. So these tests assert two things: the FFI type
+mapping and symbol filtering are correct (structural substring checks), and the
+generated bindings are genuine nacompile input -- every fixture's output compiles
+through the native front-end, and the final two drive a real extern call against
+libm through the JIT (the #7055 acceptance loop).
 """
 
 import os;
@@ -25,16 +24,39 @@ def _bind(
     );
 }
 
+def _compile_bindings(src: str) -> tuple {
+    # Write generated `.na.jac` (optionally with a consumer) to a temp file and
+    # run it through the native compiler. Returns (prog, ir).
+    out_dir = tempfile.mkdtemp();
+    path = os.path.join(out_dir, "bind_probe.na.jac");
+    with open(path, "w") as f {
+        f.write(src);
+    }
+    prog = JacProgram();
+    ir = prog.compile(file_path=path);
+    return (prog, ir);
+}
+
+def _assert_compiles(out: str) {
+    # The generated bindings must be valid nacompile input, not just well-formed
+    # text -- the whole point of building IR instead of concatenating strings.
+    (prog, _ir) = _compile_bindings(out);
+    assert not prog.errors_had , f"generated bindings do not compile: {[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
 # ---------------------------------------------------------------------------- #
-# Phase 0 — extern function prototypes                                          #
+# Phase 0 — extern function prototypes                                         #
 # ---------------------------------------------------------------------------- #
 test "Phase 0 binds every primitive-width prototype with the right FFI types" {
     (out, rep) = _bind("bindgen/test.h", "tk");
-    assert "import from tk {" in out , out;
+    assert "import from \"tk\" {" in out , out;
     assert "def tk_add(a: i32, b: i32) -> i32;" in out , out;
     assert "def tk_scale(x: f64, k: f32) -> f64;" in out , out;
     assert "def tk_clamp(lo: i16, hi: i16, v: i32) -> i16;" in out , out;
     assert rep.functions == 7 , f"expected 7 functions, got {rep.functions}";
+    _assert_compiles(out);
 }
 
 test "Phase 0 maps the const char* string idiom and byte buffers" {
@@ -51,7 +73,9 @@ test "Phase 0 drops a (void) param list and binds an opaque pointer return as in
 
 test "Phase 0 emits *rest for a variadic and counts it" {
     (out, rep) = _bind("bindgen/test.h", "tk");
-    assert "def tk_logf(fmt: str, *rest) -> i32;" in out , out;
+    # varargs are skipped by native FFI, so `rest` carries a placeholder `int`
+    # annotation purely to satisfy the type checker.
+    assert "def tk_logf(fmt: str, *rest: int) -> i32;" in out , out;
     assert rep.variadic == 1 , f"expected 1 variadic, got {rep.variadic}";
 }
 
@@ -63,6 +87,7 @@ test "Phase 1 binds enum enumerators with C's implicit-sequential rule" {
     assert "glob ST_IDLE: int = 0;" in out , out;
     assert "glob ST_BUSY: int = 5;" in out , out;  # explicit value
     assert "glob ST_DONE: int = 6;" in out , out;  # resumes from 5 → 6
+    _assert_compiles(out);
 }
 
 test "Phase 1 binds enumerators from a typedef'd enum" {
@@ -116,6 +141,7 @@ test "Phase 2 maps fixed-width / size typedefs by name" {
     (out, rep) = _bind("bindgen/stdint.h", "si");
     # uint8_t* buffer → bytes; size_t → u64; ssize_t → i64.
     assert "def si_read(fd: i32, buf: bytes, n: u64) -> i64;" in out , out;
+    _assert_compiles(out);
 }
 
 test "Phase 2 name map beats a deliberately-wrong-width typedef" {
@@ -131,16 +157,23 @@ test "Phase 2 resolves a user scalar typedef alias through the typedef map" {
 }
 
 # ---------------------------------------------------------------------------- #
-# Phase 3 — struct layout bindings                                              #
+# Phase 3 — struct layout bindings                                             #
 # ---------------------------------------------------------------------------- #
 test "Phase 3 emits obj for a plain named struct with int fields" {
     (out, rep) = _bind("bindgen/structs.h", "geo");
-    assert "obj Point { has x: i32 = 0; has y: i32 = 0; }" in out , out;
+    # struct fields carry no default (matching the direct-lift convention).
+    assert "obj Point {" in out , out;
+    assert "has x: i32;" in out , out;
+    assert "has y: i32;" in out , out;
+    _assert_compiles(out);
 }
 
 test "Phase 3 emits obj for a typedef'd anonymous struct with float fields" {
     (out, rep) = _bind("bindgen/structs.h", "geo");
-    assert "obj Color { has r: f32 = 0.0; has g: f32 = 0.0; has b: f32 = 0.0; }" in out , out;
+    assert "obj Color {" in out , out;
+    assert "has r: f32;" in out , out;
+    assert "has g: f32;" in out , out;
+    assert "has b: f32;" in out , out;
 }
 
 test "Phase 3 resolves struct-by-value params to the struct name" {
@@ -179,51 +212,21 @@ test "Phase 3 blocklist suppresses a struct" {
 }
 
 # ---------------------------------------------------------------------------- #
-# Phase 4 — extern variable bindings                                            #
+# Extern variables are not FFI-bindable                                        #
 # ---------------------------------------------------------------------------- #
-test "Phase 4 binds scalar extern vars with correct FFI types" {
+test "extern file-scope variables are not emitted as bindings" {
+    # Native FFI (targets/foreign.jac) only consumes Ability (functions) and
+    # Archetype (structs) from clib_decls -- there is no representable form for
+    # an extern global, so cbindgen no longer emits one.
     (out, rep) = _bind("bindgen/externs.h", "ex");
-    assert "import from ex { glob last_err: i32; }" in out , out;
-    assert "import from ex { glob threshold: f64; }" in out , out;
-    assert "import from ex { glob flags: u32; }" in out , out;
-}
-
-test "Phase 4 maps const char* extern to str and void* to int" {
-    (out, rep) = _bind("bindgen/externs.h", "ex");
-    assert "import from ex { glob version: str; }" in out , out;
-    assert "import from ex { glob handle: int; }" in out , out;
-}
-
-test "Phase 4 does not emit non-extern file-scope definitions" {
-    (out, rep) = _bind("bindgen/externs.h", "ex");
-    assert "ignored_def" not in out , out;
-}
-
-test "Phase 4 blocklist suppresses an extern var" {
-    (out, rep) = _bind("bindgen/externs.h", "ex", block=["skip_me"]);
-    assert "skip_me" not in out , out;
-    assert "import from ex { glob last_err: i32; }" in out , out;
-    assert rep.skipped >= 1 , f"expected skipped >= 1, got {rep.skipped}";
-}
-
-test "Phase 4 counts externs in the report" {
-    (out, rep) = _bind("bindgen/externs.h", "ex");
-    assert rep.externs == 6 , f"expected 6 externs, got {rep.externs}";
-}
-
-test "Phase 4 extern var blocks appear before function bindings" {
-    (out, rep) = _bind("bindgen/structs.h", "geo");
-    if "glob " in out {
-        glob_pos = out.index("glob ");
-        fn_pos = out.index("def ") if "def " in out else len(out);
-        assert glob_pos < fn_pos , "extern globs must appear before function defs";
-    }
+    assert "last_err" not in out , out;
+    assert "threshold" not in out , out;
+    assert rep.externs == 0 , f"externs are unsupported, got {rep.externs}";
 }
 
 # ---------------------------------------------------------------------------- #
-# #7055 acceptance — generated bindings must be real nacompile input, not just  #
-# well-formed text: they compile through the native front-end and a generated   #
-# binding drives a real extern call against libm through the JIT.               #
+# #7055 acceptance — a generated binding drives a real extern call against      #
+# libm through the JIT.                                                         #
 # ---------------------------------------------------------------------------- #
 def _libm -> str | None {
     # First present libm on this host, or None (non-Linux CI: exec tests skip).
@@ -237,19 +240,6 @@ def _libm -> str | None {
         }
     }
     return None;
-}
-
-def _compile_bindings(src: str) -> tuple {
-    # Write generated `.na.jac` (optionally with a consumer) to a temp file and
-    # run it through the native compiler. Returns (prog, ir).
-    out_dir = tempfile.mkdtemp();
-    path = os.path.join(out_dir, "bind_probe.na.jac");
-    with open(path, "w") as f {
-        f.write(src);
-    }
-    prog = JacProgram();
-    ir = prog.compile(file_path=path);
-    return (prog, ir);
 }
 
 test "generated FFI bindings compile through nacompile (#7055 acceptance)" {

@@ -12,6 +12,12 @@ import from jaclang.compiler.cfront.c_types {
     is_plain_char_ptr,
     TypeKind
 }
+import from jaclang.compiler.cfront.cbind_ir {
+    build_binding_module,
+    FuncDesc,
+    StructDesc,
+    ConstDesc
+}
 
 glob _FFI_SCALARS: set = {
          "i8",
@@ -182,7 +188,7 @@ def _is_void_params(params: list) -> bool {
 }
 
 obj FuncSig {
-    has sig: str,
+    has params: list[tuple[str, str]],
         variadic: bool;
 }
 
@@ -191,112 +197,25 @@ def _func_signature(
 ) -> FuncSig {
     pl = funcdecl.args;
     if pl is None {
-        return FuncSig(sig="", variadic=False);
+        return FuncSig(params=[], variadic=False);
     }
     params = pl.params;
     if _is_void_params(params) {
-        return FuncSig(sig="", variadic=False);
+        return FuncSig(params=[], variadic=False);
     }
-    parts: list[str] = [];
+    parts: list[tuple[str, str]] = [];
     is_var = False;
     idx = 0;
     for p in params {
         if isinstance(p, c_ast.EllipsisParam) {
-            parts.append("*rest");
             is_var = True;
             continue;
         }
         pname = jac_id(p.name or f"arg{idx}");
-        parts.append(f"{pname}: {ffi_type(p.type, typedefs, structs)}");
+        parts.append((pname, ffi_type(p.type, typedefs, structs)));
         idx += 1;
     }
-    return FuncSig(sig=", ".join(parts), variadic=is_var);
-}
-
-def _lib_token(lib: str) -> str {
-    for c in lib {
-        if not (c.isalnum() or c == "_") {
-            escaped = lib.replace("\\", "\\\\").replace("\"", "\\\"");
-            return f"\"{escaped}\"";
-        }
-    }
-    return lib;
-}
-
-def _emit_func_block(lib: str, name: str, sig: str, ret: str) -> str {
-    return f"import from {_lib_token(lib)} {{ def {jac_id(name)}({sig}) -> {ret}; }}\n";
-}
-
-def _struct_field_default(ffi_t: str) -> str {
-    if ffi_t in ("f32", "f64") {
-        return "0.0";
-    }
-    if ffi_t == "str" {
-        return "\"\"";
-    }
-    if ffi_t == "bytes" {
-        return "b\"\"";
-    }
-    if ffi_t == "bool" {
-        return "False";
-    }
-    return "0";
-}
-
-def _emit_struct_block(lib: str, name: str, fields: list) -> str {
-    parts = [f"has {fn}: {ft} = {_struct_field_default(ft)}" for (fn, ft) in fields];
-    inner = "; ".join(parts);
-    return f"import from {_lib_token(lib)} {{ obj {jac_id(name)} {{ {inner}; }} }}\n";
-}
-
-def _emit_extern_var_block(lib: str, name: str, ffi_t: str) -> str {
-    return f"import from {_lib_token(lib)} {{ glob {jac_id(name)}: {ffi_t}; }}\n";
-}
-
-def _is_extern_var(ext: object) -> bool {
-    if not isinstance(ext, c_ast.Decl) or ext.name is None {
-        return False;
-    }
-    if "extern" not in (ext.storage or []) {
-        return False;
-    }
-    t = ext.type;
-    return isinstance(t, (c_ast.TypeDecl, c_ast.PtrDecl));
-}
-
-def _emit_extern_vars(
-    lib: str,
-    file_ast: object,
-    typedefs: dict,
-    struct_names: set,
-    allow_set: (set | None),
-    block_set: set,
-    rep: BindReport
-) -> tuple[str, set] {
-    lines: list[str] = [];
-    seen: set = set();
-    for ext in file_ast.ext {
-        if not _is_extern_var(ext) {
-            continue;
-        }
-        name = ext.name;
-        if (allow_set is not None and name not in allow_set) or name in block_set {
-            rep.skipped += 1;
-            continue;
-        }
-        if name in seen {
-            rep.skipped += 1;
-            continue;
-        }
-        seen.add(name);
-        ffi_t = ffi_type(ext.type, typedefs, struct_names);
-        lines.append(_emit_extern_var_block(lib, name, ffi_t));
-        rep.externs += 1;
-    }
-    if not lines {
-        return ("", seen);
-    }
-    return ("\n# Extern variable bindings.\n" + "".join(lines), seen);
+    return FuncSig(params=parts, variadic=is_var);
 }
 
 def _struct_fields_from_node(
@@ -357,20 +276,19 @@ def _collect_struct_defs(file_ast: object, typedefs: dict) -> StructDefs {
     return StructDefs(emit_defs=emit_defs, all_names=all_names);
 }
 
-def _emit_structs(lib: str, emit_defs: list, block_set: set, rep: BindReport) -> str {
-    lines: list[str] = [];
+def _collect_struct_descs(
+    emit_defs: list, block_set: set, rep: BindReport
+) -> list[StructDesc] {
+    out: list[StructDesc] = [];
     for (name, fields) in emit_defs {
         if name in block_set {
             rep.skipped += 1;
             continue;
         }
-        lines.append(_emit_struct_block(lib, name, fields));
+        out.append(StructDesc(name=name, fields=fields));
         rep.structs += 1;
     }
-    if not lines {
-        return "";
-    }
-    return "\n# Struct layout bindings.\n" + "".join(lines);
+    return out;
 }
 
 def _func_node(ext: object) -> object {
@@ -429,18 +347,13 @@ def _eval_enum(enum_node: object) -> list | None {
 }
 
 
-def _emit_const_block(name: str, value: int) -> str {
-    return f"glob {jac_id(name)}: int = {value};\n";
-}
-
-
 def _take_const(
     cname: str,
     val: int,
     allow_set: (set | None),
     block_set: set,
     seen: set,
-    lines: list,
+    out: list,
     rep: BindReport
 ) -> None {
     if (allow_set is not None and cname not in allow_set) or cname in block_set {
@@ -452,20 +365,20 @@ def _take_const(
         return;
     }
     seen.add(cname);
-    lines.append(_emit_const_block(cname, val));
+    out.append(ConstDesc(name=jac_id(cname), value=val));
     rep.constants += 1;
 }
 
 
-def _emit_consts(
+def _collect_const_descs(
     file_ast: object,
     macros: (dict | None),
     allow_set: (set | None),
     block_set: set,
     rep: BindReport,
     emitted_names: (set | None) = None
-) -> str {
-    lines: list[str] = [];
+) -> list[ConstDesc] {
+    out: list[ConstDesc] = [];
     seen: set = set(emitted_names) if emitted_names else set();
     for ext in file_ast.ext {
         enum_node = _enum_def(ext);
@@ -478,19 +391,16 @@ def _emit_consts(
             continue;
         }
         for (cname, val) in pairs {
-            _take_const(cname, val, allow_set, block_set, seen, lines, rep);
+            _take_const(cname, val, allow_set, block_set, seen, out, rep);
         }
     }
     for (mname, toks) in (macros or {}).items() {
         val = _int_from_macro_tokens(toks);
         if val is not None {
-            _take_const(mname, val, allow_set, block_set, seen, lines, rep);
+            _take_const(mname, val, allow_set, block_set, seen, out, rep);
         }
     }
-    if not lines {
-        return "";
-    }
-    return "\n# Integer constants (enum / #define).\n" + "".join(lines);
+    return out;
 }
 
 
@@ -507,11 +417,8 @@ def _emit_bindings(
     sd = _collect_struct_defs(file_ast, typedefs);
     struct_names = sd.all_names;
     rep = BindReport();
-    struct_section = _emit_structs(lib, sd.emit_defs, block_set, rep);
-    (extern_section, extern_names) = _emit_extern_vars(
-        lib, file_ast, typedefs, struct_names, allow_set, block_set, rep
-    );
-    blocks: list[str] = [];
+    struct_descs = _collect_struct_descs(sd.emit_defs, block_set, rep);
+    func_descs: list[FuncDesc] = [];
     fn_names: set[str] = set();
     for ext in file_ast.ext {
         fn = _func_node(ext);
@@ -526,17 +433,21 @@ def _emit_bindings(
         funcdecl = fn.type;
         fs = _func_signature(funcdecl, typedefs, struct_names);
         ret = ffi_type(funcdecl.type, typedefs, struct_names);
-        blocks.append(_emit_func_block(lib, name, fs.sig, ret));
+        func_descs.append(
+            FuncDesc(name=jac_id(name), params=fs.params, ret=ret, variadic=fs.variadic)
+        );
         fn_names.add(name);
         rep.functions += 1;
         if fs.variadic {
             rep.variadic += 1;
         }
     }
-    emitted = fn_names | extern_names;
-    consts = _emit_consts(file_ast, macros, allow_set, block_set, rep, emitted);
-    header = f"# Native FFI bindings for `{lib}`, generated by `jac cbindgen`.\n" + "# Do not edit by hand — regenerate from the C header.\n\n";
-    return (header + struct_section + extern_section + "".join(blocks) + consts, rep);
+    const_descs = _collect_const_descs(
+        file_ast, macros, allow_set, block_set, rep, fn_names
+    );
+    body = build_binding_module(lib, func_descs, struct_descs, const_descs).unparse();
+    header = f"# Native FFI bindings for `{lib}`, generated by `jac cbindgen`.\n" + "# Do not edit by hand, regenerate from the C header.\n\n";
+    return (header + body, rep);
 }
 
 def bindings_from_source(
