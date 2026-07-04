@@ -312,7 +312,12 @@ test "ui sessions suppress tool error results from the live transcript" {
     }
 
     assert "Tool error:" not in out , out;
-    assert "Recovered." in out , out;
+    answer_text = "".join(
+        str(ev.get("text", ""))
+        for ev in events_snapshot
+        if ev.get("kind") == "answer"
+    );
+    assert "Recovered." in answer_text , events_snapshot;
     assert not [
         ev
         for ev in events_snapshot
