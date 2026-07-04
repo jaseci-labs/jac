@@ -652,6 +652,9 @@ impl JacPersistence.get_object(id: str) -> (Archetype | None) {
     if (id == 'root') {
         return JacRuntimeInterface.get_context().user_root.archetype;
     } elif (`obj := JacRuntimeInterface.get_context().mem.get(UUID(id))) {
+        if not JacRuntimeInterface.check_read_access(`obj) {
+            return None;
+        }
         return `obj.archetype;
     }
     return None;
@@ -663,6 +666,9 @@ impl JacPersistence.aget_object(id: str) -> (Archetype | None) {
     }
     `obj = await JacRuntimeInterface.get_context().mem.aget(UUID(id));
     if `obj is not None {
+        if not JacRuntimeInterface.check_read_access(`obj) {
+            return None;
+        }
         return `obj.archetype;
     }
     return None;
@@ -2112,7 +2118,8 @@ impl JacRuntime.get_shared_root -> Root {
         }
         _shared_root_resolver[1] = root_id;
     }
-    shared = JacRuntimeInterface.get_object(root_id);
+    shared_anchor = JacRuntimeInterface.get_context().mem.get(UUID(root_id));
+    shared = shared_anchor.archetype if shared_anchor else None;
     if not isinstance(shared, Root) {
         raise RuntimeError(
             f"Shared root unavailable: id {root_id} did not resolve to a Root node."
