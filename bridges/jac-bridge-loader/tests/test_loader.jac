@@ -320,3 +320,41 @@ test "drain_err drops the error handle when the message read fails" {
         }
     }
 }
+
+
+# -- universal panic plumbing: drain_panic reads the message AND frees the handle
+#    via the dedicated panic symbols, independent of the #[jac_error] type. A
+#    panic handle is a Box<String> exactly like an error handle, so a real error
+#    box is a faithful stand-in for exercising the panic drain/free path. -------
+test "drain_panic reads the message and drops the handle via panic symbols" {
+    import ctypes;
+    lib = _MOD._lib;
+    rt = _MOD._rt;
+
+    # The macro (and this reference bridge) emit these for every bridge.
+    assert rt.panic_msg is not None , "bridge must export jac_<mod>_panic_message";
+    assert rt.panic_drop is not None , "bridge must export jac_<mod>_panic_drop";
+
+    # A live Box<String> handle (same representation as a panic handle).
+    enc = b"(unclosed";
+    out_h = ctypes.c_uint64(0);
+    out_e = ctypes.c_uint64(0);
+    lib.jac_regex_Regex_new(enc, len(enc), ctypes.byref(out_h), ctypes.byref(out_e));
+    err_h = out_e.value;
+    assert err_h != 0;
+
+    real_pd = rt.panic_drop;
+    dropped = [];
+    rt.panic_drop = lambda h : (dropped.append(h), real_pd(h));
+    try {
+        msg = rt.drain_panic(err_h);
+        # The real panic message is surfaced (not a generic status string).
+        assert msg and "status=" not in msg;
+        assert dropped == [err_h] , "panic handle must be freed by drain_panic (no leak)";
+    } finally {
+        rt.panic_drop = real_pd;
+        if not dropped {
+            real_pd(err_h);
+        }
+    }
+}

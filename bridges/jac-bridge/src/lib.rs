@@ -654,6 +654,51 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
         }
     }
 
+    // Universal panic plumbing.  A panic handle is a Box<String> just like an
+    // error handle (both `Err` and panic write `Box::into_raw(Box::new(msg))`);
+    // the #[jac_error] type only picks the caller-side exception class and gates
+    // the error_* symbols.  Emitting these two unconditionally means a bridge with
+    // NO #[jac_error] type still surfaces the panic message and frees the handle
+    // on a panic (status 2) instead of leaking it behind a generic message.
+    let panic_drop = format_ident!("jac_{module_name}_panic_drop");
+    let panic_message = format_ident!("jac_{module_name}_panic_message");
+    items.push(quote! {
+        #[no_mangle]
+        pub unsafe extern "C" fn #panic_drop(err_handle: u64) {
+            if err_handle != 0 {
+                unsafe { ::std::mem::drop(
+                    ::std::boxed::Box::from_raw(err_handle as *mut String)
+                ); }
+            }
+        }
+        #[no_mangle]
+        pub unsafe extern "C" fn #panic_message(
+            err_handle: u64,
+            out_buf: *mut #rt::JacBuf,
+            out_err: *mut u64,
+        ) -> i32 {
+            let r = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let s = unsafe { &*(err_handle as *const String) };
+                #rt::string_to_jacbuf(s.clone())
+            }));
+            match r {
+                ::std::result::Result::Ok(buf) => {
+                    unsafe { *out_buf = buf; *out_err = 0; }
+                    0
+                }
+                ::std::result::Result::Err(_) => {
+                    unsafe {
+                        *out_buf = #rt::JacBuf {
+                            ptr: ::std::ptr::null_mut(), len: 0, cap: 0
+                        };
+                        *out_err = 0;
+                    }
+                    2
+                }
+            }
+        }
+    });
+
     // free_buf
     let free_buf = format_ident!("jac_{module_name}_free_buf");
     items.push(quote! {

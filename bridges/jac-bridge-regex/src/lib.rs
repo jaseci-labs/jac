@@ -202,6 +202,46 @@ pub unsafe extern "C" fn jac_regex_error_drop(err_handle: u64) {
     }
 }
 
+// ---- Universal panic plumbing ----------------------------------------------
+// A panic handle is a Box<String> just like an error handle; these mirror the
+// macro's always-emitted panic shims so a STATUS_PANIC is drained + freed the
+// same way on every bridge, independent of the #[jac_error] type.  The
+// reference bridge carries them to stay conformant with that ABI invariant.
+
+/// Copy the message from a panic handle into a new JacBuf.  Same contract as
+/// `jac_regex_error_message`.
+#[no_mangle]
+pub unsafe extern "C" fn jac_regex_panic_message(
+    err_handle: u64,
+    out_buf: *mut JacBuf,
+    out_err: *mut u64,
+) -> i32 {
+    let r = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let msg = &*(err_handle as *const String);
+        string_to_jacbuf(msg.clone())
+    }));
+    match r {
+        Ok(buf) => {
+            *out_buf = buf;
+            *out_err = 0;
+            STATUS_OK
+        }
+        Err(_) => {
+            *out_buf = JacBuf { ptr: std::ptr::null_mut(), len: 0, cap: 0 };
+            *out_err = 0;
+            STATUS_PANIC
+        }
+    }
+}
+
+/// Release a panic handle.  Idempotent on 0.
+#[no_mangle]
+pub unsafe extern "C" fn jac_regex_panic_drop(err_handle: u64) {
+    if err_handle != 0 {
+        drop(Box::from_raw(err_handle as *mut String));
+    }
+}
+
 /// Free a JacBuf allocated by this library.
 /// Allocators must never mix: only call this on buffers returned by this bridge.
 #[no_mangle]

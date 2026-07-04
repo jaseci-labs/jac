@@ -1,14 +1,19 @@
 import from jaclang.compiler.rust_bridge._blob {
+    BridgeMeta,
+    FnDesc,
+    ParamDesc,
     FN_CTOR,
     FN_METHOD,
     KIND_ERROR,
     KIND_OPAQUE,
     TAG_BOOL,
     TAG_FN,
-    TAG_OPT_BIT,
-    TAG_REF_BIT,
     TAG_STR,
-    TAG_VOID
+    TAG_VOID,
+    tag_base,
+    tag_is_opt,
+    tag_is_ref,
+    tag_ref_index
 }
 import from jaclang.compiler.rust_bridge._finder { _libc_soname }
 
@@ -22,7 +27,9 @@ class Skip {
 
 
 class NaModule {
-    def init(self: NaModule, source: str, skips: list = None, bridged: int = 0) {
+    def init(
+        self: NaModule, source: str, skips: list[Skip] | None = None, bridged: int = 0
+    ) {
         self.source = source;
         self.skips = skips if skips is not None else [];
         self.bridged = bridged;
@@ -30,28 +37,7 @@ class NaModule {
 }
 
 
-def _base(tag: int) -> int {
-    return tag & ~TAG_OPT_BIT;
-}
-
-
-def _is_opt(tag: int) -> bool {
-    return bool(tag & TAG_OPT_BIT);
-}
-
-
-def _is_ref(tag: int) -> bool {
-    base = _base(tag);
-    return bool(base & TAG_REF_BIT) and base != TAG_VOID;
-}
-
-
-def _ref_index(tag: int) -> int {
-    return _base(tag) & ~TAG_REF_BIT;
-}
-
-
-def _drop_sym_for(meta: object, kind: int) -> object {
+def _drop_sym_for(meta: BridgeMeta, kind: int) -> str | None {
     for td in meta.types {
         if td.kind == kind and td.drop_sym {
             return td.drop_sym;
@@ -62,7 +48,7 @@ def _drop_sym_for(meta: object, kind: int) -> object {
 
 
 class _Synth {
-    def init(self: _Synth, meta: object, so_basename: str) {
+    def init(self: _Synth, meta: BridgeMeta, so_basename: str) {
         self.meta = meta;
         self.so = so_basename;
         self.skips = [];
@@ -72,19 +58,19 @@ class _Synth {
             if td.kind == KIND_OPAQUE
         };
         ctor_targets = {
-            _ref_index(fd.ret)
+            tag_ref_index(fd.ret)
             for fd in meta.fns
             if fd.kind == FN_CTOR
-            and _is_ref(fd.ret)
-            and _ref_index(fd.ret) in self.opaque
+            and tag_is_ref(fd.ret)
+            and tag_ref_index(fd.ret) in self.opaque
         };
         self.adoptable = {
-            _ref_index(fd.ret)
+            tag_ref_index(fd.ret)
             for fd in meta.fns
             if fd.kind == FN_METHOD
-            and _is_ref(fd.ret)
-            and _ref_index(fd.ret) in self.opaque
-            and _ref_index(fd.ret) not in ctor_targets
+            and tag_is_ref(fd.ret)
+            and tag_ref_index(fd.ret) in self.opaque
+            and tag_ref_index(fd.ret) not in ctor_targets
         };
         self.error_drop = _drop_sym_for(meta, KIND_ERROR);
         self.error_msg_sym = None;
@@ -100,11 +86,15 @@ class _Synth {
         }
         self.free_buf = f"jac_{meta.module_name}_free_buf";
         self.make_buf_sym = f"jac_{meta.module_name}_make_buf";
+
+        self.panic_msg_sym = f"jac_{meta.module_name}_panic_message";
+        self.panic_drop_sym = f"jac_{meta.module_name}_panic_drop";
+        self._needs_panic_syms = False;
         self._bridged_str_method = False;
         self._bridged_callback = False;
     }
 
-    def _shim_decl(self: _Synth, fd: object) -> object {
+    def _shim_decl(self: _Synth, fd: FnDesc) -> str | None {
         params = [];
         if fd.kind == FN_METHOD and fd.self_type != TAG_VOID {
             params.append("handle: int");
@@ -113,18 +103,18 @@ class _Synth {
             if p.tag == TAG_STR {
                 params.append(f"{p.name}: str");
                 params.append(f"{p.name}_len: int");
-            } elif p.tag == TAG_BOOL or _is_ref(p.tag) or p.tag == TAG_FN {
+            } elif p.tag == TAG_BOOL or tag_is_ref(p.tag) or p.tag == TAG_FN {
                 params.append(f"{p.name}: int");
             } else {
                 return None;
             }
         }
-        ret = _base(fd.ret);
+        ret = tag_base(fd.ret);
         if ret == TAG_VOID {
             pass;
         } elif ret == TAG_BOOL {
             params.append("out_bool: bytes");
-        } elif _is_ref(fd.ret) {
+        } elif tag_is_ref(fd.ret) {
             params.append("out_handle: bytes");
         } elif ret == TAG_STR {
             params.append("out_buf: bytes");
@@ -136,42 +126,32 @@ class _Synth {
         return f"    def {fd.sym}(\n        {args}\n    ) -> i32;";
     }
 
-    def _drain_and_raise(self: _Synth, fname: str) -> list {
-        lines = [];
-        if self.error_msg_sym {
-            lines.append(
-                f'            emsg = "{fname} failed with status " + str(st);'
-            );
-            lines.append('            mbuf = struct.pack("<QII", 0, 0, 0);');
-            lines.append('            mben = struct.pack("<Q", 0);');
-            lines.append(f"            mst = {self.error_msg_sym}(err_h, mbuf, mben);");
-            lines.append("            if mst == 0 {");
-            lines.append('                mb = struct.unpack("<QII", mbuf);');
-            lines.append("                if mb[0] != 0 {");
-            lines.append(
-                "                    emsg = __jac_str_from_raw(mb[0], mb[1]);"
-            );
-            lines.append(
-                f"                    {self.free_buf}(mb[0], mb[1] | (mb[2] << 32));"
-            );
-            lines.append("                }");
-            lines.append("            }");
-            if self.error_drop {
-                lines.append(f"            {self.error_drop}(err_h);");
-            }
-            lines.append("            raise ValueError(emsg);");
-        } else {
-            if self.error_drop {
-                lines.append(f"            {self.error_drop}(err_h);");
-            }
-            lines.append(
-                f'            raise ValueError("{fname} failed with status " + str(st));'
-            );
+    def _drain_and_raise(self: _Synth, fname: str) -> list[str] {
+        msg_sym = self.error_msg_sym or self.panic_msg_sym;
+        drop_sym = self.error_drop or self.panic_drop_sym;
+        if not self.error_msg_sym or not self.error_drop {
+            self._needs_panic_syms = True;
         }
+        lines = [];
+        lines.append(f'            emsg = "{fname} failed with status " + str(st);');
+        lines.append('            mbuf = struct.pack("<QII", 0, 0, 0);');
+        lines.append('            mben = struct.pack("<Q", 0);');
+        lines.append(f"            mst = {msg_sym}(err_h, mbuf, mben);");
+        lines.append("            if mst == 0 {");
+        lines.append('                mb = struct.unpack("<QII", mbuf);');
+        lines.append("                if mb[0] != 0 {");
+        lines.append("                    emsg = __jac_str_from_raw(mb[0], mb[1]);");
+        lines.append(
+            f"                    {self.free_buf}(mb[0], mb[1] | (mb[2] << 32));"
+        );
+        lines.append("                }");
+        lines.append("            }");
+        lines.append(f"            {drop_sym}(err_h);");
+        lines.append("            raise ValueError(emsg);");
         return lines;
     }
 
-    def _method_body(self: _Synth, fd: object) -> object {
+    def _method_body(self: _Synth, fd: FnDesc) -> list[str] | None {
         body_lines = [];
         call = ["self.__handle"];
         for p in fd.params {
@@ -180,7 +160,7 @@ class _Synth {
                 call.append(f"strlen({p.name})");
             } elif p.tag == TAG_BOOL {
                 call.append(f"({p.name} and 1 or 0)");
-            } elif _is_ref(p.tag) {
+            } elif tag_is_ref(p.tag) {
                 call.append(f"{p.name}.__handle");
             } elif p.tag == TAG_FN {
                 call.append(p.name);
@@ -194,8 +174,8 @@ class _Synth {
             f'            raise RuntimeError("{fd.name} called after close()");'
         );
         body_lines.append("        }");
-        if _is_ref(fd.ret) {
-            if _ref_index(fd.ret) not in self.adoptable {
+        if tag_is_ref(fd.ret) {
+            if tag_ref_index(fd.ret) not in self.adoptable {
                 return None;
             }
             body_lines.append('        out_h = struct.pack("<Q", 0);');
@@ -203,11 +183,11 @@ class _Synth {
         } elif fd.ret == TAG_BOOL {
             body_lines.append('        out_b = struct.pack("<B", 0);');
             call.append("out_b");
-        } elif _base(fd.ret) == TAG_STR {
+        } elif tag_base(fd.ret) == TAG_STR {
             body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
             call.append("out_buf");
             self._bridged_str_method = True;
-        } elif _is_opt(fd.ret) {
+        } elif tag_is_opt(fd.ret) {
             return None;
         } elif fd.ret != TAG_VOID {
             return None;
@@ -220,10 +200,10 @@ class _Synth {
         body_lines.append('            err_h = struct.unpack("<Q", out_e)[0];');
         body_lines.extend(self._drain_and_raise(fd.name));
         body_lines.append("        }");
-        if _is_ref(fd.ret) {
-            target = self.opaque[_ref_index(fd.ret)];
+        if tag_is_ref(fd.ret) {
+            target = self.opaque[tag_ref_index(fd.ret)];
             body_lines.append('        rh = struct.unpack("<Q", out_h)[0];');
-            if _is_opt(fd.ret) {
+            if tag_is_opt(fd.ret) {
                 body_lines.append("        if rh == 0 {");
                 body_lines.append("            return None;");
                 body_lines.append("        }");
@@ -231,10 +211,10 @@ class _Synth {
             body_lines.append(f"        return {target}(rh);");
         } elif fd.ret == TAG_BOOL {
             body_lines.append('        return struct.unpack("<B", out_b)[0] != 0;');
-        } elif _base(fd.ret) == TAG_STR {
+        } elif tag_base(fd.ret) == TAG_STR {
             body_lines.append('        rb = struct.unpack("<QII", out_buf);');
             body_lines.append("        if rb[0] == 0 {");
-            if _is_opt(fd.ret) {
+            if tag_is_opt(fd.ret) {
                 body_lines.append("            return None;");
             } else {
                 body_lines.append('            return "";');
@@ -249,7 +229,7 @@ class _Synth {
         return body_lines;
     }
 
-    def _ctor_body(self: _Synth, fd: object) -> object {
+    def _ctor_body(self: _Synth, fd: FnDesc) -> list[str] | None {
         body_lines = [];
         call = [];
         for p in fd.params {
@@ -258,7 +238,7 @@ class _Synth {
                 call.append(f"strlen({p.name})");
             } elif p.tag == TAG_BOOL {
                 call.append(f"({p.name} and 1 or 0)");
-            } elif _is_ref(p.tag) {
+            } elif tag_is_ref(p.tag) {
                 call.append(f"{p.name}.__handle");
             } elif p.tag == TAG_FN {
                 call.append(p.name);
@@ -283,7 +263,13 @@ class _Synth {
         return body_lines;
     }
 
-    def _visit(self: _Synth, ti: int, produces: dict, visited: set, emit_order: list) {
+    def _visit(
+        self: _Synth,
+        ti: int,
+        produces: dict[int, set[int]],
+        visited: set[int],
+        emit_order: list[int]
+    ) {
         if ti in visited {
             return;
         }
@@ -302,9 +288,9 @@ class _Synth {
 
         for fd in m.fns {
             if fd.kind == FN_CTOR
-            and _is_ref(fd.ret)
-            and _ref_index(fd.ret) in self.opaque {
-                ti = _ref_index(fd.ret);
+            and tag_is_ref(fd.ret)
+            and tag_ref_index(fd.ret) in self.opaque {
+                ti = tag_ref_index(fd.ret);
                 if self._shim_decl(fd) is None or self._ctor_body(fd) is None {
                     self.skips.append(
                         Skip(
@@ -318,7 +304,8 @@ class _Synth {
                 shim_fds.append(fd);
             } elif fd.kind == FN_METHOD and fd.self_type in self.opaque {
                 if self._shim_decl(fd) is None or self._method_body(fd) is None {
-                    if _is_ref(fd.ret) and _ref_index(fd.ret) not in self.adoptable {
+                    if tag_is_ref(fd.ret)
+                    and tag_ref_index(fd.ret) not in self.adoptable {
                         reason = "returns an opaque handle whose type has its own constructor (na adopt-ctor signature clash)";
                     } else {
                         reason = "unbridgeable param/return";
@@ -374,7 +361,13 @@ class _Synth {
                 f"    def {self.error_msg_sym}" + "(err_handle: int, out_buf: bytes, out_err: bytes) -> i32;"
             );
         }
-        if self.error_msg_sym or self._bridged_str_method {
+        if self._needs_panic_syms {
+            out.append(
+                f"    def {self.panic_msg_sym}" + "(err_handle: int, out_buf: bytes, out_err: bytes) -> i32;"
+            );
+            out.append(f"    def {self.panic_drop_sym}(err_handle: int) -> None;");
+        }
+        if self.error_msg_sym or self._bridged_str_method or self._needs_panic_syms {
             out.append(
                 f"    def {self.free_buf}(buf_ptr: int, buf_lencap: int) -> None;"
             );
@@ -390,8 +383,8 @@ class _Synth {
         produces = {ti: set() for ti in self.opaque};
         for ti in self.opaque {
             for fd in methods_of.get(ti, []) {
-                if _is_ref(fd.ret) {
-                    p = _ref_index(fd.ret);
+                if tag_is_ref(fd.ret) {
+                    p = tag_ref_index(fd.ret);
                     if p in self.opaque and p != ti {
                         produces[ti].add(p);
                     }
@@ -467,43 +460,43 @@ class _Synth {
         return NaModule(source="\n".join(out), skips=self.skips, bridged=bridged);
     }
 
-    def _jac_param(self: _Synth, p: object) -> str {
+    def _jac_param(self: _Synth, p: ParamDesc) -> str {
         if p.tag == TAG_STR {
             return f"{p.name}: str";
         }
         if p.tag == TAG_BOOL {
             return f"{p.name}: bool";
         }
-        if _is_ref(p.tag) {
-            return f"{p.name}: {self.opaque.get(_ref_index(p.tag), 'object')}";
+        if tag_is_ref(p.tag) {
+            return f"{p.name}: {self.opaque.get(tag_ref_index(p.tag), 'object')}";
         }
         return f"{p.name}: int";
     }
 
-    def _ctor_params(self: _Synth, fd: object) -> str {
+    def _ctor_params(self: _Synth, fd: FnDesc) -> str {
         return ", ".join([self._jac_param(p) for p in fd.params]);
     }
 
-    def _method_params(self: _Synth, fd: object) -> str {
+    def _method_params(self: _Synth, fd: FnDesc) -> str {
         return ", ".join([self._jac_param(p) for p in fd.params]);
     }
 
-    def _ret_ann(self: _Synth, fd: object) -> str {
-        if _base(fd.ret) == TAG_BOOL {
+    def _ret_ann(self: _Synth, fd: FnDesc) -> str {
+        if tag_base(fd.ret) == TAG_BOOL {
             return " -> bool";
         }
-        if _base(fd.ret) == TAG_STR {
-            return " -> str | None" if _is_opt(fd.ret) else " -> str";
+        if tag_base(fd.ret) == TAG_STR {
+            return " -> str | None" if tag_is_opt(fd.ret) else " -> str";
         }
-        if _is_ref(fd.ret) {
-            t = self.opaque.get(_ref_index(fd.ret), "object");
-            return f" -> {t} | None" if _is_opt(fd.ret) else f" -> {t}";
+        if tag_is_ref(fd.ret) {
+            t = self.opaque.get(tag_ref_index(fd.ret), "object");
+            return f" -> {t} | None" if tag_is_opt(fd.ret) else f" -> {t}";
         }
         return "";
     }
 }
 
 
-def render_na_source(meta: object, so_basename: str) -> NaModule {
+def render_na_source(meta: BridgeMeta, so_basename: str) -> NaModule {
     return _Synth(meta, so_basename).render();
 }

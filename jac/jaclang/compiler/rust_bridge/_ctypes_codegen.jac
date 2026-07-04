@@ -17,16 +17,21 @@ import from ctypes {
     c_void_p
 }
 import from jaclang.compiler.rust_bridge._blob {
+    BridgeMeta,
+    FnDesc,
+    TypeDesc,
     TAG_VOID,
     TAG_BOOL,
     TAG_STR,
     TAG_FN,
-    TAG_REF_BIT,
-    TAG_OPT_BIT,
     KIND_OPAQUE,
     KIND_ERROR,
     FN_CTOR,
-    FN_METHOD
+    FN_METHOD,
+    tag_base,
+    tag_is_opt,
+    tag_is_ref,
+    tag_ref_index
 }
 
 
@@ -49,14 +54,14 @@ class _JacCallback(Structure) {
 }
 
 
-def _encode(val: object) -> tuple {
+def _encode(val: str | bytes) -> tuple {
     enc = val.encode("utf-8") if isinstance(val, str) else val;
     return (enc, len(enc));
 }
 
 
 class _Runtime {
-    def init(self: _Runtime, lib: object, meta: object) {
+    def init(self: _Runtime, lib: CDLL, meta: BridgeMeta) {
         self.lib = lib;
         self.meta = meta;
 
@@ -71,6 +76,19 @@ class _Runtime {
             mb.restype = None;
         }
         self.make_buf = mb;
+
+        pm = getattr(lib, f"jac_{meta.module_name}_panic_message", None);
+        if pm is not None {
+            pm.argtypes = [c_uint64, POINTER(_JacBuf), POINTER(c_uint64)];
+            pm.restype = c_int;
+        }
+        self.panic_msg = pm;
+        pd = getattr(lib, f"jac_{meta.module_name}_panic_drop", None);
+        if pd is not None {
+            pd.argtypes = [c_uint64];
+            pd.restype = None;
+        }
+        self.panic_drop = pd;
 
         self._err_drops = {};
         self._err_msgs = {};
@@ -103,7 +121,7 @@ class _Runtime {
         }
     }
 
-    def drain_err(self: _Runtime, err_h: int, throws_idx: object = None) -> str {
+    def drain_err(self: _Runtime, err_h: int, throws_idx: int | None = None) -> str {
         idx = throws_idx
             if throws_idx is not None
             else next(iter(self._err_msgs), None);
@@ -130,13 +148,30 @@ class _Runtime {
         return raw.decode("utf-8", errors="replace");
     }
 
+    def drain_panic(self: _Runtime, err_h: int) -> str {
+        if self.panic_msg is None {
+            return self.drain_err(err_h);
+        }
+        buf = _JacBuf();
+        out_e = c_uint64(0);
+        st = self.panic_msg(err_h, byref(buf), byref(out_e));
+        if st != 0 {
+            self.panic_drop(err_h);
+            return f"<panic reading panic message: status={st}>";
+        }
+        raw = string_at(buf.ptr, buf.len);
+        self.free_buf(buf);
+        self.panic_drop(err_h);
+        return raw.decode("utf-8", errors="replace");
+    }
+
     def err_cls(self: _Runtime, throws_idx: int) -> type {
         return self._err_cls.get(throws_idx, Exception);
     }
 }
 
 
-def _wire(lib: object, fd: object) -> object {
+def _wire(lib: CDLL, fd: FnDesc) -> object {
     c_fn = getattr(lib, fd.sym);
     args = [];
 
@@ -156,7 +191,7 @@ def _wire(lib: object, fd: object) -> object {
         }
     }
 
-    base_ret = fd.ret & ~TAG_OPT_BIT;
+    base_ret = tag_base(fd.ret);
     if base_ret == TAG_BOOL {
         args.append(POINTER(c_uint8));
     } elif base_ret == TAG_STR {
@@ -173,7 +208,7 @@ def _wire(lib: object, fd: object) -> object {
 }
 
 
-def _make_trampoline(fn: object, rt: object) -> object {
+def _make_trampoline(fn: object, rt: _Runtime) -> object {
     make_buf = rt.make_buf;
     if make_buf is None {
         raise RuntimeError("bridge has a callback param but exports no make_buf");
@@ -198,7 +233,12 @@ def _make_trampoline(fn: object, rt: object) -> object {
 
 
 def _call(
-    c_fn: object, fd: object, rt: object, self_h: object, py_args: object, classes: dict
+    c_fn: object,
+    fd: FnDesc,
+    rt: _Runtime,
+    self_h: object,
+    py_args: object,
+    classes: dict[int, type]
 ) -> object {
     c_args = [];
     keepalive = [];
@@ -230,8 +270,8 @@ def _call(
     out_buf = _JacBuf();
     out_e = c_uint64(0);
 
-    opt = bool(fd.ret & TAG_OPT_BIT);
-    base_ret = fd.ret & ~TAG_OPT_BIT;
+    opt = tag_is_opt(fd.ret);
+    base_ret = tag_base(fd.ret);
 
     if base_ret == TAG_BOOL {
         c_args.append(byref(out_b));
@@ -250,7 +290,7 @@ def _call(
         raise rt.err_cls(fd.throws)(msg);
     }
     if st != 0 {
-        msg = rt.drain_err(out_e.value);
+        msg = rt.drain_panic(out_e.value);
         raise rt.PanicError(msg);
     }
 
@@ -273,7 +313,7 @@ def _call(
     if opt and h == 0 {
         return None;
     }
-    ret_idx = base_ret & ~TAG_REF_BIT;
+    ret_idx = tag_ref_index(fd.ret);
     cls = classes.get(ret_idx);
     if cls is None {
         return h;
@@ -287,7 +327,7 @@ def _call(
 
 
 def _bind_method(
-    type_name: str, fd_: object, c_fn_: object, rt: object, classes: dict
+    type_name: str, fd_: FnDesc, c_fn_: object, rt: _Runtime, classes: dict[int, type]
 ) -> object {
     def method(self: object, *args: object) -> object {
         if self._closed {
@@ -301,7 +341,7 @@ def _bind_method(
 
 
 def _make_class(
-    td: object, meta: object, lib: object, rt: object, classes: dict
+    td: TypeDesc, meta: BridgeMeta, lib: CDLL, rt: _Runtime, classes: dict[int, type]
 ) -> type {
     drop_fn = getattr(lib, td.drop_sym);
     drop_fn.argtypes = [c_uint64];
@@ -310,7 +350,10 @@ def _make_class(
     ctor_fd = None;
     method_fds = [];
     for fd in meta.fns {
-        if fd.kind == FN_CTOR and fd.ret == (TAG_REF_BIT | td.index) {
+        if fd.kind == FN_CTOR
+        and tag_is_ref(fd.ret)
+        and not tag_is_opt(fd.ret)
+        and tag_ref_index(fd.ret) == td.index {
             ctor_fd = fd;
         } elif fd.kind == FN_METHOD
         and fd.self_type == td.index
@@ -388,7 +431,7 @@ def _make_class(
 }
 
 
-def build_module(so_path: str, meta: object) -> object {
+def build_module(so_path: str, meta: BridgeMeta) -> object {
     lib = CDLL(so_path);
 
     init_name = f"jac_bridge_init_{meta.module_name}";

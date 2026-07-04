@@ -62,9 +62,13 @@ Every fallible C-ABI shim returns an `i32` status:
 | 2     | `STATUS_PANIC`| Rust panic was caught; `*out_err` holds a message.   |
 
 `STATUS_PANIC` means the bridge caught an unwinding panic with
-`std::panic::catch_unwind`.  The error handle for a panic contains a plain
-string message (`Box<String>` cast to `u64`); it must be freed with
-`jac_<module>_error_drop`.  The Rust release profile must keep
+`std::panic::catch_unwind`.  The panic handle contains a plain string message
+(`Box<String>` cast to `u64`), the same representation as an error handle.  It
+is read with `jac_<module>_panic_message` and freed with
+`jac_<module>_panic_drop`.  These two symbols are emitted for **every** bridge,
+independent of whether it declares a `#[jac_error]` type, so a panic in a bridge
+with no error type still surfaces its message and frees its handle rather than
+leaking behind a generic status string.  The Rust release profile must keep
 `panic = "unwind"` so that panics unwind rather than aborting.
 
 ---
@@ -79,8 +83,10 @@ program imports multiple bridges simultaneously.
 | `jac_<mod>_<Type>_new`               | Constructor                        |
 | `jac_<mod>_<Type>_<method>`          | Instance method                    |
 | `jac_<mod>_<Type>_drop`              | Destructor (called by synthesized dtor) |
-| `jac_<mod>_error_message`            | Copy error handle → `JacBuf`       |
-| `jac_<mod>_error_drop`               | Free an error handle               |
+| `jac_<mod>_error_message`            | Copy error handle → `JacBuf` (with `#[jac_error]`) |
+| `jac_<mod>_error_drop`               | Free an error handle (with `#[jac_error]`) |
+| `jac_<mod>_panic_message`            | Copy panic handle → `JacBuf` (always emitted) |
+| `jac_<mod>_panic_drop`               | Free a panic handle (always emitted) |
 | `jac_<mod>_free_buf`                 | Free a `JacBuf`                    |
 | `jac_bridge_init_<mod>`              | Return pointer to D2 metadata blob |
 

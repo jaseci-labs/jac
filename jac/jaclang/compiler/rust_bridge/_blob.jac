@@ -14,6 +14,27 @@ glob MAGIC = b"JACBRDG1",
      FN_METHOD = 1;
 
 
+def tag_base(tag: int) -> int {
+    return tag & ~TAG_OPT_BIT;
+}
+
+
+def tag_is_opt(tag: int) -> bool {
+    return bool(tag & TAG_OPT_BIT);
+}
+
+
+def tag_is_ref(tag: int) -> bool {
+    base = tag_base(tag);
+    return bool(base & TAG_REF_BIT) and base != TAG_VOID;
+}
+
+
+def tag_ref_index(tag: int) -> int {
+    return tag_base(tag) & ~TAG_REF_BIT;
+}
+
+
 class ParamDesc {
     def init(self: ParamDesc, name: str, tag: int) {
         self.name = name;
@@ -32,7 +53,7 @@ class FnDesc {
         kind: int,
         throws: int,
         ret: int,
-        params: list = None
+        params: list[ParamDesc] | None = None
     ) {
         self.index = index;
         self.name = name;
@@ -61,8 +82,8 @@ class BridgeMeta {
         self: BridgeMeta,
         abi_version: int,
         module_name: str,
-        types: list = None,
-        fns: list = None
+        types: list[TypeDesc] | None = None,
+        fns: list[FnDesc] | None = None
     ) {
         self.abi_version = abi_version;
         self.module_name = module_name;

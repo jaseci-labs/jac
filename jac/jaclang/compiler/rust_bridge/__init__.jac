@@ -1,7 +1,7 @@
 import os;
 import shutil;
 import from pathlib { Path }
-import from jaclang.compiler.rust_bridge._blob { BridgeMeta, parse }
+import from jaclang.compiler.rust_bridge._blob { BridgeMeta, SUPPORTED_ABI, parse }
 import from jaclang.compiler.rust_bridge._ctypes_codegen { build_module }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
 import from jaclang.compiler.rust_bridge._finder {
@@ -11,8 +11,7 @@ import from jaclang.compiler.rust_bridge._finder {
 }
 import from jaclang.compiler.rust_bridge._synth { NaModule, Skip, render_na_source }
 
-glob SUPPORTED_ABI = 1,
-     __all__ = [
+glob __all__ = [
          "SUPPORTED_ABI",
          "BridgeSynth",
          "synthesize_bridge",
@@ -23,8 +22,6 @@ glob SUPPORTED_ABI = 1,
          "RustBridgeFinder",
          "install_rust_namespace",
          "load_bridge",
-         "install_finder",
-         "JacBridgeFinder",
          "build_module"
      ];
 
@@ -54,7 +51,7 @@ def __getattr__(name: str) -> object {
 }
 
 
-def load_bridge(so_path: object) -> object {
+def load_bridge(so_path: str | Path) -> object {
     so = str(so_path);
     meta = parse(read_jac_bridge_section(so));
     return build_module(so, meta);
@@ -74,8 +71,8 @@ class BridgeSynth {
         so_path: str,
         so_basename: str,
         source: str,
-        meta: object,
-        skips: list = None
+        meta: BridgeMeta,
+        skips: list[Skip] | None = None
     ) {
         self.crate = crate;
         self.so_path = so_path;
@@ -87,7 +84,9 @@ class BridgeSynth {
 }
 
 
-def synthesize_bridge(crate: str, extra_dirs: object = None) -> object {
+def synthesize_bridge(
+    crate: str, extra_dirs: list | None = None
+) -> BridgeSynth | None {
     lib = find_bridge_lib(crate, extra_dirs);
     if lib is None {
         return None;
@@ -112,7 +111,7 @@ def synthesize_bridge(crate: str, extra_dirs: object = None) -> object {
 }
 
 
-def materialize_bridge(module_name: str, extra_dirs: object = None) -> object {
+def materialize_bridge(module_name: str, extra_dirs: list | None = None) -> str | None {
     crate = _crate_of(module_name);
     if crate is None {
         return None;
@@ -134,7 +133,7 @@ def materialize_bridge(module_name: str, extra_dirs: object = None) -> object {
 }
 
 
-def install_bridge(so_path: object, version: str = "local") -> Path {
+def install_bridge(so_path: str | Path, version: str = "local") -> Path {
     import from jaclang.compiler.rust_bridge._finder { _cache_root, _target_triple }
 
     so_path = Path(so_path).resolve();
