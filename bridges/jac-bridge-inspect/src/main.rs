@@ -244,11 +244,13 @@ mod tests {
         // We find it relative to the workspace target directory.
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let ws = manifest.parent().unwrap(); // bridges/
-        let blob_path = ws
-            .join("target/debug/build")
-            .read_dir()
-            .expect("target/debug/build not found — run `cargo build` for jac-bridge-regex first")
-            .filter_map(|e| e.ok())
+        // The blob lands under target/<profile>/build/. Under `cargo test` it's
+        // `debug`; under `cargo test --release` (what CI runs) it's `release`.
+        // Search whichever build dir exists so we're profile-insensitive.
+        let blob_path = ["debug", "release"]
+            .iter()
+            .filter_map(|profile| ws.join("target").join(profile).join("build").read_dir().ok())
+            .flat_map(|rd| rd.filter_map(|e| e.ok()))
             .filter(|e| {
                 e.file_name()
                     .to_string_lossy()
@@ -258,7 +260,10 @@ mod tests {
                 let p = e.path().join("out/jac_bridge_meta.bin");
                 p.exists().then_some(p)
             })
-            .expect("jac_bridge_meta.bin not found; run: cargo build -p jac-bridge-regex");
+            .expect(
+                "jac_bridge_meta.bin not found in target/{debug,release}/build; \
+                 run: cargo build -p jac-bridge-regex",
+            );
         std::fs::read(blob_path).unwrap()
     }
 
