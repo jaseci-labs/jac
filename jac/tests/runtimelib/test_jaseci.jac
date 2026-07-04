@@ -769,11 +769,27 @@ test "savable object" {
             args=[id]
         );
         got = capture_get(captured).strip();
-        assert got == (
+        expected = (
             "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
             "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
             "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
-        ) , f"reload printed: {got!r}";
+        );
+        diag = "";
+        if got != expected {
+            import from jaclang.runtimelib.serializer { Serializer }
+            import from jaclang.runtimelib { typecache }
+            reg_cls = Serializer._registry.get("__main__.SavableObject");
+            cached = typecache._cache.get(reg_cls) if reg_cls else None;
+            resolved = typecache.get_field_types(reg_cls) if reg_cls else None;
+            diag = (
+                f" | main={sys.modules.get('__main__')!r}"
+                f" | reg_cls={reg_cls!r}"
+                f" | ann={reg_cls?.__annotations__!r}"
+                f" | cached={cached!r}"
+                f" | ft={resolved!r}"
+            );
+        }
+        assert got == expected , f"reload printed: {got!r}{diag}";
 
         captured = capture_start();
 
