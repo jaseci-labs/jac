@@ -1226,6 +1226,128 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Use of JS-specific property '.{prop}' — use '{alternative}' for cross-codespace portability",
          help="Use Jac common builtins instead of JS-specific properties."
      ),
+     E4201 = _err(
+         "E4201",
+         Category.SEMANTIC,
+         "cast to `{target}` elided — {detail}",
+         blocks_codegen=True
+     ),
+     E4202 = _err(
+         "E4202",
+         Category.SEMANTIC,
+         "switch fall-through not modelled — {detail}",
+         blocks_codegen=True
+     ),
+     E4203 = _err(
+         "E4203",
+         Category.SEMANTIC,
+         "do-while `continue` skips the post-body condition test",
+         blocks_codegen=True
+     ),
+     E4204 = _err(
+         "E4204",
+         Category.SEMANTIC,
+         "comma expression — leading operand side effects dropped",
+         blocks_codegen=True
+     ),
+     E4205 = _err(
+         "E4205",
+         Category.SEMANTIC,
+         "`volatile` qualifier on `{name}` dropped",
+         blocks_codegen=True
+     ),
+     E4206 = _err(
+         "E4206",
+         Category.SEMANTIC,
+         "function-local `static` `{name}` loses cross-call persistence",
+         blocks_codegen=True
+     ),
+     E4207 = _err(
+         "E4207",
+         Category.SEMANTIC,
+         "variadic `...` lowered to `*args` — `va_list`/`va_arg` not modelled",
+         blocks_codegen=True
+     ),
+     E4208 = _err(
+         "E4208",
+         Category.SEMANTIC,
+         "C-`for` not faithfully lowered — {detail}",
+         blocks_codegen=True
+     ),
+     E4209 = _err(
+         "E4209",
+         Category.SEMANTIC,
+         "designated initializer `.{field}=` — field name dropped, emitted positionally",
+         blocks_codegen=True
+     ),
+     E4210 = _err(
+         "E4210",
+         Category.SYNTAX,
+         "numeric literal `{value}` unparsed — emitted as a string placeholder",
+         blocks_codegen=True
+     ),
+     E4211 = _err(
+         "E4211",
+         Category.SYNTAX,
+         "constant of unrecognized type — emitted as a string placeholder",
+         blocks_codegen=True
+     ),
+     E4290 = _err(
+         "E4290",
+         Category.SEMANTIC,
+         "C construct `{ctype}` has no faithful Jac lowering — emitted as a placeholder",
+         blocks_codegen=True
+     ),
+     W4201 = _warn("W4201", Category.SEMANTIC, "cast to `{target}` elided — {detail}"),
+     W4202 = _warn(
+         "W4202", Category.SEMANTIC, "switch fall-through not modelled — {detail}"
+     ),
+     W4203 = _warn(
+         "W4203",
+         Category.SEMANTIC,
+         "do-while `continue` skips the post-body condition test"
+     ),
+     W4204 = _warn(
+         "W4204",
+         Category.SEMANTIC,
+         "comma expression — leading operand side effects dropped"
+     ),
+     W4205 = _warn(
+         "W4205", Category.SEMANTIC, "`volatile` qualifier on `{name}` dropped"
+     ),
+     W4206 = _warn(
+         "W4206",
+         Category.SEMANTIC,
+         "function-local `static` `{name}` loses cross-call persistence"
+     ),
+     W4207 = _warn(
+         "W4207",
+         Category.SEMANTIC,
+         "variadic `...` lowered to `*args` — `va_list`/`va_arg` not modelled"
+     ),
+     W4208 = _warn(
+         "W4208", Category.SEMANTIC, "C-`for` not faithfully lowered — {detail}"
+     ),
+     W4209 = _warn(
+         "W4209",
+         Category.SEMANTIC,
+         "designated initializer `.{field}=` — field name dropped, emitted positionally"
+     ),
+     W4210 = _warn(
+         "W4210",
+         Category.SYNTAX,
+         "numeric literal `{value}` unparsed — emitted as a string placeholder"
+     ),
+     W4211 = _warn(
+         "W4211",
+         Category.SYNTAX,
+         "constant of unrecognized type — emitted as a string placeholder"
+     ),
+     W4290 = _warn(
+         "W4290",
+         Category.SEMANTIC,
+         "C construct `{ctype}` has no faithful Jac lowering — emitted as a placeholder"
+     ),
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}"),
      E9002 = _err(
          "E9002",

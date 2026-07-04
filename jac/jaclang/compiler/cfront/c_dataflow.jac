@@ -1,5 +1,5 @@
 import from jaclang.vendor.pycparser { c_ast }
-import from jaclang.compiler.c2jac.c_idioms { malloc_array_match, realloc_ptr_arg }
+import from jaclang.compiler.cfront.c_idioms { malloc_array_match, realloc_ptr_arg }
 
 def lb_merge(states: list) -> set {
     if not states {

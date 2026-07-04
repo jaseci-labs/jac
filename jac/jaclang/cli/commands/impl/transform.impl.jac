@@ -42,21 +42,23 @@ impl c2jac(
     define: list | None = None,
     undef: list | None = None,
     force_include: list | None = None,
-    nostdinc: bool = False
+    nostdinc: bool = False,
+    strict_c: bool = False
 ) -> int {
-    import from jaclang.compiler.c2jac.driver { transpile_c_file }
+    import from jaclang.compiler.cfront.lift { lift_c_file, render_c2jac_report }
     if not filename.endswith(".c") and not filename.endswith(".i") {
         console.error("Not a .c or .i file.");
         return 1;
     }
     try {
-        (jac_str, tags) = transpile_c_file(
+        res = lift_c_file(
             filename,
             include_dirs=flatten_append(incdir),
             defines=flatten_append(define),
             undefines=flatten_append(undef),
             force_includes=flatten_append(force_include),
             nostdinc=nostdinc,
+            lenient_c=(not strict_c),
         );
     } except OSError as e {
         console.error(f"Cannot read {filename}: {e}");
@@ -65,15 +67,22 @@ impl c2jac(
         console.error(f"Transpilation failed: {e}");
         return 1;
     }
-    console.print(jac_str, markup=False, highlight=False);
-    import from jaclang.compiler.c2jac.comments { tier_b_site_count }
+    jac_str = res.module.unparse(requires_format=True);
+    header = render_c2jac_report(res.diags);
+    console.print(header + jac_str, markup=False, highlight=False);
 
-    n_tier_b = tier_b_site_count(tags);
-    if n_tier_b {
+    n = len(res.diags);
+    if n and strict_c {
+        console.error(
+            f"[c2jac] {n} construct(s) could not be lifted faithfully (--strict-c); "
+            f"see the `# c2jac:` header above"
+        );
+        return 1;
+    }
+    if n {
         console.warning(
-            f"[c2jac] {n_tier_b} best-effort (Tier-B) site(s) — see the `# c2jac:` "
-            f"header in the output for the full list (surrogate sites are also "
-            f"flagged inline at their site)"
+            f"[c2jac] {n} best-effort site(s) — see the `# c2jac:` header in the "
+            f"output (surrogate sites are also flagged inline as `__c_unsupported__`)"
         );
     }
     return 0;
