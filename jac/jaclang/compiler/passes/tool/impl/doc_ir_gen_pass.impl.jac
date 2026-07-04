@@ -2077,7 +2077,9 @@ impl DocIRGenPass.exit_import(nd: uni.Import) -> None {
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             is_in_items = False;
-            mod_items.pop();
+            if mod_items {
+                mod_items.pop();
+            }
             parts.append(
                 self.group(
                     self.concat(
