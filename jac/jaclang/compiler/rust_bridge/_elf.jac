@@ -10,7 +10,28 @@ def read_jac_bridge_section(path: str) -> bytes {
     if data[:4] == b"\x7fELF" {
         return _from_elf(data, path);
     }
-    raise ValueError(f"{path!r}: only ELF binaries are supported on this platform");
+
+    fmt = _detect_format(data);
+    raise ValueError(
+        f"{path!r}: {fmt} object files are not supported by the in-compiler bridge " + "reader (ELF only). Build the bridge for a Linux target, or inspect it " + "with `jac-bridge-inspect`, which handles ELF/Mach-O/PE."
+    );
+}
+
+
+def _detect_format(data: bytes) -> str {
+    magic4 = data[:4];
+    if magic4 in (
+        b"\xcf\xfa\xed\xfe",
+        b"\xce\xfa\xed\xfe",
+        b"\xca\xfe\xba\xbe",
+        b"\xbe\xba\xfe\xca"
+    ) {
+        return "Mach-O";
+    }
+    if data[:2] == b"MZ" {
+        return "PE/COFF";
+    }
+    return "unrecognized";
 }
 
 

@@ -2,7 +2,22 @@ import os;
 import platform;
 import from pathlib { Path }
 
-glob _STEMS = ("lib{}.so", "lib{}.dylib", "{}.dll");
+glob _STEMS = ("lib{}.so", "lib{}.dylib", "{}.dll"),
+     _PREFIX = "rust.";
+
+
+def is_bridge_module(module_name: str) -> bool {
+    clean = module_name.lstrip(".");
+    return clean.startswith(_PREFIX) and clean.count(".") == 1;
+}
+
+
+def _crate_of(module_name: str) -> object {
+    if not is_bridge_module(module_name) {
+        return None;
+    }
+    return module_name.lstrip(".")[len(_PREFIX):];
+}
 
 
 def _target_triple -> str {
@@ -25,6 +40,18 @@ def _target_triple -> str {
         return f"{arch}-pc-windows-msvc";
     }
     return f"{arch}-unknown-{sysname.lower()}";
+}
+
+
+def _libc_soname -> str {
+    sysname = platform.system();
+    if sysname == "Darwin" {
+        return "libSystem.B.dylib";
+    }
+    if sysname == "Windows" {
+        return "msvcrt.dll";
+    }
+    return "libc.so.6";
 }
 
 

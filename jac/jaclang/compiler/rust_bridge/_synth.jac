@@ -10,6 +10,7 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_STR,
     TAG_VOID
 }
+import from jaclang.compiler.rust_bridge._finder { _libc_soname }
 
 
 class Skip {
@@ -351,7 +352,7 @@ class _Synth {
         );
         out.append(f"# module: {m.module_name}   abi: {m.abi_version}");
         out.append("import struct;");
-        out.append('import from "libc.so.6" {');
+        out.append(f'import from "{_libc_soname()}" {{');
         out.append("    def strlen(s: str) -> int;");
         out.append("}");
         out.append("");

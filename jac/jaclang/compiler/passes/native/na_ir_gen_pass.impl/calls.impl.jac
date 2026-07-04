@@ -80,8 +80,17 @@ impl NaIRGenPass._note_bridge_sink(name: str, fn: ir.Function) -> None {
     }
 }
 
-impl NaIRGenPass._lambda_arg_is_callback(nd: uni.UniNode) -> bool {
-    return isinstance(nd, uni.LambdaExpr) and self._callback_make_buf is not None;
+impl NaIRGenPass._lambda_arg_is_callback(
+    nd: uni.UniNode, slot_type: (ir.Type | None) = None
+) -> bool {
+    if not isinstance(nd, uni.LambdaExpr) or self._callback_make_buf is None {
+        return False;
+    }
+
+    if slot_type is not None and not isinstance(slot_type, ir.IntType) {
+        return False;
+    }
+    return True;
 }
 
 impl NaIRGenPass._codegen_bound_args(
@@ -106,8 +115,10 @@ impl NaIRGenPass._codegen_bound_args(
 
     if callee_sig is None {
         for p in positional {
+            _slot = self_offset + len(args);
+            _st = func.args[_slot].type if _slot < len(func.args) else None;
             v = self._codegen_callback_arg(p)
-                if self._lambda_arg_is_callback(p)
+                if self._lambda_arg_is_callback(p, _st)
                 else self._codegen_expr(p);
             if v is not None {
                 args.append(v);
@@ -139,7 +150,7 @@ impl NaIRGenPass._codegen_bound_args(
                 chosen = None;
             }
         }
-        if chosen is not None and self._lambda_arg_is_callback(chosen) {
+        if chosen is not None and self._lambda_arg_is_callback(chosen, expected_type) {
             val = self._codegen_callback_arg(chosen);
         } else {
             val = self._codegen_expr(chosen) if chosen is not None else None;
@@ -153,8 +164,10 @@ impl NaIRGenPass._codegen_bound_args(
 
     for pix in range(len(sig_params), len(positional)) {
         p = positional[pix];
+        _slot = self_offset + pix;
+        _st = func.args[_slot].type if _slot < len(func.args) else None;
         v = self._codegen_callback_arg(p)
-            if self._lambda_arg_is_callback(p)
+            if self._lambda_arg_is_callback(p, _st)
             else self._codegen_expr(p);
         if v is not None {
             args.append(v);

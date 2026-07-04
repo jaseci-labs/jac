@@ -4,7 +4,11 @@ import from pathlib { Path }
 import from jaclang.compiler.rust_bridge._blob { BridgeMeta, parse }
 import from jaclang.compiler.rust_bridge._ctypes_codegen { build_module }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
-import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
+import from jaclang.compiler.rust_bridge._finder {
+    find_bridge_lib,
+    is_bridge_module,
+    _crate_of
+}
 import from jaclang.compiler.rust_bridge._synth { NaModule, Skip, render_na_source }
 
 glob SUPPORTED_ABI = 1,
@@ -22,8 +26,7 @@ glob SUPPORTED_ABI = 1,
          "install_finder",
          "JacBridgeFinder",
          "build_module"
-     ],
-     _PREFIX = "rust.";
+     ];
 
 
 def __getattr__(name: str) -> object {
@@ -55,20 +58,6 @@ def load_bridge(so_path: object) -> object {
     so = str(so_path);
     meta = parse(read_jac_bridge_section(so));
     return build_module(so, meta);
-}
-
-
-def is_bridge_module(module_name: str) -> bool {
-    clean = module_name.lstrip(".");
-    return clean.startswith(_PREFIX) and clean.count(".") == 1;
-}
-
-
-def _crate_of(module_name: str) -> object {
-    if not is_bridge_module(module_name) {
-        return None;
-    }
-    return module_name.lstrip(".")[len(_PREFIX):];
 }
 
 

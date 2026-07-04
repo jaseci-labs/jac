@@ -5,9 +5,7 @@ import from importlib.machinery { ModuleSpec }
 import from jaclang.compiler.rust_bridge._blob { parse }
 import from jaclang.compiler.rust_bridge._ctypes_codegen { build_module }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
-import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
-
-glob _RUST_PREFIX = "rust.";
+import from jaclang.compiler.rust_bridge._finder { find_bridge_lib, _STEMS, _crate_of }
 
 
 class RustBridgeFinder(MetaPathFinder) {
@@ -26,11 +24,8 @@ class RustBridgeFinder(MetaPathFinder) {
             spec.submodule_search_locations = [];
             return spec;
         }
-        if not fullname.startswith(_RUST_PREFIX) {
-            return None;
-        }
-        crate = fullname[len(_RUST_PREFIX):];
-        if "." in crate {
+        crate = _crate_of(fullname);
+        if crate is None {
             return None;
         }
         lib = find_bridge_lib(crate, self._extra);
@@ -87,8 +82,7 @@ def install_rust_namespace(search_dirs: object = None) -> RustBridgeFinder {
 }
 
 
-glob _JAC_BRIDGE_PREFIX = "jac_bridge_",
-     _STEMS = ("lib{}.so", "lib{}.dylib", "{}.dll");
+glob _JAC_BRIDGE_PREFIX = "jac_bridge_";
 
 
 def _find_so(lib_name: str, dirs: list) -> object {

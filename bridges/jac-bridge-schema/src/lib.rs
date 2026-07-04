@@ -2,8 +2,9 @@
 //!
 //! Every crate that generates or parses D2 blobs (jac-bridge proc macro,
 //! jac-bridge-regex build script, jac-bridge-inspect) imports from here.
-//! The Python parser (_blob.py) mirrors these values with a cross-reference
-//! comment; update both if the ABI evolves.
+//! The in-compiler Jac parser (jaclang/compiler/rust_bridge/_blob.jac) mirrors
+//! these values; update both if the ABI evolves. The `test_abi_drift.jac` guard
+//! in jac-bridge-loader parses this file and fails CI if the two sides diverge.
 
 pub const MAGIC: &[u8; 8] = b"JACBRDG1";
 pub const ABI_VERSION: u32 = 1;

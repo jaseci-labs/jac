@@ -235,7 +235,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _callback_make_buf: (ir.Function | None) = None;
 
     def _note_bridge_sink(name: str, fn: ir.Function) -> None;
-    def _lambda_arg_is_callback(nd: uni.UniNode) -> bool;
+    def _lambda_arg_is_callback(
+        nd: uni.UniNode, slot_type: (ir.Type | None) = None
+    ) -> bool;
+
     def _owned_jac_str_from_raw(
         src: ir.Value,
         dlen: ir.Value,
