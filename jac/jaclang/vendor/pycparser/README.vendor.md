@@ -12,18 +12,27 @@ makes it cleanly vendorable.
   `isinstance` against `c_ast` node types, which breaks across duplicate module
   identities.
 
-## Do not edit these files
-Keep this copy byte-for-byte upstream. All c2jac-specific behavior lives outside
-this directory. To re-vendor a newer release:
+## What is kept
+This copy is upstream byte-for-byte **except** that the offline codegen tooling
+(`_ast_gen.py`, `_c_ast.cfg`, `c_generator.py`) is dropped — it regenerates
+`c_ast.py` / emits C from an AST and is never used at runtime (c2jac only
+*parses*). The `utils/fake_libc_include/` stub headers **are** vendored (they are
+omitted from the pip wheel, the [#6973] gap that broke the default system-include
+path); `cfront/preprocess.jac` adds this dir to the include path unless
+`-nostdinc`.
 
+## Re-vendoring a newer release
 ```
-pip download --no-deps --no-binary :all: 'pycparser==<ver>'   # or copy from a venv
-cp <pycparser>/*.py <pycparser>/_c_ast.cfg jac/jaclang/vendor/pycparser/
+pip download --no-deps --no-binary :all: 'pycparser==<ver>'   # sdist, NOT the wheel
+# from the extracted sdist:
+cp <pycparser>/pycparser/*.py jac/jaclang/vendor/pycparser/
+cp -r <pycparser>/utils/fake_libc_include jac/jaclang/vendor/pycparser/utils/
 cp <pycparser>/LICENSE jac/jaclang/vendor/pycparser/LICENSE
+rm jac/jaclang/vendor/pycparser/{_ast_gen.py,_c_ast.cfg,c_generator.py}   # codegen-only
 ```
 
-Then bump the version above. `_ast_gen.py` / `_c_ast.cfg` / `c_generator.py` are
-not used at runtime (codegen/regeneration tooling) but are kept so re-vendoring
-is a clean directory copy.
+Then bump the version above. Use the **sdist**, not the wheel — the wheel omits
+`utils/fake_libc_include/`.
 
-Note: the C preprocessor (`pcpp`) remains a declared dependency in `jac.toml`.
+Note: the C preprocessor (`pcpp`) is likewise vendored, at
+`jaclang/vendor/pcpp` — the c2jac front-end now has zero third-party deps.
