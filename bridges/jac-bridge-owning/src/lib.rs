@@ -37,11 +37,15 @@
 //!
 //! The last class is CALLBACKS (`Regex::replace_all` with a closure `Replacer`),
 //! where Rust calls BACK into Jac once per match.  The callback crosses as a
-//! single C-ABI function pointer (`JacCallback`): on the na runtime a `def:pub`
-//! thunk whose address is taken with `as int`; on CPython a `CFUNCTYPE`-wrapped
-//! callable.  The callback returns its replacement through an owned `JacBuf`
-//! allocated Jac-side via the generated `jac_owning_make_buf` and freed here
-//! after copying — the same allocator both ways, so no cross-heap free.
+//! pointer to a two-word `{call, ctx}` closure record (`JacCallback`): `call` is
+//! the C-ABI thunk's address and `ctx` an opaque environment pointer (null when
+//! the callback captures nothing).  On the na runtime the backend builds the
+//! record from a `lambda` — a synthesized trampoline is `call`, and any captured
+//! variables are packed into the `ctx` env struct; on CPython it is a
+//! `CFUNCTYPE`-wrapped callable with a null `ctx`.  The callback returns its
+//! replacement through an owned `JacBuf` allocated Jac-side via the generated
+//! `jac_owning_make_buf` and freed here after copying — the same allocator both
+//! ways, so no cross-heap free.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -135,11 +139,13 @@ mod bridge_impl {
         /// vertical where Rust calls BACK into Jac: for each match we hand the
         /// matched text to `rep` and splice in the `String` it returns.
         ///
-        /// The callback crosses as a single C-ABI function pointer (`JacCallback`)
-        /// — on the na runtime a `def:pub` thunk whose address is taken with
-        /// `as int` (the "na trampoline"); on CPython a `CFUNCTYPE`-wrapped
-        /// callable.  A callback error aborts the replacement and surfaces as this
-        /// method's `Err` (a thrown exception on both loaders).
+        /// The callback crosses as a pointer to a two-word `{call, ctx}` closure
+        /// record (`JacCallback`): `call` is the C-ABI thunk's address and `ctx`
+        /// an opaque env pointer (null when nothing is captured).  On the na
+        /// runtime the backend synthesizes the trampoline (`call`) and packs any
+        /// captures into `ctx`; on CPython it is a `CFUNCTYPE`-wrapped callable
+        /// with a null `ctx`.  A callback error aborts the replacement and
+        /// surfaces as this method's `Err` (a thrown exception on both loaders).
         pub fn replace_all(&self, text: &str, rep: JacCallback) -> Result<String, String> {
             // `replace_all`'s closure must return a `String`, with no error
             // channel of its own; capture the first callback error and raise it

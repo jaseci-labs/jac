@@ -176,6 +176,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
             "sret": sysv_sret
         };
         self.func_symtab[name] = sysv_func;
+        self._note_bridge_sink(name, sysv_func);
         self.has_native_code = True;
         return;
     }
@@ -211,6 +212,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
     self.func_symtab[name] = func;
+    self._note_bridge_sink(name, func);
     self.has_native_code = True;
 }
 

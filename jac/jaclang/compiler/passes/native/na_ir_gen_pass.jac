@@ -231,7 +231,17 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
 
     has lambda_captures: dict[str, list[tuple]] = {},
-        _pending_lambda_captures: (list[tuple] | None) = None;
+        _pending_lambda_captures: (list[tuple] | None) = None,
+        _callback_make_buf: (ir.Function | None) = None;
+
+    def _note_bridge_sink(name: str, fn: ir.Function) -> None;
+    def _lambda_arg_is_callback(nd: uni.UniNode) -> bool;
+    def _owned_jac_str_from_raw(
+        src: ir.Value,
+        dlen: ir.Value,
+        name_prefix: str = "jbuf",
+        rc_op: str = "str_from_raw"
+    ) -> ir.Value;
 
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
     def _get_or_declare_extern(

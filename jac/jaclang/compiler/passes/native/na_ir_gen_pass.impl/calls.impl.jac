@@ -74,6 +74,16 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
     return ir.Constant(t, 0);
 }
 
+impl NaIRGenPass._note_bridge_sink(name: str, fn: ir.Function) -> None {
+    if name.endswith("_make_buf") {
+        self._callback_make_buf = fn;
+    }
+}
+
+impl NaIRGenPass._lambda_arg_is_callback(nd: uni.UniNode) -> bool {
+    return isinstance(nd, uni.LambdaExpr) and self._callback_make_buf is not None;
+}
+
 impl NaIRGenPass._codegen_bound_args(
     nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
 ) -> list {
@@ -97,7 +107,7 @@ impl NaIRGenPass._codegen_bound_args(
     if callee_sig is None {
         for p in positional {
             v = self._codegen_callback_arg(p)
-                if isinstance(p, uni.LambdaExpr)
+                if self._lambda_arg_is_callback(p)
                 else self._codegen_expr(p);
             if v is not None {
                 args.append(v);
@@ -129,7 +139,7 @@ impl NaIRGenPass._codegen_bound_args(
                 chosen = None;
             }
         }
-        if chosen is not None and isinstance(chosen, uni.LambdaExpr) {
+        if chosen is not None and self._lambda_arg_is_callback(chosen) {
             val = self._codegen_callback_arg(chosen);
         } else {
             val = self._codegen_expr(chosen) if chosen is not None else None;
@@ -144,7 +154,7 @@ impl NaIRGenPass._codegen_bound_args(
     for pix in range(len(sig_params), len(positional)) {
         p = positional[pix];
         v = self._codegen_callback_arg(p)
-            if isinstance(p, uni.LambdaExpr)
+            if self._lambda_arg_is_callback(p)
             else self._codegen_expr(p);
         if v is not None {
             args.append(v);
@@ -153,19 +163,35 @@ impl NaIRGenPass._codegen_bound_args(
     return args;
 }
 
+impl NaIRGenPass._owned_jac_str_from_raw(
+    src: ir.Value,
+    dlen: ir.Value,
+    name_prefix: str = "jbuf",
+    rc_op: str = "str_from_raw"
+) -> ir.Value {
+    _i8 = ir.IntType(8);
+    _i8p = ir.IntType(8).as_pointer();
+    _i64 = ir.IntType(64);
+    bufsz = self.builder.add(dlen, ir.Constant(_i64, 1), name=f"{name_prefix}.bufsz");
+    self._set_rc_ctx(rc_op, "");
+    raw = self._rc_alloc(bufsz, name=f"{name_prefix}.raw");
+    self._clear_rc_ctx();
+    memcpy_fn = self._get_or_declare_extern("memcpy", _i8p, [_i8p, _i8p, _i64]);
+    self.builder.call(memcpy_fn, [raw, src, dlen]);
+    self.builder.store(
+        ir.Constant(_i8, 0), self.builder.gep(raw, [dlen], name=f"{name_prefix}.nul")
+    );
+    self._emit_set_type_tag(self.builder, raw, "str");
+    self._mark_owned(raw);
+    return raw;
+}
+
 impl NaIRGenPass._codegen_callback_arg(nd: uni.LambdaExpr) -> (ir.Value | None) {
-    i8 = ir.IntType(8);
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
 
-    make_buf: (ir.Function | None) = None;
-    for (k, v) in self.func_symtab.items() {
-        if k.endswith("_make_buf") and isinstance(v, ir.Function) {
-            make_buf = v;
-            break;
-        }
-    }
+    make_buf = self._callback_make_buf;
     if make_buf is None {
         return self._codegen_expr(nd);
     }
@@ -195,16 +221,9 @@ impl NaIRGenPass._codegen_callback_arg(nd: uni.LambdaExpr) -> (ir.Value | None) 
     self._builder = ir.IRBuilder(tramp.append_basic_block("entry"));
 
     dlen = self.builder.zext(tramp.args[2], i64, name="cb.len");
-    bufsz = self.builder.add(dlen, ir.Constant(i64, 1), name="cb.bufsz");
-    self._set_rc_ctx("callback_str", "");
-    raw = self._rc_alloc(bufsz, name="cb.str.raw");
-    self._clear_rc_ctx();
-    memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    self.builder.call(memcpy_fn, [raw, tramp.args[1], dlen]);
-    self.builder.store(
-        ir.Constant(i8, 0), self.builder.gep(raw, [dlen], name="cb.nul")
+    raw = self._owned_jac_str_from_raw(
+        tramp.args[1], dlen, name_prefix="cb", rc_op="callback_str"
     );
-    self._emit_set_type_tag(self.builder, raw, "str");
 
     call_args: list = [self._coerce_type(raw, anon_fn.function_type.args[0])];
     if cap_types {
@@ -239,6 +258,9 @@ impl NaIRGenPass._codegen_callback_arg(nd: uni.LambdaExpr) -> (ir.Value | None) 
             self._coerce_type(out_i, make_buf.args[2].type)
         ]
     );
+
+    self._emit_rc_release_simple(result, op="callback_result", loc="");
+    self._emit_rc_release_simple(raw, op="callback_str", loc="");
     self.builder.ret(ir.Constant(i32, 0));
 
     self._builder = saved_builder;
@@ -433,23 +455,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if ptr_v is None or len_v is None {
                 return self._make_global_string("", name_prefix=".jbuf.empty");
             }
-            _i8 = ir.IntType(8);
             _i8p = ir.IntType(8).as_pointer();
             _i64 = ir.IntType(64);
             src_i = self._coerce_type(ptr_v, _i64);
             src = self.builder.inttoptr(src_i, _i8p, name="jbuf.src");
             dlen = self._coerce_type(len_v, _i64);
-            bufsz = self.builder.add(dlen, ir.Constant(_i64, 1), name="jbuf.bufsz");
-            self._set_rc_ctx("str_from_raw", "");
-            raw = self._rc_alloc(bufsz, name="jbuf.raw");
-            self._clear_rc_ctx();
-            memcpy_fn = self._get_or_declare_extern("memcpy", _i8p, [_i8p, _i8p, _i64]);
-            self.builder.call(memcpy_fn, [raw, src, dlen]);
-            nul_ptr = self.builder.gep(raw, [dlen], name="jbuf.nul");
-            self.builder.store(ir.Constant(_i8, 0), nul_ptr);
-            self._emit_set_type_tag(self.builder, raw, "str");
-            self._mark_owned(raw);
-            return raw;
+            return self._owned_jac_str_from_raw(src, dlen, name_prefix="jbuf");
         }
 
         if func_name == "isinstance" {
