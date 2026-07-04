@@ -53,6 +53,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _sf_b.ret_void();
     self.rc_safe_free_fn = sf_fn;
 
+    self._emit_rc_collect_cycles();
+
     self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     self._get_or_declare_extern("strlen", i64, [i8_ptr]);
     self._get_or_declare_extern("strcmp", i32, [i8_ptr, i8_ptr]);
@@ -659,27 +661,49 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     release_fn.linkage = "private";
     release_fn.args[0].name = "obj";
 
+    i8 = ir.IntType(8);
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, struct_ptr_type);
 
-    for (fname, ftype) in field_types.items() {
-        if fname in opaque_fields {
-            continue;
+    _has_ref_fields = any(
+        isinstance(_ft, ir.PointerType)
+        and _fn not in opaque_fields
+        and field_indices.get(_fn, -1) >= 0 for (_fn, _ft) in field_types.items()
+    );
+    if _has_ref_fields {
+        if self.rc_collecting_gv is None {
+            self._emit_rc_helpers();
         }
-        if isinstance(ftype, ir.PointerType) {
-            idx = field_indices.get(fname, -1);
-            if idx >= 0 {
-                field_ptr = b.gep(
-                    release_fn.args[0],
-                    [ir.Constant(i32, 0), ir.Constant(i32, idx)],
-                    name=f"field.{fname}.ptr"
-                );
-                field_val = b.load(field_ptr, name=f"field.{fname}.val");
-                b.call(
-                    self.rc_release_simple_fn,
-                    [b.bitcast(field_val, i8_ptr, name=f"field.{fname}.cast")]
-                );
+        rel_fields_bb = release_fn.append_basic_block("release_fields");
+        post_fields_bb = release_fn.append_basic_block("post_fields");
+        _rel_coll = b.load(self.rc_collecting_gv, name="rel.collecting");
+        b.cbranch(
+            b.icmp_unsigned("!=", _rel_coll, ir.Constant(i8, 0), name="rel.mid.coll"),
+            post_fields_bb,
+            rel_fields_bb
+        );
+        b = ir.IRBuilder(rel_fields_bb);
+        for (fname, ftype) in field_types.items() {
+            if fname in opaque_fields {
+                continue;
+            }
+            if isinstance(ftype, ir.PointerType) {
+                idx = field_indices.get(fname, -1);
+                if idx >= 0 {
+                    field_ptr = b.gep(
+                        release_fn.args[0],
+                        [ir.Constant(i32, 0), ir.Constant(i32, idx)],
+                        name=f"field.{fname}.ptr"
+                    );
+                    field_val = b.load(field_ptr, name=f"field.{fname}.val");
+                    b.call(
+                        self.rc_release_simple_fn,
+                        [b.bitcast(field_val, i8_ptr, name=f"field.{fname}.cast")]
+                    );
+                }
             }
         }
+        b.branch(post_fields_bb);
+        b = ir.IRBuilder(post_fields_bb);
     }
 
     obj_cast = b.bitcast(release_fn.args[0], i8_ptr, name="obj.i8");

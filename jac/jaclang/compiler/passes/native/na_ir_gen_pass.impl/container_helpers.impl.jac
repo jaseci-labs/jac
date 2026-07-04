@@ -75,12 +75,29 @@ impl NaIRGenPass._emit_container_release_fn(
         release_fn.linkage = "private";
     }
     release_fn.args[0].name = "container";
+    i8 = ir.IntType(8);
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, container_ptr_type);
     for (field_idx, elem_type) in data_fields {
         if isinstance(elem_type, ir.PointerType) {
+            if self.rc_collecting_gv is None {
+                self._emit_rc_helpers();
+            }
+            rel_elems_bb = release_fn.append_basic_block("release_elems");
+            post_elems_bb = release_fn.append_basic_block("post_elems");
+            _cont_coll = b.load(self.rc_collecting_gv, name="cont.collecting");
+            b.cbranch(
+                b.icmp_unsigned(
+                    "!=", _cont_coll, ir.Constant(i8, 0), name="cont.mid.coll"
+                ),
+                post_elems_bb,
+                rel_elems_bb
+            );
+            b = ir.IRBuilder(rel_elems_bb);
             b = self._emit_rc_release_elem_loop(
                 b, release_fn, release_fn.args[0], field_idx
             );
+            b.branch(post_elems_bb);
+            b = ir.IRBuilder(post_elems_bb);
         }
         data_p = b.gep(
             release_fn.args[0],

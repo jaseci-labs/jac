@@ -81,10 +81,7 @@ test "no E1301 when a conditionally-moved binding is not used afterwards" {
     ]}";
 }
 
-# --- Borrow states (E1302–E1305) --------------------------------------------
-# These capture the remaining borrow-checker error states. They are the TDD
-# spec for the `&`/`&mut` borrow surface and leak detection, which are not yet
-# implemented; expect them to fail until the parser + borrow pass land.
+# --- Borrow states (E1302–E1305): borrow conflicts and leak detection --------
 test "E1302: two live mutable borrows of the same owner conflict" {
     prog = compile_fixture("two_mut_aliases.jac");
     assert count_code(prog, "E1302") == 1 , f"expected one E1302, errors={[
@@ -120,9 +117,7 @@ test "no E1305 when the own resource is handed off before scope end" {
     ]}";
 }
 
-# --- Escaping borrows (E1306) -----------------------------------------------
-# Borrows are second-class: a `&`/`&mut` reference may not outlive the scope
-# that created it, so returning one or storing it into managed storage escapes.
+# --- Escaping borrows (E1306): a borrow may not outlive its creating scope ----
 test "E1306: returning a borrow escapes its scope" {
     prog = compile_fixture("escaping_borrow_return.jac");
     assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
@@ -151,9 +146,8 @@ test "no E1305 when the owned value is moved out by return" {
     ]}";
 }
 
-# --- Borrow-typed parameters (P1.1 passthrough exception) --------------------
-# `&T`/`&mut T`/`own T` parameters opt the binding into the checker. Returning a
-# borrow that roots at a borrow parameter is the one allowed escape.
+# --- Borrow-typed parameters: returning a borrow rooted at a borrow parameter
+# is the one allowed escape (P1.1 passthrough) --------------------------------
 test "no E1306 when a borrow parameter is returned (single passthrough)" {
     prog = compile_fixture("param_borrow_passthrough_ok.jac");
     assert count_code(prog, "E1306") == 0 , f"unexpected E1306, errors={[
@@ -175,10 +169,7 @@ test "E1305: an own parameter that is never consumed leaks" {
     ]}";
 }
 
-# --- Fuller escape routes (P1.1) --------------------------------------------
-# Borrows escape not just via return/field-store but into a `flow` concurrency
-# boundary, a subscript slot of managed storage, and (RegionMap) any binding
-# whose scope strictly outlives the borrow's owner.
+# --- Fuller escape routes (P1.1): flow boundary, subscript slot, outer scope --
 test "E1306: a borrow handed to a `flow` boundary escapes" {
     prog = compile_fixture("escaping_borrow_flow.jac");
     assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
@@ -203,11 +194,8 @@ test "E1306: a borrow assigned into an outer scope outlives its owner" {
     ]}";
 }
 
-# --- Membrane: sealing an owned value back into managed storage (P1.2) -------
-# Storing an `own` value into a managed/graph location *moves* it back into
-# management (RC/GC): the source is consumed, so it may not be read afterwards,
-# it does not leak (E1305), and — unlike storing a borrow — it is not an escape
-# (E1306). Reading the field back yields an ordinary managed value.
+# --- Membrane (P1.2): sealing an own value into managed storage moves it in;
+# the source is consumed, so it does not leak (E1305) nor escape (E1306). ------
 test "no E1305/E1306 when an owned value is sealed into a managed field" {
     prog = compile_fixture("membrane_seal_in_ok.jac");
     assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
@@ -225,9 +213,8 @@ test "E1301: reading an owned value after it is sealed into managed storage" {
     ]}";
 }
 
-# --- Loop-depth rule (P0.3 soundness gap) ------------------------------------
-# Moving a pre-loop `own` binding inside a loop is rejected — the binding would
-# be consumed on the first iteration, leaving it invalid on all subsequent ones.
+# --- Loop-depth rule (P0.3): moving a pre-loop own binding inside a loop is
+# rejected; it would be consumed on the first iteration, invalid thereafter. ---
 test "E1301: moving a pre-loop own binding inside a loop body is rejected" {
     prog = compile_fixture("move_in_loop.jac");
     assert count_code(prog, "E1301") >= 1 , f"expected E1301 for loop-depth move, errors={[
@@ -235,9 +222,8 @@ test "E1301: moving a pre-loop own binding inside a loop body is rejected" {
     ]}";
 }
 
-# --- Phase 2 seed: proven-unique analysis (RC-elision `Proven` bit) ----------
-# A consumed, never-borrowed `own` binding is proven unique; the pass stamps
-# `sym.is_proven_unique` so the native backend may elide its RC churn.
+# --- Phase 2 seed: a consumed, never-borrowed own binding is proven-unique, so
+# the pass stamps `sym.is_proven_unique` for the backend to elide RC churn. ----
 test "a consumed, unborrowed own binding is marked proven-unique" {
     path = os.path.join(FIXTURES, "proven_unique_ok.jac");
     program = JacProgram();
