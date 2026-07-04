@@ -35,6 +35,14 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _b_en_gc.ret_void();
     self.rc_gc_enable_fn = en_gc_fn;
 
+    en_cyc_fn = self._define_function("__rc_cycles_enable", dis_gc_fnty);
+    en_cyc_fn.linkage = "internal";
+    _bb_en_cyc = en_cyc_fn.append_basic_block("entry");
+    _b_en_cyc = ir.IRBuilder(_bb_en_cyc);
+    _b_en_cyc.store(ir.Constant(i8, 1), self.rc_cycles_enabled_gv);
+    _b_en_cyc.ret_void();
+    self.rc_cycles_enable_fn = en_cyc_fn;
+
     sf_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     sf_fn = self._define_function("__rc_safe_free", sf_fnty);
     sf_fn.linkage = "internal";

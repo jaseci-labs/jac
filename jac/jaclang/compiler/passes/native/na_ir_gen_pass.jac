@@ -184,6 +184,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_gc_disable_fn: (ir.Function | None) = None,
         rc_gc_enable_fn: (ir.Function | None) = None,
         rc_gc_disabled_gv: object = None,
+        rc_cycles_enable_fn: (ir.Function | None) = None,
+        rc_cycles_enabled_gv: object = None,
         rc_debug_gv: object = None,
         rc_alloc_id_gv: object = None,
         rc_live_head_gv: object = None,
