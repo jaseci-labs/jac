@@ -808,10 +808,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         done_block: ir.Block
     ) -> None;
 
+    def _emit_rc_simple_visitor(name: str, phase_fn: ir.Function) -> ir.Function;
     def _emit_rc_mark_gray_phase -> ir.Function;
     def _emit_rc_scan_black_phase -> ir.Function;
     def _emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function;
     def _emit_rc_collect_white_phase -> ir.Function;
+    def _emit_rc_collect_white_reclaim(
+        fn: ir.Function, done_bb: ir.Block, ptr: ir.Value
+    ) -> ir.Block;
+
     def _emit_rc_root_pass(
         prefix: str,
         count: ir.Value,

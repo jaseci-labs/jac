@@ -98,8 +98,6 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
 
     b = ir.IRBuilder(pr_done);
     b.ret_void();
-
-    self._emit_rc_collect_cycles();
 }
 
 impl NaIRGenPass._emit_rc_color_load(
@@ -159,6 +157,34 @@ impl NaIRGenPass._emit_rc_trace_dispatch(
         [obj_i8, cb.bitcast(visitor_fn, i8_ptr, name="vis")]
     );
     cb.branch(done_block);
+}
+
+impl NaIRGenPass._emit_rc_simple_visitor(
+    name: str, phase_fn: ir.Function
+) -> ir.Function {
+    i8_ptr = ir.IntType(8).as_pointer();
+    phase_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+    vis_fn = ir.Function(self.llvm_module, phase_fnty, name=name);
+    vis_fn.linkage = "internal";
+    vis_fn.args[0].name = "child";
+
+    v_null = vis_fn.append_basic_block("null");
+    v_work = vis_fn.append_basic_block("work");
+    v_done = vis_fn.append_basic_block("done");
+
+    b = ir.IRBuilder(v_null);
+    b.cbranch(
+        b.icmp_unsigned("==", vis_fn.args[0], ir.Constant(i8_ptr, None), name="null"),
+        v_done,
+        v_work
+    );
+    b = ir.IRBuilder(v_work);
+    b.call(phase_fn, [vis_fn.args[0]]);
+    b.branch(v_done);
+    b = ir.IRBuilder(v_done);
+    b.ret_void();
+
+    return vis_fn;
 }
 
 impl NaIRGenPass._emit_rc_mark_gray_phase -> ir.Function {
@@ -254,29 +280,7 @@ impl NaIRGenPass._emit_rc_scan_black_phase -> ir.Function {
 
     scan_black_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan_black");
     scan_black_fn.linkage = "internal";
-    sb_vis_fn = ir.Function(
-        self.llvm_module, phase_fnty, name="__rc_scan_black_visitor"
-    );
-    sb_vis_fn.linkage = "internal";
-
-    sb_vis_fn.args[0].name = "child";
-    sbv_null = sb_vis_fn.append_basic_block("null");
-    sbv_work = sb_vis_fn.append_basic_block("work");
-    sbv_done = sb_vis_fn.append_basic_block("done");
-
-    b = ir.IRBuilder(sbv_null);
-    b.cbranch(
-        b.icmp_unsigned(
-            "==", sb_vis_fn.args[0], ir.Constant(i8_ptr, None), name="null"
-        ),
-        sbv_done,
-        sbv_work
-    );
-    b = ir.IRBuilder(sbv_work);
-    b.call(scan_black_fn, [sb_vis_fn.args[0]]);
-    b.branch(sbv_done);
-    b = ir.IRBuilder(sbv_done);
-    b.ret_void();
+    sb_vis_fn = self._emit_rc_simple_visitor("__rc_scan_black_visitor", scan_black_fn);
 
     scan_black_fn.args[0].name = "obj";
     sb_null = scan_black_fn.append_basic_block("null");
@@ -341,27 +345,7 @@ impl NaIRGenPass._emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function 
 
     scan_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan");
     scan_fn.linkage = "internal";
-    scan_vis_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_scan_visitor");
-    scan_vis_fn.linkage = "internal";
-
-    scan_vis_fn.args[0].name = "child";
-    sv_null = scan_vis_fn.append_basic_block("null");
-    sv_work = scan_vis_fn.append_basic_block("work");
-    sv_done = scan_vis_fn.append_basic_block("done");
-
-    b = ir.IRBuilder(sv_null);
-    b.cbranch(
-        b.icmp_unsigned(
-            "==", scan_vis_fn.args[0], ir.Constant(i8_ptr, None), name="null"
-        ),
-        sv_done,
-        sv_work
-    );
-    b = ir.IRBuilder(sv_work);
-    b.call(scan_fn, [scan_vis_fn.args[0]]);
-    b.branch(sv_done);
-    b = ir.IRBuilder(sv_done);
-    b.ret_void();
+    scan_vis_fn = self._emit_rc_simple_visitor("__rc_scan_visitor", scan_fn);
 
     scan_fn.args[0].name = "obj";
     sc_null = scan_fn.append_basic_block("null");
@@ -418,40 +402,16 @@ impl NaIRGenPass._emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function 
 impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
-    i64 = ir.IntType(64);
     phase_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
 
     cw_fn = ir.Function(self.llvm_module, phase_fnty, name="__rc_collect_white");
     cw_fn.linkage = "internal";
-    cw_vis_fn = ir.Function(
-        self.llvm_module, phase_fnty, name="__rc_collect_white_visitor"
-    );
-    cw_vis_fn.linkage = "internal";
-
-    cw_vis_fn.args[0].name = "child";
-    cwv_null = cw_vis_fn.append_basic_block("null");
-    cwv_work = cw_vis_fn.append_basic_block("work");
-    cwv_done = cw_vis_fn.append_basic_block("done");
-
-    b = ir.IRBuilder(cwv_null);
-    b.cbranch(
-        b.icmp_unsigned(
-            "==", cw_vis_fn.args[0], ir.Constant(i8_ptr, None), name="null"
-        ),
-        cwv_done,
-        cwv_work
-    );
-    b = ir.IRBuilder(cwv_work);
-    b.call(cw_fn, [cw_vis_fn.args[0]]);
-    b.branch(cwv_done);
-    b = ir.IRBuilder(cwv_done);
-    b.ret_void();
+    cw_vis_fn = self._emit_rc_simple_visitor("__rc_collect_white_visitor", cw_fn);
 
     cw_fn.args[0].name = "obj";
     cw_null = cw_fn.append_basic_block("null");
     cw_check = cw_fn.append_basic_block("check");
     cw_set = cw_fn.append_basic_block("set");
-    cw_free = cw_fn.append_basic_block("free_raw");
     cw_done = cw_fn.append_basic_block("done");
 
     b = ir.IRBuilder(cw_null);
@@ -475,18 +435,52 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     b = ir.IRBuilder(cw_set);
 
     b.store(ir.Constant(i8, RC_COLOR_BLACK), _cw_csp);
-    self._emit_rc_trace_dispatch(cw_fn, b, cw_fn.args[0], cw_vis_fn, cw_free);
 
-    b = ir.IRBuilder(cw_free);
-    b.call(
-        self.free_fn,
-        [b.gep(cw_fn.args[0], [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw")]
-    );
-    b.branch(cw_done);
+    cw_reclaim = self._emit_rc_collect_white_reclaim(cw_fn, cw_done, cw_fn.args[0]);
+    self._emit_rc_trace_dispatch(cw_fn, b, cw_fn.args[0], cw_vis_fn, cw_reclaim);
+
     b = ir.IRBuilder(cw_done);
     b.ret_void();
 
     return cw_fn;
+}
+
+impl NaIRGenPass._emit_rc_collect_white_reclaim(
+    fn: ir.Function, done_bb: ir.Block, ptr: ir.Value
+) -> ir.Block {
+    i8_ptr = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    i64_ptr = i64.as_pointer();
+
+    reclaim_bb = fn.append_basic_block("cw_reclaim");
+    call_dtor_bb = fn.append_basic_block("cw_call_dtor");
+    raw_free_bb = self._emit_raw_free_bbs(fn, done_bb, ptr);
+
+    b = ir.IRBuilder(reclaim_bb);
+    dtor_slot = b.bitcast(
+        b.gep(ptr, [ir.Constant(i64, HDR_DTOR_OFF)], name="cw.dtor.raw"),
+        i64_ptr,
+        name="cw.dtor.slot"
+    );
+    dtor_val = b.load(dtor_slot, name="cw.dtor.val");
+
+    b.cbranch(
+        b.icmp_unsigned("==", dtor_val, ir.Constant(i64, 0), name="cw.dtor.zero"),
+        raw_free_bb,
+        call_dtor_bb
+    );
+
+    b = ir.IRBuilder(call_dtor_bb);
+    dtor_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+    dtor_fn_ptr = b.bitcast(
+        b.inttoptr(dtor_val, i8_ptr, name="cw.dtor.i8"),
+        dtor_fnty.as_pointer(),
+        name="cw.dtor.fn"
+    );
+    b.call(dtor_fn_ptr, [ptr]);
+    b.branch(done_bb);
+
+    return reclaim_bb;
 }
 
 impl NaIRGenPass._emit_rc_root_pass(
