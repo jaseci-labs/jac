@@ -253,9 +253,10 @@ fn cursor_and_drain_wrappers_emitted() {
         sig_contains(&src, "pub struct OwnedSplit {") && sig_contains(&src, "items: Vec<String>,"),
         "missing OwnedSplit drain struct\n{src}"
     );
+    // The drain forwards the producer's real param name (`haystack`) verbatim.
     assert!(
-        sig_contains(&src, "fn wrap(owner: &regex::Regex, input: &str) -> OwnedSplit {")
-            && sig_contains(&src, "owner.split(input).map(|s| s.to_owned()).collect();")
+        sig_contains(&src, "fn wrap(owner: &regex::Regex, haystack: &str) -> OwnedSplit {")
+            && sig_contains(&src, "owner.split(haystack).map(|s| s.to_owned()).collect();")
             && sig_contains(&src, "items.reverse();"),
         "missing/incorrect OwnedSplit::wrap collect\n{src}"
     );
@@ -267,6 +268,43 @@ fn cursor_and_drain_wrappers_emitted() {
     assert!(
         sig_contains(&src, "pub fn split(&self, haystack: &str) -> OwnedSplit {"),
         "missing split producer\n{src}"
+    );
+}
+
+#[test]
+fn vec_slice_return_becomes_drain() {
+    let src = generated();
+
+    // RegexSet::patterns -> &[String] becomes a zero-param drain: a Vec<String>
+    // wrapper collected via `.to_vec()`, drained by pop().
+    assert!(
+        sig_contains(&src, "pub struct OwnedPatterns {")
+            && sig_contains(&src, "items: Vec<String>,"),
+        "missing OwnedPatterns drain struct\n{src}"
+    );
+    // The wrap ctor takes only the owner (no forwarded params) and copies the
+    // borrowed slice into an owned Vec<String> via to_vec().
+    assert!(
+        sig_contains(&src, "fn wrap(owner: &regex::RegexSet) -> OwnedPatterns {")
+            && sig_contains(&src, "let mut items: Vec<String> = owner.patterns().to_vec();")
+            && sig_contains(&src, "items.reverse();"),
+        "missing/incorrect OwnedPatterns::wrap collect\n{src}"
+    );
+    // The producer returns the drain directly; its call drops the trailing comma
+    // because there are no forwarded args.
+    assert!(
+        sig_contains(&src, "pub fn patterns(&self) -> OwnedPatterns {")
+            && sig_contains(&src, "OwnedPatterns::wrap(&self.0)"),
+        "missing patterns producer\n{src}"
+    );
+    assert!(
+        !sig_contains(&src, "OwnedPatterns::wrap(&self.0, )"),
+        "zero-arg wrap call must not emit a dangling comma\n{src}"
+    );
+    // The drain pull method.
+    assert!(
+        sig_contains(&src, "pub fn next(&mut self) -> Option<String> {"),
+        "missing OwnedPatterns::next drain\n{src}"
     );
 }
 

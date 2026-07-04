@@ -11,7 +11,7 @@ use rustdoc_types::Crate;
 
 use crate::{
     classify,
-    types::{BridgeReturn, Recv, ScalarType, TypeKind, WrapperKind},
+    types::{BridgeReturn, DrainCollect, Recv, ScalarType, TypeKind, WrapperKind},
 };
 
 fn load_regex_doc() -> Crate {
@@ -160,7 +160,7 @@ fn iterators_rescued_as_cursors_and_drains() {
     let split = regex_type.methods.iter().find(|m| m.name == "split").expect("split producer");
     assert_eq!(split.ret, BridgeReturn::Wrapper("OwnedSplit".into()));
     let os = spec.types.iter().find(|t| t.name == "OwnedSplit").expect("OwnedSplit drain");
-    assert_eq!(os.wrapper.as_ref().unwrap().kind, WrapperKind::Drain);
+    assert!(matches!(os.wrapper.as_ref().unwrap().kind, WrapperKind::Drain { .. }));
     let dnext = os.methods.iter().find(|m| m.name == "next").expect("OwnedSplit::next");
     assert_eq!(dnext.ret, BridgeReturn::OptStr);
     assert_eq!(dnext.recv, Recv::DrainNext);
@@ -182,6 +182,39 @@ fn iterators_rescued_as_cursors_and_drains() {
         spec.skips.iter().any(|s| s.item == "RegexSet::matches"),
         "RegexSet::matches (SetMatches, not an iterator) should remain a skip"
     );
+}
+
+#[test]
+fn regexset_patterns_rescued_as_slice_drain() {
+    let doc = load_regex_doc();
+    let spec = classify(&doc);
+
+    // RegexSet::patterns(&self) -> &[String] can't cross as a borrowed slice, but
+    // its elements are owned Strings — so it becomes a Vec-drain producer of a
+    // synthesized OwnedPatterns, named after the method (there's no iterator
+    // struct to borrow a name from). No longer a skip.
+    assert!(
+        spec.skips.iter().all(|s| s.item != "RegexSet::patterns"),
+        "RegexSet::patterns should be rescued as a drain, not skipped"
+    );
+    let rs = spec.types.iter().find(|t| t.name == "RegexSet").expect("RegexSet type");
+    let patterns = rs.methods.iter().find(|m| m.name == "patterns").expect("patterns producer");
+    assert_eq!(patterns.ret, BridgeReturn::Wrapper("OwnedPatterns".into()));
+    assert!(patterns.params.is_empty(), "patterns takes no non-self params");
+    assert_eq!(patterns.recv, Recv::Field0);
+
+    // OwnedPatterns is a Drain whose collect strategy is `&[String] -> to_vec()`,
+    // with zero forwarded params and a single `next -> Option<String>` reader.
+    let op = spec.types.iter().find(|t| t.name == "OwnedPatterns").expect("OwnedPatterns drain");
+    let w = op.wrapper.as_ref().expect("OwnedPatterns wrapper metadata");
+    assert_eq!(
+        w.kind,
+        WrapperKind::Drain { params: vec![], collect: DrainCollect::SliceString }
+    );
+    let next = op.methods.iter().find(|m| m.name == "next").expect("OwnedPatterns::next");
+    assert_eq!(next.ret, BridgeReturn::OptStr);
+    assert_eq!(next.recv, Recv::DrainNext);
+    assert!(next.params.is_empty());
 }
 
 #[test]

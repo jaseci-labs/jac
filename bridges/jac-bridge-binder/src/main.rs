@@ -7,20 +7,30 @@ fn main() {
 
     let data = std::fs::read_to_string(&doc_path).expect("cannot read rustdoc JSON");
     let doc: rustdoc_types::Crate = serde_json::from_str(&data).expect("invalid rustdoc JSON");
-    let mut spec = jac_bridge_binder::classify(&doc);
+
+    // Determine the module name to locate its overlay before classifying — a
+    // `treat_as` directive must steer classification while the rustdoc is in hand.
+    let module_name = doc
+        .index
+        .get(&doc.root)
+        .and_then(|i| i.name.clone())
+        .unwrap_or_default();
+    let overlay_path = doc_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join(format!("{module_name}.overlay.toml"));
+    let overlay = overlay_path.exists().then(|| {
+        let overlay_src = std::fs::read_to_string(&overlay_path).expect("read overlay");
+        jac_bridge_binder::parse_overlay(&overlay_src).expect("parse overlay")
+    });
+
+    let mut spec = jac_bridge_binder::classify_with_overlay(&doc, overlay.as_ref());
 
     eprintln!("// module: {}  version: {}", spec.module_name, spec.crate_version);
     eprintln!("// types: {}  skips: {}", spec.types.len(), spec.skips.len());
 
-    // Auto-discover <module>.overlay.toml next to the rustdoc JSON.
-    let overlay_path = doc_path
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join(format!("{}.overlay.toml", spec.module_name));
-    if overlay_path.exists() {
-        let overlay_src = std::fs::read_to_string(&overlay_path).expect("read overlay");
-        let overlay = jac_bridge_binder::parse_overlay(&overlay_src).expect("parse overlay");
-        if let Err(e) = jac_bridge_binder::apply_overlay(&mut spec, &overlay) {
+    if let Some(overlay) = &overlay {
+        if let Err(e) = jac_bridge_binder::apply_overlay(&mut spec, overlay) {
             eprintln!("error: {e}");
             std::process::exit(1);
         }

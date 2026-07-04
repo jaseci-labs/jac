@@ -17,9 +17,13 @@
 //! """
 //! ```
 //!
-//! Directives the rule set can't yet honour (`treat_as`, `monomorphize`,
-//! `[module]`) parse but are rejected with a precise reason rather than silently
-//! ignored — an overlay entry is a decision the author expects to take effect.
+//! The full directive set is honoured (M4 Phase B): `skip`/`rename`/`inject`
+//! plus `treat_as` (reclassify a method or force it off — applied during
+//! `classify_with_overlay`), `monomorphize` (pin a generic struct's concrete
+//! instantiations — also classify-time), and `[module."m"] skip` (drop a whole
+//! submodule by provenance). An unknown value or an empty `monomorphize` set is
+//! rejected with a precise reason — an overlay entry is a decision the author
+//! expects to take effect, never a silent no-op.
 
 use std::collections::BTreeMap;
 
@@ -50,7 +54,11 @@ pub struct FnOverlay {
     pub skip: bool,
     /// Nicer Jac-side name; the Rust call target is unchanged.
     pub rename: Option<String>,
-    /// Reserved: correct a rule's classification (e.g. `"cursor"`). Phase B.
+    /// Override auto-classification (applied at classify time). `"skip"` forces
+    /// the method off the bridge; `"owning"` / `"cursor"` / `"drain"` /
+    /// `"callback"` pin it to exactly that rule regardless of what detection would
+    /// pick. A pinned rule whose preconditions the method fails records an honest
+    /// skip. Exclusive with `skip`/`rename` on the same entry.
     pub treat_as: Option<String>,
 }
 
@@ -63,7 +71,12 @@ pub struct TypeOverlay {
     /// Raw Rust `impl`-body source appended verbatim after generated methods —
     /// the documented-last-resort escape hatch (8-space indentation expected).
     pub inject: Option<String>,
-    /// Reserved: pin a monomorphization set the rules couldn't infer. Phase B.
+    /// Pin the concrete instantiations of a generic struct the rules can't infer
+    /// (applied at classify time). Each entry is a concrete type substituted for
+    /// the struct's single type param, yielding one opaque bridged type named
+    /// `T<Suffix>` wrapping `crate::T<concrete>` — e.g. `["chrono::Utc"]` on
+    /// `DateTime` emits `DateTimeUtc(pub chrono::DateTime<chrono::Utc>)`. An empty
+    /// list is rejected.
     pub monomorphize: Option<Vec<String>>,
 }
 
@@ -82,23 +95,41 @@ pub fn parse_overlay(src: &str) -> Result<Overlay, toml::de::Error> {
 /// Apply `overlay` to `spec` in-place. Returns an error naming any directive
 /// the current rule set cannot honour, so overlays fail loud, never silently.
 pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), String> {
-    // ── [module."m"] — reserved ──────────────────────────────────────────────
+    // ── [module."m"] skip = true ─────────────────────────────────────────────
+    // Drop every bridged type whose module provenance contains `m`, along with
+    // the method skips recorded against those types. classify tracks provenance
+    // on `BridgeType::module_path` (crate root + type name stripped), so a
+    // `[module."bytes"]` skip removes the whole `bytes` submodule surface.
     for (name, m) in &overlay.modules {
-        if m.skip {
-            return Err(format!(
-                "overlay: [module.\"{name}\"] skip is not supported yet — classify \
-                 flattens submodule provenance; reserved for M4 Phase B"
-            ));
+        if !m.skip {
+            continue;
         }
+        let removed: Vec<String> = spec
+            .types
+            .iter()
+            .filter(|bt| bt.module_path.iter().any(|seg| seg == name))
+            .map(|bt| bt.name.clone())
+            .collect();
+        spec.types.retain(|bt| !bt.module_path.iter().any(|seg| seg == name));
+        spec.skips
+            .retain(|s| !removed.iter().any(|t| s.item.starts_with(&format!("{t}::"))));
     }
 
     // ── [type."T"] ───────────────────────────────────────────────────────────
     for (name, t) in &overlay.types {
-        if t.monomorphize.is_some() {
-            return Err(format!(
-                "overlay: [type.\"{name}\"] monomorphize is not supported yet — \
-                 needs the generic-monomorphization rule (M4 Phase B)"
-            ));
+        // `monomorphize` is honoured during classification (see
+        // `classify_with_overlay`), which expands the generic struct into concrete
+        // `T<Suffix>` types. Here we only validate it and move on — the original
+        // generic name `T` is intentionally absent from the spec afterwards, so the
+        // usual "no such bridged type" lookup below must not run for it.
+        if let Some(set) = &t.monomorphize {
+            if set.is_empty() {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] monomorphize = [] pins no \
+                     instantiation — list at least one concrete type"
+                ));
+            }
+            continue;
         }
         if t.skip {
             spec.types.retain(|bt| bt.name != *name);
@@ -123,11 +154,20 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
             .split_once("::")
             .ok_or_else(|| format!("overlay: [fn.\"{key}\"] — key must be \"Type::method\""))?;
 
+        // `treat_as` is honoured during classification (see
+        // `classify_with_overlay`), not here — this pass only validates the value
+        // so a typo fails loud instead of silently pinning nothing.
         if let Some(kind) = &f.treat_as {
-            return Err(format!(
-                "overlay: [fn.\"{key}\"] treat_as = \"{kind}\" is not supported yet — \
-                 needs the cursor/owning-wrapper rules (M4 Phase B)"
-            ));
+            const ALLOWED: &[&str] = &["skip", "owning", "cursor", "drain", "callback"];
+            if !ALLOWED.contains(&kind.as_str()) {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] treat_as = \"{kind}\" is not a known \
+                     reclassification — expected one of {ALLOWED:?}"
+                ));
+            }
+            // A treat_as directive is exclusive: it fully determines the method's
+            // fate at classify time, so skip/rename on the same entry are ignored.
+            continue;
         }
 
         let Some(bt) = spec.types.iter_mut().find(|bt| bt.name == type_name) else {

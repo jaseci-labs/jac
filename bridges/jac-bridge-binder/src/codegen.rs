@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
 use crate::types::{
-    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, RootProducer, ScalarType,
-    TypeKind, WrapperKind,
+    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, OwningWrapper, Recv, RootProducer,
+    ScalarType, TypeKind, WrapperKind,
 };
 
 /// Emit a `Cargo.toml` for the generated bridge crate.
@@ -191,7 +191,7 @@ fn emit_wrapper_struct(out: &mut String, bt: &BridgeType, w: &OwningWrapper) {
             writeln!(out, "        _input: std::sync::Arc<String>,").unwrap();
         }
         // A drain owns only the eagerly-collected pieces — no lifetime survives.
-        WrapperKind::Drain => {
+        WrapperKind::Drain { .. } => {
             writeln!(out, "        items: Vec<String>,").unwrap();
         }
     }
@@ -241,16 +241,55 @@ fn emit_wrap(w: &OwningWrapper, root: &RootProducer, bt: &BridgeType) -> String 
                  \x20       }}",
             )
         }
-        // split: eagerly copy each &str piece into an owned String (no lifetime
-        // survives), stored reversed so `next` drains front-to-back via pop().
-        WrapperKind::Drain => format!(
-            "        fn wrap(owner: &{owner}, input: &str) -> {wname} {{\n\
-             \x20           let mut items: Vec<String> =\n\
-             \x20               owner.{producer}(input).map(|s| s.to_owned()).collect();\n\
-             \x20           items.reverse();\n\
-             \x20           {wname} {{ items }}\n\
-             \x20       }}",
-        ),
+        // A drain eagerly copies its producer's string sequence into an owned
+        // Vec<String> (no lifetime survives), stored reversed so `next` drains
+        // front-to-back via pop(). The producer's own params are forwarded into
+        // both the wrap signature and the call; how the return is turned into
+        // owned Strings depends on the collection shape (see `DrainCollect`).
+        WrapperKind::Drain { params, collect } => {
+            let mut sig_parts: Vec<String> = vec![format!("owner: &{owner}")];
+            for p in params {
+                sig_parts.push(format!("{}: {}", p.name, scalar_ty(&p.ty)));
+            }
+            let sig = sig_parts.join(", ");
+            let call_args =
+                params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ");
+            let call = format!("owner.{producer}({call_args})");
+            let collect_expr = match collect {
+                DrainCollect::IterStr => format!("{call}.map(|s| s.to_owned()).collect()"),
+                DrainCollect::VecString => call.clone(),
+                DrainCollect::SliceString => format!("{call}.to_vec()"),
+                DrainCollect::VecStr => {
+                    format!("{call}.iter().map(|s| s.to_string()).collect()")
+                }
+            };
+            format!(
+                "        fn wrap({sig}) -> {wname} {{\n\
+                 \x20           let mut items: Vec<String> = {collect_expr};\n\
+                 \x20           items.reverse();\n\
+                 \x20           {wname} {{ items }}\n\
+                 \x20       }}",
+            )
+        }
+    }
+}
+
+/// A `Wrapper::wrap(&self.0, args)` call, dropping the trailing comma when the
+/// producer takes no forwarded args (a zero-param drain like `patterns`).
+fn wrap_call(wrapper: &str, args_str: &str) -> String {
+    if args_str.is_empty() {
+        format!("{wrapper}::wrap(&self.0)")
+    } else {
+        format!("{wrapper}::wrap(&self.0, {args_str})")
+    }
+}
+
+/// The Rust source type for a scalar param at the bridge boundary.
+fn scalar_ty(t: &ScalarType) -> &'static str {
+    match t {
+        ScalarType::Str => "&str",
+        ScalarType::Bool => "bool",
+        ScalarType::Callback => "JacCallback",
     }
 }
 
@@ -269,12 +308,7 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         });
     }
     for p in &f.params {
-        let ty = match p.ty {
-            ScalarType::Str => "&str",
-            ScalarType::Bool => "bool",
-            ScalarType::Callback => "JacCallback",
-        };
-        sig_parts.push(format!("{}: {}", p.name, ty));
+        sig_parts.push(format!("{}: {}", p.name, scalar_ty(&p.ty)));
     }
     let params_str = sig_parts.join(", ");
     let args_str =
@@ -346,7 +380,7 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
             // Root producer (on a plain owner): delegate to the wrapper's `wrap`
             // ctor, which owns the input and erases the borrow.
             Recv::Field0 => {
-                let call = format!("{}::wrap(&self.0, {})", wrapper, args_str);
+                let call = wrap_call(wrapper, &args_str);
                 (format!(" -> Option<{}>", wrapper), call)
             }
             // Nested producer (a reader on ANOTHER wrapper): build the child inline
@@ -377,7 +411,7 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
         },
         // Non-nullable cursor/drain producer: build the wrapper via its `wrap` ctor.
         BridgeReturn::Wrapper(wrapper) => {
-            let call = format!("{}::wrap(&self.0, {})", wrapper, args_str);
+            let call = wrap_call(wrapper, &args_str);
             (format!(" -> {}", wrapper), call)
         }
         // Drain pull: pop the next owned piece front-to-back. None ends the drain.

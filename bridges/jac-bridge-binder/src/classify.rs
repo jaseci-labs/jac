@@ -8,17 +8,36 @@ use std::collections::HashMap;
 
 use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
 
+use crate::overlay::Overlay;
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, OwningWrapper, Recv, RootProducer,
-    ScalarType, Skip, SkipReason, TypeKind, WrapperKind,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, MonoType,
+    OwningWrapper, Recv, RootProducer, ScalarType, Skip, SkipReason, TypeKind, WrapperKind,
 };
 
+/// Classify a crate's public API with no overlay hints. Equivalent to
+/// [`classify_with_overlay`] with `None`.
 pub fn classify(doc: &Crate) -> BridgeSpec {
+    classify_with_overlay(doc, None)
+}
+
+/// Classify a crate's public API, letting an overlay's `treat_as` directives
+/// steer classification while the raw rustdoc is still in hand. `treat_as` is the
+/// one overlay directive that must run *during* classify — it forces a method
+/// onto a specific rule (or off the bridge entirely), which cannot be
+/// reconstructed post-hoc from a [`BridgeSpec`]. Every other directive (skip,
+/// rename, inject, module, monomorphize) is applied afterwards by
+/// [`crate::apply_overlay`]. Pass the SAME overlay to both.
+pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSpec {
     let module_name = doc.index[&doc.root].name.clone().unwrap_or_default();
     let crate_version = doc.crate_version.clone().unwrap_or_else(|| "0.0.0".into());
 
-    let mut ctx =
-        Ctx { doc, module_name: module_name.clone(), skips: vec![], pending_wrappers: vec![] };
+    let mut ctx = Ctx {
+        doc,
+        overlay,
+        module_name: module_name.clone(),
+        skips: vec![],
+        pending_wrappers: vec![],
+    };
 
     let mut types = ctx.find_types();
     for bt in &mut types {
@@ -49,11 +68,15 @@ pub fn classify(doc: &Crate) -> BridgeSpec {
             name: pw.wrapper_name,
             kind: TypeKind::Opaque,
             inner_path: pw.wrapper.borrowed_path.clone(),
+            // Synthesized wrappers have no source submodule; leave provenance
+            // empty so a `[module]` skip never drops them.
+            module_path: vec![],
             item_id: pw.borrowed_id,
             ctor: None,
             methods: pw.readers,
             injected_source: vec![],
             wrapper: Some(pw.wrapper),
+            mono: None,
         });
     }
     sort_types(&mut types);
@@ -107,6 +130,8 @@ impl PendingWrapper {
 
 struct Ctx<'a> {
     doc: &'a Crate,
+    /// Overlay whose `treat_as` directives steer classification, if supplied.
+    overlay: Option<&'a Overlay>,
     module_name: String,
     skips: Vec<Skip>,
     pending_wrappers: Vec<PendingWrapper>,
@@ -123,7 +148,11 @@ impl<'a> Ctx<'a> {
         // Walk paths, keeping only own-crate items.  When the same type is
         // re-exported at multiple depths (bytes:: and string:: variants, etc.)
         // keep the shallowest path so we get one canonical entry per name.
-        let mut by_name: HashMap<String, ((usize, usize), &Item)> = HashMap::new();
+        // Value carries the winning score, the item, and the module segments the
+        // winning path declared it under (crate root and type name stripped) — the
+        // provenance an overlay `[module."m"] skip` consults.
+        type Candidate<'b> = ((usize, usize), &'b Item, Vec<String>);
+        let mut by_name: HashMap<String, Candidate<'a>> = HashMap::new();
 
         for (id, path_entry) in &self.doc.paths {
             if path_entry.path.first().map(|s| s.as_str()) != Some(&self.module_name) {
@@ -138,23 +167,33 @@ impl<'a> Ctx<'a> {
             let depth = path_entry.path.len();
             let bytes_pen = if path_entry.path.iter().any(|s| s == "bytes") { 1usize } else { 0 };
             let score = (depth, bytes_pen);
-            let entry = by_name.entry(name).or_insert(((usize::MAX, 1), item));
+            // Module segments: drop the leading crate name and the trailing type
+            // name. `["regex","error","Error"]` -> `["error"]`.
+            let module_path: Vec<String> = if path_entry.path.len() >= 2 {
+                path_entry.path[1..path_entry.path.len() - 1].to_vec()
+            } else {
+                vec![]
+            };
+            let entry =
+                by_name.entry(name).or_insert(((usize::MAX, 1), item, module_path.clone()));
             if score < entry.0 {
-                *entry = (score, item);
+                *entry = (score, item, module_path);
             }
         }
 
         let mut out: Vec<BridgeType> = by_name
             .into_values()
-            .filter_map(|((_depth, _pen), item)| self.classify_type(item))
+            .flat_map(|((_depth, _pen), item, module_path)| {
+                self.classify_type(item, module_path)
+            })
             .collect();
 
         sort_types(&mut out);
         out
     }
 
-    fn classify_type(&self, item: &'a Item) -> Option<BridgeType> {
-        let name = item.name.clone()?;
+    fn classify_type(&self, item: &'a Item, module_path: Vec<String>) -> Vec<BridgeType> {
+        let Some(name) = item.name.clone() else { return vec![] };
         let inner_path = format!("{}::{}", self.module_name, name);
         let item_id = item.id.0;
 
@@ -162,44 +201,125 @@ impl<'a> Ctx<'a> {
             ItemEnum::Struct(s) => {
                 let has_hidden = matches!(&s.kind, StructKind::Plain { has_stripped_fields, .. } if *has_stripped_fields);
                 if !has_hidden {
-                    return None;
+                    return vec![];
                 }
-                // Types with lifetime params can't be stored in Box<T> — skip them.
+                // Types with lifetime params can't be stored in Box<T> — drop them.
                 // This excludes cursor types like Match<'h>, Captures<'m,'h>, etc.
                 let has_lifetime = s.generics.params.iter().any(|p| {
                     matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. })
                 });
                 if has_lifetime {
-                    return None;
+                    return vec![];
+                }
+                // A const-generic struct can't be bridged (the const arg is unknown
+                // and there's no directive to pin it) — drop it rather than emit an
+                // uncompilable `T(pub crate::T)`.
+                let has_const = s.generics.params.iter().any(|p| {
+                    matches!(p.kind, rustdoc_types::GenericParamDefKind::Const { .. })
+                });
+                if has_const {
+                    return vec![];
+                }
+                // A type-generic struct likewise can't cross as a bare newtype — its
+                // type arg is unknown. An overlay `monomorphize` directive pins one
+                // or more concrete instantiations; absent that, drop it.
+                let type_params: Vec<String> = s
+                    .generics
+                    .params
+                    .iter()
+                    .filter_map(|p| match &p.kind {
+                        rustdoc_types::GenericParamDefKind::Type { .. } => Some(p.name.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if !type_params.is_empty() {
+                    return self.monomorphize_struct(&name, &type_params, item_id, &module_path);
                 }
                 let kind = if name.ends_with("Error") {
                     TypeKind::Error
                 } else {
                     TypeKind::Opaque
                 };
-                Some(BridgeType {
+                vec![BridgeType {
                     name,
                     kind,
                     inner_path,
+                    module_path,
                     item_id,
                     ctor: None,
                     methods: vec![],
                     injected_source: vec![],
                     wrapper: None,
-                })
+                    mono: None,
+                }]
             }
-            ItemEnum::Enum(_) if name.ends_with("Error") => Some(BridgeType {
+            ItemEnum::Enum(_) if name.ends_with("Error") => vec![BridgeType {
                 name,
                 kind: TypeKind::Error,
                 inner_path,
+                module_path,
                 item_id,
                 ctor: None,
                 methods: vec![],
                 injected_source: vec![],
                 wrapper: None,
-            }),
-            _ => None,
+                mono: None,
+            }],
+            _ => vec![],
         }
+    }
+
+    /// Expand a generic struct into its pinned monomorphizations, or drop it if no
+    /// `[type."T"] monomorphize = [..]` directive applies. Only a single type
+    /// param can be pinned (a multi-param struct has no unambiguous single-suffix
+    /// naming); each concrete type in the list yields one opaque bridged type
+    /// named `T<Suffix>` wrapping `crate::T<concrete>`. All variants share the
+    /// original struct's item id so `classify_impl` finds the same impl list, and
+    /// carry a [`MonoType`] so classification substitutes the generic param.
+    fn monomorphize_struct(
+        &self,
+        name: &str,
+        type_params: &[String],
+        item_id: u32,
+        module_path: &[String],
+    ) -> Vec<BridgeType> {
+        let Some(concretes) = self
+            .overlay
+            .and_then(|o| o.types.get(name))
+            .and_then(|t| t.monomorphize.as_ref())
+        else {
+            return vec![];
+        };
+        // Only a lone type param is pinnable, and an empty set pins nothing.
+        if type_params.len() != 1 || concretes.is_empty() {
+            return vec![];
+        }
+        let generic = &type_params[0];
+        concretes
+            .iter()
+            .map(|c| {
+                // Suffix from the concrete type's last path segment, generics
+                // stripped: `chrono::Utc` -> `Utc`, `foo::Bar<T>` -> `Bar`.
+                let leaf = c.rsplit("::").next().unwrap_or(c);
+                let leaf = leaf.split('<').next().unwrap_or(leaf);
+                BridgeType {
+                    name: format!("{name}{}", to_camel(leaf)),
+                    kind: TypeKind::Opaque,
+                    inner_path: format!("{}::{}<{}>", self.module_name, name, c),
+                    module_path: module_path.to_vec(),
+                    item_id,
+                    ctor: None,
+                    methods: vec![],
+                    injected_source: vec![],
+                    wrapper: None,
+                    mono: Some(MonoType {
+                        origin_name: name.to_string(),
+                        generic_param: generic.clone(),
+                        concrete: c.clone(),
+                    }),
+                }
+            })
+            .collect()
     }
 
     // ── Phase 2: classify impl methods ────────────────────────────────────────
@@ -235,11 +355,30 @@ impl<'a> Ctx<'a> {
                 let method_name = method.name.clone().unwrap_or_default();
                 let item_path = format!("{}::{}", bt.name, method_name);
 
+                // An overlay `treat_as` on this method overrides auto-detection:
+                // it either forces the method off the bridge (`skip`) or pins it
+                // to exactly one rule, bypassing the usual or-else ordering.
+                if let Some(kind) = self.treat_as_for(&bt.name, &method_name) {
+                    self.apply_treat_as(kind, method_id.0, &method_name, &item_path, f, bt);
+                    continue;
+                }
+
                 match self.classify_fn(&item_path, f, bt) {
                     Ok(bridge_fn) => {
                         let is_ctor = matches!(bridge_fn.ret, BridgeReturn::OwnSelf | BridgeReturn::OwnSelfResult)
                             && !f.sig.inputs.iter().any(|(n, _)| n == "self");
-                        if is_ctor {
+                        // A ctor's body calls `inner::method(..)`, but a mono type's
+                        // inner path carries a turbofish-less type arg
+                        // (`chrono::Date<chrono::Utc>::new()` is invalid syntax), so
+                        // ctors on monomorphized types are recorded as skips instead.
+                        if is_ctor && bt.mono.is_some() {
+                            self.skips.push(Skip {
+                                item: item_path,
+                                reason: SkipReason::UnsupportedType(
+                                    "constructor on monomorphized type".into(),
+                                ),
+                            });
+                        } else if is_ctor {
                             bt.ctor = Some(bridge_fn);
                         } else {
                             bt.methods.push(bridge_fn);
@@ -255,6 +394,7 @@ impl<'a> Ctx<'a> {
                         match self
                             .try_owning_wrapper(&method_name, f, bt)
                             .or_else(|| self.try_cursor_wrapper(&method_name, f, bt))
+                            .or_else(|| self.try_vec_drain(method_id.0, &method_name, f, bt))
                             .or_else(|| self.try_callback_wrapper(&method_name, f, bt))
                         {
                             Some((producer, pendings)) => {
@@ -266,6 +406,55 @@ impl<'a> Ctx<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// The `treat_as` value an overlay pins on `Type::method`, if any.
+    fn treat_as_for(&self, type_name: &str, method_name: &str) -> Option<&'a str> {
+        let key = format!("{type_name}::{method_name}");
+        self.overlay?.fns.get(&key)?.treat_as.as_deref()
+    }
+
+    /// Honour a `treat_as` directive on a method: force it off the bridge
+    /// (`"skip"`), or pin it to exactly one rule regardless of what auto-detection
+    /// would pick. A pinned rule whose preconditions the method doesn't meet
+    /// becomes an honest skip (never a silent drop). Unknown `treat_as` values are
+    /// rejected earlier by [`crate::apply_overlay`], so they don't reach here.
+    fn apply_treat_as(
+        &mut self,
+        kind: &str,
+        method_id: u32,
+        method_name: &str,
+        item_path: &str,
+        f: &rustdoc_types::Function,
+        bt: &mut BridgeType,
+    ) {
+        if kind == "skip" {
+            self.skips.push(Skip {
+                item: item_path.to_string(),
+                reason: SkipReason::OverlayTreatAs("skip".into()),
+            });
+            return;
+        }
+        // A pinned rule: run exactly that one, bypassing the auto or-else chain.
+        // `"cursor"` covers in-crate iterators (both cursors and &str-drains);
+        // `"drain"` covers direct `Vec`/slice-of-string returns.
+        let forced = match kind {
+            "owning" => self.try_owning_wrapper(method_name, f, bt),
+            "cursor" => self.try_cursor_wrapper(method_name, f, bt),
+            "drain" => self.try_vec_drain(method_id, method_name, f, bt),
+            "callback" => self.try_callback_wrapper(method_name, f, bt),
+            _ => None,
+        };
+        match forced {
+            Some((producer, pendings)) => {
+                bt.methods.push(producer);
+                self.pending_wrappers.extend(pendings);
+            }
+            None => self.skips.push(Skip {
+                item: item_path.to_string(),
+                reason: SkipReason::OverlayTreatAs(format!("{kind} (rule not applicable)")),
+            }),
         }
     }
 
@@ -346,7 +535,10 @@ impl<'a> Ctx<'a> {
                 other => Err(SkipReason::UnsupportedType(other.to_string())),
             },
             Type::ResolvedPath(rp) => {
-                if rp.path == bt.name {
+                // A `-> Self` return reads as the type's own path. For a
+                // monomorphized type that path is still the ORIGINAL generic name
+                // (`Date`), not the mono name (`DateUtc`) — match on origin.
+                if returns_self(bt, rp) {
                     return Ok(BridgeReturn::OwnSelf);
                 }
                 if rp.path == "Result" {
@@ -383,7 +575,9 @@ impl<'a> Ctx<'a> {
             if let rustdoc_types::GenericArg::Type(t) = a { Some(t) } else { None }
         });
         match ok_ty {
-            Some(Type::ResolvedPath(ok_rp)) if ok_rp.path == bt.name => Ok(BridgeReturn::OwnSelfResult),
+            Some(Type::ResolvedPath(ok_rp)) if returns_self(bt, ok_rp) => {
+                Ok(BridgeReturn::OwnSelfResult)
+            }
             _ => Err(SkipReason::UnsupportedType(format!("{args:?}"))),
         }
     }
@@ -583,7 +777,11 @@ impl<'a> Ctx<'a> {
                     throws: None,
                     recv: Recv::DrainNext,
                 };
-                (next, vec![], WrapperKind::Drain)
+                let kind = WrapperKind::Drain {
+                    params: params.clone(),
+                    collect: DrainCollect::IterStr,
+                };
+                (next, vec![], kind)
             }
             // Item = in-crate lifetime struct with readers → cursor of nested wrappers.
             Type::ResolvedPath(item_rp) => {
@@ -649,6 +847,87 @@ impl<'a> Ctx<'a> {
         }];
         pendings.extend(item_pendings);
         Some((producer, pendings))
+    }
+
+    /// Attempt to rescue a Vec/slice-of-string RETURN via a drain wrapper.
+    ///
+    /// Unlike [`Self::try_cursor_wrapper`] (which owns a `&str` input and lazily
+    /// pulls from an in-crate iterator), this rule fires on a method that returns
+    /// an owned or borrowed *string collection directly* — `Vec<String>`,
+    /// `&[String]`, `Vec<&str>`, or `&[&str]` (e.g. `RegexSet::patterns(&self) ->
+    /// &[String]`). The synthesized wrapper eagerly copies every element into an
+    /// owned `Vec<String>` and drains it via `next -> Option<String>`. The
+    /// producer may take zero or more scalar params (all forwarded); it needs no
+    /// owned input buffer because the collected Strings are self-owned.
+    ///
+    /// `method_id` is the producer's unique rustdoc item id — used as the
+    /// wrapper's merge key so distinct drains never collide (there is no borrowed
+    /// struct id to key on, and item ids are unique across the whole index).
+    /// `None` if the return isn't a recognised string collection, or any param
+    /// can't cross the boundary — the caller then records the original skip.
+    fn try_vec_drain(
+        &self,
+        method_id: u32,
+        method_name: &str,
+        f: &rustdoc_types::Function,
+        bt: &BridgeType,
+    ) -> Option<(BridgeFn, Vec<PendingWrapper>)> {
+        // Must be a method (borrows the owner) — an associated fn has no owner to
+        // call the producer through.
+        if !f.sig.inputs.iter().any(|(n, _)| n == "self") {
+            return None;
+        }
+        // Every non-self param must cross the boundary as a scalar.
+        let mut params = vec![];
+        for (pname, pty) in &f.sig.inputs {
+            if pname == "self" {
+                continue;
+            }
+            match self.classify_param_type(pty) {
+                Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                Err(_) => return None,
+            }
+        }
+        // Classify the return into a drain collection shape; bail if it isn't one.
+        let collect = drain_collect_of(f.sig.output.as_ref()?)?;
+
+        // Name the wrapper after the method (there is no iterator struct to borrow
+        // a name from): `patterns` -> `OwnedPatterns`.
+        let wrapper_name = format!("Owned{}", to_camel(method_name));
+        let next = BridgeFn {
+            name: "next".to_string(),
+            export_name: None,
+            params: vec![],
+            ret: BridgeReturn::OptStr,
+            throws: None,
+            recv: Recv::DrainNext,
+        };
+        let producer = BridgeFn {
+            name: method_name.to_string(),
+            export_name: None,
+            params: params.clone(),
+            ret: BridgeReturn::Wrapper(wrapper_name.clone()),
+            throws: None,
+            recv: Recv::Field0,
+        };
+        let pending = PendingWrapper {
+            wrapper_name: wrapper_name.clone(),
+            borrowed_id: method_id,
+            wrapper: OwningWrapper {
+                // No borrowed struct here — record the owner path as a stable
+                // placeholder. Codegen's Drain arm never reads `borrowed_path`.
+                borrowed_path: bt.inner_path.clone(),
+                lifetimes: 0,
+                root: Some(RootProducer {
+                    owner_inner_path: bt.inner_path.clone(),
+                    producer_call: method_name.to_string(),
+                }),
+                kind: WrapperKind::Drain { params, collect },
+            },
+            readers: vec![next],
+            reader_skips: vec![],
+        };
+        Some((producer, vec![pending]))
     }
 
     /// The CALLBACK rule: a `fn(&self, &str, R) -> Cow<str>` where `R: Replacer`
@@ -954,6 +1233,107 @@ impl<'a> Ctx<'a> {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/// Whether a resolved-path return is this bridged type's own `Self`.
+///
+/// For an ordinary type it is a bare name match. For a monomorphized type the
+/// path still reads as the original generic name (`DateTime`), so we also verify
+/// the return's type arg names the SAME instantiation — otherwise a method like
+/// `DateTime<Tz>::fixed_offset -> DateTime<FixedOffset>` would be miswrapped as
+/// `DateTimeUtc`, producing a type-mismatched `Self(self.0.fixed_offset())`. The
+/// arg is the same instantiation when it is the bare generic param (`Tz`, the
+/// method preserves the caller's instantiation) or resolves to the pinned
+/// concrete type (`Utc`, compared by leaf segment).
+fn returns_self(bt: &BridgeType, rp: &rustdoc_types::Path) -> bool {
+    let Some(m) = &bt.mono else { return rp.path == bt.name };
+    if rp.path != m.origin_name {
+        return false;
+    }
+    let Some(args) = &rp.args else { return false };
+    let rustdoc_types::GenericArgs::AngleBracketed { args, .. } = args.as_ref() else {
+        return false;
+    };
+    let first = args.iter().find_map(|a| match a {
+        rustdoc_types::GenericArg::Type(t) => Some(t),
+        _ => None,
+    });
+    match first {
+        Some(Type::Generic(g)) => *g == m.generic_param,
+        Some(Type::ResolvedPath(inner)) => {
+            let ret_leaf = inner.path.rsplit("::").next().unwrap_or(&inner.path);
+            let concrete_leaf = m.concrete.rsplit("::").next().unwrap_or(&m.concrete);
+            let concrete_leaf = concrete_leaf.split('<').next().unwrap_or(concrete_leaf);
+            ret_leaf == concrete_leaf
+        }
+        _ => false,
+    }
+}
+
+/// Classify a return type into a drain collection shape, or `None` if it is not
+/// a recognised string collection (`Vec<String>`, `&[String]`, `Vec<&str>`,
+/// `&[&str]`). A `Vec<u8>` / `&[u8]` / other-element collection is deliberately
+/// not a drain — its elements don't cross the string boundary — so it stays a skip.
+fn drain_collect_of(ty: &Type) -> Option<DrainCollect> {
+    // Element classifier: owned `String` vs borrowed `&str`; anything else fails.
+    fn elem_is_owned_string(t: &Type) -> Option<bool> {
+        match t {
+            Type::ResolvedPath(rp) if rp.path == "String" => Some(true),
+            Type::BorrowedRef { type_, .. } => match type_.as_ref() {
+                Type::Primitive(p) if p == "str" => Some(false),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    match ty {
+        // `Vec<String>` | `Vec<&str>`
+        Type::ResolvedPath(rp) if rp.path == "Vec" => {
+            let el = vec_first_type_arg(rp)?;
+            Some(if elem_is_owned_string(el)? {
+                DrainCollect::VecString
+            } else {
+                DrainCollect::VecStr
+            })
+        }
+        // `&[String]` | `&[&str]`
+        Type::BorrowedRef { type_, .. } => match type_.as_ref() {
+            Type::Slice(inner) => Some(if elem_is_owned_string(inner)? {
+                DrainCollect::SliceString
+            } else {
+                DrainCollect::VecStr
+            }),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The first type argument of a `Vec<..>`-shaped resolved path.
+fn vec_first_type_arg(rp: &rustdoc_types::Path) -> Option<&Type> {
+    let args = rp.args.as_ref()?;
+    let rustdoc_types::GenericArgs::AngleBracketed { args, .. } = args.as_ref() else {
+        return None;
+    };
+    args.iter().find_map(|a| match a {
+        rustdoc_types::GenericArg::Type(t) => Some(t),
+        _ => None,
+    })
+}
+
+/// `snake_case` → `CamelCase` for naming a drain wrapper after its producer
+/// method (`capture_names` → `CaptureNames`, `patterns` → `Patterns`).
+fn to_camel(s: &str) -> String {
+    s.split('_')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut c = p.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
 
 fn has_lifetime_args(rp: &rustdoc_types::Path) -> bool {
     let Some(args) = &rp.args else { return false };

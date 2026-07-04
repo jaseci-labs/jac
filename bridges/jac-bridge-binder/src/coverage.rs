@@ -100,5 +100,6 @@ fn reason_label(r: &SkipReason) -> String {
         SkipReason::Closure => "closure arg".into(),
         SkipReason::Generic => "generic".into(),
         SkipReason::UnsupportedType(t) => format!("unsupported type: {t}"),
+        SkipReason::OverlayTreatAs(m) => format!("overlay treat_as: {m}"),
     }
 }

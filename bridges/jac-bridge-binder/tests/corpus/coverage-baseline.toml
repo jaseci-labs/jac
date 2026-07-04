@@ -33,17 +33,31 @@
 # closure param becomes a JacCallback (Rust calls BACK into Jac once per match, via
 # the na trampoline / CPython CFUNCTYPE). `total` is unchanged (76): replace_all
 # simply flips from skip to bridged. `replacen` (an extra usize limit) stays a skip.
+#
+# The Vec/slice-DRAIN rule (M4 Phase B) then rescued `RegexSet::patterns -> &[String]`
+# (bridged 19 -> 22, total 76 -> 77): a method returning a string collection directly
+# becomes an OwnedPatterns drain (producer + next(), +2 bridged) and RegexSet stops
+# being a dead type. A `&[String]` is copied with `.to_vec()`; `Vec<String>` as-is;
+# `Vec<&str>`/`&[&str]` via `.iter().map(to_string)`.
 [regex]
-bridged = 19
-total = 76
+bridged = 22
+total = 77
 
 [base64]
 bridged = 1
 total = 7
 
+# chrono dropped from a *wrong* 11/264 to a correct 7/192 (M4 Phase B monomorphize):
+# the generic structs Date<Tz> and DateTime<Tz> were previously emitted as bare
+# `Date(pub chrono::Date)` newtypes — uncompilable, since the type arg is unknown —
+# and their 4 `-> Self` methods (succ/pred, fixed_offset/to_utc) were counted as
+# bridged. A generic struct with no `[type."T"] monomorphize = [..]` directive is now
+# dropped (like a lifetime cursor), removing its whole surface (bridged AND skipped),
+# which is why `total` falls too. With an overlay pinning concrete types (e.g.
+# `["chrono::Utc"]`) those methods return as valid `DateUtc(pub chrono::Date<chrono::Utc>)`.
 [chrono]
-bridged = 11
-total = 264
+bridged = 7
+total = 192
 
 [uuid]
 bridged = 0

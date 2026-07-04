@@ -96,6 +96,9 @@ fn regex_bridge_compiles_clean() {
         "jac_regex_OwnedMatch_as_str", // wrapper reader
         "jac_regex_OwnedMatch_is_empty",
         "jac_regex_OwnedMatch_drop", // wrapper is an opaque handle
+        "jac_regex_RegexSet_patterns",  // Vec/slice-drain producer (M4 Phase B)
+        "jac_regex_OwnedPatterns_next",  // its drain pull method
+        "jac_regex_OwnedPatterns_drop",  // the drain is an opaque handle
         "jac_regex_Regex_drop",
         "jac_regex_error_message",
         "jac_regex_free_buf",

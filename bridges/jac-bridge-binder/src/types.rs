@@ -17,6 +17,13 @@ pub struct BridgeType {
     pub kind: TypeKind,
     /// Inner path as it appears in the original crate: e.g. `regex::Regex`.
     pub inner_path: String,
+    /// Submodule segments the type is declared under, between the crate root and
+    /// the type name — e.g. `regex::error::Error` yields `["error"]`, and
+    /// `regex::regex::string::Regex` yields `["regex", "string"]`. Empty for a
+    /// crate-root type or a synthesized wrapper (which has no source module). An
+    /// overlay `[module."m"] skip = true` drops every type whose provenance
+    /// contains `m`.
+    pub module_path: Vec<String>,
     /// Rustdoc item ID — used by classify_impl to look up the correct impl list.
     pub item_id: u32,
     pub ctor: Option<BridgeFn>,
@@ -29,6 +36,26 @@ pub struct BridgeType {
     /// owns a copy of the borrowed-from input plus the borrowing value with its
     /// lifetime erased to `'static`. `None` for ordinary opaque/error types.
     pub wrapper: Option<OwningWrapper>,
+    /// Set when this type is one monomorphization of a generic struct, pinned by
+    /// an overlay `[type."T"] monomorphize = [..]` directive. A generic struct
+    /// can't be bridged as a bare `T(pub crate::T)` newtype — the type arg is
+    /// unknown — so by default the classifier drops it. With this directive each
+    /// concrete instantiation becomes its own opaque type (`DateUtc(pub
+    /// chrono::Date<chrono::Utc>)`). `None` for a non-generic type.
+    pub mono: Option<MonoType>,
+}
+
+/// A pinned monomorphization of a generic struct (overlay `monomorphize`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MonoType {
+    /// The generic struct's original rustdoc name (`Date`), used to recognise a
+    /// `-> Self` return whose path still reads `Date`, not the mono name.
+    pub origin_name: String,
+    /// The struct's single type-param name (`Tz`).
+    pub generic_param: String,
+    /// The concrete type the param is pinned to, verbatim from the overlay
+    /// (`chrono::Utc`) — substituted into the newtype's inner type.
+    pub concrete: String,
 }
 
 /// Describes how to synthesize an owning wrapper around a borrowed return.
@@ -76,10 +103,34 @@ pub enum WrapperKind {
     /// pull method. Each pulled item is an owning wrapper sharing this cursor's
     /// input `Arc`. `item_wrapper` is that item's `Owned…` type name.
     Cursor { item_wrapper: String },
-    /// A DRAIN over a `&str`-yielding iterator (`Regex::split -> Split<'r,'h>`):
-    /// eagerly collects the pieces into an owned `Vec<String>` (no lifetime
-    /// survives) and drains them via `next(&mut self) -> Option<String>`.
-    Drain,
+    /// A DRAIN: eagerly collects a producer's string sequence into an owned
+    /// `Vec<String>` (no lifetime survives) and drains it via
+    /// `next(&mut self) -> Option<String>`. Two entry points feed this shape:
+    ///   * an in-crate `&str`-yielding iterator (`Regex::split -> Split<'r,'h>`),
+    ///     collected with [`DrainCollect::IterStr`];
+    ///   * a method returning a string collection directly (`RegexSet::patterns
+    ///     -> &[String]`, or a `Vec<String>` / `Vec<&str>` / `&[&str]`), which
+    ///     needs no owned input buffer at all — see [`DrainCollect`].
+    ///
+    /// `params` are the producer's non-self params, forwarded verbatim into the
+    /// `wrap` ctor and the producer call (the iterator case has one `&str`; a
+    /// direct collection return may have zero or several scalar params).
+    Drain { params: Vec<BridgeParam>, collect: DrainCollect },
+}
+
+/// How a drain's `wrap` ctor turns the producer's return into the owned
+/// `Vec<String>` it drains. Each variant names the exact tail expression
+/// appended to `owner.<producer>(<args>)`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DrainCollect {
+    /// An in-crate iterator whose `Item = &str`: `.map(|s| s.to_owned()).collect()`.
+    IterStr,
+    /// The method already returns an owned `Vec<String>`: no tail, used as-is.
+    VecString,
+    /// The method returns a borrowed `&[String]`: `.to_vec()`.
+    SliceString,
+    /// The method returns `Vec<&str>` or `&[&str]`: `.iter().map(|s| s.to_string()).collect()`.
+    VecStr,
 }
 
 /// The root construction path for an owning wrapper: an owner method
@@ -141,7 +192,7 @@ impl BridgeFn {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BridgeParam {
     pub name: String,
     pub ty: ScalarType,
@@ -216,4 +267,8 @@ pub enum SkipReason {
     Generic,
     /// Type is not in the bridgeable set (e.g. tuples, raw pointers, trait objects).
     UnsupportedType(String),
+    /// An overlay `treat_as` directive forced this item out of the bridge — either
+    /// `treat_as = "skip"`, or a forced rule (`"cursor"`/`"drain"`/…) whose
+    /// preconditions the method did not meet. The string records which.
+    OverlayTreatAs(String),
 }

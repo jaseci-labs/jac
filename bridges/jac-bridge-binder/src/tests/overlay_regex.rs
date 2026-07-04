@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use rustdoc_types::Crate;
 
-use crate::{apply_overlay, classify, emit, parse_overlay};
+use crate::{apply_overlay, classify, classify_with_overlay, emit, parse_overlay};
 
 fn sig_contains(src: &str, pat: &str) -> bool {
     let a: String = src.chars().filter(|c| !c.is_whitespace()).collect();
@@ -134,29 +134,116 @@ fn inject_source_appears_in_codegen() {
 // ── reserved directives fail loud, not silently ────────────────────────────────
 
 #[test]
-fn treat_as_is_rejected_until_phase_b() {
-    let mut spec = classify(&load_regex_doc());
+fn treat_as_skip_forces_a_bridged_method_off() {
+    // Regex::is_match auto-classifies as a bridged bool method; treat_as="skip"
+    // forces it off the bridge and records it as an honest skip.
     let overlay =
-        parse_overlay("[fn.\"Regex::captures_iter\"]\ntreat_as = \"cursor\"\n").unwrap();
+        parse_overlay("[fn.\"Regex::is_match\"]\ntreat_as = \"skip\"\n").unwrap();
+    let spec = classify_with_overlay(&load_regex_doc(), Some(&overlay));
+
+    let regex = spec.types.iter().find(|t| t.name == "Regex").unwrap();
+    assert!(
+        !regex.methods.iter().any(|m| m.name == "is_match"),
+        "treat_as=skip should remove the method"
+    );
+    assert!(
+        spec.skips.iter().any(|s| s.item == "Regex::is_match"),
+        "forced-off method must be recorded as a skip, not silently dropped"
+    );
+}
+
+#[test]
+fn treat_as_pins_a_rule_and_matches_auto_detection() {
+    // Regex::find auto-detects as an owning wrapper. Pinning treat_as="owning"
+    // yields the SAME result via the forced path — a confirmation, not a change.
+    let overlay = parse_overlay("[fn.\"Regex::find\"]\ntreat_as = \"owning\"\n").unwrap();
+    let spec = classify_with_overlay(&load_regex_doc(), Some(&overlay));
+    let regex = spec.types.iter().find(|t| t.name == "Regex").unwrap();
+    let find = regex.methods.iter().find(|m| m.name == "find").expect("find still a producer");
+    assert!(
+        matches!(&find.ret, crate::types::BridgeReturn::OptWrapper(w) if w == "OwnedMatch"),
+        "pinned owning rule should still produce OwnedMatch, got {:?}",
+        find.ret
+    );
+}
+
+#[test]
+fn treat_as_pinning_an_inapplicable_rule_is_an_honest_skip() {
+    // Regex::find is an owning-wrapper shape, NOT a Vec/slice return, so pinning
+    // treat_as="drain" can't apply — it becomes a recorded skip, never a silent
+    // drop or an invalid emission.
+    let overlay = parse_overlay("[fn.\"Regex::find\"]\ntreat_as = \"drain\"\n").unwrap();
+    let spec = classify_with_overlay(&load_regex_doc(), Some(&overlay));
+    let regex = spec.types.iter().find(|t| t.name == "Regex").unwrap();
+    assert!(
+        !regex.methods.iter().any(|m| m.name == "find"),
+        "find should not be bridged when pinned to an inapplicable rule"
+    );
+    assert!(
+        spec.skips.iter().any(|s| s.item == "Regex::find"),
+        "an inapplicable pinned rule must record a skip"
+    );
+}
+
+#[test]
+fn treat_as_unknown_value_is_rejected() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay = parse_overlay("[fn.\"Regex::find\"]\ntreat_as = \"teleport\"\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
     assert!(err.contains("treat_as"), "err should name the directive: {err}");
+    assert!(err.contains("teleport"), "err should quote the bad value: {err}");
 }
 
 #[test]
-fn monomorphize_is_rejected_until_phase_b() {
+fn monomorphize_empty_set_is_rejected() {
+    // A monomorphize directive that pins nothing is a mistake, not a no-op.
+    // (The positive path — pinning a real generic struct — is covered against the
+    // chrono fixture in `monomorphize_chrono`, since regex has no generic types.)
     let mut spec = classify(&load_regex_doc());
-    let overlay =
-        parse_overlay("[type.\"RegexSet\"]\nmonomorphize = [\"str\"]\n").unwrap();
+    let overlay = parse_overlay("[type.\"RegexSet\"]\nmonomorphize = []\n").unwrap();
     let err = apply_overlay(&mut spec, &overlay).unwrap_err();
-    assert!(err.contains("monomorphize"), "err should name the directive: {err}");
+    assert!(err.contains("monomorphize"), "empty pin set must be rejected: {err}");
 }
 
 #[test]
-fn module_skip_is_rejected_until_phase_b() {
+fn module_skip_drops_submodule_types() {
     let mut spec = classify(&load_regex_doc());
-    let overlay = parse_overlay("[module.\"bytes\"]\nskip = true\n").unwrap();
-    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
-    assert!(err.contains("module"), "err should name the directive: {err}");
+    // regex's `Error` enum is declared under the `error` submodule; Regex and
+    // RegexSet live under `regex::string` / `regexset::string`.
+    assert!(spec.types.iter().any(|t| t.name == "Error"), "precondition: Error present");
+    let error_module = spec
+        .types
+        .iter()
+        .find(|t| t.name == "Error")
+        .map(|t| t.module_path.clone())
+        .unwrap();
+    assert_eq!(error_module, vec!["error".to_string()], "Error provenance");
+
+    let overlay = parse_overlay("[module.\"error\"]\nskip = true\n").unwrap();
+    apply_overlay(&mut spec, &overlay).unwrap();
+
+    // The whole `error` submodule surface is gone…
+    assert!(
+        !spec.types.iter().any(|t| t.name == "Error"),
+        "the error submodule's type should be dropped"
+    );
+    // …but types under other submodules survive.
+    assert!(spec.types.iter().any(|t| t.name == "Regex"), "Regex must survive");
+    assert!(spec.types.iter().any(|t| t.name == "RegexSet"), "RegexSet must survive");
+
+    let src = emit(&spec);
+    assert!(!sig_contains(&src, "pub struct RegexError;"), "skipped error type leaked\n{src}");
+    assert!(sig_contains(&src, "pub struct Regex("), "Regex must remain in codegen\n{src}");
+}
+
+#[test]
+fn module_skip_of_absent_module_is_a_noop() {
+    // Skipping a module that groups no classifiable type is harmless, not an error.
+    let mut spec = classify(&load_regex_doc());
+    let before = spec.types.len();
+    let overlay = parse_overlay("[module.\"nonexistent\"]\nskip = true\n").unwrap();
+    apply_overlay(&mut spec, &overlay).unwrap();
+    assert_eq!(spec.types.len(), before, "no type should be removed");
 }
 
 #[test]
