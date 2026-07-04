@@ -583,6 +583,27 @@ impl JacCompiler.parse_str(
         );
         had_error = len(py_ast_ret.errors_had) > 0;
         mod = py_ast_ret.ir_out;
+    } elif (
+        file_path.endswith('.c') or file_path.endswith('.h') or file_path.endswith('.i')
+    ) {
+        import from jaclang.compiler.passes.main.cast_load_pass { CastBuildPass }
+        import from jaclang.vendor.pycparser { c_parser }
+        c_src = source_str;
+        if not file_path.endswith('.i') {
+            import from jaclang.compiler.cfront.preprocess { preprocess_c }
+            c_src = preprocess_c(c_src, file_path);
+        }
+        file_ast = c_parser.CParser().parse(c_src, file_path);
+        cast_ret = CastBuildPass(
+            ir_in=uni.CModuleAst(
+                file_ast, orig_src=uni.Source(c_src, mod_path=file_path)
+            ),
+            prog=target_program,
+            cancel_token=cancel_token,
+            lenient_c=True
+        );
+        had_error = len(cast_ret.errors_had) > 0;
+        mod = cast_ret.ir_out;
     } else {
         import from jaclang.jac0core.parser { parse as rd_parse }
         import from jaclang.jac0core.ext_registry { codespace_of }
