@@ -9,11 +9,11 @@ readme = "README.md"
 requires_python = ">=3.14"
 # Native LLVM is the in-tree LLVMPY_* shim, statically linked by Zig
 # (jac/native + `zig build fetch-llvm`), not the llvmlite wheel — no llvmlite dep.
-dependencies = [
-    # c2jac's C parser (pycparser) is vendored in-tree at jaclang/vendor/pycparser
-    # to keep the core install dependency-free; see that dir's README.vendor.md.
-    "pcpp>=1.30",  # c2jac C preprocessor (pure-Python; no system toolchain needed)
-]
+# The c2jac C front-end is fully vendored in-tree — the parser (pycparser) at
+# jaclang/vendor/pycparser and the preprocessor (pcpp) at jaclang/vendor/pcpp —
+# so the core install carries no third-party runtime dependency. See each dir's
+# README.vendor.md.
+dependencies = []
 
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"

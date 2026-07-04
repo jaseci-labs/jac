@@ -1108,9 +1108,11 @@ fn mkPayload(
     // --dev`, tomlkit -> project tooling). Installed AFTER precompile so the
     // precompiler's package walk only sees jaclang. Drop stray bytecode first so
     // pip doesn't refuse the populated --target dir.
-    log("==> bundling pytest + pytest-xdist (jac test) + watchdog (jac start --dev) + pcpp (c2jac/cbindgen)", .{});
+    // pcpp (c2jac/cbindgen preprocessor) is no longer pip-installed here — it is
+    // vendored in-tree at jaclang/vendor/pcpp and ships with jaclang itself.
+    log("==> bundling pytest + pytest-xdist (jac test) + watchdog (jac start --dev)", .{});
     Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/__pycache__", .{site})) catch {};
-    _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "pcpp>=1.30", "--target", site }, null, false);
+    _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "--target", site }, null, false);
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
 
