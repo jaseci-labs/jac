@@ -278,7 +278,7 @@ Emitted by `OwnershipCheckPass` for `own`/`borrow`/`&`/`&mut` bindings. See [Own
 | `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
 | `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
 | `E1304` | '{name}' is destroyed while still borrowed |
-| `E1305` | Owned resource '{name}' is never consumed |
+| `E1305` | Linear resource '{name}' is never consumed (reserved; not yet emitted -- `own` is affine, dropping it is not an error) |
 | `E1306` | Borrow of '{name}' escapes its scope |
 
 ### Type Warnings

@@ -27,14 +27,16 @@ with entry {
 }
 ```
 
-An `own` binding that is never moved anywhere before its scope ends is a leak ([`E1305`](../diagnostics.md#ownership-borrow-errors)):
+Ownership is affine, not linear: an `own` binding that is never moved anywhere before its scope ends is simply dropped and reclaimed by the managed RC/GC floor -- this is not an error:
 
 ```jac
 with entry {
     f: own File = File();
-    print("done");   # error[E1305]: owned resource 'f' is never consumed
+    print("done");   # OK: `f` is dropped here, no error
 }
 ```
+
+(`E1305` is reserved for the optional `linear` resource marker, which does require an explicit move and is not yet implemented.)
 
 `own` also works on parameters (`def take(x: own Buffer) -> None`), and passing an owned local to a plain (non-`own`) parameter counts as a move.
 

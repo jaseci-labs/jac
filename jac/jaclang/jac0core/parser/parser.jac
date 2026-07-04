@@ -410,7 +410,10 @@ obj Parser {
     def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def _make_alert(
-        message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+        message: str,
+        sloc: SourceLoc,
+        code: DiagnosticInfo | None = None,
+        help_text: str | None = None
     ) -> Alert;
 
     def error(message: str);

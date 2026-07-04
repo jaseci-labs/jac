@@ -248,7 +248,10 @@ impl Parser.consume_uni(kind: TokenKind) -> UniToken {
 }
 
 impl Parser._make_alert(
-    message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+    message: str,
+    sloc: SourceLoc,
+    code: DiagnosticInfo | None = None,
+    help_text: str | None = None
 ) -> Alert {
     source = self.get_source();
     tok = UniToken(
@@ -1295,7 +1298,7 @@ impl Parser.parse_ref -> Expr {
         target = self.parse_await_expr();
         kids.append(target);
         return UnaryExpr(
-            operand=target, op=op, is_borrow=is_mut, is_mut_borrow=is_mut, kid=kids
+            operand=target, op=op, is_borrow=True, is_mut_borrow=is_mut, kid=kids
         );
     }
     return self.parse_await_expr();
