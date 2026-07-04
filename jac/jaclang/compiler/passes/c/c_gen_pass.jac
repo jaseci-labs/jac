@@ -1,6 +1,7 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+import from jaclang.compiler.passes.main.ownership_facts_pass { get_ownership_facts }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 glob C_PRIM_TYPES: dict[str, str] = {
@@ -31,7 +32,8 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         exc_ctr: int = 0,
         exc_frames: list[str] = [],
         needs_rt: bool = False,
-        layout: object = None;
+        layout: object = None,
+        facts: object = None;
 
     def transform(ir_in: uni.Module) -> uni.Module {
         try {
@@ -103,6 +105,11 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def gen_module(mod: uni.Module) {
         self.classify(mod);
         self.load_layout(mod);
+        try {
+            self.facts = get_ownership_facts(mod, self.prog);
+        } except Exception {
+            self.facts = None;
+        }
         self.needs_rt = len(self.type_ids) > 0;
         structs: list[str] = [];
         vtables: list[str] = [];
@@ -592,14 +599,15 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         self.tmp_ctr += 1;
         tmp = f"_jf{self.tmp_ctr}";
         cty = self.c_type(fty);
-        lines: list[str] = [
-            pad + "{",
-            pad + f"    {cty} {tmp} = {val};",
-            pad + f"    jac_rc_retain({tmp});",
-            pad + f"    jac_rc_release({lhs});",
-            pad + f"    {lhs} = {tmp};",
-            pad + "}"
-        ];
+
+        moves = self.facts is not None and self.facts.is_owned(st.value);
+        lines: list[str] = [pad + "{", pad + f"    {cty} {tmp} = {val};"];
+        if not moves {
+            lines.append(pad + f"    jac_rc_retain({tmp});");
+        }
+        lines.append(pad + f"    jac_rc_release({lhs});");
+        lines.append(pad + f"    {lhs} = {tmp};");
+        lines.append(pad + "}");
         return "\n".join(lines);
     }
 

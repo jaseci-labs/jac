@@ -177,6 +177,35 @@ test "jac2c lowers try/except/raise to the setjmp runtime" {
     assert "unsupported" not in c_src , f"unsupported nodes remain:\n{c_src}";
 }
 
+def _fn_body(c_src: str, sig: str) -> str {
+    start = c_src.find(sig + " {");
+    assert start >= 0 , f"function {sig!r} not found";
+    end = c_src.find("\n}", start);
+    return c_src[start:end];
+}
+
+test "jac2c uses OwnershipFacts to move owned field stores and copy borrowed ones" {
+    c_src = _emit_c(os.path.join(FIXTURES, "obj_move.jac"));
+    # Holder stores a fresh Counter(5): owned -> moved, no retain.
+    holder = _fn_body(c_src, "struct Holder *Holder__new(void)");
+    assert "Counter__new(5)" in holder , f"missing constructor store:\n{holder}";
+    assert "jac_rc_retain(" not in holder , f"owned store should move, not retain:\n{holder}";
+    # Wrap stores a borrowed parameter: copied -> retained.
+    wrap = _fn_body(c_src, "struct Wrap *Wrap__new(struct Counter * inner)");
+    assert "jac_rc_retain(" in wrap , f"borrowed store should retain:\n{wrap}";
+}
+
+test "jac2c move optimization stays behaviorally correct with cc" {
+    if _cc() is None {
+        return;
+    }
+    out = _build_run(
+        "obj_move.jac", "extern int run_move(void);\n", "\"%d\\n\", run_move()"
+    );
+    # Holder().peek()==5 plus Wrap(Counter(9)).peek()==9.
+    assert out == "14" , f"got {out!r}";
+}
+
 test "jac2c exceptions catch, propagate, and pass through with cc" {
     if _cc() is None {
         return;
