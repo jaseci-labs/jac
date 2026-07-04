@@ -1730,3 +1730,10 @@ obj PythonModuleAst(EmptyToken) {
 
     def init(ast: ast3.Module, orig_src: Source) -> None;
 }
+
+obj CModuleAst(EmptyToken) {
+    has orig_src: Source by postinit,
+        file_path: str by postinit;
+
+    def init(ast: object, orig_src: Source) -> None;
+}

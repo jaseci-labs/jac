@@ -1,5 +1,5 @@
 import from jaclang.vendor.pycparser { c_ast }
-import from jaclang.compiler.c2jac.c_types { JacPrim, C_PRIM_MAP, user_type_name }
+import from jaclang.compiler.cfront.c_types { JacPrim, C_PRIM_MAP, user_type_name }
 
 def flatten_mult(nd: object, acc: list) {
     if isinstance(nd, c_ast.BinaryOp) and nd.op == "*" {

@@ -1,8 +1,10 @@
 import keyword;
 import from jaclang.jac0core.constant { TOKEN_MAP }
+import from jaclang.jac0core { unitree as uni }
 import from jaclang.vendor.pycparser { c_ast }
-import from jaclang.compiler.c2jac.tags { BinKind }
-import from jaclang.compiler.c2jac.c_types { JacPrim }
+import from jaclang.compiler.cfront.c_types { JacPrim }
+
+enum BinKind { ARITH = "arith", COMPARE = "compare", BOOL = "bool" }
 
 glob C_BINOPS: dict[str, tuple[BinKind, str]] = {
          "+": (BinKind.ARITH, "Add"),
@@ -276,16 +278,23 @@ def jac_prim_zero(jac: JacPrim) -> PrimZero {
 glob _JAC_KW_IDS: set = set(TOKEN_MAP.values()) | set(keyword.kwlist);
 
 def jac_id(name: str) -> str {
-    return f"`{name}`" if name in _JAC_KW_IDS else name;
+    return f"`{name}" if name in _JAC_KW_IDS else name;
 }
 
-def enumerator_value(en: object, counter: int) -> tuple[int, bool] {
+obj EnumVal {
+    has value: int,
+        simple: bool;
+}
+
+def enumerator_value(en: object, counter: int) -> EnumVal {
     if en.value is None {
-        return (counter, True);
+        return EnumVal(value=counter, simple=True);
     }
     if isinstance(en.value, c_ast.Constant) and en.value.type == "int" {
         v = parse_c_int(en.value.value);
-        return (v, True) if v is not None else (0, False);
+        return EnumVal(value=v, simple=True)
+            if v is not None
+            else EnumVal(value=0, simple=False);
     }
     if (
         isinstance(en.value, c_ast.UnaryOp)
@@ -295,11 +304,12 @@ def enumerator_value(en: object, counter: int) -> tuple[int, bool] {
     ) {
         v = parse_c_int(en.value.expr.value);
         if v is None {
-            return (0, False);
+            return EnumVal(value=0, simple=False);
         }
-        return (-v, True) if en.value.op == "-" else (v, True);
+        signed = -v if en.value.op == "-" else v;
+        return EnumVal(value=signed, simple=True);
     }
-    return (0, False);
+    return EnumVal(value=0, simple=False);
 }
 
 obj EnumPairs {
@@ -312,12 +322,30 @@ def eval_enumerators(enumerator_list: object) -> EnumPairs {
     counter: int = 0;
     all_simple = True;
     for en in enumerator_list.enumerators {
-        (v, simple) = enumerator_value(en, counter);
-        if not simple {
+        ev = enumerator_value(en, counter);
+        if not ev.simple {
             all_simple = False;
         }
-        pairs.append((en.name, v));
-        counter = v + 1;
+        pairs.append((en.name, ev.value));
+        counter = ev.value + 1;
     }
     return EnumPairs(pairs=pairs, all_simple=all_simple);
+}
+
+def c_tok(c_node: object, orig_src: uni.Source, text: str = "") -> uni.Token {
+    (line, col) = coord_of(c_node, 1);
+    span = max(len(text), 1);
+    tok = uni.Token(
+        orig_src=orig_src,
+        name="C_ANCHOR",
+        value=text,
+        line=line,
+        end_line=line,
+        col_start=col,
+        col_end=col + span,
+        pos_start=0,
+        pos_end=span,
+    );
+    tok._is_synthetic = True;
+    return tok;
 }

@@ -8,6 +8,13 @@ enum JacPrim {
     VOID = "None"
 }
 
+enum TypeKind { ARRAY = "array", PTR = "ptr", NONE = "none", SCALAR = "scalar" }
+
+obj TypeChain {
+    has kind: TypeKind,
+        node: object;
+}
+
 glob C_BUILTIN_TYPES: set = {
          "int",
          "float",
@@ -60,14 +67,14 @@ def user_type_name(t: object) -> str | None {
     return None;
 }
 
-def walk_to_typedecl(decl_type: object) -> tuple {
+def walk_to_typedecl(decl_type: object) -> TypeChain {
     t = decl_type;
     while not isinstance(t, c_ast.TypeDecl) {
         if isinstance(t, c_ast.ArrayDecl) {
-            return ("array", t);
+            return TypeChain(kind=TypeKind.ARRAY, node=t);
         }
         if isinstance(t, c_ast.PtrDecl) {
-            return ("ptr", t);
+            return TypeChain(kind=TypeKind.PTR, node=t);
         }
         if isinstance(t, c_ast.FuncDecl) {
             t = t.type;
@@ -75,10 +82,10 @@ def walk_to_typedecl(decl_type: object) -> tuple {
         }
         t = t?.type;
         if t is None {
-            return ("none", None);
+            return TypeChain(kind=TypeKind.NONE, node=None);
         }
     }
-    return ("type", t);
+    return TypeChain(kind=TypeKind.SCALAR, node=t);
 }
 
 def ptr_inner_typedecl(ptr_decl: object) -> object | None {
@@ -89,14 +96,21 @@ def ptr_inner_typedecl(ptr_decl: object) -> object | None {
     return None;
 }
 
+def is_plain_char_ptr(ptr_decl: object) -> bool {
+    inner = ptr_inner_typedecl(ptr_decl);
+    if inner is None {
+        return False;
+    }
+    names = inner.type?.names or [];
+    return "char" in names and jac_prim(names) == JacPrim.STR;
+}
+
 def ptr_typename(ptr_decl: object) -> str {
+    if is_plain_char_ptr(ptr_decl) {
+        return "str";
+    }
     inner = ptr_inner_typedecl(ptr_decl);
     if inner is not None {
-        names = inner.type?.names or [];
-
-        if "char" in names and jac_prim(names) == JacPrim.STR {
-            return "str";
-        }
         user = user_type_name(inner.type);
         if user is not None {
             return user;
@@ -106,23 +120,23 @@ def ptr_typename(ptr_decl: object) -> str {
 }
 
 def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
-    (kind, node) = walk_to_typedecl(decl_type);
-    if kind == "array" {
+    chain = walk_to_typedecl(decl_type);
+    if chain.kind == TypeKind.ARRAY {
         return "list";
     }
-    if kind == "ptr" {
-        return ptr_typename(node);
+    if chain.kind == TypeKind.PTR {
+        return ptr_typename(chain.node);
     }
-    if kind == "none" {
+    if chain.kind == TypeKind.NONE {
         return "int";
     }
     if resolve_user {
-        user = user_type_name(node.type);
+        user = user_type_name(chain.node.type);
         if user is not None {
             return user;
         }
     }
-    names = node.type?.names or ["int"];
+    names = chain.node.type?.names or ["int"];
     return jac_prim(names).value;
 }
 

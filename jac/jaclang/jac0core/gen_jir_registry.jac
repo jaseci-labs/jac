@@ -1,6 +1,11 @@
 import inspect;
 
 glob MANUAL_FIELDS: dict[str, list] = {
+         "CModuleAst": [
+             'FieldDesc(name="ast", kind=10)',
+             'FieldDesc(name="orig_src", kind=4)',
+
+         ],
          "SpecialVarRef": [
              'FieldDesc(name="name", kind=0)',
              'FieldDesc(name="is_enum_stmt", kind=2)',

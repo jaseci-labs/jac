@@ -1868,10 +1868,12 @@ Converting Jac to Python has moved under [`jac tool`](#jac-tool). Use **`jac too
 
 ### jac c2jac
 
-Convert C source to Jac. The transpiler reuses the existing Python-AST pipeline
-(pycparser C-AST → CPython `ast` → `PyastBuildPass` → Jac), with a direct-IR path
-for constructs that have no faithful Python-AST analog (C `for`, enums). The
-generated Jac is written to **stdout**; redirect it to a file to keep it.
+Convert C source to Jac. The transpiler uses a single `CastBuildPass` that lifts
+pycparser C-AST nodes directly into Jac uni IR with no intermediate Python-AST hop.
+Constructs with a faithful Jac equivalent are lowered transparently; those without
+one emit a `# c2jac:` diagnostic comment and a placeholder so the file still
+compiles with missing pieces visible. The generated Jac is written to **stdout**;
+redirect it to a file to keep it.
 
 ```bash
 jac c2jac filename [-I dir] [-D NAME[=VALUE]] [-U NAME] [--force-include header] [--nostdinc]
