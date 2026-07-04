@@ -759,7 +759,7 @@ test "savable object" {
             "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
             "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
             "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
-        );
+        ) , f"create printed: {prints!r}";
 
         captured = capture_start();
 
@@ -768,11 +768,12 @@ test "savable object" {
             entrypoint="get_custom_object",
             args=[id]
         );
-        assert capture_get(captured).strip() == (
+        got = capture_get(captured).strip();
+        assert got == (
             "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
             "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
             "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
-        );
+        ) , f"reload printed: {got!r}";
 
         captured = capture_start();
 
@@ -782,11 +783,12 @@ test "savable object" {
             args=[id]
         );
 
-        assert capture_get(captured).strip() == (
+        got = capture_get(captured).strip();
+        assert got == (
             "SavableObject(val=1, arr=[1], json={'a': 1}, parent=Parent(val=2, arr=[1, 2], json"
             "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>, child=Child(val=3, arr=[1, 2, 3], json"
             "={'a': 1, 'b': 2, 'c': 3}, enum_field=<Enum.A: 'a'>)), enum_field=<Enum.B: 'b'>)"
-        );
+        ) , f"update printed: {got!r}";
 
         captured = capture_start();
 
@@ -801,7 +803,8 @@ test "savable object" {
             entrypoint="get_custom_object",
             args=[id]
         );
-        assert capture_get(captured).strip() == "None";
+        got = capture_get(captured).strip();
+        assert got == "None" , f"post-delete get printed: {got!r}";
     } finally {
         Jac.set_base_path(_orig_base);
         shutil.rmtree(_tmpdir, ignore_errors=True);
