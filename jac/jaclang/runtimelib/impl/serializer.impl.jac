@@ -314,8 +314,13 @@ impl Serializer._deserialize_value(val: object) -> object {
 
 impl Serializer.register(cls: type) -> None {
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
-    import from jaclang.runtimelib.typecache { invalidate as _invalidate_typecache }
+    import from jaclang.runtimelib.typecache {
+        invalidate as _invalidate_typecache,
+        warm as _warm_typecache
+    }
     _invalidate_typecache(cls);
+
+    _warm_typecache(cls);
     try {
         cls.__jac_fingerprint__ = Serializer.fingerprint(cls);
     } except Exception as e {

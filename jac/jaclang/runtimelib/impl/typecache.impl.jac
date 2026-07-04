@@ -13,8 +13,31 @@ impl get_field_types(cls: type) -> dict[str, object] {
     }
     try {
         hints = get_type_hints(cls);
+        resolved = True;
     } except Exception {
         hints = getattr(cls, '__annotations__', {}) or {};
+        resolved = False;
+    }
+    out: dict[str, object] = {};
+    for f in fields(cls) {
+        if f.name in hints {
+            out[f.name] = hints[f.name];
+        }
+    }
+    if resolved {
+        _cache[cls] = out;
+    }
+    return out;
+}
+
+impl warm(cls: type) -> None {
+    if cls in _cache or not is_dataclass(cls) {
+        return;
+    }
+    try {
+        hints = get_type_hints(cls);
+    } except Exception {
+        return;
     }
     out: dict[str, object] = {};
     for f in fields(cls) {
@@ -23,7 +46,6 @@ impl get_field_types(cls: type) -> dict[str, object] {
         }
     }
     _cache[cls] = out;
-    return out;
 }
 
 impl invalidate(cls: type) -> None {
