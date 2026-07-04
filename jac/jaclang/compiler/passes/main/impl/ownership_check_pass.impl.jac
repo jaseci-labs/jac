@@ -290,9 +290,19 @@ impl OwnershipCheckPass._call_params(
     return call.params or [];
 }
 
+impl OwnershipCheckPass._cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None) {
+    if isinstance(sub, uni.UniCFGNode) {
+        return sub;
+    }
+    return self._nearest_cfg(sub);
+}
+
 impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
     gen: set[SymId] = set();
     for call in nd.get_all_sub_nodes(uni.FuncCall) {
+        if self._cfg_owner(call) is not nd {
+            continue;
+        }
         for param in self._call_params(call) {
             arg: uni.Expr | None = None;
             if isinstance(param, uni.KWPair) {
@@ -319,6 +329,9 @@ impl OwnershipCheckPass._return_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
         returns.append(ret);
     }
     for ret in returns {
+        if self._cfg_owner(ret) is not nd {
+            continue;
+        }
         owned = self._owned_sym_of(ret.expr);
         if owned is not None {
             gen.add(owned);
@@ -570,6 +583,20 @@ impl OwnershipCheckPass._is_read_name(nd: uni.Name) -> bool {
     return not self._is_write_target(nd);
 }
 
+impl OwnershipCheckPass._is_move_producing_use(nd: uni.Name) -> bool {
+    kind = self._classify_access(nd);
+    if kind == AccessKind.CALL_ARG or kind == AccessKind.RETURN_VALUE {
+        return True;
+    }
+    parent = nd.parent;
+    if isinstance(parent, uni.Assignment)
+    and parent.aug_op is None
+    and parent.value is nd {
+        return True;
+    }
+    return False;
+}
+
 impl OwnershipCheckPass._sym_id(nd: uni.UniNode | None) -> (SymId | None) {
     if isinstance(nd, uni.Name) and nd.sym {
         return id(nd.sym);
@@ -659,6 +686,10 @@ impl OwnershipCheckPass._emit_loop_move_diagnostics -> None {
             continue;
         }
         if not self._is_read_name(nd) {
+            continue;
+        }
+
+        if not self._is_move_producing_use(nd) {
             continue;
         }
         decl = self.owned_decl.get(owned);
