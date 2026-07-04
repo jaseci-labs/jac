@@ -224,3 +224,33 @@ impl jac2js(filename: str) -> int {
         return 1;
     }
 }
+
+impl jac2c(filename: str) -> int {
+    import from jaclang.jac0core.program { JacProgram }
+    if not filename.endswith('.jac') {
+        console.error('Not a .jac file.');
+        return 1;
+    }
+    try {
+        prog = JacProgram();
+        ir = prog.compile(file_path=filename);
+        if prog.errors_had {
+            for error in prog.errors_had {
+                console.error(f"{error}");
+            }
+            return 1;
+        }
+        c_output = ir.gen.c_src or '';
+        if not c_output.strip() {
+            console.error('C code generation produced no output.');
+            return 1;
+        }
+        console.print(c_output, markup=False, highlight=False);
+        return 0;
+    } except Exception as e {
+        console.error(f"Generating C failed: {e}");
+        import traceback;
+        traceback.print_exc();
+        return 1;
+    }
+}

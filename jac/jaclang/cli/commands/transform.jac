@@ -9,6 +9,8 @@ def jac2py(filename: str) -> int;
 
 def jac2js(filename: str) -> int;
 
+def jac2c(filename: str) -> int;
+
 def c2jac(
     filename: str,
     incdir: list | None = None,
