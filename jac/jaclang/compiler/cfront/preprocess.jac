@@ -1,7 +1,7 @@
 import io;
 import os;
 import jaclang.vendor.pycparser as pycparser;
-import from pcpp { Preprocessor, OutputDirective, Action }
+import from jaclang.vendor.pcpp { Preprocessor, OutputDirective, Action }
 
 
 class _C2JacPreprocessor(Preprocessor) {
