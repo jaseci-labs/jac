@@ -85,3 +85,62 @@ def install_rust_namespace(search_dirs: object = None) -> RustBridgeFinder {
     sys.meta_path.append(finder);
     return finder;
 }
+
+
+glob _JAC_BRIDGE_PREFIX = "jac_bridge_",
+     _STEMS = ("lib{}.so", "lib{}.dylib", "{}.dll");
+
+
+def _find_so(lib_name: str, dirs: list) -> object {
+    stems = [s.format(lib_name) for s in _STEMS];
+    for d in dirs {
+        for stem in stems {
+            p = d / stem;
+            if p.exists() {
+                return p;
+            }
+        }
+    }
+    return None;
+}
+
+
+class JacBridgeFinder(MetaPathFinder) {
+    def init(self: JacBridgeFinder, extra_dirs: object = None) {
+        cwd = Path.cwd();
+        defaults = [
+            cwd / "target" / "release",
+            cwd / "target" / "debug",
+            cwd.parent / "target" / "release",
+            cwd.parent / "target" / "debug"
+        ];
+        self._dirs = [Path(d) for d in (extra_dirs or [])] + defaults;
+    }
+
+    def find_spec(
+        self: JacBridgeFinder, fullname: str, path: object = None, target: object = None
+    ) -> object {
+        if not fullname.startswith(_JAC_BRIDGE_PREFIX) {
+            return None;
+        }
+        so = _find_so(fullname, self._dirs);
+        if so is None {
+            return None;
+        }
+        return ModuleSpec(
+            fullname, _RustBridgeLoader(str(so), fullname), origin=str(so)
+        );
+    }
+}
+
+
+def install_finder(search_dirs: object = None) -> JacBridgeFinder {
+    for f in sys.meta_path {
+        if isinstance(f, JacBridgeFinder) {
+            return f;
+        }
+    }
+    finder = JacBridgeFinder(search_dirs);
+    sys.meta_path.append(finder);
+    return finder;
+}

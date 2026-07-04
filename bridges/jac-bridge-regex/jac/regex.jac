@@ -154,23 +154,13 @@ obj Regex {
     def __del__ {
         self.close();
     }
-}
 
-glob re = Regex(r"foo\d+");
-
-with entry {
-    assert re.is_match("foo42") , "expected match";
-    assert not re.is_match("bar") , "expected no-match";
-    re.close();
-}
-
-glob caught = False;
-
-with entry {
-    try {
-        Regex("(unclosed");
-    } except Exception as exc {
-        caught = True;
+    def __enter__ -> Regex {
+        return self;
     }
-    assert caught , "expected error for bad pattern";
+
+    def __exit__(exc_type: object, exc: object, tb: object) -> object {
+        self.close();
+        return None;
+    }
 }

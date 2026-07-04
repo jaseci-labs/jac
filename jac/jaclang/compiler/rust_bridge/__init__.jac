@@ -2,6 +2,7 @@ import os;
 import shutil;
 import from pathlib { Path }
 import from jaclang.compiler.rust_bridge._blob { BridgeMeta, parse }
+import from jaclang.compiler.rust_bridge._ctypes_codegen { build_module }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
 import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
 import from jaclang.compiler.rust_bridge._synth { NaModule, Skip, render_na_source }
@@ -16,23 +17,44 @@ glob SUPPORTED_ABI = 1,
          "find_bridge_lib",
          "is_bridge_module",
          "RustBridgeFinder",
-         "install_rust_namespace"
+         "install_rust_namespace",
+         "load_bridge",
+         "install_finder",
+         "JacBridgeFinder",
+         "build_module"
      ],
      _PREFIX = "rust.";
 
 
 def __getattr__(name: str) -> object {
-    if name in ("RustBridgeFinder", "install_rust_namespace") {
+    if name in (
+        "RustBridgeFinder",
+        "install_rust_namespace",
+        "JacBridgeFinder",
+        "install_finder"
+    ) {
         import from jaclang.compiler.rust_bridge._importer {
             RustBridgeFinder,
-            install_rust_namespace
+            install_rust_namespace,
+            JacBridgeFinder,
+            install_finder
         }
-        if name == "RustBridgeFinder" {
-            return RustBridgeFinder;
-        }
-        return install_rust_namespace;
+        table = {
+            "RustBridgeFinder": RustBridgeFinder,
+            "install_rust_namespace": install_rust_namespace,
+            "JacBridgeFinder": JacBridgeFinder,
+            "install_finder": install_finder
+        };
+        return table[name];
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
+}
+
+
+def load_bridge(so_path: object) -> object {
+    so = str(so_path);
+    meta = parse(read_jac_bridge_section(so));
+    return build_module(so, meta);
 }
 
 

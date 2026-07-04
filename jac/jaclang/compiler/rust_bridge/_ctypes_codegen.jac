@@ -106,6 +106,10 @@ class _Runtime {
         out_e = c_uint64(0);
         st = fn(err_h, byref(buf), byref(out_e));
         if st != 0 {
+            drop = self._err_drops.get(idx);
+            if drop {
+                drop(err_h);
+            }
             return f"<panic reading error message: status={st}>";
         }
         raw = string_at(buf.ptr, buf.len);
