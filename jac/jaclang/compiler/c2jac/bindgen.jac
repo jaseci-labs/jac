@@ -1,12 +1,17 @@
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
-import from jaclang.compiler.c2jac.c_common {
+import from jaclang.compiler.cfront.c_common {
     parse_c_int,
     jac_id,
     eval_enumerators,
     EnumPairs
 }
-import from jaclang.compiler.c2jac.c_types { walk_to_typedecl, ptr_inner_typedecl }
+import from jaclang.compiler.cfront.c_types {
+    walk_to_typedecl,
+    ptr_inner_typedecl,
+    is_plain_char_ptr,
+    TypeKind
+}
 
 glob _FFI_SCALARS: set = {
          "i8",
@@ -120,12 +125,12 @@ def _scalar_for_names(names: list, typedefs: dict, depth: int = 0) -> str {
 }
 
 def _ptr_ffi(ptr_decl: object, typedefs: dict, structs: (set | None) = None) -> str {
+    if is_plain_char_ptr(ptr_decl) {
+        return "str";
+    }
     inner = ptr_inner_typedecl(ptr_decl);
     if inner is not None {
         names = inner.type?.names or [];
-        if "char" in names and "signed" not in names and "unsigned" not in names {
-            return "str";
-        }
         if names and _scalar_for_names(names, typedefs) in _FFI_SCALARS {
             return "bytes";
         }
@@ -137,23 +142,24 @@ def ffi_type(
     decl_type: object, typedefs: dict | None = None, structs: (set | None) = None
 ) -> str {
     tds = typedefs or {};
-    (kind, node) = walk_to_typedecl(decl_type);
-    if kind == "array" {
+    chain = walk_to_typedecl(decl_type);
+    if chain.kind == TypeKind.ARRAY {
         return "int";
     }
-    if kind == "ptr" {
-        return _ptr_ffi(node, tds, structs);
+    if chain.kind == TypeKind.PTR {
+        return _ptr_ffi(chain.node, tds, structs);
     }
-    if kind == "none" {
+    if chain.kind == TypeKind.NONE {
         return "int";
     }
-    if isinstance(node.type, c_ast.Struct)
-    and node.type.name
+    scalar = chain.node;
+    if isinstance(scalar.type, c_ast.Struct)
+    and scalar.type.name
     and structs
-    and node.type.name in structs {
-        return node.type.name;
+    and scalar.type.name in structs {
+        return scalar.type.name;
     }
-    names = node.type?.names or ["int"];
+    names = scalar.type?.names or ["int"];
     if names and len(names) == 1 and structs and names[0] in structs {
         return names[0];
     }
@@ -547,7 +553,7 @@ def bindings_from_source(
 ) -> tuple[str, BindReport] {
     macros: dict = {};
     if not filename.endswith(".i") {
-        import from jaclang.compiler.c2jac.preprocess { preprocess_c_collect }
+        import from jaclang.compiler.cfront.preprocess { preprocess_c_collect }
         (c_src, macros) = preprocess_c_collect(
             c_src,
             filename,

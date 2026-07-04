@@ -16,7 +16,7 @@ import from z { def compressBound(slen: u64) -> u64; }
 glob Z_OK: int = 0;
 ```
 
-It reuses c2jac's front-end (pcpp preprocessing + the vendored pycparser), so it
+It reuses the shared `cfront/` front-end (pcpp preprocessing + the vendored pycparser), so it
 inherits the same self-contained, no-system-toolchain story. cbindgen does *not*
 translate function bodies (there are none in a header); it maps declarations to
 FFI signatures and named constants, and is honest about what it cannot model.
@@ -159,7 +159,7 @@ suite is portable regardless of how pycparser was installed):
 ## References
 
 - `jac/jaclang/compiler/c2jac/bindgen.jac` - the generator.
-- `jac/jaclang/compiler/c2jac/preprocess.jac` - shared pcpp front-end.
+- `jac/jaclang/compiler/cfront/preprocess.jac` - shared pcpp front-end.
 - `jac/jaclang/runtimelib/na_stdlib/_zlib_native.na.jac`,
   `_ssl_native.na.jac`, `socket.na.jac` - hand-written FFI bindings cbindgen
   reproduces.

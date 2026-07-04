@@ -67,11 +67,20 @@ def jac2js(filename: str) -> int;
             kind=ArgKind.FLAG,
             help="Do not add pycparser's bundled fake libc headers to the include path"
         ),
+        Arg.create(
+            "strict-c",
+            kind=ArgKind.FLAG,
+            help="Treat every best-effort/unfaithful lowering as an error (exit non-zero) instead of a warning"
+        ),
 
     ],
     examples=[
         ("jac c2jac myprogram.i", "Convert an already-preprocessed C file to Jac"),
         ("jac c2jac lib.c -I include -DDEBUG=1", "Preprocess (pcpp) then convert"),
+        (
+            "jac c2jac lib.i --strict-c",
+            "Fail if any construct cannot be lifted faithfully"
+        ),
 
     ],
     group="transform"
@@ -82,7 +91,8 @@ def c2jac(
     define: list | None = None,
     undef: list | None = None,
     force_include: list | None = None,
-    nostdinc: bool = False
+    nostdinc: bool = False,
+    strict_c: bool = False
 ) -> int;
 
 @registry.command(
