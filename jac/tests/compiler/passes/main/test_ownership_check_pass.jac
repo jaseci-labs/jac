@@ -2,6 +2,15 @@
 
 Compiles fixtures with type checking (which runs the type-check schedule the
 OwnershipCheckPass slots into) and asserts on the emitted E13xx diagnostics.
+
+Each test pins the COMPLETE set of E13xx ownership codes its fixture emits, not
+just one code, so any code that silently appears or disappears is caught.
+
+Ownership here is affine (issue #6905, decision #2): a plain `own` value that is
+never consumed is simply dropped at scope end and reclaimed by the managed RC/GC
+floor, so that is NOT an error. E1305 ("never consumed") is reserved for the
+optional `linear` resource marker (Phase 3) and is not emitted for plain `own`;
+a borrow-conflict or escape fixture therefore reports only its borrow code.
 """
 
 import os;
@@ -11,7 +20,8 @@ import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "ownership"
-     );
+     ),
+     OWNERSHIP_PREFIX = "E13";
 
 """Compile a fixture with type checking. Returns the JacProgram."""
 def compile_fixture(fixture_name: str) -> JacProgram {
@@ -21,219 +31,172 @@ def compile_fixture(fixture_name: str) -> JacProgram {
     return program;
 }
 
-"""Count diagnostics with a specific code across errors and warnings."""
-def count_code(program: JacProgram, code: str) -> int {
-    count = 0;
+"""Return the sorted multiset of E13xx ownership codes a program emits."""
+def ownership_codes(program: JacProgram) -> list[str] {
+    codes: list[str] = [];
     for alert in (list(program.errors_had) + list(program.warnings_had)) {
-        if alert.code is not None and alert.code.code == code {
-            count += 1;
+        if alert.code is not None and alert.code.code.startswith(OWNERSHIP_PREFIX) {
+            codes.append(alert.code.code);
         }
     }
-    return count;
+    codes.sort();
+    return codes;
+}
+
+"""Render every alert (code + message) for readable failure output."""
+def render_alerts(program: JacProgram) -> str {
+    parts: list[str] = [];
+    for alert in (list(program.errors_had) + list(program.warnings_had)) {
+        code = alert.code.code if alert.code is not None else "<no-code>";
+        parts.append(f"{code}: {alert.msg}");
+    }
+    return "\n  ".join(parts);
+}
+
+"""Assert a program emits exactly the given E13xx ownership codes (any order)."""
+def expect_ownership_codes(program: JacProgram, expected: list[str]) {
+    actual = ownership_codes(program);
+    wanted = sorted(expected);
+    assert actual == wanted , f"expected E13xx codes {wanted}, got {actual}; all alerts:\n  {render_alerts(
+        program
+    )}";
 }
 
 test "E1301: use of an own binding after it is moved" {
     prog = compile_fixture("use_after_move.jac");
-    assert count_code(prog, "E1301") == 1 , f"expected one E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1301"]);
 }
 
-test "no E1301 when the moved-from binding is not read again" {
+test "a binding that is moved but never read again is clean" {
     prog = compile_fixture("move_only_ok.jac");
-    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
-test "reassigning a moved-from own binding revives it" {
+test "reassigning a moved-from own binding revives it (no diagnostics)" {
     prog = compile_fixture("reassign_revives.jac");
-    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
 test "un-annotated bindings are never move-checked" {
     prog = compile_fixture("unannotated_untouched.jac");
-    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
 test "E1301: a conditional move reaching a later use is flagged" {
     prog = compile_fixture("branch_use_after_move.jac");
-    assert count_code(prog, "E1301") == 1 , f"expected one E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1301"]);
 }
 
-test "no E1301 when mutually-exclusive branches each move the binding" {
+test "mutually-exclusive branches each moving the binding is clean" {
     prog = compile_fixture("branch_exclusive_ok.jac");
-    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
-test "no E1301 when a conditionally-moved binding is not used afterwards" {
+test "a conditionally-moved binding that is not used afterwards is clean" {
     prog = compile_fixture("branch_no_use_ok.jac");
-    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
-# --- Borrow states (E1302–E1305): borrow conflicts and leak detection --------
-test "E1302: two live mutable borrows of the same owner conflict" {
+# --- Borrow states (E1302–E1304): borrow conflicts. Each fixture reports ONLY
+# its borrow code — the un-consumed owner is affinely dropped, not a leak. ------
+test "E1302: two live mutable borrows conflict" {
     prog = compile_fixture("two_mut_aliases.jac");
-    assert count_code(prog, "E1302") == 1 , f"expected one E1302, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1302"]);
 }
 
-test "E1303: mutating an owner while a shared borrow is live is rejected" {
+test "E1303: mutating an owner while a shared borrow is live" {
     prog = compile_fixture("mutate_while_shared.jac");
-    assert count_code(prog, "E1303") == 1 , f"expected one E1303, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1303"]);
 }
 
-test "E1304: a borrow that outlives its owner is rejected" {
+test "E1304: destroying an owner while borrowed" {
     prog = compile_fixture("destroy_while_borrowed.jac");
-    assert count_code(prog, "E1304") == 1 , f"expected one E1304, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1304"]);
 }
 
-test "E1305: an own resource that is never consumed leaks" {
+test "affine: an own value dropped at scope end is not a leak" {
     prog = compile_fixture("owned_leak.jac");
-    assert count_code(prog, "E1305") == 1 , f"expected one E1305, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
-test "no E1305 when the own resource is handed off before scope end" {
+test "an own resource handed off before scope end is clean" {
     prog = compile_fixture("owned_consumed_ok.jac");
-    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
 # --- Escaping borrows (E1306): a borrow may not outlive its creating scope ----
 test "E1306: returning a borrow escapes its scope" {
     prog = compile_fixture("escaping_borrow_return.jac");
-    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1306"]);
 }
 
 test "E1306: storing a borrow into a field escapes its scope" {
     prog = compile_fixture("escaping_borrow_field.jac");
-    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1306"]);
 }
 
-test "no E1306 when the owned value itself is moved out by return" {
+test "moving the owned value out by return is clean" {
     prog = compile_fixture("return_move_ok.jac");
-    assert count_code(prog, "E1306") == 0 , f"unexpected E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
-}
-
-test "no E1305 when the owned value is moved out by return" {
-    prog = compile_fixture("return_move_ok.jac");
-    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
 # --- Borrow-typed parameters: returning a borrow rooted at a borrow parameter
 # is the one allowed escape (P1.1 passthrough) --------------------------------
-test "no E1306 when a borrow parameter is returned (single passthrough)" {
+test "returning a borrow parameter (single passthrough) is clean" {
     prog = compile_fixture("param_borrow_passthrough_ok.jac");
-    assert count_code(prog, "E1306") == 0 , f"unexpected E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
-test "no E1305 when an own parameter is consumed by return" {
+test "an own parameter consumed by return is clean (no E1301 re-use)" {
     prog = compile_fixture("own_param_consumed_ok.jac");
-    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
-test "no E1301 when an own parameter is returned (the return is not a re-use)" {
-    prog = compile_fixture("own_param_consumed_ok.jac");
-    assert count_code(prog, "E1301") == 0 , f"unexpected E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
-}
-
-test "E1305: an own parameter that is never consumed leaks" {
+test "affine: an own parameter dropped at function end is not a leak" {
     prog = compile_fixture("own_param_leak.jac");
-    assert count_code(prog, "E1305") == 1 , f"expected one E1305, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
 # --- Fuller escape routes (P1.1): flow boundary, subscript slot, outer scope --
 test "E1306: a borrow handed to a `flow` boundary escapes" {
     prog = compile_fixture("escaping_borrow_flow.jac");
-    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1306"]);
 }
 
 test "E1306: storing a borrow into a subscript slot escapes" {
     prog = compile_fixture("escaping_borrow_subscript.jac");
-    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1306"]);
 }
 
 test "E1306: a borrow assigned into an outer scope outlives its owner" {
     prog = compile_fixture("escaping_borrow_outlives_owner.jac");
-    assert count_code(prog, "E1306") == 1 , f"expected one E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
-    assert count_code(prog, "E1304") == 0 , f"unexpected E1304, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    # E1304 must NOT fire here: the owner is still in scope at the use site; it
+    # is the borrow that escapes, not the owner being destroyed while borrowed.
+    expect_ownership_codes(prog, ["E1306"]);
 }
 
 # --- Membrane (P1.2): sealing an own value into managed storage moves it in;
-# the source is consumed, so it does not leak (E1305) nor escape (E1306). ------
-test "no E1305/E1306 when an owned value is sealed into a managed field" {
+# the source is consumed, so it neither is re-used (E1301) nor escapes (E1306). -
+test "sealing an owned value into a managed field is clean" {
     prog = compile_fixture("membrane_seal_in_ok.jac");
-    assert count_code(prog, "E1305") == 0 , f"unexpected E1305, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
-    assert count_code(prog, "E1306") == 0 , f"unexpected E1306, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
 test "E1301: reading an owned value after it is sealed into managed storage" {
     prog = compile_fixture("membrane_use_after_seal.jac");
-    assert count_code(prog, "E1301") == 1 , f"expected one E1301, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1301"]);
 }
 
 # --- Loop-depth rule (P0.3): moving a pre-loop own binding inside a loop is
 # rejected; it would be consumed on the first iteration, invalid thereafter. ---
 test "E1301: moving a pre-loop own binding inside a loop body is rejected" {
     prog = compile_fixture("move_in_loop.jac");
-    assert count_code(prog, "E1301") >= 1 , f"expected E1301 for loop-depth move, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, ["E1301"]);
 }
 
-test "no E1301 when a pre-loop own binding is only read (not moved) in a loop" {
+test "a pre-loop own binding only read (not moved) in a loop is clean" {
     prog = compile_fixture("read_in_loop_ok.jac");
-    assert count_code(prog, "E1301") == 0 , f"unexpected E1301 for plain read in loop, errors={[
-        str(e) for e in prog.errors_had
-    ]}";
+    expect_ownership_codes(prog, []);
 }
 
 # --- Phase 2 seed: a consumed, never-borrowed own binding is proven-unique, so
@@ -242,6 +205,7 @@ test "a consumed, unborrowed own binding is marked proven-unique" {
     path = os.path.join(FIXTURES, "proven_unique_ok.jac");
     program = JacProgram();
     program.compile(path, type_check=True);
+    expect_ownership_codes(program, []);
     mod = program.find_module(path);
     assert mod is not None , "compiled module not found in hub";
     proven = 0;
