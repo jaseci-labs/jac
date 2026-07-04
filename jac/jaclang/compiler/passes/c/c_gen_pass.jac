@@ -611,6 +611,41 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         return "\n".join(lines);
     }
 
+    def ref_local_copy(st: uni.Assignment, pad: str) -> object {
+        if st.aug_op is not None or st.value is None {
+            return None;
+        }
+        tgt = st.target[0];
+        if not isinstance(tgt, uni.Name) or tgt.value in self.local_types {
+            return None;
+        }
+        if st.type_tag is not None {
+            ty = self.type_name(st.type_tag);
+        } else {
+            ty = self.expr_type_name(st.value);
+        }
+        if ty not in self.type_ids {
+            return None;
+        }
+
+        if self.facts is not None and self.facts.is_owned(st.value) {
+            return None;
+        }
+        name = tgt.value;
+        self.local_types[name] = ty;
+        self.owned_locals.append(name);
+        cty = self.c_type(ty);
+        val = self.gen_expr(st.value);
+        if isinstance(st.value, uni.Name)
+        and st.value.value in self.owned_locals
+        and self.facts is not None
+        and self.facts.is_last_use(st.value) {
+            self.owned_locals.remove(st.value.value);
+            return pad + f"{cty} {name} = {val};";
+        }
+        return pad + f"{cty} {name} = {val};\n" + pad + f"jac_rc_retain({name});";
+    }
+
     def gen_stmt(st: object, ind: int, is_last: bool) -> str {
         pad = "    " * ind;
         if isinstance(st, uni.ReturnStmt) {
@@ -648,6 +683,16 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             fld = self.ref_field_store(st, pad);
             if fld is not None {
                 return fld;
+            }
+            loc = self.ref_local_copy(st, pad);
+            if loc is not None {
+                if is_last {
+                    cleanup = self.scope_release_lines(pad, "");
+                    if cleanup {
+                        return loc + "\n" + "\n".join(cleanup);
+                    }
+                }
+                return loc;
             }
             rendered = pad + self.gen_assign(st) + ";";
             if is_last {
