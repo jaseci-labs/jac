@@ -29,11 +29,6 @@ impl DependencyRegistry.register(dep_type_info: dict[str, any]) -> None {
     }
 }
 
-impl DependencyRegistry.get_by_name(name: str) -> DependencyType | None {
-    import from jaclang.project.dep_registry { DependencyType }
-    return self._types.get(name);
-}
-
 impl DependencyRegistry.get_by_flag(flag: str) -> DependencyType | None {
     import from jaclang.project.dep_registry { DependencyType }
     type_name = self._flag_map.get(flag);
@@ -46,19 +41,6 @@ impl DependencyRegistry.get_by_flag(flag: str) -> DependencyType | None {
 impl DependencyRegistry.get_all -> dict[str, DependencyType] {
     import from jaclang.project.dep_registry { DependencyType }
     return self._types.copy();
-}
-
-impl DependencyRegistry.get_all_flags -> list[str] {
-    return list(self._flag_map.keys());
-}
-
-impl DependencyRegistry.has_type(name: str) -> bool {
-    return name in self._types;
-}
-
-impl DependencyRegistry.clear -> None {
-    self._types.clear();
-    self._flag_map.clear();
 }
 
 impl get_dependency_registry -> DependencyRegistry {
