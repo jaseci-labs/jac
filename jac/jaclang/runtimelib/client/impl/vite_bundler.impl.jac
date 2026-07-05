@@ -675,7 +675,32 @@ function jacBuildErrorOverlay() {{
       server.watcher.on("add", onWrite);
       server.watcher.on("change", onWrite);
       server.watcher.on("unlink", (f) => {{
-        if (path.resolve(f) === statusFile) push("");
+        const abs = path.resolve(f);
+        if (abs === statusFile) {{
+          push("");
+          return;
+        }}
+        // A served module was deleted (e.g. its Jac source was removed while
+        // still imported). Importers keep a cached transform pointing at the
+        // dead file, which 404s into a blank page with no overlay. Invalidate
+        // them and reload so the fresh transform surfaces Vite's own
+        // "Failed to resolve import" error overlay.
+        try {{
+          const mods = server.moduleGraph.getModulesByFile(abs);
+          if (mods && mods.size) {{
+            let hadImporters = false;
+            for (const mod of mods) {{
+              for (const importer of mod.importers) {{
+                hadImporters = true;
+                server.moduleGraph.invalidateModule(importer);
+              }}
+              server.moduleGraph.invalidateModule(mod);
+            }}
+            if (hadImporters) {{
+              server.ws.send({{ type: "full-reload", path: "*" }});
+            }}
+          }}
+        }} catch (e) {{}}
       }});
       // A browser opened (or reloaded) while broken gets the overlay immediately
       server.ws.on("connection", () => {{
