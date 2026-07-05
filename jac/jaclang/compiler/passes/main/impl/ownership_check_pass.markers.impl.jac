@@ -48,11 +48,11 @@ impl OwnershipCheckPass._emit_marker_diagnostics -> None {
             continue;
         }
         for tgt in nd.target {
-            root: uni.Expr = tgt;
-            while isinstance(root, uni.AtomTrailer) {
-                root = root.target;
+            base: uni.Expr = tgt;
+            while isinstance(base, uni.AtomTrailer) {
+                base = base.target;
             }
-            root_sid = self._sym_id(root);
+            root_sid = self._sym_id(base);
             if root_sid is not None and root_sid in self.val_syms {
                 self._emit_val_mutation(root_sid, tgt, val_decl.get(root_sid));
             }
