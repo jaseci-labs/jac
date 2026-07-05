@@ -19,6 +19,40 @@ impl OwnershipCheckPass._region_root_name(nd: uni.Expr | None) -> (uni.Name | No
     return None;
 }
 
+impl OwnershipCheckPass._region_escapees(
+    expr: uni.Expr | None, region: uni.RegionStmt
+) -> list[uni.Name] {
+    out: list[uni.Name] = [];
+    if expr is None {
+        return out;
+    }
+    root_nm = self._region_root_name(expr);
+    if root_nm is not None {
+        if self._borrow_sym_of(root_nm) is None
+        and self._is_region_local(root_nm, region) {
+            out.append(root_nm);
+        }
+        return out;
+    }
+    if isinstance(expr, uni.ListVal) or isinstance(expr, uni.SetVal) {
+        for v in (expr.values or []) {
+            out.extend(self._region_escapees(v, region));
+        }
+    } elif isinstance(expr, uni.TupleVal) {
+        for v in expr.values {
+            if isinstance(v, uni.Expr) {
+                out.extend(self._region_escapees(v, region));
+            }
+        }
+    } elif isinstance(expr, uni.DictVal) {
+        for kv in expr.kv_pairs {
+            out.extend(self._region_escapees(kv.key, region));
+            out.extend(self._region_escapees(kv.value, region));
+        }
+    }
+    return out;
+}
+
 impl OwnershipCheckPass._is_region_local(nd: uni.Name, region: uni.RegionStmt) -> bool {
     if nd.sym is None or nd.sym.decl is None {
         return False;
@@ -58,22 +92,14 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
     seen: set[tuple[int, int]] = set();
     for region in regions {
         for ret in self.idx_returns {
-            root_nm = self._region_root_name(ret.expr);
-            if root_nm is None {
-                continue;
+            for root_nm in self._region_escapees(ret.expr, region) {
+                key = (id(ret), self._name_sym_id(root_nm));
+                if key in seen {
+                    continue;
+                }
+                seen.add(key);
+                self._emit_region_escape(root_nm, region);
             }
-            if self._borrow_sym_of(root_nm) is not None {
-                continue;
-            }
-            if not self._is_region_local(root_nm, region) {
-                continue;
-            }
-            key = (id(ret), self._name_sym_id(root_nm));
-            if key in seen {
-                continue;
-            }
-            seen.add(key);
-            self._emit_region_escape(root_nm, region);
         }
         for cexpr in self.idx_concurrent {
             for nm in self._concurrent_payload_names(cexpr) {
@@ -96,14 +122,8 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             if asn.aug_op is not None {
                 continue;
             }
-            root_nm = self._region_root_name(asn.value);
-            if root_nm is None {
-                continue;
-            }
-            if self._borrow_sym_of(root_nm) is not None {
-                continue;
-            }
-            if not self._is_region_local(root_nm, region) {
+            escapees = self._region_escapees(asn.value, region);
+            if not escapees {
                 continue;
             }
             escapes = False;
@@ -120,12 +140,14 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             if not escapes {
                 continue;
             }
-            key = (id(asn), self._name_sym_id(root_nm));
-            if key in seen {
-                continue;
+            for root_nm in escapees {
+                key = (id(asn), self._name_sym_id(root_nm));
+                if key in seen {
+                    continue;
+                }
+                seen.add(key);
+                self._emit_region_escape(root_nm, region);
             }
-            seen.add(key);
-            self._emit_region_escape(root_nm, region);
         }
     }
 }
