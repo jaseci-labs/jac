@@ -1956,8 +1956,23 @@ impl TypeEvaluator._get_type_of_expression_core(
 }
 
 impl TypeEvaluator._widen_literal_for_declaration(ty: TypeBase) -> TypeBase {
-    if isinstance(ty, types.ClassType) and ty.is_literal_type() {
-        return ty.clone_with_literal(None);
+    if isinstance(ty, types.ClassType) {
+        if ty.is_literal_type() {
+            return ty.clone_with_literal(None);
+        }
+        if ty.private.type_args {
+            widened_args = [
+                self._widen_literal_for_declaration(arg) for arg in ty.private.type_args
+            ];
+            changed = any(
+                new_arg is not old_arg
+                for (new_arg, old_arg) in zip(widened_args, ty.private.type_args)
+            );
+            if changed {
+                return ty.specialize_generics(widened_args);
+            }
+        }
+        return ty;
     }
     if isinstance(ty, types.UnionType) and ty.types is not None {
         widened = [self._widen_literal_for_declaration(member) for member in ty.types];
