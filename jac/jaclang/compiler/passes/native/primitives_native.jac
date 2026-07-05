@@ -1175,6 +1175,16 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def _emit_set_relation(
+        self: NativeSetEmitter,
+        ctx: NativeEmitCtx,
+        iter_set: ir.Value,
+        probe_set: ir.Value,
+        prefix: str,
+        chk: str,
+        exit_on_hit: bool
+    ) -> (ir.Value | None);
+
     def emit_issubset(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
