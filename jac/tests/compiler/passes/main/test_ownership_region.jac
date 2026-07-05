@@ -72,3 +72,15 @@ test "E1307: a region-local assigned to an enclosing-scope binding escapes" {
 test "a region-local used only inside its region is clean" {
     expect(compile_fixture("region_ok.jac"), []);
 }
+
+test "E1307: a region-local returned inside a list literal escapes the arena" {
+    expect(compile_fixture("region_escape_list.jac"), ["E1307"]);
+}
+
+test "E1307: a region-local stored via a tuple into an outer binding escapes" {
+    expect(compile_fixture("region_escape_tuple_store.jac"), ["E1307"]);
+}
+
+test "a container of a region-local kept inside the region is clean" {
+    expect(compile_fixture("region_container_local_ok.jac"), []);
+}

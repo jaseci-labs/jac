@@ -231,6 +231,8 @@ impl OwnershipCheckPass._collect_markers -> None {
         }
         if tag.is_linear {
             self.linear_syms.add(sid);
+            self.owned_syms.add(sid);
+            self.owned_decl[sid] = target;
         }
     }
     for param in self.idx_params {
@@ -248,6 +250,8 @@ impl OwnershipCheckPass._collect_markers -> None {
         }
         if tag.is_linear {
             self.linear_syms.add(sid);
+            self.owned_syms.add(sid);
+            self.owned_decl[sid] = name;
         }
     }
 }

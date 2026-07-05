@@ -74,6 +74,10 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     ) -> bool;
 
     def _region_root_name(nd: uni.Expr | None) -> (uni.Name | None);
+    def _region_escapees(
+        expr: uni.Expr | None, region: uni.RegionStmt
+    ) -> list[uni.Name];
+
     def _is_region_local(nd: uni.Name, region: uni.RegionStmt) -> bool;
     def _concurrent_payload_names(cexpr: uni.ConcurrentExpr) -> list[uni.Name];
     def _emit_region_escape(nm: uni.Name, region: uni.RegionStmt) -> None;
