@@ -2,7 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.30.7 (Latest Release)
+## jaclang 0.30.8 (Latest Release)
+
+### Bug Fixes
+
+- **Bugfix: `Any` now absorbs during union attribute access**: accessing a member on `T | ... | Any` (e.g. `TextIO | Any`) no longer reports "attribute is missing from Any"; only the non-`Any` members are validated and the result widens to `result | Any`, while genuine misses on a concrete member are still flagged.
+- **Bugfix: container element types inferred from literal initializers now widen for mutable bindings** (issue #7159): when a list/dict/set was inferred from literal elements, the checker kept the `Literal[...]` element type, so a later element store of a different value failed with `E1001`. For example, `row = ["."] * 3; row[0] = "B";` reported `Cannot assign Literal["B"] to Literal["."]`. Declared-type widening now recurses into container element types, matching mypy and pyright: `["."] * 3` declares `list[str]`, and a nested game grid declares `list[list[str]]` so tiles can actually be placed. `Literal` is still preserved for explicit annotations, `Final` bindings, and expression-position inference, so equality and identity narrowing are unaffected.
+- **Fix: slice assignment rejected valid buffers**: Range-slice assignment (`container[a:b] = value`) now type-checks by dispatching `__setitem__` on the index type instead of comparing the RHS against the `__getitem__` read type. Valid slice writes whose RHS is broader than the container, such as `bytearray[0:4] = b"\x7fELF"` or a `list[int]` slice assigned an iterable of ints, no longer raise a spurious `E1001`.
+
+## jaclang 0.30.7
 
 ### New Features
 
