@@ -12,6 +12,21 @@ def _extract_error_info(alert: object) -> dict[str, any] {
     };
 }
 
+def _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object {
+    def _run -> object {
+        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as f {
+            f.write(code);
+            tmp_path = f.name;
+        }
+        try {
+            return worker(tmp_path);
+        } finally {
+            os.unlink(tmp_path);
+        }
+    }
+    return _run;
+}
+
 impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
     result_holder: list = [None];
     error_holder: list = [None];
@@ -93,32 +108,23 @@ impl CompilerBridge.parse_snippet(
             ]
         };
     }
-    def _do_parse -> dict[str, any] {
+    def _do_parse(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
-            f.write(code);
-            tmp_path = f.name;
+        program = JacProgram();
+
+        ir = program.parse_str(code, tmp_path);
+
+        errors: list[dict] = [];
+        for e in program.errors_had {
+            errors.append(_extract_error_info(e));
         }
 
-        try {
-            program = JacProgram();
-
-            ir = program.parse_str(code, tmp_path);
-
-            errors: list[dict] = [];
-            for e in program.errors_had {
-                errors.append(_extract_error_info(e));
-            }
-
-            valid = len(errors) == 0 and ir is not None;
-            return {"valid": valid, "errors": errors};
-        } finally {
-            os.unlink(tmp_path);
-        }
+        valid = len(errors) == 0 and ir is not None;
+        return {"valid": valid, "errors": errors};
     }
-    (success, result) = run_with_timeout(_do_parse);
+    (success, result) = run_with_timeout(_snippet_task(code, _do_parse));
     if not success {
         return {
             "valid": False,
@@ -144,37 +150,28 @@ impl CompilerBridge.typecheck_snippet(
             "warnings": []
         };
     }
-    def _do_typecheck -> dict[str, any] {
+    def _do_typecheck(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
-            f.write(code);
-            tmp_path = f.name;
+        program = JacProgram();
+        compiler = Jac.get_compiler();
+
+        ir = compiler.compile(tmp_path, program);
+
+        errors: list[dict] = [];
+        warnings: list[dict] = [];
+        for e in program.errors_had {
+            errors.append(_extract_error_info(e));
+        }
+        for w in program.warnings_had {
+            warnings.append(_extract_error_info(w));
         }
 
-        try {
-            program = JacProgram();
-            compiler = Jac.get_compiler();
-
-            ir = compiler.compile(tmp_path, program);
-
-            errors: list[dict] = [];
-            warnings: list[dict] = [];
-            for e in program.errors_had {
-                errors.append(_extract_error_info(e));
-            }
-            for w in program.warnings_had {
-                warnings.append(_extract_error_info(w));
-            }
-
-            valid = len(errors) == 0 and ir is not None;
-            return {"valid": valid, "errors": errors, "warnings": warnings};
-        } finally {
-            os.unlink(tmp_path);
-        }
+        valid = len(errors) == 0 and ir is not None;
+        return {"valid": valid, "errors": errors, "warnings": warnings};
     }
-    (success, result) = run_with_timeout(_do_typecheck);
+    (success, result) = run_with_timeout(_snippet_task(code, _do_typecheck));
     if not success {
         return {
             "valid": False,
@@ -193,35 +190,26 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"
         };
     }
-    def _do_format -> dict[str, any] {
+    def _do_format(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
         compiler = Jac.get_compiler();
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
-            f.write(code);
-            tmp_path = f.name;
+        result_prog = compiler.jac_str_formatter(code, tmp_path);
+
+        if result_prog is None {
+            return {"formatted": code, "changed": False, "error": "Format failed"};
         }
 
-        try {
-            result_prog = compiler.jac_str_formatter(code, tmp_path);
-
-            if result_prog is None {
-                return {"formatted": code, "changed": False, "error": "Format failed"};
-            }
-
-            formatted = code;
-            if result_prog.mod and result_prog.mod?.unparse {
-                formatted = result_prog.mod.unparse();
-            }
-
-            changed = formatted != code;
-            return {"formatted": formatted, "changed": changed};
-        } finally {
-            os.unlink(tmp_path);
+        formatted = code;
+        if result_prog.mod and result_prog.mod?.unparse {
+            formatted = result_prog.mod.unparse();
         }
+
+        changed = formatted != code;
+        return {"formatted": formatted, "changed": changed};
     }
-    (success, result) = run_with_timeout(_do_format);
+    (success, result) = run_with_timeout(_snippet_task(code, _do_format));
     if not success {
         return {"formatted": code, "changed": False, "error": str(result)};
     }
@@ -235,46 +223,39 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
             "warnings": [f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"]
         };
     }
-    def _do_py2jac -> dict[str, any] {
+    def _do_py2jac(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
         compiler = Jac.get_compiler();
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f {
-            f.write(python_code);
-            tmp_path = f.name;
+        program = JacProgram();
+
+        ir = compiler.compile(tmp_path, program);
+
+        warnings: list[str] = [];
+        for w in program.warnings_had {
+            warnings.append(str(w));
         }
 
-        try {
-            program = JacProgram();
-
-            ir = compiler.compile(tmp_path, program);
-
-            warnings: list[str] = [];
-            for w in program.warnings_had {
-                warnings.append(str(w));
+        if ir is None {
+            errors: list[str] = [];
+            for e in program.errors_had {
+                errors.append(str(e));
             }
-
-            if ir is None {
-                errors: list[str] = [];
-                for e in program.errors_had {
-                    errors.append(str(e));
-                }
-                return {"jac_code": "", "warnings": errors or ["Conversion failed"]};
-            }
-
-            jac_code = "";
-            if ir?.unparse {
-                jac_code = ir.unparse();
-            }
-
-            return {"jac_code": jac_code, "warnings": warnings};
-        } finally {
-            os.unlink(tmp_path);
+            return {"jac_code": "", "warnings": errors or ["Conversion failed"]};
         }
+
+        jac_code = "";
+        if ir?.unparse {
+            jac_code = ir.unparse();
+        }
+
+        return {"jac_code": jac_code, "warnings": warnings};
     }
-    (success, result) = run_with_timeout(_do_py2jac);
+    (success, result) = run_with_timeout(
+        _snippet_task(python_code, _do_py2jac, suffix=".py")
+    );
     if not success {
         return {"jac_code": "", "warnings": [str(result)]};
     }
@@ -290,41 +271,32 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
             "ast": None
         };
     }
-    def _do_ast -> dict[str, any] {
+    def _do_ast(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
-            f.write(code);
-            tmp_path = f.name;
+        program = JacProgram();
+
+        ir = program.parse_str(code, tmp_path);
+
+        errors: list[dict] = [];
+        for e in program.errors_had {
+            errors.append(_extract_error_info(e));
         }
 
-        try {
-            program = JacProgram();
-
-            ir = program.parse_str(code, tmp_path);
-
-            errors: list[dict] = [];
-            for e in program.errors_had {
-                errors.append(_extract_error_info(e));
-            }
-
-            if ir is None {
-                return {"error": "Parse failed", "errors": errors, "ast": None};
-            }
-
-            if fmt == "json" {
-                ast_output = json.dumps(ir.to_dict(), default=str);
-            } else {
-                ast_output = ir.pp();
-            }
-
-            return {"ast": ast_output, "valid": len(errors) == 0, "errors": errors};
-        } finally {
-            os.unlink(tmp_path);
+        if ir is None {
+            return {"error": "Parse failed", "errors": errors, "ast": None};
         }
+
+        if fmt == "json" {
+            ast_output = json.dumps(ir.to_dict(), default=str);
+        } else {
+            ast_output = ir.pp();
+        }
+
+        return {"ast": ast_output, "valid": len(errors) == 0, "errors": errors};
     }
-    (success, result) = run_with_timeout(_do_ast);
+    (success, result) = run_with_timeout(_snippet_task(code, _do_ast));
     if not success {
         return {"error": str(result), "ast": None};
     }
@@ -340,54 +312,41 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"
         };
     }
-    def _do_lint -> dict[str, any] {
+    def _do_lint(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.compiler { JacCompiler }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
-            f.write(code);
-            tmp_path = f.name;
+        if auto_fix {
+            prog = JacCompiler.jac_str_formatter(
+                source_str=code, file_path=tmp_path, auto_lint=True
+            );
+        } else {
+            prog = JacCompiler.jac_file_linter(file_path=tmp_path);
         }
 
-        try {
-            if auto_fix {
-                prog = JacCompiler.jac_str_formatter(
-                    source_str=code, file_path=tmp_path, auto_lint=True
-                );
-            } else {
-                prog = JacCompiler.jac_file_linter(file_path=tmp_path);
-            }
-
-            violations: list[dict] = [];
-            for w in prog.warnings_had {
-                violations.append(_extract_error_info(w));
-            }
-            for e in prog.errors_had {
-                info = _extract_error_info(e);
-                info["severity"] = "error";
-                violations.append(info);
-            }
-
-            fixed_code: (str | None) = None;
-            changed = False;
-            if auto_fix and prog.mod and prog.mod.main and prog.mod.main.gen {
-                fixed_code = prog.mod.main.gen.jac;
-                if fixed_code is None and hasattr(prog.mod.main, "unparse") {
-                    fixed_code = prog.mod.main.unparse();
-                }
-                changed = fixed_code is not None and fixed_code != code;
-            }
-
-            return {
-                "violations": violations,
-                "fixed_code": fixed_code,
-                "changed": changed
-            };
-        } finally {
-            os.unlink(tmp_path);
+        violations: list[dict] = [];
+        for w in prog.warnings_had {
+            violations.append(_extract_error_info(w));
         }
+        for e in prog.errors_had {
+            info = _extract_error_info(e);
+            info["severity"] = "error";
+            violations.append(info);
+        }
+
+        fixed_code: (str | None) = None;
+        changed = False;
+        if auto_fix and prog.mod and prog.mod.main and prog.mod.main.gen {
+            fixed_code = prog.mod.main.gen.jac;
+            if fixed_code is None and hasattr(prog.mod.main, "unparse") {
+                fixed_code = prog.mod.main.unparse();
+            }
+            changed = fixed_code is not None and fixed_code != code;
+        }
+
+        return {"violations": violations, "fixed_code": fixed_code, "changed": changed};
     }
-    (success, result) = run_with_timeout(_do_lint);
+    (success, result) = run_with_timeout(_snippet_task(code, _do_lint));
     if not success {
         return {
             "violations": [],
@@ -406,39 +365,32 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
             "warnings": [f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"]
         };
     }
-    def _do_jac2py -> dict[str, any] {
+    def _do_jac2py(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as f {
-            f.write(code);
-            tmp_path = f.name;
+        prog = JacProgram();
+        ir = prog.compile(file_path=tmp_path);
+
+        warnings: list[str] = [];
+        for w in prog.warnings_had {
+            warnings.append(str(w));
         }
 
-        try {
-            prog = JacProgram();
-            ir = prog.compile(file_path=tmp_path);
-
-            warnings: list[str] = [];
-            for w in prog.warnings_had {
-                warnings.append(str(w));
+        if ir is None or prog.errors_had {
+            errors: list[str] = [];
+            for e in prog.errors_had {
+                errors.append(str(e));
             }
-
-            if ir is None or prog.errors_had {
-                errors: list[str] = [];
-                for e in prog.errors_had {
-                    errors.append(str(e));
-                }
-                return {"python_code": "", "warnings": errors or ["Conversion failed"]};
-            }
-
-            py_code = ir.gen.py or "";
-            return {"python_code": py_code, "warnings": warnings};
-        } finally {
-            os.unlink(tmp_path);
+            return {"python_code": "", "warnings": errors or ["Conversion failed"]};
         }
+
+        py_code = ir.gen.py or "";
+        return {"python_code": py_code, "warnings": warnings};
     }
-    (success, result) = run_with_timeout(_do_jac2py, timeout=DEFAULT_TIMEOUT);
+    (success, result) = run_with_timeout(
+        _snippet_task(code, _do_jac2py), timeout=DEFAULT_TIMEOUT
+    );
     if not success {
         return {"python_code": "", "warnings": [str(result)]};
     }
@@ -452,44 +404,35 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
             "warnings": [f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"]
         };
     }
-    def _do_jac2js -> dict[str, any] {
+    def _do_jac2js(tmp_path: str) -> dict[str, any] {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.jac0core.program { JacProgram }
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".cl.jac", delete=False
-        ) as f {
-            f.write(code);
-            tmp_path = f.name;
+        prog = JacProgram();
+        ir = prog.compile(file_path=tmp_path);
+
+        warnings: list[str] = [];
+        for w in prog.warnings_had {
+            warnings.append(str(w));
         }
 
-        try {
-            prog = JacProgram();
-            ir = prog.compile(file_path=tmp_path);
-
-            warnings: list[str] = [];
-            for w in prog.warnings_had {
-                warnings.append(str(w));
+        if ir is None or prog.errors_had {
+            errors: list[str] = [];
+            for e in prog.errors_had {
+                errors.append(str(e));
             }
-
-            if ir is None or prog.errors_had {
-                errors: list[str] = [];
-                for e in prog.errors_had {
-                    errors.append(str(e));
-                }
-                return {"js_code": "", "warnings": errors or ["Conversion failed"]};
-            }
-
-            js_code = ir.gen.js or "";
-            if not js_code.strip() {
-                warnings.append("ECMAScript code generation produced no output.");
-            }
-            return {"js_code": js_code, "warnings": warnings};
-        } finally {
-            os.unlink(tmp_path);
+            return {"js_code": "", "warnings": errors or ["Conversion failed"]};
         }
+
+        js_code = ir.gen.js or "";
+        if not js_code.strip() {
+            warnings.append("ECMAScript code generation produced no output.");
+        }
+        return {"js_code": js_code, "warnings": warnings};
     }
-    (success, result) = run_with_timeout(_do_jac2js, timeout=DEFAULT_TIMEOUT);
+    (success, result) = run_with_timeout(
+        _snippet_task(code, _do_jac2js, suffix=".cl.jac"), timeout=DEFAULT_TIMEOUT
+    );
     if not success {
         return {"js_code": "", "warnings": [str(result)]};
     }
