@@ -4066,12 +4066,41 @@ test "root_cause_9_any_in_union" {
         for e in program.errors_had
         if e.loc and 396 <= e.loc.first_line <= 415
     ];
-    # 2 errors: 2 E1099 (attr missing from Any in union). Previously 4 because
-    # cascading E1002/E1053 from Unknown returns. Now partial union member access
-    # returns the resolved type from non-Any members, eliminating cascades.
+    # 2 errors. The Any-in-union attr-access bug is fixed (#7158): `Any` now
+    # absorbs, so no E1099 "missing from Any" is emitted here. The 2 remaining
+    # errors are E1002/E1053 cascades from the fixture's undefined EdgeAnchor /
+    # GenericEdge symbols (Unknown members), not the union-with-Any handling.
     assert len(rc9_errors) == 2 , f"Expected 2 any-in-union errors, got {len(
         rc9_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc9_errors);
+}
+
+"""Issue #7158: `Any` must absorb inside a union for attribute access.
+
+`typing.Any` used as an annotation resolves to the `Any` class (not the
+internal `AnyType`), so attribute-access handling must recognize that form as a
+wildcard: access on `T | ... | Any` validates only the non-`Any` members and
+yields `result | Any` instead of reporting the attribute missing from `Any`.
+Assignability is intentionally left strict -- explicit `Any` in a union is held
+to the same rule as bare explicit `Any -> Concrete` -- so the fixture exercises
+the attribute-access path plus a no-`Any` concrete-union assignment; it is
+entirely well-typed and must produce zero errors.
+"""
+test "any_in_union_is_wildcard" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_any_in_union.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    errors = [
+        e
+        for e in program.errors_had
+        if e.code is not None and e.code.code in ("E1099", "E1053", "E1002", "E1032")
+    ];
+    assert len(errors) == 0 , f"Expected 0 any-in-union errors, got {len(errors)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in errors
+    );
 }
 
 """Root Cause 10: TypeVar in impl blocks.

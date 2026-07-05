@@ -972,14 +972,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 } elif isinstance(base_type, types.UnionType) and base_type.types {
                     member_types: list[TypeBase] = [];
-                    has_any_member = False;
                     decl_for_ide: uni.NameAtom | None = None;
                     for union_member in base_type.types {
-                        if isinstance(
-                            union_member, (types.AnyType, types.UnknownType)
-                        ) {
+                        if self.is_explicit_any(union_member)
+                        or isinstance(union_member, types.UnknownType) {
                             member_types.append(union_member);
-                            has_any_member = True;
                             continue;
                         }
                         if isinstance(union_member, types.ClassType)
@@ -1022,6 +1019,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     missing_types: list[str] = [];
                     for union_member in base_type.types {
+                        if self.is_explicit_any(union_member) {
+                            continue;
+                        }
                         if isinstance(union_member, types.ClassType)
                         and union_member.is_class_instance() {
                             if not self._lookup_object_member(
