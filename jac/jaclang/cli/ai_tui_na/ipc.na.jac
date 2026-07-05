@@ -1,17 +1,17 @@
 import from .state { TuiState, EventKind, TuiStatus }
 import from .ipc_schema {
-    IPC_TYPE,
-    IPC_STATUS,
-    IPC_ACTIVE,
-    IPC_MODEL,
-    IPC_NEEDS_KEY,
-    IPC_KEY_ENV,
-    IPC_LEN,
-    IPC_EV,
-    IPC_EVA,
-    IPC_FTYPE_FULL,
-    IPC_FTYPE_HB,
-    IPC_SEP
+    FIELD_TYPE,
+    FIELD_STATUS,
+    FIELD_ACTIVE,
+    FIELD_MODEL,
+    FIELD_NEEDS_KEY,
+    FIELD_KEY_ENV,
+    FIELD_LEN,
+    FIELD_EV,
+    FIELD_EVA,
+    FTYPE_FULL,
+    FTYPE_HB,
+    FRAME_SEP
 }
 
 def parse_event_kind(s: str) -> EventKind {
@@ -140,24 +140,24 @@ def _parse_eva_val(state: TuiState, val: str) -> None {
 }
 
 def ipc_apply_line(state: TuiState, key: str, val: str) {
-    if key == IPC_EV {
+    if key == FIELD_EV {
         _parse_ev_val(state, val);
         return;
     }
-    if key == IPC_EVA {
+    if key == FIELD_EVA {
         _parse_eva_val(state, val);
         return;
     }
 
-    if key == IPC_STATUS {
+    if key == FIELD_STATUS {
         state.status = parse_tui_status(val);
-    } elif key == IPC_ACTIVE {
+    } elif key == FIELD_ACTIVE {
         state.active = val;
-    } elif key == IPC_MODEL {
+    } elif key == FIELD_MODEL {
         state.model_name = val;
-    } elif key == IPC_NEEDS_KEY {
+    } elif key == FIELD_NEEDS_KEY {
         state.needs_key = val == "1";
-    } elif key == IPC_KEY_ENV {
+    } elif key == FIELD_KEY_ENV {
         state.key_env = val;
     } else {
         return;
@@ -169,11 +169,11 @@ def ipc_parse_frame(state: TuiState, blob: str) -> bool {
     lines: list[str] = [];
     for raw in blob.split("\n") {
         line = raw.strip();
-        if line == IPC_SEP {
+        if line == FRAME_SEP {
             continue;
         }
         colon_at = line.find(":");
-        if colon_at >= 0 and line[:colon_at] == IPC_LEN {
+        if colon_at >= 0 and line[:colon_at] == FIELD_LEN {
             continue;
         }
         if len(line) > 0 {
@@ -188,17 +188,17 @@ def ipc_parse_frame(state: TuiState, blob: str) -> bool {
     frame_type: str = "";
     for line in lines {
         colon_at = line.find(":");
-        if colon_at >= 0 and line[:colon_at] == IPC_TYPE {
+        if colon_at >= 0 and line[:colon_at] == FIELD_TYPE {
             frame_type = line[colon_at + 1:];
             break;
         }
     }
 
-    if frame_type == IPC_FTYPE_HB {
+    if frame_type == FTYPE_HB {
         return True;
     }
 
-    if frame_type == IPC_FTYPE_FULL {
+    if frame_type == FTYPE_FULL {
         state.reset_events();
     }
 
@@ -208,7 +208,7 @@ def ipc_parse_frame(state: TuiState, blob: str) -> bool {
             continue;
         }
         key = line[:colon_at];
-        if key == IPC_TYPE {
+        if key == FIELD_TYPE {
             continue;
         }
         val = line[colon_at + 1:];

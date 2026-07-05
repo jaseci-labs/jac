@@ -1,12 +1,6 @@
 import from .state { TuiState, AcItem, TuiStatus }
 import from .select_list { SelectItem }
-import from .ipc_schema {
-    IPC_CMD_SEND,
-    IPC_CMD_STOP,
-    IPC_CMD_RESET,
-    IPC_CMD_QUIT,
-    IPC_CMD_APPLY
-}
+import from .ipc_schema { CMD_SEND, CMD_STOP, CMD_RESET, CMD_QUIT, CMD_APPLY }
 import from .runtime { TuiRuntime }
 
 enum CmdKind {
@@ -65,7 +59,7 @@ obj CmdDef {
 
         if self.kind == CmdKind.IPC {
             rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
-            if self.ipc_name == IPC_CMD_QUIT {
+            if self.ipc_name == CMD_QUIT {
                 return CmdResult.QUIT;
             }
             state.dirty = True;
@@ -177,7 +171,7 @@ def _cmd_defs -> list[CmdDef] {
         "",
         "Stop the current turn",
         CmdKind.IPC,
-        IPC_CMD_STOP,
+        CMD_STOP,
         True,
         True,
         True,
@@ -190,7 +184,7 @@ def _cmd_defs -> list[CmdDef] {
         "",
         "Clear transcript and reset session",
         CmdKind.IPC_RESET,
-        IPC_CMD_RESET,
+        CMD_RESET,
         True,
         True,
         False,
@@ -203,7 +197,7 @@ def _cmd_defs -> list[CmdDef] {
         "",
         "Clear transcript and reset session",
         CmdKind.IPC_RESET,
-        IPC_CMD_RESET,
+        CMD_RESET,
         True,
         True,
         False,
@@ -216,7 +210,7 @@ def _cmd_defs -> list[CmdDef] {
         "/exit",
         "Exit jac ai TUI",
         CmdKind.IPC,
-        IPC_CMD_QUIT,
+        CMD_QUIT,
         True,
         True,
         False,
@@ -229,7 +223,7 @@ def _cmd_defs -> list[CmdDef] {
             slash_labels=labels_q,
             description="Exit jac ai TUI",
             kind=CmdKind.IPC,
-            ipc_name=IPC_CMD_QUIT,
+            ipc_name=CMD_QUIT,
             slash_ac=False,
             palette=False,
             running_only=False,
@@ -285,7 +279,7 @@ def slash_submit(text: str, rt: TuiRuntime) -> CmdResult {
     state = rt.state;
     if text.startswith("/settings ") {
         args = text[10:].strip();
-        rt.cmd_queue.send(state.ipc_fd, IPC_CMD_APPLY + ":" + args);
+        rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":" + args);
         return CmdResult.HANDLED;
     }
     value = resolve_slash_line(text);
@@ -369,6 +363,6 @@ def file_items(state: TuiState) -> list[SelectItem] {
 
 def apply_model(model: str, rt: TuiRuntime) {
     state = rt.state;
-    rt.cmd_queue.send(state.ipc_fd, IPC_CMD_APPLY + ":model=" + model);
+    rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":model=" + model);
     state.dirty = True;
 }

@@ -1,5 +1,5 @@
 import from .state { TuiState, EventKind, TuiStatus, AcKind }
-import from .ipc_schema { IPC_CMD_SEND, IPC_CMD_STOP, IPC_CMD_RESET, IPC_CMD_QUIT }
+import from .ipc_schema { CMD_SEND, CMD_STOP, CMD_RESET, CMD_QUIT }
 import from .runtime { TuiRuntime }
 import from .keys { Key, KeyKind, parse_key }
 import from .autocomplete { ac_update, ac_apply }
@@ -97,7 +97,7 @@ def _handle_submit(rt: TuiRuntime) -> bool {
     state.upsert_event(-1, EventKind.USER, text, "");
     state.scroll_to_bottom();
 
-    rt.cmd_queue.send(state.ipc_fd, IPC_CMD_SEND + ":" + text);
+    rt.cmd_queue.send(state.ipc_fd, CMD_SEND + ":" + text);
     return False;
 }
 
@@ -157,16 +157,16 @@ def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
 
     ch = chr(k.code);
     if ch == "c" or ch == "q" {
-        rt.cmd_queue.send(state.ipc_fd, IPC_CMD_QUIT);
+        rt.cmd_queue.send(state.ipc_fd, CMD_QUIT);
         return True;
     }
     if ch == "g" {
-        rt.cmd_queue.send(state.ipc_fd, IPC_CMD_STOP);
+        rt.cmd_queue.send(state.ipc_fd, CMD_STOP);
         state.dirty = True;
         return False;
     }
     if ch == "r" {
-        rt.cmd_queue.send(state.ipc_fd, IPC_CMD_RESET);
+        rt.cmd_queue.send(state.ipc_fd, CMD_RESET);
         state.reset_events();
         state.dirty = True;
         return False;

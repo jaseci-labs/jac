@@ -1,4 +1,4 @@
-import from .ipc_schema { IPC_LEN, IPC_SEP }
+import from .ipc_schema { FIELD_LEN, FRAME_SEP }
 import from .libc_tty { tty_read_line }
 
 obj BlobResult {
@@ -9,7 +9,7 @@ obj BlobResult {
 def read_blob(first_line: str) -> BlobResult {
     expected_lines: int = -1;
     colon_at = first_line.find(":");
-    if colon_at >= 0 and first_line[:colon_at] == IPC_LEN {
+    if colon_at >= 0 and first_line[:colon_at] == FIELD_LEN {
         try {
             expected_lines = int(first_line[colon_at + 1:]);
         } except Exception { }
@@ -37,7 +37,7 @@ def read_blob(first_line: str) -> BlobResult {
             return BlobResult(text=blob, eof=True);
         }
     } else {
-        if first_line != IPC_SEP and len(first_line) > 0 {
+        if first_line != FRAME_SEP and len(first_line) > 0 {
             blob = first_line;
         }
         while True {
@@ -46,7 +46,7 @@ def read_blob(first_line: str) -> BlobResult {
                 return BlobResult(text=blob, eof=True);
             }
             line = raw.strip();
-            if line == IPC_SEP {
+            if line == FRAME_SEP {
                 break;
             }
             if len(line) > 0 {
