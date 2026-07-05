@@ -43,6 +43,7 @@ obj HotReloader {
     ) -> None;
 
     def _recompile_client_unified(file_path: str) -> None;
+    def _remove_compiled_output(file_path: str) -> None;
     def _refresh_routing(file_path: str) -> None;
     def _entry_module_path -> Path;
     def _error_file_path -> Path;

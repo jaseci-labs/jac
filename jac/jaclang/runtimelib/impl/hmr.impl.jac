@@ -142,6 +142,13 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
         }
     }
 
+    if not Path(target_path).exists() {
+        self._remove_compiled_output(target_path);
+        self._reload_server_module(target_path);
+        self._refresh_routing(target_path);
+        return;
+    }
+
     (has_client, has_server) = self._classify_declarations(target_path);
 
     if has_server {
@@ -158,6 +165,42 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
 
 impl HotReloader._entry_module_path -> Path {
     return Path(self.base_path) / f"{self.module_name}.jac";
+}
+
+impl HotReloader._remove_compiled_output(file_path: str) -> None {
+    base_dir = Path(self.base_path).resolve();
+    source_path = Path(file_path);
+    try {
+        source_path = source_path.resolve();
+    } except OSError { }
+    if self.client_compiler {
+        output_path = self.client_compiler.jac_client_compiler._output_path_for(
+            source_path, base_dir
+        );
+    } else {
+        try {
+            rel_dir = source_path.parent.relative_to(base_dir);
+        } except ValueError {
+            rel_dir = Path('.');
+        }
+        output_path = (
+            Path(self.base_path) / self._client_output_dir / rel_dir / self._get_js_filename(
+                file_path
+            )
+        );
+    }
+    removed = False;
+    for target in (Path(str(output_path)), Path(str(output_path) + '.map')) {
+        try {
+            if target.exists() {
+                target.unlink();
+                removed = True;
+            }
+        } except OSError { }
+    }
+    if removed {
+        console.warning(f"Removed compiled output for deleted {file_path}");
+    }
 }
 
 impl HotReloader._refresh_routing(file_path: str) -> None {

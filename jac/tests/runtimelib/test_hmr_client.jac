@@ -999,3 +999,28 @@ test "no-op routing refresh does not rewrite entry or routes" {
         assert entry_file.stat().st_mtime_ns == entry_mtime , "_entry.js must not be rewritten when unchanged";
     }
 }
+
+test "deleted client module drops its stale compiled output" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        components_dir = unique_dir / "components";
+        components_dir.mkdir();
+        footer_file = components_dir / "Footer.cl.jac";
+        footer_file.write_text(
+            "def:pub Footer() {\n    return <footer>hi</footer>;\n}\n"
+        );
+        reloader._recompile_client_code(str(footer_file));
+        footer_js = compiled_dir / "components" / "Footer.js";
+        assert footer_js.exists();
+        # Delete the source: the compiled output must go too, so Vite's module
+        # graph can report the broken import to whoever still imports it
+        footer_file.unlink();
+        reloader._remove_compiled_output(str(footer_file));
+        assert not footer_js.exists() , "stale compiled JS must be removed when its source is deleted";
+        assert not (compiled_dir / "components" / "Footer.js.map").exists() , "stale source map must be removed with it";
+        # Deleting a module is not a build error on the Jac side
+        assert reloader.build_status()["status"] == "ok";
+    }
+}
