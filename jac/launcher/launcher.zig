@@ -18,6 +18,18 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const embed = @import("embed.zig");
+const runtime = @import("runtime.zig");
+const build_options = @import("build_options");
+
+/// nvim's entry point, statically linked in from the pinned neovim fork
+/// (jaseci-labs/neovim branch `jac`, built with -Dlib=true -> MAKE_LIB; see
+/// jac/editor/PROVENANCE.md). Only referenced when the build bundles the
+/// editor (build_options.ninja). argv follows the C main convention:
+/// argv[argc] == NULL (libuv's uv_setup_args expects it).
+extern fn nvim_main(argc: c_int, argv: [*]?[*:0]const u8) c_int;
+
+// Same libc prototype embed.zig uses (std.c has no setenv in Zig 0.16).
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
 /// The validated boot dance: pin `sys.executable` to *this* binary, install the
 /// lazy `.jac` finder, then hand off to the jaclang CLI, which reads `sys.argv`.
@@ -59,6 +71,21 @@ pub fn main(init: std.process.Init) !void {
     // program-name pin (initInterpreter below).
     var b_exe: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const exe_z = std.fmt.bufPrintZ(&b_exe, "{s}", .{exe_path}) catch die("path too long");
+
+    // `jac ninja` is dispatched HERE, before any Python bring-up: the editor
+    // is nvim statically linked into this stub, so it needs the payload only
+    // for its runtime files (materialize, no dlopen) and boots with zero
+    // interpreter cost. Python starts later only if the editor spawns
+    // `jac lsp` as a child.
+    //
+    // The argv[0]=="nvim" route is load-bearing, not a convenience: nvim 0.13's
+    // TUI is a CLIENT process that re-execs its own binary (v:progpath == this
+    // jac binary) with {argv[0], "--embed", ...} as the server -- that
+    // re-invocation must land back in nvim_main, never the jac CLI. runNinja
+    // passes argv[0]="nvim" precisely so the server hop routes here. It also
+    // makes a `nvim -> jac` symlink behave as a plain nvim.
+    if (isNvimArgv0(init)) runNinja(init, exe_path, exe_z, .verbatim);
+    if (isNinjaInvocation(init)) runNinja(init, exe_path, exe_z, .ninja);
 
     // 2. Shared bring-up: materialize the runtime and dlopen the bundled
     //    libpython. Identical to what the desktop host does.
@@ -115,6 +142,124 @@ fn boot(emb: *const embed.Embed, exe_z: [*:0]const u8, init: std.process.Init) u
     const rc = PyRun_SimpleString(BOOT_SRC);
     _ = Py_FinalizeEx();
     return if (rc == 0) 0 else 1;
+}
+
+/// True when argv[1] is exactly `ninja`. Checked before the Python bring-up,
+/// so the jac CLI never sees this subcommand in binary mode.
+fn isNinjaInvocation(init: std.process.Init) bool {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // skip argv[0]
+    if (it.next()) |a| return std.mem.eql(u8, a, "ninja");
+    return false;
+}
+
+/// True when we were invoked AS nvim (argv[0] basename == "nvim"): the TUI
+/// client's --embed server re-invocation, or a `nvim -> jac` symlink.
+fn isNvimArgv0(init: std.process.Init) bool {
+    var it = init.minimal.args.iterate();
+    const argv0 = it.next() orelse return false;
+    return std.mem.eql(u8, std.fs.path.basename(argv0), "nvim");
+}
+
+const NinjaMode = enum {
+    ninja, // `jac ninja [args...]` -> nvim -u <ninja>/init.lua [args...]
+    verbatim, // argv[0]=="nvim" -> pass argv through untouched (--embed hop)
+};
+
+/// Boot the fused editor. Materializes the payload (for the nvim runtime
+/// files + ninja config), exports the ninja environment, and calls
+/// nvim_main() in-process. Never returns.
+fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, mode: NinjaMode) noreturn {
+    if (!build_options.ninja) die("this jac build does not bundle the ninja editor (rebuild without -Dno-ninja)");
+
+    const io = init.io;
+    const env = init.environ_map;
+
+    var rt_buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const rt = runtime.materialize(
+        io,
+        init.gpa,
+        exe_path,
+        env.get("XDG_CACHE_HOME"),
+        env.get("HOME"),
+        env.get("TMPDIR"),
+        @intCast(std.c.getuid()),
+        @intCast(std.c.getpid()),
+        &rt_buf,
+    ) catch die("runtime bring-up failed (payload not materialized?)");
+
+    // Environment for the editor + its children. JAC_BIN is what init.lua uses
+    // to spawn `jac lsp` -- the same binary, so editor+parser+LSP stay one file.
+    // Idempotent across the --embed server hop (same values recomputed).
+    var b_vimruntime: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const vimruntime = std.fmt.bufPrintZ(&b_vimruntime, "{s}/nvim/runtime", .{rt}) catch die("path too long");
+    var b_ninja: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const ninja_dir = std.fmt.bufPrintZ(&b_ninja, "{s}/nvim/ninja", .{rt}) catch die("path too long");
+    // All four are load-bearing (runtime files, config layer, LSP spawn,
+    // state isolation) -- a setenv failure (OOM) must not limp into an
+    // editor with silently missing pieces.
+    if (setenv("VIMRUNTIME", vimruntime.ptr, 1) != 0 or
+        setenv("JAC_NINJA_DIR", ninja_dir.ptr, 1) != 0 or
+        setenv("JAC_BIN", exe_z, 1) != 0 or
+        // Isolate shada/swap/undo/log under ~/.local/{share,state}/jac-ninja
+        // and keep the user's own nvim config dirs out of play entirely.
+        setenv("NVIM_APPNAME", "jac-ninja", 1) != 0)
+    {
+        die("ninja environment setup failed (setenv)");
+    }
+
+    var argv_storage: [4096]?[*:0]const u8 = undefined;
+    var argc: usize = 0;
+    var it = init.minimal.args.iterate();
+    // Backs the -u path in argv_storage; must outlive the switch (nvim_main
+    // reads argv after it).
+    var b_init: [std.Io.Dir.max_path_bytes]u8 = undefined;
+
+    switch (mode) {
+        .verbatim => {
+            // The --embed server hop (or an nvim symlink): argv is already a
+            // complete nvim command line -- pass it through untouched.
+            while (it.next()) |arg| {
+                if (argc >= argv_storage.len - 1) die("too many arguments");
+                argv_storage[argc] = arg.ptr;
+                argc += 1;
+            }
+        },
+        .ninja => {
+            // jac ninja [args...] -> nvim -u <ninja>/init.lua [args...]
+            const init_lua = std.fmt.bufPrintZ(&b_init, "{s}/init.lua", .{ninja_dir}) catch die("path too long");
+            argv_storage[argc] = "nvim";
+            argc += 1;
+            argv_storage[argc] = "-u";
+            argc += 1;
+            argv_storage[argc] = init_lua.ptr;
+            argc += 1;
+            _ = it.next(); // argv[0]
+            _ = it.next(); // "ninja"
+            while (it.next()) |arg| {
+                // jac-level flags, consumed here (nvim never sees them):
+                // --easy / --no-easy toggle the VSCode-style input layer
+                // (ninja/lua/ninja/easy.lua reads the env and persists).
+                if (std.mem.eql(u8, arg, "--easy")) {
+                    if (setenv("JAC_NINJA_EASY", "1", 1) != 0) die("ninja environment setup failed (setenv)");
+                    continue;
+                }
+                if (std.mem.eql(u8, arg, "--no-easy")) {
+                    if (setenv("JAC_NINJA_EASY", "0", 1) != 0) die("ninja environment setup failed (setenv)");
+                    continue;
+                }
+                if (argc >= argv_storage.len - 1) die("too many arguments");
+                argv_storage[argc] = arg.ptr;
+                argc += 1;
+            }
+        },
+    }
+    argv_storage[argc] = null; // C argv convention: argv[argc] == NULL
+
+    if (build_options.ninja) {
+        std.process.exit(@truncate(@as(u32, @bitCast(nvim_main(@intCast(argc), &argv_storage)))));
+    }
+    unreachable;
 }
 
 /// True if argv[1] is a Python interpreter short flag (`-c`, `-u`, `-m`, `-`,
