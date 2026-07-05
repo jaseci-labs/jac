@@ -1828,58 +1828,36 @@ impl JacIntrospection.list_modules -> list[str] {
     return `list(JacRuntime.loaded_modules.keys());
 }
 
-impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+impl JacIntrospection._list_members_of(
+    module_name: str, archetype_cls: type
+) -> list[str] {
     module = JacRuntime.loaded_modules.get(module_name);
     if module {
-        walkers = [];
+        members = [];
         for (name, `obj) in inspect.getmembers(module) {
             if (
                 isinstance(`obj, `type)
-                and issubclass(`obj, WalkerArchetype)
+                and issubclass(`obj, archetype_cls)
                 and (`obj.__module__ == module_name)
             ) {
-                walkers.append(name);
+                members.append(name);
             }
         }
-        return walkers;
+        return members;
     }
     return [];
+}
+
+impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+    return JacIntrospection._list_members_of(module_name, WalkerArchetype);
 }
 
 impl JacIntrospection.list_nodes(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        nodes = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, NodeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                nodes.append(name);
-            }
-        }
-        return nodes;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, NodeArchetype);
 }
 
 impl JacIntrospection.list_edges(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        edges = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, EdgeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                edges.append(name);
-            }
-        }
-        return edges;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, EdgeArchetype);
 }
 
 impl JacModule.create_archetype_from_source(

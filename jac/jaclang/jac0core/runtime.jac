@@ -384,6 +384,7 @@ class JacModule {
 
 class JacIntrospection {
     static def list_modules -> list[str];
+    static def _list_members_of(module_name: str, archetype_cls: type) -> list[str];
     static def list_walkers(module_name: str) -> list[str];
     static def list_nodes(module_name: str) -> list[str];
     static def list_edges(module_name: str) -> list[str];
