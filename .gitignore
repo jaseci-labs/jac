@@ -100,3 +100,6 @@ jactastic/**
 # `build` rule above would otherwise ignore them. Keep this content tracked.
 !docs/docs/build/
 !docs/docs/build/**
+
+# Zig 0.16 project-local package cache (fetched, hash-pinned deps)
+zig-pkg/

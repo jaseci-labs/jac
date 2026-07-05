@@ -142,7 +142,7 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--seal] [--debug-src]\n(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--nvim=DIR] [--seal] [--debug-src]\n(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
@@ -152,6 +152,7 @@ pub fn main(init: std.process.Init) !void {
             var musl_dir: ?[]const u8 = null;
             var wasm_libc_dir: ?[]const u8 = null;
             var precompiled_cache: ?[]const u8 = null;
+            var nvim_dir: ?[]const u8 = null;
             var seal = false;
             var debug_src = false;
             var i: usize = 5;
@@ -173,13 +174,15 @@ pub fn main(init: std.process.Init) !void {
                     wasm_libc_dir = arg["--wasm-libc=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--precompiled-cache=")) {
                     precompiled_cache = arg["--precompiled-cache=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--nvim=")) {
+                    nvim_dir = arg["--nvim=".len..];
                 } else if (std.mem.eql(u8, arg, "--seal")) {
                     seal = true;
                 } else if (std.mem.eql(u8, arg, "--debug-src")) {
                     debug_src = true;
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, seal, debug_src);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, seal, debug_src);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -930,6 +933,12 @@ fn mkPayload(
     // stale or partial dir is harmless (it only misses reuse), which is why
     // CI can restore it with prefix-fallback keys unlike the binary cache.
     precompiled_cache: ?[]const u8,
+    // The assembled ninja editor tree (jac/build.zig composes it from the
+    // neovim dependency's exported runtime + the jac/editor/ninja config
+    // layer). Staged verbatim under stage/nvim/ -- the launcher's `jac ninja`
+    // dispatch points VIMRUNTIME at <rt>/nvim/runtime and sources
+    // <rt>/nvim/ninja/init.lua. Null when the build disables the editor.
+    nvim_dir: ?[]const u8,
     // Seal the runtime (issue #7135): freeze the jac0core bootstrap layer and
     // emit _precompiled/MANIFEST.json so the payload boots from JIR (sources
     // ship for tracebacks but are never compiled at runtime). Strict: any
@@ -1097,6 +1106,16 @@ fn mkPayload(
     _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "--target", site }, null, false);
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
+
+    // ninja editor: the assembled nvim tree (runtime/ + ninja/) rides the
+    // payload verbatim -- the launcher's `jac ninja` dispatch resolves it at
+    // <rt>/nvim without booting Python.
+    if (nvim_dir) |nd| {
+        log("==> bundling ninja editor tree (nvim runtime + config)", .{});
+        var nsrc = try Dir.cwd().openDir(io, nd, .{ .iterate = true });
+        defer nsrc.close(io);
+        try copyTree(io, gpa, a, nsrc, try std.fmt.allocPrint(a, "{s}/nvim", .{stage}), skipNone);
+    }
 
     log("==> packing tar | gzip", .{});
     try tarGzDir(io, gpa, a, stage, out);

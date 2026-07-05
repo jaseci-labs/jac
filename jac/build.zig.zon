@@ -3,10 +3,36 @@
     .version = "0.30.0",
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x125cfde06c37a26a,
-    .dependencies = .{},
+    .dependencies = .{
+        // The hard-forked neovim (jaseci-labs/neovim, branch `jac`; see
+        // jac/editor/PROVENANCE.md), built as a static library (-Dlib) and
+        // fused into the launcher stub for `jac ninja`. Lazy so -Dno-ninja
+        // builds never fetch it.
+        .neovim = .{
+            .url = "git+https://github.com/jaseci-labs/neovim#f40bca00a33b8f0e3cd870f3676e95454da3371e",
+            .hash = "neovim-0.13.0-OHoweUOmmgMsWNHZeg1oYfemfwNEMPWhZSXVYpT16UEG",
+            .lazy = true,
+        },
+        // mini.nvim rides the ninja config layer in the payload (fuzzy pick,
+        // statusline, pairs, ...). Pinned like every other zig dependency;
+        // lazy so -Dno-ninja builds never fetch it.
+        .mini_nvim = .{
+            .url = "git+https://github.com/nvim-mini/mini.nvim?ref=v0.18.0#c5cdbadeb423ff724e27a42ab2d1c504d1d6fc5a",
+            .hash = "N-V-__8AAHGwqABAYvjP2wn05aalNz4qfVR5pTArzKA6PkAw",
+            .lazy = true,
+        },
+        // The jac grammar repo: the neovim fork compiles its parser in; jac's
+        // build stages its queries/ftplugin/ftdetect into the ninja rtp layer.
+        .treesitter_jac = .{
+            .url = "git+https://github.com/jaseci-labs/tree-sitter-jac#825e595d3cd7cb752616175db1c1aa7bb47e5e50",
+            .hash = "N-V-__8AALDbAQFZ-jWm-8J2Jhx1u6pxw8_0FGK9shl_v4d9",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "launcher",
+        "editor",
     },
 }
