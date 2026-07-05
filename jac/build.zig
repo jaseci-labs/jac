@@ -97,13 +97,23 @@ pub fn build(b: *std.Build) void {
             .optimize = std.builtin.OptimizeMode.ReleaseSafe,
             .lib = true,
         }) orelse break :nvim_tree null;
-        launcher_mod.linkLibrary(nvim_dep.artifact("nvim"));
+        // The fork's build() returns early while ITS lazy deps (ziglua,
+        // libuv, ...) are still being fetched -- upstream's lazyArtifact
+        // pattern -- so on a cold cache the intermediate configure passes see
+        // the dependency but no registered artifacts. Look both up
+        // gracefully: null here just means "not this pass"; the build runner
+        // fetches the queued deps and reconfigures until they resolve. The
+        // panicking dep.artifact()/namedWriteFiles() would abort the whole
+        // build on the first cold pass (as it did in CI).
+        const nvim_lib = lazyArtifact(nvim_dep, "nvim") orelse break :nvim_tree null;
+        const nvim_runtime = nvim_dep.builder.named_writefiles.get("nvim_runtime") orelse break :nvim_tree null;
+        launcher_mod.linkLibrary(nvim_lib);
         // LuaJIT FFI + nvim's own -E convention need the host's exported
         // symbols visible (mirrors nvim_exe.rdynamic upstream).
         stub.rdynamic = true;
 
         const tree = b.addWriteFiles();
-        _ = tree.addCopyDirectory(nvim_dep.namedWriteFiles("nvim_runtime").getDirectory(), "runtime", .{});
+        _ = tree.addCopyDirectory(nvim_runtime.getDirectory(), "runtime", .{});
         _ = tree.addCopyDirectory(b.path("editor/ninja"), "ninja", .{});
         // The grammar repo (pinned in build.zig.zon; the neovim fork compiles
         // its parser in) is the single source of truth for jac queries and
@@ -782,6 +792,21 @@ fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     });
     const payload_tests = b.addTest(.{ .name = "payload-tests", .root_module = payload_mod });
     test_step.dependOn(&b.addRunArtifact(payload_tests).step);
+}
+
+/// Non-panicking Dependency.artifact(): null while the dependency's own lazy
+/// deps are still being fetched (its build() registered nothing yet). Same
+/// helper the neovim fork's build.zig carries for the identical upstream gap.
+fn lazyArtifact(d: *std.Build.Dependency, name: []const u8) ?*std.Build.Step.Compile {
+    var found: ?*std.Build.Step.Compile = null;
+    for (d.builder.install_tls.step.dependencies.items) |dep_step| {
+        const inst = dep_step.cast(std.Build.Step.InstallArtifact) orelse continue;
+        if (std.mem.eql(u8, inst.artifact.name, name)) {
+            if (found != null) std.debug.panic("artifact name '{s}' is ambiguous", .{name});
+            found = inst.artifact;
+        }
+    }
+    return found;
 }
 
 /// Map a target to the pbs platform token the fetch-pbs subcommand understands,
