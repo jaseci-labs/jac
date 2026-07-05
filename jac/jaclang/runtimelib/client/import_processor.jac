@@ -8,10 +8,4 @@ with entry {
     }
 }
 
-class ImportProcessor {
-    def process_vite_imports(
-        self: ImportProcessor, manifest: (ClientManifest | None), module_path: Path
-    ) -> list[(Path | None)];
-
-    def should_process_import(self: ImportProcessor, import_path: Path) -> bool;
-}
+class ImportProcessor {}

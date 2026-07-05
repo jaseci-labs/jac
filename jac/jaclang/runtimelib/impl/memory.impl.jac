@@ -60,20 +60,6 @@ impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
     yield ;
 }
 
-impl Memory.query_by_type(
-    arch_type_name: str, field_filter: (dict | None) = None
-) -> Generator[Anchor, None, None] {
-    plan = QueryPlan(
-        node_type_final=arch_type_name, field_predicates=field_filter or {}
-    );
-    if not (plan.needs() <= self.capabilities()) {
-        return;
-    }
-    for anchor in self.execute_plan(plan) {
-        yield anchor;
-    }
-}
-
 def _anchor_to_row(anchor: Anchor) -> tuple {
     data = Serializer.serialize(anchor, include_type=True);
     data_json = json.dumps(data);

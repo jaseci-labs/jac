@@ -36,21 +36,6 @@ impl make_client_bundle_builder(
     );
 }
 
-impl ViteClientBundleBuilder.cleanup_temp_dir(self: ViteClientBundleBuilder) -> None {
-    if (not self.vite_package_json or not self.vite_package_json.exists()) {
-        return;
-    }
-    project_dir = self.vite_package_json.parent;
-    temp_dir = project_dir / 'compiled';
-    if temp_dir.exists() {
-        try {
-            shutil.rmtree(temp_dir);
-        } except (OSError, shutil.Error) as e {
-            console.warning(f"Failed to clean up compiled directory '{temp_dir}': {e}");
-        }
-    }
-}
-
 impl ViteClientBundleBuilder._compile_bundle(
     self: ViteClientBundleBuilder, module: ModuleType, module_path: Path
 ) -> ClientBundle {

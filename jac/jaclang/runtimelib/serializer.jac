@@ -4,7 +4,7 @@ import from datetime { date, datetime, time }
 import from enum { Enum }
 import from hashlib { sha256 }
 import from json { dumps as _json_dumps }
-import from typing { cast, get_args, get_origin, get_type_hints }
+import from typing { cast, get_args, get_origin }
 import from types { NoneType, UnionType }
 import from typing { Union }
 import from uuid { UUID }

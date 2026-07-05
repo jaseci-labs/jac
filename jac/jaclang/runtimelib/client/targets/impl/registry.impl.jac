@@ -27,13 +27,6 @@ impl TargetFactory.create(name: str, project_dir: Path) -> ClientTarget {
     return target;
 }
 
-impl TargetFactory.create_by_type(
-    target_type: TargetType, project_dir: Path
-) -> ClientTarget {
-    import from jaclang.runtimelib.client.targets.registry { TargetType }
-    return self.create(target_type.value, project_dir);
-}
-
 impl TargetFactory.get_available_target_names -> list[str] {
     import from jaclang.runtimelib.client.targets.registry { get_target_registry }
     registry = get_target_registry();

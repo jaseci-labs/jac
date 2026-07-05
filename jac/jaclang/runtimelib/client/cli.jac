@@ -10,8 +10,6 @@ import os;
 
 glob registry = get_registry();
 
-import from jaclang.runtimelib.client.targets.web_target { WebTarget }
-import from jaclang.runtimelib.client.targets.mobile_target { MobileTarget }
 import from jaclang.runtimelib.client.targets.register {
     register_targets,
     sync_client_target_choices
