@@ -203,12 +203,6 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     return result;
 }
 
-impl RedisBackend.batch_put(anchors: list[Anchor]) -> None {
-    for anchor in anchors {
-        self.put(anchor);
-    }
-}
-
 impl RedisBackend.exists(id: UUID) -> bool {
     if self.redis_client is None {
         return False;
