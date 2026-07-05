@@ -20,14 +20,7 @@ obj PropertyWriteResult {
 obj ClassMember {
     has symbol: Symbol,
         class_type: types.ClassType,
-        overloads: list[Symbol],
-        is_instance_member: bool = True,
-        is_class_member: bool = False,
-        is_slots_member: bool = False,
-        is_class_var: bool = False,
-        is_read_only: bool = False,
-        is_type_declared: bool = False,
-        skipped_undeclared_type: bool = False;
+        overloads: list[Symbol];
 }
 
 def compute_mro_linearization(cls: types.ClassType) -> None;
