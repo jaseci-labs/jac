@@ -675,7 +675,7 @@ impl EsastGenPass.exit_dict_val(nd: uni.DictVal) -> None {
     nd.gen.es_ast = obj_expr;
 }
 
-impl EsastGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
+impl EsastGenPass._gen_seq_array(nd: uni.UniNode) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in nd.values {
         if (
@@ -697,6 +697,10 @@ impl EsastGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
     }
     array_expr = self.sync_loc(es.ArrayExpression(elements=elements), jac_node=nd);
     nd.gen.es_ast = array_expr;
+}
+
+impl EsastGenPass.exit_tuple_val(nd: uni.TupleVal) -> None {
+    self._gen_seq_array(nd);
 }
 
 impl EsastGenPass.exit_set_val(nd: uni.SetVal) -> None {
@@ -719,27 +723,7 @@ impl EsastGenPass.exit_set_val(nd: uni.SetVal) -> None {
 }
 
 impl EsastGenPass.exit_list_val(nd: uni.ListVal) -> None {
-    elements: list[es.Expression | es.SpreadElement | None] = [];
-    for item in nd.values {
-        if (
-            isinstance(item, uni.UnaryExpr)
-            and item.op.name == Tok.STAR_MUL.value
-            and item.operand.gen.es_ast
-        ) {
-            elements.append(
-                self.sync_loc(
-                    es.SpreadElement(
-                        argument=cast(es.Expression, item.operand.gen.es_ast)
-                    ),
-                    jac_node=item
-                )
-            );
-        } elif item.gen.es_ast {
-            elements.append(cast(es.Expression, item.gen.es_ast));
-        }
-    }
-    array_expr = self.sync_loc(es.ArrayExpression(elements=elements), jac_node=nd);
-    nd.gen.es_ast = array_expr;
+    self._gen_seq_array(nd);
 }
 
 impl EsastGenPass.exit_atom_unit(nd: uni.AtomUnit) -> None {
