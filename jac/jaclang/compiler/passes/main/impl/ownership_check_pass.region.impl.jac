@@ -7,7 +7,7 @@ impl OwnershipCheckPass._has_region_blocks -> bool {
 
 impl OwnershipCheckPass._region_root_name(nd: uni.Expr | None) -> (uni.Name | None) {
     cur = nd;
-    if isinstance(cur, uni.UnaryExpr) and (cur.is_borrow or cur.is_mut_borrow) {
+    if isinstance(cur, uni.UnaryExpr) and is_borrow_kind(cur.ownership) {
         cur = cur.operand;
     }
     while isinstance(cur, uni.AtomTrailer) {

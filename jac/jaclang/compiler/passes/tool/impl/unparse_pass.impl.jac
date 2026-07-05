@@ -105,10 +105,16 @@ impl UnparsePass.exit_module(nd: uni.Module) -> None {
 
 impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
     prefix = "";
-    if nd.is_own {
+    if nd.ownership == OwnershipKind.OWN {
         prefix = "own ";
-    } elif nd.is_borrow {
-        prefix = "&mut " if nd.is_mut_borrow else "&";
+    } elif nd.ownership == OwnershipKind.MUT_BORROW {
+        prefix = "&mut ";
+    } elif nd.ownership == OwnershipKind.BORROW {
+        prefix = "&";
+    } elif nd.ownership == OwnershipKind.VAL {
+        prefix = "val ";
+    } elif nd.ownership == OwnershipKind.LINEAR {
+        prefix = "linear ";
     }
     nd.gen.jac = ": " + prefix + nd.tag.gen.jac;
 }
@@ -799,7 +805,7 @@ impl UnparsePass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
 }
 
 impl UnparsePass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    if nd.is_mut_borrow {
+    if is_mut_kind(nd.ownership) {
         nd.gen.jac = nd.op.gen.jac + "mut " + nd.operand.gen.jac;
     } else {
         nd.gen.jac = nd.op.gen.jac + " " + nd.operand.gen.jac;

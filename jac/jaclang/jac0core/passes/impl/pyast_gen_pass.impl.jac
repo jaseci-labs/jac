@@ -2669,7 +2669,7 @@ impl PyastGenPass._remove_lambda_param_annotations(
 }
 
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    if nd.is_borrow {
+    if is_borrow_kind(nd.ownership) {
         nd.gen.py_ast = nd.operand.gen.py_ast;
         return;
     }
