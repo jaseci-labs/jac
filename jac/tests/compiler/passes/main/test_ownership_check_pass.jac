@@ -158,9 +158,9 @@ test "affine: an own parameter dropped at function end is not a leak" {
 }
 
 # --- Fuller escape routes (P1.1): flow boundary, subscript slot, outer scope --
-test "E1306: a borrow handed to a `flow` boundary escapes" {
+test "E1308: a borrow handed to a `flow` boundary is not sendable" {
     prog = compile_fixture("escaping_borrow_flow.jac");
-    expect_ownership_codes(prog, ["E1306"]);
+    expect_ownership_codes(prog, ["E1308"]);
 }
 
 test "E1306: storing a borrow into a subscript slot escapes" {

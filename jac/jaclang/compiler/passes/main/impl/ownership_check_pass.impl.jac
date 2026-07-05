@@ -1003,30 +1003,6 @@ impl OwnershipCheckPass._emit_escape_diagnostics -> None {
         }
     }
 
-    for cexpr in self.idx_concurrent {
-        names: list[uni.Name] = [];
-        if isinstance(cexpr.target, uni.Name) {
-            names.append(cexpr.target);
-        }
-        for nm in cexpr.target.get_all_sub_nodes(uni.Name) {
-            names.append(nm);
-        }
-        for nm in names {
-            if self._borrow_sym_of(nm) is None {
-                continue;
-            }
-            if not self._is_read_name(nm) {
-                continue;
-            }
-            owner = self._escaping_borrow_owner(nm);
-            if owner is not None {
-                borrow_id = self._borrow_sym_of(nm);
-                e1306_related = self._owner_decl_related(borrow_id, owner);
-                self.emit(E1306, node_override=nm, name=owner, related=e1306_related);
-                break;
-            }
-        }
-    }
     for nd in self.idx_assignments {
         if nd.aug_op is not None {
             continue;
