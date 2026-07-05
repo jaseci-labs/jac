@@ -141,6 +141,13 @@ test "auto-marshal install_native_wrappers" {
     mock_mod.negate = lambda x: int : -x;
     mock_mod.float_add = lambda a: float , b: float : a + b;
 
+    # install_native_wrappers only accelerates bindings the module itself
+    # defines (matching __module__) so it never clobbers imported foreign
+    # functions; mark the mock lambdas as module-own accordingly.
+    for fname in ["add", "multiply", "negate", "float_add"] {
+        getattr(mock_mod, fname).__module__ = "mock_arithmetic";
+    }
+
     count = install_native_wrappers(mock_mod, eng, layout);
     assert count >= 1 , f"Expected at least 1 wrapper installed, got {count}";
 

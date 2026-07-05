@@ -58,8 +58,13 @@ impl Parameter.clone -> Parameter {
         default_value=self.default_value,
         is_self=self.is_self,
         is_cls=self.is_cls,
-        param_kind=self.param_kind
+        param_kind=self.param_kind,
+        has_default=self.has_default
     );
+}
+
+impl Parameter.is_optional.getter -> bool {
+    return self.default_value is not None or self.has_default;
 }
 
 impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
@@ -152,7 +157,7 @@ impl FunctionType.__str__ -> str {
         if param.param_type {
             param_str = f"{param_str}: {param.param_type}";
         }
-        if param.default_value is not None {
+        if param.is_optional {
             param_str = f"{param_str} = ...";
         }
         param_strs.append(param_str);

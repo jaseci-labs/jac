@@ -28,12 +28,16 @@ jaclang_source = "."
 [test]
 directory = "tests"
 
-# Mirrors the root jac.toml's [check.lint] verbatim. Config resolves to the
-# NEAREST jac.toml (no inheritance from ancestors today), so without this block
-# `jac format --lintfix` / `jac precommit` run from inside `jac/` would silently
-# skip the opt-in deslop rules (W3050/W3051) and the excludes. Keep in sync with
-# the root until config resolution gains ancestor inheritance, after which this
-# duplicate can be removed.
+# Mirrors the root jac.toml's [precommit] and [check.lint] verbatim. Config
+# resolves to the NEAREST jac.toml (no inheritance from ancestors today), so
+# without these blocks `jac format --lintfix` / `jac precommit` run from inside
+# `jac/` would silently skip the opt-in deslop rules (W3050/W3051), the
+# excludes, and the precommit typecheck gate. Keep in sync with the root until
+# config resolution gains ancestor inheritance, after which these duplicates
+# can be removed.
+[precommit]
+typecheck = false
+
 [check.lint]
 select = ["all", "strip-comments", "strip-docstrings"]
 exclude = [

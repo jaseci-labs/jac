@@ -498,8 +498,21 @@ impl start(
             import from jaclang.runtimelib.watcher { JacFileWatcher }
 
             watcher = JacFileWatcher(watch_paths=[base]);
+            client_compiler = None;
+            if not no_client {
+                try {
+                    client_compiler = server.introspector._bundle_builder._get_compiler();
+                } except Exception as e {
+                    console.warning(
+                        f"Client compiler unavailable, HMR uses legacy mode: {e}"
+                    );
+                }
+            }
             hot_reloader = HotReloader(
-                base_path=base, module_name=mod, watcher=watcher
+                base_path=base,
+                module_name=mod,
+                watcher=watcher,
+                client_compiler=client_compiler
             );
             hot_reloader.start();
 

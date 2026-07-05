@@ -48,13 +48,23 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                             symbol_table=None,
                             is_external=True,
                         );
-                        node_.name.type = types.AnyType();
+                        import from jaclang.jac0core.modresolver {
+                            sibling_declaration_file
+                        }
+                        sibling_dts = sibling_declaration_file(path_str);
+                        if sibling_dts {
+                            if declared := self._ts_declared_type_from_file(
+                                sibling_dts, node_.name.value
+                            ) {
+                                node_.name.type = declared;
+                                node_.name._sym_category = SymbolType.VAR;
+                                return node_.name.type;
+                            }
+                        }
+                        node_.name.type = types.AnyType(is_foreign=True);
                         node_.name._sym_category = SymbolType.VAR;
-                        self.emit_diag(
-                            W1102,
-                            node_.name,
-                            name=node_.name.value,
-                            module=from_mod_name
+                        self._emit_untyped_external(
+                            node_.name, node_.name.value, from_mod_name
                         );
                         return node_.name.type;
                     }
@@ -104,21 +114,31 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                 }
             }
 
-            node_.name.type = types.UnknownType();
+            node_.name.type = types.UnknownType(is_diagnosed=True);
             self.emit_diag(
                 W1101, node_.name, name=node_.name.value, module=from_mod_name
             );
             return node_.name.type;
         } else {
             if not isinstance(from_mod_type, types.ModuleType) {
-                node_.name.type = types.UnknownType();
+                node_.name.type = types.UnknownType(
+                    is_diagnosed=isinstance(from_mod_type, types.UnknownType)
+                    and from_mod_type.is_diagnosed
+                );
                 return node_.name.type;
             }
             if from_mod_type.is_external {
-                node_.name.type = types.AnyType();
+                if declared := self._get_ts_declared_item_type(
+                    import_node.from_loc, node_.name.value
+                ) {
+                    node_.name.type = declared;
+                    node_.name._sym_category = SymbolType.VAR;
+                    return node_.name.type;
+                }
+                node_.name.type = types.AnyType(is_foreign=True);
                 node_.name._sym_category = SymbolType.VAR;
-                self.emit_diag(
-                    W1102, node_.name, name=node_.name.value, module=from_mod_name
+                self._emit_untyped_external(
+                    node_.name, node_.name.value, from_mod_name
                 );
                 return node_.name.type;
             }
@@ -134,7 +154,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
             }
-            node_.name.type = types.UnknownType();
+            node_.name.type = types.UnknownType(is_diagnosed=True);
             self.emit_diag(
                 W1101, node_.name, name=node_.name.value, module=from_mod_name
             );
@@ -142,6 +162,10 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
         }
     }
 
+    if isinstance(from_mod_type, types.UnknownType) and from_mod_type.is_diagnosed {
+        node_.name.type = types.UnknownType(is_diagnosed=True);
+        return node_.name.type;
+    }
     return types.UnknownType();
 }
 
@@ -220,7 +244,18 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 if idx < len(node_.path) - 1 {
                     continue;
                 }
-                npath.type = types.UnknownType();
+                if npm_entry := self._resolve_client_npm_module(node_) {
+                    mod_type = types.ModuleType(
+                        mod_name=npath.value,
+                        file_uri=Path(npm_entry).resolve(),
+                        symbol_table=None,
+                        is_external=True,
+                    );
+                    npath.type = mod_type;
+                    npath._sym_category = SymbolType.MODULE;
+                    return npath.type;
+                }
+                npath.type = types.UnknownType(is_diagnosed=True);
                 self.emit_diag(W1100, npath);
                 return npath.type;
             }

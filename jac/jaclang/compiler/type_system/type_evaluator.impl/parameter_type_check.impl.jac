@@ -71,6 +71,14 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         }
     }
 
+    if isinstance(caller_type, types.AnyType) {
+        return caller_type;
+    }
+
+    if isinstance(caller_type, types.UnknownType) and caller_type.is_diagnosed {
+        return caller_type;
+    }
+
     if isinstance(caller_type, types.TypeVarType) {
         if caller_type.constraints {
             for constraint_type in caller_type.constraints {

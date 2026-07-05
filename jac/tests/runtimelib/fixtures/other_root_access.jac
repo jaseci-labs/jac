@@ -25,8 +25,8 @@ walker update_node {
 }
 
 walker update_target_node {
-    has val: int;
-    has node_id: str;
+    has val: int,
+        node_id: str;
 
     can enter with Root entry {
         target_node = & (self.node_id);
@@ -41,6 +41,14 @@ walker create_node {
         a = A(val=self.val);
         here ++> a;
         print(a.__jac__.id);
+    }
+}
+
+walker read_target_node {
+    has node_id: str;
+
+    can enter with Root entry {
+        print(& (self.node_id));
     }
 }
 

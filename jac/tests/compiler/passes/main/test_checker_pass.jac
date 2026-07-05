@@ -641,7 +641,19 @@ test "checker_import_missing_module" {
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 6;
+    # Each missing module is reported once (W1100). The Unknowns that flow
+    # from an already-diagnosed import are poisoned and no longer cascade
+    # into hard errors (E1032 attribute access, E1001/E1002 assignments) at
+    # every use site -- one actionable diagnostic per root cause.
+    w1100s = [
+        w
+        for w in program.warnings_had
+        if w.code is not None and w.code.code == "W1100"
+    ];
+    assert len(w1100s) == 4 , f"expected 4 W1100s, got {len(w1100s)}";
+    assert len(program.errors_had) == 0 , f"diagnosed-import Unknowns must not cascade: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
 }
 
 test "checker_jac_runtime_alias" {
@@ -5567,4 +5579,20 @@ test "mobui_hello_example_discovers_kind_and_stays_e1105_clean" {
             e.pretty_print() for e in e1105
         )
     );
+}
+
+test "builtin_inference_regressions" {
+    # Two regressions from the this_is_jac showcase QA (fixture documents
+    # both): `round(...)` failed E1054 everywhere because typeshed declares
+    # it against the PRIVATE protocols `_SupportsRound1/2`, which the
+    # evaluator's structural-protocol table did not know by name; and
+    # `{**c}` folded the spread dict in as a single entry VALUE, inferring
+    # dict[<Unknown>, dict[K, V]] instead of dict[K, V].
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_builtin_inference.jac"), type_check=True
+    );
+    pretty = "\n".join([e.pretty_print() for e in program.errors_had]);
+    assert len(program.errors_had) == 0 , "round() results and **spread dict literals must infer cleanly, "
+    f"got {len(program.errors_had)} diagnostic(s):\n{pretty}";
 }

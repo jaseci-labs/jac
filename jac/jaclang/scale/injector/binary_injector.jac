@@ -72,12 +72,21 @@ def _blurb(dev: DevDeploy) -> str {
 
 
 def select_injector(
-    dev: DevDeploy, storage_class: str, app_name: str, namespace: str, project_dir: str
+    dev: DevDeploy,
+    storage_class: str,
+    app_name: str,
+    namespace: str,
+    project_dir: str,
+    provisioned_database: str = ""
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
     try {
         console.print(f"Preparing the '{dev.channel}' jac runtime for pods.");
-        injector = BinaryInjector(dev=dev, storage_class=storage_class);
+        injector = BinaryInjector(
+            dev=dev,
+            storage_class=storage_class,
+            provisioned_database=provisioned_database
+        );
         injector.prepare(app_name, namespace, project_dir);
         console.print(f"Ready: {_blurb(dev)}.");
         return (injector, injector._toolchain_object_key);

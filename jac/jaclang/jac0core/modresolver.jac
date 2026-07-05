@@ -389,6 +389,344 @@ def resolve_relative_path(target: str, base_path: str) -> str {
     return path;
 }
 
+glob NPM_RUNTIME_CONDITIONS: tuple = ('browser', 'module', 'import', 'default'),
+     NPM_TYPES_CONDITIONS: tuple = ('types', 'import', 'default'),
+     NPM_DTS_SUFFIXES: tuple = ('.d.ts', '.d.mts', '.d.cts');
+
+def _find_npm_package(
+    spec: str, base_path: str
+) -> (tuple[(str, list[str], str)] | None) {
+    if not spec or spec.startswith('.') {
+        return None;
+    }
+    project_root = find_jac_project_root(base_path);
+    if not project_root {
+        return None;
+    }
+    node_modules = os.path.join(project_root, '.jac', 'client', 'node_modules');
+    if not os.path.isdir(node_modules) {
+        return None;
+    }
+    parts = [
+        p
+        for p in spec.split('/')
+        if p
+    ];
+    if not parts {
+        return None;
+    }
+    if (spec.startswith('@') and len(parts) >= 2) {
+        (pkg_parts, subpath) = (parts[:2], parts[2:]);
+    } else {
+        (pkg_parts, subpath) = (parts[:1], parts[1:]);
+    }
+    pkg_dir = os.path.join(node_modules, *pkg_parts);
+    if not os.path.isdir(pkg_dir) {
+        return None;
+    }
+    return (pkg_dir, subpath, node_modules);
+}
+
+def _read_package_json(pkg_dir: str) -> dict {
+    import json;
+    pkg_json = os.path.join(pkg_dir, 'package.json');
+    if not os.path.isfile(pkg_json) {
+        return {};
+    }
+    try {
+        with open(pkg_json, 'r', encoding='utf-8') as f {
+            data = json.load(f);
+        }
+    } except (OSError, ValueError) {
+        return {};
+    }
+    return data if isinstance(data, dict) else {};
+}
+
+def _resolve_export_target(
+    target: object, conditions: tuple, pkg_dir: str, star_sub: (str | None) = None
+) -> (str | None) {
+    if isinstance(target, str) {
+        rel = target;
+        if (star_sub is not None and '*' in rel) {
+            rel = rel.replace('*', star_sub);
+        }
+        candidate = os.path.normpath(os.path.join(pkg_dir, rel));
+        return candidate if os.path.isfile(candidate) else None;
+    }
+    if isinstance(target, list) {
+        for item in target {
+            resolved = _resolve_export_target(item, conditions, pkg_dir, star_sub);
+            if resolved {
+                return resolved;
+            }
+        }
+        return None;
+    }
+    if isinstance(target, dict) {
+        for (key, value) in target.items() {
+            if key.startswith('.') {
+                continue;
+            }
+            if (key in conditions or key == 'default') {
+                resolved = _resolve_export_target(value, conditions, pkg_dir, star_sub);
+                if resolved {
+                    return resolved;
+                }
+            }
+        }
+    }
+    return None;
+}
+
+def _resolve_pkg_exports(
+    exports: object, subpath: str, conditions: tuple, pkg_dir: str
+) -> (str | None) {
+    if isinstance(exports, dict) {
+        has_subpath_keys = `any(k.startswith('.') for k in exports.keys());
+        if not has_subpath_keys {
+            if subpath == '.' {
+                return _resolve_export_target(exports, conditions, pkg_dir);
+            }
+            return None;
+        }
+        if subpath in exports {
+            return _resolve_export_target(exports[subpath], conditions, pkg_dir);
+        }
+
+        best_key: (str | None) = None;
+        best_sub: (str | None) = None;
+        for key in exports.keys() {
+            if ('*' not in key or not key.startswith('.')) {
+                continue;
+            }
+            (prefix, _, suffix) = key.partition('*');
+            if (
+                subpath.startswith(prefix)
+                and subpath.endswith(suffix)
+                and len(subpath) >= len(prefix) + len(suffix)
+            ) {
+                if (
+                    best_key is None or len(prefix) > len(best_key.partition('*')[0])
+                ) {
+                    best_key = key;
+                    best_sub = subpath[len(prefix):len(subpath) - len(suffix)]
+                        if suffix
+                        else subpath[len(prefix):];
+                }
+            }
+        }
+        if best_key is not None {
+            return _resolve_export_target(
+                exports[best_key], conditions, pkg_dir, star_sub=best_sub
+            );
+        }
+        return None;
+    }
+    if subpath == '.' {
+        return _resolve_export_target(exports, conditions, pkg_dir);
+    }
+    return None;
+}
+
+def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
+    found = _find_npm_package(spec, base_path);
+    if found is None {
+        return None;
+    }
+    (pkg_dir, subpath, _) = found;
+    data = _read_package_json(pkg_dir);
+
+    exports = data.get('exports');
+    if exports is not None {
+        subpath_key = './' + '/'.join(subpath) if subpath else '.';
+        resolved = _resolve_pkg_exports(
+            exports, subpath_key, NPM_RUNTIME_CONDITIONS, pkg_dir
+        );
+        if resolved {
+            return resolved;
+        }
+    }
+
+    if subpath {
+        target = os.path.join(pkg_dir, *subpath);
+        deep = _npm_file_with_ext(target);
+        if deep {
+            return deep;
+        }
+        if os.path.isdir(target) {
+            return _npm_package_entry(target, _read_package_json(target));
+        }
+        return None;
+    }
+    return _npm_package_entry(pkg_dir, data);
+}
+
+def resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None) {
+    found = _find_npm_package(spec, base_path);
+    if found is None {
+        return None;
+    }
+    (pkg_dir, subpath, node_modules) = found;
+    data = _read_package_json(pkg_dir);
+
+    exports = data.get('exports');
+    if exports is not None {
+        subpath_key = './' + '/'.join(subpath) if subpath else '.';
+        resolved = _resolve_pkg_exports(
+            exports, subpath_key, NPM_TYPES_CONDITIONS, pkg_dir
+        );
+        if (resolved and resolved.endswith(NPM_DTS_SUFFIXES)) {
+            return resolved;
+        }
+    }
+
+    if subpath {
+        target = os.path.join(pkg_dir, *subpath);
+        for suffix in NPM_DTS_SUFFIXES {
+            if os.path.isfile((target + suffix)) {
+                return os.path.normpath((target + suffix));
+            }
+        }
+        nested = os.path.join(target, 'index.d.ts');
+        if os.path.isfile(nested) {
+            return os.path.normpath(nested);
+        }
+        deep_entry = resolve_client_npm_package(spec, base_path);
+        if deep_entry {
+            sibling = sibling_declaration_file(deep_entry);
+            if sibling {
+                return sibling;
+            }
+        }
+    } else {
+        for key in ('types', 'typings') {
+            val = data.get(key);
+            if (isinstance(val, str) and val) {
+                candidate = os.path.normpath(os.path.join(pkg_dir, val));
+                if os.path.isfile(candidate) {
+                    return candidate;
+                }
+            }
+        }
+        entry = resolve_client_npm_package(spec, base_path);
+        if entry {
+            sibling = sibling_declaration_file(entry);
+            if sibling {
+                return sibling;
+            }
+        }
+        index_dts = os.path.join(pkg_dir, 'index.d.ts');
+        if os.path.isfile(index_dts) {
+            return os.path.normpath(index_dts);
+        }
+    }
+
+    return _resolve_at_types_declarations(spec, subpath, node_modules);
+}
+
+def _resolve_at_types_declarations(
+    spec: str, subpath: list[str], node_modules: str
+) -> (str | None) {
+    parts = [
+        p
+        for p in spec.split('/')
+        if p
+    ];
+    if parts[0].startswith('@') {
+        if len(parts) < 2 {
+            return None;
+        }
+        types_name = parts[0][1:] + '__' + parts[1];
+    } else {
+        types_name = parts[0];
+    }
+    types_dir = os.path.join(node_modules, '@types', types_name);
+    if not os.path.isdir(types_dir) {
+        return None;
+    }
+    if subpath {
+        target = os.path.join(types_dir, *subpath);
+        for suffix in NPM_DTS_SUFFIXES {
+            if os.path.isfile((target + suffix)) {
+                return os.path.normpath((target + suffix));
+            }
+        }
+        nested = os.path.join(target, 'index.d.ts');
+        return os.path.normpath(nested) if os.path.isfile(nested) else None;
+    }
+    types_data = _read_package_json(types_dir);
+    for key in ('types', 'typings') {
+        val = types_data.get(key);
+        if (isinstance(val, str) and val) {
+            candidate = os.path.normpath(os.path.join(types_dir, val));
+            if os.path.isfile(candidate) {
+                return candidate;
+            }
+        }
+    }
+    index_dts = os.path.join(types_dir, 'index.d.ts');
+    return os.path.normpath(index_dts) if os.path.isfile(index_dts) else None;
+}
+
+def sibling_declaration_file(js_path: str) -> (str | None) {
+    (stem, ext) = os.path.splitext(js_path);
+    by_ext = {'.mjs': '.d.mts', '.cjs': '.d.cts', '.js': '.d.ts'};
+    preferred = by_ext.get(ext);
+    suffixes = (preferred, ) + tuple(
+        s
+        for s in NPM_DTS_SUFFIXES
+        if s != preferred
+    )
+        if preferred
+        else NPM_DTS_SUFFIXES;
+    for suffix in suffixes {
+        candidate = stem + suffix;
+        if os.path.isfile(candidate) {
+            return os.path.normpath(candidate);
+        }
+    }
+    return None;
+}
+
+def _npm_file_with_ext(candidate: str) -> (str | None) {
+    if os.path.isfile(candidate) {
+        return os.path.normpath(candidate);
+    }
+    for ext in ('.js', '.mjs', '.cjs', '.json') {
+        if os.path.isfile((candidate + ext)) {
+            return os.path.normpath((candidate + ext));
+        }
+    }
+    return None;
+}
+
+def _npm_package_entry(pkg_dir: str, data: dict) -> (str | None) {
+    entries: list[str] = [];
+    for key in ('module', 'main') {
+        val = data.get(key);
+        if (isinstance(val, str) and val) {
+            entries.append(os.path.join(pkg_dir, val));
+        }
+    }
+    entries.append(os.path.join(pkg_dir, 'index'));
+    for entry in entries {
+        resolved = _npm_file_with_ext(entry);
+        if resolved {
+            return resolved;
+        }
+        nested = _npm_file_with_ext(os.path.join(entry, 'index'));
+        if nested {
+            return nested;
+        }
+    }
+    pkg_json = os.path.join(pkg_dir, 'package.json');
+    if os.path.isfile(pkg_json) {
+        return os.path.normpath(pkg_json);
+    }
+    return None;
+}
+
 def convert_to_js_import_path(path: str) -> str {
     if not path {
         return path;

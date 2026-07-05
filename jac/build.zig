@@ -182,6 +182,27 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // Standalone: compile the in-repo wasm_rt libc (vendored musl/wasi-libc
+    // subset + jac allocator/io/abi adapters) to wasm32 LLVM bitcode under
+    // .pbs-build/wasm32/libc, so na->wasm builds link libc INTO the module
+    // (in-module libc + jac_host1 import contract, #7048) instead of leaking
+    // env imports. Unlike vendor-musl this is target-independent — bitcode
+    // for wasm32 is identical on every build host — so it runs everywhere.
+    // Editable/source checkouts and the test suite resolve it straight from
+    // .pbs-build via wasm_build.jac's _wasm_libc_dir.
+    {
+        const vendor_wasm_libc = b.addRunArtifact(tool);
+        vendor_wasm_libc.addArgs(&.{
+            "build-wasm-libc",
+            b.pathFromRoot("jaclang/compiler/passes/native/wasm_rt"),
+            b.pathFromRoot(".pbs-build/wasm32/libc"),
+            b.graph.zig_exe,
+        });
+        vendor_wasm_libc.has_side_effects = true;
+        b.step("vendor-wasm-libc", "Compile the wasm_rt libc to bitcode into .pbs-build/wasm32/libc")
+            .dependOn(&vendor_wasm_libc.step);
+    }
+
     const osarch = osArchString(target.result) orelse {
         // Unsupported target for a full binary; stub + test steps still work.
         return;
@@ -234,7 +255,8 @@ pub fn build(b: *std.Build) void {
         // finds a platform-matched shim for THIS fused runtime.
         mk.addPrefixedFileArg("--pyembed=", pyembed.getEmittedBin());
         b.getInstallStep().dependOn(&pyembed_place.step);
-        if (b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false) {
+        const skip_precompile = b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false;
+        if (skip_precompile) {
             mk.addArg("--skip-precompile");
         }
         // Editable dev binary: ship a payload WITHOUT the bundled compiler and
@@ -279,6 +301,19 @@ pub fn build(b: *std.Build) void {
             mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build")}));
         }
 
+        // Seal the runtime (issue #7135): a bundled release payload is fully
+        // source-free -- it boots from the JIR image + frozen jac0core bootstrap,
+        // with the stdlib + jaclang .py compiled to sourceless .pyc. This is the
+        // ONLY bundled shape (no source-shipping mode); it just needs a real
+        // bundled precompile, so it is inert under -Ddev/-Djaclang-dir
+        // (link-source, which serves the compiler from a live tree) and under
+        // -Dskip-precompile (link-validation builds).
+        const debug_src = b.option(bool, "debug-src", "Sealed build: embed source text in JIR so tracebacks show source lines (larger payload)") orelse false;
+        if (link_dir == null and !skip_precompile) {
+            mk.addArg("--seal");
+            if (debug_src) mk.addArg("--debug-src");
+        }
+
         // Contained bun runtime: fetch the pinned bun for the target and bundle
         // it inside the client package via --bun. Mirrors the fetch-pbs pattern
         // (download + sha256-verify, all in the payload tool). A BUN_VERSION
@@ -315,6 +350,24 @@ pub fn build(b: *std.Build) void {
             vendor_musl.has_side_effects = true;
             mk.step.dependOn(&vendor_musl.step);
             mk.addArg(b.fmt("--musl={s}", .{musl_lib}));
+        }
+
+        // Wasm32 libc bitcode: compile the in-repo wasm_rt sources (payload
+        // tool's `build-wasm-libc`, mirrors the musl block above) and bundle
+        // them so a shipped binary links libc into na->wasm modules at build
+        // time (#7048). Target-independent, so every platform bundles it.
+        if (link_dir == null) {
+            const wasm_libc = b.pathFromRoot(".pbs-build/wasm32/libc");
+            const vendor_wasm = b.addRunArtifact(tool);
+            vendor_wasm.addArgs(&.{
+                "build-wasm-libc",
+                b.pathFromRoot("jaclang/compiler/passes/native/wasm_rt"),
+                wasm_libc,
+                b.graph.zig_exe,
+            });
+            vendor_wasm.has_side_effects = true;
+            mk.step.dependOn(&vendor_wasm.step);
+            mk.addArg(b.fmt("--wasm-libc={s}", .{wasm_libc}));
         }
 
         // Track the payload's real inputs so it repacks when any source changes.

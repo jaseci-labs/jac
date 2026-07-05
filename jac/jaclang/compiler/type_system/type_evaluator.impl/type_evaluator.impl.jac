@@ -234,11 +234,30 @@ impl TypeEvaluator._get_type_of_expression_core(
                             and not self._type_in_list(kt, key_types) {
                                 key_types.append(kt);
                             }
-                        }
-                        vt = self.get_type_of_expression(_kv.value);
-                        if not isinstance(vt, types.UnknownType)
-                        and not self._type_in_list(vt, val_types) {
-                            val_types.append(vt);
+                            vt = self.get_type_of_expression(_kv.value);
+                            if not isinstance(vt, types.UnknownType)
+                            and not self._type_in_list(vt, val_types) {
+                                val_types.append(vt);
+                            }
+                        } else {
+                            st = self.get_type_of_expression(_kv.value);
+                            if (
+                                isinstance(st, types.ClassType)
+                                and st.is_builtin("dict")
+                                and st.private.type_args
+                                and len(st.private.type_args) >= 2
+                            ) {
+                                skt = st.private.type_args[0];
+                                if not isinstance(skt, types.UnknownType)
+                                and not self._type_in_list(skt, key_types) {
+                                    key_types.append(skt);
+                                }
+                                svt = st.private.type_args[1];
+                                if not isinstance(svt, types.UnknownType)
+                                and not self._type_in_list(svt, val_types) {
+                                    val_types.append(svt);
+                                }
+                            }
                         }
                     }
 
@@ -595,6 +614,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if isinstance(base_type, types.UnknownType) {
                     assert isinstance(expr.right, uni.Name);
 
+                    if base_type.is_diagnosed {
+                        return types.UnknownType(is_diagnosed=True);
+                    }
                     target_already_unknown = (
                         isinstance(expr.target.type, types.UnknownType)
                         and isinstance(expr.target, (uni.AtomTrailer, uni.FuncCall))
@@ -610,7 +632,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 assert isinstance(expr.right, uni.Name);
                 if isinstance(base_type, types.ModuleType) {
                     if base_type.is_external {
-                        expr.right.type = types.AnyType();
+                        expr.right.type = types.AnyType(is_foreign=True);
                         return expr.right.type;
                     }
 
@@ -2283,7 +2305,7 @@ impl TypeEvaluator._assign_callable(
     if len(src_params) > len(dest_params) {
         for i in range(len(dest_params), len(src_params)) {
             src_param = src_params[i];
-            if src_param.default_value is None {
+            if not src_param.is_optional {
                 return False;
             }
         }
@@ -2676,6 +2698,10 @@ impl TypeEvaluator.assign_type(
         return True;
     }
 
+    if isinstance(src_type, types.UnknownType) and src_type.is_diagnosed {
+        return True;
+    }
+
     if isinstance(src_type, types.NeverType) {
         return True;
     }
@@ -2697,6 +2723,9 @@ impl TypeEvaluator.assign_type(
         }
 
         if self._in_native_context() {
+            return True;
+        }
+        if isinstance(src_type, types.AnyType) and src_type.is_foreign {
             return True;
         }
         return False;
@@ -2958,6 +2987,8 @@ impl TypeEvaluator.assign_type(
             "SupportsBytes": "__bytes__",
             "SupportsAbs": "__abs__",
             "SupportsRound": "__round__",
+            "_SupportsRound1": "__round__",
+            "_SupportsRound2": "__round__",
             "Sized": "__len__",
             "Hashable": "__hash__",
             "Iterable": "__iter__",

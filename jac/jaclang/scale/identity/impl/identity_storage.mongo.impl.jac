@@ -7,7 +7,11 @@ impl MongoIdentityStorage.ensure_indexes -> None {
 }
 
 impl MongoIdentityStorage._store_user(user_doc: dict[str, any]) -> None {
-    self.users_col.insert_one(user_doc);
+    try {
+        self.users_col.insert_one(user_doc);
+    } except DuplicateKeyError {
+        raise IdentityTakenError();
+    }
 }
 
 impl MongoIdentityStorage.get_user_by_id(user_id: str) -> dict[str, any] | None {

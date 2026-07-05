@@ -833,3 +833,138 @@ test "dependency compiled when imported file recompiled" {
         assert compiled_dir.exists() , "Button.js should be compiled as a dependency of app.cl.jac";
     }
 }
+
+# --- TestUnifiedClientCompilerHMR ---
+# The unified path routes HMR through the boot ViteCompiler so file-based
+# routing artifacts (_routes.js, router _entry.js) stay live across changes.
+def _make_unified_reloader(unique_dir: Path) -> tuple {
+    import from jaclang.runtimelib.client.vite_client_bundle { ViteClientBundleBuilder }
+    configs_dir = unique_dir / ".jac" / "client" / "configs";
+    configs_dir.mkdir(parents=True, exist_ok=True);
+    package_json = configs_dir / "package.json";
+    package_json.write_text("{}");
+    compiled_dir = unique_dir / ".jac" / "client" / "compiled";
+    compiled_dir.mkdir(parents=True, exist_ok=True);
+    builder = ViteClientBundleBuilder(vite_package_json=package_json);
+    compiler = builder._get_compiler();
+    # Pin outputs to this temp project regardless of any ambient jac.toml
+    compiler.compiled_dir = compiled_dir;
+    compiler.jac_client_compiler.compiled_dir = compiled_dir;
+    watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
+    reloader = HotReloader(
+        base_path=str(unique_dir),
+        module_name="main",
+        watcher=watcher,
+        client_compiler=compiler
+    );
+    return (reloader, compiler, compiled_dir);
+}
+
+test "routing activates when pages are created after startup" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        main_file = unique_dir / "main.jac";
+        main_file.write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        # No pages/ yet: a refresh must not fabricate routing artifacts
+        reloader._refresh_routing(str(main_file));
+        assert not (compiled_dir / "_routes.js").exists();
+        # pages/ appears while the server is "running"
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        index_js = compiled_dir / "pages" / "index.js";
+        assert index_js.exists();
+        # Unified recompiles keep the boot pipeline's artifacts
+        assert index_js.read_text().startswith("/* Source:") , "unified HMR output should keep the /* Source */ header";
+        assert (compiled_dir / "pages" / "index.js.map").exists() , "unified HMR output should write a fresh source map";
+        # A second page exists but never got its own change event
+        # (e.g. the directory was moved into place)
+        about_file = pages_dir / "about.jac";
+        about_file.write_text(
+            "cl {\n    def page() {\n        return <div>About</div>;\n    }\n}\n"
+        );
+        index_mtime = index_js.stat().st_mtime_ns;
+        reloader._refresh_routing(str(index_file));
+        routes = (compiled_dir / "_routes.js").read_text();
+        assert "PagesIndex" in routes and "PagesAbout" in routes , "both pages should be routed after the rescan";
+        assert (compiled_dir / "pages" / "about.js").exists() , "rescan should compile pages that missed their change event";
+        assert index_js.stat().st_mtime_ns == index_mtime , "rescan must not recompile pages whose output already exists";
+        assert compiler._has_pages;
+        entry = (compiled_dir / "_entry.js").read_text();
+        assert "BrowserRouter" in entry , "entry must upgrade to the router form without a restart";
+    }
+}
+
+test "router entry survives an error then fix cycle" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        good_source = "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n";
+        index_file.write_text(good_source);
+        reloader._recompile_client_code(str(index_file));
+        reloader._refresh_routing(str(index_file));
+        entry_file = compiled_dir / "_entry.js";
+        assert "BrowserRouter" in entry_file.read_text();
+        # Break the page: the error overlay takes over the entry
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div UNCLOSED;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        assert "errorOverlay" in entry_file.read_text();
+        assert reloader._overlay_entry;
+        # The dispatch-level routing refresh that follows every change must
+        # not clobber the active overlay with the normal routing entry
+        reloader._refresh_routing(str(index_file));
+        assert "errorOverlay" in entry_file.read_text() , "routing refresh must not overwrite an active error overlay";
+        # Fix the page: the ROUTER entry must come back, not the simple one
+        index_file.write_text(good_source);
+        reloader._recompile_client_code(str(index_file));
+        restored = entry_file.read_text();
+        assert "errorOverlay" not in restored;
+        assert "BrowserRouter" in restored , "recovery must restore the router entry for a pages project";
+        assert not reloader._overlay_entry;
+    }
+}
+
+test "no-op routing refresh does not rewrite entry or routes" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        reloader._refresh_routing(str(index_file));
+        routes_file = compiled_dir / "_routes.js";
+        entry_file = compiled_dir / "_entry.js";
+        routes_mtime = routes_file.stat().st_mtime_ns;
+        entry_mtime = entry_file.stat().st_mtime_ns;
+        # Nothing changed: identical content must not be rewritten
+        # (a rewrite would trigger a pointless Vite reload)
+        reloader._refresh_routing(str(index_file));
+        assert routes_file.stat().st_mtime_ns == routes_mtime , "_routes.js must not be rewritten when routes are unchanged";
+        assert entry_file.stat().st_mtime_ns == entry_mtime , "_entry.js must not be rewritten when unchanged";
+    }
+}
