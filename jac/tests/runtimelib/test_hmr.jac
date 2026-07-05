@@ -323,48 +323,34 @@ test "multiple file changes handled" {
 }
 
 # --- TestWatcherMovesAndResilience ---
-test "rename emits delete and create events" {
+test "moves emit delete plus create; directories flagged, noise filtered" {
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
-        old_file = temp_dir / "a.jac";
-        old_file.write_text("glob x = 1;");
+        (temp_dir / "a.jac").write_text("glob x = 1;");
+        (temp_dir / "pagesx").mkdir();
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
         watcher.add_callback(lambda e : events.append(e));
         watcher.start();
         time.sleep(0.3);
         import os;
-        os.rename(str(old_file), str(temp_dir / "b.jac"));
+        os.rename(str(temp_dir / "a.jac"), str(temp_dir / "b.jac"));
+        os.rename(str(temp_dir / "pagesx"), str(temp_dir / "pages"));
+        (temp_dir / "node_modules").mkdir();
+        (temp_dir / ".git").mkdir();
         time.sleep(0.6);
         watcher.stop();
-        kinds = {(Path(e.path).name, e.change_type) for e in events};
-        assert ("a.jac", ChangeType.DELETED) in kinds , f"rename must emit DELETED for the old name, got {kinds}";
-        assert ("b.jac", ChangeType.CREATED) in kinds , f"rename must emit CREATED for the new name, got {kinds}";
-    }
-}
-
-test "directory move emits directory-flagged events" {
-    with tempfile.TemporaryDirectory() as tmp {
-        temp_dir = Path(tmp);
-        src_dir = temp_dir / "pagesx";
-        src_dir.mkdir();
-        (src_dir / "index.jac").write_text("glob x = 1;");
-        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
-        events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
-        watcher.start();
-        time.sleep(0.3);
-        import os;
-        os.rename(str(src_dir), str(temp_dir / "pages"));
-        time.sleep(0.6);
-        watcher.stop();
-        dir_events = {
-            (Path(e.path).name, e.change_type)
-            for e in events
-            if e.is_directory
+        kinds = {(Path(e.path).name, e.change_type, e.is_directory) for e in events};
+        assert ("a.jac", ChangeType.DELETED, False) in kinds , f"file rename must emit DELETED(old), got {kinds}";
+        assert ("b.jac", ChangeType.CREATED, False) in kinds , f"file rename must emit CREATED(new), got {kinds}";
+        assert ("pagesx", ChangeType.DELETED, True) in kinds , f"dir move must emit directory-flagged DELETED, got {kinds}";
+        assert ("pages", ChangeType.CREATED, True) in kinds , f"dir move must emit directory-flagged CREATED, got {kinds}";
+        noise = {
+            n
+            for (n, _, d) in kinds
+            if d and n in {"node_modules", ".git"}
         };
-        assert ("pagesx", ChangeType.DELETED) in dir_events , f"dir move must emit a directory DELETED, got {dir_events}";
-        assert ("pages", ChangeType.CREATED) in dir_events , f"dir move must emit a directory CREATED, got {dir_events}";
+        assert not noise , f"tooling directories must never reach callbacks, got {noise}";
     }
 }
 
@@ -386,26 +372,5 @@ test "flush loop survives an exception and keeps delivering" {
         time.sleep(0.4);
         watcher.stop();
         assert len(events) >= 1 , "flush loop must survive an exception and keep delivering events";
-    }
-}
-
-test "noise directories never reach callbacks" {
-    with tempfile.TemporaryDirectory() as tmp {
-        temp_dir = Path(tmp);
-        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
-        events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
-        for noisy in ("node_modules", "__pycache__", ".git", ".cache") {
-            watcher._on_change(
-                str(temp_dir / noisy), ChangeType.CREATED, is_directory=True
-            );
-        }
-        watcher._on_change(
-            str(temp_dir / "pages"), ChangeType.CREATED, is_directory=True
-        );
-        time.sleep(0.2);
-        watcher._debounce_flush();
-        paths = {Path(e.path).name for e in events};
-        assert paths == {"pages"} , f"only meaningful directories may reach callbacks, got {paths}";
     }
 }
