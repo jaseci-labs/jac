@@ -37,7 +37,11 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         arg_pre: list[str] = [],
         arg_post: list[str] = [],
         cur_pad: str = "",
-        hoist_ok: bool = False;
+        hoist_ok: bool = False,
+        extern_types: list[str] = [],
+        extern_funcs: list[str] = [],
+        extern_func_defs: dict[str, uni.Ability] = {},
+        seen_imports: list[str] = [];
 
     def transform(ir_in: uni.Module) -> uni.Module {
         try {
@@ -76,6 +80,70 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
                 self.func_returns[stmt.name_ref.value] = self.ret_type_name(
                     sig.return_type if sig else None
                 );
+            }
+        }
+        self.classify_imports(mod);
+    }
+
+    def classify_imports(mod: uni.Module) {
+        import from jaclang.jac0core.program { JacProgram }
+        for stmt in mod.body {
+            if not isinstance(stmt, uni.Import) {
+                continue;
+            }
+            for mp in stmt.kid {
+                if not isinstance(mp, uni.ModulePath) {
+                    continue;
+                }
+                path = self.import_path(mp);
+                if path is None or not path.endswith(".jac") {
+                    continue;
+                }
+                if path in self.seen_imports {
+                    continue;
+                }
+                self.seen_imports.append(path);
+                try {
+                    sub = JacProgram().compile(file_path=path);
+                } except Exception {
+                    continue;
+                }
+                self.index_imported(sub);
+            }
+        }
+    }
+
+    def import_path(mp: uni.ModulePath) -> (str | None) {
+        try {
+            return mp.resolve_relative_path();
+        } except Exception {
+            return None;
+        }
+    }
+
+    def index_imported(sub: uni.Module) {
+        next_id = C_FIRST_USER_TYPEID + len(self.type_ids);
+        for stmt in sub.body {
+            if isinstance(stmt, uni.Archetype) and self.is_ref_arch(stmt) {
+                name = stmt.name.value;
+                if name in self.type_ids {
+                    continue;
+                }
+                self.type_ids[name] = next_id;
+                next_id += 1;
+                self.extern_types.append(name);
+                self.index_arch(stmt);
+            } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
+                fname = stmt.name_ref.value;
+                if fname in self.func_returns {
+                    continue;
+                }
+                sig = stmt.signature;
+                self.func_returns[fname] = self.ret_type_name(
+                    sig.return_type if sig else None
+                );
+                self.extern_funcs.append(fname);
+                self.extern_func_defs[fname] = stmt;
             }
         }
     }
@@ -147,6 +215,13 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         }
         parts.extend(
             [
+                e
+                for e in self.extern_decls()
+                if e
+            ]
+        );
+        parts.extend(
+            [
                 s
                 for s in structs
                 if s
@@ -174,6 +249,32 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             ]
         );
         mod.gen.c_src = "\n\n".join(parts) + "\n";
+    }
+
+    def extern_decls() -> list[str] {
+        out: list[str] = [];
+        for tname in self.extern_types {
+            arch = self.arch_nodes.get(tname);
+            if arch is None {
+                continue;
+            }
+            out.append(self.gen_ref_struct(arch));
+            out.append("extern " + self.ctor_head(arch) + ";");
+            for ab in self.method_list(arch) {
+                if ab.name_ref.value == "init" {
+                    continue;
+                }
+                out.append("extern " + self.method_head(arch, ab) + ";");
+            }
+        }
+        for fname in self.extern_funcs {
+            ab = self.extern_func_defs.get(fname);
+            if ab is None {
+                continue;
+            }
+            out.append("extern " + self.func_head(ab) + ";");
+        }
+        return out;
     }
 
     def load_layout(mod: uni.Module) {
