@@ -83,6 +83,11 @@ local mini_dir = ninja_dir .. "/pack/ninja/start/mini.nvim"
 if not vim.uv.fs_stat(mini_dir) and base_dir and base_dir ~= "" then
   mini_dir = base_dir .. "/pack/ninja/start/mini.nvim"
 end
+if not vim.uv.fs_stat(mini_dir) then
+  -- The require("mini.*") calls below would die one line later anyway;
+  -- fail with an actionable message instead of a module-not-found trace.
+  error("jac ninja: mini.nvim not found at " .. mini_dir .. " -- payload may be corrupt (try re-running `zig build`)")
+end
 vim.opt.runtimepath:append(mini_dir)
 
 -- ------------------------------------------------------------------ options

@@ -219,7 +219,11 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
         const n = f.readPositionalAll(io, &raw, 0) catch break :blk null;
         const trimmed = std.mem.trim(u8, raw[0..n], " \r\n\t");
         if (trimmed.len == 0) break :blk null;
-        // Only link a tree that actually exists.
+        // Only link a tree that actually exists. Best-effort by nature:
+        // nvim re-resolves the PATH when sourcing init.lua, so a tree
+        // vanishing between this check and the source (rename, unmount) can
+        // still surface as nvim's own file-not-found -- holding the dir fd
+        // open here would not close that window. Dev binaries only.
         var d = std.Io.Dir.cwd().openDir(io, trimmed, .{}) catch break :blk null;
         d.close(io);
         break :blk std.fmt.bufPrintZ(&b_dev, "{s}", .{trimmed}) catch break :blk null;
