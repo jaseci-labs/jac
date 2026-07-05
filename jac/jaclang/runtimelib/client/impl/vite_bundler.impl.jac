@@ -650,11 +650,15 @@ function jacBuildErrorOverlay() {{
     configureServer(server) {{
       const push = (raw) => {{
         if (raw === lastRaw) return;
+        // lastRaw is the last KNOWN state, not the last sent one: record it
+        // before any skip, or a recovery that happens with zero clients would
+        // leave the old error latched here and dedup-suppress an identical
+        // error recurring later.
+        lastRaw = raw;
         // No live clients: skip the broadcast (Vite would buffer it and replay
         // stale state to the first client; the connection handler replays the
         // CURRENT state instead).
         if (server.ws.clients && server.ws.clients.size === 0) return;
-        lastRaw = raw;
         if (!raw) {{
           server.ws.send({{ type: "full-reload", path: "*" }});
           return;
