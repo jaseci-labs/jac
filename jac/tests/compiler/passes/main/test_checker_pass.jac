@@ -4093,12 +4093,11 @@ test "any_in_union_is_wildcard" {
     errors = [
         e
         for e in program.errors_had
-        if e.code is not None
-        and e.code.code in ("E1099", "E1053", "E1002", "E1032")
+        if e.code is not None and e.code.code in ("E1099", "E1053", "E1002", "E1032")
     ];
-    assert len(errors) == 0 , f"Expected 0 any-in-union errors, got {len(
-        errors
-    )}:\n" + "\n---\n".join(e.pretty_print() for e in errors);
+    assert len(errors) == 0 , f"Expected 0 any-in-union errors, got {len(errors)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in errors
+    );
 }
 
 """Root Cause 10: TypeVar in impl blocks.
