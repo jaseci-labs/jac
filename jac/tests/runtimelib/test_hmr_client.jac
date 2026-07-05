@@ -497,6 +497,7 @@ test "jacjsx import added in real compilation" {
         import json;
         error_data = json.loads(error_file.read_text());
         assert error_data["message"] , "mirrored build error must carry a non-empty message";
+        assert "app.jac" in str(error_data["message"]) , "mirrored error must reference the failing source location";
         assert reloader.build_status()["status"] == "error";
         # --- fix the error: recovery clears the mirrored error ---
         bad_file.write_text(
@@ -921,6 +922,13 @@ test "router entry survives an error then fix cycle" {
         assert entry_file.stat().st_mtime_ns == entry_mtime , "a build error must not touch _entry.js";
         assert "BrowserRouter" in entry_file.read_text() , "router entry must survive a build error";
         assert error_file.exists() , "build error must be mirrored for the Vite overlay";
+        # The mirror must carry the real compiler message, not just exist
+        # (the removed bespoke overlay had regressed to rendering empty)
+        import json;
+        error_data = json.loads(error_file.read_text());
+        assert "index.jac" in str(error_data["file"]) , "mirrored error must name the failing file";
+        assert "Failed to compile" in str(error_data["message"])
+        and "index.jac" in str(error_data["message"]) , "mirrored error must carry the actual compiler message";
         # Fix the page: router still intact, mirrored error cleared
         index_file.write_text(good_source);
         reloader._recompile_client_code(str(index_file));
