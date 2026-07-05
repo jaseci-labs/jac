@@ -8,12 +8,15 @@ import from jaclang.compiler.rust_bridge._blob {
     KIND_OPAQUE,
     TAG_BOOL,
     TAG_FN,
+    TAG_INT,
+    TAG_UINT,
     TAG_STR,
     TAG_VOID,
     tag_base,
     tag_is_opt,
     tag_is_ref,
-    tag_ref_index
+    tag_ref_index,
+    tag_is_map
 }
 import from jaclang.compiler.rust_bridge._finder { _libc_soname }
 
@@ -95,6 +98,9 @@ class _Synth {
     }
 
     def _shim_decl(self: _Synth, fd: FnDesc) -> str | None {
+        if tag_is_map(fd.ret) {
+            return None;
+        }
         params = [];
         if fd.kind == FN_METHOD and fd.self_type != TAG_VOID {
             params.append("handle: int");
@@ -103,7 +109,11 @@ class _Synth {
             if p.tag == TAG_STR {
                 params.append(f"{p.name}: str");
                 params.append(f"{p.name}_len: int");
-            } elif p.tag == TAG_BOOL or tag_is_ref(p.tag) or p.tag == TAG_FN {
+            } elif p.tag == TAG_BOOL
+            or p.tag == TAG_INT
+            or p.tag == TAG_UINT
+            or tag_is_ref(p.tag)
+            or p.tag == TAG_FN {
                 params.append(f"{p.name}: int");
             } else {
                 return None;
@@ -118,6 +128,8 @@ class _Synth {
             params.append("out_handle: bytes");
         } elif ret == TAG_STR {
             params.append("out_buf: bytes");
+        } elif ret == TAG_INT or ret == TAG_UINT {
+            params.append("out_int: bytes");
         } else {
             return None;
         }
@@ -160,6 +172,8 @@ class _Synth {
                 call.append(f"strlen({p.name})");
             } elif p.tag == TAG_BOOL {
                 call.append(f"({p.name} and 1 or 0)");
+            } elif p.tag == TAG_INT or p.tag == TAG_UINT {
+                call.append(p.name);
             } elif tag_is_ref(p.tag) {
                 call.append(f"{p.name}.__handle");
             } elif p.tag == TAG_FN {
@@ -187,6 +201,9 @@ class _Synth {
             body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
             call.append("out_buf");
             self._bridged_str_method = True;
+        } elif fd.ret == TAG_INT or fd.ret == TAG_UINT {
+            body_lines.append('        out_int = struct.pack("<Q", 0);');
+            call.append("out_int");
         } elif tag_is_opt(fd.ret) {
             return None;
         } elif fd.ret != TAG_VOID {
@@ -225,6 +242,14 @@ class _Synth {
                 f"        {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));"
             );
             body_lines.append("        return rs;");
+        } elif fd.ret == TAG_INT {
+            body_lines.append('        iv = struct.unpack("<Q", out_int)[0];');
+            body_lines.append("        if iv >= 0x8000000000000000 {");
+            body_lines.append("            return iv - 0x10000000000000000;");
+            body_lines.append("        }");
+            body_lines.append("        return iv;");
+        } elif fd.ret == TAG_UINT {
+            body_lines.append('        return struct.unpack("<Q", out_int)[0];');
         }
         return body_lines;
     }
@@ -238,6 +263,8 @@ class _Synth {
                 call.append(f"strlen({p.name})");
             } elif p.tag == TAG_BOOL {
                 call.append(f"({p.name} and 1 or 0)");
+            } elif p.tag == TAG_INT or p.tag == TAG_UINT {
+                call.append(p.name);
             } elif tag_is_ref(p.tag) {
                 call.append(f"{p.name}.__handle");
             } elif p.tag == TAG_FN {
@@ -304,7 +331,9 @@ class _Synth {
                 shim_fds.append(fd);
             } elif fd.kind == FN_METHOD and fd.self_type in self.opaque {
                 if self._shim_decl(fd) is None or self._method_body(fd) is None {
-                    if tag_is_ref(fd.ret)
+                    if tag_is_map(fd.ret) {
+                        reason = "returns a dict (HashMap); dict returns are not yet supported on the na backend";
+                    } elif tag_is_ref(fd.ret)
                     and tag_ref_index(fd.ret) not in self.adoptable {
                         reason = "returns an opaque handle whose type has its own constructor (na adopt-ctor signature clash)";
                     } else {
@@ -484,6 +513,9 @@ class _Synth {
     def _ret_ann(self: _Synth, fd: FnDesc) -> str {
         if tag_base(fd.ret) == TAG_BOOL {
             return " -> bool";
+        }
+        if fd.ret == TAG_INT or fd.ret == TAG_UINT {
+            return " -> int";
         }
         if tag_base(fd.ret) == TAG_STR {
             return " -> str | None" if tag_is_opt(fd.ret) else " -> str";

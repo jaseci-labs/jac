@@ -18,9 +18,12 @@ import from jaclang.compiler.rust_bridge._blob {
     SUPPORTED_ABI,
     TAG_BOOL,
     TAG_FN,
+    TAG_INT,
+    TAG_MAP_BIT,
     TAG_OPT_BIT,
     TAG_REF_BIT,
     TAG_STR,
+    TAG_UINT,
     TAG_VOID
 }
 
@@ -56,11 +59,14 @@ test "jac ABI constants mirror the canonical rust schema" {
         ("MAGIC", MAGIC),
         ("ABI_VERSION", SUPPORTED_ABI),
         ("TAG_BOOL", TAG_BOOL),
+        ("TAG_INT", TAG_INT),
+        ("TAG_UINT", TAG_UINT),
         ("TAG_STR", TAG_STR),
         ("TAG_FN", TAG_FN),
         ("TAG_VOID", TAG_VOID),
         ("TAG_REF_BIT", TAG_REF_BIT),
         ("TAG_OPT_BIT", TAG_OPT_BIT),
+        ("TAG_MAP_BIT", TAG_MAP_BIT),
         ("KIND_OPAQUE", KIND_OPAQUE),
         ("KIND_ERROR", KIND_ERROR),
         ("FN_CTOR", FN_CTOR),

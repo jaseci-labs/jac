@@ -4,10 +4,13 @@ glob MAGIC = b"JACBRDG1",
      SUPPORTED_ABI = 1,
      TAG_VOID = 0xFFFFFFFF,
      TAG_BOOL = 1,
+     TAG_INT = 2,
+     TAG_UINT = 3,
      TAG_STR = 4,
      TAG_FN = 5,
      TAG_REF_BIT = 0x80000000,
      TAG_OPT_BIT = 0x40000000,
+     TAG_MAP_BIT = 0x20000000,
      KIND_OPAQUE = 0,
      KIND_ERROR = 3,
      FN_CTOR = 0,
@@ -32,6 +35,16 @@ def tag_is_ref(tag: int) -> bool {
 
 def tag_ref_index(tag: int) -> int {
     return tag_base(tag) & ~TAG_REF_BIT;
+}
+
+
+def tag_is_map(tag: int) -> bool {
+    return bool(tag & TAG_MAP_BIT);
+}
+
+
+def tag_map_value(tag: int) -> int {
+    return tag & ~TAG_MAP_BIT;
 }
 
 

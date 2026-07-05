@@ -5,6 +5,8 @@ members = [
     "jac-bridge-regex",
     "jac-bridge-regex-v2",
     "jac-bridge-owning",
+    "jac-bridge-scalar",
+    "jac-bridge-map",
     "jac-bridge-inspect",
     "jac-bridge-binder",
 ]

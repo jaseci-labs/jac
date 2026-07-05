@@ -5,9 +5,9 @@ mod m {
     pub struct Foo(pub u8);
 
     impl Foo {
-        // i32 is not a bridgeable return type.
-        pub fn bad(&self) -> i32 {
-            0
+        // f64 is not a bridgeable return type (no float tag in the v1 ABI).
+        pub fn bad(&self) -> f64 {
+            0.0
         }
     }
 }

@@ -91,11 +91,11 @@ jobs:
           key: bridges-${{ runner.os }}-${{ hashFiles('bridges/**/Cargo.toml') }}
           restore-keys: bridges-${{ runner.os }}-
 
-      # The na tests marshal against the real owning bridge .so (metadata section
-      # + symbols), so build it in release before compiling any probe.
-      - name: Build the owning bridge .so
+      # The na tests marshal against the real bridge .so files (metadata section
+      # + symbols), so build them in release before compiling any probe.
+      - name: Build the owning + scalar + map bridge .so files
         working-directory: bridges
-        run: cargo build -p jac-bridge-owning --release
+        run: cargo build -p jac-bridge-owning -p jac-bridge-scalar -p jac-bridge-map --release
 
       # Provides the `jac` binary (bundled LLVM shim) on PATH and places the shim
       # in-tree at jac/jaclang/compiler/passes/native/llvm/libjacllvm.so.
@@ -112,3 +112,31 @@ jobs:
 
       - name: Run the na owning conformance vertical
         run: jac test bridges/jac-bridge-loader/tests/na/owning_conformance.jac
+
+      # M6.1 integer boundary tags (TAG_INT / TAG_UINT): the ABI drift guard, the
+      # CPython + na source-shape unit tests, and the na<->CPython conformance
+      # against the same scalar .so.
+      - name: Guard the ABI constants against drift
+        run: jac test bridges/jac-bridge-loader/tests/na/test_abi_drift.jac
+
+      - name: Run the scalar integer loader + codegen unit tests
+        run: |
+          jac test bridges/jac-bridge-loader/tests/test_scalar.jac
+          jac test bridges/jac-bridge-loader/tests/test_na_codegen_scalar.jac
+
+      - name: Run the na scalar integer conformance vertical
+        run: jac test bridges/jac-bridge-loader/tests/na/scalar_conformance.jac
+
+      # M6.2 HashMap->dict marshaling (TAG_MAP_BIT): the CPython loader deep-copies
+      # a HashMap<String, V> return into a real dict[str, V]; the na backend cannot
+      # yet return a dict, so its synthesizer skips those methods cleanly (asserted
+      # by the codegen test) rather than emitting code that would ICE nacompile.
+      - name: Run the map dict loader + na-skip codegen unit tests
+        run: |
+          jac test bridges/jac-bridge-loader/tests/test_map.jac
+          jac test bridges/jac-bridge-loader/tests/test_na_codegen_map.jac
+
+      # Proves the na skip leaves a compilable module: the ctor-only source that
+      # remains after every map method is skipped actually nacompiles and runs.
+      - name: Run the na map-skip compile proof
+        run: jac test bridges/jac-bridge-loader/tests/na/map_na_skip.jac

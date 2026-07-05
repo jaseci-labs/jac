@@ -1,4 +1,5 @@
 import weakref;
+import struct;
 import types as pytypes;
 import from ctypes {
     Structure,
@@ -22,6 +23,8 @@ import from jaclang.compiler.rust_bridge._blob {
     TypeDesc,
     TAG_VOID,
     TAG_BOOL,
+    TAG_INT,
+    TAG_UINT,
     TAG_STR,
     TAG_FN,
     KIND_OPAQUE,
@@ -31,7 +34,9 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_base,
     tag_is_opt,
     tag_is_ref,
-    tag_ref_index
+    tag_ref_index,
+    tag_is_map,
+    tag_map_value
 }
 
 
@@ -192,7 +197,9 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
     }
 
     base_ret = tag_base(fd.ret);
-    if base_ret == TAG_BOOL {
+    if tag_is_map(fd.ret) {
+        args.append(POINTER(_JacBuf));
+    } elif base_ret == TAG_BOOL {
         args.append(POINTER(c_uint8));
     } elif base_ret == TAG_STR {
         args.append(POINTER(_JacBuf));
@@ -232,6 +239,39 @@ def _make_trampoline(fn: object, rt: _Runtime) -> object {
 }
 
 
+def _decode_map(raw: bytes, vtag: int) -> dict {
+    out = {};
+    (count, ) = struct.unpack_from("<I", raw, 0);
+    off = 4;
+    for _ in range(count) {
+        (klen, ) = struct.unpack_from("<I", raw, off);
+        off += 4;
+        key = raw[off:off + klen].decode("utf-8", errors="replace");
+        off += klen;
+        if vtag == TAG_STR {
+            (vlen, ) = struct.unpack_from("<I", raw, off);
+            off += 4;
+            val = raw[off:off + vlen].decode("utf-8", errors="replace");
+            off += vlen;
+        } elif vtag == TAG_BOOL {
+            (b, ) = struct.unpack_from("<B", raw, off);
+            off += 1;
+            val = bool(b);
+        } else {
+            (u, ) = struct.unpack_from("<Q", raw, off);
+            off += 8;
+            if vtag == TAG_INT {
+                val = u - 0x10000000000000000 if u >= 0x8000000000000000 else u;
+            } else {
+                val = u;
+            }
+        }
+        out[key] = val;
+    }
+    return out;
+}
+
+
 def _call(
     c_fn: object,
     fd: FnDesc,
@@ -254,6 +294,8 @@ def _call(
             c_args.extend([enc, c_uint32(n)]);
         } elif p.tag == TAG_BOOL {
             c_args.append(c_uint8(int(bool(v))));
+        } elif p.tag == TAG_INT or p.tag == TAG_UINT {
+            c_args.append(c_uint64(int(v) & 0xFFFFFFFFFFFFFFFF));
         } elif p.tag == TAG_FN {
             cb = _make_trampoline(v, rt);
             rec = _JacCallback(cast(cb, c_void_p), None);
@@ -271,9 +313,12 @@ def _call(
     out_e = c_uint64(0);
 
     opt = tag_is_opt(fd.ret);
+    is_map = tag_is_map(fd.ret);
     base_ret = tag_base(fd.ret);
 
-    if base_ret == TAG_BOOL {
+    if is_map {
+        c_args.append(byref(out_buf));
+    } elif base_ret == TAG_BOOL {
         c_args.append(byref(out_b));
     } elif base_ret == TAG_STR {
         c_args.append(byref(out_buf));
@@ -294,6 +339,11 @@ def _call(
         raise rt.PanicError(msg);
     }
 
+    if is_map {
+        raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
+        rt.free_buf(out_buf);
+        return _decode_map(raw, tag_map_value(fd.ret));
+    }
     if base_ret == TAG_VOID {
         return None;
     }
@@ -307,6 +357,13 @@ def _call(
         raw = string_at(out_buf.ptr, out_buf.len);
         rt.free_buf(out_buf);
         return raw.decode("utf-8", errors="replace");
+    }
+    if base_ret == TAG_INT {
+        v = out_h.value;
+        return v - 0x10000000000000000 if v >= 0x8000000000000000 else v;
+    }
+    if base_ret == TAG_UINT {
+        return out_h.value;
     }
 
     h = out_h.value;

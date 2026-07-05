@@ -5,8 +5,8 @@ mod m {
     pub struct Foo(pub u8);
 
     impl Foo {
-        // i32 is not a bridgeable boundary type.
-        pub fn bad(&self, x: i32) -> bool {
+        // f64 is not a bridgeable boundary type (no float tag in the v1 ABI).
+        pub fn bad(&self, x: f64) -> bool {
             let _ = x;
             true
         }

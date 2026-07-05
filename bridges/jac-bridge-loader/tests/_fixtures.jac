@@ -38,3 +38,13 @@ def regex_so -> str {
 def owning_so -> str {
     return _find_so("owning");
 }
+
+
+def scalar_so -> str {
+    return _find_so("scalar");
+}
+
+
+def map_so -> str {
+    return _find_so("map");
+}

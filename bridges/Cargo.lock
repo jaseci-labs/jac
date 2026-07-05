@@ -75,6 +75,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "jac-bridge-map"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
+]
+
+[[package]]
 name = "jac-bridge-owning"
 version = "0.1.0"
 dependencies = [
@@ -96,6 +103,13 @@ version = "0.1.0"
 dependencies = [
  "jac-bridge",
  "regex",
+]
+
+[[package]]
+name = "jac-bridge-scalar"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
 ]
 
 [[package]]

@@ -16,18 +16,32 @@ enum TypeKind { Opaque, Error }
 struct TypeDef { name: Ident, kind: TypeKind }
 
 #[derive(Clone, PartialEq, Eq)]
-enum Tag { Bool, Str, Void, Ref(usize), Opt(Box<Tag>), Callback }
+enum Tag { Bool, Int, Uint, Str, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>) }
 
 impl Tag {
     fn as_u32(&self) -> u32 {
         match self {
             Tag::Bool     => schema::TAG_BOOL,
+            Tag::Int      => schema::TAG_INT,
+            Tag::Uint     => schema::TAG_UINT,
             Tag::Str      => schema::TAG_STR,
             Tag::Void     => schema::TAG_VOID,
             Tag::Ref(i)   => schema::TAG_REF_BIT | (*i as u32),
             Tag::Opt(inner) => schema::TAG_OPT_BIT | inner.as_u32(),
             Tag::Callback => schema::TAG_FN,
+            Tag::Map(value) => schema::TAG_MAP_BIT | value.as_u32(),
         }
+    }
+}
+
+/// Map a Rust integer type name to its boundary tag, if it is one.  All widths
+/// cross as a single 64-bit slot; only the sign discipline (`TAG_INT` vs
+/// `TAG_UINT`) is preserved so the loader decodes correctly.
+fn int_tag_for(name: &str) -> Option<Tag> {
+    match name {
+        "i8" | "i16" | "i32" | "i64" | "isize" => Some(Tag::Int),
+        "u8" | "u16" | "u32" | "u64" | "usize" => Some(Tag::Uint),
+        _ => None,
     }
 }
 
@@ -35,6 +49,9 @@ struct Param {
     name:       String,
     tag:        Tag,
     is_str_ref: bool, // &str (ptr+len at boundary) vs String (single ptr)
+    /// For an integer param, the concrete Rust type (`u32`, `i64`, …) the u64
+    /// boundary slot must be cast back to before the call.  `None` otherwise.
+    int_ty:     Option<String>,
 }
 
 struct FnDef {
@@ -256,7 +273,23 @@ fn analyze_param(arg: &FnArg, types: &[TypeDef]) -> Result<Param, Error> {
         _ => return Err(Error::new(pt.pat.span(), "expected a plain param name")),
     };
     let (tag, is_str_ref) = ty_to_tag(&pt.ty, types)?;
-    Ok(Param { name, tag, is_str_ref })
+    let int_ty = match &tag {
+        Tag::Int | Tag::Uint => simple_ident(&pt.ty),
+        _ => None,
+    };
+    Ok(Param { name, tag, is_str_ref, int_ty })
+}
+
+/// The trailing path identifier of a plain (possibly `&`-referenced) type, e.g.
+/// `u32` from `u32` or `&i64`.  Used to recover an integer param's concrete type.
+fn simple_ident(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Reference(tr) => simple_ident(&tr.elem),
+        Type::Path(tp) if tp.path.segments.len() == 1 => {
+            Some(tp.path.segments[0].ident.to_string())
+        }
+        _ => None,
+    }
 }
 
 fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
@@ -270,7 +303,8 @@ fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
         }
         Type::Path(tp) if tp.path.segments.len() == 1 => {
             let id = &tp.path.segments[0].ident;
-            match id.to_string().as_str() {
+            let id_str = id.to_string();
+            match id_str.as_str() {
                 "bool"        => Ok((Tag::Bool, false)),
                 "String"      => Ok((Tag::Str,  false)),
                 "str"         => Ok((Tag::Str,  true)),
@@ -279,7 +313,9 @@ fn ty_to_tag(ty: &Type, types: &[TypeDef]) -> Result<(Tag, bool), Error> {
                 // Crosses as a single u64; decoded into the rt `JacCallback`.
                 "JacCallback" => Ok((Tag::Callback, false)),
                 _ => {
-                    if let Some(i) = types.iter().position(|t| &t.name == id) {
+                    if let Some(tag) = int_tag_for(&id_str) {
+                        Ok((tag, false))
+                    } else if let Some(i) = types.iter().position(|t| &t.name == id) {
                         Ok((Tag::Ref(i), false))
                     } else {
                         Err(Error::new(ty.span(),
@@ -328,6 +364,20 @@ fn extract_result(ty: &Type) -> Option<(&Type, &Type)> {
     None
 }
 
+/// The `(key, value)` type arguments of a `HashMap<K, V>` path, if `ty` is one.
+/// Matches both the bare `HashMap<..>` and a fully-qualified
+/// `std::collections::HashMap<..>` (last segment ident is what counts).
+fn extract_hashmap(ty: &Type) -> Option<(&Type, &Type)> {
+    let Type::Path(tp) = ty else { return None };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "HashMap" { return None; }
+    let PathArguments::AngleBracketed(args) = &seg.arguments else { return None };
+    let tys: Vec<_> = args.args.iter()
+        .filter_map(|a| if let GenericArgument::Type(t) = a { Some(t) } else { None })
+        .collect();
+    if tys.len() == 2 { Some((tys[0], tys[1])) } else { None }
+}
+
 /// The single type argument of an `Option<T>` path, if `ty` is one.
 fn option_inner(ty: &Type) -> Option<&Type> {
     let Type::Path(tp) = ty else { return None };
@@ -341,6 +391,26 @@ fn option_inner(ty: &Type) -> Option<&Type> {
 }
 
 fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
+    // HashMap<String, V> marshals as a real Jac dict[str, V] (str keys in v1).
+    // Checked before the generic Path arms so the `HashMap` ident is not mistaken
+    // for an opaque type reference.
+    if let Some((key_ty, val_ty)) = extract_hashmap(ty) {
+        let key_ok = matches!(key_ty, Type::Path(tp)
+            if tp.path.segments.last().map(|s| s.ident == "String").unwrap_or(false));
+        if !key_ok {
+            return Err(Error::new(key_ty.span(),
+                "unsupported HashMap key type: only HashMap<String, V> is bridgeable \
+                 (keys marshal as Jac str)"));
+        }
+        let val_tag = ret_tag(val_ty, types, self_i)?;
+        match val_tag {
+            Tag::Bool | Tag::Int | Tag::Uint | Tag::Str =>
+                return Ok(Tag::Map(Box::new(val_tag))),
+            _ => return Err(Error::new(val_ty.span(),
+                "unsupported HashMap value type: only bool, integer, and String \
+                 values are bridgeable")),
+        }
+    }
     match ty {
         Type::Tuple(tt) if tt.elems.is_empty() => Ok(Tag::Void),
         Type::Path(tp) if tp.path.segments.last().map(|s| s.ident == "Option").unwrap_or(false) => {
@@ -359,15 +429,20 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
         }
         Type::Path(tp) if tp.path.segments.len() == 1 => {
             let id = &tp.path.segments[0].ident;
-            match id.to_string().as_str() {
+            let id_str = id.to_string();
+            match id_str.as_str() {
                 "bool"   => Ok(Tag::Bool),
                 "String" => Ok(Tag::Str),
                 "Self"   => Ok(Tag::Ref(self_i)),
                 _ => {
-                    types.iter().position(|t| &t.name == id)
-                        .map(Tag::Ref)
-                        .ok_or_else(|| Error::new(ty.span(),
-                            format!("unsupported return type: `{}`", quote!(#ty))))
+                    if let Some(tag) = int_tag_for(&id_str) {
+                        Ok(tag)
+                    } else {
+                        types.iter().position(|t| &t.name == id)
+                            .map(Tag::Ref)
+                            .ok_or_else(|| Error::new(ty.span(),
+                                format!("unsupported return type: `{}`", quote!(#ty))))
+                    }
                 }
             }
         }
@@ -523,6 +598,18 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
 
             pub fn string_to_jacbuf(s: String) -> JacBuf {
                 let mut v = s.into_bytes();
+                let ptr = v.as_mut_ptr();
+                let len = v.len() as u32;
+                let cap = v.capacity() as u32;
+                ::std::mem::forget(v);
+                JacBuf { ptr, len, cap }
+            }
+
+            // Hand an owned byte buffer to the loader as a JacBuf (same ownership
+            // discipline as string_to_jacbuf: forget the Vec, the loader frees it
+            // via the module's free-buf shim).  Used for the serialized wire image
+            // of a HashMap return (a dict[str, V] marshaled as one owned blob).
+            pub fn vec_to_jacbuf(mut v: Vec<u8>) -> JacBuf {
                 let ptr = v.as_mut_ptr();
                 let len = v.len() as u32;
                 let cap = v.capacity() as u32;
@@ -810,6 +897,16 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident) -> T
                     c_params.push(quote! { #pn: u8 });
                     decode.push(quote! { let #pn = #pn != 0; });
                 }
+                Tag::Int | Tag::Uint => {
+                    // Crosses as a u64 slot; cast back to the concrete Rust
+                    // integer type the call expects (truncating widths <64,
+                    // reinterpreting the sign for the signed case).
+                    let ity = format_ident!(
+                        "{}", p.int_ty.as_deref().unwrap_or("u64")
+                    );
+                    c_params.push(quote! { #pn: u64 });
+                    decode.push(quote! { let #pn = #pn as #ity; });
+                }
                 Tag::Callback => {
                     // A C function pointer crosses as a u64; wrap it so the
                     // bridge fn calls it with a `&str` and gets a `String` back.
@@ -909,6 +1006,15 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
             quote! { *out_result = val as u8; },
             quote! { *out_result = 0; },
         ),
+        // Integers cross through a single u64 out-slot. `val as u64` sign-extends
+        // a signed value and zero-extends an unsigned one; the loader reads the
+        // slot back per the tag (TAG_INT signed, TAG_UINT unsigned). Both signs
+        // share the Rust-side write — the distinction lives only in the tag.
+        Tag::Int | Tag::Uint => (
+            quote! { out_int: *mut u64, },
+            quote! { *out_int = val as u64; },
+            quote! { *out_int = 0; },
+        ),
         Tag::Str => (
             quote! { out_buf: *mut #rt::JacBuf, },
             quote! { *out_buf = #rt::string_to_jacbuf(val); },
@@ -947,6 +1053,47 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
             // ret_tag guarantees Opt only wraps Ref or Str.
             _ => unreachable!("Tag::Opt wraps only Ref or Str"),
         },
+        // HashMap<String, V> → one owned JacBuf holding the whole map serialized
+        // little-endian: [u32 count] then per entry [u32 key_len][key bytes][value].
+        // The value encoding depends on V's tag (see push_value below). The loader
+        // deep-copies the blob into a fresh Jac dict[str, V], then frees the buf.
+        Tag::Map(inner) => {
+            // Per-entry value serialization, specialized on the value tag. `__v` is
+            // bound to `&V` (HashMap iteration yields references).
+            let push_value = match inner.as_ref() {
+                // int/uint: a single u64 slot. `*__v as u64` sign-extends a signed
+                // value and zero-extends an unsigned one — the loader reads the slot
+                // back per the value tag, mirroring the scalar out_int discipline.
+                Tag::Int | Tag::Uint => quote! {
+                    __out.extend_from_slice(&(*__v as u64).to_le_bytes());
+                },
+                // str: [u32 len][utf-8 bytes].
+                Tag::Str => quote! {
+                    __out.extend_from_slice(&(__v.len() as u32).to_le_bytes());
+                    __out.extend_from_slice(__v.as_bytes());
+                },
+                // bool: a single byte.
+                Tag::Bool => quote! {
+                    __out.push(*__v as u8);
+                },
+                // ret_tag restricts map values to bool/int/uint/str.
+                _ => unreachable!("Tag::Map wraps only bool, int, uint, or str"),
+            };
+            (
+                quote! { out_buf: *mut #rt::JacBuf, },
+                quote! {
+                    let mut __out: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
+                    __out.extend_from_slice(&(val.len() as u32).to_le_bytes());
+                    for (__k, __v) in val.iter() {
+                        __out.extend_from_slice(&(__k.len() as u32).to_le_bytes());
+                        __out.extend_from_slice(__k.as_bytes());
+                        #push_value
+                    }
+                    *out_buf = #rt::vec_to_jacbuf(__out);
+                },
+                quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
+            )
+        }
         // Callback is a param-only tag; `ret_tag` never produces it as a return.
         Tag::Callback => unreachable!("Tag::Callback is param-only, never a return"),
     }

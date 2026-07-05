@@ -11,6 +11,15 @@ pub const ABI_VERSION: u32 = 1;
 
 // TypeTag values (u32, stored in StrRef / tag fields)
 pub const TAG_BOOL: u32 = 1;
+/// A signed integer scalar (`i8`..`i64`, `isize`).  Crosses the boundary as a
+/// single 64-bit slot, sign-extended to the full width; the loader decodes it as
+/// two's-complement signed.  Param and return.  Additive to ABI v1.
+pub const TAG_INT: u32 = 2;
+/// An unsigned integer scalar (`u8`..`u64`, `usize`).  Crosses as a single
+/// 64-bit slot, zero-extended; the loader decodes it as unsigned.  Distinct from
+/// [`TAG_INT`] so a full-range `u64` (high bit set) is not misread as negative.
+/// Param and return.  Additive to ABI v1.
+pub const TAG_UINT: u32 = 3;
 pub const TAG_STR: u32 = 4;
 /// A callback function pointer parameter (`JacCallback`).  Crosses the boundary
 /// as a single `u64` C function pointer with the fixed signature
@@ -27,6 +36,14 @@ pub const TAG_REF_BIT: u32 = 0x8000_0000;
 /// Additive to ABI v1 — old blobs never set it; a blob that does requires a
 /// loader that understands it (append-only evolution rule, D2).
 pub const TAG_OPT_BIT: u32 = 0x4000_0000;
+/// OR'd with a value tag to mark a `HashMap<String, V>` return marshaled as a
+/// real Jac `dict[str, V]` (V ∈ {int, uint, str, bool}).  Keys are implicitly
+/// UTF-8 strings in v1.  The shim serializes the whole map into one owned
+/// `JacBuf` (`[u32 count]` then per entry `[u32 key_len][key bytes][value]`,
+/// value = u64 LE for int/uint, `[u32 len][bytes]` for str, u8 for bool; all
+/// little-endian) and the loader deep-copies it into a fresh dict.  Return-only.
+/// Additive to ABI v1 — old blobs never set it (append-only evolution rule, D2).
+pub const TAG_MAP_BIT: u32 = 0x2000_0000;
 
 // TypeKind values (u8, byte 4 of each TypeDesc)
 pub const KIND_OPAQUE: u8 = 0;
