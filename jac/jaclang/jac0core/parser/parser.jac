@@ -427,6 +427,7 @@ obj Parser {
     def make_special_name(tok: Token) -> Name;
     def make_name_or_special(tok: Token) -> Name;
     def parse_access_tag -> SubTag | None;
+    def _make_literal(node_cls: type, name: str, tok: Token) -> object;
     def make_string(tok: Token) -> String;
     def make_string_from_value(value: str) -> String;
     def make_int(tok: Token) -> Int;
