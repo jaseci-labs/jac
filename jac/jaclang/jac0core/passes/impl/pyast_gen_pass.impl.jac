@@ -970,6 +970,10 @@ impl PyastGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
     nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
 }
 
+impl PyastGenPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+}
+
 impl PyastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
     ;
 }

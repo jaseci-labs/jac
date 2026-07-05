@@ -42,6 +42,7 @@ obj UnparsePass(UniPass) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;

@@ -60,6 +60,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_for(nd);
     } elif isinstance(nd, uni.IterForStmt) {
         self._codegen_iter_for(nd);
+    } elif isinstance(nd, uni.RegionStmt) {
+        self._codegen_region(nd);
     } elif isinstance(nd, uni.MatchStmt) {
         self._codegen_match(nd);
     } elif isinstance(nd, uni.Ability) {
@@ -415,6 +417,31 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.loop_stack.pop();
 
     self.builder.position_at_end(end_bb);
+}
+
+impl NaIRGenPass._codegen_region(nd: uni.RegionStmt) -> None {
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _region_body_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
+
+    _region_prebody = set(self.local_vars.keys());
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
+    }
+    if not self.builder.block.is_terminated {
+        _region_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+            if nd.loc
+            else 0}";
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _region_body_locals
+                if _v not in _region_prebody
+            ],
+            loc=_region_loc
+        );
+    }
 }
 
 impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {

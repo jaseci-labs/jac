@@ -32,6 +32,7 @@ obj NormalizePass(UniPass) {
     def enter_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
     def _normalize_cond_block(nd: uni.UniNode, kw: Tok) -> None;
     def _normalize_name_list_stmt(nd: uni.UniNode, op: Tok) -> None;
+    def enter_region_stmt(nd: uni.RegionStmt) -> None;
     def enter_if_stmt(nd: uni.IfStmt) -> None;
     def enter_else_if(nd: uni.ElseIf) -> None;
     def enter_else_stmt(nd: uni.ElseStmt) -> None;
