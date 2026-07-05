@@ -1257,7 +1257,10 @@ impl Parser.parse_ref -> Expr {
         target = self.parse_await_expr();
         kids.append(target);
         return UnaryExpr(
-            operand=target, op=op, is_borrow=True, is_mut_borrow=is_mut, kid=kids
+            operand=target,
+            op=op,
+            ownership=OwnershipKind.MUT_BORROW if is_mut else OwnershipKind.BORROW,
+            kid=kids
         );
     }
     return self.parse_await_expr();
@@ -4994,44 +4997,39 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
     return NonLocalStmt(target=targets, kid=kid);
 }
 
-impl Parser.parse_ownership_prefix(kids: list) -> tuple[bool, bool, bool, bool, bool] {
-    is_own = False;
-    is_borrow = False;
-    is_mut_borrow = False;
-    is_val = False;
-    is_linear = False;
+impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
     if self.check(TokenKind.NAME)
     and self.current().value == "own"
     and not self.check_peek(TokenKind.EQ)
     and not self.check_peek(TokenKind.SEMI) {
         own_tok = self.advance();
         kids.append(self.make_uni_token(own_tok));
-        is_own = True;
+        return OwnershipKind.OWN;
     } elif self.check(TokenKind.NAME)
     and self.current().value == "val"
     and not self.check_peek(TokenKind.EQ)
     and not self.check_peek(TokenKind.SEMI) {
         val_tok = self.advance();
         kids.append(self.make_uni_token(val_tok));
-        is_val = True;
+        return OwnershipKind.VAL;
     } elif self.check(TokenKind.NAME)
     and self.current().value == "linear"
     and not self.check_peek(TokenKind.EQ)
     and not self.check_peek(TokenKind.SEMI) {
         linear_tok = self.advance();
         kids.append(self.make_uni_token(linear_tok));
-        is_linear = True;
+        return OwnershipKind.LINEAR;
     } elif self.check(TokenKind.BW_AND) {
         amp_tok = self.advance();
         kids.append(self.make_uni_token(amp_tok));
-        is_borrow = True;
         if self.check(TokenKind.NAME) and self.current().value == "mut" {
             mut_tok = self.advance();
             kids.append(self.make_uni_token(mut_tok));
-            is_mut_borrow = True;
+            return OwnershipKind.MUT_BORROW;
         }
+        return OwnershipKind.BORROW;
     }
-    return (is_own, is_borrow, is_mut_borrow, is_val, is_linear);
+    return OwnershipKind.NONE;
 }
 
 impl Parser.parse_assignment_with_target(
@@ -5042,20 +5040,10 @@ impl Parser.parse_assignment_with_target(
         colon_uni = self.make_uni_token(self.previous());
 
         own_kid: list = [colon_uni];
-        (is_own, is_borrow, is_mut_borrow, is_val, is_linear) = self.parse_ownership_prefix(
-            own_kid
-        );
+        own_kind = self.parse_ownership_prefix(own_kid);
         tp = self.parse_pipe();
         own_kid.append(tp);
-        type_tag = SubTag(
-            tag=tp,
-            is_own=is_own,
-            is_borrow=is_borrow,
-            is_mut_borrow=is_mut_borrow,
-            is_val=is_val,
-            is_linear=is_linear,
-            kid=own_kid
-        );
+        type_tag = SubTag(tag=tp, ownership=own_kind, kid=own_kid);
     }
     value = None;
     aug_op = None;
@@ -5098,14 +5086,6 @@ impl Parser.parse_assignment_with_target(
             else self.parse_expression();
     }
 
-    if type_tag is not None
-    and type_tag.is_borrow
-    and isinstance(value, UnaryExpr)
-    and value.op.name == TokenKind.BW_AND
-    and not value.is_borrow {
-        value.is_borrow = True;
-        value.is_mut_borrow = type_tag.is_mut_borrow;
-    }
     kid: list = [];
     eq_idx = 0;
     for (ti, tgt) in enumerate(targets) {
@@ -6232,20 +6212,10 @@ impl Parser.parse_param_var -> ParamVar | None {
     if self.match_tok(TokenKind.COLON) {
         param_colon_uni = self.make_uni_token(self.previous());
         param_type_kid: list = [param_colon_uni];
-        (is_own, is_borrow, is_mut_borrow, is_val, is_linear) = self.parse_ownership_prefix(
-            param_type_kid
-        );
+        param_kind = self.parse_ownership_prefix(param_type_kid);
         tp = self.parse_pipe();
         param_type_kid.append(tp);
-        type_tag = SubTag(
-            tag=tp,
-            is_own=is_own,
-            is_borrow=is_borrow,
-            is_mut_borrow=is_mut_borrow,
-            is_val=is_val,
-            is_linear=is_linear,
-            kid=param_type_kid
-        );
+        type_tag = SubTag(tag=tp, ownership=param_kind, kid=param_type_kid);
     }
     default_val: Expr | None = None;
     param_eq_uni: UniToken | None = None;

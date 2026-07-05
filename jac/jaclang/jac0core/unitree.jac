@@ -14,6 +14,7 @@ import from jaclang.jac0core.constant {
     DELIM_MAP,
     CodeContext,
     EdgeDir,
+    OwnershipKind,
     SymbolAccess,
     SymbolStorage,
     SymbolType
@@ -87,7 +88,8 @@ obj Symbol {
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
         semstr: str by postinit,
-        is_proven_unique: bool = False;
+        is_proven_unique: bool = False,
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def init(
         defn: NameAtom,
@@ -316,11 +318,7 @@ obj SubTag[T](UniNode) {
     def accept_enter(v: UniPass) -> None;
 
     has tag: T,
-        is_own: bool = False,
-        is_borrow: bool = False,
-        is_mut_borrow: bool = False,
-        is_val: bool = False,
-        is_linear: bool = False;
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def postinit -> None;
 }
@@ -1002,8 +1000,7 @@ obj UnaryExpr(Expr) {
 
     has operand: Expr,
         op: Token,
-        is_borrow: bool = False,
-        is_mut_borrow: bool = False;
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def postinit -> None;
 }

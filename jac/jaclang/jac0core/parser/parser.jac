@@ -172,7 +172,7 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComment }
 
-import from jaclang.jac0core.constant { Tokens as Tok, EdgeDir, CodeContext }
+import from jaclang.jac0core.constant { Tokens as Tok, EdgeDir, CodeContext, OwnershipKind }
 
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.INT: Tok.INT.value,
@@ -544,7 +544,7 @@ obj Parser {
         target: Expr, require_semi: bool = True
     ) -> Assignment;
 
-    def parse_ownership_prefix(kids: list) -> tuple[bool, bool, bool, bool, bool];
+    def parse_ownership_prefix(kids: list) -> OwnershipKind;
     def parse_import_stmt -> Import;
     def parse_from_path -> tuple;
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;

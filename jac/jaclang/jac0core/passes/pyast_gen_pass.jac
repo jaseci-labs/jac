@@ -4,7 +4,7 @@ import textwrap;
 import from collections.abc { Sequence }
 import from typing { ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { CodeContext, EdgeDir }
+import from jaclang.jac0core.constant { CodeContext, EdgeDir, is_borrow_kind }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.codeinfo { BoundaryTypeInfo, InteropBinding }

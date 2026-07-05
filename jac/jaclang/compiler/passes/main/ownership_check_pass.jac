@@ -2,7 +2,13 @@ import from collections.abc { Callable, Sequence }
 import from enum { Enum }
 import from typing { TypeAlias }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant {
+    Tokens as Tok,
+    OwnershipKind,
+    SymbolStorage,
+    is_borrow_kind,
+    is_mut_kind
+}
 import from jaclang.jac0core.passes.transform { Transform }
 
 glob SymId: TypeAlias = int,
@@ -29,12 +35,9 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
-        owned_syms: set[SymId] = set(),
         owned_decl: dict[SymId, uni.Name] = {},
         consumed_syms: set[SymId] = set(),
         proven_unique_syms: set[SymId] = set(),
-        borrow_syms: set[SymId] = set(),
-        param_borrow_syms: set[SymId] = set(),
         borrow_meta: dict[SymId, BorrowMeta] = {},
         e1304_borrow_ids: set[SymId] = set(),
         in_consumed: dict[int, set[SymId]] = {},
@@ -49,16 +52,13 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         idx_returns: list[uni.ReturnStmt] = [],
         idx_concurrent: list[uni.ConcurrentExpr] = [],
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
-        val_syms: set[SymId] = set(),
-        linear_syms: set[SymId] = set();
+        val_decl: dict[SymId, uni.Name] = {},
+        linear_decl: dict[SymId, uni.Name] = {};
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _build_index(tree: uni.UniNode) -> None;
-    def _collect_owned -> None;
-    def _collect_borrows -> None;
-    def _collect_params -> None;
-    def _collect_markers -> None;
+    def _stamp_ownership -> None;
     def _has_region_blocks -> bool;
     def _emit_region_escape_diagnostics -> None;
     def _emit_sendability_diagnostics -> None;

@@ -7,12 +7,9 @@ impl OwnershipCheckPass.postinit -> None {
 }
 
 impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
-    self.owned_syms = set();
     self.owned_decl = {};
     self.consumed_syms = set();
     self.proven_unique_syms = set();
-    self.borrow_syms = set();
-    self.param_borrow_syms = set();
     self.borrow_meta = {};
     self.e1304_borrow_ids = set();
     self.in_consumed = {};
@@ -27,18 +24,15 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self.idx_returns = [];
     self.idx_concurrent = [];
     self.name_uses_by_sym = {};
-    self.val_syms = set();
-    self.linear_syms = set();
+    self.val_decl = {};
+    self.linear_decl = {};
 
     self._build_index(ir_in);
-    self._collect_owned();
-    self._collect_borrows();
-    self._collect_params();
-    self._collect_markers();
-    if not self.owned_syms
-    and not self.borrow_syms
-    and not self.val_syms
-    and not self.linear_syms
+    self._stamp_ownership();
+    if not self.owned_decl
+    and not self.borrow_meta
+    and not self.val_decl
+    and not self.linear_decl
     and not self._has_region_blocks() {
         return ir_in;
     }
@@ -64,7 +58,7 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
 }
 
 impl OwnershipCheckPass._is_own_decl(nd: uni.Assignment) -> (uni.Name | None) {
-    if not (nd.type_tag and nd.type_tag.is_own) {
+    if not (nd.type_tag and nd.type_tag.ownership == OwnershipKind.OWN) {
         return None;
     }
     if len(nd.target) != 1 {
@@ -78,7 +72,7 @@ impl OwnershipCheckPass._is_own_decl(nd: uni.Assignment) -> (uni.Name | None) {
 }
 
 impl OwnershipCheckPass._is_borrow_decl(nd: uni.Assignment) -> (uni.Name | None) {
-    if not (nd.type_tag and nd.type_tag.is_borrow) {
+    if not (nd.type_tag and is_borrow_kind(nd.type_tag.ownership)) {
         return None;
     }
     if len(nd.target) != 1 {
@@ -110,7 +104,7 @@ impl OwnershipCheckPass._borrow_source_owner(nd: uni.Assignment) -> (uni.Name | 
     if not isinstance(nd.value, uni.UnaryExpr) {
         return None;
     }
-    is_borrow_val = nd.value.is_borrow;
+    is_borrow_val = is_borrow_kind(nd.value.ownership);
 
     if not is_borrow_val and len(nd.target) == 1 {
         tgt = nd.target[0];
@@ -147,41 +141,100 @@ impl OwnershipCheckPass._build_index(tree: uni.UniNode) -> None {
     }
 }
 
-impl OwnershipCheckPass._collect_owned -> None {
+impl OwnershipCheckPass._stamp_ownership -> None {
     for nd in self.idx_assignments {
-        target = self._is_own_decl(nd);
-        if target is not None {
-            sid = self._name_sym_id(target);
-            self.owned_syms.add(sid);
-            self.owned_decl[sid] = target;
+        for tgt in nd.target {
+            if isinstance(tgt, uni.Name) and tgt.sym {
+                tgt.sym.ownership = OwnershipKind.NONE;
+            }
         }
     }
-}
+    for param in self.idx_params {
+        name = param.name;
+        if isinstance(name, uni.Name) and name.sym {
+            name.sym.ownership = OwnershipKind.NONE;
+        }
+    }
 
-impl OwnershipCheckPass._collect_borrows -> None {
     for nd in self.idx_assignments {
-        target = self._is_borrow_decl(nd);
-        if target is not None {
-            borrow_id = self._name_sym_id(target);
-            self.borrow_syms.add(borrow_id);
-            self.borrow_meta[borrow_id] = BorrowMeta(
-                name=target.sym_name,
-                is_mut=nd.type_tag.is_mut_borrow if nd.type_tag else False
+        own_target = self._is_own_decl(nd);
+        if own_target is not None {
+            sid = self._name_sym_id(own_target);
+            own_target.sym.ownership = OwnershipKind.OWN;
+            self.owned_decl[sid] = own_target;
+        }
+        borrow_target = self._is_borrow_decl(nd);
+        if borrow_target is not None {
+            sid = self._name_sym_id(borrow_target);
+            is_mut = nd.type_tag.ownership == OwnershipKind.MUT_BORROW
+                if nd.type_tag
+                else False;
+            borrow_target.sym.ownership = OwnershipKind.MUT_BORROW
+                if is_mut
+                else OwnershipKind.BORROW;
+            self.borrow_meta[sid] = BorrowMeta(
+                name=borrow_target.sym_name, is_mut=is_mut
             );
-            self.borrow_created_at[borrow_id] = nd;
+            self.borrow_created_at[sid] = nd;
+        }
+        tag = nd.type_tag;
+        if tag is not None and len(nd.target) == 1 {
+            target = nd.target[0];
+            if isinstance(target, uni.Name) and target.sym {
+                sid = self._name_sym_id(target);
+                if tag.ownership == OwnershipKind.VAL {
+                    target.sym.ownership = OwnershipKind.VAL;
+                    self.val_decl[sid] = target;
+                }
+                if tag.ownership == OwnershipKind.LINEAR {
+                    target.sym.ownership = OwnershipKind.LINEAR;
+                    self.linear_decl[sid] = target;
+                    self.owned_decl[sid] = target;
+                }
+            }
         }
     }
+
+    for param in self.idx_params {
+        tag = param.type_tag;
+        if tag is None {
+            continue;
+        }
+        name = param.name;
+        if not (isinstance(name, uni.Name) and name.sym) {
+            continue;
+        }
+        sid = self._name_sym_id(name);
+        if is_borrow_kind(tag.ownership) {
+            is_mut = tag.ownership == OwnershipKind.MUT_BORROW;
+            name.sym.ownership = OwnershipKind.MUT_BORROW
+                if is_mut
+                else OwnershipKind.BORROW;
+            self.borrow_meta[sid] = BorrowMeta(name=name.sym_name, is_mut=is_mut);
+            self.borrow_created_at[sid] = param;
+        } elif tag.ownership == OwnershipKind.OWN {
+            name.sym.ownership = OwnershipKind.OWN;
+            self.owned_decl[sid] = name;
+        } elif tag.ownership == OwnershipKind.VAL {
+            name.sym.ownership = OwnershipKind.VAL;
+            self.val_decl[sid] = name;
+        } elif tag.ownership == OwnershipKind.LINEAR {
+            name.sym.ownership = OwnershipKind.LINEAR;
+            self.linear_decl[sid] = name;
+            self.owned_decl[sid] = name;
+        }
+    }
+
     for nd in self.idx_assignments {
         target = self._borrow_target(nd);
         owner = self._borrow_source_owner(nd);
         if target is not None and owner is not None {
             borrow_id = self._name_sym_id(target);
             owner_id = self._name_sym_id(owner);
-            self.borrow_syms.add(borrow_id);
             self.borrow_meta[borrow_id] = BorrowMeta(
                 name=target.sym_name,
                 owner=owner_id,
-                is_mut=nd.value.is_mut_borrow
+                is_mut=is_mut_kind(nd.value.ownership)
                     if isinstance(nd.value, uni.UnaryExpr)
                     else False
             );
@@ -190,81 +243,18 @@ impl OwnershipCheckPass._collect_borrows -> None {
     }
 }
 
-impl OwnershipCheckPass._collect_params -> None {
-    for param in self.idx_params {
-        tag = param.type_tag;
-        if tag is None {
-            continue;
-        }
-        name = param.name;
-        if not (isinstance(name, uni.Name) and name.sym) {
-            continue;
-        }
-        sid = self._name_sym_id(name);
-        if tag.is_borrow or tag.is_mut_borrow {
-            self.borrow_syms.add(sid);
-            self.param_borrow_syms.add(sid);
-            self.borrow_meta[sid] = BorrowMeta(
-                name=name.sym_name, is_mut=tag.is_mut_borrow
-            );
-            self.borrow_created_at[sid] = param;
-        } elif tag.is_own {
-            self.owned_syms.add(sid);
-            self.owned_decl[sid] = name;
-        }
-    }
-}
-
-impl OwnershipCheckPass._collect_markers -> None {
-    for nd in self.idx_assignments {
-        tag = nd.type_tag;
-        if tag is None or len(nd.target) != 1 {
-            continue;
-        }
-        target = nd.target[0];
-        if not (isinstance(target, uni.Name) and target.sym) {
-            continue;
-        }
-        sid = self._name_sym_id(target);
-        if tag.is_val {
-            self.val_syms.add(sid);
-        }
-        if tag.is_linear {
-            self.linear_syms.add(sid);
-            self.owned_syms.add(sid);
-            self.owned_decl[sid] = target;
-        }
-    }
-    for param in self.idx_params {
-        tag = param.type_tag;
-        if tag is None {
-            continue;
-        }
-        name = param.name;
-        if not (isinstance(name, uni.Name) and name.sym) {
-            continue;
-        }
-        sid = self._name_sym_id(name);
-        if tag.is_val {
-            self.val_syms.add(sid);
-        }
-        if tag.is_linear {
-            self.linear_syms.add(sid);
-            self.owned_syms.add(sid);
-            self.owned_decl[sid] = name;
-        }
-    }
-}
-
 impl OwnershipCheckPass._return_roots_at_param_borrow(nd: uni.Expr | None) -> bool {
     cur = nd;
-    if isinstance(cur, uni.UnaryExpr) and (cur.is_borrow or cur.is_mut_borrow) {
+    if isinstance(cur, uni.UnaryExpr) and is_borrow_kind(cur.ownership) {
         cur = cur.operand;
     }
     while isinstance(cur, uni.AtomTrailer) {
         cur = cur.target;
     }
-    if isinstance(cur, uni.Name) and self._sym_id(cur) in self.param_borrow_syms {
+    if isinstance(cur, uni.Name)
+    and cur.sym is not None
+    and cur.sym.storage == SymbolStorage.PARAM
+    and is_borrow_kind(cur.sym.ownership) {
         return True;
     }
     return False;
@@ -297,7 +287,7 @@ impl OwnershipCheckPass._compute_proven_unique -> None {
             borrowed_owners.add(meta.owner);
         }
     }
-    for owner_id in self.owned_syms {
+    for owner_id in self.owned_decl {
         if owner_id in self.consumed_syms and owner_id not in borrowed_owners {
             self.proven_unique_syms.add(owner_id);
         }
@@ -640,7 +630,7 @@ impl OwnershipCheckPass._name_sym_id(nd: uni.Name) -> SymId {
 
 impl OwnershipCheckPass._owned_sym_of(nd: uni.UniNode | None) -> (SymId | None) {
     sid = self._sym_id(nd);
-    if sid is not None and sid in self.owned_syms {
+    if sid is not None and sid in self.owned_decl {
         return sid;
     }
     return None;
@@ -648,7 +638,7 @@ impl OwnershipCheckPass._owned_sym_of(nd: uni.UniNode | None) -> (SymId | None) 
 
 impl OwnershipCheckPass._borrow_sym_of(nd: uni.UniNode | None) -> (SymId | None) {
     sid = self._sym_id(nd);
-    if sid is not None and sid in self.borrow_syms {
+    if sid is not None and sid in self.borrow_meta {
         return sid;
     }
     return None;
@@ -883,7 +873,9 @@ impl OwnershipCheckPass._emit_borrow_diagnostics -> None {
                 }
                 if nd.value
                 and isinstance(nd.value, uni.UnaryExpr)
-                and (nd.value.is_mut_borrow or self._borrow_is_mut_of(other)) {
+                and (
+                    is_mut_kind(nd.value.ownership) or self._borrow_is_mut_of(other)
+                ) {
                     other_site = self.borrow_created_at.get(other);
                     other_name = self._borrow_display_name(other, "");
                     e1302_related = [
@@ -965,7 +957,8 @@ impl OwnershipCheckPass._escaping_borrow_owner(nd: uni.Expr | None) -> (str | No
     if isinstance(nd, uni.UnaryExpr) and nd.op.name == Tok.BW_AND {
         operand = nd.operand;
         if isinstance(operand, uni.Name) and operand.sym {
-            if nd.is_borrow or self._sym_id(operand) in self.owned_syms {
+            if is_borrow_kind(nd.ownership)
+            or self._sym_id(operand) in self.owned_decl {
                 return operand.sym_name;
             }
         }

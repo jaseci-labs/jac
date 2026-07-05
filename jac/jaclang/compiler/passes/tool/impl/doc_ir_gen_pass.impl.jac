@@ -1173,7 +1173,7 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
 }
 
 impl DocIRGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    if nd.is_mut_borrow {
+    if is_mut_kind(nd.ownership) {
         nd.gen.doc_ir = self.group(
             self.concat(
                 [
