@@ -4075,13 +4075,16 @@ test "root_cause_9_any_in_union" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc9_errors);
 }
 
-"""Issue #7158: `Any` must absorb inside a union.
+"""Issue #7158: `Any` must absorb inside a union for attribute access.
 
 `typing.Any` used as an annotation resolves to the `Any` class (not the
-internal `AnyType`), so union handling must recognize that form as a wildcard:
-attribute access on `T | ... | Any` validates only the non-`Any` members, and
-a union containing `Any` is assignable wherever its non-`Any` members are.
-The dedicated fixture is entirely well-typed and must produce zero errors.
+internal `AnyType`), so attribute-access handling must recognize that form as a
+wildcard: access on `T | ... | Any` validates only the non-`Any` members and
+yields `result | Any` instead of reporting the attribute missing from `Any`.
+Assignability is intentionally left strict -- explicit `Any` in a union is held
+to the same rule as bare explicit `Any -> Concrete` -- so the fixture exercises
+the attribute-access path plus a no-`Any` concrete-union assignment; it is
+entirely well-typed and must produce zero errors.
 """
 test "any_in_union_is_wildcard" {
     program = JacProgram();

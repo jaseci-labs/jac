@@ -2879,9 +2879,6 @@ impl TypeEvaluator.assign_type(
     if isinstance(src_type, types.UnionType)
     and not isinstance(dest_type, types.UnionType) {
         for src_member in src_type.types {
-            if self.is_explicit_any(src_member) {
-                continue;
-            }
             src_member_inst = self._convert_to_instance(src_member);
             if not self.assign_type(src_member_inst, dest_type, strict) {
                 return False;
@@ -2893,9 +2890,6 @@ impl TypeEvaluator.assign_type(
     if isinstance(dest_type, types.UnionType) {
         if isinstance(src_type, types.UnionType) {
             for src_type_arg in src_type.types {
-                if self.is_explicit_any(src_type_arg) {
-                    continue;
-                }
                 matched = False;
                 src_type_inst = self._convert_to_instance(src_type_arg);
                 for dest_type_arg in dest_type.types {
