@@ -1,6 +1,8 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
-import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+import from jaclang.compiler.passes.main.layout_pass {
+    get_layout_registry, get_shared_layout_registry
+}
 import from jaclang.compiler.passes.main.ownership_facts_pass { get_ownership_facts }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
@@ -41,7 +43,8 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         extern_types: list[str] = [],
         extern_funcs: list[str] = [],
         extern_func_defs: dict[str, uni.Ability] = {},
-        seen_imports: list[str] = [];
+        seen_imports: list[str] = [],
+        shared_layout: object = None;
 
     def transform(ir_in: uni.Module) -> uni.Module {
         try {
@@ -87,37 +90,17 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
 
     def classify_imports(mod: uni.Module) {
         import from jaclang.jac0core.program { JacProgram }
-        for stmt in mod.body {
-            if not isinstance(stmt, uni.Import) {
+        for path in direct_import_paths(mod) {
+            if path in self.seen_imports {
                 continue;
             }
-            for mp in stmt.kid {
-                if not isinstance(mp, uni.ModulePath) {
-                    continue;
-                }
-                path = self.import_path(mp);
-                if path is None or not path.endswith(".jac") {
-                    continue;
-                }
-                if path in self.seen_imports {
-                    continue;
-                }
-                self.seen_imports.append(path);
-                try {
-                    sub = JacProgram().compile(file_path=path);
-                } except Exception {
-                    continue;
-                }
-                self.index_imported(sub);
+            self.seen_imports.append(path);
+            try {
+                sub = JacProgram().compile(file_path=path);
+            } except Exception {
+                continue;
             }
-        }
-    }
-
-    def import_path(mp: uni.ModulePath) -> (str | None) {
-        try {
-            return mp.resolve_relative_path();
-        } except Exception {
-            return None;
+            self.index_imported(sub);
         }
     }
 
@@ -278,10 +261,14 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     }
 
     def load_layout(mod: uni.Module) {
-        try {
-            self.layout = get_layout_registry(mod, self.prog);
-        } except Exception {
-            self.layout = None;
+        if self.shared_layout is not None {
+            self.layout = self.shared_layout;
+        } else {
+            try {
+                self.layout = get_layout_registry(mod, self.prog);
+            } except Exception {
+                self.layout = None;
+            }
         }
         if self.layout is None {
             return;
@@ -1330,4 +1317,74 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         }
         return self.gen_expr(nd);
     }
+}
+
+def import_path(mp: uni.ModulePath) -> (str | None) {
+    try {
+        return mp.resolve_relative_path();
+    } except Exception {
+        return None;
+    }
+}
+
+def direct_import_paths(mod: uni.Module) -> list[str] {
+    out: list[str] = [];
+    for stmt in mod.body {
+        if not isinstance(stmt, uni.Import) {
+            continue;
+        }
+        for mp in stmt.kid {
+            if not isinstance(mp, uni.ModulePath) {
+                continue;
+            }
+            path = import_path(mp);
+            if path is None or not path.endswith(".jac") {
+                continue;
+            }
+            if path not in out {
+                out.append(path);
+            }
+        }
+    }
+    return out;
+}
+
+def discover_import_graph(
+    main_path: str, main_mod: uni.Module, prog: any
+) -> list[tuple[str, uni.Module]] {
+    import from jaclang.jac0core.program { JacProgram }
+    seen: dict[str, uni.Module] = {main_path: main_mod};
+    order: list[str] = [main_path];
+    queue: list[uni.Module] = [main_mod];
+    while queue {
+        cur = queue.pop(0);
+        for path in direct_import_paths(cur) {
+            if path in seen {
+                continue;
+            }
+            try {
+                sub = JacProgram().compile(file_path=path);
+            } except Exception {
+                continue;
+            }
+            seen[path] = sub;
+            order.append(path);
+            queue.append(sub);
+        }
+    }
+    return [(p, seen[p]) for p in order];
+}
+
+def emit_translation_units(
+    main_path: str, main_mod: uni.Module, prog: any
+) -> list[tuple[str, str]] {
+    graph = discover_import_graph(main_path, main_mod, prog);
+    mods = [m for (_, m) in graph];
+    reg = get_shared_layout_registry(mods, prog);
+    out: list[tuple[str, str]] = [];
+    for (path, m) in graph {
+        CGenPass(ir_in=m, prog=prog, shared_layout=reg);
+        out.append((path, m.gen.c_src or ""));
+    }
+    return out;
 }
