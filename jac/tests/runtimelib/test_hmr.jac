@@ -251,11 +251,11 @@ test "process change settles to ok unless an error was recorded" {
         # A change whose rebuild records no error ends healthy,
         # even when the build was previously broken.
         reloader.record_error("app.jac", "old failure");
-        reloader._dispatch_change = lambda p : None ;
+        reloader._dispatch_change = lambda p , d : None ;
         reloader._process_change("app.jac");
         assert reloader.build_status() == {"status": "ok", "error": None};
         # A change whose rebuild records an error stays broken.
-        reloader._dispatch_change = lambda p : reloader.record_error(p, "boom");
+        reloader._dispatch_change = lambda p , d : reloader.record_error(p, "boom");
         reloader._process_change("app.jac");
         status = reloader.build_status();
         assert status["status"] == "error";
@@ -319,5 +319,72 @@ test "multiple file changes handled" {
         assert len(changed_files) >= 2 , f"Expected 2+ changes, got {len(
             changed_files
         )}";
+    }
+}
+
+# --- TestWatcherMovesAndResilience ---
+test "rename emits delete and create events" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        old_file = temp_dir / "a.jac";
+        old_file.write_text("glob x = 1;");
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda e : events.append(e));
+        watcher.start();
+        time.sleep(0.3);
+        import os;
+        os.rename(str(old_file), str(temp_dir / "b.jac"));
+        time.sleep(0.6);
+        watcher.stop();
+        kinds = {(Path(e.path).name, e.change_type) for e in events};
+        assert ("a.jac", ChangeType.DELETED) in kinds , f"rename must emit DELETED for the old name, got {kinds}";
+        assert ("b.jac", ChangeType.CREATED) in kinds , f"rename must emit CREATED for the new name, got {kinds}";
+    }
+}
+
+test "directory move emits directory-flagged events" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        src_dir = temp_dir / "pagesx";
+        src_dir.mkdir();
+        (src_dir / "index.jac").write_text("glob x = 1;");
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda e : events.append(e));
+        watcher.start();
+        time.sleep(0.3);
+        import os;
+        os.rename(str(src_dir), str(temp_dir / "pages"));
+        time.sleep(0.6);
+        watcher.stop();
+        dir_events = {
+            (Path(e.path).name, e.change_type)
+            for e in events
+            if e.is_directory
+        };
+        assert ("pagesx", ChangeType.DELETED) in dir_events , f"dir move must emit a directory DELETED, got {dir_events}";
+        assert ("pages", ChangeType.CREATED) in dir_events , f"dir move must emit a directory CREATED, got {dir_events}";
+    }
+}
+
+test "flush loop survives an exception and keeps delivering" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda e : events.append(e));
+        original_flush = watcher._debounce_flush;
+        def exploding_flush {
+            raise RuntimeError("boom");
+        }
+        watcher._debounce_flush = exploding_flush;
+        watcher.start();
+        time.sleep(0.3);  # flush loop hits the exploding flush several times
+        watcher._debounce_flush = original_flush;
+        watcher._on_change(str(temp_dir / "late.jac"), ChangeType.MODIFIED);
+        time.sleep(0.4);
+        watcher.stop();
+        assert len(events) >= 1 , "flush loop must survive an exception and keep delivering events";
     }
 }

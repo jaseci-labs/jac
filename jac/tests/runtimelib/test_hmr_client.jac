@@ -1024,3 +1024,74 @@ test "deleted client module drops its stale compiled output" {
         assert reloader.build_status()["status"] == "ok";
     }
 }
+
+test "moving pages out deactivates routing and cleans artifacts" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        (pages_dir / "index.jac").write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(pages_dir / "index.jac"));
+        reloader._refresh_routing(str(pages_dir / "index.jac"));
+        entry_file = compiled_dir / "_entry.js";
+        routes_file = compiled_dir / "_routes.js";
+        assert "BrowserRouter" in entry_file.read_text();
+        # pages/ moved out of the project: the watcher forwards a directory
+        # event, which must deactivate routing and drop orphaned artifacts
+        import shutil as sh;
+        outside = Path(tmpdir) / "outside-pages";
+        sh.move(str(pages_dir), str(outside));
+        reloader._dispatch_change(str(pages_dir), is_directory=True);
+        assert "BrowserRouter" not in entry_file.read_text() , "entry must downgrade when pages/ disappears";
+        assert not routes_file.exists() , "orphaned _routes.js must be removed";
+        assert not (compiled_dir / "pages").exists() , "orphaned compiled pages must be removed";
+        # pages/ moved back in: routing must reactivate with a fresh compile
+        sh.move(str(outside), str(pages_dir));
+        reloader._dispatch_change(str(pages_dir), is_directory=True);
+        assert "BrowserRouter" in entry_file.read_text() , "entry must upgrade when pages/ returns";
+        assert "PagesIndex" in routes_file.read_text();
+        assert (compiled_dir / "pages" / "index.js").exists() , "returning pages must be recompiled";
+    }
+}
+
+test "renaming a page moves its route" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        old_page = pages_dir / "index.jac";
+        old_page.write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(old_page));
+        reloader._refresh_routing(str(old_page));
+        routes_file = compiled_dir / "_routes.js";
+        assert "PagesIndex" in routes_file.read_text();
+        # Rename: the watcher synthesizes DELETED(old) + CREATED(new); replay
+        # the same sequence against the reloader's handling
+        import os;
+        new_page = pages_dir / "home.jac";
+        os.rename(str(old_page), str(new_page));
+        reloader._remove_compiled_output(str(old_page));
+        reloader._refresh_routing(str(old_page));
+        reloader._recompile_client_code(str(new_page));
+        reloader._refresh_routing(str(new_page));
+        routes = routes_file.read_text();
+        assert "PagesHome" in routes , "renamed page must be routed under its new name";
+        assert "PagesIndex" not in routes , "old route must disappear after rename";
+        assert (compiled_dir / "pages" / "home.js").exists();
+        assert not (compiled_dir / "pages" / "index.js").exists() , "stale compiled JS of the old name must be gone";
+    }
+}
