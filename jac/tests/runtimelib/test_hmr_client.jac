@@ -381,12 +381,10 @@ test "recovery from syntax error" {
                 client.reload();
             }
 
-            # --- error-overlay check ---
+            # The app entry is never used as an error billboard
             entry_file = temp_project / ".jac" / "client" / "compiled" / "_entry.js";
             if entry_file.exists() {
-                entry_content = entry_file.read_text();
-                assert "errorOverlay" in entry_content , "_entry.js should contain errorOverlay call after a failed reload";
-                assert client._hot_reloader and client._hot_reloader._overlay_entry , "_overlay_entry should be True while an error overlay is active";
+                assert "errorOverlay" not in entry_file.read_text() , "_entry.js must not be overwritten with an error overlay";
             }
 
             # Fix the syntax error with new value
@@ -405,15 +403,6 @@ test "recovery from syntax error" {
             resp2 = client.post("/walker/get_value", json={});
             assert resp2.ok;
             assert resp2.data.get("reports", [{}])[0].get("value") == 3 , "Code not updated after recovery from syntax error";
-
-            # --- error-overlay cleared check ---
-            if entry_file.exists() {
-                restored_content = entry_file.read_text();
-                assert "errorOverlay" not in restored_content , "_entry.js should NOT contain errorOverlay after a successful reload";
-                assert "App" in restored_content or "app" in restored_content , "_entry.js should reference the app component after error is fixed";
-                assert client._hot_reloader
-                and not client._hot_reloader._overlay_entry , "_overlay_entry should be False after the error is resolved";
-            }
         } finally {
             client.close();
         }
@@ -491,8 +480,9 @@ test "jacjsx import added in real compilation" {
         # JSX code should compile to use __jacJsx
         assert "__jacJsx" in content , "Compiled JS should contain __jacJsx for JSX elements";
         assert "import {__jacJsx" in content or "import{__jacJsx" in content , "__jacJsx is used but import statement is missing";
-        # --- error-overlay: introduce a client compile error ---
+        # --- build error: reported out-of-band, never via _entry.js ---
         entry_file = unique_dir / ".jac" / "client" / "compiled" / "_entry.js";
+        error_file = unique_dir / ".jac" / "client" / ".jac-build-error.json";
         bad_file = unique_dir / "app.jac";
         bad_file.write_text(
             "cl {\n"
@@ -502,11 +492,13 @@ test "jacjsx import added in real compilation" {
             "}\n"
         );
         reloader._recompile_client_code(str(bad_file));
-        # The reloader must write an _entry.js that shows the error overlay
-        overlay_content = entry_file.read_text();
-        assert "errorOverlay" in overlay_content , "_entry.js should contain errorOverlay call when client compilation fails";
-        assert reloader._overlay_entry , "_overlay_entry should be True while client error overlay is active";
-        # --- error-overlay: fix the error and recompile ---
+        assert not entry_file.exists() , "_entry.js must not be created just to display an error";
+        assert error_file.exists() , "build error must be mirrored to .jac-build-error.json for the Vite overlay";
+        import json;
+        error_data = json.loads(error_file.read_text());
+        assert error_data["message"] , "mirrored build error must carry a non-empty message";
+        assert reloader.build_status()["status"] == "error";
+        # --- fix the error: recovery clears the mirrored error ---
         bad_file.write_text(
             "cl {\n"
             "    def app() {\n"
@@ -515,11 +507,9 @@ test "jacjsx import added in real compilation" {
             "}\n"
         );
         reloader._recompile_client_code(str(bad_file));
-        # _entry.js should now point back to the real app (no errorOverlay)
-        restored_content = entry_file.read_text();
-        assert "errorOverlay" not in restored_content , "_entry.js should NOT contain errorOverlay after client compile is fixed";
-        assert "App" in restored_content or "app" in restored_content , "_entry.js should reference the app component once the error is resolved";
-        assert not reloader._overlay_entry , "_overlay_entry should be False after client error is resolved";
+        reloader.record_ok();  # _process_change settles to ok after a clean rebuild
+        assert not error_file.exists() , ".jac-build-error.json must be removed on recovery";
+        assert reloader.build_status()["status"] == "ok";
     }
 }
 
@@ -919,25 +909,58 @@ test "router entry survives an error then fix cycle" {
         reloader._recompile_client_code(str(index_file));
         reloader._refresh_routing(str(index_file));
         entry_file = compiled_dir / "_entry.js";
+        error_file = compiled_dir.parent / ".jac-build-error.json";
         assert "BrowserRouter" in entry_file.read_text();
-        # Break the page: the error overlay takes over the entry
+        # Break the page: the app entry is untouched; the error goes out-of-band
+        entry_mtime = entry_file.stat().st_mtime_ns;
         index_file.write_text(
             "cl {\n    def page() {\n        return <div UNCLOSED;\n    }\n}\n"
         );
         reloader._recompile_client_code(str(index_file));
-        assert "errorOverlay" in entry_file.read_text();
-        assert reloader._overlay_entry;
-        # The dispatch-level routing refresh that follows every change must
-        # not clobber the active overlay with the normal routing entry
         reloader._refresh_routing(str(index_file));
-        assert "errorOverlay" in entry_file.read_text() , "routing refresh must not overwrite an active error overlay";
-        # Fix the page: the ROUTER entry must come back, not the simple one
+        assert entry_file.stat().st_mtime_ns == entry_mtime , "a build error must not touch _entry.js";
+        assert "BrowserRouter" in entry_file.read_text() , "router entry must survive a build error";
+        assert error_file.exists() , "build error must be mirrored for the Vite overlay";
+        # Fix the page: router still intact, mirrored error cleared
         index_file.write_text(good_source);
         reloader._recompile_client_code(str(index_file));
-        restored = entry_file.read_text();
-        assert "errorOverlay" not in restored;
-        assert "BrowserRouter" in restored , "recovery must restore the router entry for a pages project";
-        assert not reloader._overlay_entry;
+        reloader.record_ok();  # _process_change settles to ok after a clean rebuild
+        assert "BrowserRouter" in entry_file.read_text();
+        assert not error_file.exists() , "mirrored error must be removed on recovery";
+    }
+}
+
+test "asset deletion removes the copy without touching the entry" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        reloader._refresh_routing(str(index_file));
+        entry_file = compiled_dir / "_entry.js";
+        entry_mtime = entry_file.stat().st_mtime_ns;
+        # Copy an asset in, then delete the source
+        css_file = unique_dir / "theme.css";
+        css_file.write_text("body {}");
+        reloader._copy_frontend_files(str(css_file));
+        copied = compiled_dir / "theme.css";
+        assert copied.exists();
+        css_file.unlink();
+        reloader._copy_frontend_files(str(css_file));
+        assert not copied.exists() , "deleted asset's copy must be removed";
+        # Deletion is not an error and must not touch the app
+        assert entry_file.stat().st_mtime_ns == entry_mtime , "asset deletion must not touch _entry.js";
+        assert reloader.build_status()["status"] == "ok" , "asset deletion must not be reported as a build error";
+        assert not (compiled_dir.parent / ".jac-build-error.json").exists();
     }
 }
 

@@ -1,3 +1,4 @@
+import json;
 import logging;
 import os;
 import sys;
@@ -51,6 +52,7 @@ impl HotReloader.record_ok -> None {
         self._build_error_file = "";
         self._build_error = "";
     }
+    self._sync_error_file();
 }
 
 impl HotReloader.record_error(file_path: str, message: str) -> None {
@@ -59,6 +61,34 @@ impl HotReloader.record_error(file_path: str, message: str) -> None {
         self._build_error_file = file_path;
         self._build_error = message;
     }
+    self._sync_error_file();
+}
+
+impl HotReloader._error_file_path -> Path {
+    if self.client_compiler {
+        try {
+            compiled = Path(str(self.client_compiler.jac_client_compiler.compiled_dir));
+            return compiled.parent / '.jac-build-error.json';
+        } except Exception { }
+    }
+    return Path(self.base_path) / '.jac' / 'client' / '.jac-build-error.json';
+}
+
+impl HotReloader._sync_error_file -> None {
+    try {
+        with HotReloader._build_lock {
+            is_error = self._build_status is BuildStatus.ERROR;
+            payload = {"file": self._build_error_file, "message": self._build_error};
+        }
+        error_file = self._error_file_path();
+        if is_error {
+            if error_file.parent.is_dir() {
+                error_file.write_text(json.dumps(payload), encoding='utf-8');
+            }
+        } elif error_file.exists() {
+            error_file.unlink();
+        }
+    } except OSError { }
 }
 
 impl get_build_status -> dict {
@@ -134,10 +164,6 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
     if not self.client_compiler {
         return;
     }
-
-    if self._overlay_entry {
-        return;
-    }
     base_dir = Path(self.base_path).resolve();
     pages_dir = base_dir / 'pages';
     changed = Path(file_path);
@@ -186,10 +212,6 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
             target=self.module_name, base_path=self.base_path, reload_module=True
         );
         console.print(f"[HMR] Reloaded: {file_path}");
-
-        if self._overlay_entry {
-            self._update_entry_point();
-        }
     } except SyntaxError as e {
         line_info = f":{e.lineno}" if e?.lineno and e.lineno else "";
         console.error(
@@ -199,12 +221,10 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
         self.record_error(file_path, f"Syntax error{line_info}: {e?.msg or str(e)}");
     } except ImportError as e {
         console.error(f"Import error in {file_path}: {e}");
-        self._emit_client_error_overlay(file_path, str(e));
         self.record_error(file_path, f"Import error: {e}");
     } except Exception as e {
         error_type = type(e).__name__;
         console.error(f"{error_type} in {file_path}: {e}");
-        self._emit_client_error_overlay(file_path, str(e));
         self.record_error(file_path, f"{error_type}: {e}");
     }
 }
@@ -231,9 +251,6 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         jcc.compile_dependencies_recursively(
             source_path, source_root=Path(self.base_path).resolve(), skip_existing=True
         );
-        if self._overlay_entry {
-            self._update_entry_point();
-        }
         console.success(
             f"Recompiled: {file_path} -> {self._get_js_filename(file_path)}"
         );
@@ -241,11 +258,9 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         base_prefix = str(Path(self.base_path).resolve()) + '/';
         errors = str(e).replace(base_prefix, '');
         console.error(f"Compile error in {file_path}:\n{errors}");
-        self._emit_client_error_overlay(file_path, errors);
         self.record_error(file_path, errors);
     } except Exception as e {
         console.error(f"Compile error in {file_path}: {e}");
-        self._emit_client_error_overlay(file_path, str(e));
         self.record_error(file_path, str(e));
     }
 }
@@ -304,17 +319,12 @@ impl HotReloader._recompile_client_code(
                     str(err).replace(base_prefix, '') for err in Jac.program.errors_had
                 );
                 console.error(f"Compile error in {file_path}:\n{errors}");
-                self._emit_client_error_overlay(file_path, errors);
                 self.record_error(file_path, errors);
             } else {
                 console.warning(f"Errors compiling dependency {file_path}, skipping");
             }
             Jac.program.errors_had.clear();
             return;
-        }
-
-        if force and self._overlay_entry {
-            self._update_entry_point();
         }
 
         js_code = mod.gen.js or '';
@@ -423,21 +433,6 @@ impl HotReloader._path_to_module(file_path: str) -> str {
     return ".".join(module_parts);
 }
 
-impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
-    import from jaclang.runtimelib.react_entry { build_web_error_overlay_entry_script }
-    output_base = Path(self.base_path) / self._client_output_dir;
-    output_dir = output_base;
-    output_dir.mkdir(parents=True, exist_ok=True);
-    js_filename = "_entry.js";
-    output_path = output_dir / js_filename;
-    entry_content = build_web_error_overlay_entry_script(file_path, errors);
-
-    output_path.write_text(entry_content, encoding='utf-8');
-
-    self._overlay_entry = True;
-    return;
-}
-
 impl HotReloader._copy_frontend_files(file_path: str) -> None {
     try {
         source_path = Path(file_path).resolve();
@@ -455,14 +450,9 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
                 output_path.unlink();
                 console.warning(f"Removed deleted frontend file: {rel_path}");
             }
-            self._emit_client_error_overlay(file_path, f"No module in {rel_path}");
-            self.record_error(file_path, f"No module in {rel_path}");
             return;
         }
         try {
-            if self._overlay_entry {
-                self._update_entry_point();
-            }
             output_path.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(source_path, output_path);
         } except (FileNotFoundError, OSError) { }
@@ -471,32 +461,4 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
         console.error(f"Copy error in {file_path}: {e}");
         self.record_error(file_path, f"Copy error: {e}");
     }
-}
-
-impl HotReloader._update_entry_point -> None {
-    if self.client_compiler {
-        try {
-            jcc = self.client_compiler.jac_client_compiler;
-            self.client_compiler._has_pages = jcc.rescan_pages();
-            self.client_compiler.create_entry_file(self._entry_module_path());
-            self._overlay_entry = False;
-        } except Exception as e {
-            console.error(f"Entry point regeneration failed: {e}");
-            self.record_error(str(self._entry_module_path()), str(e));
-        }
-        return;
-    }
-    import from jaclang.compiler.passes.ecmascript.backends.registry {
-        resolve_active_backend
-    }
-    backend = resolve_active_backend();
-    output_base = Path(self.base_path) / self._client_output_dir;
-    output_base.mkdir(parents=True, exist_ok=True);
-    output_path = output_base / "_entry.js";
-
-    entry_content = backend.build_entry_script(
-        self.module_name, install_global_handlers=False
-    );
-    output_path.write_text(entry_content, encoding='utf-8');
-    self._overlay_entry = False;
 }

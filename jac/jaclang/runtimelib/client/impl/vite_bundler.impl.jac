@@ -635,6 +635,56 @@ function jacPortReporter() {{
     }},
   }};
 }}
+
+// Vite plugin: surface Jac build errors via Vite's native error overlay.
+// The jac dev server mirrors build health to .jac-build-error.json; the file
+// existing means broken (show overlay), removed means recovered (reload).
+function jacBuildErrorOverlay() {{
+  const statusFile = path.resolve(buildDir, ".jac-build-error.json");
+  let lastRaw = null;
+  const read = () => {{
+    try {{ return fs.readFileSync(statusFile, "utf-8"); }} catch (e) {{ return ""; }}
+  }};
+  return {{
+    name: "jac-build-error-overlay",
+    configureServer(server) {{
+      const push = (raw) => {{
+        if (raw === lastRaw) return;
+        // No live clients: skip the broadcast (Vite would buffer it and replay
+        // stale state to the first client; the connection handler replays the
+        // CURRENT state instead).
+        if (server.ws.clients && server.ws.clients.size === 0) return;
+        lastRaw = raw;
+        if (!raw) {{
+          server.ws.send({{ type: "full-reload", path: "*" }});
+          return;
+        }}
+        let file = "", message = raw;
+        try {{
+          const data = JSON.parse(raw);
+          file = data.file || "";
+          message = data.message || "Jac build error";
+        }} catch (e) {{}}
+        server.ws.send({{
+          type: "error",
+          err: {{ message: message, stack: "", id: file, plugin: "jac" }},
+        }});
+      }};
+      try {{ server.watcher.add(statusFile); }} catch (e) {{}}
+      const onWrite = (f) => {{ if (path.resolve(f) === statusFile) push(read()); }};
+      server.watcher.on("add", onWrite);
+      server.watcher.on("change", onWrite);
+      server.watcher.on("unlink", (f) => {{
+        if (path.resolve(f) === statusFile) push("");
+      }});
+      // A browser opened (or reloaded) while broken gets the overlay immediately
+      server.ws.on("connection", () => {{
+        const raw = read();
+        if (raw) {{ lastRaw = null; push(raw); }}
+      }});
+    }},
+  }};
+}}
 {mobile_compiled_block}
 /**
  * Vite DEV configuration for HMR mode
@@ -647,7 +697,10 @@ export default defineConfig({{
   }},
   plugins: [
     jacErrorReporter(),
-    jacPortReporter(),{mobile_plug_in}{(newline + plugins_str + newline + '  ')
+    jacPortReporter(),
+    jacBuildErrorOverlay(),{mobile_plug_in}{(
+            newline + plugins_str + newline + '  '
+        )
             if plugins_str
             else ''}],
   root: buildDir,
