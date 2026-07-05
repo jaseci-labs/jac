@@ -93,9 +93,9 @@ jobs:
 
       # The na tests marshal against the real bridge .so files (metadata section
       # + symbols), so build them in release before compiling any probe.
-      - name: Build the owning + scalar + map bridge .so files
+      - name: Build the owning + scalar + map + list bridge .so files
         working-directory: bridges
-        run: cargo build -p jac-bridge-owning -p jac-bridge-scalar -p jac-bridge-map --release
+        run: cargo build -p jac-bridge-owning -p jac-bridge-scalar -p jac-bridge-map -p jac-bridge-list --release
 
       # Provides the `jac` binary (bundled LLVM shim) on PATH and places the shim
       # in-tree at jac/jaclang/compiler/passes/native/llvm/libjacllvm.so.
@@ -128,15 +128,29 @@ jobs:
         run: jac test bridges/jac-bridge-loader/tests/na/scalar_conformance.jac
 
       # M6.2 HashMap->dict marshaling (TAG_MAP_BIT): the CPython loader deep-copies
-      # a HashMap<String, V> return into a real dict[str, V]; the na backend cannot
-      # yet return a dict, so its synthesizer skips those methods cleanly (asserted
-      # by the codegen test) rather than emitting code that would ICE nacompile.
-      - name: Run the map dict loader + na-skip codegen unit tests
+      # a HashMap<String, V> return into a real dict[str, V]; the na backend now
+      # ALSO builds and returns a real dict[str, V] (its synthesizer emits a decode
+      # loop, asserted at the source level by the codegen test).
+      - name: Run the map dict loader + na codegen unit tests
         run: |
           jac test bridges/jac-bridge-loader/tests/test_map.jac
           jac test bridges/jac-bridge-loader/tests/test_na_codegen_map.jac
 
-      # Proves the na skip leaves a compilable module: the ctor-only source that
-      # remains after every map method is skipped actually nacompiles and runs.
-      - name: Run the na map-skip compile proof
-        run: jac test bridges/jac-bridge-loader/tests/na/map_na_skip.jac
+      # Proves na==CPython for the dict[str, V] return: nacompiles the synthesized
+      # source against the real .so, runs it, diffs the values (sorted key=value).
+      - name: Run the na map dict conformance vertical
+        run: jac test bridges/jac-bridge-loader/tests/na/map_conformance.jac
+
+      # M6 Vec tail (TAG_LIST_BIT): the CPython loader deep-copies a Vec<V> return
+      # into a real list[V]; the na backend now ALSO builds and returns a real
+      # list[V] (its synthesizer emits a decode loop, asserted at the source level
+      # by the codegen test).
+      - name: Run the list loader + na codegen unit tests
+        run: |
+          jac test bridges/jac-bridge-loader/tests/test_list.jac
+          jac test bridges/jac-bridge-loader/tests/test_na_codegen_list.jac
+
+      # Proves na==CPython for the list[V] return: nacompiles the synthesized
+      # source against the real .so, runs it, diffs the elements in order.
+      - name: Run the na list conformance vertical
+        run: jac test bridges/jac-bridge-loader/tests/na/list_conformance.jac

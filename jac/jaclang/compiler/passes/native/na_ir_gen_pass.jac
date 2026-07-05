@@ -262,6 +262,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_container_annotation(ann: (uni.UniNode | None)) -> (ir.Type | None);
+    def _resolve_container_str(s: str) -> (ir.Type | None);
+    def _elem_llvm_by_str(s: str) -> (ir.Type | None);
+    def _split_top_commas(s: str) -> list;
+    def _spec_for_val_llvm(elem: ir.Type) -> str;
     def _prim_ir_types -> dict;
     def _try_resolve_field_type(var: uni.UniNode) -> tuple;
     def _type_base_is_unknown(tb: any) -> bool;
@@ -281,6 +286,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         expr: (uni.UniNode | None), names: tuple, registry: dict
     ) -> (str | None);
 
+    def _spec_of_local(expr: (uni.UniNode | None), registry: dict) -> (str | None);
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;

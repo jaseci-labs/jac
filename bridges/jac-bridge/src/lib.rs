@@ -16,7 +16,7 @@ enum TypeKind { Opaque, Error }
 struct TypeDef { name: Ident, kind: TypeKind }
 
 #[derive(Clone, PartialEq, Eq)]
-enum Tag { Bool, Int, Uint, Str, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>) }
+enum Tag { Bool, Int, Uint, Str, Void, Ref(usize), Opt(Box<Tag>), Callback, Map(Box<Tag>), List(Box<Tag>) }
 
 impl Tag {
     fn as_u32(&self) -> u32 {
@@ -30,6 +30,7 @@ impl Tag {
             Tag::Opt(inner) => schema::TAG_OPT_BIT | inner.as_u32(),
             Tag::Callback => schema::TAG_FN,
             Tag::Map(value) => schema::TAG_MAP_BIT | value.as_u32(),
+            Tag::List(elem) => schema::TAG_LIST_BIT | elem.as_u32(),
         }
     }
 }
@@ -378,6 +379,20 @@ fn extract_hashmap(ty: &Type) -> Option<(&Type, &Type)> {
     if tys.len() == 2 { Some((tys[0], tys[1])) } else { None }
 }
 
+/// The single element type argument of a `Vec<T>` path, if `ty` is one.
+/// Matches both the bare `Vec<..>` and a fully-qualified `std::vec::Vec<..>`
+/// (last segment ident is what counts).
+fn extract_vec(ty: &Type) -> Option<&Type> {
+    let Type::Path(tp) = ty else { return None };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "Vec" { return None; }
+    let PathArguments::AngleBracketed(args) = &seg.arguments else { return None };
+    let tys: Vec<_> = args.args.iter()
+        .filter_map(|a| if let GenericArgument::Type(t) = a { Some(t) } else { None })
+        .collect();
+    if tys.len() == 1 { Some(tys[0]) } else { None }
+}
+
 /// The single type argument of an `Option<T>` path, if `ty` is one.
 fn option_inner(ty: &Type) -> Option<&Type> {
     let Type::Path(tp) = ty else { return None };
@@ -409,6 +424,18 @@ fn ret_tag(ty: &Type, types: &[TypeDef], self_i: usize) -> Result<Tag, Error> {
             _ => return Err(Error::new(val_ty.span(),
                 "unsupported HashMap value type: only bool, integer, and String \
                  values are bridgeable")),
+        }
+    }
+    // Vec<V> marshals as a real Jac list[V]. Checked before the generic Path arms
+    // so the `Vec` ident is not mistaken for an opaque type reference.
+    if let Some(elem_ty) = extract_vec(ty) {
+        let elem_tag = ret_tag(elem_ty, types, self_i)?;
+        match elem_tag {
+            Tag::Bool | Tag::Int | Tag::Uint | Tag::Str =>
+                return Ok(Tag::List(Box::new(elem_tag))),
+            _ => return Err(Error::new(elem_ty.span(),
+                "unsupported Vec element type: only bool, integer, and String \
+                 elements are bridgeable")),
         }
     }
     match ty {
@@ -1087,6 +1114,45 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
                     for (__k, __v) in val.iter() {
                         __out.extend_from_slice(&(__k.len() as u32).to_le_bytes());
                         __out.extend_from_slice(__k.as_bytes());
+                        #push_value
+                    }
+                    *out_buf = #rt::vec_to_jacbuf(__out);
+                },
+                quote! { *out_buf = #rt::JacBuf { ptr: ::std::ptr::null_mut(), len: 0, cap: 0 }; },
+            )
+        }
+        // Vec<V> → one owned JacBuf holding the whole vector serialized
+        // little-endian: [u32 count] then per element [value]. Same value encoding
+        // as a map value (see above), just without the per-entry key. The loader
+        // deep-copies the blob into a fresh Jac list[V], then frees the buf.
+        Tag::List(elem) => {
+            // Per-element value serialization, specialized on the element tag. `__v`
+            // is bound to `&V` (Vec iteration yields references).
+            let push_value = match elem.as_ref() {
+                // int/uint: a single u64 slot. `*__v as u64` sign-extends a signed
+                // value and zero-extends an unsigned one — the loader reads the slot
+                // back per the element tag, mirroring the scalar out_int discipline.
+                Tag::Int | Tag::Uint => quote! {
+                    __out.extend_from_slice(&(*__v as u64).to_le_bytes());
+                },
+                // str: [u32 len][utf-8 bytes].
+                Tag::Str => quote! {
+                    __out.extend_from_slice(&(__v.len() as u32).to_le_bytes());
+                    __out.extend_from_slice(__v.as_bytes());
+                },
+                // bool: a single byte.
+                Tag::Bool => quote! {
+                    __out.push(*__v as u8);
+                },
+                // ret_tag restricts list elements to bool/int/uint/str.
+                _ => unreachable!("Tag::List wraps only bool, int, uint, or str"),
+            };
+            (
+                quote! { out_buf: *mut #rt::JacBuf, },
+                quote! {
+                    let mut __out: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
+                    __out.extend_from_slice(&(val.len() as u32).to_le_bytes());
+                    for __v in val.iter() {
                         #push_value
                     }
                     *out_buf = #rt::vec_to_jacbuf(__out);

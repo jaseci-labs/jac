@@ -106,6 +106,10 @@ impl NaIRGenPass._spec_of(
     expr: (uni.UniNode | None), names: tuple, registry: dict
 ) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
+        _fb = self._spec_of_local(expr, registry);
+        if _fb is not None {
+            return _fb;
+        }
         return None;
     }
     tk = expr.type.mangle();
@@ -124,6 +128,32 @@ impl NaIRGenPass._spec_of(
     }
     for (spec, st) in registry.items() {
         if lowered == st.as_pointer() {
+            return spec;
+        }
+    }
+    return None;
+}
+
+impl NaIRGenPass._spec_of_local(
+    expr: (uni.UniNode | None), registry: dict
+) -> (str | None) {
+    if not isinstance(expr, uni.Name) {
+        return None;
+    }
+    var_name = expr.value;
+    slot = self.local_vars.get(var_name);
+    if slot is None {
+        slot = self.global_vars.get(var_name);
+    }
+    if slot is None {
+        return None;
+    }
+    slot_ty = slot.type?.pointee;
+    if not isinstance(slot_ty, ir.PointerType) {
+        return None;
+    }
+    for (spec, st) in registry.items() {
+        if slot_ty == st.as_pointer() {
             return spec;
         }
     }
@@ -532,6 +562,106 @@ impl NaIRGenPass._resolve_primitive_name(
     return None;
 }
 
+impl NaIRGenPass._spec_for_val_llvm(elem: ir.Type) -> str {
+    if isinstance(elem, ir.DoubleType) {
+        return "f64";
+    }
+    if isinstance(elem, ir.PointerType) {
+        return "ptr";
+    }
+    if self?.jacval_type and elem == self.jacval_type {
+        return "jacval";
+    }
+    return "i64";
+}
+
+
+impl NaIRGenPass._split_top_commas(s: str) -> list {
+    out = [];
+    depth = 0;
+    start = 0;
+    for i in range(len(s)) {
+        c = s[i];
+        if c == "[" {
+            depth += 1;
+        } elif c == "]" {
+            depth -= 1;
+        } elif c == "," and depth == 0 {
+            out.append(s[start:i]);
+            start = i + 1;
+        }
+    }
+    out.append(s[start:]);
+    return out;
+}
+
+
+impl NaIRGenPass._elem_llvm_by_str(s: str) -> (ir.Type | None) {
+    s = s.strip();
+    _c = self._resolve_container_str(s);
+    if _c is not None {
+        return _c;
+    }
+    _prims = self._prim_ir_types();
+    if s in _prims {
+        _t = _prims[s];
+        if isinstance(_t, ir.VoidType) {
+            return None;
+        }
+        return _t;
+    }
+    if s in self.struct_types {
+        return self.struct_types[s].as_pointer();
+    }
+    return None;
+}
+
+
+impl NaIRGenPass._resolve_container_str(s: str) -> (ir.Type | None) {
+    s = s.replace(" ", "");
+    if s.startswith("list[") and s.endswith("]") {
+        elem = self._elem_llvm_by_str(s[5:-1]);
+        if elem is None {
+            return None;
+        }
+        spec = self._spec_for_val_llvm(elem);
+        self._emit_list_helpers(spec, elem);
+        return self.list_types[spec].as_pointer();
+    }
+    if s.startswith("dict[") and s.endswith("]") {
+        parts = self._split_top_commas(s[5:-1]);
+        if len(parts) != 2 {
+            return None;
+        }
+        k = self._elem_llvm_by_str(parts[0]);
+        v = self._elem_llvm_by_str(parts[1]);
+        if k is None or v is None {
+            return None;
+        }
+        (k_spec, k_size) = self._dict_key_spec(k);
+        v_spec = self._spec_for_val_llvm(v);
+        self._emit_dict_helpers(k_spec, v_spec, k, v, k_size);
+        return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
+    }
+    return None;
+}
+
+
+impl NaIRGenPass._resolve_container_annotation(
+    ann: (uni.UniNode | None)
+) -> (ir.Type | None) {
+    if ann is None or not ann?.unparse {
+        return None;
+    }
+    try {
+        s = ann.unparse();
+    } except Exception {
+        return None;
+    }
+    return self._resolve_container_str(s);
+}
+
+
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
@@ -551,6 +681,10 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     }
     if isinstance(type_expr, uni.Expr) {
         if type_expr.type is None {
+            _cont = self._resolve_container_annotation(type_expr);
+            if _cont is not None {
+                return _cont;
+            }
             _prim = self._resolve_primitive_name(type_expr);
             if _prim is not None {
                 return _prim;

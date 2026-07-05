@@ -476,6 +476,24 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             return self._owned_jac_str_from_raw(src, dlen, name_prefix="jbuf");
         }
 
+        if func_name == "__jac_bytes_from_raw" {
+            params_l = nd.params or [];
+            if len(params_l) < 2 {
+                return self._make_global_bytes(b"");
+            }
+            ptr_v = self._codegen_expr(params_l[0]);
+            len_v = self._codegen_expr(params_l[1]);
+            if ptr_v is None or len_v is None {
+                return self._make_global_bytes(b"");
+            }
+            _i8p = ir.IntType(8).as_pointer();
+            _i64 = ir.IntType(64);
+            src_i = self._coerce_type(ptr_v, _i64);
+            src = self.builder.inttoptr(src_i, _i8p, name="jbb.src");
+            dlen = self._coerce_type(len_v, _i64);
+            return self._bytes_from_raw(src, dlen);
+        }
+
         if func_name == "isinstance" {
             return self._emit_isinstance(nd);
         }

@@ -1,11 +1,8 @@
 # Unit tests for the na Jac-source synthesizer on the map return tag
-# (TAG_MAP_BIT | value_tag), against the jac-bridge-map bridge. The na backend
-# cannot yet build or return a dict (no dict subscript-assign / dict-return ABI),
-# so every HashMap<String, V> method must be SKIPPED cleanly with a map-specific
-# reason rather than emitted (which would ICE the native compiler). The real dict
-# marshaling lives on the CPython loader (test_map.jac); na dict-return support is
-# the tracked follow-up. This asserts the synthesizer's structure without invoking
-# the native compiler.
+# (TAG_MAP_BIT | value_tag), against the jac-bridge-map bridge. The na backend now
+# builds and returns a real dict[str, V] (see na/map_conformance.jac for the runtime
+# na<->CPython equivalence proof); this asserts the SOURCE-level structure the
+# synthesizer emits, without invoking the native compiler.
 import from pathlib { Path }
 import from jaclang.compiler.rust_bridge._blob { parse }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
@@ -26,39 +23,38 @@ glob _SO = map_so(),
      ];
 
 
-test "every map-returning method is skipped, not emitted" {
+test "no map-returning method is skipped" {
     res = render_na_source(_META, _NAME);
     skipped = {s.item for s in res.skips};
     for name in _MAP_METHODS {
-        assert name in skipped , f"{name} should be skipped: {skipped}";
+        assert name not in skipped , f"{name} should NOT be skipped: {skipped}";
     }
 }
 
 
-test "the skip reason names the na dict-return gap" {
-    res = render_na_source(_META, _NAME);
-    reasons = {s.item: s.reason for s in res.skips};
-    for name in _MAP_METHODS {
-        assert "dict returns are not yet supported" in reasons[name];
-    }
-}
-
-
-test "the synthesized source has no map method bodies" {
+test "every map method emits a def with a dict return annotation" {
     src = render_na_source(_META, _NAME).source;
-    # None of the map methods emit a shim or a method def.
-    for stem in ["counts", "big", "labels", "flags", "checked"] {
-        assert f"def {stem}(" not in src;
-        assert f"jac_mapdemo_Store_{stem}(" not in src;
+    for stem in ["counts", "big", "labels", "flags", "none", "checked"] {
+        assert f"def {stem}(" in src , f"{stem} def missing";
+        assert f"jac_mapdemo_Store_{stem}(" in src , f"{stem} shim missing";
     }
-    # No map value ever names a dict return annotation.
-    assert "-> dict" not in src;
+    # int/uint values -> dict[str, int]; labels -> dict[str, str]; flags -> dict[str, bool].
+    assert "-> dict[str, int]" in src;
+    assert "-> dict[str, str]" in src;
+    assert "-> dict[str, bool]" in src;
 }
 
 
-test "the constructor still bridges despite the skipped methods" {
+test "the map decode reads count, key-length, key, then value per entry" {
+    src = render_na_source(_META, _NAME).source;
+    assert "__jac_bytes_from_raw(base, 4)" in src;
+    assert "key = __jac_str_from_raw(base + off, klen);" in src;
+    assert "result[key] = val;" in src;
+}
+
+
+test "the constructor bridges alongside the map methods" {
     res = render_na_source(_META, _NAME);
-    # Store's ctor takes a u32 and returns Self — supported, so it survives.
     assert "def init(n: int) {" in res.source;
-    assert res.bridged >= 1;
+    assert res.bridged >= 7 , f"expected >=7 bridged, got {res.bridged}";
 }

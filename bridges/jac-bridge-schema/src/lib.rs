@@ -44,6 +44,13 @@ pub const TAG_OPT_BIT: u32 = 0x4000_0000;
 /// little-endian) and the loader deep-copies it into a fresh dict.  Return-only.
 /// Additive to ABI v1 — old blobs never set it (append-only evolution rule, D2).
 pub const TAG_MAP_BIT: u32 = 0x2000_0000;
+/// OR'd with an element tag to mark a `Vec<V>` return marshaled as a real Jac
+/// `list[V]` (V ∈ {int, uint, str, bool}).  The shim serializes the whole vector
+/// into one owned `JacBuf` (`[u32 count]` then per element `[value]`, value =
+/// u64 LE for int/uint, `[u32 len][bytes]` for str, u8 for bool; all
+/// little-endian) and the loader deep-copies it into a fresh list.  Return-only.
+/// Additive to ABI v1 — old blobs never set it (append-only evolution rule, D2).
+pub const TAG_LIST_BIT: u32 = 0x1000_0000;
 
 // TypeKind values (u8, byte 4 of each TypeDesc)
 pub const KIND_OPAQUE: u8 = 0;

@@ -1,0 +1,5 @@
+error: unsupported return type: `f64`
+  --> tests/ui/unsupported_vec_element.rs:10:34
+   |
+10 |         pub fn bad(&self) -> Vec<f64> {
+   |                                  ^^^

@@ -631,6 +631,56 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
         }
     }
+    if value is None
+    and nd.type_tag
+    and nd.type_tag.tag
+    and isinstance(nd.value, (uni.DictVal, uni.ListVal)) {
+        _empty_lit = (
+            (isinstance(nd.value, uni.DictVal) and not nd.value.kv_pairs)
+            or (isinstance(nd.value, uni.ListVal) and not nd.value.values)
+        );
+        if _empty_lit {
+            _cont_t = self._resolve_container_annotation(nd.type_tag.tag);
+            if isinstance(_cont_t, ir.PointerType) {
+                for (_spec, _dt) in self.dict_types.items() {
+                    if _cont_t == _dt.as_pointer() {
+                        _h = self.dict_helpers.get(_spec);
+                        if _h is not None {
+                            value = self._rc_call_with_ctx(
+                                _h["new"],
+                                [],
+                                op="new",
+                                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                    if nd.loc
+                                    else 0}",
+                                name="dict.empty"
+                            );
+                        }
+                        break;
+                    }
+                }
+                if value is None {
+                    for (_spec, _lt) in self.list_types.items() {
+                        if _cont_t == _lt.as_pointer() {
+                            _h = self.list_helpers.get(_spec);
+                            if _h is not None {
+                                value = self._rc_call_with_ctx(
+                                    _h["new"],
+                                    [],
+                                    op="new",
+                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                        if nd.loc
+                                        else 0}",
+                                    name="list.empty"
+                                );
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
     if value is None {
         if nd.value is not None and len(self.errors_had) == _rhs_errs_before {
             self.emit(

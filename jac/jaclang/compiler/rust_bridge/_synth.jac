@@ -16,7 +16,10 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_is_opt,
     tag_is_ref,
     tag_ref_index,
-    tag_is_map
+    tag_is_map,
+    tag_is_list,
+    tag_map_value,
+    tag_list_value
 }
 import from jaclang.compiler.rust_bridge._finder { _libc_soname }
 
@@ -98,9 +101,6 @@ class _Synth {
     }
 
     def _shim_decl(self: _Synth, fd: FnDesc) -> str | None {
-        if tag_is_map(fd.ret) {
-            return None;
-        }
         params = [];
         if fd.kind == FN_METHOD and fd.self_type != TAG_VOID {
             params.append("handle: int");
@@ -120,7 +120,9 @@ class _Synth {
             }
         }
         ret = tag_base(fd.ret);
-        if ret == TAG_VOID {
+        if tag_is_map(fd.ret) or tag_is_list(fd.ret) {
+            params.append("out_buf: bytes");
+        } elif ret == TAG_VOID {
             pass;
         } elif ret == TAG_BOOL {
             params.append("out_bool: bytes");
@@ -163,6 +165,77 @@ class _Synth {
         return lines;
     }
 
+    def _na_read_value(self: _Synth, vtag: int, ind: str) -> list[str] {
+        lines = [];
+        base = tag_base(vtag);
+        if base == TAG_STR {
+            lines.append(
+                f'{ind}_vlen = struct.unpack("<I", __jac_bytes_from_raw(base + off, 4))[0];'
+            );
+            lines.append(f"{ind}off += 4;");
+            lines.append(f"{ind}val = __jac_str_from_raw(base + off, _vlen);");
+            lines.append(f"{ind}off += _vlen;");
+        } elif base == TAG_BOOL {
+            lines.append(
+                f'{ind}val = struct.unpack("<B", __jac_bytes_from_raw(base + off, 1))[0] != 0;'
+            );
+            lines.append(f"{ind}off += 1;");
+        } elif vtag == TAG_INT {
+            lines.append(
+                f'{ind}val = struct.unpack("<q", __jac_bytes_from_raw(base + off, 8))[0];'
+            );
+            lines.append(f"{ind}off += 8;");
+        } else {
+            lines.append(
+                f'{ind}val = struct.unpack("<Q", __jac_bytes_from_raw(base + off, 8))[0];'
+            );
+            lines.append(f"{ind}off += 8;");
+        }
+        return lines;
+    }
+
+    def _na_decode_container(self: _Synth, fd: FnDesc) -> list[str] {
+        self._bridged_str_method = True;
+        is_map = tag_is_map(fd.ret);
+        vtag = tag_map_value(fd.ret) if is_map else tag_list_value(fd.ret);
+        vt = self._na_val_type(vtag);
+        lines = [];
+        lines.append('        rb = struct.unpack("<QII", out_buf);');
+        if is_map {
+            lines.append(f"        result: dict[str, {vt}] = " + "{};");
+        } else {
+            lines.append(f"        result: list[{vt}] = [];");
+        }
+        lines.append("        if rb[0] != 0 {");
+        lines.append("            base = rb[0];");
+        lines.append(
+            '            count = struct.unpack("<I", __jac_bytes_from_raw(base, 4))[0];'
+        );
+        lines.append("            off = 4;");
+        lines.append("            ci = 0;");
+        lines.append("            while ci < count {");
+        if is_map {
+            lines.append(
+                '                klen = struct.unpack("<I", __jac_bytes_from_raw(base + off, 4))[0];'
+            );
+            lines.append("                off += 4;");
+            lines.append("                key = __jac_str_from_raw(base + off, klen);");
+            lines.append("                off += klen;");
+        }
+        lines.extend(self._na_read_value(vtag, "                "));
+        if is_map {
+            lines.append("                result[key] = val;");
+        } else {
+            lines.append("                result.append(val);");
+        }
+        lines.append("                ci += 1;");
+        lines.append("            }");
+        lines.append(f"            {self.free_buf}(rb[0], rb[1] | (rb[2] << 32));");
+        lines.append("        }");
+        lines.append("        return result;");
+        return lines;
+    }
+
     def _method_body(self: _Synth, fd: FnDesc) -> list[str] | None {
         body_lines = [];
         call = ["self.__handle"];
@@ -188,7 +261,10 @@ class _Synth {
             f'            raise RuntimeError("{fd.name} called after close()");'
         );
         body_lines.append("        }");
-        if tag_is_ref(fd.ret) {
+        if tag_is_map(fd.ret) or tag_is_list(fd.ret) {
+            body_lines.append('        out_buf = struct.pack("<QII", 0, 0, 0);');
+            call.append("out_buf");
+        } elif tag_is_ref(fd.ret) {
             if tag_ref_index(fd.ret) not in self.adoptable {
                 return None;
             }
@@ -217,7 +293,9 @@ class _Synth {
         body_lines.append('            err_h = struct.unpack("<Q", out_e)[0];');
         body_lines.extend(self._drain_and_raise(fd.name));
         body_lines.append("        }");
-        if tag_is_ref(fd.ret) {
+        if tag_is_map(fd.ret) or tag_is_list(fd.ret) {
+            body_lines.extend(self._na_decode_container(fd));
+        } elif tag_is_ref(fd.ret) {
             target = self.opaque[tag_ref_index(fd.ret)];
             body_lines.append('        rh = struct.unpack("<Q", out_h)[0];');
             if tag_is_opt(fd.ret) {
@@ -331,9 +409,7 @@ class _Synth {
                 shim_fds.append(fd);
             } elif fd.kind == FN_METHOD and fd.self_type in self.opaque {
                 if self._shim_decl(fd) is None or self._method_body(fd) is None {
-                    if tag_is_map(fd.ret) {
-                        reason = "returns a dict (HashMap); dict returns are not yet supported on the na backend";
-                    } elif tag_is_ref(fd.ret)
+                    if tag_is_ref(fd.ret)
                     and tag_ref_index(fd.ret) not in self.adoptable {
                         reason = "returns an opaque handle whose type has its own constructor (na adopt-ctor signature clash)";
                     } else {
@@ -510,7 +586,23 @@ class _Synth {
         return ", ".join([self._jac_param(p) for p in fd.params]);
     }
 
+    def _na_val_type(self: _Synth, vtag: int) -> str {
+        if tag_base(vtag) == TAG_STR {
+            return "str";
+        }
+        if tag_base(vtag) == TAG_BOOL {
+            return "bool";
+        }
+        return "int";
+    }
+
     def _ret_ann(self: _Synth, fd: FnDesc) -> str {
+        if tag_is_map(fd.ret) {
+            return f" -> dict[str, {self._na_val_type(tag_map_value(fd.ret))}]";
+        }
+        if tag_is_list(fd.ret) {
+            return f" -> list[{self._na_val_type(tag_list_value(fd.ret))}]";
+        }
         if tag_base(fd.ret) == TAG_BOOL {
             return " -> bool";
         }

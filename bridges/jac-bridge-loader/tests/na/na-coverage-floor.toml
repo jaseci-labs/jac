@@ -59,3 +59,21 @@ total = 2
 [libjac_bridge_regex_v2_so]
 bridged = 2
 total = 2
+
+# list: the Vec<V>->list[V] tail (M6). na now REALIZES every Vec return as a real
+# native list[V] -- ctor + counts/big/labels/flags/none/checked, 0 skips. The synth
+# emits a decode loop that reads `[u32 count]` then per-element `[value]` straight
+# off the owned JacBuf via __jac_bytes_from_raw / __jac_str_from_raw, no list ABI
+# helper. Proven by na/list_conformance.jac (na==CPython for int/uint/str/bool
+# elements, incl. empty list and the fallible Ok path).
+[libjac_bridge_list_so]
+bridged = 7
+total = 7
+
+# map: the HashMap<String,V>->dict[str,V] tail (M6.2). na now REALIZES every map
+# return as a real native dict[str, V] -- ctor + counts/big/labels/flags/none/
+# checked, 0 skips. Same decoder as list plus a `[u32 klen][key]` prefix per entry.
+# Proven by na/map_conformance.jac (na==CPython as a sorted key=value set).
+[libjac_bridge_map_so]
+bridged = 7
+total = 7

@@ -7,6 +7,7 @@ members = [
     "jac-bridge-owning",
     "jac-bridge-scalar",
     "jac-bridge-map",
+    "jac-bridge-list",
     "jac-bridge-inspect",
     "jac-bridge-binder",
 ]

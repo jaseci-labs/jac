@@ -1,0 +1,16 @@
+# Vec→list bridge demo (M6, Vec tail). Hand-written to exercise the list return
+# tag (TAG_LIST_BIT | elem_tag) end-to-end: Vec<V> returns marshaled as a real Jac
+# list[V] for V in {int, uint, str, bool}, including a Result-wrapped list, an
+# empty list, and a full-range u64 element. The workspace CI compiles + round-trips
+# it like any other bridge crate.
+[package]
+name = "jac-bridge-list"
+version = "0.1.0"
+edition = "2021"
+description = "Vec->list bridge demo — exercises the TAG_LIST_BIT return marshaling"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }

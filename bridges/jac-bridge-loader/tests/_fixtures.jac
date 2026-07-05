@@ -48,3 +48,8 @@ def scalar_so -> str {
 def map_so -> str {
     return _find_so("map");
 }
+
+
+def list_so -> str {
+    return _find_so("list");
+}

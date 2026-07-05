@@ -36,7 +36,9 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_is_ref,
     tag_ref_index,
     tag_is_map,
-    tag_map_value
+    tag_map_value,
+    tag_is_list,
+    tag_list_value
 }
 
 
@@ -197,7 +199,7 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
     }
 
     base_ret = tag_base(fd.ret);
-    if tag_is_map(fd.ret) {
+    if tag_is_map(fd.ret) or tag_is_list(fd.ret) {
         args.append(POINTER(_JacBuf));
     } elif base_ret == TAG_BOOL {
         args.append(POINTER(c_uint8));
@@ -239,6 +241,29 @@ def _make_trampoline(fn: object, rt: _Runtime) -> object {
 }
 
 
+def _read_value(raw: bytes, off: int, vtag: int) -> tuple {
+    if vtag == TAG_STR {
+        (vlen, ) = struct.unpack_from("<I", raw, off);
+        off += 4;
+        val = raw[off:off + vlen].decode("utf-8", errors="replace");
+        off += vlen;
+    } elif vtag == TAG_BOOL {
+        (b, ) = struct.unpack_from("<B", raw, off);
+        off += 1;
+        val = bool(b);
+    } else {
+        (u, ) = struct.unpack_from("<Q", raw, off);
+        off += 8;
+        if vtag == TAG_INT {
+            val = u - 0x10000000000000000 if u >= 0x8000000000000000 else u;
+        } else {
+            val = u;
+        }
+    }
+    return (val, off);
+}
+
+
 def _decode_map(raw: bytes, vtag: int) -> dict {
     out = {};
     (count, ) = struct.unpack_from("<I", raw, 0);
@@ -248,25 +273,20 @@ def _decode_map(raw: bytes, vtag: int) -> dict {
         off += 4;
         key = raw[off:off + klen].decode("utf-8", errors="replace");
         off += klen;
-        if vtag == TAG_STR {
-            (vlen, ) = struct.unpack_from("<I", raw, off);
-            off += 4;
-            val = raw[off:off + vlen].decode("utf-8", errors="replace");
-            off += vlen;
-        } elif vtag == TAG_BOOL {
-            (b, ) = struct.unpack_from("<B", raw, off);
-            off += 1;
-            val = bool(b);
-        } else {
-            (u, ) = struct.unpack_from("<Q", raw, off);
-            off += 8;
-            if vtag == TAG_INT {
-                val = u - 0x10000000000000000 if u >= 0x8000000000000000 else u;
-            } else {
-                val = u;
-            }
-        }
+        (val, off) = _read_value(raw, off, vtag);
         out[key] = val;
+    }
+    return out;
+}
+
+
+def _decode_list(raw: bytes, vtag: int) -> list {
+    out = [];
+    (count, ) = struct.unpack_from("<I", raw, 0);
+    off = 4;
+    for _ in range(count) {
+        (val, off) = _read_value(raw, off, vtag);
+        out.append(val);
     }
     return out;
 }
@@ -314,9 +334,10 @@ def _call(
 
     opt = tag_is_opt(fd.ret);
     is_map = tag_is_map(fd.ret);
+    is_list = tag_is_list(fd.ret);
     base_ret = tag_base(fd.ret);
 
-    if is_map {
+    if is_map or is_list {
         c_args.append(byref(out_buf));
     } elif base_ret == TAG_BOOL {
         c_args.append(byref(out_b));
@@ -343,6 +364,11 @@ def _call(
         raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
         rt.free_buf(out_buf);
         return _decode_map(raw, tag_map_value(fd.ret));
+    }
+    if is_list {
+        raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
+        rt.free_buf(out_buf);
+        return _decode_list(raw, tag_list_value(fd.ret));
     }
     if base_ret == TAG_VOID {
         return None;
