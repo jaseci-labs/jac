@@ -96,6 +96,16 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = std.builtin.OptimizeMode.ReleaseSafe,
             .lib = true,
+            // Always take the fork's cross path so nlua0 (its build-time Lua
+            // codegen tool) is built for the host with PUC Lua 5.1 instead of
+            // LuaJIT. nlua0 creates its state through zlua's Lua.init, i.e.
+            // lua_newstate with a malloc-backed allocator, and LuaJIT GC64
+            // only addresses 47-bit GC pointers: on 48-bit-VA hosts (GitHub's
+            // ubuntu-24.04-arm runners) malloc returns >=2^47 addresses that
+            // silently truncate and segfault in the first lpeg-heavy gen step.
+            // The runtime nvim library is unaffected (its C init uses
+            // luaL_newstate, LuaJIT's own sub-2^47 allocator) and keeps LuaJIT.
+            .host = @as([]const u8, "native"),
         }) orelse break :nvim_tree null;
         // The fork's build() returns early while ITS lazy deps (ziglua,
         // libuv, ...) are still being fetched -- upstream's lazyArtifact
