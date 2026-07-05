@@ -118,7 +118,12 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
+import from jaclang.jac0core.unitree {
+    TypedCtxBlock,
+    RegionStmt,
+    GlobalStmt,
+    NonLocalStmt
+}
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -525,6 +530,7 @@ obj Parser {
     def parse_elif_stmt -> ElseIf;
     def parse_else_stmt -> ElseStmt;
     def parse_while_stmt -> WhileStmt;
+    def parse_region_stmt -> RegionStmt;
     def parse_for_stmt;
     def parse_try_stmt -> TryStmt;
     def parse_except_handler -> Except;

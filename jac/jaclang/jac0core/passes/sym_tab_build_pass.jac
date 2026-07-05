@@ -46,6 +46,8 @@ class SymTabBuildPass(UniPass) {
     def exit_enum(self: SymTabBuildPass, nd: uni.Enum) -> None;
     def enter_typed_ctx_block(self: SymTabBuildPass, nd: uni.TypedCtxBlock) -> None;
     def exit_typed_ctx_block(self: SymTabBuildPass, nd: uni.TypedCtxBlock) -> None;
+    def enter_region_stmt(self: SymTabBuildPass, nd: uni.RegionStmt) -> None;
+    def exit_region_stmt(self: SymTabBuildPass, nd: uni.RegionStmt) -> None;
     def enter_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None;
     def exit_if_stmt(self: SymTabBuildPass, nd: uni.IfStmt) -> None;
     def enter_else_if(self: SymTabBuildPass, nd: uni.ElseIf) -> None;

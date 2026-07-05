@@ -59,7 +59,12 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
+import from jaclang.jac0core.unitree {
+    TypedCtxBlock,
+    RegionStmt,
+    GlobalStmt,
+    NonLocalStmt
+}
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -3937,6 +3942,11 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_WHILE) {
         return self.parse_while_stmt();
     }
+    if self.check(TokenKind.NAME)
+    and self.current().value == "region"
+    and self.check_peek(TokenKind.LBRACE) {
+        return self.parse_region_stmt();
+    }
 
     if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR) {
         return self.parse_for_stmt();
@@ -4196,6 +4206,17 @@ impl Parser.parse_while_stmt -> WhileStmt {
         kid.append(else_body);
     }
     return WhileStmt(condition=condition, body=body, else_body=else_body, kid=kid);
+}
+
+impl Parser.parse_region_stmt -> RegionStmt {
+    region_uni = self.make_uni_token(self.advance());
+    lb_uni = self.consume_uni(TokenKind.LBRACE);
+    body = self.parse_code_block_stmts();
+    rb_uni = self.consume_uni(TokenKind.RBRACE);
+    kid: list = [region_uni, lb_uni];
+    kid.extend(body);
+    kid.append(rb_uni);
+    return RegionStmt(body=body, kid=kid);
 }
 
 impl Parser.parse_for_stmt{

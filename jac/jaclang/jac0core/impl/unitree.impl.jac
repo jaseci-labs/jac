@@ -1583,6 +1583,14 @@ impl TypedCtxBlock.postinit -> None {
 }
 
 
+impl RegionStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl IfStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);

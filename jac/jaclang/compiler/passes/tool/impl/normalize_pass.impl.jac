@@ -871,6 +871,19 @@ impl NormalizePass.enter_in_for_stmt(nd: uni.InForStmt) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
+impl NormalizePass.enter_region_stmt(nd: uni.RegionStmt) -> None {
+    new_kid: list[uni.UniNode] = [
+        nd.gen_token(Tok.NAME, "region"),
+        nd.gen_token(Tok.LBRACE),
+
+    ];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
+    nd.set_kids(nodes=new_kid);
+}
+
 impl NormalizePass.enter_while_stmt(nd: uni.WhileStmt) -> None {
     new_kid: list[uni.UniNode] = [
         nd.gen_token(Tok.KW_WHILE),

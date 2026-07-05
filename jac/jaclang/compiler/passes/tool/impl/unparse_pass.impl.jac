@@ -513,6 +513,11 @@ impl UnparsePass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     nd.gen.jac = " ".join(parts);
 }
 
+impl UnparsePass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    body = " ".join([s.gen.jac for s in nd.body]);
+    nd.gen.jac = "region { " + body + " }";
+}
+
 impl UnparsePass.exit_if_stmt(nd: uni.IfStmt) -> None {
     body = " ".join([s.gen.jac for s in nd.body]);
     result = "if " + nd.condition.gen.jac + " { " + body + " }";

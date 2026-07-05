@@ -30,6 +30,7 @@ obj NormalizePass(UniPass) {
     def enter_arch_has(nd: uni.ArchHas) -> None;
     def enter_has_var(nd: uni.HasVar) -> None;
     def enter_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def enter_region_stmt(nd: uni.RegionStmt) -> None;
     def enter_if_stmt(nd: uni.IfStmt) -> None;
     def enter_else_if(nd: uni.ElseIf) -> None;
     def enter_else_stmt(nd: uni.ElseStmt) -> None;
