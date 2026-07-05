@@ -353,6 +353,10 @@ impl LanguageServer.start_io -> None {
             msg_id = msg.get("id");
             params = msg.get("params", {});
 
+            if method is None {
+                continue;
+            }
+
             if method == INITIALIZE {
                 result = self._handle_initialize(params);
                 self._send_response(msg_id, result);
