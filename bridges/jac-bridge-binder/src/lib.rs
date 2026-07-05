@@ -12,6 +12,7 @@ pub use overlay::{apply_overlay, parse_overlay, Overlay};
 #[cfg(test)]
 mod tests {
     mod classify_regex;
+    mod codegen_containers;
     mod codegen_regex;
     mod coverage_regex;
     mod monomorphize_chrono;

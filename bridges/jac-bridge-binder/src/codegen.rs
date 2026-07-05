@@ -51,6 +51,13 @@ pub fn emit(spec: &BridgeSpec) -> String {
     writeln!(out, "#[allow(dead_code)]").unwrap();
     writeln!(out, "mod bridge_impl {{").unwrap();
 
+    // A HashMap<String, V> return re-declares the `HashMap` type in the wrapper
+    // signature, so bring it into scope (Vec is in the prelude).
+    if spec_has_map_return(spec) {
+        writeln!(out, "    use std::collections::HashMap;").unwrap();
+        writeln!(out).unwrap();
+    }
+
     // ── struct declarations ───────────────────────────────────────────────────
 
     let mut first = true;
@@ -140,6 +147,17 @@ pub fn emit(spec: &BridgeSpec) -> String {
 
 /// True for an opaque type with no bridgeable surface at all — nothing
 /// constructs it and no method touches it, so it must not be emitted.
+/// True if any bridged ctor or method returns a `HashMap<String, V>` (needs the
+/// `HashMap` type in scope inside the generated module).
+fn spec_has_map_return(spec: &BridgeSpec) -> bool {
+    spec.types.iter().any(|bt| {
+        bt.ctor
+            .iter()
+            .chain(bt.methods.iter())
+            .any(|f| matches!(f.ret, BridgeReturn::Map(_)))
+    })
+}
+
 fn is_dead_opaque(bt: &BridgeType) -> bool {
     bt.kind == TypeKind::Opaque
         && bt.ctor.is_none()
@@ -285,11 +303,12 @@ fn wrap_call(wrapper: &str, args_str: &str) -> String {
 }
 
 /// The Rust source type for a scalar param at the bridge boundary.
-fn scalar_ty(t: &ScalarType) -> &'static str {
+fn scalar_ty(t: &ScalarType) -> String {
     match t {
-        ScalarType::Str => "&str",
-        ScalarType::Bool => "bool",
-        ScalarType::Callback => "JacCallback",
+        ScalarType::Str => "&str".into(),
+        ScalarType::Bool => "bool".into(),
+        ScalarType::Callback => "JacCallback".into(),
+        ScalarType::Int(rust) | ScalarType::Uint(rust) => rust.clone(),
     }
 }
 
@@ -353,6 +372,20 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
                 format!("{}.{}({}).to_string()", recv, fname, args_str)
             };
             (" -> String".into(), call)
+        }
+        BridgeReturn::Int(rust)
+        | BridgeReturn::Uint(rust)
+        | BridgeReturn::Map(rust)
+        | BridgeReturn::List(rust) => {
+            // Integer / HashMap<String,V> / Vec<V> returns cross verbatim — the
+            // macro tags the width (TAG_INT/TAG_UINT) and marshals the container
+            // into a real Jac dict/list. The wrapper just forwards the value.
+            let call = if is_ctor {
+                format!("{}::{}({})", inner, fname, args_str)
+            } else {
+                format!("{}.{}({})", recv, fname, args_str)
+            };
+            (format!(" -> {rust}"), call)
         }
         BridgeReturn::OwnSelf => {
             let call = if is_ctor {

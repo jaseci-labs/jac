@@ -230,14 +230,27 @@ pub enum BridgeReturn {
     /// surface as the method's `Err`. The string is the crate's captures type
     /// (e.g. `regex::Captures`) — the closure argument the replacer walks.
     ReplacerResult(String),
+    /// A signed-integer return. The string is the concrete Rust type (`i32`,
+    /// `i64`, `isize`, …); the macro carries it in a u64 slot tagged `TAG_INT`,
+    /// so the Jac side reads a signed `int`.
+    Int(String),
+    /// An unsigned-integer return. The string is the concrete Rust type (`u32`,
+    /// `u64`, `usize`, …); carried in a u64 slot tagged `TAG_UINT`.
+    Uint(String),
+    /// A `HashMap<String, V>` return marshaled as a real Jac `dict[str, V]`. The
+    /// string is the full Rust type the wrapper re-declares (e.g.
+    /// `HashMap<String, i64>`); V is one of bool/int/str.
+    Map(String),
+    /// A `Vec<V>` return marshaled as a real Jac `list[V]`. The string is the full
+    /// Rust type (e.g. `Vec<String>`); V is one of bool/int/str.
+    List(String),
 }
 
 /// Scalar parameter types the v1 ABI can actually carry at the boundary.
 ///
 /// The macro's boundary tag set (`jac-bridge/src/lib.rs`) is `bool`, `str`,
-/// `String`, void, and opaque refs — there is no integer tag yet. Integer
-/// params are therefore recorded as skips in `classify`, not stored here; the
-/// enum lists only what codegen can emit, so there is no silently-dropped case.
+/// `String`, integers (`TAG_INT`/`TAG_UINT`), void, and opaque refs. The enum
+/// lists only what codegen can emit, so there is no silently-dropped case.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScalarType {
     Str,
@@ -245,6 +258,10 @@ pub enum ScalarType {
     /// A callback the Jac side supplies: crosses as `JacCallback` (a C-ABI fn
     /// pointer). Only appears on a `replace_all`-shaped method's `Replacer` param.
     Callback,
+    /// A signed-integer param; the string is the concrete Rust type (`i32`, …).
+    Int(String),
+    /// An unsigned-integer param; the string is the concrete Rust type (`u32`, …).
+    Uint(String),
 }
 
 /// A public item the classifier could not bridge, with a machine-readable reason.

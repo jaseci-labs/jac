@@ -39,8 +39,15 @@
 # becomes an OwnedPatterns drain (producer + next(), +2 bridged) and RegexSet stops
 # being a dead type. A `&[String]` is copied with `.to_vec()`; `Vec<String>` as-is;
 # `Vec<&str>`/`&[&str]` via `.iter().map(to_string)`.
+#
+# The INTEGER + HashMap/Vec verticals (M6 binder tail) then lifted regex 22 -> 31:
+# integer params/returns now cross (TAG_INT/TAG_UINT) so is_match_at + the Match/
+# Captures int readers (start/end/len) bridge, and the owning-wrapper `seen` guard
+# was fixed from a visited-ever set to an active-path stack so two sibling readers
+# (Captures::name AND Captures::get) both produce OwnedMatch instead of the first
+# starving the second. `total` unchanged (77): every gain flips a skip to bridged.
 [regex]
-bridged = 22
+bridged = 31
 total = 77
 
 [base64]
@@ -55,9 +62,16 @@ total = 7
 # dropped (like a lifetime cursor), removing its whole surface (bridged AND skipped),
 # which is why `total` falls too. With an overlay pinning concrete types (e.g.
 # `["chrono::Utc"]`) those methods return as valid `DateUtc(pub chrono::Date<chrono::Utc>)`.
+#
+# The INTEGER vertical (M6 binder tail) then lifted chrono 7 -> 30: NaiveDate/Time,
+# Duration, etc. expose many `-> i32`/`-> u32` accessors (year, month, num_seconds,
+# …) and integer-param ctors/methods that now cross in a u64 slot. `total` falls
+# 192 -> 174 (a warn, not a fail): several methods that were top-level integer-param
+# skips are now folded in as owning-wrapper readers (counted as bridged wrapper
+# methods, not as standalone surface items).
 [chrono]
-bridged = 7
-total = 192
+bridged = 30
+total = 174
 
 [uuid]
 bridged = 0

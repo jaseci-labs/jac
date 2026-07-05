@@ -491,13 +491,14 @@ impl<'a> Ctx<'a> {
         match ty {
             Type::Primitive(p) => match p.as_str() {
                 "bool" => Ok(ScalarType::Bool),
-                // Integer scalars are understood but not yet carryable across the
-                // v1 boundary (the macro has no integer tag). Skip with a precise
-                // reason instead of silently dropping the method in codegen — the
-                // coverage metric depends on every non-emitted item being a skip.
-                p @ ("u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32"
-                    | "i64" | "isize") => {
-                    Err(SkipReason::UnsupportedType(format!("{p} param")))
+                // Integer scalars cross in a single u64 slot; only the sign
+                // discipline (TAG_INT vs TAG_UINT) is preserved. The concrete Rust
+                // width is kept so the wrapper's re-declared param matches the crate.
+                p @ ("u8" | "u16" | "u32" | "u64" | "usize") => {
+                    Ok(ScalarType::Uint(p.to_string()))
+                }
+                p @ ("i8" | "i16" | "i32" | "i64" | "isize") => {
+                    Ok(ScalarType::Int(p.to_string()))
                 }
                 other => Err(SkipReason::UnsupportedType(other.to_string())),
             },
@@ -532,9 +533,24 @@ impl<'a> Ctx<'a> {
         match ty {
             Type::Primitive(p) => match p.as_str() {
                 "bool" => Ok(BridgeReturn::Bool),
+                p @ ("u8" | "u16" | "u32" | "u64" | "usize") => {
+                    Ok(BridgeReturn::Uint(p.to_string()))
+                }
+                p @ ("i8" | "i16" | "i32" | "i64" | "isize") => {
+                    Ok(BridgeReturn::Int(p.to_string()))
+                }
                 other => Err(SkipReason::UnsupportedType(other.to_string())),
             },
             Type::ResolvedPath(rp) => {
+                // HashMap<String, V> / Vec<V> marshal as real dict[str, V] / list[V]
+                // (V in bool/int/str). Checked before the generic-path arms so the
+                // container idents are not mistaken for opaque type references.
+                if rp_name(&rp.path) == "HashMap" {
+                    return classify_map_return(rp);
+                }
+                if rp_name(&rp.path) == "Vec" {
+                    return classify_vec_return(rp);
+                }
                 // A `-> Self` return reads as the type's own path. For a
                 // monomorphized type that path is still the ORIGINAL generic name
                 // (`Date`), not the mono name (`DateUtc`) — match on origin.
@@ -1207,6 +1223,13 @@ impl<'a> Ctx<'a> {
 
         readers.sort_by(|a, b| a.name.cmp(&b.name));
         skips.sort_by(|a, b| a.item.cmp(&b.item));
+        // Pop: `seen` is the ACTIVE expansion path (prevents A->B->A cycles), not a
+        // visited-ever set. Popping lets two sibling readers of the same parent
+        // both produce the same nested wrapper (e.g. `Captures::name` AND
+        // `Captures::get` each yield an `OwnedMatch`) — the duplicate pending
+        // wrappers merge by name later. Without the pop the second sibling is
+        // spuriously cycle-guarded out and its method silently vanishes.
+        seen.retain(|&id| id != borrowed_id);
         (readers, skips, nested_pendings)
     }
 
@@ -1221,11 +1244,19 @@ impl<'a> Ctx<'a> {
         };
         match ty {
             Type::Primitive(p) if p == "bool" => Ok(BridgeReturn::Bool),
-            Type::Primitive(p) => Err(SkipReason::UnsupportedType(p.clone())),
+            Type::Primitive(p) => match p.as_str() {
+                "u8" | "u16" | "u32" | "u64" | "usize" => Ok(BridgeReturn::Uint(p.clone())),
+                "i8" | "i16" | "i32" | "i64" | "isize" => Ok(BridgeReturn::Int(p.clone())),
+                other => Err(SkipReason::UnsupportedType(other.to_string())),
+            },
             Type::BorrowedRef { type_, .. } => match type_.as_ref() {
                 Type::Primitive(p) if p == "str" => Ok(BridgeReturn::Str),
                 _ => Err(SkipReason::LifetimeBorrow),
             },
+            // HashMap/Vec readers marshal as dict/list; other paths (Option<Borrowed>,
+            // …) stay an Err so the caller can try the nested-wrapper rescue.
+            Type::ResolvedPath(rp) if rp_name(&rp.path) == "HashMap" => classify_map_return(rp),
+            Type::ResolvedPath(rp) if rp_name(&rp.path) == "Vec" => classify_vec_return(rp),
             Type::ResolvedPath(rp) => Err(SkipReason::UnsupportedType(rp.path.clone())),
             _ => Err(SkipReason::UnsupportedType(format!("{ty:?}"))),
         }
@@ -1318,6 +1349,74 @@ fn vec_first_type_arg(rp: &rustdoc_types::Path) -> Option<&Type> {
         rustdoc_types::GenericArg::Type(t) => Some(t),
         _ => None,
     })
+}
+
+/// The last `::`-separated segment of a rustdoc path string (`std::collections::
+/// HashMap` → `HashMap`). rustdoc usually gives short names for std types, but
+/// this is robust to a fully-qualified path.
+fn rp_name(path: &str) -> &str {
+    path.rsplit("::").next().unwrap_or(path)
+}
+
+/// Render a `HashMap`/`Vec` value type into the Rust string the wrapper
+/// re-declares, iff the macro can carry it: bool, any integer width, or `String`.
+/// Returns `None` for anything else (opaque values, nested containers, …).
+fn scalar_value_rust(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Primitive(p) => match p.as_str() {
+            "bool" | "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32"
+            | "i64" | "isize" => Some(p.clone()),
+            _ => None,
+        },
+        Type::ResolvedPath(rp) if rp_name(&rp.path) == "String" => Some("String".into()),
+        _ => None,
+    }
+}
+
+/// `HashMap<String, V>` → `BridgeReturn::Map("HashMap<String, V>")` for a carryable
+/// V; a precise skip otherwise (so coverage still counts the item).
+fn classify_map_return(rp: &rustdoc_types::Path) -> Result<BridgeReturn, SkipReason> {
+    let args = angle_type_args(rp);
+    if args.len() != 2 {
+        return Err(SkipReason::UnsupportedType("HashMap arity".into()));
+    }
+    let key_ok = matches!(args[0], Type::ResolvedPath(k) if rp_name(&k.path) == "String");
+    if !key_ok {
+        return Err(SkipReason::UnsupportedType(
+            "HashMap key (only HashMap<String, V>)".into(),
+        ));
+    }
+    match scalar_value_rust(args[1]) {
+        Some(v) => Ok(BridgeReturn::Map(format!("HashMap<String, {v}>"))),
+        None => Err(SkipReason::UnsupportedType("HashMap value".into())),
+    }
+}
+
+/// `Vec<V>` → `BridgeReturn::List("Vec<V>")` for a carryable V; a precise skip
+/// otherwise.
+fn classify_vec_return(rp: &rustdoc_types::Path) -> Result<BridgeReturn, SkipReason> {
+    let Some(elem) = vec_first_type_arg(rp) else {
+        return Err(SkipReason::UnsupportedType("Vec arity".into()));
+    };
+    match scalar_value_rust(elem) {
+        Some(v) => Ok(BridgeReturn::List(format!("Vec<{v}>"))),
+        None => Err(SkipReason::UnsupportedType("Vec element".into())),
+    }
+}
+
+/// The angle-bracketed type args of a path (`HashMap<String, i64>` →
+/// `[String, i64]`), dropping any non-type args (lifetimes, consts).
+fn angle_type_args(rp: &rustdoc_types::Path) -> Vec<&Type> {
+    let Some(args) = &rp.args else { return vec![] };
+    let rustdoc_types::GenericArgs::AngleBracketed { args, .. } = args.as_ref() else {
+        return vec![];
+    };
+    args.iter()
+        .filter_map(|a| match a {
+            rustdoc_types::GenericArg::Type(t) => Some(t),
+            _ => None,
+        })
+        .collect()
 }
 
 /// `snake_case` → `CamelCase` for naming a drain wrapper after its producer

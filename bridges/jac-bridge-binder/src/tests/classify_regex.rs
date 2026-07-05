@@ -247,20 +247,25 @@ fn find_is_rescued_by_owning_wrapper() {
     assert_eq!(root.owner_inner_path, "regex::Regex");
     assert_eq!(root.producer_call, "find");
 
-    // Its readers are Match's int-free methods, delegating through self.inner.
+    // Its readers are Match's bridgeable methods, delegating through self.inner.
+    // The integer readers (start/end/len -> usize) now cross as TAG_UINT.
     let mut reader_names: Vec<&str> = owned.methods.iter().map(|m| m.name.as_str()).collect();
     reader_names.sort_unstable();
-    assert_eq!(reader_names, vec!["as_str", "is_empty"]);
+    assert_eq!(reader_names, vec!["as_str", "end", "is_empty", "len", "start"]);
     assert!(owned.methods.iter().all(|m| m.recv == Recv::Inner));
     let as_str = owned.methods.iter().find(|m| m.name == "as_str").unwrap();
     assert_eq!(as_str.ret, BridgeReturn::Str); // &'h str, copied to owned String
     let is_empty = owned.methods.iter().find(|m| m.name == "is_empty").unwrap();
     assert_eq!(is_empty.ret, BridgeReturn::Bool);
+    let start = owned.methods.iter().find(|m| m.name == "start").unwrap();
+    assert_eq!(start.ret, BridgeReturn::Uint("usize".into()));
 
-    // Match's integer-returning methods are honestly recorded as skips.
-    for m in ["Match::start", "Match::end", "Match::len", "Match::range"] {
-        assert!(spec.skips.iter().any(|s| s.item == m), "{m} should be a recorded skip");
-    }
+    // `range` returns `Range<usize>` — not a carryable scalar/container, so it
+    // stays an honestly-recorded skip.
+    assert!(
+        spec.skips.iter().any(|s| s.item == "Match::range"),
+        "Match::range should be a recorded skip"
+    );
 }
 
 #[test]

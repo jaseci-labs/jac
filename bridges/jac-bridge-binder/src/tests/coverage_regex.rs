@@ -4,10 +4,7 @@ use std::path::PathBuf;
 
 use rustdoc_types::Crate;
 
-use crate::{
-    classify, coverage, report,
-    types::SkipReason,
-};
+use crate::{classify, coverage, report};
 
 fn load_regex_doc() -> Crate {
     let candidates = [
@@ -26,19 +23,23 @@ fn load_regex_doc() -> Crate {
 }
 
 #[test]
-fn integer_param_method_is_a_recorded_skip() {
-    // is_match_at(&self, &str, usize) can't cross the v1 boundary. It must be a
-    // *reasoned skip*, not a silent drop — otherwise coverage over-reports.
+fn integer_param_method_now_bridges() {
+    // is_match_at(&self, &str, usize) -> bool now crosses the boundary: the usize
+    // param carries in a u64 slot (TAG_UINT). It must be BRIDGED, not skipped.
     let spec = classify(&load_regex_doc());
-    let skip = spec
-        .skips
+    assert!(
+        !spec.skips.iter().any(|s| s.item == "Regex::is_match_at"),
+        "is_match_at should no longer be a skip: {:?}",
+        spec.skips.iter().map(|s| &s.item).collect::<Vec<_>>()
+    );
+    let regex = spec
+        .types
         .iter()
-        .find(|s| s.item == "Regex::is_match_at")
-        .expect("is_match_at should be a recorded skip");
-    assert_eq!(
-        skip.reason,
-        SkipReason::UnsupportedType("usize param".into()),
-        "int-param skip should name the offending type precisely"
+        .find(|t| t.name == "Regex")
+        .expect("Regex type");
+    assert!(
+        regex.methods.iter().any(|m| m.exposed() == "is_match_at"),
+        "is_match_at should be emitted as a method"
     );
 }
 
@@ -70,10 +71,14 @@ fn report_names_crate_and_lists_skips() {
     assert!(r.starts_with("regex v1.12.4:"), "report line: {r}");
     assert!(r.contains("% of public API bridged"), "report line: {r}");
     assert!(r.contains("skipped:"), "report should list skips: {r}");
-    // A precise int-param reason must be visible to humans.
+    // A precise, human-readable reason must be visible for a still-skipped item.
+    // (Lifetime-borrow returns that no owning-wrapper rescues remain skipped.)
     assert!(
-        r.contains("Regex::is_match_at (unsupported type: usize param)"),
-        "report should carry the int-param skip reason: {r}"
+        r.contains("(lifetime")
+            || r.contains("(unsupported type:")
+            || r.contains("(cursor")
+            || r.contains("(generic"),
+        "report should carry at least one precise skip reason: {r}"
     );
 }
 

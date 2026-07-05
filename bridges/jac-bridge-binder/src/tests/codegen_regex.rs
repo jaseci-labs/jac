@@ -116,15 +116,21 @@ fn method_is_match_emitted_correctly() {
     );
 }
 
-// ── integer-param methods are silently dropped ─────────────────────────────────
+// ── integer-param methods now bridge ───────────────────────────────────────────
 
 #[test]
-fn integer_param_methods_not_emitted() {
+fn integer_param_methods_emitted() {
     let src = generated();
-    // is_match_at(&self, &str, usize) — usize param, must be absent from bridge source.
+    // is_match_at(&self, &str, usize) -> bool — the usize param crosses in a u64
+    // slot, so the method is now emitted verbatim (param type preserved).
     assert!(
-        !sig_contains(&src, "is_match_at"),
-        "integer-param method leaked into codegen output\n{}",
+        sig_contains(&src, "pub fn is_match_at(&self, haystack: &str, start: usize) -> bool"),
+        "integer-param method should now be emitted\n{}",
+        src
+    );
+    assert!(
+        sig_contains(&src, "self.0.is_match_at(haystack, start)"),
+        "is_match_at body should forward the usize param\n{}",
         src
     );
 }
