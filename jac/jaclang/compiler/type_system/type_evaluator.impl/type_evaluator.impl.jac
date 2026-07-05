@@ -594,6 +594,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return self._convert_to_instance(self.prefetch.bool_class);
             }
 
+        case uni.IndexSlice():
+            if expr.is_range {
+                if self.prefetch and self.prefetch.slice_class {
+                    return self._convert_to_instance(self.prefetch.slice_class);
+                }
+                return types.UnknownType();
+            }
+            if expr.slices and expr.slices[0].start is not None {
+                return self.get_type_of_expression(expr.slices[0].start);
+            }
+            return types.UnknownType();
+
         case uni.AtomTrailer():
             base_type = self.get_type_of_expression(expr.target);
 
@@ -972,14 +984,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 } elif isinstance(base_type, types.UnionType) and base_type.types {
                     member_types: list[TypeBase] = [];
-                    has_any_member = False;
                     decl_for_ide: uni.NameAtom | None = None;
                     for union_member in base_type.types {
-                        if isinstance(
-                            union_member, (types.AnyType, types.UnknownType)
-                        ) {
+                        if self.is_explicit_any(union_member)
+                        or isinstance(union_member, types.UnknownType) {
                             member_types.append(union_member);
-                            has_any_member = True;
                             continue;
                         }
                         if isinstance(union_member, types.ClassType)
@@ -1022,6 +1031,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     missing_types: list[str] = [];
                     for union_member in base_type.types {
+                        if self.is_explicit_any(union_member) {
+                            continue;
+                        }
                         if isinstance(union_member, types.ClassType)
                         and union_member.is_class_instance() {
                             if not self._lookup_object_member(
@@ -1944,8 +1956,23 @@ impl TypeEvaluator._get_type_of_expression_core(
 }
 
 impl TypeEvaluator._widen_literal_for_declaration(ty: TypeBase) -> TypeBase {
-    if isinstance(ty, types.ClassType) and ty.is_literal_type() {
-        return ty.clone_with_literal(None);
+    if isinstance(ty, types.ClassType) {
+        if ty.is_literal_type() {
+            return ty.clone_with_literal(None);
+        }
+        if ty.private.type_args {
+            widened_args = [
+                self._widen_literal_for_declaration(arg) for arg in ty.private.type_args
+            ];
+            changed = any(
+                new_arg is not old_arg
+                for (new_arg, old_arg) in zip(widened_args, ty.private.type_args)
+            );
+            if changed {
+                return ty.specialize_generics(widened_args);
+            }
+        }
+        return ty;
     }
     if isinstance(ty, types.UnionType) and ty.types is not None {
         widened = [self._widen_literal_for_declaration(member) for member in ty.types];
@@ -2563,6 +2590,26 @@ impl TypeEvaluator.get_type_of_magic_method_call(
         }
     }
     return None;
+}
+
+impl TypeEvaluator.slice_assignment_is_valid(
+    target: uni.Expr, value_node: uni.Expr
+) -> bool {
+    if not (
+        isinstance(target, uni.AtomTrailer)
+        and not target.is_attr
+        and isinstance(target.right, uni.IndexSlice)
+        and target.right.is_range
+    ) {
+        return False;
+    }
+    base_type = self.get_type_of_expression(target.target);
+    if isinstance(base_type, types.ClassType) and not base_type.is_class_instance() {
+        return False;
+    }
+    return self.get_type_of_magic_method_call(
+        base_type, "__setitem__", [target.right, value_node], None
+    ) is not None;
 }
 
 impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
@@ -3227,6 +3274,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.bytes_class = get_builtin_class("bytes");
     self.prefetch.dict_class = get_builtin_class("dict");
     self.prefetch.list_class = get_builtin_class("list");
+    self.prefetch.slice_class = get_builtin_class("slice");
     self.prefetch.set_class = get_builtin_class("set");
     self.prefetch.enum_class = get_enum_class("Enum");
     if self.prefetch.enum_class {

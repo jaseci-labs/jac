@@ -563,3 +563,8 @@ scripts/jac-gdb-helper.jac
 scripts/release.jac
 scripts/release_utils.jac
 scripts/validate_release.jac
+
+# Generated zig package fetches (jac ninja pins fetch into jac/zig-pkg/ at
+# build time; the tree-sitter-jac package ships its own examples/sample.jac).
+# Bare name so any zig-pkg path component is skipped by the check step.
+zig-pkg

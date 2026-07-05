@@ -153,6 +153,7 @@ pub fn main(init: std.process.Init) !void {
             var wasm_libc_dir: ?[]const u8 = null;
             var precompiled_cache: ?[]const u8 = null;
             var nvim_dir: ?[]const u8 = null;
+            var ninja_link: ?[]const u8 = null;
             var seal = false;
             var debug_src = false;
             var i: usize = 5;
@@ -176,13 +177,15 @@ pub fn main(init: std.process.Init) !void {
                     precompiled_cache = arg["--precompiled-cache=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--nvim=")) {
                     nvim_dir = arg["--nvim=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--ninja-link=")) {
+                    ninja_link = arg["--ninja-link=".len..];
                 } else if (std.mem.eql(u8, arg, "--seal")) {
                     seal = true;
                 } else if (std.mem.eql(u8, arg, "--debug-src")) {
                     debug_src = true;
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, seal, debug_src);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, ninja_link, seal, debug_src);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -939,6 +942,11 @@ fn mkPayload(
     // dispatch points VIMRUNTIME at <rt>/nvim/runtime and sources
     // <rt>/nvim/ninja/init.lua. Null when the build disables the editor.
     nvim_dir: ?[]const u8,
+    // Editable dev loop (the ninja analog of --link-source): path to the live
+    // jac/editor/ninja source tree, baked as nvim/ninja_linked_source so the
+    // launcher serves the config layer from source -- edit, relaunch, no
+    // rebuild. Null for release (bundled-only) builds.
+    ninja_link: ?[]const u8,
     // Seal the runtime (issue #7135): freeze the jac0core bootstrap layer and
     // emit _precompiled/MANIFEST.json so the payload boots from JIR (sources
     // ship for tracebacks but are never compiled at runtime). Strict: any
@@ -1115,6 +1123,13 @@ fn mkPayload(
         var nsrc = try Dir.cwd().openDir(io, nd, .{ .iterate = true });
         defer nsrc.close(io);
         try copyTree(io, gpa, a, nsrc, try std.fmt.allocPrint(a, "{s}/nvim", .{stage}), skipNone);
+        if (ninja_link) |nl| {
+            log("==> ninja linked-source mode: config layer served from {s}", .{nl});
+            try Dir.cwd().writeFile(io, .{
+                .sub_path = try std.fmt.allocPrint(a, "{s}/nvim/ninja_linked_source", .{stage}),
+                .data = nl,
+            });
+        }
     }
 
     log("==> packing tar | gzip", .{});

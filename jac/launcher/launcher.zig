@@ -195,11 +195,47 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
     const vimruntime = std.fmt.bufPrintZ(&b_vimruntime, "{s}/nvim/runtime", .{rt}) catch die("path too long");
     var b_ninja: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const ninja_dir = std.fmt.bufPrintZ(&b_ninja, "{s}/nvim/ninja", .{rt}) catch die("path too long");
-    // All four are load-bearing (runtime files, config layer, LSP spawn,
+    // Editable dev loop for the ninja config layer, mirroring the compiler's
+    // linked-source marker (site/jac_linked_source): a -Ddev / -Djaclang-dir
+    // build bakes nvim/ninja_linked_source into the payload, pointing at the
+    // source tree (<link-dir>/editor/ninja). When present and readable, serve
+    // init.lua + lua/ live from there -- edit, relaunch, no zig rebuild. The
+    // payload's own copy is still exported as JAC_NINJA_BASE so the
+    // build-staged pieces (mini.nvim, the jac queries from tree-sitter-jac)
+    // keep resolving. Falls back to the payload copy if the linked tree is
+    // gone (e.g. the dev binary was copied to another machine).
+    var b_dev: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const dev_dir: ?[:0]const u8 = blk: {
+        // JAC_NO_DEV_SOURCE=1 forces dev sourcing off, exactly like it does
+        // for the compiler's linked-source override.
+        if (env.get("JAC_NO_DEV_SOURCE")) |v| {
+            if (std.mem.eql(u8, v, "1")) break :blk null;
+        }
+        var b_marker: [std.Io.Dir.max_path_bytes]u8 = undefined;
+        const marker_path = std.fmt.bufPrint(&b_marker, "{s}/nvim/ninja_linked_source", .{rt}) catch break :blk null;
+        var f = std.Io.Dir.cwd().openFile(io, marker_path, .{}) catch break :blk null;
+        defer f.close(io);
+        var raw: [std.Io.Dir.max_path_bytes]u8 = undefined;
+        const n = f.readPositionalAll(io, &raw, 0) catch break :blk null;
+        const trimmed = std.mem.trim(u8, raw[0..n], " \r\n\t");
+        if (trimmed.len == 0) break :blk null;
+        // Only link a tree that actually exists. Best-effort by nature:
+        // nvim re-resolves the PATH when sourcing init.lua, so a tree
+        // vanishing between this check and the source (rename, unmount) can
+        // still surface as nvim's own file-not-found -- holding the dir fd
+        // open here would not close that window. Dev binaries only.
+        var d = std.Io.Dir.cwd().openDir(io, trimmed, .{}) catch break :blk null;
+        d.close(io);
+        break :blk std.fmt.bufPrintZ(&b_dev, "{s}", .{trimmed}) catch break :blk null;
+    };
+    const active_ninja: [:0]const u8 = dev_dir orelse ninja_dir;
+
+    // All of these are load-bearing (runtime files, config layer, LSP spawn,
     // state isolation) -- a setenv failure (OOM) must not limp into an
     // editor with silently missing pieces.
     if (setenv("VIMRUNTIME", vimruntime.ptr, 1) != 0 or
-        setenv("JAC_NINJA_DIR", ninja_dir.ptr, 1) != 0 or
+        setenv("JAC_NINJA_DIR", active_ninja.ptr, 1) != 0 or
+        setenv("JAC_NINJA_BASE", ninja_dir.ptr, 1) != 0 or
         setenv("JAC_BIN", exe_z, 1) != 0 or
         // Isolate shada/swap/undo/log under ~/.local/{share,state}/jac-ninja
         // and keep the user's own nvim config dirs out of play entirely.
@@ -227,7 +263,7 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
         },
         .ninja => {
             // jac ninja [args...] -> nvim -u <ninja>/init.lua [args...]
-            const init_lua = std.fmt.bufPrintZ(&b_init, "{s}/init.lua", .{ninja_dir}) catch die("path too long");
+            const init_lua = std.fmt.bufPrintZ(&b_init, "{s}/init.lua", .{active_ninja}) catch die("path too long");
             argv_storage[argc] = "nvim";
             argc += 1;
             argv_storage[argc] = "-u";

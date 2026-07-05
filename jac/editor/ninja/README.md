@@ -69,6 +69,8 @@ teaching -- but the CUA muscle memory just works:
 | `ctrl+f / ctrl+h` | find / replace in file |
 | `ctrl+/`, `alt+up/down` | toggle comment, move line or selection |
 | `F2 / F12` | rename symbol / go to definition |
+| `` ctrl+` `` or `ctrl+j` | toggle the bottom terminal panel (persistent shell) |
+| `ctrl+\` | split the editor |
 | `ctrl+w`, `ctrl+pgup/pgdn`, `ctrl+q` | close file, switch file, quit |
 
 File buffers open in insert mode, ready to type. Tradeoff: `ctrl+v` shadows
@@ -82,5 +84,26 @@ visual-block mode while easy mode is on.
   build time from the pinned tree-sitter-jac dependency.
 
 At build time (`jac/build.zig`) this directory is composed with the neovim
-runtime export and mini.nvim into the payload's `nvim/` tree; nothing here is
-read from the source tree at runtime.
+runtime export and mini.nvim into the payload's `nvim/` tree; a release
+binary reads nothing from the source tree at runtime.
+
+## Dev loop
+
+The editor config dev-links exactly like the compiler, through both of the
+existing mechanisms:
+
+- **Linked-source builds** (`zig build -Ddev` / `-Djaclang-dir`) bake a
+  `nvim/ninja_linked_source` marker into the payload (the ninja analog of
+  `site/jac_linked_source`); the launcher resolves it at boot.
+- **`jac.toml [dev] jaclang_source`**: on a binary without the baked marker
+  (e.g. a release binary run inside a source checkout), init.lua walks up
+  from the cwd for a `jac.toml` dev stanza and chain-loads
+  `<source>/editor/ninja/init.lua`, mirroring `_jac_finder`'s compiler
+  override. The baked marker takes precedence, matching the compiler.
+
+Either way the payload's copy stays on the runtimepath behind the source dir
+for the build-staged pieces (mini.nvim, the jac queries), and
+`JAC_NO_DEV_SOURCE=1` forces dev sourcing off, exactly as it does for the
+compiler. So the loop for editor tweaks is just: edit `init.lua` or
+`lua/ninja/*.lua`, relaunch `jac ninja` -- **no zig rebuild**. A rebuild is
+only needed when the neovim fork, the parsers, or the pinned deps change.
