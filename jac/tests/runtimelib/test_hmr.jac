@@ -388,3 +388,24 @@ test "flush loop survives an exception and keeps delivering" {
         assert len(events) >= 1 , "flush loop must survive an exception and keep delivering events";
     }
 }
+
+test "noise directories never reach callbacks" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda e : events.append(e));
+        for noisy in ("node_modules", "__pycache__", ".git", ".cache") {
+            watcher._on_change(
+                str(temp_dir / noisy), ChangeType.CREATED, is_directory=True
+            );
+        }
+        watcher._on_change(
+            str(temp_dir / "pages"), ChangeType.CREATED, is_directory=True
+        );
+        time.sleep(0.2);
+        watcher._debounce_flush();
+        paths = {Path(e.path).name for e in events};
+        assert paths == {"pages"} , f"only meaningful directories may reach callbacks, got {paths}";
+    }
+}

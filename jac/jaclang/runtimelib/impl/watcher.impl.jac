@@ -100,7 +100,12 @@ impl JacFileWatcher._on_change(
         return;
     }
 
-    if not is_directory and not self._matches_pattern(path) {
+    if is_directory {
+        name = Path(path).name;
+        if name.startswith('.') or name in {'node_modules', '__pycache__'} {
+            return;
+        }
+    } elif not self._matches_pattern(path) {
         return;
     }
 

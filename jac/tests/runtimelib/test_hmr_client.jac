@@ -1095,3 +1095,39 @@ test "renaming a page moves its route" {
         assert not (compiled_dir / "pages" / "index.js").exists() , "stale compiled JS of the old name must be gone";
     }
 }
+
+test "moving a pages subdirectory out drops its routes and compiled output" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        blog_dir = pages_dir / "blog";
+        blog_dir.mkdir(parents=True);
+        (pages_dir / "index.jac").write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        (blog_dir / "post.jac").write_text(
+            "cl {\n    def page() {\n        return <div>Post</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(pages_dir / "index.jac"));
+        reloader._recompile_client_code(str(blog_dir / "post.jac"));
+        reloader._refresh_routing(str(blog_dir / "post.jac"));
+        routes_file = compiled_dir / "_routes.js";
+        assert "PagesBlogPost" in routes_file.read_text();
+        # Only the subdirectory moves out; other pages stay
+        import shutil as sh;
+        sh.move(str(blog_dir), str(Path(tmpdir) / "blog-outside"));
+        reloader._dispatch_change(str(blog_dir), is_directory=True);
+        routes = routes_file.read_text();
+        assert "PagesBlogPost" not in routes , "moved-out subdirectory's routes must be dropped";
+        assert "PagesIndex" in routes , "remaining pages must keep their routes";
+        assert not (compiled_dir / "pages" / "blog").exists() , "moved-out subdirectory's compiled output must be removed";
+        assert (compiled_dir / "pages" / "index.js").exists() , "other pages' compiled output must remain";
+        entry = (compiled_dir / "_entry.js").read_text();
+        assert "BrowserRouter" in entry , "router entry must survive a partial pages removal";
+    }
+}

@@ -125,6 +125,9 @@ impl HotReloader._process_change(file_path: str, is_directory: bool = False) -> 
 
 impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) -> None {
     if is_directory {
+        if not Path(file_path).exists() {
+            self._remove_compiled_dir(file_path);
+        }
         self._refresh_routing(file_path);
         return;
     }
@@ -205,6 +208,38 @@ impl HotReloader._remove_compiled_output(file_path: str) -> None {
     if removed {
         console.warning(f"Removed compiled output for deleted {file_path}");
     }
+}
+
+impl HotReloader._remove_compiled_dir(file_path: str) -> None {
+    base_dir = Path(self.base_path).resolve();
+    source_path = Path(file_path);
+    try {
+        source_path = source_path.resolve();
+    } except OSError { }
+    try {
+        rel = source_path.relative_to(base_dir);
+    } except ValueError {
+        return;
+    }
+    if self.client_compiler {
+        compiled_root = Path(
+            str(self.client_compiler.jac_client_compiler.compiled_dir)
+        );
+    } else {
+        compiled_root = Path(self.base_path) / self._client_output_dir;
+    }
+    target = compiled_root / rel;
+    try {
+        if str(target.resolve()) == str(compiled_root.resolve()) {
+            return;
+        }
+        if target.is_dir() {
+            shutil.rmtree(target);
+            console.warning(
+                f"Removed compiled output for deleted directory {file_path}"
+            );
+        }
+    } except OSError { }
 }
 
 impl HotReloader._refresh_routing(file_path: str) -> None {
