@@ -61,6 +61,63 @@ local function sidebar_toggle()
   end
 end
 
+-- Focus (or stay in) a real editor window -- not the sidebar, not the
+-- panel. VSCode's panel-close and editor-split both land in the editor.
+local function focus_editor_win()
+  local function is_editor(b) return vim.bo[b].buftype == "" and vim.bo[b].filetype ~= "netrw" end
+  if is_editor(vim.api.nvim_get_current_buf()) then return end
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if is_editor(vim.api.nvim_win_get_buf(win)) then
+      vim.api.nvim_set_current_win(win)
+      return
+    end
+  end
+end
+
+-- VSCode-style bottom panel: one persistent shell terminal per session,
+-- toggled with ctrl+` (and ctrl+j); hiding the window keeps the job alive.
+local panel = { buf = nil }
+
+local function panel_toggle()
+  -- visible? -> hide (job keeps running in the background buffer)
+  if panel.buf and vim.api.nvim_buf_is_valid(panel.buf) then
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.api.nvim_win_get_buf(win) == panel.buf then
+        vim.api.nvim_win_close(win, false)
+        focus_editor_win()
+        return
+      end
+    end
+  end
+  vim.cmd("botright 12split")
+  if panel.buf and vim.api.nvim_buf_is_valid(panel.buf) then
+    vim.api.nvim_win_set_buf(0, panel.buf)
+  else
+    vim.cmd("enew")
+    panel.buf = vim.api.nvim_get_current_buf()
+    vim.fn.jobstart({ vim.o.shell }, {
+      term = true,
+      on_exit = vim.schedule_wrap(function()
+        if panel.buf and vim.api.nvim_buf_is_valid(panel.buf) then
+          pcall(vim.api.nvim_buf_delete, panel.buf, { force = true })
+        end
+        panel.buf = nil
+      end),
+    })
+    vim.bo[panel.buf].buflisted = false
+    pcall(vim.api.nvim_buf_set_name, panel.buf, "ninja-panel://terminal")
+  end
+  vim.wo.winfixheight = true
+  vim.cmd("startinsert")
+end
+
+local function panel_close()
+  if panel.buf and vim.api.nvim_buf_is_valid(panel.buf) then
+    pcall(vim.api.nvim_buf_delete, panel.buf, { force = true })
+  end
+  panel.buf = nil
+end
+
 function M.enable(persist)
   if M.enabled then return end
   M.enabled = true
@@ -147,6 +204,15 @@ function M.enable(persist)
   map({ "n", "i" }, "<C-b>", sidebar_toggle, { desc = "Toggle explorer sidebar" })
   map({ "n", "i" }, "<C-S-e>", sidebar_toggle, { desc = "Toggle explorer sidebar" })
 
+  -- bottom terminal panel (VSCode's ctrl+`; ctrl+j fallback for terminals
+  -- that can't send ctrl+`) and editor split (ctrl+\)
+  map({ "n", "i", "t" }, "<C-`>", panel_toggle, { desc = "Toggle terminal panel" })
+  map({ "n", "i", "t" }, "<C-j>", panel_toggle, { desc = "Toggle terminal panel" })
+  map({ "n", "i" }, "<C-\\>", function()
+    focus_editor_win()
+    vim.cmd("vsplit")
+  end, { desc = "Split editor" })
+
   -- Interactive session bootstrap: open the sidebar and say hello once the
   -- UI attaches (headless runs and the --embed hop never trigger this).
   vim.api.nvim_create_autocmd("UIEnter", {
@@ -157,7 +223,7 @@ function M.enable(persist)
       local main_win = vim.api.nvim_get_current_win()
       sidebar_toggle()
       pcall(vim.api.nvim_set_current_win, main_win)
-      vim.notify("easy mode: ctrl+s save · ctrl+p files · F1 palette · ctrl+b explorer · :NinjaEasy off to leave")
+      vim.notify("easy mode: ctrl+s save · ctrl+p files · F1 palette · ctrl+b explorer · ctrl+` terminal · :NinjaEasy off to leave")
     end),
   })
 
@@ -174,6 +240,10 @@ function M.disable(persist)
     pcall(vim.keymap.del, m[1], m[2])
   end
   maps = {}
+  -- re-register the stock window-nav maps easy shadowed (deleting the easy
+  -- mapping removes the lhs entirely, not the map it replaced)
+  vim.keymap.set("n", "<C-h>", "<C-w>h", { desc = "Focus left window" })
+  vim.keymap.set("n", "<C-j>", "<C-w>j", { desc = "Focus lower window" })
   for name, value in pairs(saved) do
     vim.o[name] = value
   end
@@ -182,9 +252,10 @@ function M.disable(persist)
     vim.api.nvim_del_augroup_by_id(aug)
     aug = nil
   end
-  -- back to the stock ninja look; close any explorer sidebar
+  -- back to the stock ninja look; close the explorer sidebar + panel
   require("ninja.crumbs").disable()
   require("ninja.theme").default()
+  panel_close()
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     local buf = vim.api.nvim_win_get_buf(win)
     if vim.bo[buf].filetype == "netrw" then

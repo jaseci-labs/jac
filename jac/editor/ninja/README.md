@@ -69,6 +69,8 @@ teaching -- but the CUA muscle memory just works:
 | `ctrl+f / ctrl+h` | find / replace in file |
 | `ctrl+/`, `alt+up/down` | toggle comment, move line or selection |
 | `F2 / F12` | rename symbol / go to definition |
+| `` ctrl+` `` or `ctrl+j` | toggle the bottom terminal panel (persistent shell) |
+| `ctrl+\` | split the editor |
 | `ctrl+w`, `ctrl+pgup/pgdn`, `ctrl+q` | close file, switch file, quit |
 
 File buffers open in insert mode, ready to type. Tradeoff: `ctrl+v` shadows
