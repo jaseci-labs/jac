@@ -27,12 +27,19 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self.idx_returns = [];
     self.idx_concurrent = [];
     self.name_uses_by_sym = {};
+    self.val_syms = set();
+    self.linear_syms = set();
 
     self._build_index(ir_in);
     self._collect_owned();
     self._collect_borrows();
     self._collect_params();
-    if not self.owned_syms and not self.borrow_syms {
+    self._collect_markers();
+    if not self.owned_syms
+    and not self.borrow_syms
+    and not self.val_syms
+    and not self.linear_syms
+    and not self._has_region_blocks() {
         return ir_in;
     }
 
@@ -50,6 +57,9 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self._emit_borrow_diagnostics();
     self._emit_move_while_borrowed(cfg_nodes);
     self._emit_escape_diagnostics();
+    self._emit_region_escape_diagnostics();
+    self._emit_sendability_diagnostics();
+    self._emit_marker_diagnostics();
     return ir_in;
 }
 
@@ -201,6 +211,43 @@ impl OwnershipCheckPass._collect_params -> None {
         } elif tag.is_own {
             self.owned_syms.add(sid);
             self.owned_decl[sid] = name;
+        }
+    }
+}
+
+impl OwnershipCheckPass._collect_markers -> None {
+    for nd in self.idx_assignments {
+        tag = nd.type_tag;
+        if tag is None or len(nd.target) != 1 {
+            continue;
+        }
+        target = nd.target[0];
+        if not (isinstance(target, uni.Name) and target.sym) {
+            continue;
+        }
+        sid = self._name_sym_id(target);
+        if tag.is_val {
+            self.val_syms.add(sid);
+        }
+        if tag.is_linear {
+            self.linear_syms.add(sid);
+        }
+    }
+    for param in self.idx_params {
+        tag = param.type_tag;
+        if tag is None {
+            continue;
+        }
+        name = param.name;
+        if not (isinstance(name, uni.Name) and name.sym) {
+            continue;
+        }
+        sid = self._name_sym_id(name);
+        if tag.is_val {
+            self.val_syms.add(sid);
+        }
+        if tag.is_linear {
+            self.linear_syms.add(sid);
         }
     }
 }

@@ -1491,7 +1491,9 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="tag", kind=4),
                  FieldDesc(name="is_own", kind=2),
                  FieldDesc(name="is_borrow", kind=2),
-                 FieldDesc(name="is_mut_borrow", kind=2)
+                 FieldDesc(name="is_mut_borrow", kind=2),
+                 FieldDesc(name="is_val", kind=2),
+                 FieldDesc(name="is_linear", kind=2)
              )
          ),
          NodeSpec(

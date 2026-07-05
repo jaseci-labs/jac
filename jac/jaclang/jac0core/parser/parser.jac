@@ -538,7 +538,7 @@ obj Parser {
         target: Expr, require_semi: bool = True
     ) -> Assignment;
 
-    def parse_ownership_prefix(kids: list) -> tuple[bool, bool, bool];
+    def parse_ownership_prefix(kids: list) -> tuple[bool, bool, bool, bool, bool];
     def parse_import_stmt -> Import;
     def parse_from_path -> tuple;
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;
