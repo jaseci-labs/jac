@@ -632,6 +632,33 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " field, returned (except a single passthrough parameter), or otherwise"
          " outlive the scope that created it."
      ),
+     E1307 = _err(
+         "E1307",
+         Category.SEMANTIC,
+         "Reference to '{name}' escapes its `region` block",
+         help="A `region {}` arena owns everything allocated inside it and frees the"
+         " whole arena at the closing brace. A reference rooted in the region may not"
+         " be returned, stored outside, or handed to a `flow`/`wait` boundary — it"
+         " would dangle once the arena is reclaimed. Keep the reference inside the"
+         " region, or move the value out with `own` before the block ends."
+     ),
+     E1308 = _err(
+         "E1308",
+         Category.SEMANTIC,
+         "'{name}' is not sendable across a concurrency boundary",
+         help="Only a deep-immutable `val` value or a moved `own` value may cross a"
+         " `flow`/`wait`/`thread_run` boundary — those are the only payloads that are"
+         " statically race-free. A live `&`/`&mut` borrow or a shared managed value may"
+         " not be sent; move it with `own`, or send a `val` snapshot instead."
+     ),
+     E1309 = _err(
+         "E1309",
+         Category.SEMANTIC,
+         "Cannot mutate '{name}' through a deep-immutable `val` binding",
+         help="'{name}' is a `val` value: it is transitively immutable, so it may never"
+         " be reassigned, have a field written, or be borrowed `&mut`. Take a `val` as"
+         " read-only, or use an `own`/managed binding if you need to mutate."
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",

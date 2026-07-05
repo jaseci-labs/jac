@@ -48,7 +48,9 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         idx_params: list[uni.ParamVar] = [],
         idx_returns: list[uni.ReturnStmt] = [],
         idx_concurrent: list[uni.ConcurrentExpr] = [],
-        name_uses_by_sym: dict[SymId, list[uni.Name]] = {};
+        name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
+        val_syms: set[SymId] = set(),
+        linear_syms: set[SymId] = set();
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
@@ -56,6 +58,11 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _collect_owned -> None;
     def _collect_borrows -> None;
     def _collect_params -> None;
+    def _collect_markers -> None;
+    def _has_region_blocks -> bool;
+    def _emit_region_escape_diagnostics -> None;
+    def _emit_sendability_diagnostics -> None;
+    def _emit_marker_diagnostics -> None;
     def _return_roots_at_param_borrow(nd: uni.Expr | None) -> bool;
     def _borrow_region(sym_id: SymId) -> (uni.UniScopeNode | None);
     def _region_strictly_outlives(

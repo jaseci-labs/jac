@@ -318,7 +318,9 @@ obj SubTag[T](UniNode) {
     has tag: T,
         is_own: bool = False,
         is_borrow: bool = False,
-        is_mut_borrow: bool = False;
+        is_mut_borrow: bool = False,
+        is_val: bool = False,
+        is_linear: bool = False;
 
     def postinit -> None;
 }
