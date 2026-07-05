@@ -243,6 +243,11 @@ map("n", "<Leader>jd", function() jac_term({ "dot", vim.fn.expand("%:p") }) end,
 -- space-a-a session, space-a-q ask, space-a-d fix diagnostics, ...
 require("ninja.agent").setup()
 
+-- ---------------------------------------------------------------- easy mode
+-- VSCode-style input layer (`jac ninja --easy` or :NinjaEasy on): CUA keys,
+-- shift-arrow selection, insert-first buffers. Persists via a state marker.
+require("ninja.easy").setup()
+
 -- ------------------------------------------------------------- autocommands
 vim.api.nvim_create_autocmd("TextYankPost", {
   callback = function() vim.hl.on_yank() end,

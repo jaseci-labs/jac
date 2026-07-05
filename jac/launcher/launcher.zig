@@ -231,6 +231,17 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
             _ = it.next(); // argv[0]
             _ = it.next(); // "ninja"
             while (it.next()) |arg| {
+                // jac-level flags, consumed here (nvim never sees them):
+                // --easy / --no-easy toggle the VSCode-style input layer
+                // (ninja/lua/ninja/easy.lua reads the env and persists).
+                if (std.mem.eql(u8, arg, "--easy")) {
+                    _ = setenv("JAC_NINJA_EASY", "1", 1);
+                    continue;
+                }
+                if (std.mem.eql(u8, arg, "--no-easy")) {
+                    _ = setenv("JAC_NINJA_EASY", "0", 1);
+                    continue;
+                }
                 if (argc >= argv_storage.len - 1) die("too many arguments");
                 argv_storage[argc] = arg.ptr;
                 argc += 1;
