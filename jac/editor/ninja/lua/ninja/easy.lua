@@ -52,7 +52,13 @@ end
 
 local function sidebar_toggle()
   sidebar_setup()
+  local prev = vim.api.nvim_get_current_win()
   vim.cmd("Lexplore")
+  -- VSCode's ctrl+b keeps focus in the editor: when the toggle OPENED the
+  -- tree (focus landed in netrw), hop back to where the user was.
+  if vim.bo.filetype == "netrw" and vim.api.nvim_win_is_valid(prev) then
+    vim.api.nvim_set_current_win(prev)
+  end
 end
 
 function M.enable(persist)
@@ -63,6 +69,8 @@ function M.enable(persist)
   set_opt("keymodel", "startsel,stopsel")
   set_opt("selectmode", "mouse,key")
   set_opt("mousemodel", "popup_setpos")
+  -- absolute line numbers: relative jumps read as broken to non-vim users
+  set_opt("relativenumber", false)
 
   -- the VSCode look: Dark+ colors, blue status bar, breadcrumbs winbar
   require("ninja.theme").vscode()

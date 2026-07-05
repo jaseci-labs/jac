@@ -92,9 +92,7 @@ ai.setup({
 
 require("mini.pick").setup()
 require("mini.files").setup({ windows = { preview = true, width_preview = 45 } })
-require("mini.completion").setup({
-  lsp_completion = { source_func = "omnifunc", auto_setup = true },
-})
+require("mini.completion").setup({})
 
 -- Discoverable keymaps: clue window on <leader>/g/'/"/ctrl-w chords.
 local clue = require("mini.clue")
@@ -228,10 +226,21 @@ local function jac_term(args)
   vim.fn.jobstart(vim.list_extend({ jac_bin }, args), { term = true })
   vim.cmd("startinsert")
 end
-map("n", "<Leader>jr", function() jac_term({ "run", vim.fn.expand("%:p") }) end, { desc = "jac run file" })
-map("n", "<Leader>jt", function() jac_term({ "test", vim.fn.expand("%:p") }) end, { desc = "jac test file" })
-map("n", "<Leader>jc", function() jac_term({ "check", vim.fn.expand("%:p") }) end, { desc = "jac check file" })
-map("n", "<Leader>jd", function() jac_term({ "dot", vim.fn.expand("%:p") }) end, { desc = "jac dot graph" })
+-- Guarded on a real .jac file so `space-j-r` from the sidebar/starter says
+-- so instead of spawning a split that dies with a raw CLI error.
+local function jac_file_cmd(subcmd)
+  return function()
+    local f = vim.api.nvim_buf_get_name(0)
+    if not f:match("%.jac$") then
+      return vim.notify("jac " .. subcmd .. ": focus a .jac file first", vim.log.levels.WARN)
+    end
+    jac_term({ subcmd, f })
+  end
+end
+map("n", "<Leader>jr", jac_file_cmd("run"), { desc = "jac run file" })
+map("n", "<Leader>jt", jac_file_cmd("test"), { desc = "jac test file" })
+map("n", "<Leader>jc", jac_file_cmd("check"), { desc = "jac check file" })
+map("n", "<Leader>jd", jac_file_cmd("dot"), { desc = "jac dot graph" })
 
 -- -------------------------------------------------------------------- agent
 -- The binary's own coding agent (`jac ai`), orchestrated in managed splits:
