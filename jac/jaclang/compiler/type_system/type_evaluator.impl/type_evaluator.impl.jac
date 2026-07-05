@@ -594,6 +594,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return self._convert_to_instance(self.prefetch.bool_class);
             }
 
+        case uni.IndexSlice():
+            if expr.is_range {
+                if self.prefetch and self.prefetch.slice_class {
+                    return self._convert_to_instance(self.prefetch.slice_class);
+                }
+                return types.UnknownType();
+            }
+            if expr.slices and expr.slices[0].start is not None {
+                return self.get_type_of_expression(expr.slices[0].start);
+            }
+            return types.UnknownType();
+
         case uni.AtomTrailer():
             base_type = self.get_type_of_expression(expr.target);
 
@@ -2565,6 +2577,26 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     return None;
 }
 
+impl TypeEvaluator.slice_assignment_is_valid(
+    target: uni.Expr, value_node: uni.Expr
+) -> bool {
+    if not (
+        isinstance(target, uni.AtomTrailer)
+        and not target.is_attr
+        and isinstance(target.right, uni.IndexSlice)
+        and target.right.is_range
+    ) {
+        return False;
+    }
+    base_type = self.get_type_of_expression(target.target);
+    if isinstance(base_type, types.ClassType) and not base_type.is_class_instance() {
+        return False;
+    }
+    return self.get_type_of_magic_method_call(
+        base_type, "__setitem__", [target.right, value_node], None
+    ) is not None;
+}
+
 impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
     if isinstance(ty, types.TypeVarType) {
         return True;
@@ -3227,6 +3259,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.bytes_class = get_builtin_class("bytes");
     self.prefetch.dict_class = get_builtin_class("dict");
     self.prefetch.list_class = get_builtin_class("list");
+    self.prefetch.slice_class = get_builtin_class("slice");
     self.prefetch.set_class = get_builtin_class("set");
     self.prefetch.enum_class = get_enum_class("Enum");
     if self.prefetch.enum_class {
