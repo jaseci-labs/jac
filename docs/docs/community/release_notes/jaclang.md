@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.30.6 (Latest Release)
+## jaclang 0.30.7 (Latest Release)
+
+### New Features
+
+- **`jac ninja`: linked-source dev loop for the editor config**: dev binaries (`zig build -Ddev` / `-Djaclang-dir`) now serve the ninja config layer (`init.lua`, `lua/ninja/*.lua`) live from the source tree via a payload marker (`nvim/ninja_linked_source`), and any binary honors a project's `jac.toml [dev] jaclang_source` stanza (baked marker takes precedence; `JAC_NO_DEV_SOURCE=1` forces both off) -- exactly the compiler's linked-source semantics: edit, relaunch, no rebuild. The payload copy stays on the runtimepath behind the source dir so build-staged pieces (mini.nvim, the jac tree-sitter queries) keep resolving, and release builds are unchanged.
+
+## jaclang 0.30.6
 
 ### New Features
 
