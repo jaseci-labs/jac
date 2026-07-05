@@ -63,6 +63,10 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _emit_region_escape_diagnostics -> None;
     def _emit_sendability_diagnostics -> None;
     def _emit_marker_diagnostics -> None;
+    def _emit_val_mutation(
+        sid: SymId, site: uni.UniNode, decl: uni.Name | None
+    ) -> None;
+
     def _return_roots_at_param_borrow(nd: uni.Expr | None) -> bool;
     def _borrow_region(sym_id: SymId) -> (uni.UniScopeNode | None);
     def _region_strictly_outlives(
