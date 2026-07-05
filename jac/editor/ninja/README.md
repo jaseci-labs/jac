@@ -89,11 +89,21 @@ binary reads nothing from the source tree at runtime.
 
 ## Dev loop
 
-Linked-source builds (`zig build -Ddev` / `-Djaclang-dir`) serve this config
-layer **live from the source tree** -- the same mechanism that links the
-compiler. The payload carries a `nvim/ninja_linked_source` marker pointing
-here; the launcher resolves it at boot, and the payload's copy stays on the
-runtimepath behind it for the build-staged pieces (mini.nvim, the jac
-queries). So the loop for editor tweaks is just: edit `init.lua` or
+The editor config dev-links exactly like the compiler, through both of the
+existing mechanisms:
+
+- **Linked-source builds** (`zig build -Ddev` / `-Djaclang-dir`) bake a
+  `nvim/ninja_linked_source` marker into the payload (the ninja analog of
+  `site/jac_linked_source`); the launcher resolves it at boot.
+- **`jac.toml [dev] jaclang_source`**: on a binary without the baked marker
+  (e.g. a release binary run inside a source checkout), init.lua walks up
+  from the cwd for a `jac.toml` dev stanza and chain-loads
+  `<source>/editor/ninja/init.lua`, mirroring `_jac_finder`'s compiler
+  override. The baked marker takes precedence, matching the compiler.
+
+Either way the payload's copy stays on the runtimepath behind the source dir
+for the build-staged pieces (mini.nvim, the jac queries), and
+`JAC_NO_DEV_SOURCE=1` forces dev sourcing off, exactly as it does for the
+compiler. So the loop for editor tweaks is just: edit `init.lua` or
 `lua/ninja/*.lua`, relaunch `jac ninja` -- **no zig rebuild**. A rebuild is
 only needed when the neovim fork, the parsers, or the pinned deps change.

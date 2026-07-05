@@ -206,6 +206,11 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
     // gone (e.g. the dev binary was copied to another machine).
     var b_dev: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const dev_dir: ?[:0]const u8 = blk: {
+        // JAC_NO_DEV_SOURCE=1 forces dev sourcing off, exactly like it does
+        // for the compiler's linked-source override.
+        if (env.get("JAC_NO_DEV_SOURCE")) |v| {
+            if (std.mem.eql(u8, v, "1")) break :blk null;
+        }
         var b_marker: [std.Io.Dir.max_path_bytes]u8 = undefined;
         const marker_path = std.fmt.bufPrint(&b_marker, "{s}/nvim/ninja_linked_source", .{rt}) catch break :blk null;
         var f = std.Io.Dir.cwd().openFile(io, marker_path, .{}) catch break :blk null;
