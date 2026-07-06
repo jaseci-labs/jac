@@ -14,7 +14,7 @@ def toolchain_available -> bool {
 }
 
 
-def workspace_root -> object {
+def workspace_root -> Path | None {
     env = os.environ.get("JAC_BRIDGE_WORKSPACE");
     if env {
         p = Path(env);
@@ -26,7 +26,7 @@ def workspace_root -> object {
 }
 
 
-def _run(cmd: list, cwd: object = None) -> object {
+def _run(cmd: list, cwd: object = None) -> subprocess.CompletedProcess {
     return subprocess.run(
         [str(c) for c in cmd],
         cwd=str(cwd) if cwd is not None else None,
@@ -36,7 +36,7 @@ def _run(cmd: list, cwd: object = None) -> object {
 }
 
 
-def _check(result: object, what: str) {
+def _check(result: subprocess.CompletedProcess, what: str) {
     if result.returncode != 0 {
         raise RuntimeError(
             f"{what} failed (exit {result.returncode}):\n{result.stderr.strip()}"
@@ -72,7 +72,7 @@ def _resolved_version(proj: Path, crate: str) -> str {
     meta = json.loads(result.stdout);
     for pkg in meta.get("packages", []) {
         if pkg.get("name") == crate {
-            return pkg.get("version");
+            return str(pkg.get("version"));
         }
     }
     raise RuntimeError(f"crate '{crate}' not found in resolved dependency graph");
@@ -87,10 +87,11 @@ def build_bridge(crate: str, version: str = "*", workspace: object = None) -> Pa
             "(`rustup toolchain install nightly`), and retry."
         );
     }
+    ws: Path | None = None;
     if workspace is not None {
-        ws = Path(workspace);
-        if not (ws / "jac-bridge").is_dir() {
-            ws = None;
+        cand_ws = Path(str(workspace));
+        if (cand_ws / "jac-bridge").is_dir() {
+            ws = cand_ws;
         }
     } else {
         ws = workspace_root();
@@ -175,7 +176,7 @@ def build_bridge(crate: str, version: str = "*", workspace: object = None) -> Pa
 
         import from jaclang.compiler.rust_bridge._finder { built_lib_candidates }
         rel = gen / "target" / "release";
-        built = None;
+        built: Path | None = None;
         for name in built_lib_candidates(crate) {
             cand = rel / name;
             if cand.is_file() {

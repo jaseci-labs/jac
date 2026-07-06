@@ -52,7 +52,7 @@ def run(cmd: list, cwd: object = None) -> subprocess.CompletedProcess {
 
 def host_triple -> str {
     # Best-effort host target triple, matching the finder's _target_triple.
-    out = run(["rustc", "-vV"]).stdout;
+    out = str(run(["rustc", "-vV"]).stdout);
     for line in out.splitlines() {
         if line.startswith("host:") {
             return line.split(":", 1)[1].strip();
@@ -132,11 +132,11 @@ def binder_cmd(ws: Path) -> list {
 
 def resolved_version(proj: Path, crate: str) -> str {
     meta = json.loads(
-        run(["cargo", "metadata", "--format-version", "1"], cwd=proj).stdout
+        str(run(["cargo", "metadata", "--format-version", "1"], cwd=proj).stdout)
     );
     for pkg in meta.get("packages", []) {
         if pkg.get("name") == crate {
-            return pkg["version"];
+            return str(pkg["version"]);
         }
     }
     raise RuntimeError("crate " + repr(crate) + " not in resolved graph");
@@ -222,14 +222,15 @@ def build_one(crate: str, version: str, ws: Path, out: Path, triple: str) -> dic
 
 def main -> int {
     ap = argparse.ArgumentParser();
-    ap.add_argument("--workspace", required=True, type=Path);
-    ap.add_argument("--out", required=True, type=Path);
+    ap.add_argument("--workspace", required=True);
+    ap.add_argument("--out", required=True);
     ap.add_argument("--triple", default=None);
     ap.add_argument("specs", nargs="+", help="crate or crate@version");
     args = ap.parse_args();
 
-    triple = args.triple or host_triple();
-    ws = args.workspace.resolve();
+    triple = str(args.triple) if args.triple else host_triple();
+    ws = Path(str(args.workspace)).resolve();
+    out_dir = Path(str(args.out));
     if not (ws / "jac-bridge").is_dir() {
         print(
             f"error: {ws} is not the bridges workspace (no jac-bridge/)",
@@ -237,23 +238,23 @@ def main -> int {
         );
         return 2;
     }
-    args.out.mkdir(parents=True, exist_ok=True);
+    out_dir.mkdir(parents=True, exist_ok=True);
 
     records = [];
     failures = [];
     for spec in args.specs {
-        parts = spec.partition("@");
+        parts = str(spec).partition("@");
         crate = parts[0];
         version = parts[2] or "*";
         try {
-            records.append(build_one(crate, version, ws, args.out, triple));
+            records.append(build_one(crate, version, ws, out_dir, triple));
         } except Exception as exc {
             failures.append((spec, str(exc)));
             print(f"  FAIL {spec}: {exc}", file=sys.stderr);
         }
     }
 
-    manifest = args.out / f"manifest-{triple}.json";
+    manifest = out_dir / f"manifest-{triple}.json";
     manifest.write_text(json.dumps(records, indent=2), encoding="utf-8");
     print(f"wrote {len(records)} record(s) to {manifest}");
     if failures {

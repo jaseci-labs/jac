@@ -33,14 +33,14 @@ glob SCHEMA: int = 1;
 
 def main -> int {
     ap = argparse.ArgumentParser();
-    ap.add_argument("--out", required=True, type=Path);
-    ap.add_argument(
-        "inputs", nargs="+", type=Path, help="dirs holding manifest-*.json"
-    );
+    ap.add_argument("--out", required=True);
+    ap.add_argument("inputs", nargs="+", help="dirs holding manifest-*.json");
     args = ap.parse_args();
+    out_path = Path(str(args.out));
 
     fragments = [];
-    for inp in args.inputs {
+    for raw in args.inputs {
+        inp = Path(str(raw));
         if inp.is_file() {
             fragments.append(inp);
         } else {
@@ -75,10 +75,10 @@ def main -> int {
     }
 
     index = {"schema": SCHEMA, "crates": crates};
-    args.out.parent.mkdir(parents=True, exist_ok=True);
-    args.out.write_text(json.dumps(index, indent=2, sort_keys=True), encoding="utf-8");
+    out_path.parent.mkdir(parents=True, exist_ok=True);
+    out_path.write_text(json.dumps(index, indent=2, sort_keys=True), encoding="utf-8");
     print(
-        f"merged {total} artifact(s) from {len(fragments)} fragment(s) -> {args.out}"
+        f"merged {total} artifact(s) from {len(fragments)} fragment(s) -> {out_path}"
     );
     return 0;
 }

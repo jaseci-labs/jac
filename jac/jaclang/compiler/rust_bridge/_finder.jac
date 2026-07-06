@@ -109,9 +109,9 @@ def _lib_stems(crate: str) -> list {
 }
 
 
-def built_lib_candidates(crate: str) -> list {
+def built_lib_candidates(crate: str) -> list[str] {
     stem = crate_lib_stem(crate);
-    names = [];
+    names: list[str] = [];
     for base in (f"jac_bridge_{stem}", stem) {
         for s in _STEMS {
             names.append(s.format(base));
