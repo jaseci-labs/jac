@@ -2665,10 +2665,6 @@ impl PyastGenPass._remove_lambda_param_annotations(
 }
 
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    if nd.is_borrow {
-        nd.gen.py_ast = nd.operand.gen.py_ast;
-        return;
-    }
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
     op_cls = UNARY_OP_MAP.get(op_tok) if op_tok else None;
     if op_cls {

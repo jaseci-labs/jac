@@ -114,7 +114,7 @@ impl OwnershipCheckPass._collect_owned(tree: uni.UniNode) -> None {
     for nd in tree.get_all_sub_nodes(uni.Assignment) {
         target = self._is_own_decl(nd);
         if target is not None {
-            sid = self._sym_id(target);
+            sid = self._name_sym_id(target);
             self.owned_syms.add(sid);
             self.owned_decl[sid] = target;
         }
@@ -125,7 +125,7 @@ impl OwnershipCheckPass._collect_borrows(tree: uni.UniNode) -> None {
     for nd in tree.get_all_sub_nodes(uni.Assignment) {
         target = self._is_borrow_decl(nd);
         if target is not None {
-            borrow_id = self._sym_id(target);
+            borrow_id = self._name_sym_id(target);
             self.borrow_syms.add(borrow_id);
             self.borrow_meta[borrow_id] = BorrowMeta(
                 name=target.sym_name,
@@ -138,11 +138,15 @@ impl OwnershipCheckPass._collect_borrows(tree: uni.UniNode) -> None {
         target = self._borrow_target(nd);
         owner = self._borrow_source_owner(nd);
         if target is not None and owner is not None {
-            borrow_id = self._sym_id(target);
-            owner_id = self._sym_id(owner);
+            borrow_id = self._name_sym_id(target);
+            owner_id = self._name_sym_id(owner);
             self.borrow_syms.add(borrow_id);
             self.borrow_meta[borrow_id] = BorrowMeta(
-                name=target.sym_name, owner=owner_id, is_mut=nd.value.is_mut_borrow
+                name=target.sym_name,
+                owner=owner_id,
+                is_mut=nd.value.is_mut_borrow
+                    if isinstance(nd.value, uni.UnaryExpr)
+                    else False
             );
             self.borrow_created_at[borrow_id] = nd;
         }
@@ -159,7 +163,7 @@ impl OwnershipCheckPass._collect_params(tree: uni.UniNode) -> None {
         if not (isinstance(name, uni.Name) and name.sym) {
             continue;
         }
-        sid = self._sym_id(name);
+        sid = self._name_sym_id(name);
         if tag.is_borrow or tag.is_mut_borrow {
             self.borrow_syms.add(sid);
             self.param_borrow_syms.add(sid);
@@ -238,7 +242,7 @@ impl OwnershipCheckPass._assign_kill_gen(
     }
     decl_target = self._is_own_decl(nd);
     if decl_target is not None {
-        kill.add(self._sym_id(decl_target));
+        kill.add(self._name_sym_id(decl_target));
     } else {
         for tgt in nd.target {
             owned = self._owned_sym_of(tgt);
@@ -411,7 +415,7 @@ impl OwnershipCheckPass._borrow_assign_kill_gen(
     if isinstance(nd, uni.Assignment) {
         target = self._borrow_target(nd);
         if target is not None {
-            borrow_id = self._sym_id(target);
+            borrow_id = self._name_sym_id(target);
             kill.add(borrow_id);
             if self._borrow_source_owner(nd) is not None {
                 gen.add(borrow_id);
@@ -547,6 +551,10 @@ impl OwnershipCheckPass._sym_id(nd: uni.UniNode | None) -> (SymId | None) {
     return None;
 }
 
+impl OwnershipCheckPass._name_sym_id(nd: uni.Name) -> SymId {
+    return id(nd.sym);
+}
+
 impl OwnershipCheckPass._owned_sym_of(nd: uni.UniNode | None) -> (SymId | None) {
     sid = self._sym_id(nd);
     if sid is not None and sid in self.owned_syms {
@@ -664,7 +672,7 @@ impl OwnershipCheckPass._emit_diagnostics(tree: uni.UniNode) -> None {
             continue;
         }
         consumed = self.in_consumed.get(id(owner), set());
-        sid = self._sym_id(nd);
+        sid = self._name_sym_id(nd);
         if sid in consumed {
             sym_name = self._owned_name(sid, nd.sym_name);
             move_site = self.consumed_at.get(sid);
@@ -684,8 +692,8 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
 
         cfg = nd;
         if owner is not None and target is not None {
-            borrow_id = self._sym_id(target);
-            owner_id = self._sym_id(owner);
+            borrow_id = self._name_sym_id(target);
+            owner_id = self._name_sym_id(owner);
             active = self.in_live_borrows.get(id(cfg), set()).intersection(
                 self.in_reaching_borrows.get(id(cfg), set())
             );
@@ -739,8 +747,8 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
             }
         }
         for tgt in nd.target {
-            owner_id = self._target_owner_sym(tgt);
-            if owner_id is None {
+            tgt_owner_id = self._target_owner_sym(tgt);
+            if tgt_owner_id is None {
                 continue;
             }
             active = self.in_live_borrows.get(id(cfg), set()).intersection(
@@ -748,7 +756,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
             );
             for borrow_id in active {
                 if (
-                    self._borrow_owner_of(borrow_id) == owner_id
+                    self._borrow_owner_of(borrow_id) == tgt_owner_id
                     and not self._borrow_is_mut_of(borrow_id)
                 ) {
                     borrow_site = self.borrow_created_at.get(borrow_id);
@@ -761,7 +769,7 @@ impl OwnershipCheckPass._emit_borrow_diagnostics(tree: uni.UniNode) -> None {
                     self.emit(
                         E1303,
                         node_override=tgt,
-                        name=self._owned_name(owner_id, ""),
+                        name=self._owned_name(tgt_owner_id, ""),
                         related=e1303_related
                     );
                     break;
@@ -893,7 +901,7 @@ impl OwnershipCheckPass._emit_escape_diagnostics(tree: uni.UniNode) -> None {
             region = self._nearest_scope(source_owner.sym.decl);
             dest = self._nearest_scope(tgt.sym.decl);
             if self._region_strictly_outlives(dest, region) {
-                owner_id = self._sym_id(source_owner);
+                owner_id = self._name_sym_id(source_owner);
                 owner_name = self._owned_name(owner_id, tgt.sym_name);
                 owner_decl = self.owned_decl.get(owner_id);
                 e1306_related = [(f"owner '{owner_name}' declared here", owner_decl)]

@@ -160,6 +160,18 @@ native_accel.jac
 # type-clean. jac format excludes it via the find in ci.yml; this skips it
 # for `jac check`. fnmatch path-pattern -> matches every file under the package.
 passes/native/llvm/*
+# Native wasm/LLVM emission + na_ir_gen_pass.impl ctypes-heavy submodules: bind
+# raw llvmlite/llvm-c handles (is_declaration, linkage, verify, emit_object,
+# create_target_machine) whose attrs the checker sees as Unknown, same class as
+# na_ir_gen_pass.jac / na_compile_pass.jac above. Skipped for `jac check`.
+# cycle_collector/struct/debug/trace_fn.impl.jac (#7149) are na_ir_gen_pass.impl
+# LLVM-IR builder submodules in this same category (ir.GlobalVariable/ir.Constant/
+# .linkage etc.), not a new kind of exclusion.
+wasm_build.jac
+cycle_collector.impl.jac
+struct.impl.jac
+debug.impl.jac
+trace_fn.impl.jac
 normalize_pass.impl.jac
 plugin.impl.jac
 primitives_native.jac
