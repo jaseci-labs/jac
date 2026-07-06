@@ -11,6 +11,7 @@ import from jaclang.compiler.passes.main.ownership_facts_pass {
     OwnershipFactsPass,
     get_ownership_facts
 }
+import from jaclang.compiler.ownership { Ownership }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 import os;
@@ -85,6 +86,6 @@ test "facts default to the conservative answer for unknown nodes" {
     # An unknown node (here the facts object itself stands in for one) must fall
     # back to borrowed / not-a-last-use, so a consumer that ignores the table
     # stays conservative and correct.
-    assert fresh.category_of(fresh) == "borrowed" , "default category must be borrowed";
+    assert fresh.category_of(fresh) == Ownership.BORROWED , "default category must be borrowed";
     assert not fresh.is_last_use(fresh) , "default last-use must be false";
 }
