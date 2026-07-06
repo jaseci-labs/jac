@@ -202,43 +202,48 @@ impl NativeDesktopTarget.dev(
         raise RuntimeError("Failed to start Vite dev server");
     }
 
-    console.print("  Building native host (once for dev session)…", style="muted");
-
-    binary = _assemble_native_host(
-        entry_file, project_dir, project_dir / self.output_dir, None
-    );
-
-    env = desktop_app_runtime_env();
-    env["JAC_DESKTOP_DEV_PORT"] = str(vite_port);
-    env["JAC_DESKTOP_BROKER_PORT"] = str(broker_port);
-
-    console.print(
-        f"\n🚀 Launching {binary.name} (Vite HMR on :{vite_port})", style="bold green"
-    );
-    binary_proc = subprocess.Popen([str(binary)], cwd=str(binary.parent), env=env);
-
+    binary_proc = None;
     hot_watcher = None;
-    if ensure_watchdog_common("the webview") {
-        hmr_handler = _ClientHmrHandler(
-            compiler=compiler, entry_file=entry_file, project_dir=project_dir
-        );
-        hot_watcher = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
-        hot_watcher.add_callback(hmr_handler.on_event);
-        hot_watcher.start();
-    }
-
-    console.print("\n  Press Ctrl+C to stop\n", style="muted");
-    vite_p = vite_process;
-    bproc = binary_proc;
-    watcher = hot_watcher;
     def cleanup_dev {
         console.print("\n  Stopping desktop app and Vite…", style="muted");
-        stop_dev_watcher(watcher);
-        terminate_dev_processes([bproc, vite_p]);
+        stop_dev_watcher(hot_watcher);
+        terminate_dev_processes([binary_proc, vite_process]);
         console.print("  ✔ Stopped", style="success");
     }
 
-    install_dev_signal_handlers();
+    try {
+        console.print("  Building native host (once for dev session)…", style="muted");
+
+        binary = _assemble_native_host(
+            entry_file, project_dir, project_dir / self.output_dir, None
+        );
+
+        env = desktop_app_runtime_env();
+        env["JAC_DESKTOP_DEV_PORT"] = str(vite_port);
+        env["JAC_DESKTOP_BROKER_PORT"] = str(broker_port);
+
+        console.print(
+            f"\n🚀 Launching {binary.name} (Vite HMR on :{vite_port})",
+            style="bold green"
+        );
+        binary_proc = subprocess.Popen([str(binary)], cwd=str(binary.parent), env=env);
+
+        if ensure_watchdog_common("the webview") {
+            hmr_handler = _ClientHmrHandler(
+                compiler=compiler, entry_file=entry_file, project_dir=project_dir
+            );
+            hot_watcher = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
+            hot_watcher.add_callback(hmr_handler.on_event);
+            hot_watcher.start();
+        }
+
+        console.print("\n  Press Ctrl+C to stop\n", style="muted");
+        install_dev_signal_handlers();
+    } except Exception {
+        terminate_dev_processes([vite_process, binary_proc]);
+        stop_dev_watcher(hot_watcher);
+        raise;
+    }
 
     try {
         binary_proc.wait();
