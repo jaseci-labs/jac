@@ -5,6 +5,7 @@ import from jaclang.compiler.passes.main.layout_pass {
 }
 import from jaclang.compiler.passes.main.ownership_facts_pass { get_ownership_facts }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
 
 glob C_PRIM_TYPES: dict[str, str] = {
          "int": "int",
@@ -44,15 +45,30 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         extern_funcs: list[str] = [],
         extern_func_defs: dict[str, uni.Ability] = {},
         seen_imports: list[str] = [],
-        shared_layout: object = None;
+        shared_layout: object = None,
+        strict_c: bool = False;
 
     def transform(ir_in: uni.Module) -> uni.Module {
         try {
             self.gen_module(ir_in);
         } except Exception as e {
             ir_in.gen.c_src = f"/* jac2c: C emission failed: {e} */\n";
+            if self.strict_c {
+                self.emit(
+                    DIAGNOSTICS["E9001"],
+                    node_override=ir_in,
+                    pass_name="CGenPass",
+                    details=str(e)
+                );
+            }
         }
         return ir_in;
+    }
+
+    def _unsupported(nd: uni.UniNode, code: str, **kw: object) -> None {
+        if self.strict_c {
+            self.emit(DIAGNOSTICS[code], node_override=nd, **kw);
+        }
     }
 
     def is_ref_arch(arch: uni.Archetype) -> bool {
@@ -850,6 +866,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             }
             return rendered;
         }
+        self._unsupported(st, "E4301", stype=type(st).__name__);
         return pad + f"/* jac2c: unsupported statement {type(st).__name__} */";
     }
 
@@ -1157,6 +1174,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
                 if isinstance(s, uni.String) {
                     pieces.append(s.value);
                 } else {
+                    self._unsupported(s, "E4302", etype=type(s).__name__);
                     return f"/* jac2c: unsupported expr {type(s).__name__} */";
                 }
             }
@@ -1202,6 +1220,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         if isinstance(e, uni.FuncCall) {
             return self.gen_call(e);
         }
+        self._unsupported(e, "E4302", etype=type(e).__name__);
         return f"/* jac2c: unsupported expr {type(e).__name__} */";
     }
 
@@ -1383,7 +1402,7 @@ def emit_translation_units(
     reg = get_shared_layout_registry(mods, prog);
     out: list[tuple[str, str]] = [];
     for (path, m) in graph {
-        CGenPass(ir_in=m, prog=prog, shared_layout=reg);
+        CGenPass(ir_in=m, prog=prog, shared_layout=reg, strict_c=True);
         out.append((path, m.gen.c_src or ""));
     }
     return out;

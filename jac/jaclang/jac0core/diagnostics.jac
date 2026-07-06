@@ -1325,6 +1325,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "C construct `{ctype}` has no faithful Jac lowering — emitted as a placeholder"
      ),
+     E4301 = _err(
+         "E4301",
+         Category.SEMANTIC,
+         "statement `{stype}` has no faithful jac2c C lowering",
+         blocks_codegen=True
+     ),
+     E4302 = _err(
+         "E4302",
+         Category.SEMANTIC,
+         "expression `{etype}` has no faithful jac2c C lowering",
+         blocks_codegen=True
+     ),
      E9001 = _err("E9001", Category.ICE, "ICE: Pass {pass_name} -- {details}"),
      E9002 = _err(
          "E9002",

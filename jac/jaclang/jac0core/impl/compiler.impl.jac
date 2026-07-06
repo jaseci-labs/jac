@@ -532,7 +532,7 @@ impl JacCompiler.parse_str(
             ),
             prog=target_program,
             cancel_token=cancel_token,
-            lenient_c=True
+            lenient_c=False
         );
         had_error = len(cast_ret.errors_had) > 0;
         mod = cast_ret.ir_out;
