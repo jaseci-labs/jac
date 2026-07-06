@@ -648,9 +648,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return expr.right.type;
                     }
 
-                    if sym := type_utils.lookup_symtab(
+                    member_sym = type_utils.lookup_symtab(
                         base_type.symbol_table, expr.right.value, self.builtins_module
+                    );
+                    if (
+                        member_sym is None
+                        and isinstance(base_type.symbol_table, uni.Module)
                     ) {
+                        member_sym = self._resolve_star_import_symbol(
+                            base_type.symbol_table, expr.right.value
+                        );
+                    }
+                    if member_sym is not None {
+                        sym = member_sym;
                         sym_type = self.get_type_of_symbol(sym);
 
                         if special_form := self._get_special_form_type(
