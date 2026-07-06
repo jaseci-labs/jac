@@ -2856,6 +2856,14 @@ impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
             argument = self.sync_loc(
                 es.NewExpression(callee=exc_ref, arguments=call_args or []), jac_node=nd
             );
+        } elif callee.name == 'Error' {
+            argument = self.sync_loc(
+                es.NewExpression(
+                    callee=self.sync_loc(es.Identifier(name='Error'), jac_node=nd),
+                    arguments=call_args or []
+                ),
+                jac_node=nd
+            );
         }
     }
     throw_stmt = self.sync_loc(es.ThrowStatement(argument=argument), jac_node=nd);

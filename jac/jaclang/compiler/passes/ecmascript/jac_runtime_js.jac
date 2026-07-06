@@ -1338,7 +1338,7 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
 
   exc: __JAC_EXC_RUNTIME__
 }""",
-     _JS_RESERVED_EXC_NAMES: set[str] = {"Error", "TypeError", "ReferenceError"};
+     _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
 
 def _build_exc_runtime_js -> str {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
