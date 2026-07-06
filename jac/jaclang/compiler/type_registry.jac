@@ -251,9 +251,6 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
                  "range",
                  "slice",
                  "bytearray",
-                 # Native GC test hook: force one cycle-collection sweep. Recognized
-                 # as a builtin so `__rc_collect_cycles()` reaches the na-backend
-                 # dispatch that calls `__rc_collect_cycles` directly.
                  "__rc_collect_cycles",
 
              }

@@ -5,16 +5,9 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 
-"""Stable identity key for a `uni.Symbol`. Named apart from a raw
-`int` so signatures say which integers key symbol-level bookkeeping — a CFG-node
-id (`id(node)`) is also an `int` but is a different domain and never a `SymId`."""
-glob SymId: TypeAlias = int;
+glob SymId: TypeAlias = int,
+     DataflowTransfer: TypeAlias = Callable[[uni.UniCFGNode, set[SymId]], set[SymId]];
 
-"""Transfer-function shape shared by the forward and backward dataflow solvers:
-`(node, incoming_symbol_set) -> outgoing_symbol_set`."""
-glob DataflowTransfer: TypeAlias = Callable[[uni.UniCFGNode, set[SymId]], set[SymId]];
-
-"""Syntactic role a `Name` occurrence plays where it appears in the tree."""
 enum AccessKind {
     ASSIGN_TARGET = "assign_target",
     ATTR_TARGET = "attr_target",
@@ -26,7 +19,6 @@ enum AccessKind {
     READ = "read"
 }
 
-"""Per-borrow-symbol bookkeeping, keyed by `SymId` in `OwnershipCheckPass.borrow_meta`."""
 obj BorrowMeta {
     has name: str,
         owner: (SymId | None) = None,
@@ -70,6 +62,7 @@ obj OwnershipCheckPass(UniPass) {
     def _solve_forward_dataflow(
         cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
     ) -> dict[int, set[SymId]];
+
     def _solve_backward_dataflow(
         cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
     ) -> dict[int, set[SymId]];
@@ -95,6 +88,7 @@ obj OwnershipCheckPass(UniPass) {
     def _owner_decl_related(
         borrow_id: (SymId | None), owner_name: str
     ) -> (list[tuple[str, uni.UniNode]] | None);
+
     def _sym_id(nd: uni.UniNode | None) -> (SymId | None);
     def _owned_sym_of(nd: uni.UniNode | None) -> (SymId | None);
     def _borrow_sym_of(nd: uni.UniNode | None) -> (SymId | None);
