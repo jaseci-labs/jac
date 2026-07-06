@@ -1029,6 +1029,20 @@ test "bug_loop_speculative_diag_not_swallowed" {
         f"error on `cur.step(999)`, got: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# Bug #6723 (non-convergence tradeoff): a loop whose narrowed type never
+# stabilizes (`x = [x]`) must terminate at the pass cap and fall back to the
+# declared type - the widest, always-sound result - not a half-converged guess or
+# an infinite loop. This pins that behavior so a future change to the cap logic
+# can't silently regress it into a spurious error or a hang.
+test "bug_loop_nonconvergent_terminates_sound" {
+    program = compile_and_check("checker_bug_loop_nonconvergent.jac");
+    assert program.errors_had == [] , (
+        "Bug #6723: a type-growing loop that never reaches a fixed point must fall "
+        "back to the declared type and type-check cleanly. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
 # Bug #LITWIDEN: literal types inferred from a literal initializer were not
 # widened for mutable variables and container elements, so `row = ["."] * 3;
 # row[0] = "B";` failed with E1001 (Cannot assign Literal["B"] to Literal["."]).
