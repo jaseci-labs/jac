@@ -10,7 +10,9 @@ def emit_backend(
     walkers: list,
     functions: list,
     remap: dict,
-    db: dict
+    db: dict,
+    project_deps: (list | None) = None,
+    has_env: bool = False
 ) -> int {
     backend_dir.mkdir(parents=True, exist_ok=True);
 
@@ -106,7 +108,13 @@ def emit_backend(
     }
 
     _emit_main_py(
-        backend_dir, project_name, walkers_full, functions_full, sql, db_basename
+        backend_dir,
+        project_name,
+        walkers_full,
+        functions_full,
+        sql,
+        db_basename,
+        has_env
     );
 
     import from jaclang.publish.runtime_vendor { vendor_runtime, llm_requirements }
@@ -133,6 +141,12 @@ def emit_backend(
     }
     if uses_llm {
         reqs.extend(llm_requirements());
+    }
+    for dep in (project_deps or []) {
+        reqs.append(str(dep));
+    }
+    if has_env {
+        reqs.append("python-dotenv>=1.0");
     }
     _emit_requirements(backend_dir, reqs);
     return 0;
@@ -423,7 +437,8 @@ def _emit_main_py(
     walkers: list,
     functions: list,
     sql: bool,
-    db_basename: str
+    db_basename: str,
+    has_env: bool
 ) {
     lines: list[str] = [
         f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}:',
@@ -454,6 +469,25 @@ def _emit_main_py(
     }
 
     lines += ['', '_BASE = os.path.dirname(os.path.abspath(__file__))'];
+
+    if has_env {
+        lines += [
+            '',
+            '# Load .env (backend/.env first, then the project root) before',
+            '# anything reads os.environ.',
+            'try:',
+            '    from dotenv import load_dotenv',
+            'except ImportError:',
+            '    load_dotenv = None',
+            'if load_dotenv is not None:',
+            '    for _env_file in (',
+            '        os.path.join(_BASE, ".env"),',
+            '        os.path.join(_BASE, "..", ".env"),',
+            '    ):',
+            '        if os.path.isfile(_env_file):',
+            '            load_dotenv(_env_file)'
+        ];
+    }
 
     if sql {
         lines += [
@@ -721,9 +755,27 @@ def _emit_main_py(
 }
 
 
+def _req_key(req: str) -> str {
+    name = str(req).strip();
+    for i in range(len(name)) {
+        if name[i] in "<>=!~[; " {
+            name = name[:i];
+            break;
+        }
+    }
+    return name.strip().lower().replace("_", "-");
+}
+
+
 def _emit_requirements(backend_dir: Path, extra_reqs: list) {
     lines: list[str] = ["fastapi>=0.110", "uvicorn[standard]>=0.27"];
+    seen: set = {_req_key(r) for r in lines};
     for req in extra_reqs {
+        key = _req_key(str(req));
+        if (not key) or (key in seen) {
+            continue;
+        }
+        seen.add(key);
         lines.append(str(req));
     }
     (backend_dir / "requirements.txt").write_text(

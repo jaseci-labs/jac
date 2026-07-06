@@ -504,3 +504,108 @@ test "default eject does not vendor the SQLAlchemy backend" {
         assert "SQLAlchemy" not in reqs;
     }
 }
+
+
+# ==================== project [dependencies] harvest ====================
+test "requirements.txt carries the project's Python [dependencies]" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "depapp";
+        _write_project(src, "depapp");
+        toml = (src / "jac.toml").read_text();
+        (src / "jac.toml").write_text(
+            toml + '\n[dependencies]\npymupdf = ">=1.28"\nrequests = "*"\n' + 'byllm = ">=0.6"\njaclang = ">=0.30"\nfastapi = ">=0.100"\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        reqs = _backend(src, "requirements.txt").read_text();
+        req_lines = [line.strip() for line in reqs.splitlines()];
+        assert "pymupdf>=1.28" in req_lines;
+        # "*" means any version: emitted as a bare package name.
+        assert "requests" in req_lines;
+        # The generated app's own fastapi pin wins over the project's.
+        assert "fastapi>=0.110" in req_lines;
+        assert "fastapi>=0.100" not in req_lines;
+        # Vendored packages must never become pip requirements.
+        for line in req_lines {
+            assert not line.startswith("jaclang");
+            assert not line.startswith("byllm");
+        }
+    }
+}
+
+
+# ==================== .env handling ====================
+test "eject copies .env files and wires dotenv loading" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "envapp";
+        _write_project(src, "envapp");
+        (src / ".env").write_text("MY_KEY=secret\n");
+        (src / ".env.example").write_text("MY_KEY=\n");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        out = src / "ejected";
+        assert (out / ".env").read_text() == "MY_KEY=secret\n";
+        assert (out / ".env.example").exists();
+        main_py = _backend(src, "main.py").read_text();
+        assert "load_dotenv" in main_py;
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "python-dotenv" in reqs;
+    }
+}
+
+
+test "projects without env files get no dotenv wiring" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "noenvapp";
+        _write_project(src, "noenvapp");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        assert not (src / "ejected" / ".env").exists();
+        main_py = _backend(src, "main.py").read_text();
+        assert "load_dotenv" not in main_py;
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "python-dotenv" not in reqs;
+    }
+}
+
+
+# ==================== Makefile / README scaffold ====================
+test "eject emits a Makefile and README at the output root" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "makeapp";
+        _write_project(src, "makeapp");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        out = src / "ejected";
+        mk = (out / "Makefile").read_text();
+        assert "install:" in mk;
+        assert "dev-backend:" in mk;
+        assert "dev-frontend:" in mk;
+        assert "uvicorn main:app" in mk;
+        assert "npm run dev" in mk;
+        # Recipe lines must be tab-indented or make rejects the file.
+        for line in mk.splitlines() {
+            if line.startswith("    ") {
+                raise AssertionError(f"space-indented Makefile recipe: {line!r}");
+            }
+        }
+        readme = (out / "README.md").read_text();
+        assert "make install" in readme;
+        assert "make dev" in readme;
+    }
+}
+
+
+test "backend-only Makefile has no frontend targets" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "bemake";
+        _write_backend_only_project(src, "bemake");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        mk = (src / "ejected" / "Makefile").read_text();
+        assert "npm" not in mk;
+        assert "uvicorn main:app" in mk;
+        readme = (src / "ejected" / "README.md").read_text();
+        assert "frontend" not in readme;
+    }
+}
