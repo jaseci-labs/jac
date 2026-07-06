@@ -336,11 +336,3 @@ def vendor_runtime(
         ]
     );
 }
-
-
-def llm_requirements -> list[str] {
-    import from jaclang.project.capabilities { CAPABILITY_SPECS }
-    spec = CAPABILITY_SPECS.get("llm", {});
-    deps: dict = dict(spec.get("deps", {})) if isinstance(spec, dict) else {};
-    return sorted([f"{name}{rng}" for (name, rng) in deps.items()]);
-}

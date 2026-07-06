@@ -108,8 +108,14 @@ obj NpmProvider(EcosystemProvider) {
         config: JacConfig, include_dev: bool = False
     ) -> list[ResolvedDependency] {
         (deps, dev_deps) = manifest_plugin_deps(config, "npm");
+        is_client = "client" in config.plugins;
         resolved: list[ResolvedDependency] = [];
         for (pkg, version) in deps.items() {
+            if is_client and pkg in LEGACY_META_PACKAGES {
+                # Superseded by the individual self-healed core deps below;
+                # the dev config loader migrates them out of jac.toml.
+                continue;
+            }
             resolved.append(
                 ResolvedDependency(
                     name=pkg,
@@ -123,6 +129,9 @@ obj NpmProvider(EcosystemProvider) {
         # package.json always carries devDependencies, so dev entries are part
         # of the npm slice regardless of include_dev (flagged dev=True).
         for (pkg, version) in dev_deps.items() {
+            if is_client and pkg in LEGACY_META_PACKAGES {
+                continue;
+            }
             resolved.append(
                 ResolvedDependency(
                     name=pkg,
@@ -134,7 +143,7 @@ obj NpmProvider(EcosystemProvider) {
                 )
             );
         }
-        if "client" in config.plugins {
+        if is_client {
             core_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
             for (pkg, version) in core_runtime.items() {
                 if pkg not in deps {
@@ -259,8 +268,9 @@ obj NpmProvider(EcosystemProvider) {
         if "vite" not in dev_deps and "vite" not in pkg_deps {
             dev_deps["vite"] = CORE_DEV_DEPS["vite"];
         }
+        raw_name = config.project.name or out_dir.name;
         pkg = {
-            "name": (config.project.name or out_dir.name).lower().replace(" ", "-"),
+            "name": raw_name.lower().replace("_", "-").replace(" ", "-"),
             "version": config.project.version or "0.1.0",
             "private": True,
             "type": "module",

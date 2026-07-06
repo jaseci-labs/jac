@@ -236,7 +236,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     }
 
     db_cfg = dict(eject_cfg.get("db", {}));
-    project_deps = _harvest_python_deps(toml_data);
+    project_deps = _resolve_project_python_deps(src, project_name);
     env_files = [
         name
         for name in [".env", ".env.example"]
@@ -293,7 +293,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     has_frontend = entry_has_app;
     if has_frontend {
         runtime_copied = _copy_client_runtime(src, frontend_dir);
-        _emit_package_json(frontend_dir, project_name, toml_data);
+        _emit_frontend_package_json(src, frontend_dir, project_name);
         _emit_vite_config(frontend_dir, runtime_copied, toml_data);
         entry_copied = _copy_compiled_entry(src, frontend_src_dir);
         if not entry_copied {
@@ -471,39 +471,27 @@ def _is_meaningful_python(py_code: str) -> bool {
 }
 
 
-def _emit_package_json(frontend_dir: Path, project_name: str, toml_data: dict) {
-    npm_deps_root = toml_data.get("dependencies", {}).get("npm", {});
-    deps: dict[str, str] = {};
-    dev_deps: dict[str, str] = {};
-    for (k, v) in npm_deps_root.items() {
-        if k == "dev" {
-            if isinstance(v, dict) {
-                for (dk, dv) in v.items() {
-                    if isinstance(dv, str) {
-                        dev_deps[dk] = dv;
-                    }
-                }
-            }
-        } elif isinstance(v, str) {
-            deps[k] = v;
-        }
+"""Load the source project's JacConfig with the eject-resolved name applied
+(templated/missing [project] names fall back to the directory name)."""
+def _eject_config(src: Path, project_name: str) -> object {
+    import from jaclang.project.config { JacConfig }
+    config = JacConfig.load(src / "jac.toml");
+    if (not config.project.name) or ("{{" in config.project.name) {
+        config.project.name = project_name;
     }
+    return config;
+}
 
-    if "vite" not in dev_deps and "vite" not in deps {
-        dev_deps["vite"] = "^5.0.0";
-    }
-    pkg = {
-        "name": project_name.lower().replace("_", "-").replace(" ", "-"),
-        "version": "0.1.0",
-        "private": True,
-        "type": "module",
-        "scripts": {"dev": "vite", "build": "vite build", "preview": "vite preview"},
-        "dependencies": deps,
-        "devDependencies": dev_deps
-    };
-    (frontend_dir / "package.json").write_text(
-        json.dumps(pkg, indent=2) + "\n", encoding="utf-8"
-    );
+
+"""Materialize the frontend's npm slice as a standalone package.json via the
+npm provider — the same resolved set the dev bundler uses (manifest deps plus
+self-healed client core deps for [plugins.client] projects)."""
+def _emit_frontend_package_json(src: Path, frontend_dir: Path, project_name: str) {
+    import from jaclang.project.providers { EMIT_EJECT }
+    import from jaclang.runtimelib.client.npm_provider { NpmProvider }
+    config = _eject_config(src, project_name);
+    npm = NpmProvider();
+    npm.emit_standalone(config, npm.resolve(config), frontend_dir, EMIT_EJECT);
 }
 
 
@@ -898,31 +886,23 @@ def _py_import_targets(py_code: str, mod_name: str, known: set) -> set {
 }
 
 
-glob _NON_PIP_DEPS: set = {"npm", "jaclang", "byllm"};
+# Manifest deps satisfied by vendoring the runtime into backend/ rather than
+# by pip in the ejected app.
+glob _VENDORED_DEPS: set = {"jaclang", "byllm"};
 
 
-def _harvest_python_deps(toml_data: dict) -> list[str] {
-    import from jaclang.project.dependencies { make_pip_spec }
-    deps = toml_data.get("dependencies", {});
-    if not isinstance(deps, dict) {
-        return [];
-    }
-    reqs: list[str] = [];
-    for (name, spec) in deps.items() {
-        pkg = str(name);
-        if pkg.lower() in _NON_PIP_DEPS {
-            continue;
-        }
-        if isinstance(spec, str) {
-            rng = spec.strip();
-        } elif isinstance(spec, dict) {
-            rng = str(spec.get("version", "")).strip();
-        } else {
-            continue;
-        }
-        reqs.append(make_pip_spec(pkg, rng));
-    }
-    return sorted(reqs);
+"""Resolve the project's python manifest slice (incl. git deps) into pip
+specs for the ejected backend, skipping deps the vendored runtime satisfies."""
+def _resolve_project_python_deps(src: Path, project_name: str) -> list[str] {
+    import from jaclang.project.providers { get_python_provider }
+    config = _eject_config(src, project_name);
+    python = get_python_provider();
+    deps = [
+        d
+        for d in python.resolve(config)
+        if d.name.strip().lower() not in _VENDORED_DEPS
+    ];
+    return sorted(python.specs_for(deps));
 }
 
 

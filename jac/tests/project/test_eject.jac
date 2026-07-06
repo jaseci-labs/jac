@@ -488,7 +488,9 @@ test "[eject.db] sqlalchemy vendors the backend, hook, and SQLAlchemy dep" {
         assert "def get_persistent_memory" in main_py;
         assert "JAC_DB_URL" in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
-        assert "SQLAlchemy" in reqs;
+        # pinned via the central data.sql capability (canonical lowercase spec)
+        assert "sqlalchemy" in reqs.lower();
+        assert "capability:data.sql" in reqs;
     }
 }
 
@@ -505,7 +507,7 @@ test "default eject does not vendor the SQLAlchemy backend" {
         main_py = _backend(src, "main.py").read_text();
         assert "get_persistent_memory" not in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
-        assert "SQLAlchemy" not in reqs;
+        assert "sqlalchemy" not in reqs.lower();
     }
 }
 
