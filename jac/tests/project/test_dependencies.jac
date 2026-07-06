@@ -14,6 +14,7 @@ import from jaclang.project.dependencies {
     DependencyResolver,
     ResolvedDependency,
     add_venv_to_path,
+    summarize_pip_failure,
     get_venv_site_packages,
     is_venv_in_path,
     remove_venv_from_path,
@@ -285,6 +286,39 @@ test "DependencyInstaller install_package failure" {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
+}
+
+test "summarize_pip_failure names package and keeps final error line" {
+    # Traceback collapses to pip's last line; the named spec is pinned.
+    stderr = "ERROR: Exception:\nTraceback (most recent call last):\n  File \"pip/_internal/x.py\", line 109\nBuilding wheel for numpy (pyproject.toml) did not run successfully.\npip._vendor.pyproject_hooks._impl.BackendUnavailable: Cannot import 'setuptools.build_meta'\n";
+    (package, detail) = summarize_pip_failure(["sympy>=1.10.0", "numpy==1.24.3"], stderr);
+    assert package == "numpy==1.24.3";
+    assert detail == "pip._vendor.pyproject_hooks._impl.BackendUnavailable: Cannot import 'setuptools.build_meta'";
+}
+
+test "summarize_pip_failure prefers explicit ERROR line" {
+    stderr = "WARNING: Retrying...\nERROR: No matching distribution found for foopkg==9.9.9\n";
+    (package, detail) = summarize_pip_failure(["foopkg==9.9.9"], stderr);
+    assert package == "foopkg==9.9.9";
+    assert detail == "No matching distribution found for foopkg==9.9.9";
+}
+
+test "summarize_pip_failure leaves ambiguous batch unpinned" {
+    # Two specs, neither uniquely named: don't guess a culprit.
+    stderr = "ERROR: something went wrong during install\n";
+    (package, detail) = summarize_pip_failure(["flask>=3.0", "django>=5.0"], stderr);
+    assert package is None;
+    assert detail == "something went wrong during install";
+}
+
+test "summarize_pip_failure does not match VCS/URL specs by name" {
+    # git+/URL specs have no plain name, so a stderr mentioning "git" must not
+    # be misattributed to the git dep; an unpinnable batch stays None.
+    spec = "git+https://github.com/acme/coollib.git@main";
+    stderr = "ERROR: git clone of https://github.com/acme/coollib.git failed\n";
+    (package, detail) = summarize_pip_failure([spec, "flask>=3.0"], stderr);
+    assert package is None;
+    assert detail == "git clone of https://github.com/acme/coollib.git failed";
 }
 
 test "DependencyInstaller install_package without version" {

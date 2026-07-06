@@ -51,6 +51,8 @@ def capability_specs_for_install(
 
 def pip_command(python: str, args: list[str]) -> list[str];
 
+def summarize_pip_failure(specs: list[str], stderr: str) -> tuple[str | None, str];
+
 def get_venv_site_packages(venv_dir: Path) -> Path;
 
 def add_venv_to_path(config: JacConfig | None = None) -> None;
