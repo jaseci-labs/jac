@@ -1,16 +1,3 @@
-"""Implementation of `jac db` subcommands.
-
-All subcommands dispatch through the abstract `PersistentMemory` interface
-so any L3 backend (SQLite today, MongoDB via jac-scale, plugin-provided
-backends in the future) gets the full operator surface without any
-CLI-side knowledge of the store.
-
-The CLI needs the user's app loaded so (a) user archetypes register for
-recovery attempts, (b) any plugin-configured backend (`MongoBackend` etc.)
-wins over the default via the runtime hooks. `--app PATH` selects the
-file; if omitted, the single `.jac` file in the current directory is used.
-"""
-
 import json;
 import os;
 import from pathlib { Path }
@@ -19,10 +6,6 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.memory { PersistentMemory, TieredMemory }
 
 
-"""Resolve the user's .jac app path.
-
-Priority: explicit --app → the one and only .jac in cwd → error.
-"""
 def _resolve_app_path(explicit: str) -> (str | None) {
     if explicit {
         p = Path(explicit);
@@ -32,8 +15,7 @@ def _resolve_app_path(explicit: str) -> (str | None) {
         }
         return str(p);
     }
-    # The cache directory `.jac/` matches `*.jac` because its name ends
-    # in `.jac` -- filter to regular files.
+
     jacs = sorted(
         p
         for p in Path.cwd().glob("*.jac")
@@ -57,19 +39,6 @@ def _resolve_app_path(explicit: str) -> (str | None) {
 }
 
 
-"""Import the user's app so user archetypes register AND the right L3
-backend is installed via the usual plugin hooks. Returns the live
-PersistentMemory backend, or None on error.
-
-We pass `full_target_path` explicitly when constructing the context so
-`get_db_path()` / `get_name()` derive the DB filename from this app's
-stem. Without it the fallback is `main.db`, which would make `jac db`
-point at a different file than `jac enter` created (which DOES set the
-path via _discover_config_from_file), and the CLI would appear to "see
-no data" in an otherwise healthy DB. jac-scale overrides the DB path
-via its config loader and so masks this on installs that have
-jac-scale; pure jaclang deployments hit it.
-"""
 def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
     try {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -78,15 +47,12 @@ def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
         if mod.endswith('.jac') {
             mod = mod[:-4];
         }
-        # Match `jac enter`'s path setup so get_db_path() picks the same
-        # backing file the app writes to.
+
         Jac.set_full_target_path(abs_path);
         if not Jac.get_base_path_dir() {
             Jac.set_base_path(base);
         }
-        # Create a fresh CLI execution context so ctx.mem is wired up.
-        # Pass the seeds explicitly so the ctx's L3 path is locked in at
-        # postinit time, immune to later seed mutations.
+
         mach = Jac.create_j_context(
             user_root=None,
             base_path_dir=Jac.get_base_path_dir(),
@@ -109,7 +75,7 @@ def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
                     "No L3 persistent backend is configured.",
                     hint=(
                         "Ensure your app has a base_path set or a plugin "
-                        "(e.g. jac-scale) that installs one."
+                        "(e.g. the built-in scale backend) that installs one."
                     )
                 );
                 return None;
@@ -353,8 +319,7 @@ def _cmd_fsck(app: str, repair: bool) -> int {
     orphan_nodes = r.get('orphan_nodes') or [];
     half_linked = r.get('half_linked_edges') or [];
     dangling_total = len(dne) + len(den);
-    # Distinct referrers: nodes citing a missing edge + edges citing a missing
-    # node. Not roots specifically -- any document on the citing side.
+
     referrers_affected = len({p[0] for p in dne} | {p[0] for p in den});
     console.print_header(f"Jac DB fsck: {r.get('location', '?')}");
     console.info(
@@ -394,8 +359,6 @@ def _cmd_fsck(app: str, repair: bool) -> int {
 
 
 def _cmd_schema_rules(app: str) -> int {
-    # Loading the backend imports the app, which registers archetypes and
-    # collects their __jac_schema__ rules -- the registry we list from.
     backend = _get_backend(app);
     if not backend {
         return 1;
@@ -431,7 +394,6 @@ def _cmd_schema_rules(app: str) -> int {
 }
 
 
-"""Entry point -- dispatches to the right subcommand."""
 impl db(
     action: str = 'inspect',
     sub: str = '',

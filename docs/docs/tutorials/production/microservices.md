@@ -8,7 +8,7 @@ This tutorial walks through splitting a tiny app into two services, running the 
 >
 > - Completed: [Local API Server](local.md)
 > - Time: ~20 minutes
-> - Reference: [Microservice Interop in jac-scale](../../reference/plugins/jac-scale.md#microservice-interop-sv-to-sv)
+> - Reference: [Microservice Interop](../../reference/plugins/jac-scale-http.md#microservice-interop-sv-to-sv) in the Scale reference
 
 ---
 
@@ -231,7 +231,7 @@ A few things to know:
 - **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary there's no useful concept of an unexecuted remote walker, so instantiating a sv-imported walker is **spawn-and-execute** and always returns a post-execution instance.
 - **`walker:pub` only.** Private walkers don't get an endpoint. The same 404 you'd see for non-public functions also fires for non-public walkers.
 - **Boundary types still flow through.** A walker that emits an `obj` value via `report` comes back as that type, not as a raw dict, as long as the type is also listed in the `sv import`.
-- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls. See the [jac-scale reference](../../reference/plugins/jac-scale.md#walker-imports) for the full contract.
+- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls. See the [Scale reference](../../reference/plugins/jac-scale-http.md#walker-imports) for the full contract.
 
 ---
 
@@ -253,7 +253,7 @@ with entry {
 
 Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over from a previous test's registrations.
 
-The pieces left unshown here -- building a `TestClient` over a consumer and provider from the same source tree -- require hands-on use of the jac-scale server-construction APIs and are currently more verbose than the tutorial should be. The sv-to-sv test suite in the jac-scale source tree has a worked example that copies fixtures into a temp directory and stands both sides up end-to-end. Start there if you need a ready-to-run harness.
+The pieces left unshown here -- building a `TestClient` over a consumer and provider from the same source tree -- require hands-on use of scale's server-construction APIs and are currently more verbose than the tutorial should be. The sv-to-sv test suite in the scale source tree (`jac/jaclang/scale/`) has a worked example that copies fixtures into a temp directory and stands both sides up end-to-end. Start there if you need a ready-to-run harness.
 
 ---
 
@@ -331,7 +331,7 @@ For the full Kubernetes deployment story (image building, ingress, autoscaling),
 
 ### Microservice Mode + Gateway
 
-For projects with more than a handful of services, `jac-scale` ships a microservice mode that puts a single API gateway in front of all of them. `jac setup microservice` writes the plumbing into `jac.toml` and `jac start` on the project root brings the whole stack up -- one public port, one unified `/docs`, one `/metrics` endpoint, one shared anchor store. The same source still runs as a monolith when microservice mode is disabled.
+For projects with more than a handful of services, the built-in `scale` subsystem ships a microservice mode that puts a single API gateway in front of all of them. `jac setup microservice` writes the plumbing into `jac.toml` and `jac start` on the project root brings the whole stack up -- one public port, one unified `/docs`, one `/metrics` endpoint, one shared anchor store. The same source still runs as a monolith when microservice mode is disabled.
 
 The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path (proxy, passthrough, aggregation). Drop-in observability: `X-Trace-Id` is minted if absent and threaded through every `sv` RPC hop. The following knobs all live under `[plugins.scale.microservices]` and are emitted as commented reference blocks by `jac setup microservice`:
 
@@ -344,11 +344,11 @@ The gateway exposes a standard error envelope (`{ok, error: {code, message, serv
 | Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s |
 | CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
 | Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
-| Centralised logs (Loki + Alloy) | `[...logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale.md#centralised-logs) for the deployed components, dashboard, and storage caveats |
+| Centralised logs (Loki + Alloy) | `[...logs] enabled = true` | disabled -- see [Centralised Logs](../../reference/plugins/jac-scale-kubernetes.md#centralised-logs) for the deployed components, dashboard, and storage caveats |
 
 WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently -- no config. On `SIGTERM` (or `jac scale stop`), each service flips a drain flag (new requests get `503` with `Retry-After: 2`) and uvicorn waits up to `drain_timeout_seconds` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
 
-The gateway reference lives at [`jac-scale/jac_scale/microservices/docs.md`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/microservices/docs.md) in the jac-scale source tree.
+The gateway implementation lives under [`jac/jaclang/scale/microservices/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale/microservices) in the scale source tree.
 
 ### Kubernetes (microservice mode)
 
@@ -450,6 +450,6 @@ Two services that read like a single program. The split happens at deploy time, 
 
 ## Next Steps
 
-- [Microservice Interop reference](../../reference/plugins/jac-scale.md#microservice-interop-sv-to-sv) for the resolution chain, `sv_client` API, and plugin hook details.
+- [Microservice Interop reference](../../reference/plugins/jac-scale-http.md#microservice-interop-sv-to-sv) for the resolution chain, `sv_client` API, and plugin hook details.
 - [Kubernetes tutorial](kubernetes.md) for the full deployment pipeline that packages each service into its own image.
 - [Backend Integration](../fullstack/backend.md) for the cl-to-sv flavor of `sv import`, where a browser client calls a server.

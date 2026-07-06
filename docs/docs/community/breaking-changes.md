@@ -7,6 +7,56 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Project kinds renamed to deliverable-oriented names
+
+The `jac create --kind` / `[project] kind` taxonomy was renamed to describe **what you ship**. The old names are **not** accepted as aliases -- `jac create --kind pypi-package` and a `jac.toml` carrying `kind = "fullstack"` both fail with `Unknown project kind`.
+
+| Old | New |
+|---|---|
+| `native-app` | `cli-native` |
+| `shared-library` | `native-lib` |
+| `api-service` | `service` |
+| `microservices` | `service-mesh` |
+| `pypi-package` | `py-package` |
+| `npm-package` | `js-package` |
+| `fullstack` | `web-app` |
+| `client` | `web-static` |
+
+`cli`, `native-binary`, `desktop`, and `mobile` are unchanged.
+
+**Impact:** update the `kind` value in existing `jac.toml` files and any scripts calling `jac create --kind` with an old name. Behavior of each kind is unchanged -- see the [Build Anything grid](../quick-guide/project-kinds.md) for the current taxonomy.
+
+---
+
+### jac-byllm folded into `jaclang` core
+
+`jac-byllm` is no longer a separate PyPI package or plugin. The `by llm()` feature is now built into `jaclang` core and importable as `jaclang.byllm` (was `byllm`). This is a **clean break** -- there is no backward-compatible `byllm` package or import shim.
+
+**Impact:**
+
+- There is no more `pip install byllm` / `jac install -e jac-byllm`. byLLM ships inside the `jac` binary.
+- Code that did `import from byllm...` must change to `import from jaclang.byllm...` (e.g. `import from byllm.lib { Model }` becomes `import from jaclang.byllm.lib { Model }`; `import from byllm.llm { Model }` becomes `import from jaclang.byllm.llm { Model }`).
+- byLLM's third-party dependencies (litellm, pillow, ...) are no longer installed via the `byllm` package. Instead they form the `llm` capability: declare `[plugins.byllm]` in `jac.toml` and run `jac install`; the capability registry resolves litellm + pillow into the project's `.jac/venv`. Optional runtimes are separate capabilities -- `llm.local` (llama-cpp-python, huggingface_hub), `llm.mcp` (mcp), `llm.video` (opencv). Using a real model without the `llm` capability raises an actionable "run `jac install`" error.
+
+**Unchanged from a user's perspective:** the `by llm()` syntax, `[plugins.byllm.*]` config, and the `jac model` CLI behave exactly as before -- only the packaging and import path changed.
+
+---
+
+### jac-scale folded into `jaclang` core
+
+`jac-scale` is no longer a separate PyPI package or plugin. Its serving and deployment subsystem is now built into `jaclang` core and importable as `jaclang.scale` (was `jac_scale`). This is a **clean break** -- there is no backward-compatible `jac-scale` package or `jac_scale` import shim.
+
+**Impact:**
+
+- There is no more `jac install jac-scale` / `jac install 'jac-scale[...]'` / `pip install jac-scale`. The scale subsystem ships inside the `jac` binary.
+- Code that did `import from jac_scale...` (e.g. `import from jac_scale.persistence.lib { kvstore }`) must change to `import from jaclang.scale...` (e.g. `import from jaclang.scale.persistence.lib { kvstore }`).
+- `jac plugins enable scale` is no longer needed -- scale is always available.
+- Scale's optional third-party dependencies (fastapi, pymongo, redis, kubernetes, prometheus-client, ...) are no longer installed via package extras. Instead, declare the matching `[scale.*]` config in `jac.toml` and run `jac install`; the capability registry resolves the required libraries into the project's `.jac/venv`.
+
+**Unchanged from a user's perspective:** `jac start`, `jac start --scale`, and all `[scale.*]` / `[plugins.scale.*]` config behave exactly as before -- only the packaging changed.
+
+---
+
 ### Version 0.16.4
 
 #### 1. Connect Operator Returns the Right-Hand Side As-Is (Node or List)
@@ -170,29 +220,29 @@ SSO linkages previously lived in a dedicated `sso_accounts` collection keyed by 
 
 #### 1. Heavy Dependencies Moved to Optional Install Groups
 
-`pip install jac-scale` no longer installs pymongo, redis, prometheus-client, apscheduler, kubernetes, or docker. These are now optional extras.
+`jac install jac-scale` no longer installs pymongo, redis, prometheus-client, apscheduler, kubernetes, or docker. These are now optional extras.
 
 **Impact:** Existing installations that rely on any of these packages must update their install command.
 
 **Before:**
 
 ```bash
-pip install jac-scale
+jac install jac-scale
 ```
 
 **After:**
 
 ```bash
-pip install jac-scale[all]
+jac install 'jac-scale[all]'
 ```
 
 Or install only what you need:
 
 ```bash
-pip install jac-scale[data]            # pymongo + redis
-pip install jac-scale[monitoring]      # prometheus-client
-pip install jac-scale[scheduler]       # apscheduler
-pip install jac-scale[deploy]          # kubernetes + docker
+jac install 'jac-scale[data]'          # pymongo + redis
+jac install 'jac-scale[monitoring]'    # prometheus-client
+jac install 'jac-scale[scheduler]'     # apscheduler
+jac install 'jac-scale[deploy]'        # kubernetes + docker
 ```
 
 No code changes are required - the same APIs, configuration, and behavior apply. When a feature is used without its dependency installed, a clear error message shows the exact install command needed.

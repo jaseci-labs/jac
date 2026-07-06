@@ -9,6 +9,7 @@ SolidBackend and asserting on the emitted JS.
 
 import os;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
@@ -37,8 +38,7 @@ import from jaclang.runtimelib.runtime_source {
     resolve_client_runtime_cl_path
 }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      );
 

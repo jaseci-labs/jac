@@ -17,6 +17,7 @@ import sys;
 import shutil;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -29,10 +30,10 @@ import from jaclang.compiler.passes.native.wasm_linker {
     _rd_sleb,
     _u32le
 }
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
      WASM_TRIPLE = "wasm32-unknown-unknown",
      FIXTURE = "wasm_objects.na.jac";
@@ -56,7 +57,7 @@ def emit_wasm_object(fixture: str) -> bytes {
         mod = llvm.parse_assembly(str(ir.gen.llvm_ir));
         mod.verify();
         tm = llvm.Target.from_triple(WASM_TRIPLE).create_target_machine(opt=2);
-        pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=2);
         pb = llvm.create_pass_builder(tm, pto);
         pb.getModulePassManager().run(mod, pb);
         relobj = tm.emit_object(mod);

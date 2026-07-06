@@ -1,11 +1,14 @@
 # Building a Mobile App
 
-This tutorial walks you through shipping an existing Jac full-stack app as a native mobile app for Android and iOS. The mobile target uses [Capacitor](https://capacitorjs.com/) to wrap your web bundle in a native shell, producing an Android APK or an iOS app from the same codebase.
+This tutorial walks you through shipping an existing Jac full-stack app as a native mobile app for Android and iOS. Jac ships **two** mobile targets:
+
+- **Capacitor** (`--client mobile`) -- wraps your web bundle in a native webview. Covered in the first half of this page.
+- **React Native** (`--client react-native`, beta) -- compiles your `cl` UI to platform-native views. Covered in [React Native target](#react-native-target) below.
 
 > **Prerequisites**
 >
 > - Completed: [Project Setup](setup.md) -- you have a working `jac start` web app
-> - Installed: Node.js (or Bun)
+> - Node.js is **not** required -- all JS tooling runs on the Bun runtime bundled with `jac`
 > - **Android**: Java/JDK 21+, Android SDK (via [Android Studio](https://developer.android.com/studio))
 > - **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
 > - Time: ~15 minutes for setup, longer on first build
@@ -229,6 +232,136 @@ If mobile dev starts but the app does not load correctly:
    - `npx cap sync ios`
 6. For iOS signing or provisioning issues, open Xcode:
    - `npx cap open ios`
+
+---
+
+## React Native target
+
+The React Native target (`--client react-native`, beta) is the **native** mobile path: instead of wrapping a web bundle in a webview, it compiles your `cl` UI to platform-native views via Expo/Metro/Hermes. This gives native gesture/scroll performance and access to the React Native ecosystem, at the cost of a different rendering and styling model.
+
+### mobUI projects and `@jac/mobui`
+
+A React Native app is a **mobUI** project -- one source tree that compiles to both web (via `react-native-web`) and native (Android/iOS). Because React Native has no DOM, mobUI projects do not use HTML tags. Instead they use Jac's `@jac/mobui` component vocabulary, which projects to every target:
+
+| `@jac/mobui` | Replaces HTML |
+|-----------|---------------|
+| `View` | `div`, `section`, `main`, `article`, `header`, `footer`, `nav`, `aside` |
+| `Text` | `span`, `p`, `h1`-`h6`, `label`, `strong`, `em`, `small` |
+| `Pressable` | `button`, `a` |
+| `TextInput` | `input`, `textarea` |
+| `Image` | `img` |
+| `ScrollView` | `ul`, `ol`, scroll areas |
+| `StyleSheet` | CSS / `className` |
+
+Styling is `style={{...}}` objects over a flexbox subset -- no CSS files, no `className`. In a mobUI project, raw HTML tags (`<div>`, `<span>`, ...) are **compile errors** (`E1105`) with a fix-it pointing at the `@jac/mobui` primitive to use instead. See the [diagnostics reference](../../reference/diagnostics.md#mobui-project-jsx-host-tags) for details.
+
+### One-time setup
+
+From your project root:
+
+```bash
+jac setup react-native
+```
+
+This scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree) and prints next steps.
+
+Then opt in to the mobUI project kind in `jac.toml`:
+
+```toml
+[project]
+name = "myapp"
+version = "0.1.0"
+client_kind = "mobui"
+```
+
+### Authoring UI with `@jac/mobui`
+
+```jac
+cl {
+    import from "@jac/mobui" {
+        View, Text, Pressable, TextInput, ScrollView, StyleSheet
+    }
+
+    glob styles = StyleSheet.create({
+        screen: {flex: 1, backgroundColor: "#10131c", padding: 24, gap: 16},
+        title: {fontSize: 22, fontWeight: "bold", color: "#f4f5fb"},
+        button: {padding: 12, borderRadius: 10, backgroundColor: "#6c5ce7", alignItems: "center"},
+    });
+
+    def:pub app -> JsxElement {
+        has name: str = "";
+        return
+            <ScrollView style={styles.screen}>
+                <Text style={styles.title}>Hello, {name or "stranger"}</Text>
+                <TextInput
+                    value={name}
+                    placeholder="Type your name"
+                    onChangeText={lambda t: str { name = t; }}
+                />
+                <Pressable style={styles.button} onPress={lambda { name = "Jac"; }}>
+                    <Text>Reset</Text>
+                </Pressable>
+            </ScrollView>;
+    }
+}
+```
+
+The same source builds for web (`jac build`) and native (`jac build --client react-native`).
+
+### Development
+
+```bash
+jac start main.jac --client react-native --dev
+```
+
+This launches the Jac backend, compiles `.cl.jac` to JS, and runs `expo start` on the bundled Bun. Metro serves both platforms -- pick the device in the Expo CLI (press `a` for Android, `i` for the iOS simulator) or scan the QR code in Expo Go. Editing a `.cl.jac` file recompiles and Metro Fast Refreshes the device. Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`, override with `JAC_RN_DEV_HOST`); Metro defaults to port `8081` (`JAC_RN_METRO_PORT`); `adb reverse` is auto-attempted for Android.
+
+### Production build
+
+```bash
+# Android
+jac build --client react-native --platform android
+
+# iOS (macOS only; non-macOS points at EAS Build)
+jac build --client react-native --platform ios
+```
+
+Android produces an APK via `gradlew assembleDebug`. iOS produces a simulator-installable `.app` bundle via `xcodebuild` on macOS (a distributable `.ipa` comes from the EAS Build path); on other platforms the build errors out and points you at EAS Build. Release variants via `[plugins.client.react_native].release = true`.
+
+### EAS Update (OTA)
+
+`jac setup react-native` scaffolds a baseline `eas.json` (with `preview` and `production` profiles). To push OTA updates after each build:
+
+1. **One-time** (inside `.jac/mobile-rn/`): install the updates module and link your EAS project:
+
+   ```bash
+   npx expo install expo-updates
+   eas update:configure      # writes expo.updates.url into app.json
+   ```
+
+   `expo-updates` is not pinned in the scaffold -- `npx expo install` resolves the SDK-matched version.
+
+2. **Opt in** via `jac.toml`:
+
+   ```toml
+   [plugins.client.react_native]
+   eas_update = true
+   eas_update_branch = "production"   # "" -> "production" (release) / "preview" (debug)
+   ```
+
+3. **Build** as usual -- a successful `jac build --client react-native` then runs `eas update --branch <branch>` automatically. Set `eas_update_message` to pin a message; leave it empty to let EAS derive one.
+
+See the [jac-client Reference -> EAS Update (OTA)](../../reference/plugins/jac-client.md#eas-update-ota) for the full field list.
+
+### Platform-specific files
+
+When you need platform-exclusive native modules, add a `.native.cl.jac` variant alongside a `.cl.jac` module. The compiler picks up the `.native.cl.jac` file when `--client react-native` is selected and falls back to `.cl.jac` otherwise. This is a last resort -- prefer components from the `@jac/mobui` vocabulary, which absorb platform divergence internally. (A `Platform.select` one-liner API is planned but not yet part of `@jac/mobui`.)
+
+### What carries over
+
+The React Native target reuses the same Jac -> JS compilation pipeline, the same `JacForm` form system (adapted to RN `TextInput`), the same auth helpers (backed by `expo-secure-store`), and the same walker-call API. Routing is adapted to React Navigation: `Router` -> `NavigationContainer`, `Routes` + `Route` -> `Stack.Navigator` + `Stack.Screen`.
+
+For the full reference, see the [jac-client Reference -> React Native Target](../../reference/plugins/jac-client.md#react-native-target-beta).
 
 ---
 

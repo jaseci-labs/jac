@@ -1,9 +1,3 @@
-"""Token implementation methods.
-
-This file contains the implementations for Token and SourceLoc methods.
-"""
-
-"""Create a new SourceLoc spanning from this location to another."""
 impl SourceLoc.span_to(other: SourceLoc) -> SourceLoc {
     return SourceLoc(
         file_path=self.file_path,
@@ -16,12 +10,10 @@ impl SourceLoc.span_to(other: SourceLoc) -> SourceLoc {
     );
 }
 
-"""Check if this token is a keyword."""
 impl Token.is_keyword -> bool {
     return self.kind.value.startswith("KW_") or self.kind.value.startswith("TYP_");
 }
 
-"""String representation of the token."""
 impl Token.__str__ -> str {
     return f"Token({self.kind}, '{self.value}', line={self.loc.line})";
 }

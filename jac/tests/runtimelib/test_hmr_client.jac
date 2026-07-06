@@ -381,12 +381,10 @@ test "recovery from syntax error" {
                 client.reload();
             }
 
-            # --- error-overlay check ---
+            # The app entry is never used as an error billboard
             entry_file = temp_project / ".jac" / "client" / "compiled" / "_entry.js";
             if entry_file.exists() {
-                entry_content = entry_file.read_text();
-                assert "errorOverlay" in entry_content , "_entry.js should contain errorOverlay call after a failed reload";
-                assert client._hot_reloader and client._hot_reloader._overlay_entry , "_overlay_entry should be True while an error overlay is active";
+                assert "errorOverlay" not in entry_file.read_text() , "_entry.js must not be overwritten with an error overlay";
             }
 
             # Fix the syntax error with new value
@@ -405,15 +403,6 @@ test "recovery from syntax error" {
             resp2 = client.post("/walker/get_value", json={});
             assert resp2.ok;
             assert resp2.data.get("reports", [{}])[0].get("value") == 3 , "Code not updated after recovery from syntax error";
-
-            # --- error-overlay cleared check ---
-            if entry_file.exists() {
-                restored_content = entry_file.read_text();
-                assert "errorOverlay" not in restored_content , "_entry.js should NOT contain errorOverlay after a successful reload";
-                assert "App" in restored_content or "app" in restored_content , "_entry.js should reference the app component after error is fixed";
-                assert client._hot_reloader
-                and not client._hot_reloader._overlay_entry , "_overlay_entry should be False after the error is resolved";
-            }
         } finally {
             client.close();
         }
@@ -491,8 +480,9 @@ test "jacjsx import added in real compilation" {
         # JSX code should compile to use __jacJsx
         assert "__jacJsx" in content , "Compiled JS should contain __jacJsx for JSX elements";
         assert "import {__jacJsx" in content or "import{__jacJsx" in content , "__jacJsx is used but import statement is missing";
-        # --- error-overlay: introduce a client compile error ---
+        # --- build error: reported out-of-band, never via _entry.js ---
         entry_file = unique_dir / ".jac" / "client" / "compiled" / "_entry.js";
+        error_file = unique_dir / ".jac" / "client" / ".jac-build-error.json";
         bad_file = unique_dir / "app.jac";
         bad_file.write_text(
             "cl {\n"
@@ -502,11 +492,14 @@ test "jacjsx import added in real compilation" {
             "}\n"
         );
         reloader._recompile_client_code(str(bad_file));
-        # The reloader must write an _entry.js that shows the error overlay
-        overlay_content = entry_file.read_text();
-        assert "errorOverlay" in overlay_content , "_entry.js should contain errorOverlay call when client compilation fails";
-        assert reloader._overlay_entry , "_overlay_entry should be True while client error overlay is active";
-        # --- error-overlay: fix the error and recompile ---
+        assert not entry_file.exists() , "_entry.js must not be created just to display an error";
+        assert error_file.exists() , "build error must be mirrored to .jac-build-error.json for the Vite overlay";
+        import json;
+        error_data = json.loads(error_file.read_text());
+        assert error_data["message"] , "mirrored build error must carry a non-empty message";
+        assert "app.jac" in str(error_data["message"]) , "mirrored error must reference the failing source location";
+        assert reloader.build_status()["status"] == "error";
+        # --- fix the error: recovery clears the mirrored error ---
         bad_file.write_text(
             "cl {\n"
             "    def app() {\n"
@@ -515,11 +508,9 @@ test "jacjsx import added in real compilation" {
             "}\n"
         );
         reloader._recompile_client_code(str(bad_file));
-        # _entry.js should now point back to the real app (no errorOverlay)
-        restored_content = entry_file.read_text();
-        assert "errorOverlay" not in restored_content , "_entry.js should NOT contain errorOverlay after client compile is fixed";
-        assert "App" in restored_content or "app" in restored_content , "_entry.js should reference the app component once the error is resolved";
-        assert not reloader._overlay_entry , "_overlay_entry should be False after client error is resolved";
+        reloader.record_ok();  # _process_change settles to ok after a clean rebuild
+        assert not error_file.exists() , ".jac-build-error.json must be removed on recovery";
+        assert reloader.build_status()["status"] == "ok";
     }
 }
 
@@ -831,5 +822,205 @@ test "dependency compiled when imported file recompiled" {
         reloader._recompile_client_code(str(app_file));
         compiled_dir = unique_dir / ".jac" / "client" / "compiled" / "Button.js";
         assert compiled_dir.exists() , "Button.js should be compiled as a dependency of app.cl.jac";
+    }
+}
+
+# --- TestUnifiedClientCompilerHMR ---
+# The unified path routes HMR through the boot ViteCompiler so file-based
+# routing artifacts (_routes.js, router _entry.js) stay live across changes.
+def _make_unified_reloader(unique_dir: Path) -> tuple {
+    import from jaclang.runtimelib.client.vite_client_bundle { ViteClientBundleBuilder }
+    configs_dir = unique_dir / ".jac" / "client" / "configs";
+    configs_dir.mkdir(parents=True, exist_ok=True);
+    package_json = configs_dir / "package.json";
+    package_json.write_text("{}");
+    compiled_dir = unique_dir / ".jac" / "client" / "compiled";
+    compiled_dir.mkdir(parents=True, exist_ok=True);
+    builder = ViteClientBundleBuilder(vite_package_json=package_json);
+    compiler = builder._get_compiler();
+    # Pin outputs to this temp project regardless of any ambient jac.toml
+    compiler.compiled_dir = compiled_dir;
+    compiler.jac_client_compiler.compiled_dir = compiled_dir;
+    watcher = JacFileWatcher(watch_paths=[str(unique_dir)], _debounce_ms=50);
+    reloader = HotReloader(
+        base_path=str(unique_dir),
+        module_name="main",
+        watcher=watcher,
+        client_compiler=compiler
+    );
+    return (reloader, compiler, compiled_dir);
+}
+
+test "routing activates when pages are created after startup" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        main_file = unique_dir / "main.jac";
+        main_file.write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        # No pages/ yet: a refresh must not fabricate routing artifacts
+        reloader._refresh_routing(str(main_file));
+        assert not (compiled_dir / "_routes.js").exists();
+        # pages/ appears while the server is "running"
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        index_js = compiled_dir / "pages" / "index.js";
+        assert index_js.exists();
+        # Unified recompiles keep the boot pipeline's artifacts
+        assert index_js.read_text().startswith("/* Source:") , "unified HMR output should keep the /* Source */ header";
+        assert (compiled_dir / "pages" / "index.js.map").exists() , "unified HMR output should write a fresh source map";
+        # A second page exists but never got its own change event
+        # (e.g. the directory was moved into place)
+        about_file = pages_dir / "about.jac";
+        about_file.write_text(
+            "cl {\n    def page() {\n        return <div>About</div>;\n    }\n}\n"
+        );
+        index_mtime = index_js.stat().st_mtime_ns;
+        reloader._refresh_routing(str(index_file));
+        routes = (compiled_dir / "_routes.js").read_text();
+        assert "PagesIndex" in routes and "PagesAbout" in routes , "both pages should be routed after the rescan";
+        assert (compiled_dir / "pages" / "about.js").exists() , "rescan should compile pages that missed their change event";
+        assert index_js.stat().st_mtime_ns == index_mtime , "rescan must not recompile pages whose output already exists";
+        assert compiler._has_pages;
+        entry = (compiled_dir / "_entry.js").read_text();
+        assert "BrowserRouter" in entry , "entry must upgrade to the router form without a restart";
+    }
+}
+
+test "router entry survives an error then fix cycle" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        good_source = "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n";
+        index_file.write_text(good_source);
+        reloader._recompile_client_code(str(index_file));
+        reloader._refresh_routing(str(index_file));
+        entry_file = compiled_dir / "_entry.js";
+        error_file = compiled_dir.parent / ".jac-build-error.json";
+        assert "BrowserRouter" in entry_file.read_text();
+        # Break the page: the app entry is untouched; the error goes out-of-band
+        entry_mtime = entry_file.stat().st_mtime_ns;
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div UNCLOSED;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        reloader._refresh_routing(str(index_file));
+        assert entry_file.stat().st_mtime_ns == entry_mtime , "a build error must not touch _entry.js";
+        assert "BrowserRouter" in entry_file.read_text() , "router entry must survive a build error";
+        assert error_file.exists() , "build error must be mirrored for the Vite overlay";
+        # The mirror must carry the real compiler message, not just exist
+        # (the removed bespoke overlay had regressed to rendering empty)
+        import json;
+        error_data = json.loads(error_file.read_text());
+        assert "index.jac" in str(error_data["file"]) , "mirrored error must name the failing file";
+        assert "Failed to compile" in str(error_data["message"])
+        and "index.jac" in str(error_data["message"]) , "mirrored error must carry the actual compiler message";
+        # Fix the page: router still intact, mirrored error cleared
+        index_file.write_text(good_source);
+        reloader._recompile_client_code(str(index_file));
+        reloader.record_ok();  # _process_change settles to ok after a clean rebuild
+        assert "BrowserRouter" in entry_file.read_text();
+        assert not error_file.exists() , "mirrored error must be removed on recovery";
+    }
+}
+
+test "asset deletion removes the copy without touching the entry" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        reloader._refresh_routing(str(index_file));
+        entry_file = compiled_dir / "_entry.js";
+        entry_mtime = entry_file.stat().st_mtime_ns;
+        # Copy an asset in, then delete the source
+        css_file = unique_dir / "theme.css";
+        css_file.write_text("body {}");
+        reloader._copy_frontend_files(str(css_file));
+        copied = compiled_dir / "theme.css";
+        assert copied.exists();
+        css_file.unlink();
+        reloader._copy_frontend_files(str(css_file));
+        assert not copied.exists() , "deleted asset's copy must be removed";
+        # Deletion is not an error and must not touch the app
+        assert entry_file.stat().st_mtime_ns == entry_mtime , "asset deletion must not touch _entry.js";
+        assert reloader.build_status()["status"] == "ok" , "asset deletion must not be reported as a build error";
+        assert not (compiled_dir.parent / ".jac-build-error.json").exists();
+    }
+}
+
+test "no-op routing refresh does not rewrite entry or routes" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        (unique_dir / "main.jac").write_text(
+            "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+        );
+        pages_dir = unique_dir / "pages";
+        pages_dir.mkdir();
+        index_file = pages_dir / "index.jac";
+        index_file.write_text(
+            "cl {\n    def page() {\n        return <div>Home</div>;\n    }\n}\n"
+        );
+        reloader._recompile_client_code(str(index_file));
+        reloader._refresh_routing(str(index_file));
+        routes_file = compiled_dir / "_routes.js";
+        entry_file = compiled_dir / "_entry.js";
+        routes_mtime = routes_file.stat().st_mtime_ns;
+        entry_mtime = entry_file.stat().st_mtime_ns;
+        # Nothing changed: identical content must not be rewritten
+        # (a rewrite would trigger a pointless Vite reload)
+        reloader._refresh_routing(str(index_file));
+        assert routes_file.stat().st_mtime_ns == routes_mtime , "_routes.js must not be rewritten when routes are unchanged";
+        assert entry_file.stat().st_mtime_ns == entry_mtime , "_entry.js must not be rewritten when unchanged";
+    }
+}
+
+test "deleted client module drops its stale compiled output" {
+    with TemporaryDirectory() as tmpdir {
+        unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+        unique_dir.mkdir(parents=True, exist_ok=True);
+        (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+        components_dir = unique_dir / "components";
+        components_dir.mkdir();
+        footer_file = components_dir / "Footer.cl.jac";
+        footer_file.write_text(
+            "def:pub Footer() {\n    return <footer>hi</footer>;\n}\n"
+        );
+        reloader._recompile_client_code(str(footer_file));
+        footer_js = compiled_dir / "components" / "Footer.js";
+        assert footer_js.exists();
+        # Delete the source: the compiled output must go too, so Vite's module
+        # graph can report the broken import to whoever still imports it
+        footer_file.unlink();
+        reloader._remove_compiled_output(str(footer_file));
+        assert not footer_js.exists() , "stale compiled JS must be removed when its source is deleted";
+        assert not (compiled_dir / "components" / "Footer.js.map").exists() , "stale source map must be removed with it";
+        # Deleting a module is not a build error on the Jac side
+        assert reloader.build_status()["status"] == "ok";
     }
 }

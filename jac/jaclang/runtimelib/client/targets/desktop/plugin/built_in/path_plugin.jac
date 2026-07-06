@@ -1,10 +1,3 @@
-"""Path resolution plugin for the Jac desktop IPC system.
-
-Resolves standard OS paths (home, data, config, cache, downloads, temp, etc.)
-using os/pathlib. No native callbacks needed — purely Python stdlib.
-
-Transpiled to dependency-free Python at build time.
-"""
 import os;
 import tempfile;
 import from pathlib { Path }
@@ -12,7 +5,6 @@ import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-"""Provides OS path resolution for standard directories."""
 obj PathPlugin(DesktopPlugin) {
     has plugin_name: str = "jac.path";
 
@@ -87,7 +79,6 @@ obj PathPlugin(DesktopPlugin) {
         return super.handle(command, args);
     }
 
-    """Resolve an XDG directory with platform-appropriate fallback."""
     def resolve_xdg(env_var: str, fallback: str) -> str {
         val = os.environ.get(env_var);
         if val {

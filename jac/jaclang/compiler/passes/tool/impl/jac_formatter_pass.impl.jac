@@ -1,4 +1,3 @@
-"""Recursively print a Doc node or a list of Doc nodes."""
 impl JacFormatPass.format_doc_ir(
     doc_node: (doc.DocType | None) = None,
     indent_level: int = 0,
@@ -27,20 +26,10 @@ impl JacFormatPass.format_doc_ir(
             return ' ';
         }
     } elif isinstance(doc_node, doc.Group) {
-        # Probe whether the group's flat form fits in the space that will
-        # actually be available on the current line, which is
-        # `width_remaining - trailing_width` (trailing_width is the flat
-        # width of content that will follow this group on the same line,
-        # propagated from enclosing Concats).
         probe_budget = max(0, (width_remaining - trailing_width));
         fits_flat = self._probe_fits(
             doc_node.contents, indent_level=indent_level, width_remaining=probe_budget
         );
-        # break_contiguous=True: when the enclosing group has already
-        # broken (is_broken=True), this group breaks unconditionally
-        # regardless of whether its own contents would fit flat. Used by
-        # JSX children groups to force children onto their own lines
-        # whenever the parent element has broken.
         if (doc_node.break_contiguous and is_broken) {
             fits_flat = False;
         }
@@ -68,12 +57,7 @@ impl JacFormatPass.format_doc_ir(
         num_parts = len(doc_node.parts);
         for (idx, part) in enumerate(doc_node.parts) {
             is_last = (idx + 1) == num_parts;
-            # Compute the flat width of everything that will follow this
-            # part on the current line. For the last part, that's just the
-            # caller's trailing_width. For earlier parts, it's the flat
-            # first-line width of the following siblings, seeded with
-            # trailing_width so that a fully-flat tail extends the reach
-            # of the outer context's trailing content.
+
             if is_last {
                 child_trailing = trailing_width;
             } else {
@@ -98,7 +82,6 @@ impl JacFormatPass.format_doc_ir(
             if ('\n' in part_str) {
                 full_budget = max(0, (self.MAX_LINE_LENGTH - total_indent));
                 if part_str.endswith('\n') {
-                    # Cursor is at start of fresh line
                     current_line_budget = full_budget;
                 } else {
                     lines = part_str.splitlines();
@@ -143,7 +126,6 @@ impl JacFormatPass.format_doc_ir(
     }
 }
 
-"""After pass."""
 impl JacFormatPass.transform(ir_in: uni.Module) -> uni.Module {
     formatted = self.format_doc_ir();
     lines = [line.rstrip() for line in formatted.split('\n')];
@@ -154,12 +136,6 @@ impl JacFormatPass.transform(ir_in: uni.Module) -> uni.Module {
     return ir_in;
 }
 
-"""Check if flat can be used early.
-
-Returns True if `node` could be printed *flat* on the current line within
-`width_remaining` columns at `indent_level`.
-Stops early on overflow or hard/literal lines.
-"""
 impl JacFormatPass._probe_fits(
     nd: doc.DocType, indent_level: int, width_remaining: int, *, max_steps: int = 2000
 ) -> bool {
@@ -220,26 +196,9 @@ impl JacFormatPass._probe_fits(
     return True;
 }
 
-"""Compute the non-breakable trailing width after a position in a Concat.
-
-Walks remaining siblings and counts only non-Group content (Text, Lines,
-etc.) that will definitely appear on the same line.  Stops at the first
-hard/literal line break or Group (since Groups make their own break
-decisions and may wrap to a new line).
-"""
 impl JacFormatPass._flat_first_line_width(
     nd: doc.DocType, base: int = 0, is_broken: bool = False
 ) -> int {
-    # `base` is the trailing_width from the enclosing context: content that
-    # will appear on the current line AFTER this subtree, but only if the
-    # subtree itself walks flat to completion (no Group, no hard break).
-    # If the walk terminates early at a Group or hard line, that outer
-    # trailing content is on a later line, so we don't add `base`.
-    #
-    # When `is_broken=True`, tight lines also act as breaks (format_doc_ir
-    # renders them as newline+indent in a broken context), so we must stop
-    # counting there too — otherwise content past a broken tight line gets
-    # wrongly charged to the current-line trailing width.
     work: deque[object] = deque();
     work.append(nd);
     width = 0;
@@ -255,7 +214,6 @@ impl JacFormatPass._flat_first_line_width(
                 if is_broken {
                     return width;
                 }
-                # Flat tight line: 0 width, continue walking.
             } else {
                 if is_broken {
                     return width;
@@ -267,7 +225,6 @@ impl JacFormatPass._flat_first_line_width(
                 work.append(p);
             }
         } elif isinstance(cur, doc.Group) {
-            # Stop at Groups — they make their own break decisions
             return width;
         } elif isinstance(cur, doc.Indent) {
             work.append(cur.contents);
@@ -284,7 +241,6 @@ impl JacFormatPass._flat_first_line_width(
     return width + base;
 }
 
-"""Initialize pass."""
 impl JacFormatPass.pre_transform -> None {
     self.indent_size = 4;
     self.MAX_LINE_LENGTH = 88;

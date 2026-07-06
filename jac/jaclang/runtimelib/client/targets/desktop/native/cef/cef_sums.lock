@@ -1,0 +1,25 @@
+# Pinned digests for the CEF prebuilt binary distribution archives.
+#
+# This file is the trust anchor for `fetch_libcef.sh` downloads. Each entry
+# pins the digest of an archive published at:
+#   https://cef-builds.spotifycdn.com/<filename>
+#
+# Without this file the script would trust whatever digest the live
+# `index.json` reports for "latest stable 119.x" at build time -- i.e. TOFU on
+# the CDN, plus silent drift onto a new 119.x point release. Pinning the exact
+# version and digest in-tree removes both: the build resolves only this exact
+# version and verifies the bytes against the digest recorded here.
+#
+# Digests are SHA-1 because that is the only checksum the Spotify CEF index
+# publishes; the ~700-900MB archives cannot be re-hashed cheaply. When the
+# pinned version bumps, regenerate this file and verify the digests against the
+# upstream index out-of-band before committing.
+#
+# Format: GNU `sha1sum` style, one `<hex>  <filename>` per line. The
+# `# version:` directive is matched against CEF_VERSION at fetch time to guard
+# against forgetting to refresh this file.
+#
+# version: 119.4.7+g55e15c8+chromium-119.0.6045.199
+
+a6b4166a5622a650165fa09c553ddaa9ade2338b  cef_binary_119.4.7+g55e15c8+chromium-119.0.6045.199_linux64.tar.bz2
+1a375eeb5d5c8a6df2e5911d5f6cfa25719ec140  cef_binary_119.4.7+g55e15c8+chromium-119.0.6045.199_linuxarm64.tar.bz2

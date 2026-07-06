@@ -9,8 +9,8 @@
   <h3>Designed for Humans and AI to Build Together</h3>
 
   <p>
-    <a href="https://pypi.org/project/jaclang/">
-      <img src="https://img.shields.io/pypi/v/jaclang.svg?style=flat-square" alt="PyPI version">
+    <a href="https://github.com/jaseci-labs/jaseci/releases/latest">
+      <img src="https://img.shields.io/github/v/release/jaseci-labs/jaseci?style=flat-square" alt="Latest release">
     </a>
     <a href="https://codecov.io/gh/Jaseci-Labs/jaseci">
       <img src="https://img.shields.io/codecov/c/github/Jaseci-Labs/jaseci?style=flat-square" alt="Code Coverage">
@@ -36,13 +36,10 @@ Jac is a programming language designed for humans and AI to build together. With
 
 This repository houses the Jaseci stack -- the core libraries and tooling that make Jac work:
 
-- **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. Ships with the built-in full-stack web/desktop app framework (React-like `cl` components, server, and bundler with full access to the entire npm/node ecosystem). (`pip install jaclang`)
-- **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`pip install byllm`)
-- **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. (`pip install jac-scale`)
-- **[`jac-mcp`](jac-mcp/):** Plugin for Jac providing an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. (`pip install jac-mcp`)
+- **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. Ships with the built-in full-stack web/desktop app framework (React-like `cl` components, server, and bundler with full access to the entire npm/node ecosystem) and the built-in `scale` subsystem (`jaclang.scale`) for fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. Distributed as the self-contained `jac` binary (see [install below](#installation--setup)).
+- **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`jac install byllm`)
+- **`mcp`:** Built into the `jac` binary (no install) -- an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. Start it with `jac mcp`.
 - **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
-
-All of these components are bundled together as the [**Jaseci**](jaseci-package/) stack, which can be installed with a simple `pip install jaseci`.
 
 ---
 
@@ -146,10 +143,11 @@ base_route_app = "app"
 default_model = "claude-sonnet-4-20250514"
 ```
 
-Install Jac, set your API key, and run:
+Install Jac, add the plugins this example uses, set your API key, and run:
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+jac install byllm
 export ANTHROPIC_API_KEY="your-key-here"
 jac start main.jac
 ```
@@ -169,17 +167,27 @@ The best way to learn Jac is by building something real. The [**Build an AI Day 
 ## Installation & Setup
 
 <details>
-<summary><strong>Install from PyPI (Recommended)</strong></summary>
+<summary><strong>Install (Recommended)</strong></summary>
 
 <br>
 
-Get the complete, stable toolkit from PyPI:
+Install the self-contained `jac` binary with one command -- no Python, pip, or uv required:
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-scale`, and `jac-mcp` together for convenience. This is the fastest way to get started with building applications.
+Then add plugins as you need them:
+
+```bash
+jac install byllm        # AI/LLM integration
+# MCP server for AI-assisted development is built in: run `jac mcp` (no install)
+# Production deployment & scaling is built in as the `scale` subsystem (no install)
+```
+
+Production deployment & scaling ships built into the `jac` binary as the `scale` subsystem (no separate install); its optional deps (MongoDB, Redis, Kubernetes, ...) are pulled per-project via `[scale.*]` config + `jac install`.
+
+See the [installation guide](https://docs.jaseci.org/quick-guide/install/) for versions, upgrading, and IDE setup.
 
 </details>
 
@@ -192,8 +200,8 @@ The `jac` CLI is your primary interface for interacting with the Jaseci ecosyste
 | **`jac run <file.jac>`** | Executes a Jac file, much like `python3`. |
 | **`jac start <file.jac>`** | Starts a REST API server for a Jac program. |
 | **`jac start <file.jac> --scale`** | Deploys to Kubernetes with Redis and MongoDB auto-provisioning. |
-| **`jac create <name> --kind fullstack`** | Creates a new full-stack Jac project with frontend support. |
-| **`jac plugins`** | Manages Jac plugins (enable/disable jac-scale, byllm, etc.). |
+| **`jac create <name> --kind web-app`** | Creates a new full-stack Jac project with frontend support. |
+| **`jac plugins`** | Manages Jac plugins (enable/disable byllm, jac-mcp, etc.). |
 
 ---
 

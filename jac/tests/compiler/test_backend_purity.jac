@@ -42,18 +42,20 @@ glob FORBIDDEN: dict[str, str] = {
      # at sites where the declaration IS the fact.
      SANCTIONED: dict[tuple, tuple] = {
          ("ecmascript/impl/esast_gen_pass.impl.jac", "symbol_utils"): (
-             2,
+             4,
              "classify_call fallback for call nodes synthesized AFTER "
-             "checking (no stamp can exist), and "
+             "checking (no stamp can exist); "
              "collect_field_names/symbol_owner_archetype - symbol-FACT "
-             "readers over an already-resolved walker symbol"
+             "readers over an already-resolved walker symbol; and "
+             "ability_of_symbol, the shared central helper (deduped from a "
+             "former local _ability_from_symbol) used to resolve a SOURCE "
+             "module's exported ability at sv-import client-stub generation"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
-             2,
-             "cross-module import-surface reads: sv-import client stub "
-             "generation resolves the SOURCE module's exported ability; "
-             "spawn-by-name searches the main module - no fact on the "
-             "local tree exists for either"
+             1,
+             "cross-module import-surface read: sv-import client stub "
+             "generation resolves the SOURCE module's exported ability - "
+             "no fact on the local tree exists"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
              7,
@@ -76,7 +78,8 @@ glob FORBIDDEN: dict[str, str] = {
          ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): (
              4,
              "scalar LLVM materialization from declared clib annotations "
-             "at the declaration site - the backend's lowering role"
+             "at the declaration site - the backend's lowering role "
+             "(sysv sig planning + fixed-param lowering, #6707, #6708)"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
              1,

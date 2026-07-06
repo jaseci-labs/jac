@@ -1,13 +1,9 @@
-"""Shared constants and low-level helpers for the mobile (Capacitor) target."""
 import re;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
 
-# ==============================================================================
-# Constants
-# ==============================================================================
 glob DEFAULT_APP_ID = "com.jac.app",
      DEFAULT_APP_NAME = "Jac App",
      SUBPROCESS_TIMEOUT_SHORT: int = 5,
@@ -15,10 +11,6 @@ glob DEFAULT_APP_ID = "com.jac.app",
      MOBILE_SETUP_MODES: list[str] = ["android", "ios", "all"],
      SUPPORTED_PLATFORMS: list[str] = ["android", "ios"];
 
-# ==============================================================================
-# Helper Functions
-# ==============================================================================
-"""Check if a command is available and optionally return its version."""
 def _check_command_available(
     cmd: list[str], timeout: int = SUBPROCESS_TIMEOUT_SHORT
 ) -> tuple[bool, str | None] {
@@ -31,8 +23,6 @@ def _check_command_available(
     return (False, None);
 }
 
-"""Parse major Java version from `java -version` / `javac -version` output.
-"""
 def _parse_java_major_from_version_output(text: str) -> int | None {
     m = re.search(r'version "([^"]+)"', text);
     if not m {
@@ -54,28 +44,14 @@ def _parse_java_major_from_version_output(text: str) -> int | None {
     }
 }
 
-"""Return (ok, first_line, major) for the default java on PATH.
-"""
 def _get_java_runtime_details -> tuple[bool, str | None, int | None] {
     return _probe_java_tool_version("java");
 }
 
-"""Return (ok, first_line, major) for the default javac (JDK compiler) on PATH.
-
-Capacitor Android builds need a JDK, not just a JRE. Distros (e.g. Ubuntu)
-ship `default-jre` and `default-jdk` as separate packages — `java` can be
-present without `javac`, in which case Gradle fails much later with an opaque
-"Toolchain ... does not provide [JAVA_COMPILER]" error.
-"""
 def _get_jdk_compiler_details -> tuple[bool, str | None, int | None] {
     return _probe_java_tool_version("javac");
 }
 
-"""Common (ok, first_line, major) probe for java/javac tools.
-
-`tool` must be the executable name (java or javac). Both print their version
-banner to stderr (java) or stdout (javac); we merge both streams.
-"""
 def _probe_java_tool_version(tool: str) -> tuple[bool, str | None, int | None] {
     try {
         result = subprocess.run(
@@ -99,10 +75,6 @@ def _probe_java_tool_version(tool: str) -> tuple[bool, str | None, int | None] {
     return (True, first_line, major);
 }
 
-"""Normalize and validate mobile platform string.
-
-Defaults to 'android'. Accepts 'android' or 'ios'.
-"""
 def _normalize_mobile_platform(platform: Optional[str] = None) -> str {
     if (platform is None) or (platform.strip() == "") {
         return "android";
@@ -117,37 +89,20 @@ def _normalize_mobile_platform(platform: Optional[str] = None) -> str {
     );
 }
 
-"""Resolve npx command prefix."""
-def _resolve_npx -> str {
-    (ok, _) = _check_command_available(["npx", "--version"]);
-    if ok {
-        return "npx";
-    }
-    (ok, _) = _check_command_available(["bunx", "--version"]);
-    if ok {
-        return "bunx";
-    }
-    raise RuntimeError(
-        "npx or bunx not found. Install Node.js (https://nodejs.org) "
-        "or Bun (https://bun.sh)."
-    );
-}
-
-"""Run a Capacitor CLI command from project root."""
 def _run_cap_cmd(project_dir: Path, args: list[str], label: str) {
-    npx = _resolve_npx();
-    cmd = [npx, "cap"] + args;
+    import from jaclang.runtimelib.client.targets.node_tooling_common {
+        resolve_node_runner
+    }
+    cmd = resolve_node_runner() + ["cap"] + args;
     console.print(f"  Running {label}: {' '.join(cmd)}", style="muted");
     subprocess.run(cmd, cwd=project_dir, check=True, capture_output=False);
 }
 
-"""Run an npm/bun install command (delegates to the single owner, ViteBundler.add_packages)."""
 def _run_install_cmd(project_dir: Path, packages: list[str], dev: bool = False) {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     ViteBundler(project_dir).add_packages(packages, dev=dev);
 }
 
-"""Allow http:// LAN dev URLs in the WebView (Android 9+ blocks cleartext by default)."""
 def _ensure_android_cleartext_for_lan_dev(project_dir: Path) -> None {
     man = project_dir / "android" / "app" / "src" / "main" / "AndroidManifest.xml";
     if not man.exists() {

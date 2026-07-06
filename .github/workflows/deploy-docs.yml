@@ -11,7 +11,6 @@ on:
       - 'docs/**'
       - '.github/workflows/deploy-docs.yml'
   schedule:
-    # Rebuild documentation daily at 2 AM UTC
     - cron: '0 2 * * *'
 
 permissions:
@@ -21,6 +20,9 @@ permissions:
 env:
   ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPOSITORY: jac-lang-website
+  # Build/serve docs through the SHIPPED binary, not the `[dev] jaclang_source`
+  # dev loop (which would skip the precompiled JIR bundle and slow every jac call).
+  JAC_NO_DEV_SOURCE: "1"
 
 jobs:
   deploy-jac-lang-website:
@@ -59,11 +61,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install documentation dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ../jac
-          jac install -e .
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install documentation dependencies (jaclang host-provided by the binary)
+        run: jac install -e .
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
@@ -83,12 +85,10 @@ jobs:
             TAG="manual-$(date +%Y%m%d-%H%M%S)"
           elif [[ "${{ github.event_name }}" == "release" ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
+            # `jac-lang-docs-*` (docs-only releases) is stripped to its suffix;
+            # anything else (incl. the canonical `v*`) is used verbatim.
             if [[ $TAG_NAME =~ ^jac-lang-docs-(.+)$ ]]; then
               TAG="${BASH_REMATCH[1]}"
-            elif [[ $TAG_NAME =~ ^jaclang-(.+)$ ]]; then
-              TAG="${BASH_REMATCH[1]}"
-            elif [[ $TAG_NAME =~ ^v(.+)$ ]]; then
-              TAG="$TAG_NAME"
             else
               TAG="$TAG_NAME"
             fi
@@ -135,14 +135,18 @@ jobs:
           COPY CONTRIBUTING.md ./CONTRIBUTING.md
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
-          RUN pip install -e ./jac
-          RUN jac install -e ./docs
+          # jaclang is the prebuilt single binary (jac/zig-out from setup-jac);
+          # docs deps install --global into the binary's own site, since its
+          # embedded Python is the only interpreter where `import jaclang`
+          # resolves (required by the mkdocs build hook).
+          ENV PATH="/app/jac/zig-out/bin:${PATH}"
+          RUN jac install -e ./docs --global
 
           EXPOSE 8000
 
           HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8000/health || exit 1
 
-          CMD ["python", "docs/scripts/mkdocs_serve.py"]
+          CMD ["jac", "run", "docs/scripts/mkdocs_serve.py"]
           EOF
 
           docker buildx build --load \

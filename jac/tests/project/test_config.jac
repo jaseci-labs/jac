@@ -11,6 +11,8 @@ import from jaclang.project.config {
     discover_config_files,
     find_project_root,
     get_config,
+    get_config_for_path,
+    get_explicit_config,
     interpolate_env_vars,
     is_in_project,
     serialize_toml,
@@ -166,6 +168,89 @@ test "is in project" {
             os.chdir(original_cwd);
         }
     }
+}
+
+test "find project anchored on a file path" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        main_jac = temp_project / "src" / "main.jac";
+        # Passing a FILE (not a dir) resolves to its enclosing project.
+        result = find_project_root(main_jac);
+        assert result is not None;
+        (project_root, _) = result;
+        assert project_root.resolve() == temp_project.resolve();
+    }
+}
+
+test "get_config_for_path is cwd-independent (file-anchored)" {
+    config_mod._config = None;
+    config_mod._config_explicit = False;
+    config_mod._config_by_root = {};
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        main_jac = temp_project / "src" / "main.jac";
+        original_cwd = os.getcwd();
+        try {
+            # From an unrelated cwd, the file's config still resolves to its own
+            # project root -- resolution follows the file, never the process cwd.
+            os.chdir(Path(tmpdir));
+            config_mod._config = None;
+            config_mod._config_by_root = {};
+            cfg = get_config_for_path(main_jac);
+            assert cfg is not None;
+            assert cfg.project_root.resolve() == temp_project.resolve();
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+test "get_config_for_path uses nearest jac.toml, never merges ancestors" {
+    config_mod._config = None;
+    config_mod._config_explicit = False;
+    config_mod._config_by_root = {};
+    with TemporaryDirectory() as tmpdir {
+        parent = Path(tmpdir) / "parent";
+        parent.mkdir();
+        # Parent enables a non-default lint selection.
+        (parent / "jac.toml").write_text(
+            "[project]\nname = \"parent\"\n\n[check.lint]\nselect = [\"all\"]\n"
+        );
+        child = parent / "child";
+        child.mkdir();
+        # Child has its own jac.toml with NO [check.lint] section.
+        (child / "jac.toml").write_text("[project]\nname = \"child\"\n");
+        child_file = child / "main.jac";
+        child_file.write_text(MAIN_JAC_CONTENT);
+        cfg = get_config_for_path(child_file);
+        assert cfg is not None;
+        assert cfg.project_root.resolve() == child.resolve();
+        # Absent [check.lint] in child => built-in default, NOT parent's ["all"].
+        assert cfg.check.lint.select == ["default"];
+    }
+}
+
+test "explicit set_config overrides file-anchored resolution" {
+    config_mod._config = None;
+    config_mod._config_explicit = False;
+    config_mod._config_by_root = {};
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        main_jac = temp_project / "src" / "main.jac";
+        pinned = JacConfig();
+        try {
+            # An explicit override (tests, `jac test`, MCP) wins over the file's
+            # own jac.toml so callers can pin a config deterministically.
+            set_config(pinned);
+            assert get_explicit_config() is pinned;
+            assert get_config_for_path(main_jac) is pinned;
+        } finally {
+            set_config(None);
+        }
+    }
+    # set_config(None) clears the explicit flag.
+    assert get_explicit_config() is None;
 }
 
 # ===========================================================================
@@ -355,6 +440,27 @@ test "serve on_conflict default and normalization" {
     config_mod._config = None;
     typo = JacConfig.from_toml_str("\n[serve]\non_conflict = \"retri\"\n");
     assert typo.serve.on_conflict == "retry";
+}
+
+test "dev section parsing" {
+    config_mod._config = None;
+    # Absent -> defaults (test_jobs 'auto', jaclang_source empty).
+    base = JacConfig.from_toml_str("\n[project]\nname = \"x\"\n");
+    assert base.dev.test_jobs == "auto";
+    assert base.dev.jaclang_source == "";
+
+    # Explicit string values pass through.
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str(
+        "\n[dev]\njaclang_source = \"jac\"\ntest_jobs = \"4\"\n"
+    );
+    assert cfg.dev.jaclang_source == "jac";
+    assert cfg.dev.test_jobs == "4";
+
+    # A bare integer test_jobs is coerced to str so it flows into pytest's `-n`.
+    config_mod._config = None;
+    as_int = JacConfig.from_toml_str("\n[dev]\ntest_jobs = 0\n");
+    assert as_int.dev.test_jobs == "0";
 }
 
 test "parse full config" {

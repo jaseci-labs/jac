@@ -1,14 +1,6 @@
-"""Enum type codegen."""
-"""Register an enum type — store each member as an i64 constant.
-
-Supports both integer-valued enums (Color { RED = 0 }) and
-string-valued enums (TokenKind { NAME = "NAME" }).  String enums
-get auto-assigned ordinals (0, 1, 2, …) and a global string
-lookup table for .value / .name attribute access.
-"""
 impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
     enum_name = (nd).name.value if (nd).name else "unknown_enum";
-    # Guard: skip if already registered (e.g., from import)
+
     if enum_name in self.enum_types {
         return;
     }
@@ -18,7 +10,7 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
     if (nd).body is None {
         return;
     }
-    # Collect all (member_name, value_node) pairs
+
     members: list = [];
     for stmt in (nd).body {
         if isinstance(stmt, uni.Assignment) {
@@ -33,7 +25,7 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
             }
         }
     }
-    # Detect whether this is a string-valued enum
+
     is_string_enum = False;
     for (mname, vnode) in members {
         if vnode is not None
@@ -43,12 +35,9 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
         }
     }
     if is_string_enum {
-        # String-valued enum: auto-assign ordinals 0, 1, 2, ...
         entries: list = [];
         i64 = ir.IntType(64);
         for (ordinal, (mname, vnode)) in enumerate(members) {
-            # Extract the string value via the AST literal getter (handles
-            # quote/prefix stripping and MultiString concatenation).
             str_val = "";
             if vnode is not None and isinstance(vnode, (uni.String, uni.MultiString)) {
                 str_val = vnode.lit_value;
@@ -61,10 +50,6 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
         self.enum_string_values[enum_name] = entries;
         self._build_enum_string_table(enum_name, entries);
     } else {
-        # Integer-valued enum: members lower to their assigned int values, so
-        # `.value` is the member constant itself. `.name` still needs a runtime
-        # string table, so build a name-only table indexed by declaration
-        # ordinal (reusing the same global-string layout as string enums).
         i64 = ir.IntType(64);
         name_entries: list = [];
         for (ordinal, (mname, vnode)) in enumerate(members) {
@@ -80,14 +65,6 @@ impl NaIRGenPass._codegen_enum(nd: uni.Enum) -> None {
     }
 }
 
-"""Build global string lookup tables for an enum, indexed by ordinal.
-
-Creates the __enum_names.EnumName array ([N x i8*] of member-name strings),
-used by `.name` access for both string- and integer-valued enums. When
-`with_values` is set (string enums), also builds __enum_values.EnumName
-([N x i8*] of the assigned `.value` strings). Integer enums skip the value
-table because their `.value` is the int constant itself, not a string.
-"""
 impl NaIRGenPass._build_enum_string_table(
     enum_name: str, entries: list, with_values: bool = True
 ) -> None {
@@ -100,9 +77,6 @@ impl NaIRGenPass._build_enum_string_table(
     value_ptrs: list = [];
     name_ptrs: list = [];
     for (mname, str_val, ordinal) in entries {
-        # Create global constant for the .value string (string enums only).
-        # Use full 16-byte RC header { i64 RC_SENTINEL, i64 dtor=0, [N x i8] data }
-        # so that __rc_retain(ptr) reading at ptr-16 finds the sentinel and skips.
         if with_values {
             val_bytes = bytearray((str_val + "\0").encode("utf8"));
             val_arr_type = ir.ArrayType(i8, len(val_bytes));
@@ -119,13 +93,13 @@ impl NaIRGenPass._build_enum_string_table(
             val_gv.linkage = "private";
             val_gv.global_constant = True;
             val_gv.initializer = val_struct;
-            # Constant GEP to string data (skip full 16-byte RC header = 2 fields)
+
             val_ptr = val_gv.gep(
                 [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
             );
             value_ptrs.append(val_ptr);
         }
-        # Create global constant for the .name string (member name)
+
         name_bytes = bytearray((mname + "\0").encode("utf8"));
         name_arr_type = ir.ArrayType(i8, len(name_bytes));
         name_struct_type = ir.LiteralStructType([i64, i64, name_arr_type]);
@@ -146,7 +120,7 @@ impl NaIRGenPass._build_enum_string_table(
     }
     n = len(entries);
     arr_type = ir.ArrayType(i8p, n);
-    # Build .value array global (string enums only)
+
     if with_values {
         val_arr_gv = ir.GlobalVariable(
             self.llvm_module, arr_type, name=f"__enum_values.{enum_name}"
@@ -156,7 +130,7 @@ impl NaIRGenPass._build_enum_string_table(
         val_arr_gv.initializer = ir.Constant(arr_type, value_ptrs);
         self.enum_value_arrays[enum_name] = val_arr_gv;
     }
-    # Build .name array global
+
     name_arr_gv = ir.GlobalVariable(
         self.llvm_module, arr_type, name=f"__enum_names.{enum_name}"
     );
@@ -166,10 +140,6 @@ impl NaIRGenPass._build_enum_string_table(
     self.enum_name_arrays[enum_name] = name_arr_gv;
 }
 
-"""Look up the string value of an enum ordinal at runtime.
-
-Indexes into the __enum_values.EnumName or __enum_names.EnumName array.
-"""
 impl NaIRGenPass._codegen_enum_value_lookup(
     enum_name: str, ordinal_val: ir.Value, use_name: bool = False
 ) -> (ir.Value | None) {
@@ -181,12 +151,11 @@ impl NaIRGenPass._codegen_enum_value_lookup(
     }
     i32 = ir.IntType(32);
     i8p = ir.IntType(8).as_pointer();
-    # Truncate ordinal from i64 to i32 for GEP index
+
     idx = self.builder.trunc(ordinal_val, i32, name="enum.idx");
-    # GEP into the global array
+
     ptr_ptr = self.builder.gep(
         arr_global, [ir.Constant(i32, 0), idx], name=f"enum.{enum_name}.ptr"
     );
     return self.builder.load(ptr_ptr, name=f"enum.{enum_name}.str");
 }
-# ─── Phase 1: AtomTrailer (attribute access) ─────────────────
