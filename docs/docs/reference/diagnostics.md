@@ -270,7 +270,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 
 ### Ownership / Borrow Errors
 
-Emitted by `OwnershipCheckPass` for `own`/`borrow`/`&`/`&mut` bindings. See [Ownership & Borrowing](language/ownership-borrowing.md).
+Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). These are diagnostics only -- no backend reads the checker's results, and generated code is identical whether or not the checker ran.
 
 | Code | Message |
 |------|---------|
@@ -278,8 +278,11 @@ Emitted by `OwnershipCheckPass` for `own`/`borrow`/`&`/`&mut` bindings. See [Own
 | `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
 | `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
 | `E1304` | '{name}' is destroyed while still borrowed |
-| `E1305` | Linear resource '{name}' is never consumed (reserved; not yet emitted -- `own` is affine, dropping it is not an error) |
+| `E1305` | Linear resource '{name}' is never consumed (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
 | `E1306` | Borrow of '{name}' escapes its scope |
+| `E1307` | Reference to '{name}' escapes its `region` block |
+| `E1308` | '{name}' is not sendable across a concurrency boundary |
+| `E1309` | Cannot mutate '{name}' through a deep-immutable `val` binding |
 
 ### Type Warnings
 
