@@ -261,7 +261,14 @@ impl UniNode.unparse -> str {
     if self.gen.jac {
         return self.gen.jac;
     }
-    return ' '.join([i.unparse() for i in self.kid]);
+    parts: list = [];
+    for i in self.kid {
+        piece = i.unparse();
+        if piece {
+            parts.append(piece);
+        }
+    }
+    return ' '.join(parts);
 }
 
 
@@ -726,6 +733,10 @@ impl LoopExitNode.resolve_tok_range -> tuple[(Token, Token)] {
     }
     tok = self.gen_token(Tok.EOF);
     return (tok, tok);
+}
+
+impl LoopExitNode.unparse -> str {
+    return "";
 }
 
 impl CfgExpr.postinit -> None {

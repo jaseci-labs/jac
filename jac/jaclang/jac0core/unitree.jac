@@ -237,6 +237,7 @@ obj LoopExitNode(UniCFGNode) {
 
     def postinit -> None;
     def resolve_tok_range -> tuple[(Token, Token)];
+    def unparse -> str;
 }
 
 obj Expr(UniNode) {

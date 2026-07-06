@@ -3892,7 +3892,8 @@ impl TypeEvaluator._loop_header_fixed_point(
     self._flow_loop_pending[cache_key] = seed;
     best = seed;
     converged = False;
-    for _pass in range(6) {
+    max_convergence_passes = 6;
+    for _pass in range(max_convergence_passes) {
         self._flow_incomplete_cache.clear();
         result = self._merge_flow_preds(target, flow_node, visited, False);
         if self._types_equal(result, best) {
@@ -3903,6 +3904,7 @@ impl TypeEvaluator._loop_header_fixed_point(
         self._flow_loop_pending[cache_key] = best;
     }
     self._flow_loop_pending.pop(cache_key, None);
+
     return best if converged else None;
 }
 
