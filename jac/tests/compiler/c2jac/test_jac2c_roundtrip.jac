@@ -13,6 +13,7 @@ import subprocess;
 import tempfile;
 import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.compiler.passes.c.c_gen_pass { emit_translation_units }
 
 glob MINILIB: str = os.path.join(
          JAC_ROOT, "tests", "compiler", "c2jac", "fixtures", "minilib"
@@ -46,7 +47,12 @@ def _emit_c(c_path: str) -> str {
     assert not emit_prog.errors_had , f"emit errors: {[
         str(e) for e in emit_prog.errors_had
     ]}";
-    return emitted.gen.c_src;
+    for (path, src) in emit_translation_units(jac_path, emitted, emit_prog) {
+        if path == jac_path {
+            return src;
+        }
+    }
+    return "";
 }
 
 def _run(driver: str, lib_c: str, work: str, tag: str) -> str {

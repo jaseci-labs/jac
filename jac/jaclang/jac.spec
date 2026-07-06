@@ -221,8 +221,7 @@ lambda_expr ::=
 lambda_params ::= ("*" | "/" | lambda_param)*
 
 lambda_param ::=
-    ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
+    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 jsx_element ::=
@@ -444,8 +443,9 @@ import_stmt ::=
     )? ";"
 
 from_path ::=
-    (("." | ELLIPSIS) ELLIPSIS*)?
-    (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)?
+    (NAME | KWESC_NAME) NAME
+    | (("." | ELLIPSIS) ELLIPSIS*)?
+      (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)?
 
 import_items ::=
     "{" (
@@ -493,8 +493,7 @@ func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 func_params ::= ("*" | "/" | param_var)*
 
 param_var ::=
-    ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
+    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 enum ::=

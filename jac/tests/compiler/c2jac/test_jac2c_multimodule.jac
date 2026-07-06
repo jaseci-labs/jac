@@ -22,6 +22,7 @@ import sys;
 import tempfile;
 import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.compiler.passes.c.c_gen_pass { emit_translation_units }
 
 glob FIXTURES: str = os.path.join(
          JAC_ROOT, "tests", "compiler", "c2jac", "fixtures"
@@ -44,7 +45,12 @@ def _emit_c(jac_path: str) -> str {
     prog = JacProgram();
     mod = prog.compile(file_path=jac_path);
     assert not prog.errors_had , f"compile errors: {[str(e) for e in prog.errors_had]}";
-    return mod.gen.c_src;
+    for (path, src) in emit_translation_units(jac_path, mod, prog) {
+        if path == jac_path {
+            return src;
+        }
+    }
+    return "";
 }
 
 
