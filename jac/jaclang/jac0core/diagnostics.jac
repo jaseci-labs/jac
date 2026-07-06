@@ -564,6 +564,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " place the lambda where its type is fixed by context — passed as a typed callback"
          " (`sorted(xs, key=lambda x: ...)`) or bound to a `Callable`-typed target."
      ),
+     E1120 = _err(
+         "E1120",
+         Category.IMPORT,
+         "Import of '{name}' from untyped external module '{module}' (no type declarations found)",
+         "This project sets `[check] untyped-external = \"error\"` in jac.toml, so"
+         " every external import must be typed. Install a package that ships"
+         " TypeScript declarations (or the matching @types/<package>), or relax"
+         " the setting to \"warn\"."
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",

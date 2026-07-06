@@ -35,6 +35,7 @@ Bug index:
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
   #6722 - var assigned in a loop body lost its writes after the loop (no post-loop join CFG node)
+  #LITWIDEN - literal initializers not widened for mutable vars/attrs/container elements
 """
 
 import os;
@@ -1026,5 +1027,20 @@ test "bug_loop_speculative_diag_not_swallowed" {
         "Bug #6723: a real type error inside a loop body must not be swallowed by "
         "the fixed-point's speculative evaluation. Expected the argument-count "
         f"error on `cur.step(999)`, got: {[str(e) for e in program.errors_had]}"
+    );
+}
+# Bug #LITWIDEN: literal types inferred from a literal initializer were not
+# widened for mutable variables and container elements, so `row = ["."] * 3;
+# row[0] = "B";` failed with E1001 (Cannot assign Literal["B"] to Literal["."]).
+# Widening must reach into container element types (list/dict/set), matching
+# mypy/pyright, while explicit annotations and expression-position literals
+# keep their Literal type.
+test "bug_literal_widening_for_mutable_declarations" {
+    program = compile_and_check("checker_bug_literal_widening.jac");
+    assert program.errors_had == [] , (
+        "Bug #LITWIDEN: literals inferred for mutable variables and container "
+        "elements must widen to their base type (['.'] * 3 -> list[str]) so "
+        "later stores of a different value are allowed. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

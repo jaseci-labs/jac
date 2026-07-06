@@ -203,9 +203,7 @@ test "start service passes the registry's subdir file path to jac start" {
     reg = ServiceRegistry();
     reg.register(
         ServiceEntry(
-            name="social_graph",
-            file="littlex/social_graph.jac",
-            prefix="/social_graph"
+            name="social_graph", file="littlex/social_graph.jac", prefix="/social_graph"
         )
     );
     pm = ServiceProcessManager(registry=reg);
@@ -279,9 +277,11 @@ test "check all health reports a dead process once, not every poll" {
         pm.check_all_health();
         pm.check_all_health();
         exit_reports = [
-            c for c in (
-                list(fake_log.warning.call_args_list)
-                + list(fake_log.error.call_args_list)
+            c
+            for c in (
+                list(fake_log.warning.call_args_list) + list(
+                    fake_log.error.call_args_list
+                )
             )
             if "exited" in str(c)
         ];

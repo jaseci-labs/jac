@@ -249,6 +249,7 @@ test "json bundled" {
 test "base64 bundled" {
     run_with_both(
         "prim_base64.jac", "base64_py", "base64_cl", "base64_na", require=["na"]
+    );
 }
 
 test "textwrap bundled" {

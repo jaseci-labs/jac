@@ -66,6 +66,8 @@ obj UnknownType(TypeBase) {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
     }
 
+    has is_diagnosed: bool = False;
+
     def __str__ -> str;
 }
 
@@ -81,6 +83,8 @@ obj AnyType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
     }
+
+    has is_foreign: bool = False;
 
     def __str__ -> str;
 }
@@ -205,9 +209,12 @@ obj Parameter {
         default_value: (Expr | None) = None,
         is_self: bool = False,
         is_cls: bool = False,
-        param_kind: ParamKind = ParamKind.NORMAL;
+        param_kind: ParamKind = ParamKind.NORMAL,
+        has_default: bool = False;
 
     def clone -> Parameter;
+
+    has is_optional: bool { getter; }
 }
 
 obj FunctionType(TypeBase) {

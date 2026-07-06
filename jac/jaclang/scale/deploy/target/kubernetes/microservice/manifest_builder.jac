@@ -185,19 +185,23 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        ms_cfg = self._ms_cfg();
-        routes: dict[str, str] = ms_cfg.get("routes", {});
+        # Auto-discover services from `sv import` so a microservice app deploys
+        # with no [plugins.scale.microservices.routes] section (explicit routes
+        # still win). Mirrors the local-serve path; cache the result so the
+        # gateway's JAC_SV_ROUTES env and the ingress rules see the same routes.
+        import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
+        ms_cfg = dict(self._ms_cfg());
+        proj = self.project_dir or app_config.code_folder;
+        routes: dict[str, str] = resolve_routes(proj, dict(ms_cfg.get("routes", {})));
+        ms_cfg["routes"] = routes;
+        self.microservices_config = ms_cfg;
 
         if not routes {
             raise ValueError(
-                "[plugins.scale.microservices.routes] is empty in jac.toml. "
-                "Microservice mode needs at least one declared service.\n"
-                "Add to your jac.toml:\n"
-                "  [plugins.scale.microservices.routes]\n"
-                "  my_service = \"/my\"\n"
-                "where 'my_service' is the name of a .jac file in the "
-                "project root and '/my' is the URL prefix the gateway "
-                "will route to it."
+                "No microservices found to deploy: declare "
+                "[plugins.scale.microservices.routes] in jac.toml, or add "
+                "`sv import` / `to sv:` services under the project root so they "
+                "can be auto-discovered."
             );
         }
 

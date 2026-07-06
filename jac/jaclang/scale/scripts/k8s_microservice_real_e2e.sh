@@ -15,6 +15,28 @@ if [ ! -f "${PROJECT_DIR}/jac.toml" ]; then
     exit 1
 fi
 
+# The fixture is deliberately zero-config; append the e2e-only opt-ins at run time (marker-guarded), like the workflow's [dev] append.
+if ! grep -q "e2e-harness overlay" "${PROJECT_DIR}/jac.toml"; then
+    cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
+
+# --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
+[plugins.scale.microservices.logs]
+enabled = true
+
+[plugins.scale.microservices.ingress]
+enabled = true
+host = "jac-shop.local"
+ingress_class_name = "nginx"
+
+[plugins.scale.microservices.cors]
+allow_origins = ["http://app.example.com"]
+allow_methods = ["GET", "POST", "OPTIONS"]
+allow_headers = ["Authorization", "Content-Type"]
+allow_credentials = true
+TOML
+    echo "# appended the e2e-harness overlay (logs/ingress/cors) to jac.toml"
+fi
+
 NAMESPACE="${NAMESPACE:-jac-e2e}"
 CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
 case "${CLUSTER_TYPE}" in
@@ -121,9 +143,47 @@ YAML
 }
 
 _T0=$(date +%s)
-_t() { echo "[TIMING +$(( $(date +%s) - _T0 ))s] $1"; }
+_LAST_T=0
+# label|step_seconds|cumulative_seconds per phase, for the report at the end.
+_PHASE_ROWS=""
+_t() {
+    now=$(( $(date +%s) - _T0 ))
+    step=$(( now - _LAST_T ))
+    echo "[TIMING +${now}s] $1 (+${step}s)"
+    _PHASE_ROWS="${_PHASE_ROWS}${1}|${step}|${now}"$'\n'
+    _LAST_T=${now}
+}
 
-echo "# phase timings printed as [TIMING +Ns] markers"
+print_timing_report() {
+    echo ""
+    echo "======================= E2E PHASE TIMING REPORT ======================="
+    printf "%-38s %10s %12s\n" "PHASE" "STEP (s)" "CUMUL (s)"
+    printf "%-38s %10s %12s\n" "--------------------------------------" "--------" "----------"
+    printf '%s' "${_PHASE_ROWS}" | while IFS='|' read -r label step cumul; do
+        [ -z "${label}" ] && continue
+        printf "%-38s %10s %12s\n" "${label}" "${step}" "${cumul}"
+    done
+    printf "%-38s %10s %12s\n" "--------------------------------------" "--------" "----------"
+    printf "%-38s %10s %12s\n" "TOTAL" "" "${_LAST_T}"
+    echo "======================================================================="
+    echo "# CLUSTER_TYPE=${CLUSTER_TYPE}  services=$(printf '%s' "${ROUTES:-}" | grep -c . || echo 0)"
+    # Also surface the report on the GitHub Actions job-summary page.
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        {
+            echo "## E2E phase timing (${CLUSTER_TYPE})"
+            echo ""
+            echo "| Phase | Step (s) | Cumulative (s) |"
+            echo "|---|---:|---:|"
+            printf '%s' "${_PHASE_ROWS}" | while IFS='|' read -r label step cumul; do
+                [ -z "${label}" ] && continue
+                echo "| ${label} | ${step} | ${cumul} |"
+            done
+            echo "| **TOTAL** | | **${_LAST_T}** |"
+        } >> "${GITHUB_STEP_SUMMARY}"
+    fi
+}
+
+echo "# phase timings printed as [TIMING +Ns] markers; full report at the end"
 _t "deploy start"
 echo "=== deploy via KubernetesMicroserviceTarget (no-Docker: host-built binary + source over PVC) ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -223,6 +283,15 @@ for dep in $(kubectl get deployments -n "${NAMESPACE}" -l managed=jac-scale -o n
 done
 
 _t "pods Ready"
+
+echo "=== first-boot compile stats (jir-seed adoption per pod) ==="
+for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
+    # `|| true` throughout: pods without a jac-bootstrap container (mongo,
+    # observability) and no-match greps must not trip `set -e`.
+    line=$( (kubectl logs -n "${NAMESPACE}" "${pod}" -c jac-bootstrap 2>/dev/null || true) \
+        | (grep -E "adopted [0-9]+ host-precompiled|modules compiled and cached|adoption failed" || true) | tail -2)
+    [ -n "${line}" ] && echo "  ${pod}: $(echo "${line}" | tr '\n' ' ')" || true
+done
 echo "=== port-forward gateway + curl /health ==="
 GATEWAY_LOCAL_PORT="${GATEWAY_LOCAL_PORT:-18000}"
 kubectl port-forward -n "${NAMESPACE}" svc/gateway-service "${GATEWAY_LOCAL_PORT}:8000" >/dev/null 2>&1 &
@@ -241,9 +310,11 @@ echo "=== verify per-service routing ==="
 # we reached a healthy service that just doesn't have that walker.
 ROUTES=$(jac -c "
 import tomllib
+from jaclang.scale.runtime.discovery.discovery import resolve_routes
 with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
     cfg = tomllib.load(f)
-for prefix in cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {}).values():
+explicit = cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {})
+for prefix in resolve_routes('${PROJECT_DIR}', dict(explicit)).values():
     print(prefix)
 ")
 for prefix in ${ROUTES}; do
@@ -318,12 +389,11 @@ else
     fi
     echo "  Loki /ready = 200"
 
-    echo "  waiting 15s for Alloy to scrape + ship initial logs..."
-    sleep 15
-
+    # No fixed pre-sleep: the retry loop below already polls; Alloy usually
+    # ships the first streams well before 15s, so start querying immediately.
     echo "  LogQL query: streams for namespace=${NAMESPACE}..."
     LOG_STREAMS="0"
-    for attempt in $(seq 1 10); do
+    for attempt in $(seq 1 15); do
         # Loki's instant-query endpoint returns {"status":"success","data":
         # {"resultType":"streams","result":[{stream:..., values:[...]}, ...]}}.
         # We just need >=1 entry in result[] to prove Alloy is shipping.
@@ -336,7 +406,7 @@ else
         if [ "${LOG_STREAMS}" -gt 0 ] 2>/dev/null; then
             break
         fi
-        echo "    attempt ${attempt}/10: ${LOG_STREAMS} streams, retrying in 5s..."
+        echo "    attempt ${attempt}/15: ${LOG_STREAMS} streams, retrying in 5s..."
         sleep 5
     done
     if ! [ "${LOG_STREAMS}" -gt 0 ] 2>/dev/null; then
@@ -423,10 +493,12 @@ else
     fi
 fi
 
-# Zero-downtime rolling-restart assertion: hammer at 10 req/s while
+# Rolling-restart availability assertion: hammer at 10 req/s while
 # kubectl rollout restart runs; non-2xx (or non-accept_re) responses
-# count as violations. Used for both gateway and a representative service.
-run_zero_downtime_assertion() {
+# count as violations, failing above max_violation_pct. True zero
+# downtime is only asserted when callers pass 0; CI passes a tolerance
+# (see call sites), so do not read a green run as a 0% guarantee.
+run_availability_assertion() {
     local label="$1"
     local url="$2"
     local accept_re="$3"
@@ -489,7 +561,7 @@ run_zero_downtime_assertion() {
 # Observed floor: M-14.a 1.2%, M-14.b 3%. 5% matches the service
 # rollout test below for the same reason. The 0% target is real on
 # multi-replica / multi-node EKS but a useless CI signal here.
-run_zero_downtime_assertion "gateway" \
+run_availability_assertion "gateway" \
     "http://localhost:${GATEWAY_LOCAL_PORT}/health" "200" "gateway-deployment" "" "5"
 
 # Phase 2: service rollout via the first declared route. Allow 5%
@@ -497,9 +569,11 @@ run_zero_downtime_assertion "gateway" \
 FIRST_PREFIX=$(echo "${ROUTES}" | head -n1)
 FIRST_SVC=$(jac -c "
 import tomllib
+from jaclang.scale.runtime.discovery.discovery import resolve_routes
 with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
     cfg = tomllib.load(f)
-for name, prefix in cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {}).items():
+explicit = cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {})
+for name, prefix in resolve_routes('${PROJECT_DIR}', dict(explicit)).items():
     if prefix == '${FIRST_PREFIX}':
         print(name.replace('_', '-'))
         break
@@ -507,14 +581,15 @@ for name, prefix in cfg.get('plugins', {}).get('scale', {}).get('microservices',
 if [ -z "${FIRST_PREFIX}" ] || [ -z "${FIRST_SVC}" ]; then
     echo "  (no services declared; skipping service-rollout phase)"
 elif [ "${INGRESS_ENABLED}" = "1" ] && [ "${CLUSTER_TYPE}" != "remote" ] && [ -n "${INGRESS_IP:-}" ]; then
-    run_zero_downtime_assertion "service:${FIRST_SVC} (ingress)" \
+    run_availability_assertion "service:${FIRST_SVC} (ingress)" \
         "http://${INGRESS_IP}${FIRST_PREFIX}/walker/__missing__" \
         "200|404|405" "${FIRST_SVC}-deployment" "${INGRESS_HOST:-localhost}" "5"
 else
-    run_zero_downtime_assertion "service:${FIRST_SVC} (port-forward)" \
+    run_availability_assertion "service:${FIRST_SVC} (port-forward)" \
         "http://localhost:${GATEWAY_LOCAL_PORT}${FIRST_PREFIX}/walker/__missing__" \
         "200|404|405|000" "${FIRST_SVC}-deployment" "" "5"
 fi
 
 _t "ALL DONE"
+print_timing_report
 echo "=== K8s microservice REAL e2e PASSED ==="
