@@ -13,7 +13,6 @@ Architecture:
 """
 import bcrypt;
 import uuid;
-import logging;
 import from datetime { datetime, UTC }
 import from sqlalchemy {
     create_engine,
@@ -34,8 +33,6 @@ import from sqlalchemy.exc { IntegrityError }
 import from jac_scale._optdeps.pymongo { DuplicateKeyError }
 import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
-
-glob logger = logging.getLogger(__name__);
 
 """Raised by storage backends when an identity uniqueness constraint fires."""
 obj IdentityTakenError(Exception) {}
