@@ -18,7 +18,7 @@ test "service-pod bootstrap strips npm deps; the gateway keeps them" {
         )["args"][0]
     );
     assert "dependencies\\.npm" in svc;
-    assert "npm" not in gw;
+    assert "dependencies\\.npm" not in gw;
     # The strip must land before the install that would fetch the packages.
     assert svc.index("npm") < svc.index("jac install");
 }

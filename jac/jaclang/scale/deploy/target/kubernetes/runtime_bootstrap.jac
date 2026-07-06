@@ -128,7 +128,7 @@ def build_bootstrap_init_container(
         # (~1 min/pod, #7179). Strip the npm tables from this pod's own copy
         # of jac.toml so `jac install` skips them.
         commands.append(
-            "awk 'BEGIN{skip=0} /^\\[dependencies\\.npm(\\.dev)?\\]/{skip=1;next} "
+            "awk 'BEGIN{skip=0} /^\\[dependencies\\.npm(\\]|\\.)/{skip=1;next} "
             "/^\\[/{skip=0} !skip' jac.toml > /tmp/jac.toml.nonpm "
             "&& cat /tmp/jac.toml.nonpm > jac.toml"
         );
