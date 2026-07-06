@@ -442,11 +442,6 @@ Emitted during code generation, formatting, and native compilation.
 |------|---------|
 | `E5060` | C library import declaration '{name}' must not have a body |
 
-### Language Server
-
-| Code | Message |
-|------|---------|
-
 ---
 
 ## Internal Compiler Errors (E9xxx)
