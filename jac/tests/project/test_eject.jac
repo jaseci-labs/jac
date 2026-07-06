@@ -299,6 +299,10 @@ test "vite.config.js proxies API routes to the backend" {
         assert "/walker" in vite;
         assert "/function" in vite;
         assert "BACKEND_PORT" in vite;
+        # Proxy must target IPv4 explicitly: uvicorn is IPv4-only, and a
+        # "localhost" target stalls on the dead ::1 address (ETIMEDOUT).
+        assert "127.0.0.1" in vite;
+        assert "http://localhost:" not in vite;
     }
 }
 
