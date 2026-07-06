@@ -5,6 +5,7 @@ easy addition of new authentication vendors (Google, Microsoft, GitHub, SAML, et
 """
 
 import from fastapi { Request, Response }
+import from fastapi_sso.sso.base { SSOBase }
 
 """Standardized user information from SSO providers."""
 obj SSOUserInfo {
@@ -89,10 +90,10 @@ obj FastAPISSOBase(SSOProvider) {
         client_secret: str,
         redirect_uri: str,
         allow_insecure_http: bool = True,
-        _sso: (object | None) = None;
+        _sso: (SSOBase | None) = None;
 
-    """Return the fastapi_sso SSO class this provider wraps."""
-    def _sso_class -> type {
+    """Construct the fastapi_sso client this provider wraps."""
+    def _make_sso -> SSOBase {
         raise NotImplementedError();
     }
 
@@ -102,12 +103,7 @@ obj FastAPISSOBase(SSOProvider) {
     }
 
     def postinit {
-        self._sso = self._sso_class()(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri=self.redirect_uri,
-            allow_insecure_http=self.allow_insecure_http
-        );
+        self._sso = self._make_sso();
     }
 
     async def initiate_auth(state: str | None = None) -> Response {
