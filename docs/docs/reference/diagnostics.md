@@ -73,7 +73,6 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `E0010` | '{keyword}' is not supported in Jac |
-| `E0011` | Jac does not allow this keyword in any syntactic position |
 | `E0012` | Use the `new(target, ...args)` ambient builtin to create new instances |
 | `E0013` | '{keyword}' is a keyword and cannot be used as a {context} name |
 
@@ -93,7 +92,6 @@ Emitted by the parser and lexer during source code parsing.
 | `E0030` | Unexpected semicolon at module level |
 | `E0031` | Module-level 'with' blocks only support 'entry', not 'exit' |
 | `E0032` | Unexpected '{token}' -- must follow its parent statement (if/try/match/switch) |
-| `E0033` | '{modifier}' is not a valid prefix modifier |
 | `E0034` | Expected 'with' after 'can' ability name (use 'def' for function-style declarations) |
 
 ### Block / Body Requirements
@@ -448,9 +446,6 @@ Emitted during code generation, formatting, and native compilation.
 
 | Code | Message |
 |------|---------|
-| `E5070` | Error during type check: {error} |
-| `E5071` | Error during formatting: {error} |
-| `W5072` | Attribute error when accessing node attributes: {error} |
 
 ---
 

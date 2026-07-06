@@ -199,14 +199,9 @@ enum TokenKind {
     F_TEXT_SQ = "F_TEXT_SQ",
     F_TEXT_TDQ = "F_TEXT_TDQ",
     F_TEXT_TSQ = "F_TEXT_TSQ",
-    RF_TEXT_DQ = "RF_TEXT_DQ",
-    RF_TEXT_SQ = "RF_TEXT_SQ",
-    RF_TEXT_TDQ = "RF_TEXT_TDQ",
-    RF_TEXT_TSQ = "RF_TEXT_TSQ",
     D_LBRACE = "{{",
     D_RBRACE = "}}",
     CONV = "CONV",
-    F_FORMAT_TEXT = "F_FORMAT_TEXT",
     JSX_TEXT = "JSX_TEXT",
     JSX_COMMENT = "JSX_COMMENT",
     JSX_OPEN_START = "JSX_OPEN_START",
@@ -218,7 +213,6 @@ enum TokenKind {
     JSX_NAME = "JSX_NAME",
     COMMENT = "COMMENT",
     WS = "WS",
-    NEWLINE = "NEWLINE",
     EOF = "EOF",
     ERROR = "ERROR"
 }

@@ -29,7 +29,6 @@ CLIENT_SUFFIX = ".cl.jac"
 NATIVE_SUFFIX = ".na.jac"
 IMPL_SUFFIX = ".impl.jac"
 TEST_SUFFIX = ".test.jac"
-STYLE_SUFFIX = ".style.css"
 
 # Codespace name constants (returned by ``codespace_of``).
 SERVER = "server"
@@ -45,7 +44,6 @@ VARIANT_STEM_SUFFIXES = (".sv", ".cl", ".na")
 ANNEX_SUFFIXES = (IMPL_SUFFIX, TEST_SUFFIX)
 ANNEX_FOLDER = {IMPL_SUFFIX: ".impl", TEST_SUFFIX: ".test"}
 # Folder-name suffixes that mark a module-scoped annex directory (``foo.impl/``).
-ANNEX_FOLDER_SUFFIXES = (".impl", ".test")
 
 # Every Jac *module* file shape the importer / finder probe, precedence order.
 MODULE_SUFFIXES = (JAC_SUFFIX, SERVER_SUFFIX, CLIENT_SUFFIX, NATIVE_SUFFIX)
