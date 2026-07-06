@@ -2370,7 +2370,7 @@ impl TypeEvaluator._assign_class(
     }
     src_type = unwrapped_src;
     dest_type = unwrapped_dest;
-    if src_type.shared == dest_type.shared {
+    if src_type.shared.same_class(dest_type.shared) {
         if dest_type.is_literal_type() {
             if not src_type.is_literal_type() {
                 return False;
@@ -2514,7 +2514,7 @@ impl TypeEvaluator.is_sub_class(
         type_utils.compute_mro_linearization(sub_cls);
     }
     for cls in sub_cls.shared.mro {
-        if cls.shared == super_cls.shared {
+        if cls.shared.same_class(super_cls.shared) {
             return True;
         }
     }
