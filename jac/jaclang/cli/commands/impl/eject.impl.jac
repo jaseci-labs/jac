@@ -848,7 +848,7 @@ def _harvest_python_deps(toml_data: dict) -> list[str] {
     reqs: list[str] = [];
     for (name, spec) in deps.items() {
         pkg = str(name);
-        if pkg in _NON_PIP_DEPS {
+        if pkg.lower() in _NON_PIP_DEPS {
             continue;
         }
         if isinstance(spec, str) {
@@ -858,12 +858,21 @@ def _harvest_python_deps(toml_data: dict) -> list[str] {
         } else {
             continue;
         }
-        if rng == "*" {
-            rng = "";
-        }
-        reqs.append(pkg + rng);
+        reqs.append(_make_pip_spec(pkg, rng));
     }
     return sorted(reqs);
+}
+
+
+def _make_pip_spec(name: str, version: str) -> str {
+    v = version.strip();
+    if (not v) or (v in ["*", "latest"]) {
+        return name;
+    }
+    if v.startswith(("=", ">", "<", "~", "!")) {
+        return name + v;
+    }
+    return name + "==" + v;
 }
 
 

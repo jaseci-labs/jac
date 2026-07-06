@@ -517,7 +517,7 @@ test "requirements.txt carries the project's Python [dependencies]" {
         _write_project(src, "depapp");
         toml = (src / "jac.toml").read_text();
         (src / "jac.toml").write_text(
-            toml + '\n[dependencies]\npymupdf = ">=1.28"\nrequests = "*"\n' + 'byllm = ">=0.6"\njaclang = ">=0.30"\nfastapi = ">=0.100"\n'
+            toml + '\n[dependencies]\npymupdf = ">=1.28"\nrequests = "*"\n' + 'pillow = "12.0"\nrapidocr = "latest"\n' + 'byllm = ">=0.6"\njaclang = ">=0.30"\nBYLLM = "*"\n' + 'fastapi = ">=0.100"\n'
         );
         rc = _silent_eject(str(src));
         assert rc == 0;
@@ -526,13 +526,19 @@ test "requirements.txt carries the project's Python [dependencies]" {
         assert "pymupdf>=1.28" in req_lines;
         # "*" means any version: emitted as a bare package name.
         assert "requests" in req_lines;
+        # A bare version (no operator) becomes an == pin, matching what
+        # `jac` itself installs; "latest" degrades to a bare name.
+        assert "pillow==12.0" in req_lines;
+        assert "rapidocr" in req_lines;
+        assert "pillow12.0" not in req_lines;
         # The generated app's own fastapi pin wins over the project's.
         assert "fastapi>=0.110" in req_lines;
         assert "fastapi>=0.100" not in req_lines;
-        # Vendored packages must never become pip requirements.
+        # Vendored packages must never become pip requirements, even when
+        # the jac.toml key differs in case (BYLLM, Jaclang, ...).
         for line in req_lines {
-            assert not line.startswith("jaclang");
-            assert not line.startswith("byllm");
+            assert not line.lower().startswith("jaclang");
+            assert not line.lower().startswith("byllm");
         }
     }
 }
