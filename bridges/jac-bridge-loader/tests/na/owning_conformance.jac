@@ -5,23 +5,12 @@
 # na side: synthesize Jac source from the .so's metadata, nacompile it with an
 # appended probe that prints one line per observation, run the binary, diff the
 # output against the CPython loader.  Gated on the LLVM shim; skips without it.
-import os;
-import subprocess;
-import sys;
-import tempfile;
-import shutil;
-import from pathlib { Path }
 import from jaclang.compiler.rust_bridge { load_bridge }
-import from jaclang.compiler.rust_bridge._blob { parse }
-import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
-import from jaclang.compiler.rust_bridge._synth { render_na_source }
+import from _harness { bridge_so, jac_str, llvm_shim, run_na_probe, skip_gate }
 
 
-glob REPO = Path(__file__).resolve().parents[4],
-     JAC = REPO / "jac",
-     LOADER = REPO / "bridges" / "jac-bridge-loader",
-     SO = REPO / "bridges" / "target" / "release" / "libjac_bridge_owning.so",
-     SHIM = JAC / "zig-out" / "lib" / "libjacllvm.so",
+glob SO = bridge_so("owning"),
+     SHIM = llvm_shim(),
      # (pattern, haystack) -> find() text or None; brackets make "" vs None visible.
      FIND_CASES = [
          (r"\d+", "abc123def"),
@@ -233,16 +222,7 @@ def cpython_side -> list {
 }
 
 
-def _jac_str(s: str) -> str {
-    # embed a Python string as a Jac double-quoted literal
-    return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-}
-
-
 def na_side -> list {
-    meta = parse(read_jac_bridge_section(str(SO)));
-    src = render_na_source(meta, SO.name).source;
-
     # The callback crosses as a real Jac lambda: the na backend lowers it to a
     # ctx-leading C-ABI trampoline + a {call, ctx} record at the call site (no
     # hand-written def:pub thunk — that is the whole point of this vertical).
@@ -251,18 +231,18 @@ def na_side -> list {
         pat = case[0];
         text = case[1];
         label = _find_label(pat, text);
-        probe.append("    re = Regex(" + _jac_str(pat) + ");");
-        probe.append("    m = re.find(" + _jac_str(text) + ");");
+        probe.append("    re = Regex(" + jac_str(pat) + ");");
+        probe.append("    m = re.find(" + jac_str(text) + ");");
         probe.append("    if m is not None {");
         probe.append("        om: OwnedMatch = m;");
         probe.append(
-            "        print(" + _jac_str(label + "[") + " + om.as_str() + " + _jac_str(
+            "        print(" + jac_str(label + "[") + " + om.as_str() + " + jac_str(
                 "]"
             ) + ");"
         );
         probe.append("        om.close();");
         probe.append("    } else {");
-        probe.append("        print(" + _jac_str(label + "None") + ");");
+        probe.append("        print(" + jac_str(label + "None") + ");");
         probe.append("    }");
         probe.append("    re.close();");
     }
@@ -271,21 +251,21 @@ def na_side -> list {
         text = case[1];
         group = case[2];
         label = _caps_label(pat, text, group);
-        probe.append("    re = Regex(" + _jac_str(pat) + ");");
-        probe.append("    c = re.captures(" + _jac_str(text) + ");");
+        probe.append("    re = Regex(" + jac_str(pat) + ");");
+        probe.append("    c = re.captures(" + jac_str(text) + ");");
         probe.append("    if c is not None {");
         probe.append("        oc: OwnedCaptures = c;");
-        probe.append("        n = oc.name(" + _jac_str(group) + ");");
+        probe.append("        n = oc.name(" + jac_str(group) + ");");
         probe.append("        if n is not None {");
         probe.append(
-            "            print(" + _jac_str(label + "[") + " + n + " + _jac_str("]") + ");"
+            "            print(" + jac_str(label + "[") + " + n + " + jac_str("]") + ");"
         );
         probe.append("        } else {");
-        probe.append("            print(" + _jac_str(label + "None") + ");");
+        probe.append("            print(" + jac_str(label + "None") + ");");
         probe.append("        }");
         probe.append("        oc.close();");
         probe.append("    } else {");
-        probe.append("        print(" + _jac_str(label + "caps=None") + ");");
+        probe.append("        print(" + jac_str(label + "caps=None") + ");");
         probe.append("    }");
         probe.append("    re.close();");
     }
@@ -294,25 +274,25 @@ def na_side -> list {
         text = case[1];
         group = case[2];
         label = _nm_label(pat, text, group);
-        probe.append("    re = Regex(" + _jac_str(pat) + ");");
-        probe.append("    c = re.captures(" + _jac_str(text) + ");");
+        probe.append("    re = Regex(" + jac_str(pat) + ");");
+        probe.append("    c = re.captures(" + jac_str(text) + ");");
         probe.append("    if c is not None {");
         probe.append("        oc: OwnedCaptures = c;");
-        probe.append("        mm = oc.name_match(" + _jac_str(group) + ");");
+        probe.append("        mm = oc.name_match(" + jac_str(group) + ");");
         probe.append("        if mm is not None {");
         probe.append("            om2: OwnedMatch = mm;");
         probe.append(
-            "            print(" + _jac_str(label + "[") + " + om2.as_str() + " + _jac_str(
+            "            print(" + jac_str(label + "[") + " + om2.as_str() + " + jac_str(
                 "]"
             ) + ");"
         );
         probe.append("            om2.close();");
         probe.append("        } else {");
-        probe.append("            print(" + _jac_str(label + "None") + ");");
+        probe.append("            print(" + jac_str(label + "None") + ");");
         probe.append("        }");
         probe.append("        oc.close();");
         probe.append("    } else {");
-        probe.append("        print(" + _jac_str(label + "caps=None") + ");");
+        probe.append("        print(" + jac_str(label + "caps=None") + ");");
         probe.append("    }");
         probe.append("    re.close();");
     }
@@ -320,8 +300,8 @@ def na_side -> list {
         pat = case[0];
         text = case[1];
         label = _cursor_label(pat, text);
-        probe.append("    re = Regex(" + _jac_str(pat) + ");");
-        probe.append("    cur = re.find_iter(" + _jac_str(text) + ");");
+        probe.append("    re = Regex(" + jac_str(pat) + ");");
+        probe.append("    cur = re.find_iter(" + jac_str(text) + ");");
         probe.append("    acc = \"\";");
         probe.append("    m = cur.next();");
         probe.append("    while m is not None {");
@@ -331,7 +311,7 @@ def na_side -> list {
         probe.append("        m = cur.next();");
         probe.append("    }");
         probe.append(
-            "    print(" + _jac_str(label + "[") + " + acc + " + _jac_str("]") + ");"
+            "    print(" + jac_str(label + "[") + " + acc + " + jac_str("]") + ");"
         );
         probe.append("    cur.close();");
         probe.append("    re.close();");
@@ -340,8 +320,8 @@ def na_side -> list {
         pat = case[0];
         text = case[1];
         label = _split_label(pat, text);
-        probe.append("    re = Regex(" + _jac_str(pat) + ");");
-        probe.append("    dr = re.split(" + _jac_str(text) + ");");
+        probe.append("    re = Regex(" + jac_str(pat) + ");");
+        probe.append("    dr = re.split(" + jac_str(text) + ");");
         probe.append("    acc = \"\";");
         probe.append("    s = dr.next();");
         probe.append("    while s is not None {");
@@ -349,7 +329,7 @@ def na_side -> list {
         probe.append("        s = dr.next();");
         probe.append("    }");
         probe.append(
-            "    print(" + _jac_str(label + "[") + " + acc + " + _jac_str("]") + ");"
+            "    print(" + jac_str(label + "[") + " + acc + " + jac_str("]") + ");"
         );
         probe.append("    dr.close();");
         probe.append("    re.close();");
@@ -358,12 +338,12 @@ def na_side -> list {
         pat = case[0];
         text = case[1];
         label = _replace_label(pat, text, "upper");
-        probe.append("    re = Regex(" + _jac_str(pat) + ");");
+        probe.append("    re = Regex(" + jac_str(pat) + ");");
         probe.append(
-            "    out = re.replace_all(" + _jac_str(text) + ", lambda (m: str) -> str : m.upper());"
+            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str : m.upper());"
         );
         probe.append(
-            "    print(" + _jac_str(label + "[") + " + out + " + _jac_str("]") + ");"
+            "    print(" + jac_str(label + "[") + " + out + " + jac_str("]") + ");"
         );
         probe.append("    re.close();");
     }
@@ -371,12 +351,12 @@ def na_side -> list {
         pat = case[0];
         text = case[1];
         label = _replace_label(pat, text, "bracket");
-        probe.append("    re = Regex(" + _jac_str(pat) + ");");
+        probe.append("    re = Regex(" + jac_str(pat) + ");");
         probe.append(
-            "    out = re.replace_all(" + _jac_str(text) + ", lambda (m: str) -> str : \"<\" + m + \">\");"
+            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str : \"<\" + m + \">\");"
         );
         probe.append(
-            "    print(" + _jac_str(label + "[") + " + out + " + _jac_str("]") + ");"
+            "    print(" + jac_str(label + "[") + " + out + " + jac_str("]") + ");"
         );
         probe.append("    re.close();");
     }
@@ -392,82 +372,35 @@ def na_side -> list {
         label = _replace_label(pat, text, "capture");
         fname = f"_cap_case_{i}";
         cap_helpers.append("def " + fname + "() -> str {");
-        cap_helpers.append("    prefix = " + _jac_str(prefix) + ";");
-        cap_helpers.append("    re = Regex(" + _jac_str(pat) + ");");
+        cap_helpers.append("    prefix = " + jac_str(prefix) + ";");
+        cap_helpers.append("    re = Regex(" + jac_str(pat) + ");");
         cap_helpers.append(
-            "    out = re.replace_all(" + _jac_str(text) + ", lambda (m: str) -> str : prefix + m);"
+            "    out = re.replace_all(" + jac_str(text) + ", lambda (m: str) -> str : prefix + m);"
         );
         cap_helpers.append("    re.close();");
         cap_helpers.append("    return out;");
         cap_helpers.append("}");
         probe.append(
-            "    print(" + _jac_str(label + "[") + " + " + fname + "() + " + _jac_str(
+            "    print(" + jac_str(label + "[") + " + " + fname + "() + " + jac_str(
                 "]"
             ) + ");"
         );
     }
     probe.append("}");
-    src = src + "\n".join(cap_helpers) + "\n" + "\n".join(probe);
-
-    td = tempfile.mkdtemp();
-    try {
-        # Written as a `.na.jac` native module: the synthesized bridge source is
-        # all-native, and the `.na.jac` suffix skips auto-promotion (a lambda arg
-        # would otherwise flag the module native-incompatible and fall back to the
-        # Python path, which rejects the string-literal FFI imports).
-        jac_file = Path(td) / "owning_conf.na.jac";
-        jac_file.write_text(src);
-        binp = Path(td) / "owning_conf";
-        env = dict(os.environ);
-        env["JAC_LLVM_SHIM"] = str(SHIM);
-        env["PYTHONPATH"] = str(JAC);
-        r = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "jaclang",
-                "nacompile",
-                str(jac_file),
-                "-o",
-                str(binp)
-            ],
-            cwd=str(JAC),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=600
-        );
-        if not binp.exists() {
-            raise RuntimeError(
-                "nacompile failed:\n" + r.stdout[-2000:] + r.stderr[-2000:]
-            );
-        }
-        runenv = dict(os.environ);
-        runenv["LD_LIBRARY_PATH"] = str(SO.parent);
-        run = subprocess.run(
-            [str(binp)], capture_output=True, text=True, timeout=60, env=runenv
-        );
-        if run.returncode != 0 {
-            raise RuntimeError(
-                f"binary exited {run.returncode}:\n{run.stdout}\n{run.stderr}"
-            );
-        }
-        return [
-            ln
-            for ln in run.stdout.splitlines()
-            if ln.strip()
-        ];
-    } finally {
-        shutil.rmtree(td, ignore_errors=True);
-    }
+    extra = "\n".join(cap_helpers) + "\n";
+    return run_na_probe(
+        SO,
+        probe,
+        "owning_conf.na.jac",
+        "owning_conf",
+        extra_src=extra,
+        strip_blank=True
+    );
 }
 
 
 test "owning na cpython conformance" {
-    if not SO.is_file() {
-        return;
-    }
-    if not (SHIM.is_file() or os.environ.get("JAC_LLVM_SHIM")) {
+    if skip_gate(SO, SHIM) {
         return;
     }
     assert cpython_side() == na_side();
