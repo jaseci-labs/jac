@@ -3044,7 +3044,9 @@ impl TypeEvaluator.get_type_of_expression(
             self.emit_diag(W1051, node_);
         }
     }
-    node_.type = result;
+    if not self._flow_loop_pending {
+        node_.type = result;
+    }
 
     if isinstance(result, (types.UnionType, types.ClassType)) {
         if narrowed := self.get_narrowed_type_for_expr(node_, result, node_) {

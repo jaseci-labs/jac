@@ -1014,3 +1014,17 @@ test "bug_loop_fixed_point" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# Bug #6723 (soundness): the fixed point evaluates the loop body speculatively,
+# so those evaluations must not cache their result or the real check pass would
+# hit the cache and never re-emit a genuine error. `cur.step(999)` sits on the
+# back-edge (it reassigns cur), so it is evaluated speculatively; its argument
+# error must still surface.
+test "bug_loop_speculative_diag_not_swallowed" {
+    program = compile_and_check("checker_bug_loop_speculative_diag.jac");
+    assert len(program.errors_had) == 1 , (
+        "Bug #6723: a real type error inside a loop body must not be swallowed by "
+        "the fixed-point's speculative evaluation. Expected the argument-count "
+        f"error on `cur.step(999)`, got: {[str(e) for e in program.errors_had]}"
+    );
+}
