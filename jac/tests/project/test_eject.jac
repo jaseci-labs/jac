@@ -759,3 +759,117 @@ test "@restspec functions get their declared paths mounted" {
         assert _backend(src, "jaclang/scale/jserver/jserver.py").exists();
     }
 }
+
+
+# ==================== file upload (multipart) endpoints ====================
+"""A project whose entry imports a `:pub` function taking an UploadFile."""
+def _write_upload_project(src: Path, name: str = "up_app") {
+    src.mkdir(parents=True, exist_ok=True);
+    (src / "jac.toml").write_text(
+        f'[project]\nname = "{name}"\nentry-point = "main.jac"\n'
+    );
+    (src / "main.jac").write_text('import from up { ingest }\n');
+    (src / "up.jac").write_text(
+        'import from fastapi { UploadFile }\n\n' + 'def:pub ingest(file: UploadFile) -> dict {\n' + '    return {"name": file.filename};\n' + '}\n'
+    );
+}
+
+
+test "a function taking UploadFile becomes a multipart File() endpoint" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "upapp";
+        _write_upload_project(src, "upapp");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        main_py = _backend(src, "main.py").read_text();
+        # The upload param binds to File(), not a JSON body model.
+        assert "file: UploadFile = File(...)" in main_py;
+        assert "File, Form, UploadFile" in main_py;
+        assert "class IngestFnIn" not in main_py;
+        # python-multipart is required for File()/Form() parsing.
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "python-multipart" in reqs;
+    }
+}
+
+
+test "non-upload functions keep their JSON body model" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "jsonapp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "jsonapp"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text('import from api { greet }\n');
+        (src / "api.jac").write_text(
+            'def:pub greet(name: str) -> str {\n    return "hi " + name;\n}\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        main_py = _backend(src, "main.py").read_text();
+        assert "class GreetFnIn" in main_py;
+        assert "File, Form, UploadFile" not in main_py;
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "python-multipart" not in reqs;
+    }
+}
+
+
+# ==================== data-file routing (assets vs backend data) ====================
+test "web assets go to the frontend only; other data to the backend only" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "resapp";
+        _write_project(src, "resapp");
+        (src / "assets").mkdir();
+        (src / "assets" / "logo.svg").write_text("<svg/>");
+        (src / "schemas").mkdir();
+        (src / "schemas" / "doc.yaml").write_text("a: 1\n");
+        (src / "docs").mkdir();
+        (src / "docs" / "guide.md").write_text("# guide\n");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        # Image asset: frontend only.
+        assert _frontend(src, "src/assets/logo.svg").exists();
+        assert not _backend(src, "assets/logo.svg").exists();
+        # yaml/md data: backend only, never duplicated into the UI bundle.
+        assert _backend(src, "schemas/doc.yaml").exists();
+        assert not _frontend(src, "src/schemas/doc.yaml").exists();
+        assert _backend(src, "docs/guide.md").exists();
+        assert not _frontend(src, "src/docs/guide.md").exists();
+    }
+}
+
+
+# ==================== docstring-only modules are not backend servers ====================
+test "a module that is only a docstring is not emitted as a backend module" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "docmod";
+        _write_project(src, "docmod");
+        # A multi-line docstring module with no real statements (mirrors a
+        # compiled client page): it must not become a backend .py module.
+        (src / "notes.jac").write_text(
+            '"""First line of the module docstring\n' + 'that wraps onto a second line."""\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        assert not _backend(src, "notes.py").exists();
+    }
+}
+
+
+# ==================== prior eject output is not swept into a new eject ====================
+test "a prior eject output is excluded from a re-eject to a different dir" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "reapp";
+        _write_project(src, "reapp");
+        # First eject to the default ./ejected.
+        assert _silent_eject(str(src)) == 0;
+        assert (src / "ejected" / ".jac-ejected").exists();
+        # Now eject to a sibling dir: the earlier ./ejected (marked output)
+        # must not be pulled in as source data.
+        dest = Path(td) / "dist";
+        assert _silent_eject(str(src), output=str(dest)) == 0;
+        assert not (dest / "backend" / "ejected").exists();
+        assert not (dest / "frontend" / "src" / "ejected").exists();
+    }
+}

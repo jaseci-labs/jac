@@ -137,6 +137,15 @@ def emit_backend(
         style="success"
     );
 
+    uses_upload = False;
+    for f in functions_full {
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                uses_upload = True;
+            }
+        }
+    }
+
     reqs: list[str] = [];
     if sql {
         reqs.append("SQLAlchemy>=2.0");
@@ -149,6 +158,9 @@ def emit_backend(
     }
     if has_env {
         reqs.append("python-dotenv>=1.0");
+    }
+    if uses_upload {
+        reqs.append("python-multipart>=0.0.9");
     }
     _emit_requirements(backend_dir, reqs);
     return 0;
@@ -358,6 +370,11 @@ def _model_class_name(name: str, suffix: str) -> str {
 }
 
 
+def _is_upload_type(ptype: str) -> bool {
+    return "UploadFile" in str(ptype);
+}
+
+
 glob _JSON_SAFE_TYPE_NAMES: set = {
          "str",
          "int",
@@ -443,6 +460,18 @@ def _emit_main_py(
     has_env: bool,
     entry_module: str
 ) {
+    uses_upload = False;
+    for f in functions {
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                uses_upload = True;
+            }
+        }
+    }
+    fastapi_import = "from fastapi import FastAPI, Header, HTTPException";
+    if uses_upload {
+        fastapi_import += ", File, Form, UploadFile";
+    }
     lines: list[str] = [
         f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}:',
         'runs the compiled walkers on the jaclang runtime with jaclang-native auth',
@@ -454,7 +483,7 @@ def _emit_main_py(
         'Any, Dict, Iterable, List, Literal, Mapping, '
         'Optional, Sequence, Set, Tuple, Union',
         '',
-        'from fastapi import FastAPI, Header, HTTPException',
+        fastapi_import,
         'from fastapi.middleware.cors import CORSMiddleware',
         'from fastapi.responses import StreamingResponse',
         'from pydantic import BaseModel',
@@ -704,8 +733,46 @@ def _emit_main_py(
 
     for f in functions {
         fn = str(f["name"]);
-        model = _model_class_name(fn, "FnIn");
         required = "False" if f["pub"] else "True";
+        has_upload = False;
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                has_upload = True;
+            }
+        }
+        if has_upload {
+            sig: list[str] = [];
+            for p in f["params"] {
+                pname = str(p["name"]);
+                if _is_upload_type(str(p["type"])) {
+                    utype = "list[UploadFile]"
+                        if "list" in str(p["type"]).lower()
+                        else "UploadFile";
+                    sig.append(pname + ": " + utype + " = File(...)");
+                } else {
+                    ftype = _safe_model_type(str(p["type"]));
+                    default = _safe_model_default(str(p["default"]))
+                        if p["has_default"]
+                        else "...";
+                    sig.append(pname + ": " + ftype + " = Form(" + default + ")");
+                }
+            }
+            sig.append("authorization: str = Header(default=None)");
+            kw = ", ".join(
+                [repr(str(p["name"])) + ": " + str(p["name"]) for p in f["params"]]
+            );
+            lines.append("");
+            lines.append("");
+            lines.append('@app.post("/function/' + fn + '")');
+            lines.append("async def call_" + fn + "(" + ", ".join(sig) + "):");
+            lines.append("    user = _username(authorization, " + required + ")");
+            lines.append("    fields = {" + kw + "}");
+            lines.append(
+                "    return _respond_fn(await _em.execute_function(_F_" + fn + ", fields, user))"
+            );
+            continue;
+        }
+        model = _model_class_name(fn, "FnIn");
         lines.append("");
         lines.append("");
         lines.append("class " + model + "(BaseModel):");
@@ -739,13 +806,19 @@ def _emit_main_py(
     }
 
     if functions {
-        triples = ", ".join(
-            [
-                "(_F_" + str(f["name"]) + ", call_" + str(f["name"]) + ", " + _model_class_name(
-                    str(f["name"]), "FnIn"
-                ) + ")" for f in functions
-            ]
-        );
+        triple_parts: list = [];
+        for f in functions {
+            fn = str(f["name"]);
+            has_upload = False;
+            for p in f["params"] {
+                if _is_upload_type(str(p["type"])) {
+                    has_upload = True;
+                }
+            }
+            model_ref = "None" if has_upload else _model_class_name(fn, "FnIn");
+            triple_parts.append("(_F_" + fn + ", call_" + fn + ", " + model_ref + ")");
+        }
+        triples = ", ".join(triple_parts);
         lines += [
             '',
             '',
@@ -761,7 +834,7 @@ def _emit_main_py(
             '    if not path.startswith("/"):',
             '        path = "/" + path',
             '    method = str(getattr(spec, "method", "") or "POST").upper()',
-            '    if method in ("GET", "HEAD"):',
+            '    if method in ("GET", "HEAD") and model is not None:',
             '        async def _bodyless(authorization: str = Header(default=None)):',
             '            return await handler(model(), authorization=authorization)',
             '        app.add_api_route(path, _bodyless, methods=[method])',

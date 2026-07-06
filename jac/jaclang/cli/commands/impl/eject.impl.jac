@@ -118,10 +118,12 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     console.print(f"  Source: {src}");
     console.print(f"  Output: {out}\n");
 
+    eject_roots = _find_eject_roots(src, out);
     jac_files = [
         f
         for f in _collect_jac_files(src)
-        if out not in Path(str(f)).parents
+        if (out not in Path(str(f)).parents)
+        and not _under_any(Path(str(f)), eject_roots)
     ];
     if not jac_files {
         console.error("No .jac source files found to eject.");
@@ -304,7 +306,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     }
 
     _copy_data_files(
-        src, out, backend_dir, frontend_src_dir, frontend_dir, has_frontend
+        src, out, backend_dir, frontend_src_dir, frontend_dir, has_frontend, eject_roots
     );
 
     if not has_frontend {
@@ -347,6 +349,28 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     console.print("  make dev");
     console.print();
     return 0;
+}
+
+
+def _find_eject_roots(src: Path, out: Path) -> set {
+    roots: set = set();
+    for marker in src.rglob(".jac-ejected") {
+        marker_dir = marker.parent;
+        if marker_dir != out {
+            roots.add(marker_dir);
+        }
+    }
+    return roots;
+}
+
+
+def _under_any(path: Path, roots: set) -> bool {
+    for base in roots {
+        if (path == base) or (base in path.parents) {
+            return True;
+        }
+    }
+    return False;
 }
 
 
@@ -425,21 +449,18 @@ def _is_meaningful_python(py_code: str) -> bool {
     if not py_code.strip() {
         return False;
     }
-    for raw_line in py_code.splitlines() {
-        line = raw_line.strip();
-        if not line {
+    try {
+        tree = ast.parse(py_code);
+    } except Exception {
+        return True;
+    }
+    for node in tree.body {
+        if isinstance(node, (ast.Import, ast.ImportFrom)) {
             continue;
         }
-        if line.startswith("#") {
-            continue;
-        }
-        if line.startswith('"""') or line.startswith("'''") {
-            continue;
-        }
-        if line.startswith("from __future__") {
-            continue;
-        }
-        if line.startswith("from ") or line.startswith("import ") {
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str) {
             continue;
         }
         return True;
@@ -623,7 +644,8 @@ def _copy_data_files(
     backend_dir: Path,
     frontend_src_dir: Path,
     frontend_root: Path,
-    has_frontend: bool
+    has_frontend: bool,
+    eject_roots: set
 ) {
     copied = False;
     for path in src.rglob("*") {
@@ -631,6 +653,9 @@ def _copy_data_files(
             continue;
         }
         if out in path.parents {
+            continue;
+        }
+        if _under_any(path, eject_roots) {
             continue;
         }
         rel = path.relative_to(src);
@@ -657,13 +682,7 @@ def _copy_data_files(
             copied = True;
             continue;
         }
-        is_frontend_only = path.suffix == ".css";
-        if not (has_frontend and is_frontend_only) {
-            dest_b = backend_dir / rel;
-            dest_b.parent.mkdir(parents=True, exist_ok=True);
-            shutil.copy2(path, dest_b);
-        }
-        if has_frontend {
+        if has_frontend and _is_frontend_asset(rel) {
             dest_f = frontend_src_dir / rel;
             dest_f.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(path, dest_f);
@@ -676,12 +695,52 @@ def _copy_data_files(
                 dest_s.parent.mkdir(parents=True, exist_ok=True);
                 shutil.copy2(path, dest_s);
             }
+        } else {
+            dest_b = backend_dir / rel;
+            dest_b.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(path, dest_b);
         }
         copied = True;
     }
     if copied {
         console.print("  ✔ resources", style="success");
     }
+}
+
+
+glob _FRONTEND_ASSET_EXTS: set = {
+         ".css",
+         ".scss",
+         ".sass",
+         ".less",
+         ".png",
+         ".jpg",
+         ".jpeg",
+         ".gif",
+         ".svg",
+         ".webp",
+         ".avif",
+         ".ico",
+         ".bmp",
+         ".woff",
+         ".woff2",
+         ".ttf",
+         ".otf",
+         ".eot",
+         ".mp4",
+         ".webm",
+         ".mp3",
+         ".wav",
+         ".ogg"
+     };
+
+
+def _is_frontend_asset(rel: Path) -> bool {
+    parts = list(rel.parts);
+    if parts and (parts[0] == "assets") {
+        return True;
+    }
+    return rel.suffix.lower() in _FRONTEND_ASSET_EXTS;
 }
 
 
