@@ -1,4 +1,36 @@
 import from jaclang.compiler.passes.native.llvm { ir }
+import from jaclang.jac0core.diagnostics { E9002 }
+
+impl NaIRGenPass._require_trace_fn(
+    type_name: str, participates: bool, has_trace: bool
+) -> None {
+    if participates and not has_trace {
+        self.emit(
+            E9002,
+            node_override=self.ir_in,
+            details=(
+                f"type '{type_name}' has managed reference fields but no cycle "
+                f"trace function; it cannot safely participate in cycle "
+                f"collection (a cycle through it would leak). This is a native "
+                f"code-generation invariant violation."
+            )
+        );
+    }
+}
+
+impl NaIRGenPass._struct_has_ref_fields(arch_name: str) -> bool {
+    field_types = self.struct_field_types.get(arch_name, {});
+    field_indices = self.struct_field_indices.get(arch_name, {});
+    opaque_fields = self.struct_field_opaque.get(arch_name, set());
+    for (fname, ftype) in field_types.items() {
+        if isinstance(ftype, ir.PointerType)
+        and fname not in opaque_fields
+        and field_indices.get(fname, -1) >= 0 {
+            return True;
+        }
+    }
+    return False;
+}
 
 impl NaIRGenPass._emit_trace_fn(arch_name: str) -> None {
     if arch_name in self.struct_trace_fns {

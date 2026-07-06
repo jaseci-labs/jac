@@ -2709,23 +2709,6 @@ impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
         ];
     } elif (nd.op.name in [Tok.STAR_POW]) {
         nd.gen.py_ast = nd.operand.gen.py_ast;
-    } elif (nd.op.name in [Tok.BW_AND]) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Call(
-                    func=self.builtin_name('jobj'),
-                    args=[],
-                    keywords=[
-                        self.sync(
-                            ast3.keyword(
-                                arg='id',
-                                value=cast(ast3.expr, self.py_ast_val(nd.operand))
-                            )
-                        )
-                    ]
-                )
-            )
-        ];
     } else {
         self.ice("Unknown Unary operator " + str(nd.op.value));
     }

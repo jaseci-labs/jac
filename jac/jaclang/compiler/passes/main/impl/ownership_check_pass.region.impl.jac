@@ -5,49 +5,93 @@ impl OwnershipCheckPass._has_region_blocks -> bool {
     return bool(self.ir_in.get_all_sub_nodes(uni.RegionStmt));
 }
 
-impl OwnershipCheckPass._region_root_name(nd: uni.Expr | None) -> (uni.Name | None) {
+impl OwnershipCheckPass._place_of(nd: uni.Expr | None) -> (Place | None) {
     cur = nd;
     if isinstance(cur, uni.UnaryExpr) and is_borrow_kind(cur.ownership) {
         cur = cur.operand;
     }
+    projections: list[str] = [];
     while isinstance(cur, uni.AtomTrailer) {
+        if cur.is_attr and isinstance(cur.right, uni.Name) {
+            projections.append(cur.right.sym_name);
+        } else {
+            projections.append("[]");
+        }
         cur = cur.target;
     }
     if isinstance(cur, uni.Name) and cur.sym {
-        return cur;
+        projections.reverse();
+        return Place(base=cur, projections=projections);
     }
     return None;
 }
 
-impl OwnershipCheckPass._region_escapees(
+impl OwnershipCheckPass._places_reachable(nd: uni.Expr | None) -> list[Place] {
+    out: list[Place] = [];
+    if nd is None {
+        return out;
+    }
+    place = self._place_of(nd);
+    if place is not None {
+        out.append(place);
+        return out;
+    }
+    if isinstance(nd, uni.ListVal) or isinstance(nd, uni.SetVal) {
+        for v in (nd.values or []) {
+            out.extend(self._places_reachable(v));
+        }
+    } elif isinstance(nd, uni.TupleVal) {
+        for v in nd.values {
+            if isinstance(v, uni.Expr) {
+                out.extend(self._places_reachable(v));
+            }
+        }
+    } elif isinstance(nd, uni.DictVal) {
+        for kv in nd.kv_pairs {
+            out.extend(self._places_reachable(kv.key));
+            out.extend(self._places_reachable(kv.value));
+        }
+    } elif isinstance(nd, uni.IfElseExpr) {
+        out.extend(self._places_reachable(nd.value));
+        out.extend(self._places_reachable(nd.else_value));
+    } elif isinstance(nd, uni.FuncCall) {
+        for p in (nd.params or []) {
+            if isinstance(p, uni.KWPair) {
+                out.extend(self._places_reachable(p.value));
+            } elif isinstance(p, uni.Expr) {
+                out.extend(self._places_reachable(p));
+            }
+        }
+        recv = self._place_of(nd.target);
+        if recv is not None {
+            out.append(recv);
+        }
+    } else {
+        for sub in nd.get_all_sub_nodes(uni.Name) {
+            sub_place = self._place_of(sub);
+            if sub_place is not None {
+                out.append(sub_place);
+            }
+        }
+    }
+    return out;
+}
+
+impl OwnershipCheckPass._region_escapee_roots(
     expr: uni.Expr | None, region: uni.RegionStmt
 ) -> list[uni.Name] {
     out: list[uni.Name] = [];
-    if expr is None {
-        return out;
-    }
-    root_nm = self._region_root_name(expr);
-    if root_nm is not None {
+    seen: set[SymId] = set();
+    for place in self._places_reachable(expr) {
+        root_nm = place.base;
+        sid = self._name_sym_id(root_nm);
+        if sid in seen {
+            continue;
+        }
         if self._borrow_sym_of(root_nm) is None
         and self._is_region_local(root_nm, region) {
+            seen.add(sid);
             out.append(root_nm);
-        }
-        return out;
-    }
-    if isinstance(expr, uni.ListVal) or isinstance(expr, uni.SetVal) {
-        for v in (expr.values or []) {
-            out.extend(self._region_escapees(v, region));
-        }
-    } elif isinstance(expr, uni.TupleVal) {
-        for v in expr.values {
-            if isinstance(v, uni.Expr) {
-                out.extend(self._region_escapees(v, region));
-            }
-        }
-    } elif isinstance(expr, uni.DictVal) {
-        for kv in expr.kv_pairs {
-            out.extend(self._region_escapees(kv.key, region));
-            out.extend(self._region_escapees(kv.value, region));
         }
     }
     return out;
@@ -58,19 +102,6 @@ impl OwnershipCheckPass._is_region_local(nd: uni.Name, region: uni.RegionStmt) -
         return False;
     }
     return self._is_ancestor(region, nd.sym.decl);
-}
-
-impl OwnershipCheckPass._concurrent_payload_names(
-    cexpr: uni.ConcurrentExpr
-) -> list[uni.Name] {
-    names: list[uni.Name] = [];
-    if isinstance(cexpr.target, uni.Name) {
-        names.append(cexpr.target);
-    }
-    for nm in cexpr.target.get_all_sub_nodes(uni.Name) {
-        names.append(nm);
-    }
-    return names;
 }
 
 impl OwnershipCheckPass._emit_region_escape(
@@ -92,7 +123,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
     seen: set[tuple[int, int]] = set();
     for region in regions {
         for ret in self.idx_returns {
-            for root_nm in self._region_escapees(ret.expr, region) {
+            for root_nm in self._region_escapee_roots(ret.expr, region) {
                 key = (id(ret), self._name_sym_id(root_nm));
                 if key in seen {
                     continue;
@@ -102,13 +133,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             }
         }
         for cexpr in self.idx_concurrent {
-            for nm in self._concurrent_payload_names(cexpr) {
-                if self._borrow_sym_of(nm) is not None {
-                    continue;
-                }
-                if not self._is_region_local(nm, region) {
-                    continue;
-                }
+            for nm in self._region_escapee_roots(cexpr.target, region) {
                 key = (id(cexpr), self._name_sym_id(nm));
                 if key in seen {
                     continue;
@@ -122,7 +147,7 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
             if asn.aug_op is not None {
                 continue;
             }
-            escapees = self._region_escapees(asn.value, region);
+            escapees = self._region_escapee_roots(asn.value, region);
             if not escapees {
                 continue;
             }

@@ -31,13 +31,17 @@ obj BorrowMeta {
         is_mut: bool = False;
 }
 
+obj Place {
+    has base: uni.Name,
+        projections: list[str] = [];
+}
+
 obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
         owned_decl: dict[SymId, uni.Name] = {},
         consumed_syms: set[SymId] = set(),
-        proven_unique_syms: set[SymId] = set(),
         borrow_meta: dict[SymId, BorrowMeta] = {},
         e1304_borrow_ids: set[SymId] = set(),
         in_consumed: dict[int, set[SymId]] = {},
@@ -73,15 +77,14 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         dest: uni.UniScopeNode | None, region: uni.UniScopeNode | None
     ) -> bool;
 
-    def _region_root_name(nd: uni.Expr | None) -> (uni.Name | None);
-    def _region_escapees(
+    def _place_of(nd: uni.Expr | None) -> (Place | None);
+    def _places_reachable(nd: uni.Expr | None) -> list[Place];
+    def _region_escapee_roots(
         expr: uni.Expr | None, region: uni.RegionStmt
     ) -> list[uni.Name];
 
     def _is_region_local(nd: uni.Name, region: uni.RegionStmt) -> bool;
-    def _concurrent_payload_names(cexpr: uni.ConcurrentExpr) -> list[uni.Name];
     def _emit_region_escape(nm: uni.Name, region: uni.RegionStmt) -> None;
-    def _compute_proven_unique -> None;
     def _is_own_decl(nd: uni.Assignment) -> (uni.Name | None);
     def _is_borrow_decl(nd: uni.Assignment) -> (uni.Name | None);
     def _borrow_target(nd: uni.Assignment) -> (uni.Name | None);

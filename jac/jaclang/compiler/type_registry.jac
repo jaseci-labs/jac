@@ -251,7 +251,6 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
                  "range",
                  "slice",
                  "bytearray",
-                 "__rc_collect_cycles",
 
              }
          ),

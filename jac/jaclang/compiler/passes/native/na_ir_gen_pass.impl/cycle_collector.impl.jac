@@ -133,6 +133,19 @@ impl NaIRGenPass._emit_rc_color_store(
     );
 }
 
+impl NaIRGenPass._emit_rc_is_buffered(
+    b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    (_csp, _cb) = self._emit_rc_color_load(b, obj_i8);
+    return b.icmp_unsigned(
+        "!=",
+        b.and_(_cb, ir.Constant(i8, RC_BUFFERED_BIT), name=f"{name_prefix}.bit"),
+        ir.Constant(i8, 0),
+        name=f"{name_prefix}.set"
+    );
+}
+
 impl NaIRGenPass._emit_rc_trace_dispatch(
     fn: ir.Function,
     b: ir.IRBuilder,
@@ -432,16 +445,20 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     );
     b = ir.IRBuilder(cw_check);
     (_cw_csp, _cw_cb) = self._emit_rc_color_load(b, cw_fn.args[0]);
-    b.cbranch(
-        b.icmp_unsigned(
-            "==",
-            b.and_(_cw_cb, ir.Constant(i8, 3), name="col"),
-            ir.Constant(i8, RC_COLOR_WHITE),
-            name="is.white"
-        ),
-        cw_set,
-        cw_done
+
+    _cw_is_white = b.icmp_unsigned(
+        "==",
+        b.and_(_cw_cb, ir.Constant(i8, 3), name="col"),
+        ir.Constant(i8, RC_COLOR_WHITE),
+        name="is.white"
     );
+    _cw_unbuffered = b.icmp_unsigned(
+        "==",
+        b.and_(_cw_cb, ir.Constant(i8, RC_BUFFERED_BIT), name="buf.bit"),
+        ir.Constant(i8, 0),
+        name="unbuffered"
+    );
+    b.cbranch(b.and_(_cw_is_white, _cw_unbuffered, name="cw.reclaim"), cw_set, cw_done);
     b = ir.IRBuilder(cw_set);
 
     b.store(ir.Constant(i8, RC_COLOR_BLACK), _cw_csp);

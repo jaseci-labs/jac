@@ -9,7 +9,6 @@ impl OwnershipCheckPass.postinit -> None {
 impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self.owned_decl = {};
     self.consumed_syms = set();
-    self.proven_unique_syms = set();
     self.borrow_meta = {};
     self.e1304_borrow_ids = set();
     self.in_consumed = {};
@@ -45,7 +44,6 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self._run_dataflow(cfg_nodes);
     self._run_borrow_liveness(cfg_nodes);
     self._run_reaching_borrows(cfg_nodes);
-    self._compute_proven_unique();
     self._emit_loop_move_diagnostics();
     self._emit_diagnostics();
     self._emit_borrow_diagnostics();
@@ -244,20 +242,16 @@ impl OwnershipCheckPass._stamp_ownership -> None {
 }
 
 impl OwnershipCheckPass._return_roots_at_param_borrow(nd: uni.Expr | None) -> bool {
-    cur = nd;
-    if isinstance(cur, uni.UnaryExpr) and is_borrow_kind(cur.ownership) {
-        cur = cur.operand;
+    place = self._place_of(nd);
+    if place is None {
+        return False;
     }
-    while isinstance(cur, uni.AtomTrailer) {
-        cur = cur.target;
-    }
-    if isinstance(cur, uni.Name)
-    and cur.sym is not None
-    and cur.sym.storage == SymbolStorage.PARAM
-    and is_borrow_kind(cur.sym.ownership) {
-        return True;
-    }
-    return False;
+    base = place.base;
+    return (
+        base.sym is not None
+        and base.sym.storage == SymbolStorage.PARAM
+        and is_borrow_kind(base.sym.ownership)
+    );
 }
 
 impl OwnershipCheckPass._borrow_region(sym_id: SymId) -> (uni.UniScopeNode | None) {
@@ -278,26 +272,6 @@ impl OwnershipCheckPass._region_strictly_outlives(
         return False;
     }
     return self._is_ancestor(dest, region);
-}
-
-impl OwnershipCheckPass._compute_proven_unique -> None {
-    borrowed_owners: set[SymId] = set();
-    for meta in self.borrow_meta.values() {
-        if meta.owner is not None {
-            borrowed_owners.add(meta.owner);
-        }
-    }
-    for owner_id in self.owned_decl {
-        if owner_id in self.consumed_syms and owner_id not in borrowed_owners {
-            self.proven_unique_syms.add(owner_id);
-        }
-    }
-    for owner_id in self.proven_unique_syms {
-        decl = self.owned_decl.get(owner_id);
-        if decl is not None and decl.sym is not None {
-            decl.sym.is_proven_unique = True;
-        }
-    }
 }
 
 impl OwnershipCheckPass._assign_kill_gen(

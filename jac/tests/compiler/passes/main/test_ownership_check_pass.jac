@@ -235,22 +235,16 @@ test "moving an owner after its borrow is dead (NLL) is clean" {
 # escapes its scope (`return (lambda : v)`) is not yet flagged -- closure capture
 # is outside Phase 1 escape analysis. No test pins it until the feature lands.
 
-# --- Phase 2 seed: a consumed, never-borrowed own binding is proven-unique, so
-# the pass stamps `sym.is_proven_unique` for the backend to elide RC churn. ----
-test "a consumed, unborrowed own binding is marked proven-unique" {
+# --- The ownership checker is diagnostics-only: a consumed, never-borrowed own
+# binding is sound and must raise no ownership codes. RC move-lowering for this
+# shape is proven independently by the native `RcElisionProofPass` and is covered
+# in `tests/compiler/passes/native/test_move_elision.jac`; the checker no longer
+# writes any backend-consumed fact. --------------------------------------------
+test "a consumed, unborrowed own binding raises no ownership diagnostics" {
     path = os.path.join(FIXTURES, "proven_unique_ok.jac");
     program = JacProgram();
     program.compile(path, type_check=True);
     expect_ownership_codes(program, []);
-    mod = program.find_module(path);
-    assert mod is not None , "compiled module not found in hub";
-    proven = 0;
-    for nm in mod.get_all_sub_nodes(uni.Name) {
-        if nm.sym is not None and nm.sym.is_proven_unique {
-            proven += 1;
-        }
-    }
-    assert proven >= 1 , "expected the consumed, unborrowed own binding to be proven-unique";
 }
 
 # --- Regression: diagnostic help text is a template, formatted with the same

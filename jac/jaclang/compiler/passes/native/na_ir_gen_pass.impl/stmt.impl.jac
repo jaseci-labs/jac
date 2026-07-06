@@ -1132,7 +1132,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     self.param_vars.add(var_name);
                 } else {
                     if not self._is_owned(value)
-                    and not self._try_move_lower(nd.value) {
+                    and not self._can_native_move_lower(nd) {
                         self._emit_rc_retain(
                             coerced,
                             op="assign",
@@ -1400,7 +1400,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     self.param_vars.add(var_name);
                 } else {
                     if not self._is_owned(value)
-                    and not self._try_move_lower(nd.value) {
+                    and not self._can_native_move_lower(nd) {
                         self._emit_rc_retain(
                             value,
                             op="assign",
