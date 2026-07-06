@@ -3,79 +3,12 @@
 This module implements the SSOProvider interface for Apple Sign In authentication.
 """
 
-import from fastapi { Request, Response }
 import from fastapi_sso.sso.apple { AppleSSO }
-import from jaclang.scale.sso.provider { SSOProvider, SSOUserInfo }
+import from jaclang.scale.sso.provider { FastAPISSOBase }
 
-"""Apple Sign In SSO Provider.
-
-This class wraps the fastapi_sso AppleSSO implementation to conform to
-our SSOProvider interface, enabling consistent handling across all SSO vendors.
-"""
-obj AppleSSOProvider(SSOProvider) {
-    has client_id: str,
-        client_secret: str,
-        redirect_uri: str,
-        allow_insecure_http: bool = True,
-        _apple_sso: (AppleSSO | None) = None;
-
-    """Initialize the Apple SSO provider."""
-    def postinit {
-        self._apple_sso = AppleSSO(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri=self.redirect_uri,
-            allow_insecure_http=self.allow_insecure_http
-        );
-    }
-
-    """Initiate Apple Sign In authentication flow.
-
-    Returns:
-        RedirectResponse to Apple's OAuth authorization page
-    """
-    async def initiate_auth(state: str | None = None) -> Response {
-        if not self._apple_sso {
-            raise RuntimeError("AppleSSO not initialized");
-        }
-
-        with self._apple_sso {
-            return await self._apple_sso.get_login_redirect(state=state);
-        }
-    }
-
-    """Handle the OAuth callback from Apple.
-
-    Args:
-        request: The FastAPI request object containing OAuth callback data
-
-    Returns:
-        SSOUserInfo: Standardized user information from Apple
-
-    Raises:
-        Exception: If authentication fails or user info cannot be retrieved
-    """
-    async def handle_callback(request: Request) -> SSOUserInfo {
-        if not self._apple_sso {
-            raise RuntimeError("AppleSSO not initialized");
-        }
-
-        with self._apple_sso {
-            user_info = await self._apple_sso.verify_and_process(request);
-            if user_info is None {
-                raise RuntimeError("Apple SSO verification returned no user info");
-            }
-            if user_info.email is None or user_info.id is None {
-                raise RuntimeError("Apple SSO user info is missing email or id");
-            }
-            return SSOUserInfo(
-                email=str(user_info.email),
-                external_id=str(user_info.id),
-                display_name=user_info.display_name,
-                first_name=user_info.first_name,
-                last_name=user_info.last_name,
-                picture=user_info.picture
-            );
-        }
+"""Apple Sign In SSO Provider (fastapi_sso AppleSSO behind FastAPISSOBase)."""
+obj AppleSSOProvider(FastAPISSOBase) {
+    def _sso_class -> type {
+        return AppleSSO;
     }
 }
