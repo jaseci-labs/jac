@@ -121,6 +121,7 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _sym_id(nd: uni.UniNode | None) -> (SymId | None);
     def _name_sym_id(nd: uni.Name) -> SymId;
     def _owned_sym_of(nd: uni.UniNode | None) -> (SymId | None);
+    def _owned_sym_of_expr(nd: uni.Expr | None) -> (SymId | None);
     def _borrow_sym_of(nd: uni.UniNode | None) -> (SymId | None);
     def _owned_name(sym_id: SymId, fallback: str) -> str;
     def _borrow_owner_of(borrow_id: SymId) -> (SymId | None);

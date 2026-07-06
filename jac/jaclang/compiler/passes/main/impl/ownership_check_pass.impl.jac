@@ -112,8 +112,11 @@ impl OwnershipCheckPass._borrow_source_owner(nd: uni.Assignment) -> (uni.Name | 
         return None;
     }
     operand = nd.value.operand;
-    if self._owned_sym_of(operand) is not None and isinstance(operand, uni.Name) {
-        return operand;
+    if self._owned_sym_of_expr(operand) is not None {
+        root = self._place_of(operand);
+        if root is not None {
+            return root;
+        }
     }
     return None;
 }
@@ -281,7 +284,7 @@ impl OwnershipCheckPass._assign_kill_gen(
             }
         }
     }
-    val_owned = self._owned_sym_of(nd.value);
+    val_owned = self._owned_sym_of_expr(nd.value);
     if val_owned is not None {
         gen.add(val_owned);
     }
@@ -314,7 +317,7 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
             } elif isinstance(param, uni.Expr) {
                 arg = param;
             }
-            owned = self._owned_sym_of(arg);
+            owned = self._owned_sym_of_expr(arg);
             if owned is not None {
                 gen.add(owned);
             }
@@ -336,7 +339,7 @@ impl OwnershipCheckPass._return_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
         if self._cfg_owner(ret) is not nd {
             continue;
         }
-        owned = self._owned_sym_of(ret.expr);
+        owned = self._owned_sym_of_expr(ret.expr);
         if owned is not None {
             gen.add(owned);
         }
@@ -596,6 +599,14 @@ impl OwnershipCheckPass._owned_sym_of(nd: uni.UniNode | None) -> (SymId | None) 
         return sid;
     }
     return None;
+}
+
+impl OwnershipCheckPass._owned_sym_of_expr(nd: uni.Expr | None) -> (SymId | None) {
+    cur = nd;
+    while isinstance(cur, uni.AtomTrailer) {
+        cur = cur.target;
+    }
+    return self._owned_sym_of(cur);
 }
 
 impl OwnershipCheckPass._borrow_sym_of(nd: uni.UniNode | None) -> (SymId | None) {
@@ -918,10 +929,11 @@ impl OwnershipCheckPass._escaping_borrow_owner(nd: uni.Expr | None) -> (str | No
     }
     if isinstance(nd, uni.UnaryExpr) and nd.op.name == Tok.BW_AND {
         operand = nd.operand;
-        if isinstance(operand, uni.Name) and operand.sym {
+        root = self._place_of(operand);
+        if isinstance(root, uni.Name) and root.sym {
             if is_borrow_kind(nd.ownership)
-            or self._sym_id(operand) in self.owned_decl {
-                return operand.sym_name;
+            or self._sym_id(root) in self.owned_decl {
+                return root.sym_name;
             }
         }
         return None;
