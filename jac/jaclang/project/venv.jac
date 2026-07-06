@@ -1,9 +1,3 @@
-"""Project virtualenv + pip mechanics.
-
-Low-level machinery shared by the python ecosystem provider and CLI startup:
-venv creation/repair, pip subprocess wrapper, spec formatting, and
-sys.path/PATH management. No manifest or resolution logic lives here.
-"""
 import re;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
@@ -43,9 +37,7 @@ def make_git_spec(git_url: str, branch: str = "") -> str {
 }
 
 
-def _seed_build_backend(target: Path, verbose: bool = False) -> None {
-    # ensurepip on Python 3.12+ gives a fresh venv pip but NOT setuptools, so
-    # source-only (sdist) deps that build via setuptools.build_meta would fail.
+def _seed_build_backend(target: Path, verbose: bool = False) {
     import subprocess;
     cmd = pip_command(
         venv_python(target), ["install", "--upgrade", "pip", "setuptools", "wheel"]
@@ -65,7 +57,7 @@ def _seed_build_backend(target: Path, verbose: bool = False) -> None {
 }
 
 
-def ensure_venv(venv_dir: Path, verbose: bool = False) -> None {
+def ensure_venv(venv_dir: Path, verbose: bool = False) {
     import venv;
     import sys;
     def _create_venv(target: Path) {
@@ -111,7 +103,9 @@ def ensure_venv(venv_dir: Path, verbose: bool = False) -> None {
 }
 
 
-def run_pip(venv_dir: Path, args: list[str], verbose: bool = False) -> tuple[int, str, str] {
+def run_pip(
+    venv_dir: Path, args: list[str], verbose: bool = False
+) -> tuple[int, str, str] {
     import subprocess;
     cmd = pip_command(venv_python(venv_dir), args);
     if verbose {

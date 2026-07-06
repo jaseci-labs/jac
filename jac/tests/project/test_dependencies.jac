@@ -637,13 +637,16 @@ test "python resolve git dependencies" {
         config = JacConfig.load(Path(project_path) / "jac.toml");
         python = PythonProvider();
         resolved = python.resolve(config);
-        git_deps = [r for r in resolved if r.source == "git"];
+        git_deps = [
+            r
+            for r in resolved
+            if r.source == "git"
+        ];
         assert len(git_deps) == 1;
         assert git_deps[0].name == "my-lib";
         assert git_deps[0].data["git"] == "https://github.com/user/my-lib.git";
         assert (
-            python.pip_spec(git_deps[0])
-            == "git+https://github.com/user/my-lib.git@main"
+            python.pip_spec(git_deps[0]) == "git+https://github.com/user/my-lib.git@main"
         );
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -705,7 +708,11 @@ test "resolve_plan folds capability deps with manifest priority" {
         config = JacConfig.load(Path(project_path) / "jac.toml");
         plan = resolve_plan(config, action="serve");
         py = plan.for_ecosystem("python");
-        fastapi_entries = [d for d in py if d.name == "fastapi"];
+        fastapi_entries = [
+            d
+            for d in py
+            if d.name == "fastapi"
+        ];
         assert len(fastapi_entries) == 1;
         assert fastapi_entries[0].origin == "manifest";
         assert fastapi_entries[0].version == ">=0.100.0";
@@ -937,9 +944,7 @@ test "install with pip and git deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
@@ -979,9 +984,7 @@ test "install pip and npm deps" {
         reset_config();
         try {
             get_provider_registry().register(NpmProvider());
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 NpmProvider, "install_all"
@@ -1028,9 +1031,7 @@ test "install npm-only project dispatches the npm provider" {
         reset_config();
         try {
             get_provider_registry().register(NpmProvider());
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 NpmProvider, "install_all"
@@ -1118,9 +1119,7 @@ test "add resolves version" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 PythonProvider, "_snapshot_installed"
@@ -1155,9 +1154,7 @@ test "add with explicit version" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed numpy-1.24.0", "");
@@ -1187,9 +1184,7 @@ test "update all deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 PythonProvider, "_snapshot_installed"
@@ -1227,9 +1222,7 @@ test "update specific package" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 PythonProvider, "_snapshot_installed"
@@ -1303,9 +1296,7 @@ test "add dev dependency" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 PythonProvider, "_snapshot_installed"
@@ -1342,9 +1333,7 @@ test "add multiple packages" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 PythonProvider, "_snapshot_installed"
@@ -1385,9 +1374,7 @@ test "add pip failure no toml update" {
         original_toml = f.read();
         f.close();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
@@ -1421,9 +1408,7 @@ test "add git dependency" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed my-lib", "");
@@ -1454,9 +1439,7 @@ test "update with dev deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 PythonProvider, "_snapshot_installed"
@@ -1517,9 +1500,7 @@ test "remove package" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
@@ -1554,9 +1535,7 @@ test "remove dev dep without flag" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
@@ -1758,9 +1737,7 @@ test "update always uses upgrade flag" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.providers.ensure_venv"
-            ) as _ev, patch.object(
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
                 PythonProvider, "_run_project_pip"
             ) as mock_pip, patch.object(
                 PythonProvider, "_snapshot_installed"

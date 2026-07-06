@@ -471,8 +471,6 @@ def _is_meaningful_python(py_code: str) -> bool {
 }
 
 
-"""Load the source project's JacConfig with the eject-resolved name applied
-(templated/missing [project] names fall back to the directory name)."""
 def _eject_config(src: Path, project_name: str) -> object {
     import from jaclang.project.config { JacConfig }
     config = JacConfig.load(src / "jac.toml");
@@ -483,9 +481,6 @@ def _eject_config(src: Path, project_name: str) -> object {
 }
 
 
-"""Materialize the frontend's npm slice as a standalone package.json via the
-npm provider — the same resolved set the dev bundler uses (manifest deps plus
-self-healed client core deps for [plugins.client] projects)."""
 def _emit_frontend_package_json(src: Path, frontend_dir: Path, project_name: str) {
     import from jaclang.project.providers { EMIT_EJECT }
     import from jaclang.runtimelib.client.npm_provider { NpmProvider }
@@ -886,13 +881,9 @@ def _py_import_targets(py_code: str, mod_name: str, known: set) -> set {
 }
 
 
-# Manifest deps satisfied by vendoring the runtime into backend/ rather than
-# by pip in the ejected app.
 glob _VENDORED_DEPS: set = {"jaclang", "byllm"};
 
 
-"""Resolve the project's python manifest slice (incl. git deps) into pip
-specs for the ejected backend, skipping deps the vendored runtime satisfies."""
 def _resolve_project_python_deps(src: Path, project_name: str) -> list[str] {
     import from jaclang.project.providers { get_python_provider }
     config = _eject_config(src, project_name);

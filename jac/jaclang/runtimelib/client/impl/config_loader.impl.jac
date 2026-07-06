@@ -12,8 +12,6 @@ import from jaclang.runtimelib.client.npm_provider {
     target_scoped_npm_deps
 }
 
-"""Merge required client core deps into the effective dep set (in-memory
-only): jac.toml stays untouched; the resolver/bundler always sees them."""
 def _inject_missing(deps: dict, required: dict[str, str]) -> dict {
     merged = dict(deps);
     for (name, version) in required.items() {
@@ -135,9 +133,6 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
             _clear_node_modules(self.get_jac_config().get_client_dir());
         }
 
-        # Core client deps are injected at resolve time (never written back):
-        # the bundler and provider plan always include them, jac.toml only
-        # records what the user asked for.
         npm_deps = _inject_missing(
             npm_deps, {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS}
         );

@@ -343,8 +343,7 @@ test "python provider installs a capability closure into .jac/venv" {
         python = PythonProvider();
         closure = resolve_closure({"serve", "deploy.k8s"}, RUNTIME);
         specs = [
-            make_pip_spec(pkg, ver)
-            for (pkg, ver) in sorted(closure.deps.items())
+            make_pip_spec(pkg, ver) for (pkg, ver) in sorted(closure.deps.items())
         ];
         with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
             PythonProvider, "_run_project_pip"

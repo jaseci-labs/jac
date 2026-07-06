@@ -215,8 +215,6 @@ def _handle_create_skip(ctx: HookContext) {
     }
 }
 
-"""Resolve the npm provider for a --npm add/remove hook; cancels the command
-with an error when the project or provider is unavailable."""
 def _npm_hook_context(ctx: HookContext) -> tuple | None {
     import from jaclang.project.config { get_config }
     import from jaclang.project.providers { get_provider_registry }
@@ -271,15 +269,12 @@ def _handle_npm_add(ctx: HookContext) -> None {
             with console.status(
                 f"Installing {provider.name} packages...", spinner="dots"
             ) as status {
-                provider.install_all(
-                    config, provider.resolve(config), install_ctx
-                );
+                provider.install_all(config, provider.resolve(config), install_ctx);
             }
             console.success(f"Installed all {provider.name} packages");
         } else {
             console.print(
-                f"\n📦 Adding {len(packages)} {provider.name} package(s)",
-                style="bold"
+                f"\n📦 Adding {len(packages)} {provider.name} package(s)", style="bold"
             );
             for pkg_spec in packages {
                 (name, version) = provider.parse_spec(pkg_spec);

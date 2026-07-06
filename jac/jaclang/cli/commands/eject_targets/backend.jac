@@ -146,9 +146,6 @@ def emit_backend(
         }
     }
 
-    # Detected intents map through the central capability catalog — the same
-    # taxonomy `jac install` resolves — so the ejected requirements carry the
-    # canonical pins instead of ad-hoc ones.
     detected_caps: set = set();
     if sql {
         detected_caps.add("data.sql");
@@ -169,8 +166,6 @@ def emit_backend(
 }
 
 
-"""Render the runtime closure of the detected capabilities as pip spec lines,
-each annotated with the capability that pulled it in."""
 def _capability_requirements(caps: set) -> list[str] {
     import from jaclang.project.capabilities {
         RUNTIME,

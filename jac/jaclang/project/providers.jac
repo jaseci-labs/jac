@@ -1,16 +1,3 @@
-"""Ecosystem dependency providers.
-
-One resolution pipeline for every kind of project dependency. Each ecosystem
-(python, npm, ...) is an EcosystemProvider registered in a single
-ProviderRegistry; `resolve_plan` turns jac.toml (+ derived capabilities) into
-a typed DependencyPlan that every consumer (install, eject, publish, deps)
-reads instead of walking raw toml.
-
-Providers know two things about their ecosystem: how to *install* its slice
-(pip into .jac/venv, bun via the vite bundler, ...) and how to *materialize*
-it as standalone native artifacts (requirements.txt, package.json) for eject
-and publish.
-"""
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { JacConfig }
@@ -72,17 +59,14 @@ obj InstallContext {
     }
 }
 
-"""Base class for ecosystem dependency providers.
-
-A provider owns one dependency ecosystem end to end: resolving its manifest
-slice, installing/removing packages, and emitting standalone artifacts.
-"""
 obj EcosystemProvider {
     has name: str = "",
         manifest_key: str = "",
         cli_flag: str = "";
 
-    def resolve(config: JacConfig, include_dev: bool = False) -> list[ResolvedDependency] {
+    def resolve(
+        config: JacConfig, include_dev: bool = False
+    ) -> list[ResolvedDependency] {
         return [];
     }
 
@@ -97,11 +81,7 @@ obj EcosystemProvider {
     }
 
     def add_package(
-        config: JacConfig,
-        name: str,
-        version: str,
-        dev: bool,
-        ctx: InstallContext
+        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
     ) -> str | None {
         raise NotImplementedError(f"provider '{self.name}' cannot add packages");
     }
@@ -117,21 +97,15 @@ obj EcosystemProvider {
     }
 
     def emit_standalone(
-        config: JacConfig,
-        deps: list[ResolvedDependency],
-        out_dir: Path,
-        mode: str
+        config: JacConfig, deps: list[ResolvedDependency], out_dir: Path, mode: str
     ) -> list[Path] {
         return [];
     }
 }
 
-"""Split a `[dependencies.<key>]` plugin table into (deps, dev_deps).
-
-The generic manifest shape for non-python ecosystems: string values are
-regular deps, the `dev` sub-table holds dev deps.
-"""
-def manifest_plugin_deps(config: JacConfig, key: str) -> tuple[dict[str, str], dict[str, str]] {
+def manifest_plugin_deps(
+    config: JacConfig, key: str
+) -> tuple[dict[str, str], dict[str, str]] {
     raw = config.plugin_dependencies.get(key, {});
     deps: dict[str, str] = {
         k: v
@@ -143,16 +117,12 @@ def manifest_plugin_deps(config: JacConfig, key: str) -> tuple[dict[str, str], d
         k: v
         for (k, v) in dev_section.items()
         if isinstance(v, str)
-    } if isinstance(dev_section, dict) else {};
+    }
+        if isinstance(dev_section, dict)
+        else {};
     return (deps, dev_deps);
 }
 
-"""The built-in python ecosystem: pip specs installed into .jac/venv.
-
-Owns the project's manifest python deps ([dependencies] strings,
-[dependencies.git], [dev-dependencies], [optional-dependencies] extras) plus
-capability-derived python deps folded in by resolve_plan.
-"""
 obj PythonProvider(EcosystemProvider) {
     has name: str = "python",
         manifest_key: str = "",
@@ -195,8 +165,6 @@ obj PythonProvider(EcosystemProvider) {
         return resolved;
     }
 
-    """Resolve [optional-dependencies] groups, following self-referential
-    extras (e.g. `myproj[data]` inside the `all` group) recursively."""
     def resolve_extras(
         config: JacConfig, groups: list[str]
     ) -> list[ResolvedDependency] {
@@ -292,8 +260,6 @@ obj PythonProvider(EcosystemProvider) {
         return (False, set());
     }
 
-    """Install raw pip specs. ctx.target == "global" installs into the
-    running interpreter's site; otherwise into the project's .jac/venv."""
     def install_specs(
         config: JacConfig, specs: list[str], ctx: InstallContext
     ) -> bool {
@@ -332,8 +298,7 @@ obj PythonProvider(EcosystemProvider) {
                 }
             } else {
                 console.print(
-                    f"✔ Successfully installed {len(specs)} package(s)",
-                    style="success"
+                    f"✔ Successfully installed {len(specs)} package(s)", style="success"
                 );
             }
             return True;
@@ -358,13 +323,7 @@ obj PythonProvider(EcosystemProvider) {
     def _install_global(specs: list[str], ctx: InstallContext) -> bool {
         import subprocess;
         import sys;
-        cmd: list[str] = [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--upgrade"
-        ] + ctx.install_flags + specs;
+        cmd: list[str] = [sys.executable, "-m", "pip", "install", "--upgrade"] + ctx.install_flags + specs;
         if ctx.verbose {
             console.print(f"  Running: {' '.join(cmd)}", style="muted");
         }
@@ -390,11 +349,7 @@ obj PythonProvider(EcosystemProvider) {
     }
 
     override def add_package(
-        config: JacConfig,
-        name: str,
-        version: str,
-        dev: bool,
-        ctx: InstallContext
+        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
     ) -> str | None {
         install_spec = make_pip_spec(name, version) if version else name;
         if not self.install_specs(config, [install_spec], ctx) {
@@ -517,10 +472,7 @@ obj PythonProvider(EcosystemProvider) {
     }
 
     override def emit_standalone(
-        config: JacConfig,
-        deps: list[ResolvedDependency],
-        out_dir: Path,
-        mode: str
+        config: JacConfig, deps: list[ResolvedDependency], out_dir: Path, mode: str
     ) -> list[Path] {
         lines: list[str] = [];
         for dep in deps {
@@ -550,7 +502,7 @@ obj ProviderRegistry {
     has _providers: dict[str, EcosystemProvider] = {},
         _order: list[str] = [];
 
-    def register(provider: EcosystemProvider) -> None {
+    def register(provider: EcosystemProvider) {
         if not provider.name {
             raise ValueError("Ecosystem provider must have a 'name'");
         }
@@ -581,7 +533,7 @@ obj ProviderRegistry {
         return name in self._providers;
     }
 
-    def clear -> None {
+    def clear {
         self._providers.clear();
         self._order.clear();
     }
@@ -603,15 +555,11 @@ def get_python_provider -> PythonProvider {
     return provider;
 }
 
-"""Drop the global registry (tests): the next get_provider_registry() call
-rebuilds it with the built-in python provider only."""
-def reset_provider_registry -> None {
+def reset_provider_registry {
     global _registry;
     _registry = None;
 }
 
-"""Register the built-in python provider plus every provider contributed
-through the `register_ecosystem_providers` plugin hook."""
 def initialize_provider_registry -> None {
     import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_provider_registry();
@@ -633,9 +581,6 @@ def initialize_provider_registry -> None {
     }
 }
 
-"""Python deps derived from capabilities: declared intent (jac.toml sections),
-the command being run, byLLM plugin config, and any explicitly detected
-intents (e.g. eject's code analysis)."""
 def capability_dependencies(
     config: JacConfig,
     action: str = "",
@@ -697,9 +642,6 @@ def _normalized_name(name: str) -> str {
     return base.strip().lower().replace("_", "-");
 }
 
-"""Resolve the full dependency plan for a project: every registered
-ecosystem's manifest slice, optional extras groups, and capability-derived
-python deps (manifest entries win on package-name collisions)."""
 def resolve_plan(
     config: JacConfig,
     include_dev: bool = False,
@@ -722,8 +664,7 @@ def resolve_plan(
     }
     if include_capabilities {
         manifest_names = {
-            _normalized_name(d.name)
-            for d in plan.for_ecosystem("python")
+            _normalized_name(d.name) for d in plan.for_ecosystem("python")
         };
         for dep in capability_dependencies(config, action, scale, detected_intents) {
             if _normalized_name(dep.name) not in manifest_names {

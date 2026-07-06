@@ -282,8 +282,7 @@ test "jac start dev auto-installs watchdog even when not in jac.toml" {
         side_effect=[False, True],
     ) {
         with patch(
-            "jaclang.project.providers.get_python_provider",
-            return_value=mock_provider
+            "jaclang.project.providers.get_python_provider", return_value=mock_provider
         ) {
             with patch("jaclang.project.config.get_config") as mock_get_config {
                 with patch("jaclang.project.venv.add_venv_to_path") {

@@ -681,9 +681,7 @@ impl install(
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
     try {
-        plan = resolve_plan(
-            config, include_dev=dev, extras=extras, scale=scale
-        );
+        plan = resolve_plan(config, include_dev=dev, extras=extras, scale=scale);
     } except ValueError as e {
         console.error(str(e));
         return 1;
@@ -718,9 +716,7 @@ impl install(
         if not provider_deps {
             continue;
         }
-        console.print(
-            f"\n  Installing {provider.name} dependencies...", style="muted"
-        );
+        console.print(f"\n  Installing {provider.name} dependencies...", style="muted");
         try {
             provider.install_all(config, provider_deps, ctx);
             console.print(
@@ -903,9 +899,7 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         for (name, git_info) in config.git_dependencies.items() {
             if isinstance(git_info, dict) and "git" in git_info {
                 specs_to_update.append(
-                    make_git_spec(
-                        git_info.get("git", ""), git_info.get("branch", "")
-                    )
+                    make_git_spec(git_info.get("git", ""), git_info.get("branch", ""))
                 );
             }
             names_to_update.append(name);
@@ -1001,8 +995,7 @@ impl deps(scale: bool = False, as_json: bool = False) -> int {
                 "source": d.source,
                 "origin": d.origin,
                 "dev": d.dev
-            }
-            for d in plan.deps
+            } for d in plan.deps
         ];
         print(json.dumps(payload, indent=2));
         return 0;

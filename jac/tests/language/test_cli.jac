@@ -1520,8 +1520,7 @@ test "jac install <pkg> routes package names to the project venv installer" {
             return True;
         }
         with patch(
-            "jaclang.project.providers.PythonProvider.install_specs",
-            fake_install_specs
+            "jaclang.project.providers.PythonProvider.install_specs", fake_install_specs
         ) {
             result = project.install(packages=["numpy", "pandas"]);
         }

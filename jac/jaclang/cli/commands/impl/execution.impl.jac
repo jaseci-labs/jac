@@ -816,7 +816,7 @@ def _tool_site_dirs(use_global: bool) -> list {
     import site;
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { get_venv_site_packages }
+    import from jaclang.project.venv { get_venv_site_packages }
 
     sites: list = [];
     if not use_global {

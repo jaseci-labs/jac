@@ -121,7 +121,6 @@ test "npm provider plan carries self-heal origins for client projects" {
         assert by_name["react"].origin == "self-heal:client-core";
         assert by_name["vite"].origin == "self-heal:client-core";
         assert by_name["vite"].dev is True;
-
         # Backend-only project: manifest slice only, no self-heal entries.
         (backend_path, _) = _write_toml(
             temp_dir,
@@ -152,7 +151,6 @@ test "npm provider rolls back the manifest when the install fails" {
         );
         provider = NpmProvider();
         ctx = InstallContext();
-
         # add: a bun/network failure must not record the new dep.
         config = JacConfig.load(config_path);
         raised = False;
@@ -169,7 +167,6 @@ test "npm provider rolls back the manifest when the install fails" {
         assert raised;
         assert "leftpad" not in config_path.read_text();
         assert config_path.read_bytes() == original_bytes;
-
         # add over an existing dep: the previous version spec is restored.
         config = JacConfig.load(config_path);
         with patch(
@@ -181,7 +178,6 @@ test "npm provider rolls back the manifest when the install fails" {
             } except RuntimeError { }
         }
         assert 'lodash = "^4.17.0"' in config_path.read_text();
-
         # remove: a failed reinstall restores the removed dep.
         config = JacConfig.load(config_path);
         with patch(

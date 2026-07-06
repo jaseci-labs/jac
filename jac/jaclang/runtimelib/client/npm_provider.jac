@@ -1,11 +1,3 @@
-"""npm ecosystem provider.
-
-Registers the client's npm dependency handling as a first-class ecosystem in
-the central provider registry: manifest slice from `[dependencies.npm]`,
-self-healed client core deps for `[plugins.client]` projects, installation
-through the vite bundler (bun), and standalone package.json emission for
-eject.
-"""
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.providers {
@@ -37,9 +29,6 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
      LEGACY_META_PACKAGES: set = {"jac-client-node", "@jac-client/dev-deps"};
 
 
-"""Resolve the active client target name from [plugins.client] target /
-JAC_CLIENT_TARGET, normalizing aliases (rn/reactnative -> react_native).
-Shared by the npm provider and the client config loader."""
 def resolve_client_target_name(config: JacConfig) -> str {
     import os;
     client_config = config.get_plugin_config("client");
@@ -80,7 +69,6 @@ def target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str
 }
 
 
-"""Regenerate the derived package.json from jac.toml and install via bun."""
 def regenerate_and_install(project_dir: Path) {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
     import from jaclang.runtimelib.client { get_bun }
@@ -115,8 +103,6 @@ obj NpmProvider(EcosystemProvider) {
         resolved: list[ResolvedDependency] = [];
         for (pkg, version) in deps.items() {
             if is_client and pkg in LEGACY_META_PACKAGES {
-                # Superseded by the individual self-healed core deps below;
-                # the dev config loader migrates them out of jac.toml.
                 continue;
             }
             resolved.append(
@@ -129,8 +115,7 @@ obj NpmProvider(EcosystemProvider) {
                 )
             );
         }
-        # package.json always carries devDependencies, so dev entries are part
-        # of the npm slice regardless of include_dev (flagged dev=True).
+
         for (pkg, version) in dev_deps.items() {
             if is_client and pkg in LEGACY_META_PACKAGES {
                 continue;
@@ -219,19 +204,13 @@ obj NpmProvider(EcosystemProvider) {
     }
 
     override def add_package(
-        config: JacConfig,
-        name: str,
-        version: str,
-        dev: bool,
-        ctx: InstallContext
+        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
     ) -> str | None {
         if config.project_root is None {
             raise RuntimeError("No project root found");
         }
         package_version: str = version or "latest";
-        # The derived package.json is generated FROM jac.toml, so the manifest
-        # write must precede the install; roll it back if the install fails so
-        # a bun/network error never leaves a dep recorded but not installed.
+
         (deps, dev_deps) = manifest_plugin_deps(config, "npm");
         previous = (dev_deps if dev else deps).get(name);
         config.add_dependency(name, package_version, dev=dev, dep_type="npm");
@@ -265,7 +244,6 @@ obj NpmProvider(EcosystemProvider) {
         try {
             regenerate_and_install(Path(str(config.project_root)));
         } except Exception {
-            # Restore the manifest: the installed tree still has the package.
             if previous is not None {
                 config.add_dependency(name, previous, dev=dev, dep_type="npm");
                 config.save();
@@ -276,10 +254,7 @@ obj NpmProvider(EcosystemProvider) {
     }
 
     override def emit_standalone(
-        config: JacConfig,
-        deps: list[ResolvedDependency],
-        out_dir: Path,
-        mode: str
+        config: JacConfig, deps: list[ResolvedDependency], out_dir: Path, mode: str
     ) -> list[Path] {
         import json;
         if mode != EMIT_EJECT {
@@ -313,9 +288,7 @@ obj NpmProvider(EcosystemProvider) {
         };
         out_dir.mkdir(parents=True, exist_ok=True);
         pkg_path = out_dir / "package.json";
-        pkg_path.write_text(
-            json.dumps(pkg, indent=2) + "\n", encoding="utf-8"
-        );
+        pkg_path.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8");
         return [pkg_path];
     }
 }
