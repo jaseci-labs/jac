@@ -81,7 +81,10 @@ obj MicroserviceManifestBuilder {
         console.print(f"Building the client bundle on the host ({client_entry}).");
         try {
             subprocess.run(
-                ["jac", "build", client_entry], cwd=project_dir, check=True, timeout=900
+                [jac_executable(), "build", client_entry],
+                cwd=project_dir,
+                check=True,
+                timeout=900
             );
             if os.path.isfile(os.path.join(dist, "index.html")) {
                 console.print("Client bundle built; shipping it to the gateway pod.");
