@@ -74,7 +74,7 @@ def target_triple -> str {
 }
 
 
-def run_build_pipeline(crate: str, version: str, ws: Path) -> tuple {
+def run_build_pipeline(crate: str, version: str, ws: Path) -> tuple[str, Path, Path] {
     import from jaclang.compiler.rust_bridge._finder { crate_lib_stem }
     stem = crate_lib_stem(crate);
     jac_bridge_path = (ws / "jac-bridge").resolve();

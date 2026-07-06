@@ -86,9 +86,10 @@ glob FORBIDDEN: dict[str, str] = {
              "declaration-surface read during archetype field lowering"
          ),
          ("native/na_ir_gen_pass.impl/stmt.impl.jac", "type_tag.tag"): (
-             4,
+             6,
              "surface-shape dispatch on declared annotation forms "
-             "(assessed train 4: legitimately kept)"
+             "(assessed train 6: +empty-container literal codegen "
+             "+ redeclaration with explicit type on existing local)"
          ),
 
      };
