@@ -73,9 +73,7 @@ impl LayoutPass._build_registry_over(arch_map: dict[str, uni.Archetype]) -> None
     }
 }
 
-impl LayoutPass.build_shared_registry(
-    modules: list[uni.Module]
-) -> LayoutRegistry {
+impl LayoutPass.build_shared_registry(modules: list[uni.Module]) -> LayoutRegistry {
     self.registry = LayoutRegistry();
     arch_map: dict[str, uni.Archetype] = {};
     for m in modules {
