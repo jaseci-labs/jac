@@ -205,7 +205,8 @@ def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
             timeout=600
         );
         jac_path.unlink();
-        if added_marker {
+        # Guarded: py3.11's rglob raises on a missing dir, which would mask the returncode diagnostics below.
+        if added_marker and (stage / "_precompiled").is_dir() {
             for junk in (stage / "_precompiled").rglob("__init__.jir") {
                 junk.unlink();
             }
@@ -216,11 +217,13 @@ def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
                 f"({(result.stderr or result.stdout).strip()[-300:]}); pods will "
                 f"compile on first boot."
             );
+            shutil.rmtree(str(stage_root), ignore_errors=True);
             return None;
         }
         return stage;
     } except Exception as e {
         logger.warning(f"App precompile skipped ({e}); pods will compile on boot.");
+        shutil.rmtree(str(stage_root), ignore_errors=True);
         return None;
     }
 }
@@ -257,7 +260,8 @@ def pack_source(
                 }
             }
             logger.info(f"Bundled {count} precompiled app-module artifacts.");
-            shutil.rmtree(str(staged), ignore_errors=True);
+            # staged is <stage_root>/app; remove the whole mkdtemp tree, not just the child.
+            shutil.rmtree(str(staged.parent), ignore_errors=True);
         }
         sanitized = sanitized_jac_toml(base, provisioned_database);
         if sanitized is not None {
