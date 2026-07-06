@@ -180,6 +180,9 @@ test "linker emits a well-formed module with synthesized memory/globals/exports"
     assert "__linear_memory" not in imps;
     assert "__stack_pointer" not in imps;
     assert "malloc" in imps and "free" in imps and "memcpy" in imps;
+    # the cycle-collector root buffer grows via realloc, so it is part of the
+    # env libc contract the JS host must satisfy alongside malloc/calloc/free.
+    assert "realloc" in imps;
     # the JS-unshimmable libc never gets pulled in (would force a wasi runtime)
     assert "setjmp" not in imps and "longjmp" not in imps;
 
@@ -254,6 +257,11 @@ const env = {
   malloc: (n) => { n = Number(n); const p = M.h; M.h = (M.h + n + 7) & ~7; return p; },
   calloc: (c, s) => { const n = Number(c) * Number(s); const p = M.h; M.h = (M.h + n + 7) & ~7;
                       new Uint8Array(M.mem.buffer).fill(0, p, p + n); return p; },
+  // realloc is part of the env libc surface since the cycle-collector root
+  // buffer grows via realloc(p, n); for this host a bump alloc + copy suffices
+  // (realloc(NULL, n), the only path this fixture exercises, is just malloc).
+  realloc: (p, n) => { p = Number(p); n = Number(n); if (p === 0) { return malloc(n); }
+                      const q = malloc(n); new Uint8Array(M.mem.buffer).copyWithin(q, p, p + n); return q; },
   free: () => {}, malloc_usable_size: () => 0,
   memcpy: (d, s, n) => { new Uint8Array(M.mem.buffer).copyWithin(d, s, s + Number(n)); return d; },
   memcmp: (a, b, n) => { const m = new Uint8Array(M.mem.buffer); n = Number(n);
