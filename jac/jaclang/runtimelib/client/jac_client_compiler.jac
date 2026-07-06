@@ -60,8 +60,13 @@ class JacClientCompiler {
         collected_exports: (set[str] | None) = None,
         collected_globals: (dict[(str, Any)] | None) = None,
         source_root: (Path | None) = None,
-        target_name: str = "web"
+        target_name: str = "web",
+        skip_existing: bool = False
     ) -> None;
+
+    def _output_path_for(
+        self: JacClientCompiler, module_path: Path, source_root: Path
+    ) -> Path;
 
     def _copy_js_file(
         self: JacClientCompiler, js_path: Path, source_root: Path
@@ -84,6 +89,7 @@ class JacClientCompiler {
         target_name: str = "web"
     ) -> bool;
 
+    def rescan_pages(self: JacClientCompiler) -> bool;
     def _generate_routes_manifest(self: JacClientCompiler) -> None;
     def _write_source_map(
         self: JacClientCompiler,

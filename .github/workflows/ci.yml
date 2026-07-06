@@ -329,7 +329,10 @@ jobs:
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac format --check --lintfix
           else
-            find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -path "*/passes/native/llvm/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
+            # Sweep only git-tracked files: the build materializes generated
+            # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
+            # own sample .jac files), and a bare `find .` walks those too.
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac format --check --lintfix
           fi
 
       - name: Verify jir_registry.jac is up to date
@@ -1121,6 +1124,13 @@ jobs:
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
             "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
             --global
+
+      - name: Cache the built admin console (largest host-prep cost, ~2 min)
+        # ensure_admin_dist_built no-ops when _dist exists, so a hit skips the on-host admin build.
+        uses: actions/cache@v4
+        with:
+          path: jac/jaclang/scale/admin/_dist
+          key: admin-dist-${{ hashFiles('jac/jaclang/scale/admin/ui/**', 'jac/jaclang/runtimelib/client/**') }}
 
       - name: Set up kind cluster
         # Single node labelled ingress-ready + host 80/443 mapped so ingress-nginx's kind provider can bind them.

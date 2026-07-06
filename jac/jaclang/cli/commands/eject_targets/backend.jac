@@ -10,7 +10,10 @@ def emit_backend(
     walkers: list,
     functions: list,
     remap: dict,
-    db: dict
+    db: dict,
+    project_deps: (list | None) = None,
+    has_env: bool = False,
+    entry_module: str = ""
 ) -> int {
     backend_dir.mkdir(parents=True, exist_ok=True);
 
@@ -106,7 +109,14 @@ def emit_backend(
     }
 
     _emit_main_py(
-        backend_dir, project_name, walkers_full, functions_full, sql, db_basename
+        backend_dir,
+        project_name,
+        walkers_full,
+        functions_full,
+        sql,
+        db_basename,
+        has_env,
+        entry_module
     );
 
     import from jaclang.publish.runtime_vendor { vendor_runtime, llm_requirements }
@@ -127,12 +137,30 @@ def emit_backend(
         style="success"
     );
 
+    uses_upload = False;
+    for f in functions_full {
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                uses_upload = True;
+            }
+        }
+    }
+
     reqs: list[str] = [];
     if sql {
         reqs.append("SQLAlchemy>=2.0");
     }
     if uses_llm {
         reqs.extend(llm_requirements());
+    }
+    for dep in (project_deps or []) {
+        reqs.append(str(dep));
+    }
+    if has_env {
+        reqs.append("python-dotenv>=1.0");
+    }
+    if uses_upload {
+        reqs.append("python-multipart>=0.0.9");
     }
     _emit_requirements(backend_dir, reqs);
     return 0;
@@ -342,6 +370,11 @@ def _model_class_name(name: str, suffix: str) -> str {
 }
 
 
+def _is_upload_type(ptype: str) -> bool {
+    return "UploadFile" in str(ptype);
+}
+
+
 glob _JSON_SAFE_TYPE_NAMES: set = {
          "str",
          "int",
@@ -423,8 +456,22 @@ def _emit_main_py(
     walkers: list,
     functions: list,
     sql: bool,
-    db_basename: str
+    db_basename: str,
+    has_env: bool,
+    entry_module: str
 ) {
+    uses_upload = False;
+    for f in functions {
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                uses_upload = True;
+            }
+        }
+    }
+    fastapi_import = "from fastapi import FastAPI, Header, HTTPException";
+    if uses_upload {
+        fastapi_import += ", File, Form, UploadFile";
+    }
     lines: list[str] = [
         f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}:',
         'runs the compiled walkers on the jaclang runtime with jaclang-native auth',
@@ -436,13 +483,46 @@ def _emit_main_py(
         'Any, Dict, Iterable, List, Literal, Mapping, '
         'Optional, Sequence, Set, Tuple, Union',
         '',
-        'from fastapi import FastAPI, Header, HTTPException',
+        fastapi_import,
         'from fastapi.middleware.cors import CORSMiddleware',
         'from fastapi.responses import StreamingResponse',
         'from pydantic import BaseModel',
         '',
+        '_BASE = os.path.dirname(os.path.abspath(__file__))'
+    ];
+
+    if has_env {
+        lines += [
+            '',
+            '# Load .env (backend/.env first, then the project root) before the',
+            '# project modules import: they may read os.environ at import time.',
+            'try:',
+            '    from dotenv import load_dotenv',
+            'except ImportError:',
+            '    load_dotenv = None',
+            'if load_dotenv is not None:',
+            '    for _env_file in (',
+            '        os.path.join(_BASE, ".env"),',
+            '        os.path.join(_BASE, "..", ".env"),',
+            '    ):',
+            '        if os.path.isfile(_env_file):',
+            '            load_dotenv(_env_file)'
+        ];
+    }
+
+    lines += [
+        '',
         'from jaclang.runtimelib.server import UserManager, ExecutionManager'
     ];
+
+    if entry_module {
+        lines += [
+            '',
+            '# Import the entry module for its side effects: its `with entry`',
+            '# code runs at server boot, as it would under `jac start`.',
+            'import ' + entry_module
+        ];
+    }
 
     for w in walkers {
         wn = str(w["name"]);
@@ -452,8 +532,6 @@ def _emit_main_py(
         fn = str(f["name"]);
         lines.append("from " + str(f["module"]) + " import " + fn + " as _F_" + fn);
     }
-
-    lines += ['', '_BASE = os.path.dirname(os.path.abspath(__file__))'];
 
     if sql {
         lines += [
@@ -655,8 +733,46 @@ def _emit_main_py(
 
     for f in functions {
         fn = str(f["name"]);
-        model = _model_class_name(fn, "FnIn");
         required = "False" if f["pub"] else "True";
+        has_upload = False;
+        for p in f["params"] {
+            if _is_upload_type(str(p["type"])) {
+                has_upload = True;
+            }
+        }
+        if has_upload {
+            sig: list[str] = [];
+            for p in f["params"] {
+                pname = str(p["name"]);
+                if _is_upload_type(str(p["type"])) {
+                    utype = "list[UploadFile]"
+                        if "list" in str(p["type"]).lower()
+                        else "UploadFile";
+                    sig.append(pname + ": " + utype + " = File(...)");
+                } else {
+                    ftype = _safe_model_type(str(p["type"]));
+                    default = _safe_model_default(str(p["default"]))
+                        if p["has_default"]
+                        else "...";
+                    sig.append(pname + ": " + ftype + " = Form(" + default + ")");
+                }
+            }
+            sig.append("authorization: str = Header(default=None)");
+            kw = ", ".join(
+                [repr(str(p["name"])) + ": " + str(p["name"]) for p in f["params"]]
+            );
+            lines.append("");
+            lines.append("");
+            lines.append('@app.post("/function/' + fn + '")');
+            lines.append("async def call_" + fn + "(" + ", ".join(sig) + "):");
+            lines.append("    user = _username(authorization, " + required + ")");
+            lines.append("    fields = {" + kw + "}");
+            lines.append(
+                "    return _respond_fn(await _em.execute_function(_F_" + fn + ", fields, user))"
+            );
+            continue;
+        }
+        model = _model_class_name(fn, "FnIn");
         lines.append("");
         lines.append("");
         lines.append("class " + model + "(BaseModel):");
@@ -687,6 +803,48 @@ def _emit_main_py(
         lines.append(
             "    return _respond_fn(await _em.execute_function(_F_" + fn + ", dict(body.model_dump()), user))"
         );
+    }
+
+    if functions {
+        triple_parts: list = [];
+        for f in functions {
+            fn = str(f["name"]);
+            has_upload = False;
+            for p in f["params"] {
+                if _is_upload_type(str(p["type"])) {
+                    has_upload = True;
+                }
+            }
+            model_ref = "None" if has_upload else _model_class_name(fn, "FnIn");
+            triple_parts.append("(_F_" + fn + ", call_" + fn + ", " + model_ref + ")");
+        }
+        triples = ", ".join(triple_parts);
+        lines += [
+            '',
+            '',
+            '# Functions decorated with @restspec(path=...) are also mounted at',
+            '# their declared paths (parity with `jac start` custom REST routes).',
+            '# GET/HEAD routes carry no body: call the handler with the model',
+            "# defaults instead of FastAPI's required JSON body.",
+            'def _mount_restspec(fn, handler, model):',
+            '    spec = getattr(fn, "restspec", None)',
+            '    path = str(getattr(spec, "path", "") or "")',
+            '    if not path:',
+            '        return',
+            '    if not path.startswith("/"):',
+            '        path = "/" + path',
+            '    method = str(getattr(spec, "method", "") or "POST").upper()',
+            '    if method in ("GET", "HEAD") and model is not None:',
+            '        async def _bodyless(authorization: str = Header(default=None)):',
+            '            return await handler(model(), authorization=authorization)',
+            '        app.add_api_route(path, _bodyless, methods=[method])',
+            '    else:',
+            '        app.add_api_route(path, handler, methods=[method])',
+            '',
+            '',
+            'for _fn, _handler, _model in [' + triples + ']:',
+            '    _mount_restspec(_fn, _handler, _model)'
+        ];
     }
 
     walker_list_lit = "[" + ", ".join([repr(str(w["name"])) for w in walkers]) + "]";
@@ -721,9 +879,27 @@ def _emit_main_py(
 }
 
 
+def _req_key(req: str) -> str {
+    name = str(req).strip();
+    for i in range(len(name)) {
+        if name[i] in "<>=!~[; " {
+            name = name[:i];
+            break;
+        }
+    }
+    return name.strip().lower().replace("_", "-");
+}
+
+
 def _emit_requirements(backend_dir: Path, extra_reqs: list) {
     lines: list[str] = ["fastapi>=0.110", "uvicorn[standard]>=0.27"];
+    seen: set = {_req_key(r) for r in lines};
     for req in extra_reqs {
+        key = _req_key(str(req));
+        if (not key) or (key in seen) {
+            continue;
+        }
+        seen.add(key);
         lines.append(str(req));
     }
     (backend_dir / "requirements.txt").write_text(

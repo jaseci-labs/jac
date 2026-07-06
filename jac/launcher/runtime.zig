@@ -33,7 +33,10 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
 
-/// Trailer layout (must match `concat_binary` in tools/binary/impl/build.impl.jac).
+/// Trailer layout: magic(8) + payload_len u64-LE(8) + sha256 hex(64) = 80 bytes.
+/// This is the authoritative definition; pack.zig reuses these constants, and
+/// the Python repacker (`_bundle_binary` / `_split_jac_binary` in
+/// jaclang/cli/commands/impl/project.impl.jac) mirrors them byte-for-byte.
 pub const MAGIC = "JACBIN01";
 pub const MAGIC_LEN = 8;
 pub const HASH_LEN = 64; // sha256 hex

@@ -19,7 +19,7 @@ def _create_test_file(
 test "single file upload basic" {
     client = make_client();
     try {
-        (_, token) = client.register_user("single_file_user", "testpass123");
+        token = client.register_and_login("single_file_user", "testpass123");
 
         (filename, file_obj) = _create_test_file("document.txt", b"Test content");
 
@@ -52,7 +52,7 @@ test "single file upload basic" {
 test "single file upload pdf" {
     client = make_client();
     try {
-        (_, token) = client.register_user("pdf_upload_user", "testpass123");
+        token = client.register_and_login("pdf_upload_user", "testpass123");
 
         pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF";
         (filename, file_obj) = _create_test_file("report.pdf", pdf_content);
@@ -83,7 +83,7 @@ test "single file upload pdf" {
 test "single file upload with empty description" {
     client = make_client();
     try {
-        (_, token) = client.register_user("empty_desc_user", "testpass123");
+        token = client.register_and_login("empty_desc_user", "testpass123");
 
         (filename, file_obj) = _create_test_file("image.png", b"\x89PNG\r\n\x1a\n");
 
@@ -135,7 +135,7 @@ test "file upload requires auth" {
 test "file upload with valid auth" {
     client = make_client();
     try {
-        (_, token) = client.register_user("secure_upload_user", "testpass123");
+        token = client.register_and_login("secure_upload_user", "testpass123");
 
         (filename, file_obj) = _create_test_file("confidential.doc", b"Secret data");
 
@@ -193,7 +193,7 @@ test "public file upload no auth required" {
 test "upload various file types" {
     client = make_client();
     try {
-        (_, token) = client.register_user("various_types_user", "testpass123");
+        token = client.register_and_login("various_types_user", "testpass123");
 
         file_types = [
             ("document.json", b'{"key": "value"}', "application/json"),
@@ -233,7 +233,7 @@ test "upload various file types" {
 test "upload missing required file" {
     client = make_client();
     try {
-        (_, token) = client.register_user("missing_file_user", "testpass123");
+        token = client.register_and_login("missing_file_user", "testpass123");
 
         response = client.post(
             "/walker/UploadSingleFile",
@@ -259,7 +259,7 @@ test "upload missing required file" {
 test "upload large file" {
     client = make_client();
     try {
-        (_, token) = client.register_user("large_file_user", "testpass123");
+        token = client.register_and_login("large_file_user", "testpass123");
 
         large_content = b"X" * (1024 * 1024);  # 1MB
         (filename, file_obj) = _create_test_file("large_file.bin", large_content);

@@ -12,6 +12,7 @@ The desktop target ships with `jaclang` core -- nothing extra to install.
 ```bash
 jac build --client desktop      # -> .jac/client/desktop/<app>  (single binary + dist/)
 jac start --client desktop      # build (if needed), then launch the native window
+jac start --client desktop --dev   # HMR: Vite on 127.0.0.1 + recompile on .jac saves
 ```
 
 There is **no `jac setup desktop` step** - the native host is generated at build time. Run the built binary directly with `(cd .jac/client/desktop && ./<app>)`.
@@ -100,7 +101,7 @@ The directory is **relocatable** - the binary finds its sibling `dist/` and `lib
 
 ## Gotchas and current limits
 
-- **In progress** (per [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436)): wiring the `sv` codespace and walkers onto the embedded interpreter, HMR dev mode, and per-OS packaging/signing. Today the binary reliably renders your `cl` UI; develop/iterate against `jac start --dev` (web) and treat desktop as the packaging step.
+- **In progress** (per [issue #6436](https://github.com/jaseci-labs/jaseci/issues/6436)): per-OS packaging/signing (phase 5). The `sv` codespace, walkers, and functions now run **in-process** on the embedded interpreter (shipped), and desktop has its own HMR dev mode: `jac start --client desktop --dev` builds the native host once, serves your `cl` UI from Vite on `127.0.0.1`, and recompiles on `.jac` saves -- iterate against the real desktop window, no web fallback needed.
 - **No cross-compilation yet.** `--platform` only affects sidecar *naming* (`--platform windows` selects `.exe`); build on each target OS.
 - Desktop builds set `JAC_BUILD=1` so import-time server starts stay inert - guard side effects accordingly.
 - `jac nacompile` lowers the host with Jac's pure-Jac linker (no `cc`/`ld` at link time), but the C toolchain is still needed once for `libwebview.so`.

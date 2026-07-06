@@ -381,15 +381,22 @@ def install_native_wrappers(
     }
 
     wrapped_count = 0;
+    mod_name = module?.__name__;
     for (func_name, func_layout) in layout.functions.items() {
         if func_name not in module_ns {
+            continue;
+        }
+
+        existing = module_ns[func_name];
+        owner = existing?.__module__;
+        if owner is None or mod_name is None or owner != mod_name {
             continue;
         }
         wrapper = wrap_native_function(
             engine, func_layout, ctypes_classes, enum_maps, py_classes, layout=layout
         );
         if wrapper is not None {
-            module_ns[f"_py_{func_name}"] = module_ns[func_name];
+            module_ns[f"_py_{func_name}"] = existing;
             module_ns[func_name] = wrapper;
             wrapped_count += 1;
             logger.debug(f"Installed native wrapper for {func_name}");

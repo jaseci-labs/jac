@@ -58,8 +58,13 @@ impl Parameter.clone -> Parameter {
         default_value=self.default_value,
         is_self=self.is_self,
         is_cls=self.is_cls,
-        param_kind=self.param_kind
+        param_kind=self.param_kind,
+        has_default=self.has_default
     );
+}
+
+impl Parameter.is_optional.getter -> bool {
+    return self.default_value is not None or self.has_default;
 }
 
 impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
@@ -152,7 +157,7 @@ impl FunctionType.__str__ -> str {
         if param.param_type {
             param_str = f"{param_str}: {param.param_type}";
         }
-        if param.default_value is not None {
+        if param.is_optional {
             param_str = f"{param_str} = ...";
         }
         param_strs.append(param_str);
@@ -399,6 +404,39 @@ impl ClassType.ClassDetailsShared.postinit -> None {
     self.type_params = self.type_params or [];
     self.base_classes = self.base_classes or [];
     self.mro = [];
+}
+
+impl ClassType.ClassDetailsShared.canonical_key -> (tuple[str, int, int, str] | None) {
+    if self._identity_key is not None {
+        return self._identity_key;
+    }
+    decl = self.symbol_table;
+    if decl is None or decl.loc is None {
+        return None;
+    }
+    import os;
+    mod_path = decl.loc.mod_path;
+    canon_path = os.path.realpath(mod_path) if mod_path else "";
+    self._identity_key = (
+        canon_path,
+        decl.loc.first_line,
+        decl.loc.col_start,
+        self.class_name
+    );
+    return self._identity_key;
+}
+
+impl ClassType.ClassDetailsShared.same_class(
+    other: ClassType.ClassDetailsShared
+) -> bool {
+    if self is other {
+        return True;
+    }
+    key = self.canonical_key();
+    if key is None {
+        return False;
+    }
+    return key == other.canonical_key();
 }
 
 impl TypeBase.is_class_instance -> bool {

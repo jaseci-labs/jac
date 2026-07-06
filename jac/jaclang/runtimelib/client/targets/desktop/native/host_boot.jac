@@ -27,6 +27,7 @@ glob PLUGIN_BOOTSTRAP_MODULES: list = [
 
 obj HostContext {
     has port: int = 0,
+        dev_port: int = 0,
         host: any = None,
         server: any = None;
 
@@ -140,18 +141,39 @@ def _start_loopback(
     pref = preferred_port(app_name);
     srv: any = None;
     port = 0;
-    for i in range(64) {
+    pinned_raw = os.environ.get("JAC_DESKTOP_BROKER_PORT", "");
+    if pinned_raw {
         try {
-            srv = server_cls(("127.0.0.1", pref + i), handler);
-            port = pref + i;
-            break;
-        } except OSError {
-            continue;
+            pinned = int(pinned_raw);
+        } except ValueError {
+            raise RuntimeError(
+                "JAC_DESKTOP_BROKER_PORT must be a port number, got '" + pinned_raw + "'"
+            );
         }
-    }
-    if srv is None {
-        srv = server_cls(("127.0.0.1", 0), handler);
-        port = int(srv.server_address[1]);
+        try {
+            srv = server_cls(("127.0.0.1", pinned), handler);
+            port = pinned;
+        } except OSError as bind_err {
+            raise RuntimeError(
+                "JAC_DESKTOP_BROKER_PORT " + str(pinned) + " could not be bound: " + str(
+                    bind_err
+                )
+            );
+        }
+    } else {
+        for i in range(64) {
+            try {
+                srv = server_cls(("127.0.0.1", pref + i), handler);
+                port = pref + i;
+                break;
+            } except OSError {
+                continue;
+            }
+        }
+        if srv is None {
+            srv = server_cls(("127.0.0.1", 0), handler);
+            port = int(srv.server_address[1]);
+        }
     }
     threading.Thread(target=srv.serve_forever, daemon=True).start();
     ctx.server = srv;
@@ -188,6 +210,11 @@ def boot(config_json: str) -> HostContext {
     );
 
     ctx = HostContext(host=host);
+    try {
+        ctx.dev_port = int(os.environ.get("JAC_DESKTOP_DEV_PORT", "0") or "0");
+    } except (TypeError, ValueError) {
+        ctx.dev_port = 0;
+    }
     _start_loopback(ctx, app_dir, data_dir, app_name, mode);
     return ctx;
 }

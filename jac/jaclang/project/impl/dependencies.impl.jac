@@ -221,6 +221,10 @@ impl DependencyInstaller.sync_capabilities(closure: CapabilityClosure) -> bool {
 }
 
 impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
+    return make_pip_spec(name, version);
+}
+
+impl make_pip_spec(name: str, version: str) -> str {
     if not version or version in ("*", "latest") {
         return name;
     }
@@ -287,8 +291,20 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
         }
         return True;
     }
-    console.error(f"✗ Batch installation failed: {stderr}");
-    console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
+
+    (package, detail) = summarize_pip_failure(specs, stderr);
+    header = (
+        f"Failed to install {package}"
+            if package
+            else f"Failed to install {len(specs)} package(s)"
+    );
+    console.error(
+        f"{header}\n  {detail}" if detail else header,
+        hint=None if self.verbose else "re-run with --verbose for full pip output"
+    );
+    if self.verbose and stderr.strip() {
+        console.print(stderr.strip(), style="dim");
+    }
     return False;
 }
 
@@ -426,6 +442,53 @@ impl DependencyResolver.resolve(include_dev: bool = False) -> list[ResolvedDepen
         }
     }
     return resolved;
+}
+
+def _spec_base_name(spec: str) -> str {
+    m = re.match(r"^([A-Za-z0-9._-]+)\s*(?:[<>=!~@;\[]|$)", spec.strip());
+    return m.group(1).lower() if m else "";
+}
+
+def _extract_terminal_error(stderr: str) -> str {
+    lines = [
+        ln.strip()
+        for ln in stderr.splitlines()
+        if ln.strip()
+    ];
+    if not lines {
+        return "";
+    }
+    for ln in reversed(lines) {
+        if ln.startswith("ERROR: ") {
+            return ln[7:].strip();
+        }
+        if re.match(r"^[\w.]+(Error|Exception|Unavailable|NotFound):", ln) {
+            return ln;
+        }
+    }
+    return lines[-1];
+}
+
+def _identify_failed_package(specs: list[str], stderr: str) -> str | None {
+    low = stderr.lower();
+    named: list[str] = [];
+    for s in specs {
+        name = _spec_base_name(s);
+        if name and name in low {
+            named.append(s);
+        }
+    }
+    if len(named) == 1 {
+        return named[0];
+    }
+    if len(specs) == 1 {
+        return specs[0];
+    }
+    return None;
+}
+
+impl summarize_pip_failure(specs: list[str], stderr: str) -> tuple[str | None, str] {
+    return (_identify_failed_package(specs, stderr), _extract_terminal_error(stderr));
 }
 
 def _venv_python_version_tag(venv_dir: Path) -> str {
