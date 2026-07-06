@@ -211,6 +211,7 @@ impl NaIRGenPass._emit_rc_mark_gray_phase -> ir.Function {
     mark_gray_fn.args[0].name = "obj";
     mg_null = mark_gray_fn.append_basic_block("null");
     mg_check = mark_gray_fn.append_basic_block("check");
+    mg_dead_check = mark_gray_fn.append_basic_block("dead_check");
     mg_set = mark_gray_fn.append_basic_block("set");
     mg_done = mark_gray_fn.append_basic_block("done");
 
@@ -232,8 +233,14 @@ impl NaIRGenPass._emit_rc_mark_gray_phase -> ir.Function {
             name="is.gray"
         ),
         mg_done,
-        mg_set
+        mg_dead_check
     );
+    b = ir.IRBuilder(mg_dead_check);
+    _mg_dead_bit = b.and_(_mg_cb, ir.Constant(i8, RC_DEAD_BIT), name="mg.dead.bit");
+    _mg_is_dead = b.icmp_unsigned(
+        "!=", _mg_dead_bit, ir.Constant(i8, 0), name="mg.is.dead"
+    );
+    b.cbranch(_mg_is_dead, mg_done, mg_set);
     b = ir.IRBuilder(mg_set);
     self._emit_rc_color_store(b, _mg_csp, _mg_cb, RC_COLOR_GRAY);
     self._emit_rc_trace_dispatch(
@@ -450,6 +457,8 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     cw_fn.args[0].name = "obj";
     cw_null = cw_fn.append_basic_block("null");
     cw_check = cw_fn.append_basic_block("check");
+    cw_dead_free = cw_fn.append_basic_block("dead_free");
+    cw_white_check = cw_fn.append_basic_block("white_check");
     cw_set = cw_fn.append_basic_block("set");
     cw_free = cw_fn.append_basic_block("free_raw");
     cw_done = cw_fn.append_basic_block("done");
@@ -462,6 +471,18 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     );
     b = ir.IRBuilder(cw_check);
     (_cw_csp, _cw_cb) = self._emit_rc_color_load(b, cw_fn.args[0]);
+    _cw_dead_bit = b.and_(_cw_cb, ir.Constant(i8, RC_DEAD_BIT), name="cw.dead.bit");
+    _cw_is_dead = b.icmp_unsigned(
+        "!=", _cw_dead_bit, ir.Constant(i8, 0), name="cw.is.dead"
+    );
+    b.cbranch(_cw_is_dead, cw_dead_free, cw_white_check);
+    b = ir.IRBuilder(cw_dead_free);
+    b.call(
+        self.free_fn,
+        [b.gep(cw_fn.args[0], [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="dead.raw")]
+    );
+    b.branch(cw_done);
+    b = ir.IRBuilder(cw_white_check);
     b.cbranch(
         b.icmp_unsigned(
             "==",

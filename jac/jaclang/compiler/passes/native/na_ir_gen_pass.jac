@@ -61,6 +61,7 @@ glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_GRAY: int = 2,
      RC_COLOR_PURPLE: int = 3,
      RC_BUFFERED_BIT: int = 4,
+     RC_DEAD_BIT: int = 8,
      RC_CYCLE_THRESHOLD: int = 1000;
 
 glob LIVE_NODE_ID_OFF: int = 0,

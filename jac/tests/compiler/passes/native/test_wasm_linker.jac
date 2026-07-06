@@ -260,8 +260,8 @@ const env = {
   // realloc is part of the env libc surface since the cycle-collector root
   // buffer grows via realloc(p, n); for this host a bump alloc + copy suffices
   // (realloc(NULL, n), the only path this fixture exercises, is just malloc).
-  realloc: (p, n) => { p = Number(p); n = Number(n); if (p === 0) { return malloc(n); }
-                      const q = malloc(n); new Uint8Array(M.mem.buffer).copyWithin(q, p, p + n); return q; },
+  realloc: (p, n) => { p = Number(p); n = Number(n); if (p === 0) { return env.malloc(n); }
+                      const q = env.malloc(n); new Uint8Array(M.mem.buffer).copyWithin(q, p, p + n); return q; },
   free: () => {}, malloc_usable_size: () => 0,
   memcpy: (d, s, n) => { new Uint8Array(M.mem.buffer).copyWithin(d, s, s + Number(n)); return d; },
   memcmp: (a, b, n) => { const m = new Uint8Array(M.mem.buffer); n = Number(n);

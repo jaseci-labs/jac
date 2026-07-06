@@ -378,6 +378,38 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     }
     b.branch(dbg_rel_bb);
     b = ir.IRBuilder(check_dtor_bb);
+    _cdb_cs = b.gep(
+        release_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="cdb.cs"
+    );
+    _cdb_cb = b.load(_cdb_cs, name="cdb.cb");
+    _cdb_buf_bit = b.and_(
+        _cdb_cb, ir.Constant(ir.IntType(8), RC_BUFFERED_BIT), name="cdb.buf"
+    );
+    _cdb_is_buffered = b.icmp_unsigned(
+        "!=", _cdb_buf_bit, ir.Constant(ir.IntType(8), 0), name="cdb.bufp"
+    );
+    mark_dead_bb = release_fn.append_basic_block("mark_dead");
+    actual_dtor_check_bb = release_fn.append_basic_block("actual_dtor_check");
+    b.cbranch(_cdb_is_buffered, mark_dead_bb, actual_dtor_check_bb);
+
+    b = ir.IRBuilder(mark_dead_bb);
+    _md_new_byte = b.or_(
+        b.and_(_cdb_cb, ir.Constant(ir.IntType(8), 0xFC), name="md.clr"),
+        ir.Constant(ir.IntType(8), RC_DEAD_BIT),
+        name="md.dead"
+    );
+    b.store(_md_new_byte, _cdb_cs);
+    _md_dtor_raw = b.gep(
+        release_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="md.dtor.raw"
+    );
+    _md_dtor_slot = b.bitcast(_md_dtor_raw, i64_ptr, name="md.dtor.slot");
+    _md_dtor_val = b.load(_md_dtor_slot, name="md.dtor.val");
+    _md_is_dtor_zero = b.icmp_unsigned(
+        "==", _md_dtor_val, ir.Constant(i64, 0), name="md.dtor.zero"
+    );
+    b.cbranch(_md_is_dtor_zero, done_bb, call_dtor_bb);
+
+    b = ir.IRBuilder(actual_dtor_check_bb);
     dtor_raw = b.gep(
         release_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="dtor.raw"
     );
@@ -390,7 +422,12 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 
     b = ir.IRBuilder(call_dtor_bb);
     dtor_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
-    dtor_fn_i8 = b.inttoptr(dtor_val, i8_ptr, name="dtor.i8");
+    _call_dtor_raw = b.gep(
+        release_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="call.dtor.raw"
+    );
+    _call_dtor_slot = b.bitcast(_call_dtor_raw, i64_ptr, name="call.dtor.slot");
+    _call_dtor_val = b.load(_call_dtor_slot, name="call.dtor.val");
+    dtor_fn_i8 = b.inttoptr(_call_dtor_val, i8_ptr, name="dtor.i8");
     dtor_fn_ptr = b.bitcast(dtor_fn_i8, dtor_fnty.as_pointer(), name="dtor.fn");
     b.call(dtor_fn_ptr, [release_fn.args[0]]);
     post_dtor_live_rm_bb = release_fn.append_basic_block("post_dtor_live_rm");
@@ -679,11 +716,21 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     _sf_tag_ptr = b.bitcast(_sf_tag_slot, i8_ptr.as_pointer(), name="sf.tag.ptr");
     _sf_tag = b.load(_sf_tag_ptr, name="sf.tag");
 
+    dead_check_bb = release_fn.append_basic_block("dead_check");
     log_free_struct_bb = release_fn.append_basic_block("log_free_struct");
     actual_free_struct_bb = release_fn.append_basic_block("actual_free_struct");
     self._emit_live_list_remove(
-        b, obj_cast, i8_ptr, i64_ptr, log_free_struct_bb, log_free_struct_bb
+        b, obj_cast, i8_ptr, i64_ptr, dead_check_bb, dead_check_bb
     );
+    b = ir.IRBuilder(dead_check_bb);
+    (_sdc_csp, _sdc_cb) = self._emit_rc_color_load(b, obj_cast);
+    _sdc_dead = b.and_(
+        _sdc_cb, ir.Constant(ir.IntType(8), RC_DEAD_BIT), name="sdc.bit"
+    );
+    _sdc_is_dead = b.icmp_unsigned(
+        "!=", _sdc_dead, ir.Constant(ir.IntType(8), 0), name="sdc.dead"
+    );
+    b.cbranch(_sdc_is_dead, done_bb, log_free_struct_bb);
     self._emit_struct_free_log(
         release_fn,
         log_free_struct_bb,

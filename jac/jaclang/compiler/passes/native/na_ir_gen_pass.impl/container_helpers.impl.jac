@@ -114,11 +114,21 @@ impl NaIRGenPass._emit_container_release_fn(
     _cl_tag_raw = b.gep(_cont_i8, [ir.Constant(_i64c, -24)], name="cl.tag.raw");
     _cl_tag_pp = b.bitcast(_cl_tag_raw, _i8pc.as_pointer(), name="cl.tag.pp");
     _cl_tag = b.load(_cl_tag_pp, name="cl.tag");
+    dead_check_cont_bb = release_fn.append_basic_block("dead_check_cont");
     log_free_cont_bb = release_fn.append_basic_block("log_free_cont");
     actual_free_cont_bb = release_fn.append_basic_block("actual_free_cont");
     self._emit_live_list_remove(
-        b, _cont_i8, _i8pc, _i64_ptr_c, log_free_cont_bb, log_free_cont_bb
+        b, _cont_i8, _i8pc, _i64_ptr_c, dead_check_cont_bb, dead_check_cont_bb
     );
+    b = ir.IRBuilder(dead_check_cont_bb);
+    (_cdcc_csp, _cdcc_cb) = self._emit_rc_color_load(b, _cont_i8);
+    _cdcc_dead = b.and_(
+        _cdcc_cb, ir.Constant(ir.IntType(8), RC_DEAD_BIT), name="cdcc.bit"
+    );
+    _cdcc_is_dead = b.icmp_unsigned(
+        "!=", _cdcc_dead, ir.Constant(ir.IntType(8), 0), name="cdcc.dead"
+    );
+    b.cbranch(_cdcc_is_dead, done_bb, log_free_cont_bb);
     self._emit_struct_free_log(
         release_fn,
         log_free_cont_bb,
