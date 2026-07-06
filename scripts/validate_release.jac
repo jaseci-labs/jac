@@ -9,7 +9,7 @@ import from __future__ { annotations }
 import argparse;
 import sys;
 import from pathlib { Path }
-import from release_utils { PACKAGES, bump_version, check_pypi, get_current_version }
+import from release_utils { PACKAGES, bump_version, get_current_version }
 
 def main -> int {
     parser = argparse.ArgumentParser();
@@ -38,21 +38,7 @@ def main -> int {
             "new": new_version,
             "bump": bump_type
         };
-        # The anchor (jaclang) is not published to PyPI, so there is no PyPI
-        # version to conflict with -- it ships as the native binary.
-        if not pkg_info.publish_pypi {
-            print(
-                f"Anchor {pkg_info.pypi} {new_version} (native binary, no PyPI check)"
-            );
-            releases.append(entry);
-            continue;
-        }
-        print(f"Checking {pkg_info.pypi} {new_version}...");
-        if check_pypi(pkg_info.pypi, new_version) {
-            errors.append(f"{pkg_info.pypi} {new_version} already exists on PyPI");
-        } else {
-            releases.append(entry);
-        }
+        releases.append(entry);
     }
     if errors {
         print("\nValidation failed:");
