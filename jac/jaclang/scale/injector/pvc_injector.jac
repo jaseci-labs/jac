@@ -198,6 +198,31 @@ obj PvcInjector(Injector) {
             for (object_key, raw) in self._seed_artifacts() {
                 bundle_path = bundle_pvc_path(object_key);
                 parent_dir = str(Path(bundle_path).parent);
+                # Object keys are content-addressed (sha256 of the bytes), so a
+                # file already on the PVC IS this payload - skip the upload.
+                # This is what makes warm redeploys cheap: the ~170MB toolchain
+                # and unchanged bundles never cross the wire twice (#7179).
+                try {
+                    run_kubectl_command(
+                        [
+                            "exec",
+                            "-n",
+                            namespace,
+                            loader_pod,
+                            "--",
+                            "sh",
+                            "-c",
+                            f"test -f '{bundle_path}'"
+                        ]
+                    );
+                    logger.info(
+                        f"pvc-injector: {object_key} already seeded "
+                        f"(content-addressed hit); skipping upload."
+                    );
+                    continue;
+                } except Exception {
+                    ;
+                }
                 with tempfile.NamedTemporaryFile(
                     suffix=".tar.gz", delete=False
                 ) as tmp {

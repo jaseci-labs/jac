@@ -1,4 +1,5 @@
 import io;
+import gzip;
 import hashlib;
 import logging;
 import tarfile;
@@ -168,10 +169,30 @@ def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | Non
 }
 
 
+def det_tar_member(info: tarfile.TarInfo) -> tarfile.TarInfo {
+    # Bundles are content-addressed; wall-clock mtimes and uid/gid would give
+    # identical content a new digest every deploy, defeating seed skip-if-present.
+    info.mtime = 0;
+    info.uid = 0;
+    info.gid = 0;
+    info.uname = "";
+    info.gname = "";
+    return info;
+}
+
+
+def open_det_tar(buf: io.BytesIO) -> tuple {
+    # gzip stamps the current time into its header - zero it for determinism.
+    gz = gzip.GzipFile(fileobj=buf, mode="wb", mtime=0);
+    return (tarfile.open(fileobj=gz, mode="w"), gz);
+}
+
+
 def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
+    (tar, gz) = open_det_tar(buf);
+    with tar {
         for path in sorted(base.rglob("*")) {
             if not path.is_file() {
                 continue;
@@ -180,7 +201,7 @@ def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
             if is_excluded(rel) {
                 continue;
             }
-            tar.add(str(path), arcname=str(rel));
+            tar.add(str(path), arcname=str(rel), filter=det_tar_member);
         }
         sanitized = sanitized_jac_toml(base, provisioned_database);
         if sanitized is not None {
@@ -190,6 +211,7 @@ def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
             tar.addfile(info, io.BytesIO(data));
         }
     }
+    gz.close();
     return buf.getvalue();
 }
 
