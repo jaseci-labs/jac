@@ -592,7 +592,7 @@ import {{ fileURLToPath }} from "url";
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
-// Vite plugin: forward client-side runtime errors to the terminal via WebSocket
+// Vite plugin: forward client-side runtime errors to the terminal and browser overlay
 function jacErrorReporter() {{
   const seen = new Map();
   return {{
@@ -616,6 +616,16 @@ function jacErrorReporter() {{
           }} catch(e) {{}}
         }}
         console.error("Client error: " + data.type + ": " + data.message + loc);
+        server.ws.send({{
+          type: "error",
+          err: {{
+            message: data.message,
+            stack: data.stack || "",
+            id: data.source || "compiled/_entry.js",
+            frame: "",
+            plugin: "jac-error-reporter",
+          }},
+        }});
       }});
     }},
   }};
@@ -1251,7 +1261,6 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/compiled/_entry.js"></script>
     <script type="module">
     if (import.meta.hot) {
       function report(d) {
@@ -1276,6 +1285,16 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
           source: null, line: null, column: null
         });
       });
+      import("/compiled/_entry.js").catch(function(err) {
+        report({
+          type: err instanceof Error ? err.constructor.name : "Error",
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : null,
+          source: null, line: null, column: null
+        });
+      });
+    } else {
+      import("/compiled/_entry.js");
     }
     </script>
   </body>
