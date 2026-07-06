@@ -1,17 +1,18 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.compiler.ownership { Ownership, result_ownership }
 
 obj OwnershipFacts {
-    has value_category: dict[int, str] = {},
+    has value_category: dict[int, Ownership] = {},
         last_uses: dict[int, bool] = {},
         consumed_params: dict[str, object] = {};
 
-    def category_of(nd: object) -> str {
-        return self.value_category.get(id(nd), "borrowed");
+    def category_of(nd: object) -> Ownership {
+        return self.value_category.get(id(nd), Ownership.BORROWED);
     }
 
     def is_owned(nd: object) -> bool {
-        return self.value_category.get(id(nd), "borrowed") == "owned";
+        return self.category_of(nd) == Ownership.OWNED;
     }
 
     def is_last_use(nd: object) -> bool {
@@ -173,7 +174,7 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
                         self.facts.consumed_params[key] = s;
                     }
                     s.add(idx);
-                    self.facts.value_category[id(store)] = "owned";
+                    self.facts.value_category[id(store)] = Ownership.OWNED;
                 }
             }
             idx += 1;
@@ -307,8 +308,13 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
     }
 
     def categorize(e: object) {
+        if not isinstance(e, uni.Expr) {
+            return;
+        }
+
         if isinstance(e, uni.AtomUnit) {
             self.categorize(e.value);
+
             self.facts.value_category[id(e)] = self.facts.category_of(e.value);
             return;
         }
@@ -318,28 +324,28 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
                     self.categorize(p);
                 }
             }
-            owned = self.type_of(e) in self.ref_types or self.type_of(e) == "str";
-            self.facts.value_category[id(e)] = "owned" if owned else "borrowed";
-            return;
-        }
-        if isinstance(e, uni.BinaryExpr) {
+        } elif isinstance(e, uni.BinaryExpr) {
             self.categorize(e.left);
             self.categorize(e.right);
-            if e.op.value == "+"
-            and (self.type_of(e.left) == "str" or self.type_of(e.right) == "str") {
-                self.facts.value_category[id(e)] = "owned";
-            } else {
-                self.facts.value_category[id(e)] = "borrowed";
-            }
-            return;
-        }
-        if isinstance(e, uni.AtomTrailer) {
+        } elif isinstance(e, uni.AtomTrailer) {
             self.categorize(e.target);
-            self.facts.value_category[id(e)] = "borrowed";
-            return;
         }
+        self.facts.value_category[id(e)] = self.ownership_of(e);
+    }
 
-        self.facts.value_category[id(e)] = "borrowed";
+    def ownership_of(e: uni.Expr) -> Ownership {
+        base = result_ownership(e);
+
+        if base == Ownership.UNKNOWN and self.is_str_concat(e) {
+            return Ownership.OWNED;
+        }
+        return base;
+    }
+
+    def is_str_concat(e: uni.Expr) -> bool {
+        return isinstance(e, uni.BinaryExpr)
+        and e.op.value == "+"
+        and (self.type_of(e.left) == "str" or self.type_of(e.right) == "str");
     }
 
     def type_of(e: object) -> str {
