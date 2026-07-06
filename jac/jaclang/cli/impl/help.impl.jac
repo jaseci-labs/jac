@@ -1,16 +1,9 @@
-# Palette mirroring Python 3.14's argparse color theme, so the hand-rolled
-# top-level help matches the auto-colored `jac COMMAND --help` output.
 glob _HELP_RESET: str = "\033[0m",
-     _HELP_HEADER: str = "\033[1;34m",   # bold blue  -> section/group headers
-     _HELP_CMD: str = "\033[32m",         # green      -> command & option names
-     _HELP_PROG: str = "\033[1;35m",      # bold magenta -> program name
-     _HELP_TITLE: str = "\033[1m";        # bold       -> title line
+     _HELP_HEADER: str = "\033[1;34m",
+     _HELP_CMD: str = "\033[32m",
+     _HELP_PROG: str = "\033[1;35m",
+     _HELP_TITLE: str = "\033[1m";
 
-"""Wrap `text` in an ANSI `code` only when the console has color enabled.
-
-Reuses `JacConsole.use_color`, the master switch resolved from NO_COLOR /
-TERM=dumb / stdout.isatty(), so piped or captured help stays plain text.
-"""
 def _help_color(text: str, code: str) -> str {
     import from jaclang.cli.console { console }
     try {
@@ -57,7 +50,9 @@ impl HelpFormatter.format_main_help(
     lines.append("");
     lines.append(_help_color("Options:", _HELP_HEADER));
     lines.append(f"  {_help_color('-V, --version', _HELP_CMD)}  Show version and exit");
-    lines.append(f"  {_help_color('-h, --help', _HELP_CMD)}     Show this message and exit");
+    lines.append(
+        f"  {_help_color('-h, --help', _HELP_CMD)}     Show this message and exit"
+    );
     lines.append("");
 
     grouped: dict[str, list[CommandSpec]] = {};
@@ -105,7 +100,9 @@ impl HelpFormatter.format_main_help(
             lines.append(_help_color(f"{display_name}:", _HELP_HEADER));
             for cmd in cmds {
                 padding = " " * (12 - len(cmd.name));
-                lines.append(f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
+                lines.append(
+                    f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}"
+                );
             }
             lines.append("");
         }

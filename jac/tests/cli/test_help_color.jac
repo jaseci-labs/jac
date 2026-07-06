@@ -20,9 +20,9 @@ import from jaclang.cli.console { _get_console }
 
 
 # ANSI roles the formatter uses (mirrors argparse's 3.14 theme).
-glob _HEADER: str = "\033[1;34m",   # bold blue  -> section/group headers
-     _CMD: str = "\033[32m",         # green      -> command names
-     _PROG: str = "\033[1;35m";      # bold magenta -> program name
+glob _HEADER: str = "\033[1;34m",  # bold blue  -> section/group headers
+     _CMD: str = "\033[32m",  # green      -> command names
+     _PROG: str = "\033[1;35m";  # bold magenta -> program name
 
 
 def _specs -> list[CommandSpec] {
@@ -59,9 +59,8 @@ test "main help applies the argparse-matching palette when color is enabled" {
     fmt = HelpFormatter();
     out = _with_color(
         True,
-        lambda : fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        )
+        lambda :
+            fmt.format_main_help(_specs(), prog="jac", version="9.9.9", verbose=True)
     );
     assert _HEADER in out , f"section headers not colored bold-blue; captured={out!r}";
     assert _CMD in out , f"command names not colored green; captured={out!r}";
@@ -73,9 +72,8 @@ test "main help is plain text when color is disabled" {
     fmt = HelpFormatter();
     out = _with_color(
         False,
-        lambda : fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        )
+        lambda :
+            fmt.format_main_help(_specs(), prog="jac", version="9.9.9", verbose=True)
     );
     assert "\033[" not in out , f"disabled color still emitted ANSI escapes; captured={out!r}";
     # Data still present, just uncolored.
@@ -88,17 +86,17 @@ test "main help coloring preserves layout (strip-ANSI == plain)" {
     fmt = HelpFormatter();
     on = _with_color(
         True,
-        lambda : fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        )
+        lambda :
+            fmt.format_main_help(_specs(), prog="jac", version="9.9.9", verbose=True)
     );
     off = _with_color(
         False,
-        lambda : fmt.format_main_help(
-            _specs(), prog="jac", version="9.9.9", verbose=True
-        )
+        lambda :
+            fmt.format_main_help(_specs(), prog="jac", version="9.9.9", verbose=True)
     );
-    assert _strip_ansi(on) == off , f"coloring changed layout; stripped={_strip_ansi(on)!r} plain={off!r}";
+    assert _strip_ansi(on) == off , f"coloring changed layout; stripped={_strip_ansi(
+        on
+    )!r} plain={off!r}";
 }
 
 
@@ -111,5 +109,7 @@ test "curated (bare jac) help colors headers/commands/prog and stays plain when 
     assert _CMD in on , f"curated command names not colored; captured={on!r}";
     assert _PROG in on , f"curated program name not colored; captured={on!r}";
     assert "\033[" not in off , f"curated help emitted ANSI when color disabled; captured={off!r}";
-    assert _strip_ansi(on) == off , f"curated coloring changed layout; stripped={_strip_ansi(on)!r} plain={off!r}";
+    assert _strip_ansi(on) == off , f"curated coloring changed layout; stripped={_strip_ansi(
+        on
+    )!r} plain={off!r}";
 }
