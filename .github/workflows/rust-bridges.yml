@@ -93,9 +93,9 @@ jobs:
 
       # The na tests marshal against the real bridge .so files (metadata section
       # + symbols), so build them in release before compiling any probe.
-      - name: Build the owning + scalar + map + list bridge .so files
+      - name: Build the owning + scalar + map + list + async bridge .so files
         working-directory: bridges
-        run: cargo build -p jac-bridge-owning -p jac-bridge-scalar -p jac-bridge-map -p jac-bridge-list --release
+        run: cargo build -p jac-bridge-owning -p jac-bridge-scalar -p jac-bridge-map -p jac-bridge-list -p jac-bridge-async --release
 
       # Provides the `jac` binary (bundled LLVM shim) on PATH and places the shim
       # in-tree at jac/jaclang/compiler/passes/native/llvm/libjacllvm.so.
@@ -154,3 +154,14 @@ jobs:
       # source against the real .so, runs it, diffs the elements in order.
       - name: Run the na list conformance vertical
         run: jac test bridges/jac-bridge-loader/tests/na/list_conformance.jac
+
+      # M6.3 async fn -> blocking C shim: the #[bridge] macro's async detection is
+      # already gated by the binder's codegen_async unit tests (cargo test
+      # --workspace above). These two steps prove the runtime round-trip: the
+      # CPython loader drives a real Tokio runtime through the sync shim, and the
+      # na vertical shows na==CPython for the async ctor + signed/str/Vec returns.
+      - name: Run the async fn loader tests
+        run: jac test bridges/jac-bridge-loader/tests/test_async.jac
+
+      - name: Run the na async fn conformance vertical
+        run: jac test bridges/jac-bridge-loader/tests/na/async_conformance.jac

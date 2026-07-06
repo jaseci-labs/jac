@@ -822,6 +822,10 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
             if len(self._clib_paths) > _paths_before
             else None;
 
+        for _lib_path in self._clib_paths[_paths_before:] {
+            self._register_bridge_metadata(_lib_path);
+        }
+
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Archetype) {
                 arch_name = decl.name.value if decl.name else None;

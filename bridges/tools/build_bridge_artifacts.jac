@@ -25,53 +25,12 @@ import argparse;
 import hashlib;
 import json;
 import os;
-import platform;
 import shutil;
-import subprocess;
 import sys;
-import tempfile;
 import from pathlib { Path }
-
-
-def run(cmd: list, cwd: object = None) -> subprocess.CompletedProcess {
-    proc = subprocess.run(
-        [str(c) for c in cmd],
-        cwd=str(cwd) if cwd else None,
-        capture_output=True,
-        text=True,
-    );
-    if proc.returncode != 0 {
-        joined = ' '.join([str(c) for c in cmd]);
-        raise RuntimeError(
-            f"command failed (exit {proc.returncode}): {joined}\n" + proc.stderr.strip()
-        );
-    }
-    return proc;
-}
-
-
-def host_triple -> str {
-    # Best-effort host target triple, matching the finder's _target_triple.
-    out = str(run(["rustc", "-vV"]).stdout);
-    for line in out.splitlines() {
-        if line.startswith("host:") {
-            return line.split(":", 1)[1].strip();
-        }
-    }
-    # Fallback mirrors jaclang's _finder._target_triple.
-    machine = platform.machine().lower();
-    arch = {"amd64": "x86_64", "arm64": "aarch64"}.get(machine, machine);
-    system = platform.system();
-    if system == "Linux" {
-        return f"{arch}-unknown-linux-gnu";
-    }
-    if system == "Darwin" {
-        return f"{arch}-apple-darwin";
-    }
-    if system == "Windows" {
-        return f"{arch}-pc-windows-msvc";
-    }
-    return f"{arch}-unknown-" + system.lower();
+import from jaclang.compiler.rust_bridge._build_core {
+    run_build_pipeline,
+    target_triple
 }
 
 
@@ -104,97 +63,13 @@ def built_cdylib(release_dir: Path, stem: str, triple: str) -> Path {
 }
 
 
-def binder_cmd(ws: Path) -> list {
-    for profile in ("release", "debug") {
-        exe = ws / "target" / profile / "jac-bridge-binder";
-        win = exe.with_suffix(".exe");
-        if exe.is_file() {
-            return [exe];
-        }
-        if win.is_file() {
-            return [win];
-        }
-    }
-    return [
-        "cargo",
-        "run",
-        "--quiet",
-        "--release",
-        "--manifest-path",
-        ws / "Cargo.toml",
-        "-p",
-        "jac-bridge-binder",
-        "--",
-
-    ];
-}
-
-
-def resolved_version(proj: Path, crate: str) -> str {
-    meta = json.loads(
-        str(run(["cargo", "metadata", "--format-version", "1"], cwd=proj).stdout)
-    );
-    for pkg in meta.get("packages", []) {
-        if pkg.get("name") == crate {
-            return str(pkg["version"]);
-        }
-    }
-    raise RuntimeError("crate " + repr(crate) + " not in resolved graph");
-}
-
-
 def build_one(crate: str, version: str, ws: Path, out: Path, triple: str) -> dict {
     stem = crate.replace("-", "_");
-    jac_bridge = (ws / "jac-bridge").resolve();
-    work = Path(tempfile.mkdtemp(prefix="jac-bridge-ci-"));
+    pipeline = run_build_pipeline(crate, version, ws);
+    exact = pipeline[0];
+    gen = pipeline[1];
+    work = pipeline[2];
     try {
-        proj = work / "fetch";
-        proj.mkdir(parents=True);
-        run(["cargo", "init", "--lib", "--quiet", "--name", "bridgefetch"], cwd=proj);
-        add_spec = crate if version in ("", "*") else f"{crate}@{version}";
-        run(["cargo", "add", "--quiet", add_spec], cwd=proj);
-        exact = resolved_version(proj, crate);
-
-        run(
-            [
-                "cargo",
-                "+nightly",
-                "rustdoc",
-                "-p",
-                crate,
-                "-Z",
-                "unstable-options",
-                "--output-format",
-                "json",
-                "--quiet",
-
-            ],
-            cwd=proj,
-        );
-        doc_json = proj / "target" / "doc" / f"{stem}.json";
-        if not doc_json.is_file() {
-            raise RuntimeError(f"rustdoc did not produce {doc_json}");
-        }
-
-        gen = work / "gen";
-        gen.mkdir();
-        run(
-            binder_cmd(ws) + [doc_json, "--out", gen, "--jac-bridge", jac_bridge],
-            cwd=ws,
-        );
-        run(
-            [
-                "cargo",
-                "build",
-                "--release",
-                "--quiet",
-                "--manifest-path",
-                gen / "Cargo.toml",
-
-            ],
-            cwd=gen,
-        );
-
         built = built_cdylib(gen / "target" / "release", f"jac_bridge_{stem}", triple);
         canonical = cdylib_name(f"jac_bridge_{stem}", triple);
         dest_dir = out / crate / exact / triple;
@@ -228,7 +103,7 @@ def main -> int {
     ap.add_argument("specs", nargs="+", help="crate or crate@version");
     args = ap.parse_args();
 
-    triple = str(args.triple) if args.triple else host_triple();
+    triple = str(args.triple) if args.triple else target_triple();
     ws = Path(str(args.workspace)).resolve();
     out_dir = Path(str(args.out));
     if not (ws / "jac-bridge").is_dir() {

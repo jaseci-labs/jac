@@ -1,7 +1,12 @@
 import os;
 import shutil;
 import from pathlib { Path }
-import from jaclang.compiler.rust_bridge._blob { BridgeMeta, SUPPORTED_ABI, parse }
+import from jaclang.compiler.rust_bridge._blob {
+    BridgeMeta,
+    SUPPORTED_ABI,
+    abi_mismatch_error,
+    parse
+}
 import from jaclang.compiler.rust_bridge._ctypes_codegen { build_module }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
 import from jaclang.compiler.rust_bridge._finder {
@@ -94,9 +99,7 @@ def synthesize_bridge(
 
     meta = parse(read_jac_bridge_section(str(lib)));
     if meta.abi_version != SUPPORTED_ABI {
-        raise ImportError(
-            f"rust.{crate}: bridge '{lib}' declares ABI version " + f"{meta.abi_version}, but this jac supports v{SUPPORTED_ABI}. " + "Rebuild the bridge or upgrade jac."
-        );
+        raise abi_mismatch_error(crate, lib, meta.abi_version);
     }
 
     na = render_na_source(meta, lib.name);

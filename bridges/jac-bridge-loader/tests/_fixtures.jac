@@ -3,6 +3,7 @@
 # auto-generated ctypes modules.
 import from pathlib { Path }
 import from jaclang.compiler.rust_bridge { load_bridge }
+import from jaclang.compiler.rust_bridge._finder { find_lib_in_dirs }
 
 
 def workspace -> Path {
@@ -13,16 +14,9 @@ def workspace -> Path {
 
 def _find_so(crate: str) -> str {
     ws = workspace();
-    stems = (
-        f"libjac_bridge_{crate}.so",
-        f"libjac_bridge_{crate}.dylib",
-        f"jac_bridge_{crate}.dll"
-    );
-    for stem in stems {
-        p = ws / "target" / "release" / stem;
-        if p.exists() {
-            return str(p);
-        }
+    found = find_lib_in_dirs(crate, [ws / "target" / "release"]);
+    if found is not None {
+        return str(found);
     }
     raise FileNotFoundError(
         f"libjac_bridge_{crate} not found; run: cargo build --release"
@@ -52,4 +46,9 @@ def map_so -> str {
 
 def list_so -> str {
     return _find_so("list");
+}
+
+
+def async_so -> str {
+    return _find_so("async");
 }

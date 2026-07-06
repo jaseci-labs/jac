@@ -74,8 +74,29 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
     return ir.Constant(t, 0);
 }
 
+impl NaIRGenPass._register_bridge_metadata(path: str) -> None {
+    import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
+    import from jaclang.compiler.rust_bridge._blob { parse }
+    try {
+        blob = read_jac_bridge_section(path);
+    } except Exception {
+        return;
+    }
+    if not blob {
+        return;
+    }
+    try {
+        meta = parse(blob);
+    } except Exception {
+        return;
+    }
+    self._bridge_make_buf_syms.add(
+        f"jac_{meta.module_name}_{RUST_BRIDGE_MAKE_BUF_STEM}"
+    );
+}
+
 impl NaIRGenPass._note_bridge_sink(name: str, fn: ir.Function) -> None {
-    if name.endswith("_make_buf") {
+    if name in self._bridge_make_buf_syms {
         self._callback_make_buf = fn;
     }
 }

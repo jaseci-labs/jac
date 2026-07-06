@@ -12,6 +12,13 @@ import from jaclang.compiler.rust_bridge._finder {
 }
 
 
+obj RegistryArtifact {
+    has version: str,
+        url: str,
+        sha256: str;
+}
+
+
 def registry_url -> object {
     return os.environ.get("JAC_BRIDGE_REGISTRY") or None;
 }
@@ -58,7 +65,7 @@ def fetch_index(base: object = None) -> object {
 
 def resolve_entry(
     index: object, crate: str, constraint: str, triple: object = None
-) -> object {
+) -> RegistryArtifact | None {
     if not index {
         return None;
     }
@@ -78,11 +85,9 @@ def resolve_entry(
     }
     best = sorted(candidates, key=_ver_key, reverse=True)[0];
     artifact = versions[best][triple];
-    return {
-        "version": best,
-        "url": artifact.get("url"),
-        "sha256": artifact.get("sha256")
-    };
+    return RegistryArtifact(
+        version=best, url=artifact.get("url") or "", sha256=artifact.get("sha256") or ""
+    );
 }
 
 
@@ -109,23 +114,23 @@ def fetch_bridge(
     if entry is None {
         return None;
     }
-    url = entry["url"];
+    url = entry.url;
     if not urlparse(url).scheme {
         url = urljoin(_index_url(base), url);
     }
     data = _fetch(url);
 
-    want = entry["sha256"];
+    want = entry.sha256;
     if want {
         got = hashlib.sha256(data).hexdigest();
         if got != want {
             raise RuntimeError(
-                f"rust:{crate} {entry['version']}: sha256 mismatch " + f"(expected {want}, got {got}) from {url}"
+                f"rust:{crate} {entry.version}: sha256 mismatch " + f"(expected {want}, got {got}) from {url}"
             );
         }
     }
 
     fallback = "libjac_bridge_" + crate_lib_stem(crate) + ".so";
     filename = Path(urlparse(url).path).name or fallback;
-    return _install_bytes(crate, entry["version"], filename, data);
+    return _install_bytes(crate, entry.version, filename, data);
 }

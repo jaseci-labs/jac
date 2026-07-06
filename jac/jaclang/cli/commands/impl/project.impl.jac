@@ -6,8 +6,23 @@ import tempfile;
 import shlex;
 import base64;
 import importlib.metadata;
+import from enum { StrEnum }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.project.config { JacConfig }
+import from jaclang.project.providers {
+    EcosystemProvider,
+    InstallContext,
+    ResolvedDependency
+}
+
+enum BridgeStatus(StrEnum) {
+    CACHED = "cached",
+    DOWNLOADED = "downloaded",
+    BUILT = "built",
+    RECORDED = "recorded",
+    FAILED = "failed"
+}
 
 impl create(
     name: str = '',
@@ -689,7 +704,7 @@ impl install(
     if extras {
         console.print(f"  Extras: {', '.join(extras)}", style="muted");
     }
-    if plan.is_empty() and not config.rust_bridges {
+    if plan.is_empty() {
         console.info("No dependencies to install.");
         return 0;
     }
@@ -718,41 +733,22 @@ impl install(
         }
         console.print(f"\n  Installing {provider.name} dependencies...", style="muted");
         try {
-            provider.install_all(config, provider_deps, ctx);
-            console.print(
-                f"  ✔ {provider.name} dependencies installed", style="success"
-            );
+            ok = provider.install_all(config, provider_deps, ctx);
+            if ok {
+                console.print(
+                    f"  ✔ {provider.name} dependencies installed", style="success"
+                );
+            } else {
+                plugin_failed = True;
+            }
         } except Exception as e {
             console.error(f"  ✗ {provider.name} dependencies failed: {e}");
             plugin_failed = True;
         }
     }
-    rust_failed = False;
-    rust_recorded = False;
-    if config.rust_bridges {
-        console.print("\n  Installing Rust bridges...", style="muted");
-        for (crate, version) in config.rust_bridges.items() {
-            result = _ensure_rust_bridge(crate, version, verbose);
-            if result == "failed" {
-                rust_failed = True;
-            } elif result == "recorded" {
-                rust_recorded = True;
-            }
-        }
-    }
-    if install_success
-    and not plugin_failed
-    and not rust_failed
-    and not rust_recorded {
+    if install_success and not plugin_failed {
         console.success("All dependencies installed");
         return 0;
-    } elif rust_recorded and not (plugin_failed or rust_failed) and install_success {
-        console.warning(
-            "Some Rust bridges are declared but not installed — set "
-            "JAC_BRIDGE_REGISTRY to fetch them, or install the Rust toolchain + "
-            "JAC_BRIDGE_WORKSPACE to build them locally."
-        );
-        return 1;
     } else {
         console.error("Some dependencies failed to install");
         return 1;
@@ -771,7 +767,7 @@ def _parse_rust_spec(spec: str) -> tuple {
 }
 
 
-def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> str {
+def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> BridgeStatus {
     import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
     import from jaclang.compiler.rust_bridge._builder {
         build_bridge,
@@ -785,7 +781,7 @@ def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> str {
         if verbose {
             console.print(f"    cached: {lib}", style="muted");
         }
-        return "cached";
+        return BridgeStatus.CACHED;
     }
     if registry_url() is not None {
         try {
@@ -803,7 +799,7 @@ def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> str {
             if verbose {
                 console.print(f"    installed: {dest}", style="muted");
             }
-            return "downloaded";
+            return BridgeStatus.DOWNLOADED;
         }
     }
     if not toolchain_available() or workspace_root() is None {
@@ -812,7 +808,7 @@ def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> str {
             "    not cached — set JAC_BRIDGE_REGISTRY to fetch, or install the " + "Rust toolchain + JAC_BRIDGE_WORKSPACE to build locally",
             style="muted"
         );
-        return "recorded";
+        return BridgeStatus.RECORDED;
     }
     try {
         with console.status(
@@ -824,16 +820,88 @@ def _ensure_rust_bridge(name: str, version: str, verbose: bool) -> str {
         if verbose {
             console.print(f"    installed: {dest}", style="muted");
         }
-        return "built";
+        return BridgeStatus.BUILT;
     } except Exception as e {
         console.error(f"  ✗ rust:{name}: {e}");
-        return "failed";
+        return BridgeStatus.FAILED;
+    }
+}
+
+
+obj RustProvider(EcosystemProvider) {
+    has name: str = "rust",
+        manifest_key: str = "rust-bridges",
+        cli_flag: str = "";
+
+    override def resolve(
+        config: JacConfig, include_dev: bool = False
+    ) -> list[ResolvedDependency] {
+        resolved: list[ResolvedDependency] = [];
+        for (crate, version) in config.rust_bridges.items() {
+            resolved.append(
+                ResolvedDependency(
+                    name=crate,
+                    version=version,
+                    ecosystem="rust",
+                    source="rust-bridge",
+                    origin="manifest"
+                )
+            );
+        }
+        return resolved;
+    }
+
+    override def install_all(
+        config: JacConfig, deps: list[ResolvedDependency], ctx: InstallContext
+    ) -> bool {
+        any_failed = False;
+        any_recorded = False;
+        for dep in deps {
+            status = _ensure_rust_bridge(dep.name, dep.version, ctx.verbose);
+            if status == BridgeStatus.FAILED {
+                any_failed = True;
+            } elif status == BridgeStatus.RECORDED {
+                any_recorded = True;
+            }
+        }
+        if any_recorded and not any_failed {
+            console.warning(
+                "Some Rust bridges are declared but not installed — set "
+                "JAC_BRIDGE_REGISTRY to fetch them, or install the Rust toolchain + "
+                "JAC_BRIDGE_WORKSPACE to build them locally."
+            );
+        }
+        return not (any_failed or any_recorded);
+    }
+
+    override def add_package(
+        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
+    ) -> str | None {
+        ver = version or "*";
+        config.add_dependency(name, ver, dep_type="rust");
+        if _ensure_rust_bridge(name, ver, ctx.verbose) == BridgeStatus.FAILED {
+            return None;
+        }
+        return ver;
+    }
+
+    override def remove_package(
+        config: JacConfig, name: str, dev: bool, ctx: InstallContext
+    ) -> bool {
+        return config.remove_dependency(name, dep_type="rust");
     }
 }
 
 
 def _add_rust_bridges(config: any, specs: list, verbose: bool) -> int {
+    import from jaclang.project.providers { InstallContext, get_provider_registry }
+    rust = get_provider_registry().get("rust");
+    if rust is None {
+        console.error("Rust bridge provider not registered");
+        return 1;
+    }
     console.print(f"\n🦀 Adding {len(specs)} Rust bridge(s)", style="bold");
+    ctx = InstallContext(verbose=verbose);
     failed = False;
     for spec in specs {
         (name, version) = _parse_rust_spec(spec);
@@ -841,8 +909,7 @@ def _add_rust_bridges(config: any, specs: list, verbose: bool) -> int {
             console.error(f"Invalid rust bridge spec: '{spec}'");
             return 1;
         }
-        config.add_dependency(name, version, dep_type="rust");
-        if _ensure_rust_bridge(name, version, verbose) == "failed" {
+        if rust.add_package(config, name, version, False, ctx) is None {
             failed = True;
         }
     }
@@ -948,7 +1015,11 @@ impl add(
 
 impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.providers { InstallContext, get_python_provider }
+    import from jaclang.project.providers {
+        InstallContext,
+        get_provider_registry,
+        get_python_provider
+    }
     config = get_config();
     if config is None {
         console.error(
@@ -962,7 +1033,16 @@ impl remove(packages: list = [], dev: bool = False) -> int {
     }
     python = get_python_provider();
     ctx = InstallContext();
+    rust = get_provider_registry().get("rust");
     for name in packages {
+        if rust is not None and name in config.rust_bridges {
+            if rust.remove_package(config, name, dev, ctx) {
+                console.success(f"Removed rust:{name} from jac.toml");
+            } else {
+                console.error(f"Package {name} not found in dependencies");
+            }
+            continue;
+        }
         if python.remove_package(config, name, dev, ctx) {
             console.success(f"Removed {name} from jac.toml");
         } else {

@@ -18,6 +18,13 @@ glob MAGIC = b"JACBRDG1",
      FN_METHOD = 1;
 
 
+def abi_mismatch_error(crate: str, path: object, found: int) -> ImportError {
+    return ImportError(
+        f"rust.{crate}: bridge '{path}' declares ABI version " + f"{found}, but this jac supports v{SUPPORTED_ABI}. " + "Rebuild the bridge or upgrade jac."
+    );
+}
+
+
 def tag_base(tag: int) -> int {
     return tag & ~TAG_OPT_BIT;
 }

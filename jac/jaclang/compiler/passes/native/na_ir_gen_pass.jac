@@ -8,6 +8,8 @@ import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
 
 glob VTABLE_HEADER_SLOTS: int = 1;
 
+glob RUST_BRIDGE_MAKE_BUF_STEM: str = "make_buf";
+
 glob NATIVE_TIME_FUNCS: set[str] = {
          "time",
          "monotonic",
@@ -232,8 +234,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     has lambda_captures: dict[str, list[tuple]] = {},
         _pending_lambda_captures: (list[tuple] | None) = None,
-        _callback_make_buf: (ir.Function | None) = None;
+        _callback_make_buf: (ir.Function | None) = None,
+        _bridge_make_buf_syms: set[str] = set();
 
+    def _register_bridge_metadata(path: str) -> None;
     def _note_bridge_sink(name: str, fn: ir.Function) -> None;
     def _lambda_arg_is_callback(
         nd: uni.UniNode, slot_type: (ir.Type | None) = None

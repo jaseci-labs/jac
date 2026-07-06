@@ -9,6 +9,10 @@ import from pathlib { Path }
 import from jaclang.compiler.rust_bridge._blob { parse }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
 import from jaclang.compiler.rust_bridge._synth { render_na_source }
+import from jaclang.compiler.rust_bridge._finder {
+    find_lib_in_dirs,
+    built_lib_candidates
+}
 
 
 glob I64_MIN = -9223372036854775807 - 1;
@@ -22,18 +26,14 @@ def workspace -> Path {
 
 def bridge_so(crate: str) -> Path {
     ws = workspace();
-    stems = (
-        f"libjac_bridge_{crate}.so",
-        f"libjac_bridge_{crate}.dylib",
-        f"jac_bridge_{crate}.dll"
-    );
-    for stem in stems {
-        p = ws / "target" / "release" / stem;
-        if p.exists() {
-            return p;
-        }
+    reldir = ws / "target" / "release";
+    found = find_lib_in_dirs(crate, [reldir]);
+    if found is not None {
+        return found;
     }
-    return ws / "target" / "release" / stems[0];
+    # Not built yet: return the canonical primary path so skip_gate's
+    # is_file() check fails cleanly. Stem naming stays owned by _finder.
+    return reldir / built_lib_candidates(crate)[0];
 }
 
 
@@ -70,6 +70,11 @@ def map_so -> str {
 
 def list_so -> str {
     return _find_so("list");
+}
+
+
+def async_so -> str {
+    return _find_so("async");
 }
 
 

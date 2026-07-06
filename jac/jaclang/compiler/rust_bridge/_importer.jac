@@ -2,10 +2,14 @@ import sys;
 import from pathlib { Path }
 import from importlib.abc { MetaPathFinder, Loader }
 import from importlib.machinery { ModuleSpec }
-import from jaclang.compiler.rust_bridge._blob { parse }
+import from jaclang.compiler.rust_bridge._blob { abi_mismatch_error, parse }
 import from jaclang.compiler.rust_bridge._ctypes_codegen { build_module }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
-import from jaclang.compiler.rust_bridge._finder { find_bridge_lib, _STEMS, _crate_of }
+import from jaclang.compiler.rust_bridge._finder {
+    find_bridge_lib,
+    find_lib_in_dirs,
+    _crate_of
+}
 
 
 class RustBridgeFinder(MetaPathFinder) {
@@ -54,9 +58,7 @@ class _RustBridgeLoader(Loader) {
 
         meta = parse(read_jac_bridge_section(self._so));
         if meta.abi_version != SUPPORTED_ABI {
-            raise ImportError(
-                f"rust.{self._crate}: bridge '{self._so}' declares ABI version " + f"{meta.abi_version}, but this jac supports v{SUPPORTED_ABI}. " + "Rebuild the bridge or upgrade jac."
-            );
+            raise abi_mismatch_error(self._crate, self._so, meta.abi_version);
         }
         built = build_module(self._so, meta);
         for k in built.__dict__ {
@@ -85,20 +87,6 @@ def install_rust_namespace(search_dirs: object = None) -> RustBridgeFinder {
 glob _JAC_BRIDGE_PREFIX = "jac_bridge_";
 
 
-def _find_so(lib_name: str, dirs: list) -> object {
-    stems = [s.format(lib_name) for s in _STEMS];
-    for d in dirs {
-        for stem in stems {
-            p = d / stem;
-            if p.exists() {
-                return p;
-            }
-        }
-    }
-    return None;
-}
-
-
 class JacBridgeFinder(MetaPathFinder) {
     def init(self: JacBridgeFinder, extra_dirs: object = None) {
         cwd = Path.cwd();
@@ -117,7 +105,8 @@ class JacBridgeFinder(MetaPathFinder) {
         if not fullname.startswith(_JAC_BRIDGE_PREFIX) {
             return None;
         }
-        so = _find_so(fullname, self._dirs);
+        crate = fullname[len(_JAC_BRIDGE_PREFIX):];
+        so = find_lib_in_dirs(crate, self._dirs);
         if so is None {
             return None;
         }
