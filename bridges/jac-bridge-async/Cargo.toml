@@ -1,0 +1,17 @@
+# Async bridge demo (M6.3) — the hand-written exemplar for blocking async fn
+# calls via a module-owned Tokio runtime. Every method is `async fn`; the macro
+# generates a sync C shim that drives each future to completion via `block_on`.
+# At least one method calls `tokio::time::sleep` to prove a real Tokio runtime
+# (not just a poll-once executor) is active.
+[package]
+name = "jac-bridge-async"
+version = "0.1.0"
+edition = "2021"
+description = "Async bridge demo — exercises the async fn → blocking C shim vertical"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }

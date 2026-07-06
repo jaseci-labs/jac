@@ -8,6 +8,35 @@ pub struct BridgeSpec {
     pub crate_version: String,
     pub types: Vec<BridgeType>,
     pub skips: Vec<Skip>,
+    /// Whole public types the classifier dropped before it could even reach their
+    /// methods — a lifetime/const/type-generic struct with no overlay directive to
+    /// pin it. Kept distinct from `skips` (which are per-method) so coverage counts
+    /// hidden surface honestly: dropping a type must not silently raise the ratio.
+    pub dropped: Vec<DroppedType>,
+}
+
+/// A public type removed wholesale during classify (not a per-method skip). Each
+/// carries a machine-readable reason so the corpus job can diff what a binder
+/// version can and cannot yet reach.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DroppedType {
+    /// The rustdoc type name, e.g. `DateTime`.
+    pub name: String,
+    pub reason: DropReason,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DropReason {
+    /// A struct carrying a lifetime param — can't be stored in a `Box<T>` handle
+    /// (cursor/borrow types like `Match<'h>`).
+    Lifetime,
+    /// A const-generic struct — the const arg is unknown and there's no directive
+    /// to pin it.
+    ConstGeneric,
+    /// A type-generic struct with no `[type."T"] monomorphize = [..]` directive
+    /// (or one the single-param rule can't apply). Its concrete instantiations are
+    /// unknown, so it can't cross as a bare newtype.
+    UnpinnedGeneric,
 }
 
 /// One bridgeable type — either an opaque resource or an error type.
@@ -115,7 +144,10 @@ pub enum WrapperKind {
     /// `params` are the producer's non-self params, forwarded verbatim into the
     /// `wrap` ctor and the producer call (the iterator case has one `&str`; a
     /// direct collection return may have zero or several scalar params).
-    Drain { params: Vec<BridgeParam>, collect: DrainCollect },
+    Drain {
+        params: Vec<BridgeParam>,
+        collect: DrainCollect,
+    },
 }
 
 /// How a drain's `wrap` ctor turns the producer's return into the owned
@@ -168,6 +200,9 @@ pub struct BridgeFn {
     /// delegate to the newtype field (`self.0`); synthesized wrapper readers
     /// delegate to the erased borrowing value (`self.inner`).
     pub recv: Recv,
+    /// True when the source API is `async fn` — the emitted wrapper must also be
+    /// `pub async fn` so the macro detects asyncness and emits a blocking C shim.
+    pub is_async: bool,
 }
 
 /// The receiver expression a method body delegates through.

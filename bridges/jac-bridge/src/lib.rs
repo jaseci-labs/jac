@@ -68,6 +68,7 @@ struct FnDef {
     ret_is_result: bool,
     self_is_mut:   bool,
     is_auto:       bool,        // auto-generated error_message shim
+    is_async:      bool,        // async fn — shim blocks via module-owned Tokio runtime
 }
 
 // ─── entry point ──────────────────────────────────────────────────────────────
@@ -210,6 +211,7 @@ fn analyze(
             ret_is_result: false,
             self_is_mut:   false,
             is_auto:       true,
+            is_async:      false,
         });
     }
 
@@ -262,6 +264,7 @@ fn analyze_fn(
         impl_type_i: type_i,
         ret_is_result, self_is_mut,
         is_auto: false,
+        is_async: f.sig.asyncness.is_some(),
     })
 }
 
@@ -617,9 +620,36 @@ fn gen_static(blob: &[u8], module_name: &str) -> TS2 {
 fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Ident) -> TS2 {
     let rt = format_ident!("__jac_bridge_{module_name}_rt");
 
+    // Computed before building the rt module so the async helper can live inside it,
+    // making it referenceable as `#rt::block_on(...)` from the shim functions.
+    let has_async = fns.iter().any(|f| f.is_async);
+    let async_rt_helper: TS2 = if has_async {
+        quote! {
+            // One Tokio runtime per bridge module, lazily initialised on first use.
+            // `new_multi_thread().enable_all()` supports async crates that need timers,
+            // IO reactor context, etc. The runtime is reused across all async calls.
+            static __JAC_ASYNC_RT: ::std::sync::OnceLock<::tokio::runtime::Runtime> =
+                ::std::sync::OnceLock::new();
+
+            pub fn block_on<F: ::std::future::Future>(fut: F) -> F::Output {
+                __JAC_ASYNC_RT
+                    .get_or_init(|| {
+                        ::tokio::runtime::Builder::new_multi_thread()
+                            .enable_all()
+                            .build()
+                            .expect("jac bridge async runtime")
+                    })
+                    .block_on(fut)
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let mut items: Vec<TS2> = vec![quote! {
         #[allow(non_snake_case, dead_code, clippy::all)]
         mod #rt {
+            #async_rt_helper
             #[repr(C)]
             pub struct JacBuf { pub ptr: *mut u8, pub len: u32, pub cap: u32 }
 
@@ -852,13 +882,13 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
 
     // Function shims
     for f in fns {
-        items.push(gen_fn_shim(f, types, mod_ident, &rt));
+        items.push(gen_fn_shim(f, types, mod_ident, &rt, has_async));
     }
 
     quote! { #(#items)* }
 }
 
-fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident) -> TS2 {
+fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has_async: bool) -> TS2 {
     let sym_id  = format_ident!("{}", f.c_sym);
     let sym_str = &f.c_sym;
 
@@ -960,10 +990,19 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident) -> T
     };
 
     // Call expression
-    let call_expr: TS2 = if f.kind == schema::FN_CTOR {
+    let raw_call: TS2 = if f.kind == schema::FN_CTOR {
         quote! { #tpath :: #fn_id ( #(#call_args),* ) }
     } else {
         quote! { self_ . #fn_id ( #(#call_args),* ) }
+    };
+
+    // For async fns, block on the future using the module-owned Tokio runtime.
+    // The call target is `pub async fn`, so the expression is a Future; wrapping it
+    // in `#rt::block_on` drives it to completion before the shim returns.
+    let call_expr: TS2 = if f.is_async {
+        quote! { #rt::block_on(#raw_call) }
+    } else {
+        raw_call
     };
 
     // Closure body — always yields Result<X, String>

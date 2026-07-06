@@ -10,7 +10,15 @@ use crate::types::{
 };
 
 fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
-    BridgeFn { name: name.into(), export_name: None, params, ret, throws: None, recv: Recv::Field0 }
+    BridgeFn {
+        name: name.into(),
+        export_name: None,
+        params,
+        ret,
+        throws: None,
+        recv: Recv::Field0,
+        is_async: false,
+    }
 }
 
 fn spec() -> BridgeSpec {
@@ -22,7 +30,10 @@ fn spec() -> BridgeSpec {
         item_id: 0,
         ctor: Some(method(
             "new",
-            vec![BridgeParam { name: "n".into(), ty: ScalarType::Uint("u32".into()) }],
+            vec![BridgeParam {
+                name: "n".into(),
+                ty: ScalarType::Uint("u32".into()),
+            }],
             BridgeReturn::OwnSelf,
         )),
         methods: vec![
@@ -30,11 +41,18 @@ fn spec() -> BridgeSpec {
             method("delta", vec![], BridgeReturn::Int("i64".into())),
             method(
                 "at",
-                vec![BridgeParam { name: "i".into(), ty: ScalarType::Uint("usize".into()) }],
+                vec![BridgeParam {
+                    name: "i".into(),
+                    ty: ScalarType::Uint("usize".into()),
+                }],
                 BridgeReturn::Bool,
             ),
             method("counts", vec![], BridgeReturn::List("Vec<i64>".into())),
-            method("labels", vec![], BridgeReturn::Map("HashMap<String, String>".into())),
+            method(
+                "labels",
+                vec![],
+                BridgeReturn::Map("HashMap<String, String>".into()),
+            ),
         ],
         injected_source: vec![],
         wrapper: None,
@@ -45,6 +63,7 @@ fn spec() -> BridgeSpec {
         crate_version: "0.1.0".into(),
         types: vec![store],
         skips: vec![],
+        dropped: vec![],
     }
 }
 
@@ -52,22 +71,40 @@ fn spec() -> BridgeSpec {
 fn integer_returns_and_params_emit_verbatim() {
     let src = emit(&spec());
     // Unsigned/signed returns keep their concrete width; the macro tags the sign.
-    assert!(src.contains("pub fn seed(&self) -> u32 {"), "seed sig\n{src}");
+    assert!(
+        src.contains("pub fn seed(&self) -> u32 {"),
+        "seed sig\n{src}"
+    );
     assert!(src.contains("self.0.seed()"), "seed body\n{src}");
-    assert!(src.contains("pub fn delta(&self) -> i64 {"), "delta sig\n{src}");
+    assert!(
+        src.contains("pub fn delta(&self) -> i64 {"),
+        "delta sig\n{src}"
+    );
     // An integer param crosses in a u64 slot but the wrapper preserves the width.
-    assert!(src.contains("pub fn at(&self, i: usize) -> bool {"), "at sig\n{src}");
+    assert!(
+        src.contains("pub fn at(&self, i: usize) -> bool {"),
+        "at sig\n{src}"
+    );
     assert!(src.contains("self.0.at(i)"), "at body\n{src}");
     // A ctor taking an integer.
-    assert!(src.contains("pub fn new(n: u32) -> Self {"), "ctor sig\n{src}");
-    assert!(src.contains("Self(demo::Store::new(n))"), "ctor body\n{src}");
+    assert!(
+        src.contains("pub fn new(n: u32) -> Self {"),
+        "ctor sig\n{src}"
+    );
+    assert!(
+        src.contains("Self(demo::Store::new(n))"),
+        "ctor body\n{src}"
+    );
 }
 
 #[test]
 fn container_returns_emit_verbatim_with_hashmap_import() {
     let src = emit(&spec());
     // Vec<V> forwarded directly (no `.to_string()` / `Self(..)` wrapping).
-    assert!(src.contains("pub fn counts(&self) -> Vec<i64> {"), "counts sig\n{src}");
+    assert!(
+        src.contains("pub fn counts(&self) -> Vec<i64> {"),
+        "counts sig\n{src}"
+    );
     assert!(src.contains("self.0.counts()"), "counts body\n{src}");
     // HashMap<String, V> forwarded directly, and the type brought into scope.
     assert!(
@@ -92,5 +129,8 @@ fn no_hashmap_import_without_a_map_return() {
         "HashMap import should only appear when a map return exists\n{src}"
     );
     // Vec is in the prelude, so a list return needs no import.
-    assert!(src.contains("pub fn counts(&self) -> Vec<i64> {"), "counts still present\n{src}");
+    assert!(
+        src.contains("pub fn counts(&self) -> Vec<i64> {"),
+        "counts still present\n{src}"
+    );
 }

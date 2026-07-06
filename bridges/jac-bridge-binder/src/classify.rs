@@ -10,8 +10,9 @@ use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
 
 use crate::overlay::Overlay;
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, MonoType,
-    OwningWrapper, Recv, RootProducer, ScalarType, Skip, SkipReason, TypeKind, WrapperKind,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, DropReason,
+    DroppedType, MonoType, OwningWrapper, Recv, RootProducer, ScalarType, Skip, SkipReason,
+    TypeKind, WrapperKind,
 };
 
 /// Classify a crate's public API with no overlay hints. Equivalent to
@@ -36,6 +37,7 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
         overlay,
         module_name: module_name.clone(),
         skips: vec![],
+        dropped: vec![],
         pending_wrappers: vec![],
     };
 
@@ -81,7 +83,14 @@ pub fn classify_with_overlay(doc: &Crate, overlay: Option<&Overlay>) -> BridgeSp
     }
     sort_types(&mut types);
 
-    BridgeSpec { module_name, crate_version, types, skips: ctx.skips }
+    ctx.dropped.sort_by(|a, b| a.name.cmp(&b.name));
+    BridgeSpec {
+        module_name,
+        crate_version,
+        types,
+        skips: ctx.skips,
+        dropped: ctx.dropped,
+    }
 }
 
 /// Deterministic type order: opaque types first, then error types, each by name.
@@ -134,6 +143,8 @@ struct Ctx<'a> {
     overlay: Option<&'a Overlay>,
     module_name: String,
     skips: Vec<Skip>,
+    /// Whole types dropped before method classification — see [`BridgeSpec::dropped`].
+    dropped: Vec<DroppedType>,
     pending_wrappers: Vec<PendingWrapper>,
 }
 
@@ -144,29 +155,50 @@ impl<'a> Ctx<'a> {
 
     // ── Phase 1: find bridgeable types ────────────────────────────────────────
 
-    fn find_types(&self) -> Vec<BridgeType> {
+    fn find_types(&mut self) -> Vec<BridgeType> {
         // Walk paths, keeping only own-crate items.  When the same type is
         // re-exported at multiple depths (bytes:: and string:: variants, etc.)
         // keep the shallowest path so we get one canonical entry per name.
-        // Value carries the winning score, the item, and the module segments the
+        // Value carries the winning sort key, the item, and the module segments the
         // winning path declared it under (crate root and type name stripped) — the
         // provenance an overlay `[module."m"] skip` consults.
-        type Candidate<'b> = ((usize, usize), &'b Item, Vec<String>);
+        //
+        // The sort key is a TOTAL order so the winner among equal-depth duplicates
+        // is deterministic and correct, not HashMap-iteration-order dependent:
+        //   (depth, bytes_penalty, impl_deficit, id)
+        // Lower wins. `impl_deficit` (usize::MAX - impl count) prefers the item that
+        // actually carries the inherent/trait impls — a re-export stub and the real
+        // definition can share a name and depth, but only the definition has the
+        // `impl std::error::Error` / method list; picking the stub silently loses
+        // error typing and methods (and, before this key, did so at random). `id`
+        // is the final, always-unique tiebreak.
+        type SortKey = (usize, usize, usize, u32);
+        type Candidate<'b> = (SortKey, &'b Item, Vec<String>);
         let mut by_name: HashMap<String, Candidate<'a>> = HashMap::new();
 
         for (id, path_entry) in &self.doc.paths {
             if path_entry.path.first().map(|s| s.as_str()) != Some(&self.module_name) {
                 continue;
             }
-            let Some(item) = self.doc.index.get(id) else { continue };
+            let Some(item) = self.doc.index.get(id) else {
+                continue;
+            };
             let name = item.name.clone().unwrap_or_default();
             if name.is_empty() {
                 continue;
             }
-            // Score: (depth, bytes_penalty) — prefer shallow, prefer non-bytes.
             let depth = path_entry.path.len();
-            let bytes_pen = if path_entry.path.iter().any(|s| s == "bytes") { 1usize } else { 0 };
-            let score = (depth, bytes_pen);
+            let bytes_pen = if path_entry.path.iter().any(|s| s == "bytes") {
+                1usize
+            } else {
+                0
+            };
+            let impls = match &item.inner {
+                ItemEnum::Struct(s) => s.impls.len(),
+                ItemEnum::Enum(e) => e.impls.len(),
+                _ => 0,
+            };
+            let key: SortKey = (depth, bytes_pen, usize::MAX - impls, id.0);
             // Module segments: drop the leading crate name and the trailing type
             // name. `["regex","error","Error"]` -> `["error"]`.
             let module_path: Vec<String> = if path_entry.path.len() >= 2 {
@@ -174,26 +206,28 @@ impl<'a> Ctx<'a> {
             } else {
                 vec![]
             };
-            let entry =
-                by_name.entry(name).or_insert(((usize::MAX, 1), item, module_path.clone()));
-            if score < entry.0 {
-                *entry = (score, item, module_path);
+            let worst: SortKey = (usize::MAX, usize::MAX, usize::MAX, u32::MAX);
+            let entry = by_name
+                .entry(name)
+                .or_insert((worst, item, module_path.clone()));
+            if key < entry.0 {
+                *entry = (key, item, module_path);
             }
         }
 
-        let mut out: Vec<BridgeType> = by_name
-            .into_values()
-            .flat_map(|((_depth, _pen), item, module_path)| {
-                self.classify_type(item, module_path)
-            })
-            .collect();
+        let mut out: Vec<BridgeType> = vec![];
+        for (_key, item, module_path) in by_name.into_values() {
+            out.extend(self.classify_type(item, module_path));
+        }
 
         sort_types(&mut out);
         out
     }
 
-    fn classify_type(&self, item: &'a Item, module_path: Vec<String>) -> Vec<BridgeType> {
-        let Some(name) = item.name.clone() else { return vec![] };
+    fn classify_type(&mut self, item: &'a Item, module_path: Vec<String>) -> Vec<BridgeType> {
+        let Some(name) = item.name.clone() else {
+            return vec![];
+        };
         let inner_path = format!("{}::{}", self.module_name, name);
         let item_id = item.id.0;
 
@@ -205,19 +239,29 @@ impl<'a> Ctx<'a> {
                 }
                 // Types with lifetime params can't be stored in Box<T> — drop them.
                 // This excludes cursor types like Match<'h>, Captures<'m,'h>, etc.
-                let has_lifetime = s.generics.params.iter().any(|p| {
-                    matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. })
-                });
+                let has_lifetime =
+                    s.generics.params.iter().any(|p| {
+                        matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. })
+                    });
                 if has_lifetime {
+                    self.dropped.push(DroppedType {
+                        name,
+                        reason: DropReason::Lifetime,
+                    });
                     return vec![];
                 }
                 // A const-generic struct can't be bridged (the const arg is unknown
                 // and there's no directive to pin it) — drop it rather than emit an
                 // uncompilable `T(pub crate::T)`.
-                let has_const = s.generics.params.iter().any(|p| {
-                    matches!(p.kind, rustdoc_types::GenericParamDefKind::Const { .. })
-                });
+                let has_const =
+                    s.generics.params.iter().any(|p| {
+                        matches!(p.kind, rustdoc_types::GenericParamDefKind::Const { .. })
+                    });
                 if has_const {
+                    self.dropped.push(DroppedType {
+                        name,
+                        reason: DropReason::ConstGeneric,
+                    });
                     return vec![];
                 }
                 // A type-generic struct likewise can't cross as a bare newtype — its
@@ -233,9 +277,19 @@ impl<'a> Ctx<'a> {
                     })
                     .collect();
                 if !type_params.is_empty() {
-                    return self.monomorphize_struct(&name, &type_params, item_id, &module_path);
+                    let monos =
+                        self.monomorphize_struct(&name, &type_params, item_id, &module_path);
+                    if monos.is_empty() {
+                        // No `monomorphize` overlay pinned it (or the single-param rule
+                        // couldn't apply) — record the drop so coverage stays honest.
+                        self.dropped.push(DroppedType {
+                            name,
+                            reason: DropReason::UnpinnedGeneric,
+                        });
+                    }
+                    return monos;
                 }
-                let kind = if name.ends_with("Error") {
+                let kind = if self.is_error_type(&name, item_id) {
                     TypeKind::Error
                 } else {
                     TypeKind::Opaque
@@ -253,7 +307,7 @@ impl<'a> Ctx<'a> {
                     mono: None,
                 }]
             }
-            ItemEnum::Enum(_) if name.ends_with("Error") => vec![BridgeType {
+            ItemEnum::Enum(_) if self.is_error_type(&name, item_id) => vec![BridgeType {
                 name,
                 kind: TypeKind::Error,
                 inner_path,
@@ -322,6 +376,73 @@ impl<'a> Ctx<'a> {
             .collect()
     }
 
+    /// Whether a type should be bridged as an error, in priority order:
+    ///   1. an overlay `[type."T"] treat_as = "error" | "opaque"` override,
+    ///   2. an `impl std::error::Error for T` (the authoritative signal),
+    ///   3. the `*Error` name-suffix heuristic (last resort — many error types
+    ///      are not named `*Error`, and a domain type can be named `…Error`
+    ///      without being one, so name is only a fallback).
+    fn is_error_type(&self, name: &str, item_id: u32) -> bool {
+        if let Some(over) = self.overlay.and_then(|o| o.types.get(name)) {
+            match over.treat_as.as_deref() {
+                Some("error") => return true,
+                Some("opaque") => return false,
+                _ => {}
+            }
+        }
+        self.implements_error_trait(item_id) || name.ends_with("Error")
+    }
+
+    /// True if the struct/enum with `item_id` implements the standard-library
+    /// `Error` trait (canonically `core::error::Error`, re-exported as
+    /// `std::error::Error`).
+    ///
+    /// The impl'd trait's id is resolved through rustdoc's `paths` table and the
+    /// CANONICAL path is checked, so a crate-local trait that merely happens to be
+    /// named `Error` (or `mycrate::Error`) is not mistaken for the std one. When
+    /// the trait id has no `paths` summary — rare, a fully external trait rustdoc
+    /// did not index — it falls back to the fully-qualified display path and never
+    /// to a bare `Error`, keeping the check conservative; the overlay `treat_as`
+    /// remains the authoritative override either way.
+    fn implements_error_trait(&self, item_id: u32) -> bool {
+        let Some(item) = self.doc.index.get(&Id(item_id)) else {
+            return false;
+        };
+        let impls = match &item.inner {
+            ItemEnum::Struct(s) => &s.impls,
+            ItemEnum::Enum(e) => &e.impls,
+            _ => return false,
+        };
+        impls.iter().any(|impl_id| {
+            let Some(impl_item) = self.item(impl_id) else {
+                return false;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                return false;
+            };
+            impl_block
+                .trait_
+                .as_ref()
+                .map(|t| self.is_std_error_path(t))
+                .unwrap_or(false)
+        })
+    }
+
+    /// Whether a trait reference resolves to `core`/`std` `::error::Error`.
+    fn is_std_error_path(&self, tr: &rustdoc_types::Path) -> bool {
+        // Prefer the canonical path from rustdoc's `paths` index (precise).
+        if let Some(summary) = self.doc.paths.get(&tr.id) {
+            let p = &summary.path;
+            return p.len() >= 3
+                && p[p.len() - 1] == "Error"
+                && p[p.len() - 2] == "error"
+                && matches!(p.first().map(|s| s.as_str()), Some("core" | "std"));
+        }
+        // Fallback for an unindexed trait: accept only a fully-qualified display
+        // path, never a bare `Error`, so a crate-local `Error` trait is not misread.
+        matches!(tr.path.as_str(), "std::error::Error" | "core::error::Error")
+    }
+
     // ── Phase 2: classify impl methods ────────────────────────────────────────
 
     fn classify_impl(&mut self, bt: &mut BridgeType) {
@@ -338,8 +459,12 @@ impl<'a> Ctx<'a> {
             .unwrap_or_default();
 
         for impl_id in impl_ids {
-            let Some(impl_item) = self.item(&impl_id) else { continue };
-            let ItemEnum::Impl(impl_block) = &impl_item.inner else { continue };
+            let Some(impl_item) = self.item(&impl_id) else {
+                continue;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                continue;
+            };
 
             // Skip trait impls (Display, Debug, Clone, …).
             if impl_block.trait_.is_some() {
@@ -347,9 +472,16 @@ impl<'a> Ctx<'a> {
             }
 
             for method_id in &impl_block.items {
-                let Some(method) = self.item(method_id) else { continue };
-                let ItemEnum::Function(f) = &method.inner else { continue };
-                if matches!(method.visibility, rustdoc_types::Visibility::Crate | rustdoc_types::Visibility::Restricted { .. }) {
+                let Some(method) = self.item(method_id) else {
+                    continue;
+                };
+                let ItemEnum::Function(f) = &method.inner else {
+                    continue;
+                };
+                if matches!(
+                    method.visibility,
+                    rustdoc_types::Visibility::Crate | rustdoc_types::Visibility::Restricted { .. }
+                ) {
                     continue;
                 }
                 let method_name = method.name.clone().unwrap_or_default();
@@ -365,8 +497,10 @@ impl<'a> Ctx<'a> {
 
                 match self.classify_fn(&item_path, f, bt) {
                     Ok(bridge_fn) => {
-                        let is_ctor = matches!(bridge_fn.ret, BridgeReturn::OwnSelf | BridgeReturn::OwnSelfResult)
-                            && !f.sig.inputs.iter().any(|(n, _)| n == "self");
+                        let is_ctor = matches!(
+                            bridge_fn.ret,
+                            BridgeReturn::OwnSelf | BridgeReturn::OwnSelfResult
+                        ) && !f.sig.inputs.iter().any(|(n, _)| n == "self");
                         // A ctor's body calls `inner::method(..)`, but a mono type's
                         // inner path carries a turbofish-less type arg
                         // (`chrono::Date<chrono::Utc>::new()` is invalid syntax), so
@@ -401,7 +535,10 @@ impl<'a> Ctx<'a> {
                                 bt.methods.push(producer);
                                 self.pending_wrappers.extend(pendings);
                             }
-                            None => self.skips.push(Skip { item: item_path, reason }),
+                            None => self.skips.push(Skip {
+                                item: item_path,
+                                reason,
+                            }),
                         }
                     }
                 }
@@ -472,7 +609,10 @@ impl<'a> Ctx<'a> {
                 continue;
             }
             let scalar = self.classify_param_type(pty)?;
-            params.push(BridgeParam { name: pname.clone(), ty: scalar });
+            params.push(BridgeParam {
+                name: pname.clone(),
+                ty: scalar,
+            });
         }
 
         let ret = self.classify_return(&f.sig.output, bt)?;
@@ -484,6 +624,7 @@ impl<'a> Ctx<'a> {
             ret,
             throws: None,
             recv: Recv::Field0,
+            is_async: f.header.is_async,
         })
     }
 
@@ -494,15 +635,13 @@ impl<'a> Ctx<'a> {
                 // Integer scalars cross in a single u64 slot; only the sign
                 // discipline (TAG_INT vs TAG_UINT) is preserved. The concrete Rust
                 // width is kept so the wrapper's re-declared param matches the crate.
-                p @ ("u8" | "u16" | "u32" | "u64" | "usize") => {
-                    Ok(ScalarType::Uint(p.to_string()))
-                }
-                p @ ("i8" | "i16" | "i32" | "i64" | "isize") => {
-                    Ok(ScalarType::Int(p.to_string()))
-                }
+                p @ ("u8" | "u16" | "u32" | "u64" | "usize") => Ok(ScalarType::Uint(p.to_string())),
+                p @ ("i8" | "i16" | "i32" | "i64" | "isize") => Ok(ScalarType::Int(p.to_string())),
                 other => Err(SkipReason::UnsupportedType(other.to_string())),
             },
-            Type::BorrowedRef { type_, lifetime, .. } => match type_.as_ref() {
+            Type::BorrowedRef {
+                type_, lifetime, ..
+            } => match type_.as_ref() {
                 Type::Primitive(p) if p == "str" => Ok(ScalarType::Str),
                 Type::Generic(g) if g == "Self" => {
                     Err(SkipReason::UnsupportedType("&Self receiver".into()))
@@ -565,7 +704,9 @@ impl<'a> Ctx<'a> {
                 }
                 Err(SkipReason::UnsupportedType(rp.path.clone()))
             }
-            Type::BorrowedRef { lifetime: Some(_), .. } => Err(SkipReason::LifetimeBorrow),
+            Type::BorrowedRef {
+                lifetime: Some(_), ..
+            } => Err(SkipReason::LifetimeBorrow),
             Type::BorrowedRef { type_, .. } => match type_.as_ref() {
                 Type::Primitive(p) if p == "str" => Ok(BridgeReturn::Str),
                 _ => Err(SkipReason::LifetimeBorrow),
@@ -588,7 +729,11 @@ impl<'a> Ctx<'a> {
             return Err(SkipReason::Generic);
         };
         let ok_ty = args.first().and_then(|a| {
-            if let rustdoc_types::GenericArg::Type(t) = a { Some(t) } else { None }
+            if let rustdoc_types::GenericArg::Type(t) = a {
+                Some(t)
+            } else {
+                None
+            }
         });
         match ok_ty {
             Some(Type::ResolvedPath(ok_rp)) if returns_self(bt, ok_rp) => {
@@ -628,7 +773,10 @@ impl<'a> Ctx<'a> {
                 continue;
             }
             match self.classify_param_type(pty) {
-                Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                Ok(scalar) => params.push(BridgeParam {
+                    name: pname.clone(),
+                    ty: scalar,
+                }),
                 Err(_) => return None,
             }
         }
@@ -658,6 +806,7 @@ impl<'a> Ctx<'a> {
             ret: BridgeReturn::OptWrapper(wrapper_name.clone()),
             throws: None,
             recv: Recv::Field0,
+            is_async: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -707,6 +856,7 @@ impl<'a> Ctx<'a> {
             ret: BridgeReturn::OptWrapper(wrapper_name.clone()),
             throws: None,
             recv: Recv::Inner,
+            is_async: false,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -759,7 +909,10 @@ impl<'a> Ctx<'a> {
                 continue;
             }
             match self.classify_param_type(pty) {
-                Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                Ok(scalar) => params.push(BridgeParam {
+                    name: pname.clone(),
+                    ty: scalar,
+                }),
                 Err(_) => return None,
             }
         }
@@ -768,7 +921,9 @@ impl<'a> Ctx<'a> {
         }
 
         // Return must be a bare in-crate iterator struct (not Option / Result).
-        let Some(Type::ResolvedPath(rp)) = &f.sig.output else { return None };
+        let Some(Type::ResolvedPath(rp)) = &f.sig.output else {
+            return None;
+        };
         let iter_name = rp.path.clone();
         let iter_id = rp.id.0;
         let iter_lifetimes = self.struct_lifetimes(iter_id)?;
@@ -792,6 +947,7 @@ impl<'a> Ctx<'a> {
                     ret: BridgeReturn::OptStr,
                     throws: None,
                     recv: Recv::DrainNext,
+                    is_async: false,
                 };
                 let kind = WrapperKind::Drain {
                     params: params.clone(),
@@ -819,6 +975,7 @@ impl<'a> Ctx<'a> {
                     ret: BridgeReturn::OptWrapper(item_wrapper.clone()),
                     throws: None,
                     recv: Recv::IterNext,
+                    is_async: false,
                 };
                 // Pend the item wrapper (an owning wrapper, built inline by `next`;
                 // root None so it merges with any root producer like `find`).
@@ -847,6 +1004,7 @@ impl<'a> Ctx<'a> {
             ret: BridgeReturn::Wrapper(wrapper_name.clone()),
             throws: None,
             recv: Recv::Field0,
+            is_async: false,
         };
         // The cursor/drain wrapper itself: its only reader is the synthesized `next`.
         let mut pendings = vec![PendingWrapper {
@@ -900,7 +1058,10 @@ impl<'a> Ctx<'a> {
                 continue;
             }
             match self.classify_param_type(pty) {
-                Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                Ok(scalar) => params.push(BridgeParam {
+                    name: pname.clone(),
+                    ty: scalar,
+                }),
                 Err(_) => return None,
             }
         }
@@ -917,6 +1078,7 @@ impl<'a> Ctx<'a> {
             ret: BridgeReturn::OptStr,
             throws: None,
             recv: Recv::DrainNext,
+            is_async: false,
         };
         let producer = BridgeFn {
             name: method_name.to_string(),
@@ -925,6 +1087,7 @@ impl<'a> Ctx<'a> {
             ret: BridgeReturn::Wrapper(wrapper_name.clone()),
             throws: None,
             recv: Recv::Field0,
+            is_async: false,
         };
         let pending = PendingWrapper {
             wrapper_name: wrapper_name.clone(),
@@ -975,9 +1138,7 @@ impl<'a> Ctx<'a> {
                 continue;
             }
             match pty {
-                Type::BorrowedRef { type_, .. }
-                    if matches!(type_.as_ref(), Type::Primitive(p) if p == "str") =>
-                {
+                Type::BorrowedRef { type_, .. } if matches!(type_.as_ref(), Type::Primitive(p) if p == "str") => {
                     if haystack.replace(pname.clone()).is_some() {
                         return None;
                     }
@@ -994,7 +1155,9 @@ impl<'a> Ctx<'a> {
         let callback = callback?;
 
         // Return must be a `Cow` (owned-or-borrowed string) — replace_all's return.
-        let Some(Type::ResolvedPath(rp)) = &f.sig.output else { return None };
+        let Some(Type::ResolvedPath(rp)) = &f.sig.output else {
+            return None;
+        };
         if !rp.path.ends_with("Cow") {
             return None;
         }
@@ -1008,12 +1171,19 @@ impl<'a> Ctx<'a> {
             name: method_name.to_string(),
             export_name: None,
             params: vec![
-                BridgeParam { name: haystack, ty: ScalarType::Str },
-                BridgeParam { name: callback, ty: ScalarType::Callback },
+                BridgeParam {
+                    name: haystack,
+                    ty: ScalarType::Str,
+                },
+                BridgeParam {
+                    name: callback,
+                    ty: ScalarType::Callback,
+                },
             ],
             ret: BridgeReturn::ReplacerResult(captures_path),
             throws: None,
             recv: Recv::Field0,
+            is_async: false,
         };
         Some((producer, vec![]))
     }
@@ -1036,7 +1206,12 @@ impl<'a> Ctx<'a> {
             }
         }
         for wp in &f.generics.where_predicates {
-            if let WherePredicate::BoundPredicate { type_: Type::Generic(g), bounds, .. } = wp {
+            if let WherePredicate::BoundPredicate {
+                type_: Type::Generic(g),
+                bounds,
+                ..
+            } = wp
+            {
                 if is_replacer(bounds) {
                     return Some(g.clone());
                 }
@@ -1049,20 +1224,33 @@ impl<'a> Ctx<'a> {
     /// has one. Reads the assoc-type binding from the iterator's trait impl.
     fn iterator_item(&self, struct_id: u32) -> Option<Type> {
         let item = self.doc.index.get(&Id(struct_id))?;
-        let ItemEnum::Struct(s) = &item.inner else { return None };
+        let ItemEnum::Struct(s) = &item.inner else {
+            return None;
+        };
         for impl_id in &s.impls {
-            let Some(impl_item) = self.item(impl_id) else { continue };
-            let ItemEnum::Impl(impl_block) = &impl_item.inner else { continue };
-            let Some(tr) = &impl_block.trait_ else { continue };
+            let Some(impl_item) = self.item(impl_id) else {
+                continue;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                continue;
+            };
+            let Some(tr) = &impl_block.trait_ else {
+                continue;
+            };
             if tr.path != "Iterator" {
                 continue;
             }
             for assoc_id in &impl_block.items {
-                let Some(assoc) = self.item(assoc_id) else { continue };
+                let Some(assoc) = self.item(assoc_id) else {
+                    continue;
+                };
                 if assoc.name.as_deref() != Some("Item") {
                     continue;
                 }
-                if let ItemEnum::AssocType { type_: Some(ty), .. } = &assoc.inner {
+                if let ItemEnum::AssocType {
+                    type_: Some(ty), ..
+                } = &assoc.inner
+                {
                     return Some(ty.clone());
                 }
             }
@@ -1074,7 +1262,9 @@ impl<'a> Ctx<'a> {
     /// or has zero lifetimes (a lifetime-free return isn't a borrowed cursor).
     fn struct_lifetimes(&self, struct_id: u32) -> Option<usize> {
         let item = self.doc.index.get(&Id(struct_id))?;
-        let ItemEnum::Struct(s) = &item.inner else { return None };
+        let ItemEnum::Struct(s) = &item.inner else {
+            return None;
+        };
         let n = s
             .generics
             .params
@@ -1091,7 +1281,9 @@ impl<'a> Ctx<'a> {
     /// If `output` is `Option<T>` with `T` an own-crate struct that has ≥1
     /// lifetime param, return `(id, name, lifetime_count)`. Otherwise `None`.
     fn option_borrowed_struct(&self, output: &Option<Type>) -> Option<(u32, String, usize)> {
-        let Some(Type::ResolvedPath(rp)) = output else { return None };
+        let Some(Type::ResolvedPath(rp)) = output else {
+            return None;
+        };
         if rp.path != "Option" {
             return None;
         }
@@ -1104,7 +1296,9 @@ impl<'a> Ctx<'a> {
             _ => None,
         })?;
         let item = self.doc.index.get(&inner.id)?;
-        let ItemEnum::Struct(s) = &item.inner else { return None };
+        let ItemEnum::Struct(s) = &item.inner else {
+            return None;
+        };
         let lifetimes = s
             .generics
             .params
@@ -1151,14 +1345,22 @@ impl<'a> Ctx<'a> {
         let mut seen_names: Vec<String> = vec![];
 
         for impl_id in impl_ids {
-            let Some(impl_item) = self.item(&impl_id) else { continue };
-            let ItemEnum::Impl(impl_block) = &impl_item.inner else { continue };
+            let Some(impl_item) = self.item(&impl_id) else {
+                continue;
+            };
+            let ItemEnum::Impl(impl_block) = &impl_item.inner else {
+                continue;
+            };
             if impl_block.trait_.is_some() {
                 continue;
             }
             for method_id in &impl_block.items {
-                let Some(method) = self.item(method_id) else { continue };
-                let ItemEnum::Function(f) = &method.inner else { continue };
+                let Some(method) = self.item(method_id) else {
+                    continue;
+                };
+                let ItemEnum::Function(f) = &method.inner else {
+                    continue;
+                };
                 if matches!(
                     method.visibility,
                     rustdoc_types::Visibility::Crate | rustdoc_types::Visibility::Restricted { .. }
@@ -1184,7 +1386,10 @@ impl<'a> Ctx<'a> {
                         continue;
                     }
                     match self.classify_param_type(pty) {
-                        Ok(scalar) => params.push(BridgeParam { name: pname.clone(), ty: scalar }),
+                        Ok(scalar) => params.push(BridgeParam {
+                            name: pname.clone(),
+                            ty: scalar,
+                        }),
                         Err(r) => {
                             param_err = Some(r);
                             break;
@@ -1192,7 +1397,10 @@ impl<'a> Ctx<'a> {
                     }
                 }
                 if let Some(reason) = param_err {
-                    skips.push(Skip { item: item_path, reason });
+                    skips.push(Skip {
+                        item: item_path,
+                        reason,
+                    });
                     continue;
                 }
 
@@ -1204,6 +1412,7 @@ impl<'a> Ctx<'a> {
                         ret,
                         throws: None,
                         recv: Recv::Inner,
+                        is_async: false,
                     }),
                     // A reader whose return is `Option<Borrowed<'h>>` isn't a dead
                     // skip — it's a NESTED producer of another owning wrapper, so
@@ -1214,7 +1423,10 @@ impl<'a> Ctx<'a> {
                                 readers.push(reader);
                                 nested_pendings.extend(pendings);
                             }
-                            None => skips.push(Skip { item: item_path, reason }),
+                            None => skips.push(Skip {
+                                item: item_path,
+                                reason,
+                            }),
                         }
                     }
                 }
@@ -1276,7 +1488,9 @@ impl<'a> Ctx<'a> {
 /// method preserves the caller's instantiation) or resolves to the pinned
 /// concrete type (`Utc`, compared by leaf segment).
 fn returns_self(bt: &BridgeType, rp: &rustdoc_types::Path) -> bool {
-    let Some(m) = &bt.mono else { return rp.path == bt.name };
+    let Some(m) = &bt.mono else {
+        return rp.path == bt.name;
+    };
     if rp.path != m.origin_name {
         return false;
     }
@@ -1364,8 +1578,8 @@ fn rp_name(path: &str) -> &str {
 fn scalar_value_rust(ty: &Type) -> Option<String> {
     match ty {
         Type::Primitive(p) => match p.as_str() {
-            "bool" | "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32"
-            | "i64" | "isize" => Some(p.clone()),
+            "bool" | "u8" | "u16" | "u32" | "u64" | "usize" | "i8" | "i16" | "i32" | "i64"
+            | "isize" => Some(p.clone()),
             _ => None,
         },
         Type::ResolvedPath(rp) if rp_name(&rp.path) == "String" => Some("String".into()),
@@ -1439,7 +1653,8 @@ fn has_lifetime_args(rp: &rustdoc_types::Path) -> bool {
     let rustdoc_types::GenericArgs::AngleBracketed { args, .. } = args.as_ref() else {
         return false;
     };
-    args.iter().any(|a| matches!(a, rustdoc_types::GenericArg::Lifetime(_)))
+    args.iter()
+        .any(|a| matches!(a, rustdoc_types::GenericArg::Lifetime(_)))
 }
 
 /// Returns true if any type arg of `rp` is itself a resolved path with lifetime
@@ -1456,11 +1671,9 @@ fn inner_has_lifetime(rp: &rustdoc_types::Path, doc: &Crate) -> bool {
                     .index
                     .get(&inner_rp.id)
                     .map(|item| match &item.inner {
-                        ItemEnum::Struct(s) => {
-                            s.generics.params.iter().any(|p| {
-                                matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. })
-                            })
-                        }
+                        ItemEnum::Struct(s) => s.generics.params.iter().any(|p| {
+                            matches!(p.kind, rustdoc_types::GenericParamDefKind::Lifetime { .. })
+                        }),
                         _ => false,
                     })
                     .unwrap_or(false)

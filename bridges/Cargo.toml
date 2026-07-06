@@ -8,6 +8,7 @@ members = [
     "jac-bridge-scalar",
     "jac-bridge-map",
     "jac-bridge-list",
+    "jac-bridge-async",
     "jac-bridge-inspect",
     "jac-bridge-binder",
 ]
