@@ -258,24 +258,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             }
         }
         dropped: set = set();
-        kept_walkers: list = [];
-        for w in walkers {
-            if orig_by_bmod.get(str(w["module"])) in reachable {
-                kept_walkers.append(w);
-            } else {
-                dropped.add(str(orig_by_bmod.get(str(w["module"]))));
-            }
-        }
-        walkers = kept_walkers;
-        kept_functions: list = [];
-        for f in functions {
-            if orig_by_bmod.get(str(f["module"])) in reachable {
-                kept_functions.append(f);
-            } else {
-                dropped.add(str(orig_by_bmod.get(str(f["module"]))));
-            }
-        }
-        functions = kept_functions;
+        walkers = _keep_reachable(walkers, orig_by_bmod, reachable, dropped);
+        functions = _keep_reachable(functions, orig_by_bmod, reachable, dropped);
         if dropped {
             console.print(
                 "  ○ not imported by the entry module (kept as plain modules, "
@@ -750,6 +734,22 @@ def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
 }
 
 
+def _keep_reachable(
+    items: list, orig_by_bmod: dict, reachable: set, dropped: set
+) -> list {
+    kept: list = [];
+    for it in items {
+        orig = orig_by_bmod.get(str(it["module"]));
+        if orig in reachable {
+            kept.append(it);
+        } else {
+            dropped.add(str(orig));
+        }
+    }
+    return kept;
+}
+
+
 def _entry_reachable_modules(compiled: list, entry_module: str) -> (dict | None) {
     units_by_orig: dict = {};
     for unit in compiled {
@@ -841,6 +841,7 @@ glob _NON_PIP_DEPS: set = {"npm", "jaclang", "byllm"};
 
 
 def _harvest_python_deps(toml_data: dict) -> list[str] {
+    import from jaclang.project.dependencies { make_pip_spec }
     deps = toml_data.get("dependencies", {});
     if not isinstance(deps, dict) {
         return [];
@@ -858,21 +859,9 @@ def _harvest_python_deps(toml_data: dict) -> list[str] {
         } else {
             continue;
         }
-        reqs.append(_make_pip_spec(pkg, rng));
+        reqs.append(make_pip_spec(pkg, rng));
     }
     return sorted(reqs);
-}
-
-
-def _make_pip_spec(name: str, version: str) -> str {
-    v = version.strip();
-    if (not v) or (v in ["*", "latest"]) {
-        return name;
-    }
-    if v.startswith(("=", ">", "<", "~", "!")) {
-        return name + v;
-    }
-    return name + "==" + v;
 }
 
 

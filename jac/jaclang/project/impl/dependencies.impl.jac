@@ -221,6 +221,10 @@ impl DependencyInstaller.sync_capabilities(closure: CapabilityClosure) -> bool {
 }
 
 impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
+    return make_pip_spec(name, version);
+}
+
+impl make_pip_spec(name: str, version: str) -> str {
     if not version or version in ("*", "latest") {
         return name;
     }

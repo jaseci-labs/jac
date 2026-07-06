@@ -49,6 +49,8 @@ def capability_specs_for_install(
     config: JacConfig, installer: DependencyInstaller, scale: bool = False
 ) -> list[str];
 
+def make_pip_spec(name: str, version: str) -> str;
+
 def pip_command(python: str, args: list[str]) -> list[str];
 
 def get_venv_site_packages(venv_dir: Path) -> Path;
