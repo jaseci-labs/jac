@@ -51,12 +51,16 @@ def _wait_mongo_ready(
     if not os.environ.get("JAC_SCALE_RUNTIME") {
         return;
     }
-    import from jaclang.scale._optdeps.pymongo { PyMongoError }
+    import from jaclang.scale._optdeps.pymongo { ConnectionFailure, OperationFailure }
+    # Retry connection failures and OperationFailure (auth-not-ready raises the
+    # same AuthenticationFailed as bad credentials - indistinguishable, so a
+    # misconfigured pod fails after the bounded budget instead of instantly).
+    # Permanent config errors (bad URI etc.) are NOT retried and raise at once.
     for attempt in range(tries) {
         try {
             client.admin.command("ping");
             return;
-        } except PyMongoError {
+        } except (ConnectionFailure, OperationFailure) {
             if attempt == tries - 1 {
                 raise;
             }
