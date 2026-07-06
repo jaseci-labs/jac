@@ -616,14 +616,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " of it is still live. A borrow must not outlive the value it points to; keep"
          " '{name}' in scope for at least as long as every borrow of it."
      ),
-     E1305 = _err(
-         "E1305",
-         Category.SEMANTIC,
-         "Linear resource '{name}' is never consumed",
-         help="'{name}' is a `linear` resource, so it must be explicitly moved or"
-         " handed off before its scope ends — a `linear` value may never be silently"
-         " dropped. Move it to its final owner (or into managed storage)."
-     ),
      E1306 = _err(
          "E1306",
          Category.SEMANTIC,

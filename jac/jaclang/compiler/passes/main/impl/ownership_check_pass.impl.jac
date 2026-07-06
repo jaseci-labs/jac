@@ -24,14 +24,12 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     self.idx_concurrent = [];
     self.name_uses_by_sym = {};
     self.val_decl = {};
-    self.linear_decl = {};
 
     self._build_index(ir_in);
     self._stamp_ownership();
     if not self.owned_decl
     and not self.borrow_meta
     and not self.val_decl
-    and not self.linear_decl
     and not self._has_region_blocks() {
         return ir_in;
     }
@@ -184,11 +182,6 @@ impl OwnershipCheckPass._stamp_ownership -> None {
                     target.sym.ownership = OwnershipKind.VAL;
                     self.val_decl[sid] = target;
                 }
-                if tag.ownership == OwnershipKind.LINEAR {
-                    target.sym.ownership = OwnershipKind.LINEAR;
-                    self.linear_decl[sid] = target;
-                    self.owned_decl[sid] = target;
-                }
             }
         }
     }
@@ -216,10 +209,6 @@ impl OwnershipCheckPass._stamp_ownership -> None {
         } elif tag.ownership == OwnershipKind.VAL {
             name.sym.ownership = OwnershipKind.VAL;
             self.val_decl[sid] = name;
-        } elif tag.ownership == OwnershipKind.LINEAR {
-            name.sym.ownership = OwnershipKind.LINEAR;
-            self.linear_decl[sid] = name;
-            self.owned_decl[sid] = name;
         }
     }
 

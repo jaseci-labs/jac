@@ -1,8 +1,8 @@
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.diagnostics { E1305, E1309 }
+import from jaclang.jac0core.diagnostics { E1309 }
 
 impl OwnershipCheckPass._emit_marker_diagnostics -> None {
-    if not self.val_decl and not self.linear_decl {
+    if not self.val_decl {
         return;
     }
 
@@ -34,25 +34,6 @@ impl OwnershipCheckPass._emit_marker_diagnostics -> None {
                 self._emit_val_mutation(sid, nm, self.val_decl.get(sid));
             }
         }
-    }
-
-    for sid in self.linear_decl {
-        consumed = False;
-        for nm in self.name_uses_by_sym.get(sid, []) {
-            if self._is_move_producing_use(nm) {
-                consumed = True;
-                break;
-            }
-        }
-        if consumed {
-            continue;
-        }
-        decl = self.linear_decl.get(sid);
-        if decl is None {
-            continue;
-        }
-        related = [(f"`linear` '{decl.sym_name}' declared here", decl)];
-        self.emit(E1305, node_override=decl, name=decl.sym_name, related=related);
     }
 }
 

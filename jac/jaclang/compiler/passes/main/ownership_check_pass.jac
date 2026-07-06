@@ -51,8 +51,7 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         idx_returns: list[uni.ReturnStmt] = [],
         idx_concurrent: list[uni.ConcurrentExpr] = [],
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
-        val_decl: dict[SymId, uni.Name] = {},
-        linear_decl: dict[SymId, uni.Name] = {};
+        val_decl: dict[SymId, uni.Name] = {};
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
