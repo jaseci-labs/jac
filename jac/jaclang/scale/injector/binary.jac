@@ -82,6 +82,29 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         }
     }
 
+    # Fetch the (tiny) checksum first: it both verifies the download and keys a
+    # local cache, so an unchanged release never re-downloads the 130-170MB
+    # binary on every deploy (#7179 warm-redeploy cost).
+    want = "";
+    if checksum_url {
+        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
+        if not parts {
+            raise RuntimeError(
+                f"Checksum file at {checksum_url} is empty or malformed; "
+                f"cannot verify the downloaded binary."
+            );
+        }
+        want = parts[0].strip().lower();
+        cached = _binary_cache_path(channel, arch);
+        if cached.is_file() {
+            payload = cached.read_bytes();
+            if hashlib.sha256(payload).hexdigest() == want {
+                logger.info(f"Using the cached {channel} jac binary (checksum match).");
+                return payload;
+            }
+        }
+    }
+
     try {
         payload = _http_get_bytes(binary_url);
     } except HTTPError as e {
@@ -94,15 +117,7 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         }
         raise;
     }
-    if checksum_url {
-        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
-        if not parts {
-            raise RuntimeError(
-                f"Checksum file at {checksum_url} is empty or malformed; "
-                f"cannot verify the downloaded binary."
-            );
-        }
-        want = parts[0].strip().lower();
+    if want {
         got = hashlib.sha256(payload).hexdigest();
         if got != want {
             raise RuntimeError(
@@ -110,8 +125,28 @@ def download_release_binary(channel: str, arch: str) -> bytes {
                 f"(expected {want}, got {got}); refusing to ship it."
             );
         }
+        try {
+            cached = _binary_cache_path(channel, arch);
+            cached.parent.mkdir(parents=True, exist_ok=True);
+            tmp = cached.with_suffix(f".{os.getpid()}.tmp");
+            tmp.write_bytes(payload);
+            tmp.rename(cached);
+        } except Exception as e {
+            logger.warning(f"Could not cache the downloaded binary ({e}).");
+        }
     }
     return payload;
+}
+
+
+def _binary_cache_path(channel: str, arch: str) -> Path {
+    base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
+    cache_root = Path(base)
+        if base
+        else (
+            Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache")) / "jac" / "scale-binaries"
+        );
+    return Path(cache_root) / f"jac-{channel}-linux-{arch}";
 }
 
 
