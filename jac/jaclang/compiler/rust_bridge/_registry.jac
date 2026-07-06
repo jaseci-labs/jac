@@ -3,7 +3,6 @@ import json;
 import os;
 import from pathlib { Path }
 import from urllib.parse { urljoin, urlparse }
-import from urllib.request { urlopen, pathname2url }
 import from jaclang.compiler.rust_bridge._finder {
     _cache_root,
     _target_triple,
@@ -19,6 +18,7 @@ def registry_url -> object {
 
 
 def _as_url(location: str) -> str {
+    import from urllib.request { pathname2url }
     if urlparse(location).scheme {
         return location;
     }
@@ -39,6 +39,7 @@ def _index_url(base: str) -> str {
 
 
 def _fetch(url: str) -> bytes {
+    import from urllib.request { urlopen }
     with urlopen(url) as resp {
         return resp.read();
     }
