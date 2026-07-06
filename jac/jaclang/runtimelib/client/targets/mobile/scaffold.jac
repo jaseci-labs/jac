@@ -1,4 +1,3 @@
-"""Mobile target: Capacitor install, config, and android/ios platform scaffolds."""
 import json;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
@@ -8,7 +7,6 @@ import from jaclang.runtimelib.client.targets.mobile.common {
 }
 import from jaclang.runtimelib.client.targets.mobile.config { _write_capacitor_config }
 
-"""Ensure Capacitor dependencies are installed."""
 def _ensure_capacitor_deps(project_dir: Path) -> None {
     node_modules = project_dir / "node_modules" / "@capacitor" / "cli";
     if node_modules.exists() {
@@ -19,7 +17,6 @@ def _ensure_capacitor_deps(project_dir: Path) -> None {
     _run_install_cmd(project_dir, ["@capacitor/cli"], dev=True);
 }
 
-"""Ensure Capacitor config exists."""
 def _ensure_capacitor_config(project_dir: Path, web_dist_dir: Path) -> None {
     config_path = project_dir / "capacitor.config.json";
     if config_path.exists() {
@@ -47,10 +44,6 @@ def _ensure_capacitor_config(project_dir: Path, web_dist_dir: Path) -> None {
     _write_capacitor_config(project_dir, web_dist_dir);
 }
 
-"""Ensure web dist directory has at least a placeholder index.html.
-
-Capacitor's 'add' and 'sync' commands require an index.html in webDir.
-"""
 def _ensure_placeholder_index(web_dist_dir: Path) -> None {
     index_html = web_dist_dir / "index.html";
     if index_html.exists() {
@@ -62,7 +55,6 @@ def _ensure_placeholder_index(web_dist_dir: Path) -> None {
     );
 }
 
-"""Ensure Android platform is added."""
 def _ensure_android_platform(project_dir: Path, web_dist_dir: Path) -> None {
     android_dir = project_dir / "android";
     if android_dir.exists() {
@@ -75,7 +67,6 @@ def _ensure_android_platform(project_dir: Path, web_dist_dir: Path) -> None {
     console.print("  ✔ Android platform added", style="success");
 }
 
-"""Ensure iOS platform is added."""
 def _ensure_ios_platform(project_dir: Path, web_dist_dir: Path) -> None {
     ios_dir = project_dir / "ios";
     if ios_dir.exists() {

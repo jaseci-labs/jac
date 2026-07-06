@@ -1,6 +1,3 @@
-"""Implementation for treeprinter constructs."""
-
-"""Initialize Symbol Tree Node."""
 impl SymbolTree.init(
     self: SymbolTree,
     node_name: str,

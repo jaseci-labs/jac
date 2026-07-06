@@ -38,6 +38,12 @@ def collect_fragments(package_dir: Path) -> dict[(str, list[str])] {
         }
         category = parts[1];
         content = fragment.read_text(encoding="utf-8").strip();
+        # Fragments live one directory deeper (unreleased/<pkg>/) than the
+        # assembled page (release_notes/<pkg>.md), so a fragment-relative
+        # link like (../../breaking-changes.md) breaks by exactly one level
+        # once hoisted - and fails `mkdocs build --strict` after release.
+        # Normalize to page-relative at assembly time.
+        content = content.replace("(../../", "(../");
         if content {
             categories[category].append(content);
         }

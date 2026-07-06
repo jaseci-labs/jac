@@ -20,12 +20,11 @@ import os;
 import shutil;
 import tempfile;
 import from pathlib { Path }
-import jaclang;
+import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.project.config { get_config }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).resolve().parent.parent),
-     MEMBER_FIXTURE = os.path.join(
+glob MEMBER_FIXTURE = os.path.join(
          JAC_ROOT,
          "tests",
          "compiler",

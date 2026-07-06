@@ -1,4 +1,3 @@
-"""Mobile target: native Android / iOS bundle builds (Gradle, xcodebuild)."""
 import os;
 import stat;
 import subprocess;
@@ -6,10 +5,6 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.mobile.common { SUBPROCESS_TIMEOUT_BUILD }
 
-# ==============================================================================
-# Android Build Helpers
-# ==============================================================================
-"""Find newest Android APK or AAB artifact."""
 def _find_android_artifact(project_dir: Path) -> Path {
     outputs_root = project_dir / "android" / "app" / "build" / "outputs";
     if not outputs_root.exists() {
@@ -35,7 +30,6 @@ def _find_android_artifact(project_dir: Path) -> Path {
     return outputs_root;
 }
 
-"""Resolve gradlew path and ensure it is executable."""
 def _resolve_gradlew(project_dir: Path) -> str {
     gradlew = project_dir / "android" / "gradlew";
     if gradlew.exists() {
@@ -46,10 +40,6 @@ def _resolve_gradlew(project_dir: Path) -> str {
     return "gradle";
 }
 
-"""Determine the Gradle task based on build mode.
-
-Returns the Gradle task name: assembleDebug, assembleRelease, or bundleRelease.
-"""
 def _get_gradle_task(release: bool = False, bundle: bool = False) -> str {
     if bundle {
         return "bundleRelease";
@@ -60,7 +50,6 @@ def _get_gradle_task(release: bool = False, bundle: bool = False) -> str {
     return "assembleDebug";
 }
 
-"""Build Android APK/AAB via Gradle."""
 def _build_android(project_dir: Path, mobile_cfg: dict) -> Path {
     release = mobile_cfg.get("release", False);
     bundle_aab = mobile_cfg.get("bundle", False);
@@ -81,10 +70,6 @@ def _build_android(project_dir: Path, mobile_cfg: dict) -> Path {
     return artifact;
 }
 
-# ==============================================================================
-# iOS Build Helpers
-# ==============================================================================
-"""Find the Xcode workspace path in ios/App/."""
 def _find_xcode_workspace(project_dir: Path) -> Path | None {
     ios_app = project_dir / "ios" / "App";
     if not ios_app.exists() {
@@ -101,12 +86,6 @@ def _find_xcode_workspace(project_dir: Path) -> Path | None {
     return None;
 }
 
-"""Build iOS app via xcodebuild.
-
-Produces a debug build for the iOS Simulator by default.
-For device builds or release archives, the user should open Xcode:
-  npx cap open ios
-"""
 def _build_ios(project_dir: Path, mobile_cfg: dict) -> Path {
     release = mobile_cfg.get("release", False);
     ios_dir = project_dir / "ios" / "App";
@@ -118,9 +97,8 @@ def _build_ios(project_dir: Path, mobile_cfg: dict) -> Path {
         );
     }
 
-    # Determine build configuration and destination
     configuration = "Release" if release else "Debug";
-    # Default to simulator; device builds require provisioning and are best done via Xcode
+
     sdk = mobile_cfg.get("ios_sdk", "iphonesimulator");
     destination = mobile_cfg.get(
         "ios_destination", "platform=iOS Simulator,name=iPhone 16,OS=latest"
@@ -161,7 +139,6 @@ def _build_ios(project_dir: Path, mobile_cfg: dict) -> Path {
         raise RuntimeError("xcodebuild failed — see output above");
     }
 
-    # Return the DerivedData or build products path
     build_output = project_dir / "ios" / "App" / "build";
     console.print(f"  ✔ iOS build complete ({configuration})", style="success");
     return build_output;

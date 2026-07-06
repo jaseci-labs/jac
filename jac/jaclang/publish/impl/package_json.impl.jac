@@ -1,5 +1,3 @@
-"""Implementation of the package.json generator."""
-
 import json;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig, PersonConfig }
@@ -26,15 +24,14 @@ impl npm_package_name(config: JacConfig) -> str {
 
 impl npm_tarball_filename(config: JacConfig) -> str {
     name = npm_package_name(config);
-    # npm pack flattens a scope: "@scope/pkg" -> "scope-pkg"
+
     flat = name.lstrip("@").replace("/", "-");
     return f"{flat}-{config.project.version}.tgz";
 }
 
 impl npm_dependencies(config: JacConfig) -> dict[str, str] {
     result: dict[str, str] = {};
-    # [dependencies.npm] is stored under plugin_dependencies["npm"]; the nested
-    # "dev" table holds dev-deps and is not shipped as runtime dependencies.
+
     raw = config.plugin_dependencies.get("npm", {});
     for (key, value) in raw.items() {
         if key == "dev" {
@@ -44,7 +41,7 @@ impl npm_dependencies(config: JacConfig) -> dict[str, str] {
             result[key] = value;
         }
     }
-    # An [npm] dependencies override wins over [dependencies.npm].
+
     npm = npm_settings(config);
     override = npm.get("dependencies", {});
     if isinstance(override, dict) {
@@ -60,7 +57,7 @@ impl npm_dependencies(config: JacConfig) -> dict[str, str] {
 impl npm_peer_dependencies(config: JacConfig) -> dict[str, str] {
     result: dict[str, str] = {};
     npm = npm_settings(config);
-    # Accept both snake_case (TOML-idiomatic) and the npm camelCase spelling.
+
     peers = npm.get("peer_dependencies", npm.get("peerDependencies", {}));
     if isinstance(peers, dict) {
         for (key, value) in peers.items() {
@@ -151,7 +148,6 @@ impl generate_package_json(
         doc["exports"] = {".": condition};
     }
 
-    # Auto-detected entries merge first; explicit jac.toml declarations win.
     deps: dict[str, str] = dict(extra_dependencies or {});
     deps.update(npm_dependencies(config));
     if deps {

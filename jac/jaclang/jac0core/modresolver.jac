@@ -1,47 +1,44 @@
-"""Module resolver utilities."""
 import importlib.util;
 import os;
-import site;
 import sys;
+import from pathlib { Path }
 import from jaclang.jac0core.ext_registry { MODULE_SUFFIXES, language_of }
 
-# Cache of resolved project roots, keyed by the directory we started the
-# upward walk from. A `None` value records "no jac.toml above here" so we
-# never re-walk a non-project directory on the hot import path.
 glob _project_root_cache: dict = {},
-     # Stack of directories for the files currently being imported, innermost last.
-     # `jac_import` pushes the importing file's directory before executing it and
-     # pops it after. `get_jac_search_paths` reads the top so that at runtime a
-     # bare (no-dot) import resolves against the importing file's OWN directory
-     # first -- matching the compile-time resolver's own-directory-first rule (and
-     # Python's sibling-first intuition). Mirrors the existing sys.path push/pop in
-     # jac_import; the same single-threaded import assumptions apply.
      _import_base_stack: list = [];
 
-"""Push the importing file's directory as the active import base."""
 def push_import_base(base_dir: str) {
     _import_base_stack.append(base_dir);
 }
 
-"""Pop the active import base pushed by the most recent push_import_base."""
 def pop_import_base {
     if _import_base_stack {
         _import_base_stack.pop();
     }
 }
 
-"""Find the nearest project root (the directory holding `jac.toml`).
+def find_project_root(start: (Path | None) = None) -> (tuple | None) {
+    if start is None {
+        start = Path.cwd();
+    }
+    current = start.resolve();
+    if current.is_file() {
+        current = current.parent;
+    }
+    while current != current.parent {
+        toml_path = current / 'jac.toml';
+        if toml_path.exists() {
+            return (current, toml_path);
+        }
+        current = current.parent;
+    }
+    toml_path = current / 'jac.toml';
+    if toml_path.exists() {
+        return (current, toml_path);
+    }
+    return None;
+}
 
-Walks upward from `start` (a file or directory path); when `start` is None the
-walk begins at the current working directory. Returns the project-root directory
-as a string, or None for standalone scripts that live outside any project.
-
-This is the anchor for "project-root absolute" imports: a no-dot import like
-`engine.math.vec3` resolves against this directory from anywhere in the project,
-independent of how deep the importing file sits. Kept as a dependency-free
-filesystem walk (no jaclang.project.config import) because it runs on the hot
-import-resolution path; results are memoized in `_project_root_cache`.
-"""
 def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     if start {
         current = os.path.abspath(start);
@@ -54,34 +51,19 @@ def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     if (current in _project_root_cache) {
         return _project_root_cache[current];
     }
-    found = None;
-    probe = current;
-    while True {
-        if os.path.isfile(os.path.join(probe, 'jac.toml')) {
-            found = probe;
-            break;
-        }
-        parent = os.path.dirname(probe);
-        if (parent == probe) {
-            break;
-        }
-        probe = parent;
-    }
+
+    result = find_project_root(Path(current));
+    found = str(result[0]) if result else None;
     _project_root_cache[current] = found;
     return found;
 }
 
-"""Construct a list of paths to search for Jac modules."""
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     paths = [];
     if base_path {
         paths.append(base_path);
     }
-    # The directory of the file currently being imported takes priority, so a
-    # bare (no-dot) import of a sibling module resolves to that sibling rather
-    # than a same-named module at the project root or cwd. This mirrors the
-    # compile-time resolver's own-directory-first rule, keeping native and
-    # interpreted resolution consistent.
+
     active_base = _import_base_stack[-1] if _import_base_stack else None;
     if active_base {
         paths.append(active_base);
@@ -98,36 +80,8 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
             if p.strip()
         );
     }
-    paths.extend(sys.path);
-    site_pkgs = site.getsitepackages();
-    if site_pkgs {
-        paths.extend(site_pkgs);
-    }
-    user_site = site?.getusersitepackages;
-    if user_site {
-        user_dir = user_site();
-        if user_dir {
-            paths.append(user_dir);
-        }
-    }
-    return `list(
-        `dict.fromkeys(
-            [
-                p
-                for p in paths
-                if p
-            ]
-        )
-    );
-}
 
-"""Construct a list of paths to search for Python modules."""
-def get_py_search_paths(base_path: (str | None) = None) -> list[str] {
-    paths = [];
-    if base_path {
-        paths.append(base_path);
-    }
-    paths.append(os.getcwd());
+    paths.extend(sys.path);
     return `list(
         `dict.fromkeys(
             [
@@ -152,7 +106,7 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
             return (os.path.join(candidate, '__init__.pyi'), 'pyi');
         }
     }
-    # Jac module files, in canonical codespace precedence (shared registry).
+
     for jac_suffix in MODULE_SUFFIXES {
         if os.path.isfile((candidate + jac_suffix)) {
             return ((candidate + jac_suffix), 'jac');
@@ -161,9 +115,7 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     if os.path.isfile((candidate + '.py')) {
         return ((candidate + '.py'), 'py');
     }
-    # .pyi after .py so co-located stubs defer to real sources;
-    # essential for relative imports inside typeshed packages
-    # (e.g. `from .path import ...` in os/__init__.pyi).
+
     if os.path.isfile((candidate + '.pyi')) {
         return ((candidate + '.pyi'), 'pyi');
     }
@@ -173,14 +125,6 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     return None;
 }
 
-"""Resolve the built-in `@jac/*` virtual module alias.
-
-`@jac/runtime` is baked into the language - it is mapped to the single canonical
-client runtime at `jaclang/runtimelib/client_runtime.cl.jac`, which the bundler
-also compiles, so static analysis and the bundle resolve the same file.
-
-Returns `(path, lang)` when `target` begins with `@jac/`, otherwise `None`.
-"""
 def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     if not target.startswith('@jac/') {
         return None;
@@ -188,7 +132,7 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     import jaclang.runtimelib as _runtimelib;
     runtime_dir = os.path.dirname(_runtimelib.__file__);
     module_name = target[len('@jac/'):];
-    # `@jac/runtime` resolves to the framework-specific client runtime source.
+
     if module_name == 'runtime' {
         import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
         path = resolve_client_runtime_cl_path();
@@ -196,19 +140,14 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
             return (path, 'jac');
         }
     }
-    # Fallback: search for a file under the runtime directory by extension.
+
     for (ext, lang) in [('.cl.jac', 'jac'), ('.jac', 'jac'), ('.js', 'js')] {
         path = os.path.join(runtime_dir, (module_name + ext));
         if os.path.isfile(path) {
             return (path, lang);
         }
     }
-    # Fallback: check packages that registered a jac.modules entry point.
-    # Plugins (e.g. jac-desktop) self-register their @jac/* modules this way
-    # without writing files into jaclang's runtimelib directory.
-    # Entry point value is "module.path:attr_or_callable". If the loaded object
-    # is callable, it is invoked and must return an absolute path string.
-    # If it is already a string, it is used directly.
+
     try {
         import importlib.metadata as _meta;
         for ep in _meta.entry_points(group='jac.modules') {
@@ -226,25 +165,11 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     return None;
 }
 
-"""Return the filesystem path of a `@jac/*` virtual module, or None if unknown.
-
-Single source of truth for the `@jac/<name>` → backing-file mapping shared by
-the module resolver (so the type checker agrees with the bundler) and the
-ECMAScript pass (so the client manifest registers the same file).
-"""
 def resolve_jac_virtual_module_path(target: str) -> (str | None) {
     result = _resolve_jac_virtual_module(target);
     return result[0] if result else None;
 }
 
-"""Return the public export names a `@jac/*` module advertises, or [].
-
-Packages whose virtual module is built from `obj` types (which the generic
-export extractor can't see) self-describe their public symbols via a
-`jac.module_exports` entry point named for the module (e.g. `desktop`). The
-entry point resolves to a list, or a callable returning one. This keeps the
-per-SDK symbol list in the owning package instead of hardcoded in the compiler.
-"""
 def resolve_jac_virtual_module_exports(target: str) -> list[str] {
     if not target.startswith('@jac/') {
         return [];
@@ -267,7 +192,6 @@ def resolve_jac_virtual_module_exports(target: str) -> list[str] {
     return [];
 }
 
-"""Get path aliases from project config [plugins.client.paths]."""
 def _get_path_aliases -> dict[str, str] {
     try {
         import from jaclang.project.config { get_config }
@@ -282,11 +206,6 @@ def _get_path_aliases -> dict[str, str] {
     return {};
 }
 
-"""Resolve a path alias to its actual filesystem path.
-
-Checks if target matches any configured path alias from [plugins.client.paths].
-Supports wildcard patterns like "@components/*" -> "./components/*"
-"""
 def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
     if not target.startswith('@') {
         return None;
@@ -295,7 +214,7 @@ def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
     if not aliases {
         return None;
     }
-    # Get project root from config
+
     try {
         import from jaclang.project.config { get_config }
         config = get_config();
@@ -331,16 +250,14 @@ def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
     return None;
 }
 
-"""Resolve module path and infer language."""
 def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
     base_dir = os.path.dirname(base_path);
-    # Built-in `@jac/*` virtual aliases (e.g. `@jac/runtime`) take precedence
-    # so static analysis agrees with the bundler's runtime resolution.
+
     jac_virtual = _resolve_jac_virtual_module(target);
     if jac_virtual {
         return jac_virtual;
     }
-    # Check for path aliases first (e.g., @components/Button -> ./components/Button)
+
     alias_resolved = _resolve_path_alias(target, base_path);
     if alias_resolved {
         res = _candidate_from(
@@ -361,12 +278,7 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
     if (os.path.exists(other_target) and os.path.isfile(other_target)) {
         return (os.path.normpath(other_target), 'other');
     }
-    # Local files in base_dir take priority over typeshed for non-relative
-    # imports. Without this a local `ast.na.jac` (or .jac / .py) sitting
-    # next to the importer is silently shadowed by `stdlib/ast.pyi`, so
-    # the type checker sees an unrelated module's symbols (or none at
-    # all). Mirrors the same fix applied to NaIRGenPass's struct
-    # registration; covered by the fix_shadow_entry.na.jac fixture.
+
     if not target.startswith('.') {
         parts = target.split('.');
         level = 0;
@@ -385,8 +297,15 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
                 return res;
             }
         }
+
+        for sp in get_jac_search_paths(base_path) {
+            res = _candidate_from_stub_package(sp, actual_parts);
+            if res {
+                return res;
+            }
+        }
     }
-    # Fallback to Python's importlib for modules not in typeshed
+
     if not target.startswith('.') {
         try {
             spec = importlib.util.find_spec(target);
@@ -408,20 +327,17 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
     }
     actual_parts = parts[level:];
 
-    # For relative imports (level > 0), check local path FIRST before global paths
     base_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
     for _ in range(max((level - 1), 0)) {
         base_dir = os.path.dirname(base_dir);
     }
     if level > 0 {
-        # Relative import: check local directory first
         res = _candidate_from(base_dir, actual_parts);
         if res {
             return res;
         }
     }
 
-    # Search global paths
     for sp in get_jac_search_paths(base_path) {
         res = _candidate_from(sp, actual_parts);
         if res {
@@ -429,7 +345,6 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         }
     }
 
-    # Fallback to base_dir for non-relative imports
     if level == 0 {
         res = _candidate_from(base_dir, actual_parts);
         if res {
@@ -464,31 +379,354 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
     return (os.path.join(base_dir, *actual_parts), 'py');
 }
 
-"""Infer language for target relative to base path."""
 def infer_language(target: str, base_path: str) -> str {
     (_, lang) = resolve_module(target, base_path);
     return lang;
 }
 
-"""Resolve only the path component for a target."""
 def resolve_relative_path(target: str, base_path: str) -> str {
     (path, _) = resolve_module(target, base_path);
     return path;
 }
 
-"""Convert Jac-style import path to JavaScript-style import path.
+glob NPM_RUNTIME_CONDITIONS: tuple = ('browser', 'module', 'import', 'default'),
+     NPM_TYPES_CONDITIONS: tuple = ('types', 'import', 'default'),
+     NPM_DTS_SUFFIXES: tuple = ('.d.ts', '.d.mts', '.d.cts');
 
-    Transforms relative paths to be valid JavaScript:
-    - .utils -> ./utils.js
-    - ..lib -> ../lib.js
-    - ...config -> ../../config.js
+def _find_npm_package(
+    spec: str, base_path: str
+) -> (tuple[(str, list[str], str)] | None) {
+    if not spec or spec.startswith('.') {
+        return None;
+    }
+    project_root = find_jac_project_root(base_path);
+    if not project_root {
+        return None;
+    }
+    node_modules = os.path.join(project_root, '.jac', 'client', 'node_modules');
+    if not os.path.isdir(node_modules) {
+        return None;
+    }
+    parts = [
+        p
+        for p in spec.split('/')
+        if p
+    ];
+    if not parts {
+        return None;
+    }
+    if (spec.startswith('@') and len(parts) >= 2) {
+        (pkg_parts, subpath) = (parts[:2], parts[2:]);
+    } else {
+        (pkg_parts, subpath) = (parts[:1], parts[1:]);
+    }
+    pkg_dir = os.path.join(node_modules, *pkg_parts);
+    if not os.path.isdir(pkg_dir) {
+        return None;
+    }
+    return (pkg_dir, subpath, node_modules);
+}
 
-    Args:
-        path: Jac-style import path (potentially with leading dots)
+def _read_package_json(pkg_dir: str) -> dict {
+    import json;
+    pkg_json = os.path.join(pkg_dir, 'package.json');
+    if not os.path.isfile(pkg_json) {
+        return {};
+    }
+    try {
+        with open(pkg_json, 'r', encoding='utf-8') as f {
+            data = json.load(f);
+        }
+    } except (OSError, ValueError) {
+        return {};
+    }
+    return data if isinstance(data, dict) else {};
+}
 
-    Returns:
-        JavaScript-style import path with .js extension for relative imports
-    """
+def _resolve_export_target(
+    target: object, conditions: tuple, pkg_dir: str, star_sub: (str | None) = None
+) -> (str | None) {
+    if isinstance(target, str) {
+        rel = target;
+        if (star_sub is not None and '*' in rel) {
+            rel = rel.replace('*', star_sub);
+        }
+        candidate = os.path.normpath(os.path.join(pkg_dir, rel));
+        return candidate if os.path.isfile(candidate) else None;
+    }
+    if isinstance(target, list) {
+        for item in target {
+            resolved = _resolve_export_target(item, conditions, pkg_dir, star_sub);
+            if resolved {
+                return resolved;
+            }
+        }
+        return None;
+    }
+    if isinstance(target, dict) {
+        for (key, value) in target.items() {
+            if key.startswith('.') {
+                continue;
+            }
+            if (key in conditions or key == 'default') {
+                resolved = _resolve_export_target(value, conditions, pkg_dir, star_sub);
+                if resolved {
+                    return resolved;
+                }
+            }
+        }
+    }
+    return None;
+}
+
+def _resolve_pkg_exports(
+    exports: object, subpath: str, conditions: tuple, pkg_dir: str
+) -> (str | None) {
+    if isinstance(exports, dict) {
+        has_subpath_keys = `any(k.startswith('.') for k in exports.keys());
+        if not has_subpath_keys {
+            if subpath == '.' {
+                return _resolve_export_target(exports, conditions, pkg_dir);
+            }
+            return None;
+        }
+        if subpath in exports {
+            return _resolve_export_target(exports[subpath], conditions, pkg_dir);
+        }
+
+        best_key: (str | None) = None;
+        best_sub: (str | None) = None;
+        for key in exports.keys() {
+            if ('*' not in key or not key.startswith('.')) {
+                continue;
+            }
+            (prefix, _, suffix) = key.partition('*');
+            if (
+                subpath.startswith(prefix)
+                and subpath.endswith(suffix)
+                and len(subpath) >= len(prefix) + len(suffix)
+            ) {
+                if (
+                    best_key is None or len(prefix) > len(best_key.partition('*')[0])
+                ) {
+                    best_key = key;
+                    best_sub = subpath[len(prefix):len(subpath) - len(suffix)]
+                        if suffix
+                        else subpath[len(prefix):];
+                }
+            }
+        }
+        if best_key is not None {
+            return _resolve_export_target(
+                exports[best_key], conditions, pkg_dir, star_sub=best_sub
+            );
+        }
+        return None;
+    }
+    if subpath == '.' {
+        return _resolve_export_target(exports, conditions, pkg_dir);
+    }
+    return None;
+}
+
+def resolve_client_npm_package(spec: str, base_path: str) -> (str | None) {
+    found = _find_npm_package(spec, base_path);
+    if found is None {
+        return None;
+    }
+    (pkg_dir, subpath, _) = found;
+    data = _read_package_json(pkg_dir);
+
+    exports = data.get('exports');
+    if exports is not None {
+        subpath_key = './' + '/'.join(subpath) if subpath else '.';
+        resolved = _resolve_pkg_exports(
+            exports, subpath_key, NPM_RUNTIME_CONDITIONS, pkg_dir
+        );
+        if resolved {
+            return resolved;
+        }
+    }
+
+    if subpath {
+        target = os.path.join(pkg_dir, *subpath);
+        deep = _npm_file_with_ext(target);
+        if deep {
+            return deep;
+        }
+        if os.path.isdir(target) {
+            return _npm_package_entry(target, _read_package_json(target));
+        }
+        return None;
+    }
+    return _npm_package_entry(pkg_dir, data);
+}
+
+def resolve_client_npm_declarations(spec: str, base_path: str) -> (str | None) {
+    found = _find_npm_package(spec, base_path);
+    if found is None {
+        return None;
+    }
+    (pkg_dir, subpath, node_modules) = found;
+    data = _read_package_json(pkg_dir);
+
+    exports = data.get('exports');
+    if exports is not None {
+        subpath_key = './' + '/'.join(subpath) if subpath else '.';
+        resolved = _resolve_pkg_exports(
+            exports, subpath_key, NPM_TYPES_CONDITIONS, pkg_dir
+        );
+        if (resolved and resolved.endswith(NPM_DTS_SUFFIXES)) {
+            return resolved;
+        }
+    }
+
+    if subpath {
+        target = os.path.join(pkg_dir, *subpath);
+        for suffix in NPM_DTS_SUFFIXES {
+            if os.path.isfile((target + suffix)) {
+                return os.path.normpath((target + suffix));
+            }
+        }
+        nested = os.path.join(target, 'index.d.ts');
+        if os.path.isfile(nested) {
+            return os.path.normpath(nested);
+        }
+        deep_entry = resolve_client_npm_package(spec, base_path);
+        if deep_entry {
+            sibling = sibling_declaration_file(deep_entry);
+            if sibling {
+                return sibling;
+            }
+        }
+    } else {
+        for key in ('types', 'typings') {
+            val = data.get(key);
+            if (isinstance(val, str) and val) {
+                candidate = os.path.normpath(os.path.join(pkg_dir, val));
+                if os.path.isfile(candidate) {
+                    return candidate;
+                }
+            }
+        }
+        entry = resolve_client_npm_package(spec, base_path);
+        if entry {
+            sibling = sibling_declaration_file(entry);
+            if sibling {
+                return sibling;
+            }
+        }
+        index_dts = os.path.join(pkg_dir, 'index.d.ts');
+        if os.path.isfile(index_dts) {
+            return os.path.normpath(index_dts);
+        }
+    }
+
+    return _resolve_at_types_declarations(spec, subpath, node_modules);
+}
+
+def _resolve_at_types_declarations(
+    spec: str, subpath: list[str], node_modules: str
+) -> (str | None) {
+    parts = [
+        p
+        for p in spec.split('/')
+        if p
+    ];
+    if parts[0].startswith('@') {
+        if len(parts) < 2 {
+            return None;
+        }
+        types_name = parts[0][1:] + '__' + parts[1];
+    } else {
+        types_name = parts[0];
+    }
+    types_dir = os.path.join(node_modules, '@types', types_name);
+    if not os.path.isdir(types_dir) {
+        return None;
+    }
+    if subpath {
+        target = os.path.join(types_dir, *subpath);
+        for suffix in NPM_DTS_SUFFIXES {
+            if os.path.isfile((target + suffix)) {
+                return os.path.normpath((target + suffix));
+            }
+        }
+        nested = os.path.join(target, 'index.d.ts');
+        return os.path.normpath(nested) if os.path.isfile(nested) else None;
+    }
+    types_data = _read_package_json(types_dir);
+    for key in ('types', 'typings') {
+        val = types_data.get(key);
+        if (isinstance(val, str) and val) {
+            candidate = os.path.normpath(os.path.join(types_dir, val));
+            if os.path.isfile(candidate) {
+                return candidate;
+            }
+        }
+    }
+    index_dts = os.path.join(types_dir, 'index.d.ts');
+    return os.path.normpath(index_dts) if os.path.isfile(index_dts) else None;
+}
+
+def sibling_declaration_file(js_path: str) -> (str | None) {
+    (stem, ext) = os.path.splitext(js_path);
+    by_ext = {'.mjs': '.d.mts', '.cjs': '.d.cts', '.js': '.d.ts'};
+    preferred = by_ext.get(ext);
+    suffixes = (preferred, ) + tuple(
+        s
+        for s in NPM_DTS_SUFFIXES
+        if s != preferred
+    )
+        if preferred
+        else NPM_DTS_SUFFIXES;
+    for suffix in suffixes {
+        candidate = stem + suffix;
+        if os.path.isfile(candidate) {
+            return os.path.normpath(candidate);
+        }
+    }
+    return None;
+}
+
+def _npm_file_with_ext(candidate: str) -> (str | None) {
+    if os.path.isfile(candidate) {
+        return os.path.normpath(candidate);
+    }
+    for ext in ('.js', '.mjs', '.cjs', '.json') {
+        if os.path.isfile((candidate + ext)) {
+            return os.path.normpath((candidate + ext));
+        }
+    }
+    return None;
+}
+
+def _npm_package_entry(pkg_dir: str, data: dict) -> (str | None) {
+    entries: list[str] = [];
+    for key in ('module', 'main') {
+        val = data.get(key);
+        if (isinstance(val, str) and val) {
+            entries.append(os.path.join(pkg_dir, val));
+        }
+    }
+    entries.append(os.path.join(pkg_dir, 'index'));
+    for entry in entries {
+        resolved = _npm_file_with_ext(entry);
+        if resolved {
+            return resolved;
+        }
+        nested = _npm_file_with_ext(os.path.join(entry, 'index'));
+        if nested {
+            return nested;
+        }
+    }
+    pkg_json = os.path.join(pkg_dir, 'package.json');
+    if os.path.isfile(pkg_json) {
+        return os.path.normpath(pkg_json);
+    }
+    return None;
+}
+
 def convert_to_js_import_path(path: str) -> str {
     if not path {
         return path;
@@ -548,23 +786,17 @@ def convert_to_js_import_path(path: str) -> str {
     return path;
 }
 
-"""Return the typeshed stubs and stdlib directories if available."""
 def get_typeshed_paths -> list[str] {
     base = os.path.join(os.path.dirname(__file__), '..', 'vendor', 'typeshed');
     base = os.path.abspath(base);
-    stubs = os.path.join(base, 'stubs');
     stdlib = os.path.join(base, 'stdlib');
     paths = [];
-    if os.path.isdir(stubs) {
-        paths.append(stubs);
-    }
     if os.path.isdir(stdlib) {
         paths.append(stdlib);
     }
     return paths;
 }
 
-"""Find .pyi files in typeshed, trying module.pyi then package/__init__.pyi."""
 def _candidate_from_typeshed(
     base: str, parts: list[str]
 ) -> (tuple[(str, str)] | None) {
@@ -588,6 +820,38 @@ def _candidate_from_typeshed(
             if os.path.isfile(inner_pkg_init_pyi) {
                 return (inner_pkg_init_pyi, 'pyi');
             }
+        }
+    }
+    return None;
+}
+
+def _candidate_from_stub_package(
+    base: str, parts: list[str]
+) -> (tuple[(str, str)] | None) {
+    if not parts {
+        return None;
+    }
+    stub_root = os.path.join(base, parts[0] + '-stubs');
+    if not os.path.isdir(stub_root) {
+        return None;
+    }
+    rest = parts[1:];
+    if not rest {
+        init_pyi = os.path.join(stub_root, '__init__.pyi');
+        if os.path.isfile(init_pyi) {
+            return (init_pyi, 'pyi');
+        }
+        return None;
+    }
+    candidate_prefix = os.path.join(stub_root, *rest);
+    module_file_pyi = candidate_prefix + '.pyi';
+    if os.path.isfile(module_file_pyi) {
+        return (module_file_pyi, 'pyi');
+    }
+    if os.path.isdir(candidate_prefix) {
+        init_pyi = os.path.join(candidate_prefix, '__init__.pyi');
+        if os.path.isfile(init_pyi) {
+            return (init_pyi, 'pyi');
         }
     }
     return None;

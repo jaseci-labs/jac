@@ -2,7 +2,25 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.17 (Latest Release)
+## byllm 0.6.19 (Latest Release)
+
+### New Features
+
+- **Feature: Re-architected `visit [-->] by llm` routing**: LLM-guided traversal now renders each candidate as an **(edge, node) pair**, so routing can decide on the connecting edge's type/attributes, not just node data, and auto-injects the walker's state and the current node into the prompt (no more smuggling context through `incl_info`). Candidate, field, and ability descriptions are sourced from **MTIR semstrings** rather than runtime reflection. The model's choice is constrained to a runtime-synthesised enum of **descriptive handles** (the node class name, disambiguated), and a new `select` parameter controls cardinality (`select=1 | k | (min, max) | "all"`). Replaces the previous node-only mechanism that returned an unconstrained `list[int]`. (#6767)
+
+### Refactors
+
+- **Refactor: remove dead code in byllm** (part 2/2, companion to #7032): dropped never-called methods and unused module-level globals. Behavior preserved.
+- **Refactor: Scale references updated for the core fold-in**: Comments referencing the former `jac-scale` plugin (e.g. the SSE-worker notes) now refer to the built-in scale backend, which lives in core jaclang as `jaclang.scale`. No behavior change.
+
+## byllm 0.6.18
+
+### Bug Fixes
+
+- **Fix: byLLM's missing-jaclang hint points at the binary, not PyPI**: the import-time error shown when `jaclang` cannot be found no longer says `pip install jaclang` (jaclang is no longer published to PyPI -- it ships inside the `jac` binary). It now tells the user to run byLLM under `jac` or `jac install -e` the plugin.
+- **Streaming: Retry transient mid-stream drops**: streaming calls now use an inter-chunk read timeout and retry the same model on transient transport errors (stall, dropped connection, brief 5xx) instead of hanging on litellm's default timeout, emitting a `stream_reset` event so consumers discard partial output.
+
+## byllm 0.6.17
 
 ### Bug Fixes
 

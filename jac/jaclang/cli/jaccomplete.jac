@@ -1,8 +1,5 @@
-"""Shell completion script generation for bash, zsh, and fish."""
-
 import from typing { cast }
 
-"""Generate a static shell completion script from pre-processed command data."""
 def static_shellcode(
     commands: list[dict[str, any]], executable: str = "jac", shell: str = "bash"
 ) -> str;

@@ -1,18 +1,8 @@
-"""Dialog plugin for the Jac desktop IPC system.
-
-Shows native OS dialogs (open file, save file, message) via platform tools:
-  Linux:   zenity
-  macOS:   osascript
-  Windows: PowerShell
-
-Transpiled to dependency-free Python at build time.
-"""
 import subprocess;
 import from desktop_plugin { PluginError, ErrorCode, OsPlugin, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-"""Native dialog capability via platform tools."""
 obj DialogPlugin(OsPlugin) {
     has _enabled: bool = True;
 
@@ -32,9 +22,7 @@ obj DialogPlugin(OsPlugin) {
 
     def init(config: dict) {
         self.plugin_name = "jac.dialog";
-        # If this plugin is instantiated at all, it's enabled.
-        # config may be True (from `dialog = true`), {} (from empty
-        # `[plugins.desktop.plugins.dialog]`), or a dict with sub-settings.
+
         self._enabled = DesktopPlugin._config_enabled(config);
     }
 
@@ -172,7 +160,7 @@ obj DialogPlugin(OsPlugin) {
         platform = self._detect_platform();
         title = args.get("title", "Message");
         body = args.get("body", "");
-        kind = args.get("kind", "info");  # info, warning, error
+        kind = args.get("kind", "info");
         try {
             if platform == "linux" {
                 flag = "--info";

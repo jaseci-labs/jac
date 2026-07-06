@@ -222,7 +222,7 @@ lambda_params ::= ("*" | "/" | lambda_param)*
 
 lambda_param ::=
     ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
+    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 jsx_element ::=
@@ -490,7 +490,7 @@ func_params ::= ("*" | "/" | param_var)*
 
 param_var ::=
     ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
+    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 enum ::=

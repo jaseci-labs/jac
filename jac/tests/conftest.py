@@ -26,6 +26,41 @@ def disable_rich_console_formatting(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # =============================================================================
+# Test Utilities
+# =============================================================================
+
+
+def get_object(filename: str, id: str, main: bool = True) -> dict[str, Any]:
+    """Get an object by ID from a Jac program.
+
+    This is a test utility for inspecting object state. It runs under the
+    system context (no user root), so access checks always pass.
+
+    Args:
+        filename: Path to the .jac file
+        id: Object ID to retrieve
+        main: Treat the module as __main__ (default: True)
+
+    Returns:
+        Dictionary containing the object's state
+    """
+    from jaclang.cli.commands.cli_helpers import proc_file
+    from jaclang.jac0core.runtime import JacRuntime as Jac
+
+    base, mod, mach = proc_file(filename)
+    try:
+        Jac.jac_import(
+            target=mod, base_path=base, override_name="__main__" if main else None
+        )
+        obj = Jac.get_object(id)
+        if not obj:
+            raise ValueError(f"Object with id {id} not found.")
+        return obj.__jac__.__getstate__()
+    finally:
+        mach.close()
+
+
+# =============================================================================
 # Plugin Management - Core Jac Tests Only
 # =============================================================================
 
@@ -36,9 +71,11 @@ _external_plugins: list[tuple[str, Any]] = []
 def pytest_configure(config: pytest.Config) -> None:
     """Disable external plugins at the start of the jac test session.
 
-    External plugins (jac-scale, jac-client, etc.) are disabled during core jac tests
+    External plugins (jac-client, etc.) are disabled during core jac tests
     to ensure a clean test environment without MongoDB connections or other
-    plugin-specific dependencies.
+    plugin-specific dependencies. The scale backend is now built into jaclang
+    (jaclang.scale) rather than a separate package, so its provider is also
+    unregistered here by the same disabling loop.
 
     NOTE: This only applies to tests in jac/tests/, not to package-specific tests.
     """

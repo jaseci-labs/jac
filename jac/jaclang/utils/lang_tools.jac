@@ -1,4 +1,3 @@
-"""Language tools for the Jaclang project."""
 import ast as py_ast;
 import inspect;
 import json;
@@ -16,14 +15,13 @@ import from jaclang.jac0core.unitree { UniScopeNode }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { pascal_to_snake, read_file_with_encoding }
-"""Information about a kid."""
+
 obj AstKidInfo {
     has name: str,
         typ: str,
         `default: (str | None) = None;
 }
 
-"""Meta data about AST nodes."""
 obj UniNodeInfo {
     has cls: type;
 
@@ -35,7 +33,6 @@ obj UniNodeInfo {
     def process(cls: type[uni.UniNode]) -> None;
 }
 
-"""Ast tools."""
 obj AstTool {
     def init -> None;
     def pass_template -> str;

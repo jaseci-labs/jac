@@ -1,0 +1,7 @@
+[project]
+name = "microservice-fixtures"
+
+# This fixture is a self-contained set of sv-import/microservice modules used by
+# its own tests. The jac.toml marks it as a separate project so a discovery scan
+# anchored at the parent fixtures/ tree treats it as a hard boundary and does not
+# absorb these services into an unrelated entry app (e.g. the monolith test_api).

@@ -7,14 +7,13 @@ and that the generated Jac code can be re-parsed by the Jac parser.
 import ast as py_ast;
 import os;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as ast;
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { JACLANG_PYTHON_FILES }
-
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent);
 
 """Every in-repo Python file should parse and unparse cleanly."""
 def pyfile_parse_test(rel_path: str) {

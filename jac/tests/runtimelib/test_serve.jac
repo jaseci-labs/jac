@@ -8,8 +8,10 @@ import from contextlib { redirect_stdout, redirect_stderr, suppress }
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { MagicMock, patch }
+import from http.server { ThreadingHTTPServer }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
+import from jaclang.runtimelib.server { JacAPIServer }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
 
@@ -316,5 +318,24 @@ test "dev banner headlines vite port not api port" {
         assert "Local:     http://localhost:8000/" in output;
         assert "App:  http://localhost:8000/" in output;
         assert "API:  http://localhost:8001/" in output;
+    }
+}
+
+# --- Server construction ---
+"""The stdlib fallback server must be threading: on a plain (non-threading)
+HTTPServer one in-flight SSE stream or slow handler monopolizes the accept
+loop and every other client hangs with no response."""
+test "api server binds a threading http server" {
+    with TemporaryDirectory() as tmpdir {
+        port = get_free_port();
+        Jac.set_base_path(tmpdir);
+        srv = JacAPIServer(module_name="serve_api", port=port, base_path=tmpdir);
+        try {
+            assert isinstance(srv.server, ThreadingHTTPServer) , f"expected ThreadingHTTPServer, got {type(
+                srv.server
+            ).__name__}";
+        } finally {
+            srv.server.server_close();
+        }
     }
 }

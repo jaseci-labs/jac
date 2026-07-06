@@ -1,64 +1,37 @@
-"""Centralized Jac Type Registry.
-
-Single source of truth for primitive type coordination across all compilation
-backends (SV/Python, CL/ECMAScript, NA/LLVM).
-
-Emitter contracts (abstract method signatures) live in primitives.jac.
-Emitter implementations live in each backend's primitives_*.jac.
-This module provides the coordination data that connects them.
-"""
-
-"""Numeric kind of a primitive type.
-
-Same-kind primitives are mutually assignable (the type checker treats them
-as width refinements, not unrelated subclasses). IntKind covers
-int / bool / i8..u64; FloatKind covers float / f32 / f64.
-"""
 enum NumericKind {
     NotNumeric = "not_numeric",
     IntKind = "int_kind",
     FloatKind = "float_kind"
 }
 
-"""A single primitive type entry with all cross-backend metadata."""
 obj JacTypeEntry {
-    has name: str,  # Jac type name ("int", "str", ...)
-        emitter_suffix: str,  # Emitter class suffix ("IntEmitter")
-        na_type_spec: str | None = None,  # LLVM type spec ("i64") or None
+    has name: str,
+        emitter_suffix: str,
+        na_type_spec: str | None = None,
         numeric_kind: NumericKind = NumericKind.NotNumeric;
 }
 
-"""Typed registry of all Jac primitive types."""
 obj JacTypeRegistry {
     has _entries: dict[str, JacTypeEntry],
         _builtin_names: frozenset[str],
-        # Builtin exception hierarchy (child -> direct parent), ordered
-        # topologically so parents precede children. The root maps to None.
-        # See the "Exception Types" section of primitives.jac for the human
-        # readable tree; this is the machine-readable source of truth.
         _exception_parents: dict[str, str | None];
 
-    """Get a type entry by name, or None if not found."""
     def get(name: str) -> JacTypeEntry | None {
         return self._entries.get(name, None);
     }
 
-    """Set of all primitive type names."""
     def primitive_names -> set[str] {
         return set(self._entries.keys());
     }
 
-    """True if name is a primitive type."""
     def is_primitive(name: str) -> bool {
         return name in self._entries;
     }
 
-    """List of (name, emitter_suffix) pairs for building emitter dicts."""
     def emitter_items -> list[tuple[str, str]] {
         return [(e.name, e.emitter_suffix) for e in self._entries.values()];
     }
 
-    """List of (name, na_type_spec) for types with LLVM representations."""
     def na_type_entries -> list[tuple[str, str]] {
         return [
             (e.name, e.na_type_spec)
@@ -67,17 +40,14 @@ obj JacTypeRegistry {
         ];
     }
 
-    """Set of all builtin function names."""
     def builtin_names -> set[str] {
         return set(self._builtin_names);
     }
 
-    """True if name is a builtin function."""
     def is_builtin(name: str) -> bool {
         return name in self._builtin_names;
     }
 
-    """Numeric kind for a primitive type name; NotNumeric if unknown / non-numeric."""
     def numeric_kind_of(name: str) -> NumericKind {
         entry = self._entries.get(name, None);
         if entry is None {
@@ -86,28 +56,34 @@ obj JacTypeRegistry {
         return entry.numeric_kind;
     }
 
-    """True if name is a builtin exception type."""
     def is_exception(name: str) -> bool {
         return name in self._exception_parents;
     }
 
-    """Direct parent of an exception type; None for the root or unknown names."""
     def exception_parent(name: str) -> str | None {
         return self._exception_parents.get(name, None);
     }
 
-    """All builtin exceptions as (name, parent) pairs in topological order
-    (parents before children). The root's parent is None.
-    """
     def exception_entries -> list[tuple[str, str | None]] {
         return [(name, parent) for (name, parent) in self._exception_parents.items()];
     }
 
-    """All transitive descendants of an exception type (excluding itself).
+    def exception_type_id(name: str) -> int {
+        if name == "Exception" {
+            return 0;
+        }
+        idx = 0;
+        for n in self._exception_parents.keys() {
+            idx += 1;
+            if n == name {
+                return idx;
+            }
+        }
+        import hashlib;
+        digest = hashlib.sha256(name.encode("utf-8")).hexdigest();
+        return 0x40000000 + (int(digest[:8], 16) % 0x3FFFFFFF);
+    }
 
-    Enables hierarchy-aware matching: `except ArithmeticError` must also catch
-    ZeroDivisionError, OverflowError and FloatingPointError.
-    """
     def exception_descendants(type_name: str) -> list[str] {
         descendants: list[str] = [];
         for child in self._exception_parents.keys() {
@@ -124,7 +100,6 @@ obj JacTypeRegistry {
     }
 }
 
-# ── Registry singleton ────────────────────────────────────────────
 glob JAC_TYPE_REGISTRY = JacTypeRegistry(
          _entries={
              "int": JacTypeEntry(
@@ -158,7 +133,6 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              ),
              "tuple": JacTypeEntry(name="tuple", emitter_suffix="TupleEmitter"),
              "range": JacTypeEntry(name="range", emitter_suffix="RangeEmitter"),
-             # Fixed-width integer types
              "i8": JacTypeEntry(
                  name="i8",
                  emitter_suffix="IntEmitter",
@@ -207,7 +181,6 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
                  na_type_spec="i64",
                  numeric_kind=NumericKind.IntKind
              ),
-             # Fixed-width float types
              "f32": JacTypeEntry(
                  name="f32",
                  emitter_suffix="FloatEmitter",
@@ -224,17 +197,14 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
          },
          _builtin_names=frozenset(
              {
-                 # I/O
                  "print",
                  "input",
-                 # Aggregation
                  "len",
                  "abs",
                  "round",
                  "min",
                  "max",
                  "sum",
-                 # Iteration
                  "sorted",
                  "reversed",
                  "enumerate",
@@ -243,47 +213,34 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
                  "filter",
                  "any",
                  "all",
-                 # Type checking
                  "isinstance",
                  "issubclass",
                  "type",
                  "callable",
-                 # Identity / hashing
                  "id",
                  "hash",
                  "jid",
-                 # Portable constructor (server: Cls(*args); cl: Reflect.construct)
                  "new",
-                 # JSX raw-HTML opt-in (returns a marker recognised by __jacJsx)
                  "unsafe_html",
-                 # Representation
                  "repr",
                  "format",
                  "ascii",
-                 # Char/ord conversion
                  "chr",
                  "ord",
-                 # Number formatting
                  "hex",
                  "oct",
                  "bin",
-                 # Arithmetic
                  "pow",
                  "divmod",
-                 # Iteration protocol
                  "iter",
                  "next",
-                 # Attribute access
                  "getattr",
                  "setattr",
                  "hasattr",
                  "delattr",
-                 # Introspection
                  "vars",
                  "dir",
-                 # File I/O
                  "open",
-                 # Type conversions
                  "str",
                  "int",
                  "float",

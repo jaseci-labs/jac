@@ -3,28 +3,71 @@ site_url: https://docs.jaseci.org
 repo_url: https://github.com/Jaseci-Labs/jaseci
 edit_uri: edit/main/docs/docs
 use_directory_urls: true
+validation:
+  links:
+    anchors: warn   # broken #anchors fail `mkdocs build --strict`
 exclude_docs: |
   community/release_notes/unreleased/
 nav:
   # ============================================
-  # FOUR-TAB DOCUMENTATION STRUCTURE
+  # BUILDER-INTENT DOCUMENTATION STRUCTURE
+  # Start Here · Learn · Reference · Community · Internals
   # ============================================
 
-  - Get Started:
-      - Welcome: "quick-guide/index.md"
-      - Installation: "quick-guide/install.md"
-      - Agent Skills and MCP: "quick-guide/agent-skills-and-mcp.md"
-      - Core Concepts: "quick-guide/what-makes-jac-different.md"
-      - Build to Learn - AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
-      - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
-      - Import Anything: "quick-guide/import-anything.md"
-      - Jac vs Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
-      - What You Can Build: "quick-guide/project-kinds.md"
-      - FAQ: "quick-guide/faq.md"
+  - Start Here:
+      - What & Why:
+          - What is Jac: "quick-guide/index.md"
+          - Why Jac vs a Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
+          - Core Concepts: "quick-guide/what-makes-jac-different.md"
+          - Install: "quick-guide/install.md"
+      - Build Anything: "quick-guide/project-kinds.md"
+      - I like to build…:
+          - CLI tools & native binaries: "build/cli-and-native.md"
+          - Backend APIs & services: "build/backend-apis.md"
+          - Full-stack web apps: "build/fullstack-web.md"
+          - Desktop & mobile apps: "build/desktop-mobile.md"
+          - AI agents & LLM apps: "build/ai-agents.md"
+          - Reusable libraries & packages: "build/libraries.md"
 
-  - Full Reference:
+  - Learn:
+      - Language Fundamentals:
+          - New to Programming?: "tutorials/language/coding_primer.md"
+          - Jac Fundamentals: "tutorials/language/basics.md"
+          - Graphs & Walkers: "tutorials/language/osp.md"
+          - Debugging: "tutorials/language/debugging.md"
+      - Build to Learn — AI Day Planner: "tutorials/first-app/build-ai-day-planner.md"
+      - Full-Stack Tutorials:
+          - Project Setup: "tutorials/fullstack/setup.md"
+          - Components: "tutorials/fullstack/components.md"
+          - State Management: "tutorials/fullstack/state.md"
+          - NPM Packages & UI Libraries: "tutorials/fullstack/npm-and-libraries.md"
+          - Advanced Patterns & JS Interop: "tutorials/fullstack/advanced-patterns.md"
+          - Backend Integration: "tutorials/fullstack/backend.md"
+          - Authentication: "tutorials/fullstack/auth.md"
+          - Routing: "tutorials/fullstack/routing.md"
+      - AI Tutorials:
+          - Your First AI Function: "tutorials/ai/quickstart.md"
+          - Structured Outputs: "tutorials/ai/structured-outputs.md"
+          - Agentic AI: "tutorials/ai/agentic.md"
+          - Multimodal: "tutorials/ai/multimodal.md"
+          - AI-Assisted Development (MCP): "tutorials/ai/mcp-quickstart.md"
+      - Desktop & Mobile Tutorials:
+          - Desktop App: "tutorials/fullstack/desktop.md"
+          - Mobile App: "tutorials/fullstack/mobile.md"
+      - Native Tutorials:
+          - Build a Chess Engine: "tutorials/native/chess.md"
+          - WebAssembly in the Browser: "tutorials/native/wasm.md"
+      - Package & Extend:
+          - Publish a Library: "tutorials/extend/publish-a-library.md"
+          - Build a Jac Plugin: "tutorials/extend/build-a-plugin.md"
+      - Ship It — Deploy & Scale:
+          - Local API Server: "tutorials/production/local.md"
+          - Microservices with sv import: "tutorials/production/microservices.md"
+          - Kubernetes: "tutorials/production/kubernetes.md"
+
+  - Reference:
       - Overview: "reference/index.md"
-      - Language Specification:
+      - Language:
           - Foundation: "reference/language/foundation.md"
           - Primitives & Codespace Semantics: "reference/language/primitives.md"
           - Functions & Objects: "reference/language/functions-objects.md"
@@ -32,44 +75,27 @@ nav:
           - Object-Spatial Programming: "reference/language/osp.md"
           - Concurrency: "reference/language/concurrency.md"
           - Comprehensions & Filters: "reference/language/advanced.md"
-          - Learn by Doing:
-              - New to Programming?: "tutorials/language/coding_primer.md"
-              - Jac Fundamentals: "tutorials/language/basics.md"
-              - Graphs & Walkers: "tutorials/language/osp.md"
-      - Native Compilation:
-          - Reference: "reference/language/native-pathway.md"
-          - Learn by Doing:
-              - Build a Chess Engine: "tutorials/native/chess.md"
-      - AI Integration:
-          - byLLM Reference: "reference/plugins/byllm.md"
-          - Learn by Doing:
-              - Your First AI Function: "tutorials/ai/quickstart.md"
-              - Structured Outputs: "tutorials/ai/structured-outputs.md"
-              - Agentic AI: "tutorials/ai/agentic.md"
-              - Multimodal: "tutorials/ai/multimodal.md"
-      - Full-Stack Development:
-          - jac-client Reference: "reference/plugins/jac-client.md"
-          - jac-desktop Reference: "reference/plugins/jac-desktop.md"
-          - Learn by Doing:
-              - Project Setup: "tutorials/fullstack/setup.md"
-              - Components: "tutorials/fullstack/components.md"
-              - State Management: "tutorials/fullstack/state.md"
-              - NPM Packages & UI Libraries: "tutorials/fullstack/npm-and-libraries.md"
-              - Advanced Patterns & JS Interop: "tutorials/fullstack/advanced-patterns.md"
-              - Backend Integration: "tutorials/fullstack/backend.md"
-              - Authentication: "tutorials/fullstack/auth.md"
-              - Routing: "tutorials/fullstack/routing.md"
-              - Desktop App: "tutorials/fullstack/desktop.md"
-              - Mobile App: "tutorials/fullstack/mobile.md"
-      - Deployment & Scaling:
-          - jac-scale Reference: "reference/plugins/jac-scale.md"
-          - Learn by Doing:
-              - Local API Server: "tutorials/production/local.md"
-              - Microservices with sv import: "tutorials/production/microservices.md"
-              - Kubernetes: "tutorials/production/kubernetes.md"
+          - Walker Patterns: "reference/language/walker-responses.md"
+          - Appendices: "reference/language/appendices.md"
+          - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
+      - Native Compilation: "reference/language/native-pathway.md"
+      - Capabilities & Plugins:
+          - byLLM (AI, built-in): "reference/plugins/byllm.md"
+          - Scale (Deploy, built-in):
+              - Overview: "reference/plugins/jac-scale.md"
+              - HTTP API & Walkers: "reference/plugins/jac-scale-http.md"
+              - Data & Storage: "reference/plugins/jac-scale-persistence.md"
+              - Kubernetes & Operations: "reference/plugins/jac-scale-kubernetes.md"
+          - jac-client (Full-Stack): "reference/plugins/jac-client.md"
+          - jac-desktop: "reference/plugins/jac-desktop.md"
+      - Python Integration:
+          - Interoperability: "reference/language/python-integration.md"
+          - Library Mode: "reference/language/library-mode.md"
+          - Import Anything: "quick-guide/import-anything.md"
       - Developer Workflow:
           - CLI Commands: "reference/cli/index.md"
           - MCP Server: "reference/mcp.md"
+          - Agent Skills & MCP: "quick-guide/agent-skills-and-mcp.md"
           - Plugin Authoring: "reference/plugin-authoring.md"
           - Configuration: "reference/config/index.md"
           - Publishing Packages: "reference/publishing.md"
@@ -77,25 +103,20 @@ nav:
           - Errors & Warnings: "reference/diagnostics.md"
           - Code Organization: "reference/code-organization.md"
           - Testing: "reference/testing.md"
-          - Debugging: "tutorials/language/debugging.md"
-      - Python Integration:
-          - Interoperability: "reference/language/python-integration.md"
-          - Library Mode: "reference/language/library-mode.md"
-      - Quick Reference:
-          - Walker Patterns: "reference/language/walker-responses.md"
-          - Appendices: "reference/language/appendices.md"
 
   - Community:
       - Contributing: "community/contributing.md"
       - Codebase Guide: "community/codebase-guide.md"
+      - FAQ: "quick-guide/faq.md"
       - Breaking Changes: "community/breaking-changes.md"
-      - PR Leaderboard: "community/contributors.md"
       - Jac Playground: https://playground.jaseci.org/cl/app
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
           - byLLM: "community/release_notes/byllm.md"
           - jac-client: "community/release_notes/jac-client.md"
+          - jac-desktop: "community/release_notes/jac-desktop.md"
           - jac-scale: "community/release_notes/jac-scale.md"
+          - jac-plugins: "community/release_notes/jac-plugins.md"
           - jac-mcp: "community/release_notes/jac-mcp.md"
 
   - Internals:
@@ -285,7 +306,8 @@ plugins:
         quick-guide/next-steps.md: quick-guide/faq.md
         reference/language/index.md: reference/language/foundation.md
         tutorials/roadmap.md: quick-guide/index.md
-        community/top_contributors.md: community/contributors.md
+        community/top_contributors.md: community/contributing.md
+        community/contributors.md: community/contributing.md
 
         # Documentation restructure redirects
         full-docs-guide.md: reference/index.md

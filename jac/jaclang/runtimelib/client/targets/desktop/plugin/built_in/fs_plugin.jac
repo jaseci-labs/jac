@@ -1,11 +1,3 @@
-"""Filesystem plugin for the Jac desktop IPC system.
-
-File operations gated by allow-lists from jac.toml (baked at build time).
-Canonicalizes paths with resolve() before checking allow-lists to prevent
-traversal attacks.
-
-Transpiled to dependency-free Python at build time.
-"""
 import os;
 import stat;
 import from pathlib { Path }
@@ -16,7 +8,6 @@ import from manifest { PluginManifest, PluginContext }
 
 glob _RMTREE_ENTRY_LIMIT: int = 500;
 
-"""Filesystem operations with allow-list enforcement."""
 obj FsPlugin(DesktopPlugin) {
     has _path_plugin: PathPlugin,
         _allow_read: list = [],
@@ -40,14 +31,14 @@ obj FsPlugin(DesktopPlugin) {
 
     def init(config: dict, path_plugin: PathPlugin) {
         self.plugin_name = "jac.fs";
-        # Normalize non-dict config (e.g. `fs = true`) to empty dict.
+
         if not isinstance(config, dict) {
             config = {};
         }
         self._allow_read = config.get("allow_read", []);
         self._allow_write = config.get("allow_write", []);
         self._path_plugin = path_plugin;
-        # Pre-resolve allow-list entries ($HOME, $APP_DATA etc.)
+
         self._resolved_read = [self._resolve_pattern(p) for p in self._allow_read];
         self._resolved_write = [self._resolve_pattern(p) for p in self._allow_write];
     }
@@ -173,8 +164,7 @@ obj FsPlugin(DesktopPlugin) {
 
     def _exists(args: dict) -> dict {
         path = self._resolve_path(args.get("path", ""));
-        # Allow exists check without full read permission — just check the
-        # path is within a readable root so we don't leak arbitrary FS info.
+
         self._check_allowed(path, "read");
         return {"exists": path.exists()};
     }
@@ -202,7 +192,6 @@ obj FsPlugin(DesktopPlugin) {
         };
     }
 
-    """Resolve a user-provided path string to an absolute canonical Path."""
     def _resolve_path(raw: str) -> Path {
         if not raw {
             raise PluginError(ErrorCode.INVALID_ARGS, "'path' is required");
@@ -210,11 +199,7 @@ obj FsPlugin(DesktopPlugin) {
         return Path(raw).expanduser().resolve();
     }
 
-    """Resolve allow-list pattern entries ($HOME, $APP_DATA, etc.)."""
     def _resolve_pattern(pattern: str) -> str {
-        # Always resolve() so allow-list prefixes are canonicalized the same way
-        # as user paths in _resolve_path(). Otherwise a symlinked $HOME (common
-        # on NFS / managed homes) would never match and every op returns FORBIDDEN.
         if pattern == "$HOME" {
             return str(Path.home().resolve());
         }
@@ -232,7 +217,6 @@ obj FsPlugin(DesktopPlugin) {
         return str(Path(pattern).expanduser().resolve());
     }
 
-    """Check that a resolved path is within an allowed list."""
     def _check_allowed(path: Path, mode: str) -> None {
         allowed = self._resolved_read if mode == "read" else self._resolved_write;
         if not allowed {

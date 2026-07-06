@@ -1,10 +1,3 @@
-"""Common utilities shared between ELF and Mach-O linkers.
-
-Extracts duplicated patterns: alignment, string table building,
-section blob collection, virtual address resolution, relocation
-patch-site resolution, and entry point lookup.
-"""
-
 def _align(value: int, alignment: int) -> int;
 
 def _build_strtab(
@@ -36,3 +29,15 @@ def _resolve_patch_site(
 def _find_entry_vaddr(
     local_sym_map: dict[str, tuple[str, int]], code_vaddr: int
 ) -> int;
+
+obj ArMember {
+    has name: str,
+        header_offset: int,
+        data: bytes;
+}
+
+def parse_ar_archive(data: bytes) -> list[ArMember];
+
+def parse_ar_symbol_index(data: bytes) -> dict[str, int];
+
+def select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember];
