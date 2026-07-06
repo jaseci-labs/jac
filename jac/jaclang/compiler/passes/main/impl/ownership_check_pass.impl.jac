@@ -242,11 +242,10 @@ impl OwnershipCheckPass._stamp_ownership -> None {
 }
 
 impl OwnershipCheckPass._return_roots_at_param_borrow(nd: uni.Expr | None) -> bool {
-    place = self._place_of(nd);
-    if place is None {
+    base = self._place_of(nd);
+    if base is None {
         return False;
     }
-    base = place.base;
     return (
         base.sym is not None
         and base.sym.storage == SymbolStorage.PARAM

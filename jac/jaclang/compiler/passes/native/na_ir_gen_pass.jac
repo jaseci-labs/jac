@@ -246,6 +246,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_rc_intrinsic(func_name: str) -> bool;
     def _native_module_call_target(nd: uni.FuncCall) -> (str | None);
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
 

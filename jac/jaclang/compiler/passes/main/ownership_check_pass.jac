@@ -31,11 +31,6 @@ obj BorrowMeta {
         is_mut: bool = False;
 }
 
-obj Place {
-    has base: uni.Name,
-        projections: list[str] = [];
-}
-
 obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
@@ -77,8 +72,8 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         dest: uni.UniScopeNode | None, region: uni.UniScopeNode | None
     ) -> bool;
 
-    def _place_of(nd: uni.Expr | None) -> (Place | None);
-    def _places_reachable(nd: uni.Expr | None) -> list[Place];
+    def _place_of(nd: uni.Expr | None) -> (uni.Name | None);
+    def _places_reachable(nd: uni.Expr | None) -> list[uni.Name];
     def _region_escapee_roots(
         expr: uni.Expr | None, region: uni.RegionStmt
     ) -> list[uni.Name];

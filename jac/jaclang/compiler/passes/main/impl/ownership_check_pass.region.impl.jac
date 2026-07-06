@@ -5,29 +5,22 @@ impl OwnershipCheckPass._has_region_blocks -> bool {
     return bool(self.ir_in.get_all_sub_nodes(uni.RegionStmt));
 }
 
-impl OwnershipCheckPass._place_of(nd: uni.Expr | None) -> (Place | None) {
+impl OwnershipCheckPass._place_of(nd: uni.Expr | None) -> (uni.Name | None) {
     cur = nd;
     if isinstance(cur, uni.UnaryExpr) and is_borrow_kind(cur.ownership) {
         cur = cur.operand;
     }
-    projections: list[str] = [];
     while isinstance(cur, uni.AtomTrailer) {
-        if cur.is_attr and isinstance(cur.right, uni.Name) {
-            projections.append(cur.right.sym_name);
-        } else {
-            projections.append("[]");
-        }
         cur = cur.target;
     }
     if isinstance(cur, uni.Name) and cur.sym {
-        projections.reverse();
-        return Place(base=cur, projections=projections);
+        return cur;
     }
     return None;
 }
 
-impl OwnershipCheckPass._places_reachable(nd: uni.Expr | None) -> list[Place] {
-    out: list[Place] = [];
+impl OwnershipCheckPass._places_reachable(nd: uni.Expr | None) -> list[uni.Name] {
+    out: list[uni.Name] = [];
     if nd is None {
         return out;
     }
@@ -82,8 +75,7 @@ impl OwnershipCheckPass._region_escapee_roots(
 ) -> list[uni.Name] {
     out: list[uni.Name] = [];
     seen: set[SymId] = set();
-    for place in self._places_reachable(expr) {
-        root_nm = place.base;
+    for root_nm in self._places_reachable(expr) {
         sid = self._name_sym_id(root_nm);
         if sid in seen {
             continue;
