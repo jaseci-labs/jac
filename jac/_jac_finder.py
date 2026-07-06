@@ -283,17 +283,15 @@ class _JacLazyFinder:
     @classmethod
     def _is_jac_package(cls, directory: str) -> bool:
         """Return True if `directory` is a Jac package or Jac namespace package."""
-        for init_name in _ext_registry().INIT_FILES:
+        reg = _ext_registry()
+        for init_name in reg.INIT_FILES:
             if os.path.isfile(os.path.join(directory, init_name)):
                 return True
-        # A directory with .jac files and no __init__.py is a Jac namespace
-        # package; without claiming it, Python would own it as a plain one.
-        if not os.path.isfile(os.path.join(directory, "__init__.py")):
-            try:
-                return any(e.endswith(".jac") for e in os.listdir(directory))
-            except OSError:
-                return False
-        return False
+        # An implicit namespace package (no __init__) is Jac's when a .jac source
+        # lives anywhere in its subtree -- including an intermediate directory
+        # that holds only subpackages (issue #7211). Without claiming it, Python
+        # would own it as a plain namespace package.
+        return reg.is_jac_namespace_package(directory)
 
     def _bootstrap_and_delegate(
         self,

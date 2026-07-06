@@ -1,3 +1,4 @@
+import ast;
 import shutil;
 import json;
 import from pathlib { Path }
@@ -117,10 +118,12 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     console.print(f"  Source: {src}");
     console.print(f"  Output: {out}\n");
 
+    eject_roots = _find_eject_roots(src, out);
     jac_files = [
         f
         for f in _collect_jac_files(src)
-        if out not in Path(str(f)).parents
+        if (out not in Path(str(f)).parents)
+        and not _under_any(Path(str(f)), eject_roots)
     ];
     if not jac_files {
         console.error("No .jac source files found to eject.");
@@ -214,7 +217,14 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
                 }
             }
         }
-        compiled.append({"module": bmod, "py": py_code, "server": server});
+        compiled.append(
+            {
+                "module": bmod,
+                "orig": ".".join(parent_parts + [stem]),
+                "py": py_code,
+                "server": server
+            }
+        );
         console.print(f"  ✔ {rel}", style="success");
     }
 
@@ -226,21 +236,70 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     }
 
     db_cfg = dict(eject_cfg.get("db", {}));
+    project_deps = _harvest_python_deps(toml_data);
+    env_files = [
+        name
+        for name in [".env", ".env.example"]
+        if (src / name).is_file()
+    ];
+
+    entry_bmod = "";
+    reach = _entry_reachable_modules(compiled, entry_module);
+    if reach is None {
+        console.warning(
+            f"  entry module '{entry_module}' not found among compiled "
+            "modules; exposing endpoints from every module."
+        );
+    } else {
+        reachable = reach["reachable"];
+        orig_by_bmod: dict = {};
+        for unit in compiled {
+            orig_by_bmod[str(unit["module"])] = str(unit["orig"]);
+            if (str(unit["orig"]) == str(reach["entry"])) and unit["server"] {
+                entry_bmod = str(unit["module"]);
+            }
+        }
+        dropped: set = set();
+        walkers = _keep_reachable(walkers, orig_by_bmod, reachable, dropped);
+        functions = _keep_reachable(functions, orig_by_bmod, reachable, dropped);
+        if dropped {
+            console.print(
+                "  ○ not imported by the entry module (kept as plain modules, "
+                "no endpoints): " + ", ".join(sorted(dropped)),
+                style="muted"
+            );
+        }
+    }
+
     import from jaclang.cli.commands.eject_targets.backend { emit_backend }
     rc = emit_backend(
-        backend_dir, project_name, compiled, walkers, functions, remap, db_cfg
+        backend_dir,
+        project_name,
+        compiled,
+        walkers,
+        functions,
+        remap,
+        db_cfg,
+        project_deps,
+        len(env_files) > 0,
+        entry_bmod
     );
     if rc != 0 {
         return rc;
     }
+
+    _emit_backend_jac_toml(backend_dir, project_name, toml_data);
 
     has_frontend = entry_has_app;
     if has_frontend {
         runtime_copied = _copy_client_runtime(src, frontend_dir);
         _emit_package_json(frontend_dir, project_name, toml_data);
         _emit_vite_config(frontend_dir, runtime_copied, toml_data);
-        _emit_entry_js(frontend_src_dir, entry_module);
-        _emit_index_html(frontend_dir, project_name);
+        entry_copied = _copy_compiled_entry(src, frontend_src_dir);
+        if not entry_copied {
+            _emit_entry_js(frontend_src_dir, entry_module);
+        }
+        _emit_index_html(frontend_dir, project_name, entry_copied);
     } else {
         console.warning(
             f"  No client `app` component in entry module '{entry_module}'; "
@@ -249,7 +308,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     }
 
     _copy_data_files(
-        src, out, backend_dir, frontend_src_dir, frontend_dir, has_frontend
+        src, out, backend_dir, frontend_src_dir, frontend_dir, has_frontend, eject_roots
     );
 
     if not has_frontend {
@@ -259,6 +318,15 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             _ = 0;
         }
     }
+
+    for name in env_files {
+        shutil.copy2(src / name, out / name);
+    }
+    if env_files {
+        console.print("  ✔ " + ", ".join(env_files), style="success");
+    }
+    _emit_makefile(out, has_frontend);
+    _emit_readme(out, project_name, has_frontend, env_files);
 
     console.print();
     console.success(f"Ejected '{project_name}' → {out}");
@@ -276,14 +344,35 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     console.print();
     console.print("Next steps:", style="bold");
     console.print(f"  cd {out}");
-    if has_frontend {
-        console.print("  (cd frontend && npm install && npm run build)");
+    if (".env.example" in env_files) and (".env" not in env_files) {
+        console.print("  cp .env.example .env");
     }
-    console.print(
-        "  cd backend && pip install -r requirements.txt && uvicorn main:app"
-    );
+    console.print("  make install");
+    console.print("  make dev");
     console.print();
     return 0;
+}
+
+
+def _find_eject_roots(src: Path, out: Path) -> set {
+    roots: set = set();
+    for marker in src.rglob(".jac-ejected") {
+        marker_dir = marker.parent;
+        if marker_dir != out {
+            roots.add(marker_dir);
+        }
+    }
+    return roots;
+}
+
+
+def _under_any(path: Path, roots: set) -> bool {
+    for base in roots {
+        if (path == base) or (base in path.parents) {
+            return True;
+        }
+    }
+    return False;
 }
 
 
@@ -362,21 +451,18 @@ def _is_meaningful_python(py_code: str) -> bool {
     if not py_code.strip() {
         return False;
     }
-    for raw_line in py_code.splitlines() {
-        line = raw_line.strip();
-        if not line {
+    try {
+        tree = ast.parse(py_code);
+    } except Exception {
+        return True;
+    }
+    for node in tree.body {
+        if isinstance(node, (ast.Import, ast.ImportFrom)) {
             continue;
         }
-        if line.startswith("#") {
-            continue;
-        }
-        if line.startswith('"""') or line.startswith("'''") {
-            continue;
-        }
-        if line.startswith("from __future__") {
-            continue;
-        }
-        if line.startswith("from ") or line.startswith("import ") {
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str) {
             continue;
         }
         return True;
@@ -438,7 +524,11 @@ def _emit_vite_config(frontend_dir: Path, runtime_copied: bool, toml_data: dict)
         '',
         'const __dirname = path.dirname(fileURLToPath(import.meta.url));',
         'const _backendPort = process.env.BACKEND_PORT || "8000";',
-        'const _backend = `http://localhost:${_backendPort}`;',
+        '// Target 127.0.0.1, not "localhost": uvicorn binds IPv4-only, but',
+        '// "localhost" also resolves to ::1, and the proxy stalls (ETIMEDOUT)',
+        '// on the dead IPv6 address before falling back.',
+        'const _backendHost = process.env.BACKEND_HOST || "127.0.0.1";',
+        'const _backend = `http://${_backendHost}:${_backendPort}`;',
         '',
         '/** @type {import("vite").UserConfig} */',
         'export default {',
@@ -515,7 +605,37 @@ def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
             _ = 0;
         }
     }
+
+    for sibling in sorted(runtime_src.parent.glob("client_runtime*")) {
+        if sibling.name in ["client_runtime.js", "client_runtime.js.map"] {
+            continue;
+        }
+        try {
+            shutil.copy2(sibling, dest.parent / sibling.name);
+        } except Exception {
+            _ = 0;
+        }
+    }
     console.print("  ✔ @jac/runtime", style="success");
+    return True;
+}
+
+
+def _copy_compiled_entry(src: Path, frontend_src_dir: Path) -> bool {
+    compiled_dir = src / ".jac" / "client" / "compiled";
+    entry_src = compiled_dir / "_entry.js";
+    routes_src = compiled_dir / "_routes.js";
+    if not entry_src.exists() or not routes_src.exists() {
+        return False;
+    }
+    try {
+        shutil.copy2(entry_src, frontend_src_dir / "_entry.js");
+        shutil.copy2(routes_src, frontend_src_dir / "_routes.js");
+    } except Exception as e {
+        console.warning(f"  Failed to copy the compiled client entry: {e}");
+        return False;
+    }
+    console.print("  ✔ client entry + pages routing", style="success");
     return True;
 }
 
@@ -526,7 +646,8 @@ def _copy_data_files(
     backend_dir: Path,
     frontend_src_dir: Path,
     frontend_root: Path,
-    has_frontend: bool
+    has_frontend: bool,
+    eject_roots: set
 ) {
     copied = False;
     for path in src.rglob("*") {
@@ -534,6 +655,9 @@ def _copy_data_files(
             continue;
         }
         if out in path.parents {
+            continue;
+        }
+        if _under_any(path, eject_roots) {
             continue;
         }
         rel = path.relative_to(src);
@@ -560,13 +684,7 @@ def _copy_data_files(
             copied = True;
             continue;
         }
-        is_frontend_only = path.suffix == ".css";
-        if not (has_frontend and is_frontend_only) {
-            dest_b = backend_dir / rel;
-            dest_b.parent.mkdir(parents=True, exist_ok=True);
-            shutil.copy2(path, dest_b);
-        }
-        if has_frontend {
+        if has_frontend and _is_frontend_asset(rel) {
             dest_f = frontend_src_dir / rel;
             dest_f.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(path, dest_f);
@@ -579,12 +697,52 @@ def _copy_data_files(
                 dest_s.parent.mkdir(parents=True, exist_ok=True);
                 shutil.copy2(path, dest_s);
             }
+        } else {
+            dest_b = backend_dir / rel;
+            dest_b.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(path, dest_b);
         }
         copied = True;
     }
     if copied {
         console.print("  ✔ resources", style="success");
     }
+}
+
+
+glob _FRONTEND_ASSET_EXTS: set = {
+         ".css",
+         ".scss",
+         ".sass",
+         ".less",
+         ".png",
+         ".jpg",
+         ".jpeg",
+         ".gif",
+         ".svg",
+         ".webp",
+         ".avif",
+         ".ico",
+         ".bmp",
+         ".woff",
+         ".woff2",
+         ".ttf",
+         ".otf",
+         ".eot",
+         ".mp4",
+         ".webm",
+         ".mp3",
+         ".wav",
+         ".ogg"
+     };
+
+
+def _is_frontend_asset(rel: Path) -> bool {
+    parts = list(rel.parts);
+    if parts and (parts[0] == "assets") {
+        return True;
+    }
+    return rel.suffix.lower() in _FRONTEND_ASSET_EXTS;
 }
 
 
@@ -603,7 +761,10 @@ def _fix_sourcemap_ref(js_code: str, map_name: str, has_map: bool) -> str {
 }
 
 
-def _emit_index_html(frontend_dir: Path, project_name: str) {
+def _emit_index_html(
+    frontend_dir: Path, project_name: str, entry_copied: bool = False
+) {
+    entry_src = "/src/_entry.js" if entry_copied else "/src/__jac_entry.js";
     lines: list[str] = [
         '<!doctype html>',
         '<html lang="en">',
@@ -614,7 +775,7 @@ def _emit_index_html(frontend_dir: Path, project_name: str) {
         '  </head>',
         '  <body>',
         '    <div id="root"></div>',
-        '    <script type="module" src="/src/__jac_entry.js"></script>',
+        f'    <script type="module" src="{entry_src}"></script>',
         '  </body>',
         '</html>',
         ''
@@ -631,6 +792,307 @@ def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
     (frontend_src_dir / "__jac_entry.js").write_text(
         backend.build_entry_script(entry_module), encoding="utf-8"
     );
+}
+
+
+def _keep_reachable(
+    items: list, orig_by_bmod: dict, reachable: set, dropped: set
+) -> list {
+    kept: list = [];
+    for it in items {
+        orig = orig_by_bmod.get(str(it["module"]));
+        if orig in reachable {
+            kept.append(it);
+        } else {
+            dropped.add(str(orig));
+        }
+    }
+    return kept;
+}
+
+
+def _entry_reachable_modules(compiled: list, entry_module: str) -> (dict | None) {
+    units_by_orig: dict = {};
+    for unit in compiled {
+        units_by_orig[str(unit["orig"])] = unit;
+    }
+    entry = "";
+    if entry_module in units_by_orig {
+        entry = entry_module;
+    } else {
+        for name in sorted(units_by_orig.keys()) {
+            if name.endswith("." + entry_module) {
+                entry = name;
+                break;
+            }
+        }
+    }
+    if not entry {
+        return None;
+    }
+    known: set = set(units_by_orig.keys());
+    reachable: set = set();
+    queue: list = [entry];
+    while queue {
+        cur = str(queue.pop(0));
+        if cur in reachable {
+            continue;
+        }
+        reachable.add(cur);
+        deps = _py_import_targets(str(units_by_orig[cur]["py"]), cur, known);
+        for dep in sorted(deps) {
+            if dep not in reachable {
+                queue.append(dep);
+            }
+        }
+    }
+    return {"reachable": reachable, "entry": entry};
+}
+
+
+def _py_import_targets(py_code: str, mod_name: str, known: set) -> set {
+    targets: set = set();
+    try {
+        tree = ast.parse(py_code);
+    } except Exception {
+        return targets;
+    }
+    pkg_parts = mod_name.split(".")[:-1];
+    for node in ast.walk(tree) {
+        if isinstance(node, ast.ImportFrom) {
+            if node.level > 0 {
+                keep = len(pkg_parts) - (node.level - 1);
+                if keep < 0 {
+                    continue;
+                }
+                base_parts = list(pkg_parts[:keep]);
+                if node.module {
+                    base_parts.append(str(node.module));
+                }
+                base = ".".join(base_parts);
+            } else {
+                base = str(node.module or "");
+            }
+            if base in known {
+                targets.add(base);
+            }
+            for alias in node.names {
+                cand = (base + "." + str(alias.name)) if base else str(alias.name);
+                if cand in known {
+                    targets.add(cand);
+                }
+            }
+        } elif isinstance(node, ast.Import) {
+            for alias in node.names {
+                parts = str(alias.name).split(".");
+                for i in range(1, len(parts) + 1) {
+                    prefix = ".".join(parts[:i]);
+                    if prefix in known {
+                        targets.add(prefix);
+                    }
+                }
+            }
+        }
+    }
+    return targets;
+}
+
+
+glob _NON_PIP_DEPS: set = {"npm", "jaclang", "byllm"};
+
+
+def _harvest_python_deps(toml_data: dict) -> list[str] {
+    import from jaclang.project.dependencies { make_pip_spec }
+    deps = toml_data.get("dependencies", {});
+    if not isinstance(deps, dict) {
+        return [];
+    }
+    reqs: list[str] = [];
+    for (name, spec) in deps.items() {
+        pkg = str(name);
+        if pkg.lower() in _NON_PIP_DEPS {
+            continue;
+        }
+        if isinstance(spec, str) {
+            rng = spec.strip();
+        } elif isinstance(spec, dict) {
+            rng = str(spec.get("version", "")).strip();
+        } else {
+            continue;
+        }
+        reqs.append(make_pip_spec(pkg, rng));
+    }
+    return sorted(reqs);
+}
+
+
+def _emit_backend_jac_toml(backend_dir: Path, project_name: str, toml_data: dict) {
+    byllm_cfg = toml_data.get("plugins", {}).get("byllm", {});
+    if (not isinstance(byllm_cfg, dict)) or (not byllm_cfg) {
+        return;
+    }
+    project_cfg = toml_data.get("project", {});
+    version = str(project_cfg.get("version", "0.1.0"));
+    lines: list[str] = [];
+    _emit_toml_table(lines, "project", {"name": project_name, "version": version});
+    _emit_toml_table(lines, "plugins.byllm", dict(byllm_cfg));
+    (backend_dir / "jac.toml").write_text("\n".join(lines), encoding="utf-8");
+    console.print("  ✔ byLLM config (jac.toml)", style="success");
+}
+
+
+def _emit_toml_table(lines: list, header: str, table: dict) {
+    scalars: list = [];
+    subs: list = [];
+    for (k, v) in table.items() {
+        if isinstance(v, dict) {
+            subs.append((k, v));
+        } else {
+            scalars.append((k, v));
+        }
+    }
+    if scalars {
+        if header {
+            lines.append("[" + header + "]");
+        }
+        for (k, v) in scalars {
+            lines.append(str(k) + " = " + _toml_scalar(v));
+        }
+        lines.append("");
+    }
+    for (k, sub) in subs {
+        child = (header + "." + str(k)) if header else str(k);
+        _emit_toml_table(lines, child, dict(sub));
+    }
+}
+
+
+def _toml_scalar(v: any) -> str {
+    if isinstance(v, bool) {
+        return "true" if v else "false";
+    }
+    if isinstance(v, str) {
+        esc = v.replace("\\", "\\\\").replace('"', '\\"');
+        return '"' + esc + '"';
+    }
+    if isinstance(v, (int, float)) {
+        return str(v);
+    }
+    if isinstance(v, list) {
+        return "[" + ", ".join([_toml_scalar(x) for x in v]) + "]";
+    }
+    return '"' + str(v).replace('"', '\\"') + '"';
+}
+
+
+def _emit_makefile(out: Path, has_frontend: bool) {
+    lines: list[str] = ["BACKEND_PORT ?= 8000", ""];
+    if has_frontend {
+        lines += [
+            ".PHONY: install dev dev-backend dev-frontend build start",
+            "",
+            "install:",
+            "\tcd backend && pip install -r requirements.txt",
+            "\tcd frontend && npm install",
+            "",
+            "dev:",
+            "\t$(MAKE) -j2 dev-backend dev-frontend",
+            "",
+            "dev-backend:",
+            "\tcd backend && uvicorn main:app --reload --port $(BACKEND_PORT)",
+            "",
+            "dev-frontend:",
+            "\tcd frontend && BACKEND_PORT=$(BACKEND_PORT) npm run dev",
+            "",
+            "build:",
+            "\tcd frontend && npm run build",
+            "",
+            "start: build",
+            "\tcd backend && uvicorn main:app --host 0.0.0.0 --port $(BACKEND_PORT)",
+            ""
+        ];
+    } else {
+        lines += [
+            ".PHONY: install dev start",
+            "",
+            "install:",
+            "\tcd backend && pip install -r requirements.txt",
+            "",
+            "dev:",
+            "\tcd backend && uvicorn main:app --reload --port $(BACKEND_PORT)",
+            "",
+            "start:",
+            "\tcd backend && uvicorn main:app --host 0.0.0.0 --port $(BACKEND_PORT)",
+            ""
+        ];
+    }
+    (out / "Makefile").write_text("\n".join(lines), encoding="utf-8");
+}
+
+
+def _emit_readme(out: Path, project_name: str, has_frontend: bool, env_files: list) {
+    layout = "`backend/` (FastAPI)";
+    if has_frontend {
+        layout += " + `frontend/` (Vite)";
+    }
+    lines: list[str] = [
+        f"# {project_name}",
+        "",
+        f"Standalone app generated by `jac eject`: {layout}.",
+        "The jaclang runtime is vendored into `backend/jaclang/`; "
+        "no jaclang install is needed.",
+        "",
+        "## Quickstart",
+        "",
+        "```sh",
+        "make install"
+    ];
+    if (".env.example" in env_files) and (".env" not in env_files) {
+        lines.append("cp .env.example .env");
+    }
+    lines += ["make dev", "```", ""];
+    if has_frontend {
+        lines += [
+            "`make dev` runs the backend on `http://localhost:8000` and the "
+            "Vite dev server (with an API proxy) on `http://localhost:5173`. "
+            "Override the backend port with `BACKEND_PORT=<port> make dev`.",
+            "",
+            "For a production-style run on a single origin (builds the "
+            "frontend, then serves API + UI from the backend):",
+            "",
+            "```sh",
+            "make start",
+            "```",
+            ""
+        ];
+    } else {
+        lines += [
+            "`make dev` runs the backend with auto-reload on "
+            "`http://localhost:8000`. Override the port with "
+            "`BACKEND_PORT=<port> make dev`; `make start` serves without "
+            "reload on all interfaces.",
+            ""
+        ];
+    }
+    if env_files {
+        lines += [
+            "## Configuration",
+            "",
+            "Environment variables are loaded at startup from `.env` in this "
+            "directory (or next to `backend/main.py`).",
+            ""
+        ];
+    }
+    lines += [
+        "## API",
+        "",
+        "- Walkers: `POST /walker/<name>`; functions: `POST /function/<name>`.",
+        "- Auth: `POST /user/register` and `POST /user/login`; `:pub` "
+        "endpoints need no token.",
+        "- OpenAPI docs at `/docs`; health check at `/__health`.",
+        ""
+    ];
+    (out / "README.md").write_text("\n".join(lines), encoding="utf-8");
 }
 
 
