@@ -856,3 +856,30 @@ def _candidate_from_stub_package(
     }
     return None;
 }
+
+def is_untyped_third_party_module(path: str) -> bool {
+    if not path.endswith('.py') {
+        return False;
+    }
+    normalized = path.replace('\\', '/');
+    if ('/site-packages/' not in normalized)
+    and ('/dist-packages/' not in normalized) {
+        return False;
+    }
+    mod_path = Path(path);
+    if mod_path.with_suffix('.pyi').exists() {
+        return False;
+    }
+    pkg_dir = mod_path.parent;
+    while pkg_dir.name not in ('site-packages', 'dist-packages') {
+        if (pkg_dir / 'py.typed').exists() {
+            return False;
+        }
+        parent = pkg_dir.parent;
+        if parent == pkg_dir {
+            break;
+        }
+        pkg_dir = parent;
+    }
+    return True;
+}

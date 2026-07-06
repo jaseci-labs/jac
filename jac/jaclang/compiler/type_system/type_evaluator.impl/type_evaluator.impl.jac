@@ -642,15 +642,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                 full_narrowed: TypeBase | None = None;
 
                 assert isinstance(expr.right, uni.Name);
+                if isinstance(base_type, types.AnyType) and base_type.is_foreign {
+                    expr.right.type = types.AnyType(is_foreign=True);
+                    return expr.right.type;
+                }
                 if isinstance(base_type, types.ModuleType) {
                     if base_type.is_external {
                         expr.right.type = types.AnyType(is_foreign=True);
                         return expr.right.type;
                     }
 
-                    if sym := type_utils.lookup_symtab(
+                    member_sym = type_utils.lookup_symtab(
                         base_type.symbol_table, expr.right.value, self.builtins_module
+                    );
+                    if (
+                        member_sym is None
+                        and isinstance(base_type.symbol_table, uni.Module)
                     ) {
+                        member_sym = self._resolve_star_import_symbol(
+                            base_type.symbol_table, expr.right.value
+                        );
+                    }
+                    if member_sym is not None {
+                        sym = member_sym;
                         sym_type = self.get_type_of_symbol(sym);
 
                         if special_form := self._get_special_form_type(
@@ -664,8 +678,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                         if isinstance(sym_type, types.FunctionType) {
                             overloaded_fns: list[types.FunctionType] = [sym_type];
 
+                            overload_scope = base_type.symbol_table;
+                            if sym.parent_tab is not None {
+                                overload_scope = sym.parent_tab;
+                            }
                             all_syms = type_utils.collect_member_syms(
-                                base_type.symbol_table, expr.right.value
+                                overload_scope, expr.right.value
                             );
                             for overload_symbol in all_syms {
                                 if overload_symbol == sym {
@@ -2370,7 +2388,7 @@ impl TypeEvaluator._assign_class(
     }
     src_type = unwrapped_src;
     dest_type = unwrapped_dest;
-    if src_type.shared == dest_type.shared {
+    if src_type.shared.same_class(dest_type.shared) {
         if dest_type.is_literal_type() {
             if not src_type.is_literal_type() {
                 return False;
@@ -2514,7 +2532,7 @@ impl TypeEvaluator.is_sub_class(
         type_utils.compute_mro_linearization(sub_cls);
     }
     for cls in sub_cls.shared.mro {
-        if cls.shared == super_cls.shared {
+        if cls.shared.same_class(super_cls.shared) {
             return True;
         }
     }
@@ -4385,7 +4403,7 @@ impl TypeEvaluator.exclude_type_from_union(
         }
         for excl_t in to_exclude_list {
             if isinstance(excl_t, types.ClassType) {
-                exclude_shareds.add(id(excl_t.shared));
+                exclude_shareds.add(excl_t.shared.canonical_key() or id(excl_t.shared));
             } else {
                 exclude_ids.add(id(excl_t));
             }
@@ -4393,7 +4411,7 @@ impl TypeEvaluator.exclude_type_from_union(
         remaining: list[TypeBase] = [];
         for t in original.types {
             if isinstance(t, types.ClassType) {
-                if id(t.shared) in exclude_shareds {
+                if (t.shared.canonical_key() or id(t.shared)) in exclude_shareds {
                     continue;
                 }
             } elif id(t) in exclude_ids {
@@ -4412,7 +4430,7 @@ impl TypeEvaluator.exclude_type_from_union(
 
     if isinstance(original, types.ClassType)
     and isinstance(to_exclude, types.ClassType)
-    and original.shared == to_exclude.shared {
+    and original.shared.same_class(to_exclude.shared) {
         return types.NeverType();
     }
 
