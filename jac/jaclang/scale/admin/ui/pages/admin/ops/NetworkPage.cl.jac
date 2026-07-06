@@ -9,11 +9,13 @@ Reads GET /admin/ops/network and renders three sections, kubeconfig-free:
     and which pods currently mount each claim.
 """
 
-import from "lucide-react" { Network, RefreshCw, AlertTriangle }
+import from "lucide-react" { Network }
 
 import from react { useEffect }
+import from ....components.common.PageHeader { PageHeader, OpsUnavailableBanner }
 import from ....context.AuthContext { useAuth }
 import from ....services.opsService { getNetwork }
+import from ....utils.api { getErrorMessage }
 
 def:pub NetworkPage -> JsxElement {
     has isLoading: bool = False,
@@ -42,7 +44,7 @@ def:pub NetworkPage -> JsxElement {
                 pvcs = data["pvcs"] or [];
                 errorMsg = "";
             } elif result["error"] {
-                errorMsg = result["error"]["message"] or "Failed to load network view";
+                errorMsg = getErrorMessage(result, "Failed to load network view");
             }
         } except Exception as e {
             console.error("network load error:", e);
@@ -85,34 +87,17 @@ def:pub NetworkPage -> JsxElement {
 
     return
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <Network className="w-5 h-5 text-accent"/>
-                    <h1 className="text-lg font-semibold text-fg">
-                        Endpoints & Storage
-                    </h1>
-                    {<span className="text-xs text-faint">{namespace}</span>
-                        if namespace
-                        else None}
-                </div>
-                <button
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors"
-                    onClick={lambda { load(); }}
-                >
-                    <RefreshCw className="w-3.5 h-3.5"/>
-                    Refresh
-                </button>
-            </div>
-            {<div
-                className="flex items-start gap-2 text-warning text-sm bg-warning-weak border border-line rounded-md p-3"
-            >
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
-                <span className="text-muted">
-                    Cluster view unavailable: {detail}. Enable [plugins.scale.kubernetes].ops_console and redeploy.
-                </span>
-            </div>
-                if (loadedOnce and not available)
-                else None}
+            <PageHeader
+                icon={Network}
+                title="Endpoints & Storage"
+                namespace={namespace}
+                onRefresh={lambda { load(); }}
+            />
+            <OpsUnavailableBanner
+                show={loadedOnce and not available}
+                detail={detail}
+                remediation="Enable [plugins.scale.kubernetes].ops_console and redeploy."
+            />
             {<div className="text-danger text-sm">{errorMsg}</div>
                 if errorMsg
                 else None}

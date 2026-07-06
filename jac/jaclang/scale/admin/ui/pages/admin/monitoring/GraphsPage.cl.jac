@@ -15,6 +15,7 @@ cl import from "lucide-react" { TrendingUp, Activity }
 
 cl {
     import from react { useEffect }
+    import from ....components.common.PageHeader { PageHeader }
     import from ....context.AuthContext { useAuth }
     import from ....services.workloadsService { getWorkloadsTimeseries }
 
@@ -206,32 +207,25 @@ cl {
         memLineColor = "#7c3aed";
         memAreaFill = "rgba(124,58,237,0.15)";
 
+        rangeSelect = <select
+            value={str(rangeMinutes)}
+            onChange={lambda e: any { rangeMinutes = int(e.target.value); }}
+            className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
+        >
+            <option value="60">Last 1 hour</option>
+            <option value="360">Last 6 hours</option>
+            <option value="1440">Last 24 hours</option>
+            <option value="10080">Last 7 days</option>
+        </select>;
+
         return
             <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                        <TrendingUp className="w-5 h-5 text-accent"/>
-                        <h1 className="text-lg font-semibold text-fg">
-                            Resource usage
-                        </h1>
-                        <span
-                            className="ml-1 inline-flex items-center gap-1.5 text-xs text-success"
-                        >
-                            <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
-                            Live
-                        </span>
-                    </div>
-                    <select
-                        value={str(rangeMinutes)}
-                        onChange={lambda e: any { rangeMinutes = int(e.target.value); }}
-                        className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
-                    >
-                        <option value="60">Last 1 hour</option>
-                        <option value="360">Last 6 hours</option>
-                        <option value="1440">Last 24 hours</option>
-                        <option value="10080">Last 7 days</option>
-                    </select>
-                </div>
+                <PageHeader
+                    icon={TrendingUp}
+                    title="Resource usage"
+                    live={True}
+                    right={rangeSelect}
+                />
                 {sparse
                 and <div
                     className="bg-warning-weak border border-warning/30 rounded-lg px-4 py-3"
