@@ -140,6 +140,10 @@ def download_release_binary(channel: str, arch: str) -> bytes {
 
 
 def _binary_cache_path(channel: str, arch: str) -> Path {
+    # Cache on the DEPLOY-DRIVER machine (laptop / CI runner / operator pod),
+    # not the cluster: the driver needs the binary before the PVC exists, and
+    # this one copy serves every app/cluster it deploys. The PVC hop is
+    # deduplicated separately by the content-addressed seeder (#7198).
     base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
     cache_root = Path(base)
         if base
