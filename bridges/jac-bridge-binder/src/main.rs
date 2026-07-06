@@ -26,8 +26,15 @@ fn main() {
 
     let mut spec = jac_bridge_binder::classify_with_overlay(&doc, overlay.as_ref());
 
-    eprintln!("// module: {}  version: {}", spec.module_name, spec.crate_version);
-    eprintln!("// types: {}  skips: {}", spec.types.len(), spec.skips.len());
+    eprintln!(
+        "// module: {}  version: {}",
+        spec.module_name, spec.crate_version
+    );
+    eprintln!(
+        "// types: {}  skips: {}",
+        spec.types.len(),
+        spec.skips.len()
+    );
 
     if let Some(overlay) = &overlay {
         if let Err(e) = jac_bridge_binder::apply_overlay(&mut spec, overlay) {
@@ -71,8 +78,10 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, String) {
             }
             "--jac-bridge" => {
                 i += 1;
-                jac_bridge_path =
-                    args.get(i).expect("--jac-bridge requires a path").to_string();
+                jac_bridge_path = args
+                    .get(i)
+                    .expect("--jac-bridge requires a path")
+                    .to_string();
             }
             arg if !arg.starts_with('-') => {
                 doc_path = Some(PathBuf::from(arg));
@@ -85,7 +94,7 @@ fn parse_args(args: &[String]) -> (PathBuf, Option<PathBuf>, String) {
         i += 1;
     }
 
-    let doc_path =
-        doc_path.expect("usage: jac-bridge-binder <rustdoc.json> [--out <dir>] [--jac-bridge <path>]");
+    let doc_path = doc_path
+        .expect("usage: jac-bridge-binder <rustdoc.json> [--out <dir>] [--jac-bridge <path>]");
     (doc_path, out_dir, jac_bridge_path)
 }

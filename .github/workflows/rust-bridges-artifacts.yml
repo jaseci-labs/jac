@@ -71,6 +71,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang (runs the .jac build tools)
+        run: python -m pip install --upgrade jaclang
+        shell: bash
+
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -89,7 +93,7 @@ jobs:
         shell: bash
         run: |
           CRATES="${{ github.event.inputs.crates || env.DEFAULT_CRATES }}"
-          python bridges/tools/build_bridge_artifacts.py \
+          jac run bridges/tools/build_bridge_artifacts.jac \
             --workspace bridges \
             --out dist \
             --triple "${{ matrix.triple }}" \
@@ -113,6 +117,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang (runs the .jac build tools)
+        run: python -m pip install --upgrade jaclang
+        shell: bash
+
       - name: Download all target artifacts
         uses: actions/download-artifact@v4
         with:
@@ -122,7 +130,7 @@ jobs:
 
       - name: Merge into index.json
         run: |
-          python bridges/tools/merge_registry_index.py --out staging/index.json staging
+          jac run bridges/tools/merge_registry_index.jac --out staging/index.json staging
           echo "----- index.json -----"
           cat staging/index.json
 

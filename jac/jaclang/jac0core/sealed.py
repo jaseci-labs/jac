@@ -310,7 +310,33 @@ def register_image(precompiled_dir: str | Path) -> SealedImage | None:
     if image is not None:
         image.verify()
         _images.append(image)
+        _register_bundle_bridges(precompiled_dir)
     return image
+
+
+def _register_bundle_bridges(precompiled_dir: str | Path) -> None:
+    """Point the Rust-bridge finder at a bundle's ``rust-bridges/`` folder.
+
+    ``jac bundle`` copies the crate ``.so``/``.dylib`` artifacts into a
+    ``rust-bridges/`` folder beside ``_precompiled/`` (see project._copy_rust_bridges).
+    Registering it here makes the bundled bridges discoverable at runtime even
+    when the host cache/env doesn't already contain them. Best-effort: a broken
+    or absent bridge finder must never break sealed-image loading.
+    """
+    try:
+        bridges = Path(precompiled_dir).resolve().parent / "rust-bridges"
+        if bridges.is_dir():
+            from jaclang.compiler.rust_bridge._finder import register_search_dir
+
+            register_search_dir(str(bridges))
+    except Exception:  # noqa: BLE001 -- bridge wiring is best-effort
+        pass
+
+
+def is_sealed() -> bool:
+    """True when jaclang itself runs from a sealed image."""
+    return _jaclang_image() is not None
+
 
 
 def find_module(fullname: str) -> tuple[SealedImage, dict, str] | None:

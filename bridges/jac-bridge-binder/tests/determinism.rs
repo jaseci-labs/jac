@@ -11,7 +11,9 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name)
 }
 
 fn run_binder(doc: &PathBuf) -> String {

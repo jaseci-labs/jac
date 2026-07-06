@@ -18,10 +18,13 @@
 //! ```
 //!
 //! The full directive set is honoured (M4 Phase B): `skip`/`rename`/`inject`
-//! plus `treat_as` (reclassify a method or force it off — applied during
-//! `classify_with_overlay`), `monomorphize` (pin a generic struct's concrete
-//! instantiations — also classify-time), and `[module."m"] skip` (drop a whole
-//! submodule by provenance). An unknown value or an empty `monomorphize` set is
+//! plus `fn.treat_as` (reclassify a method or force it off — applied during
+//! `classify_with_overlay`), `type.treat_as` (force a type's `error`/`opaque`
+//! classification when neither the `impl std::error::Error` signal nor the
+//! `*Error` name heuristic gets it right), `monomorphize` (pin a generic
+//! struct's concrete instantiations — also classify-time), and `[module."m"]
+//! skip` (drop a whole submodule by provenance). An unknown value, an empty
+//! `monomorphize` set, or a contradictory `treat_as` + `skip`/`rename` pairing is
 //! rejected with a precise reason — an overlay entry is a decision the author
 //! expects to take effect, never a silent no-op.
 
@@ -78,6 +81,12 @@ pub struct TypeOverlay {
     /// `DateTime` emits `DateTimeUtc(pub chrono::DateTime<chrono::Utc>)`. An empty
     /// list is rejected.
     pub monomorphize: Option<Vec<String>>,
+    /// Force this type's error/opaque classification when neither an
+    /// `impl std::error::Error` nor the `*Error` name heuristic gets it right
+    /// (applied at classify time). `"error"` bridges it as an error type;
+    /// `"opaque"` bridges a `*Error`-named domain type as an ordinary resource.
+    /// Exclusive with `skip` (a removed type has nothing to reclassify).
+    pub treat_as: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -110,13 +119,35 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
             .filter(|bt| bt.module_path.iter().any(|seg| seg == name))
             .map(|bt| bt.name.clone())
             .collect();
-        spec.types.retain(|bt| !bt.module_path.iter().any(|seg| seg == name));
-        spec.skips
-            .retain(|s| !removed.iter().any(|t| s.item.starts_with(&format!("{t}::"))));
+        spec.types
+            .retain(|bt| !bt.module_path.iter().any(|seg| seg == name));
+        spec.skips.retain(|s| {
+            !removed
+                .iter()
+                .any(|t| s.item.starts_with(&format!("{t}::")))
+        });
     }
 
     // ── [type."T"] ───────────────────────────────────────────────────────────
     for (name, t) in &overlay.types {
+        // `treat_as` (error/opaque reclassification) is consumed at classify time;
+        // here we only validate the value and its exclusivity so a typo or a
+        // contradictory `skip` fails loud instead of silently doing nothing.
+        if let Some(kind) = &t.treat_as {
+            const ALLOWED: &[&str] = &["error", "opaque"];
+            if !ALLOWED.contains(&kind.as_str()) {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] treat_as = \"{kind}\" is not a known \
+                     reclassification — expected one of {ALLOWED:?}"
+                ));
+            }
+            if t.skip {
+                return Err(format!(
+                    "overlay: [type.\"{name}\"] treat_as is exclusive with skip = true \
+                     — a removed type has nothing to reclassify"
+                ));
+            }
+        }
         // `monomorphize` is honoured during classification (see
         // `classify_with_overlay`), which expands the generic struct into concrete
         // `T<Suffix>` types. Here we only validate it and move on — the original
@@ -134,7 +165,8 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
         if t.skip {
             spec.types.retain(|bt| bt.name != *name);
             // A skipped type's method skips are noise; drop them too.
-            spec.skips.retain(|s| !s.item.starts_with(&format!("{name}::")));
+            spec.skips
+                .retain(|s| !s.item.starts_with(&format!("{name}::")));
             continue;
         }
         let Some(bt) = spec.types.iter_mut().find(|bt| bt.name == *name) else {
@@ -165,8 +197,15 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
                      reclassification — expected one of {ALLOWED:?}"
                 ));
             }
-            // A treat_as directive is exclusive: it fully determines the method's
-            // fate at classify time, so skip/rename on the same entry are ignored.
+            // A treat_as directive fully determines the method's fate at classify
+            // time, so it is exclusive with skip/rename on the same entry —
+            // combining them would silently drop the skip/rename. Fail loud.
+            if f.skip || f.rename.is_some() {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] treat_as is exclusive with skip/rename on \
+                     the same entry — split them into separate directives"
+                ));
+            }
             continue;
         }
 

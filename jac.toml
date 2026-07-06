@@ -43,6 +43,9 @@ exclude = [
     #    native bridge extractor reads.
     "jir_registry.jac",
     "plugin_bridge.na.jac",
+    # Rust-bridge registry CI tools: standalone scripts whose module docstrings
+    # document the artifact-build / index-merge pipeline for maintainers.
+    "bridges/tools/*",
 ]
 
 [plugins.byllm.model]

@@ -9,7 +9,10 @@ import from jaclang.compiler.rust_bridge._builder {
     toolchain_available,
     workspace_root
 }
-import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
+import from jaclang.compiler.rust_bridge._finder {
+    find_bridge_lib,
+    built_lib_candidates
+}
 
 
 test "missing workspace raises a clear error" {
@@ -32,7 +35,7 @@ test "missing workspace raises a clear error" {
 }
 
 
-test "end-to-end build installs a cache-resolvable .so" {
+test "end-to-end build installs a cache-resolvable cdylib" {
     if os.environ.get("JAC_BRIDGE_BUILD_TESTS") != "1" {
         return;
     }
@@ -41,7 +44,9 @@ test "end-to-end build installs a cache-resolvable .so" {
     }
     dest = build_bridge("regex", "1.11");
     assert dest.is_file() , f"build_bridge did not produce {dest}";
-    assert dest.name == "libjac_bridge_regex.so";
+    # Cross-platform: the built cdylib carries the current platform's extension
+    # (.so / .dylib / .dll), so assert against the candidate set, not a bare .so.
+    assert dest.name in built_lib_candidates("regex") , f"unexpected cdylib name {dest.name}";
     # the version-scoped cache path the finder resolves, no dev fallback.
     found = find_bridge_lib("regex");
     assert found is not None , "find_bridge_lib could not resolve the built bridge";

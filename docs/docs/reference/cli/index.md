@@ -1402,9 +1402,15 @@ jac add --git https://github.com/user/package.git
 
 # Add npm package (client framework built into jaclang core)
 jac add react --npm
+
+# Add a Rust crate bridge (recorded under [rust-bridges])
+jac add rust:regex@1.12
+jac add rust:uuid
 ```
 
 For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[plugins.client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
+
+A package prefixed with `rust:` is a [Rust crate bridge](../language/rust-bridges.md) rather than a PyPI package. It is recorded under the `[rust-bridges]` table with a version **constraint** (`@1.12` or `==1.12` pins the `1.12.x` series; omitting it records `*`), and resolved by `jac install` from the local cache, a registry, or a local build. See the [Rust Crate Bridges](../language/rust-bridges.md) reference for resolution order and requirements.
 
 ---
 

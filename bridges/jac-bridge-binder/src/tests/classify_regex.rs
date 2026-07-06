@@ -45,7 +45,11 @@ fn regex_is_opaque_with_ctor_and_is_match() {
     let doc = load_regex_doc();
     let spec = classify(&doc);
 
-    let regex_type = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
+    let regex_type = spec
+        .types
+        .iter()
+        .find(|t| t.name == "Regex")
+        .expect("Regex type");
     assert_eq!(regex_type.kind, TypeKind::Opaque);
 
     // Constructor: new(&str) -> Result<Regex, Error>
@@ -56,7 +60,11 @@ fn regex_is_opaque_with_ctor_and_is_match() {
     assert_eq!(ctor.ret, BridgeReturn::OwnSelfResult);
 
     // Method: is_match(&self, &str) -> bool
-    let is_match = regex_type.methods.iter().find(|m| m.name == "is_match").expect("is_match");
+    let is_match = regex_type
+        .methods
+        .iter()
+        .find(|m| m.name == "is_match")
+        .expect("is_match");
     assert_eq!(is_match.params.len(), 1);
     assert_eq!(is_match.params[0].ty, ScalarType::Str);
     assert_eq!(is_match.ret, BridgeReturn::Bool);
@@ -67,7 +75,11 @@ fn error_type_classified() {
     let doc = load_regex_doc();
     let spec = classify(&doc);
 
-    let err_type = spec.types.iter().find(|t| t.name == "Error").expect("Error type");
+    let err_type = spec
+        .types
+        .iter()
+        .find(|t| t.name == "Error")
+        .expect("Error type");
     assert_eq!(err_type.kind, TypeKind::Error);
 }
 
@@ -92,16 +104,34 @@ fn captures_rescued_by_nested_wrapper() {
     let spec = classify(&doc);
 
     // Regex::captures becomes a producer of the OwnedCaptures wrapper.
-    let regex_type = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
-    let captures =
-        regex_type.methods.iter().find(|m| m.name == "captures").expect("captures producer");
-    assert_eq!(captures.ret, BridgeReturn::OptWrapper("OwnedCaptures".into()));
+    let regex_type = spec
+        .types
+        .iter()
+        .find(|t| t.name == "Regex")
+        .expect("Regex type");
+    let captures = regex_type
+        .methods
+        .iter()
+        .find(|m| m.name == "captures")
+        .expect("captures producer");
+    assert_eq!(
+        captures.ret,
+        BridgeReturn::OptWrapper("OwnedCaptures".into())
+    );
     assert_eq!(captures.recv, Recv::Field0); // root producer on the plain owner
 
     // OwnedCaptures exists and its `name` reader is a NESTED producer of OwnedMatch,
     // delegating through self.inner (recv Inner), not a lifetime-borrow skip.
-    let oc = spec.types.iter().find(|t| t.name == "OwnedCaptures").expect("OwnedCaptures type");
-    let name = oc.methods.iter().find(|m| m.name == "name").expect("name nested producer");
+    let oc = spec
+        .types
+        .iter()
+        .find(|t| t.name == "OwnedCaptures")
+        .expect("OwnedCaptures type");
+    let name = oc
+        .methods
+        .iter()
+        .find(|m| m.name == "name")
+        .expect("name nested producer");
     assert_eq!(name.ret, BridgeReturn::OptWrapper("OwnedMatch".into()));
     assert_eq!(name.recv, Recv::Inner);
     assert_eq!(name.params.len(), 1);
@@ -111,13 +141,19 @@ fn captures_rescued_by_nested_wrapper() {
     // root path), so its wrapper metadata carries a root producer via `captures`.
     let ocw = oc.wrapper.as_ref().expect("OwnedCaptures wrapper metadata");
     assert_eq!(ocw.borrowed_path, "regex::Captures");
-    let ocroot = ocw.root.as_ref().expect("OwnedCaptures root producer (captures)");
+    let ocroot = ocw
+        .root
+        .as_ref()
+        .expect("OwnedCaptures root producer (captures)");
     assert_eq!(ocroot.producer_call, "captures");
 
     // The single shared OwnedMatch keeps its root `wrap` ctor (from find) even
     // though it is ALSO produced nested — the two requests merged.
     let om_count = spec.types.iter().filter(|t| t.name == "OwnedMatch").count();
-    assert_eq!(om_count, 1, "OwnedMatch must be emitted exactly once (merged)");
+    assert_eq!(
+        om_count, 1,
+        "OwnedMatch must be emitted exactly once (merged)"
+    );
     let om = spec.types.iter().find(|t| t.name == "OwnedMatch").unwrap();
     assert!(
         om.wrapper.as_ref().and_then(|w| w.root.as_ref()).is_some(),
@@ -129,45 +165,100 @@ fn captures_rescued_by_nested_wrapper() {
 fn iterators_rescued_as_cursors_and_drains() {
     let doc = load_regex_doc();
     let spec = classify(&doc);
-    let regex_type = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
+    let regex_type = spec
+        .types
+        .iter()
+        .find(|t| t.name == "Regex")
+        .expect("Regex type");
 
     // Regex::find_iter -> Matches<'r,'h> (Item = Match) becomes a CURSOR producer:
     // a non-nullable OwnedMatches whose next() pulls OwnedMatch.
-    let find_iter =
-        regex_type.methods.iter().find(|m| m.name == "find_iter").expect("find_iter producer");
+    let find_iter = regex_type
+        .methods
+        .iter()
+        .find(|m| m.name == "find_iter")
+        .expect("find_iter producer");
     assert_eq!(find_iter.ret, BridgeReturn::Wrapper("OwnedMatches".into()));
-    let om = spec.types.iter().find(|t| t.name == "OwnedMatches").expect("OwnedMatches cursor");
+    let om = spec
+        .types
+        .iter()
+        .find(|t| t.name == "OwnedMatches")
+        .expect("OwnedMatches cursor");
     let ocw = om.wrapper.as_ref().expect("cursor wrapper metadata");
-    assert_eq!(ocw.kind, WrapperKind::Cursor { item_wrapper: "OwnedMatch".into() });
-    let next = om.methods.iter().find(|m| m.name == "next").expect("OwnedMatches::next");
+    assert_eq!(
+        ocw.kind,
+        WrapperKind::Cursor {
+            item_wrapper: "OwnedMatch".into()
+        }
+    );
+    let next = om
+        .methods
+        .iter()
+        .find(|m| m.name == "next")
+        .expect("OwnedMatches::next");
     assert_eq!(next.ret, BridgeReturn::OptWrapper("OwnedMatch".into()));
     assert_eq!(next.recv, Recv::IterNext);
     assert!(next.params.is_empty());
 
     // Regex::captures_iter -> CaptureMatches (Item = Captures) is ALSO a cursor; its
     // item wrapper is OwnedCaptures, which MERGES with the one `captures` produces.
-    let ci = regex_type.methods.iter().find(|m| m.name == "captures_iter").expect("captures_iter");
+    let ci = regex_type
+        .methods
+        .iter()
+        .find(|m| m.name == "captures_iter")
+        .expect("captures_iter");
     assert_eq!(ci.ret, BridgeReturn::Wrapper("OwnedCaptureMatches".into()));
-    let ocm = spec.types.iter().find(|t| t.name == "OwnedCaptureMatches").expect("cursor type");
+    let ocm = spec
+        .types
+        .iter()
+        .find(|t| t.name == "OwnedCaptureMatches")
+        .expect("cursor type");
     assert_eq!(
         ocm.wrapper.as_ref().unwrap().kind,
-        WrapperKind::Cursor { item_wrapper: "OwnedCaptures".into() }
+        WrapperKind::Cursor {
+            item_wrapper: "OwnedCaptures".into()
+        }
     );
-    let occ = spec.types.iter().filter(|t| t.name == "OwnedCaptures").count();
-    assert_eq!(occ, 1, "OwnedCaptures emitted once (captures + captures_iter merged)");
+    let occ = spec
+        .types
+        .iter()
+        .filter(|t| t.name == "OwnedCaptures")
+        .count();
+    assert_eq!(
+        occ, 1,
+        "OwnedCaptures emitted once (captures + captures_iter merged)"
+    );
 
     // Regex::split -> Split (Item = &str) becomes a DRAIN: OwnedSplit.next -> Option<String>.
-    let split = regex_type.methods.iter().find(|m| m.name == "split").expect("split producer");
+    let split = regex_type
+        .methods
+        .iter()
+        .find(|m| m.name == "split")
+        .expect("split producer");
     assert_eq!(split.ret, BridgeReturn::Wrapper("OwnedSplit".into()));
-    let os = spec.types.iter().find(|t| t.name == "OwnedSplit").expect("OwnedSplit drain");
-    assert!(matches!(os.wrapper.as_ref().unwrap().kind, WrapperKind::Drain { .. }));
-    let dnext = os.methods.iter().find(|m| m.name == "next").expect("OwnedSplit::next");
+    let os = spec
+        .types
+        .iter()
+        .find(|t| t.name == "OwnedSplit")
+        .expect("OwnedSplit drain");
+    assert!(matches!(
+        os.wrapper.as_ref().unwrap().kind,
+        WrapperKind::Drain { .. }
+    ));
+    let dnext = os
+        .methods
+        .iter()
+        .find(|m| m.name == "next")
+        .expect("OwnedSplit::next");
     assert_eq!(dnext.ret, BridgeReturn::OptStr);
     assert_eq!(dnext.recv, Recv::DrainNext);
 
     // None of the three are skips any more.
     for item in ["Regex::find_iter", "Regex::captures_iter", "Regex::split"] {
-        assert!(spec.skips.iter().all(|s| s.item != item), "{item} should be rescued");
+        assert!(
+            spec.skips.iter().all(|s| s.item != item),
+            "{item} should be rescued"
+        );
     }
 
     // Honest limits still hold: an iterator with NO &str input to own can't be a
@@ -197,21 +288,43 @@ fn regexset_patterns_rescued_as_slice_drain() {
         spec.skips.iter().all(|s| s.item != "RegexSet::patterns"),
         "RegexSet::patterns should be rescued as a drain, not skipped"
     );
-    let rs = spec.types.iter().find(|t| t.name == "RegexSet").expect("RegexSet type");
-    let patterns = rs.methods.iter().find(|m| m.name == "patterns").expect("patterns producer");
+    let rs = spec
+        .types
+        .iter()
+        .find(|t| t.name == "RegexSet")
+        .expect("RegexSet type");
+    let patterns = rs
+        .methods
+        .iter()
+        .find(|m| m.name == "patterns")
+        .expect("patterns producer");
     assert_eq!(patterns.ret, BridgeReturn::Wrapper("OwnedPatterns".into()));
-    assert!(patterns.params.is_empty(), "patterns takes no non-self params");
+    assert!(
+        patterns.params.is_empty(),
+        "patterns takes no non-self params"
+    );
     assert_eq!(patterns.recv, Recv::Field0);
 
     // OwnedPatterns is a Drain whose collect strategy is `&[String] -> to_vec()`,
     // with zero forwarded params and a single `next -> Option<String>` reader.
-    let op = spec.types.iter().find(|t| t.name == "OwnedPatterns").expect("OwnedPatterns drain");
+    let op = spec
+        .types
+        .iter()
+        .find(|t| t.name == "OwnedPatterns")
+        .expect("OwnedPatterns drain");
     let w = op.wrapper.as_ref().expect("OwnedPatterns wrapper metadata");
     assert_eq!(
         w.kind,
-        WrapperKind::Drain { params: vec![], collect: DrainCollect::SliceString }
+        WrapperKind::Drain {
+            params: vec![],
+            collect: DrainCollect::SliceString
+        }
     );
-    let next = op.methods.iter().find(|m| m.name == "next").expect("OwnedPatterns::next");
+    let next = op
+        .methods
+        .iter()
+        .find(|m| m.name == "next")
+        .expect("OwnedPatterns::next");
     assert_eq!(next.ret, BridgeReturn::OptStr);
     assert_eq!(next.recv, Recv::DrainNext);
     assert!(next.params.is_empty());
@@ -228,14 +341,26 @@ fn find_is_rescued_by_owning_wrapper() {
         spec.skips.iter().all(|s| s.item != "Regex::find"),
         "Regex::find should be rescued, not skipped"
     );
-    let regex_type = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
-    let find = regex_type.methods.iter().find(|m| m.name == "find").expect("find producer");
+    let regex_type = spec
+        .types
+        .iter()
+        .find(|t| t.name == "Regex")
+        .expect("Regex type");
+    let find = regex_type
+        .methods
+        .iter()
+        .find(|m| m.name == "find")
+        .expect("find producer");
     assert_eq!(find.ret, BridgeReturn::OptWrapper("OwnedMatch".into()));
     assert_eq!(find.params.len(), 1);
     assert_eq!(find.params[0].ty, ScalarType::Str);
 
     // The OwnedMatch wrapper exists, is opaque, and carries the ouroboros metadata.
-    let owned = spec.types.iter().find(|t| t.name == "OwnedMatch").expect("OwnedMatch type");
+    let owned = spec
+        .types
+        .iter()
+        .find(|t| t.name == "OwnedMatch")
+        .expect("OwnedMatch type");
     assert_eq!(owned.kind, TypeKind::Opaque);
     let w = owned.wrapper.as_ref().expect("wrapper metadata");
     assert_eq!(w.borrowed_path, "regex::Match");
@@ -243,7 +368,10 @@ fn find_is_rescued_by_owning_wrapper() {
     // OwnedMatch has a root construction path (via Regex::find) — it is also
     // produced nested (from OwnedCaptures::name), and the two requests merge so
     // the root `wrap` ctor survives.
-    let root = w.root.as_ref().expect("OwnedMatch has a root producer (find)");
+    let root = w
+        .root
+        .as_ref()
+        .expect("OwnedMatch has a root producer (find)");
     assert_eq!(root.owner_inner_path, "regex::Regex");
     assert_eq!(root.producer_call, "find");
 
@@ -251,7 +379,10 @@ fn find_is_rescued_by_owning_wrapper() {
     // The integer readers (start/end/len -> usize) now cross as TAG_UINT.
     let mut reader_names: Vec<&str> = owned.methods.iter().map(|m| m.name.as_str()).collect();
     reader_names.sort_unstable();
-    assert_eq!(reader_names, vec!["as_str", "end", "is_empty", "len", "start"]);
+    assert_eq!(
+        reader_names,
+        vec!["as_str", "end", "is_empty", "len", "start"]
+    );
     assert!(owned.methods.iter().all(|m| m.recv == Recv::Inner));
     let as_str = owned.methods.iter().find(|m| m.name == "as_str").unwrap();
     assert_eq!(as_str.ret, BridgeReturn::Str); // &'h str, copied to owned String
@@ -280,7 +411,11 @@ fn replace_all_rescued_as_callback() {
         !spec.skips.iter().any(|s| s.item == "Regex::replace_all"),
         "Regex::replace_all should be rescued as a callback, not skipped"
     );
-    let regex = spec.types.iter().find(|t| t.name == "Regex").expect("Regex type");
+    let regex = spec
+        .types
+        .iter()
+        .find(|t| t.name == "Regex")
+        .expect("Regex type");
     let ra = regex
         .methods
         .iter()

@@ -58,7 +58,11 @@ fn generated() -> String {
 #[test]
 fn has_bridge_attribute() {
     let src = generated();
-    assert!(sig_contains(&src, "#[bridge(module = \"regex\")]"), "missing bridge attribute\n{}", src);
+    assert!(
+        sig_contains(&src, "#[bridge(module = \"regex\")]"),
+        "missing bridge attribute\n{}",
+        src
+    );
 }
 
 #[test]
@@ -74,8 +78,16 @@ fn regex_struct_wraps_inner() {
 #[test]
 fn error_struct_renamed_to_regex_error() {
     let src = generated();
-    assert!(sig_contains(&src, "#[jac_error]"), "missing #[jac_error]\n{}", src);
-    assert!(sig_contains(&src, "pub struct RegexError;"), "missing RegexError\n{}", src);
+    assert!(
+        sig_contains(&src, "#[jac_error]"),
+        "missing #[jac_error]\n{}",
+        src
+    );
+    assert!(
+        sig_contains(&src, "pub struct RegexError;"),
+        "missing RegexError\n{}",
+        src
+    );
     // Original "Error" name must not appear as a bare struct (it becomes RegexError).
     assert!(
         !sig_contains(&src, "pub struct Error;"),
@@ -124,7 +136,10 @@ fn integer_param_methods_emitted() {
     // is_match_at(&self, &str, usize) -> bool — the usize param crosses in a u64
     // slot, so the method is now emitted verbatim (param type preserved).
     assert!(
-        sig_contains(&src, "pub fn is_match_at(&self, haystack: &str, start: usize) -> bool"),
+        sig_contains(
+            &src,
+            "pub fn is_match_at(&self, haystack: &str, start: usize) -> bool"
+        ),
         "integer-param method should now be emitted\n{}",
         src
     );
@@ -150,25 +165,34 @@ fn owned_match_wrapper_emitted() {
     // The non-pub wrap ctor clones the input into an Arc, produces from it, erases
     // the borrow. The Arc lets a nested wrapper share this exact buffer.
     assert!(
-        sig_contains(&src, "fn wrap(owner: &regex::Regex, input: &str) -> Option<OwnedMatch>")
-            && sig_contains(&src, "let owned = std::sync::Arc::new(input.to_owned());")
+        sig_contains(
+            &src,
+            "fn wrap(owner: &regex::Regex, input: &str) -> Option<OwnedMatch>"
+        ) && sig_contains(&src, "let owned = std::sync::Arc::new(input.to_owned());")
             && sig_contains(&src, "let inner = owner.find(owned.as_str())?;")
-            && sig_contains(&src, "let inner: regex::Match<'static> = unsafe { std::mem::transmute(inner) };"),
+            && sig_contains(
+                &src,
+                "let inner: regex::Match<'static> = unsafe { std::mem::transmute(inner) };"
+            ),
         "missing/incorrect wrap ctor\n{src}"
     );
     // The producer on Regex returns the wrapper.
     assert!(
-        sig_contains(&src, "pub fn find(&self, haystack: &str) -> Option<OwnedMatch>")
-            && sig_contains(&src, "OwnedMatch::wrap(&self.0, haystack)"),
+        sig_contains(
+            &src,
+            "pub fn find(&self, haystack: &str) -> Option<OwnedMatch>"
+        ) && sig_contains(&src, "OwnedMatch::wrap(&self.0, haystack)"),
         "missing find producer\n{src}"
     );
     // Readers delegate through self.inner (the erased borrowing value).
     assert!(
-        sig_contains(&src, "pub fn as_str(&self) -> String") && sig_contains(&src, "self.inner.as_str().to_string()"),
+        sig_contains(&src, "pub fn as_str(&self) -> String")
+            && sig_contains(&src, "self.inner.as_str().to_string()"),
         "missing OwnedMatch::as_str reader\n{src}"
     );
     assert!(
-        sig_contains(&src, "pub fn is_empty(&self) -> bool") && sig_contains(&src, "self.inner.is_empty()"),
+        sig_contains(&src, "pub fn is_empty(&self) -> bool")
+            && sig_contains(&src, "self.inner.is_empty()"),
         "missing OwnedMatch::is_empty reader\n{src}"
     );
 }
@@ -184,14 +208,18 @@ fn owned_captures_nested_producer_emitted() {
         "missing OwnedCaptures struct\n{src}"
     );
     assert!(
-        sig_contains(&src, "fn wrap(owner: &regex::Regex, input: &str) -> Option<OwnedCaptures>")
-            && sig_contains(&src, "let inner = owner.captures(owned.as_str())?;"),
+        sig_contains(
+            &src,
+            "fn wrap(owner: &regex::Regex, input: &str) -> Option<OwnedCaptures>"
+        ) && sig_contains(&src, "let inner = owner.captures(owned.as_str())?;"),
         "missing OwnedCaptures root wrap ctor\n{src}"
     );
     // Regex::captures is now a root producer of the wrapper.
     assert!(
-        sig_contains(&src, "pub fn captures(&self, haystack: &str) -> Option<OwnedCaptures>")
-            && sig_contains(&src, "OwnedCaptures::wrap(&self.0, haystack)"),
+        sig_contains(
+            &src,
+            "pub fn captures(&self, haystack: &str) -> Option<OwnedCaptures>"
+        ) && sig_contains(&src, "OwnedCaptures::wrap(&self.0, haystack)"),
         "missing captures producer\n{src}"
     );
     // The NESTED producer: OwnedCaptures::name builds an OwnedMatch inline from the
@@ -200,7 +228,8 @@ fn owned_captures_nested_producer_emitted() {
     assert!(
         sig_contains(&src, "pub fn name(&self, name: &str) -> Option<OwnedMatch>")
             && sig_contains(&src, "let inner = self.inner.name(name)?;")
-            && sig_contains(&src,
+            && sig_contains(
+                &src,
                 "Some(OwnedMatch { inner, _input: std::sync::Arc::clone(&self._input) })"
             ),
         "missing/incorrect OwnedCaptures::name nested producer\n{src}"
@@ -223,9 +252,14 @@ fn cursor_and_drain_wrappers_emitted() {
     // Its wrap clones the regex + haystack into Arcs and transmutes the iterator;
     // returns the wrapper directly (a cursor is always constructed, no Option).
     assert!(
-        sig_contains(&src, "fn wrap(owner: &regex::Regex, input: &str) -> OwnedMatches {")
-            && sig_contains(&src, "let owner = std::sync::Arc::new(owner.clone());")
-            && sig_contains(&src, "unsafe { std::mem::transmute(owner.find_iter(owned.as_str())) };"),
+        sig_contains(
+            &src,
+            "fn wrap(owner: &regex::Regex, input: &str) -> OwnedMatches {"
+        ) && sig_contains(&src, "let owner = std::sync::Arc::new(owner.clone());")
+            && sig_contains(
+                &src,
+                "unsafe { std::mem::transmute(owner.find_iter(owned.as_str())) };"
+            ),
         "missing/incorrect OwnedMatches::wrap\n{src}"
     );
     // The pull method: &mut self, pulls one item, shares the input Arc.
@@ -236,8 +270,10 @@ fn cursor_and_drain_wrappers_emitted() {
     );
     // The producer on Regex returns the cursor directly.
     assert!(
-        sig_contains(&src, "pub fn find_iter(&self, haystack: &str) -> OwnedMatches {")
-            && sig_contains(&src, "OwnedMatches::wrap(&self.0, haystack)"),
+        sig_contains(
+            &src,
+            "pub fn find_iter(&self, haystack: &str) -> OwnedMatches {"
+        ) && sig_contains(&src, "OwnedMatches::wrap(&self.0, haystack)"),
         "missing find_iter producer\n{src}"
     );
 
@@ -261,9 +297,13 @@ fn cursor_and_drain_wrappers_emitted() {
     );
     // The drain forwards the producer's real param name (`haystack`) verbatim.
     assert!(
-        sig_contains(&src, "fn wrap(owner: &regex::Regex, haystack: &str) -> OwnedSplit {")
-            && sig_contains(&src, "owner.split(haystack).map(|s| s.to_owned()).collect();")
-            && sig_contains(&src, "items.reverse();"),
+        sig_contains(
+            &src,
+            "fn wrap(owner: &regex::Regex, haystack: &str) -> OwnedSplit {"
+        ) && sig_contains(
+            &src,
+            "owner.split(haystack).map(|s| s.to_owned()).collect();"
+        ) && sig_contains(&src, "items.reverse();"),
         "missing/incorrect OwnedSplit::wrap collect\n{src}"
     );
     assert!(
@@ -292,7 +332,10 @@ fn vec_slice_return_becomes_drain() {
     // borrowed slice into an owned Vec<String> via to_vec().
     assert!(
         sig_contains(&src, "fn wrap(owner: &regex::RegexSet) -> OwnedPatterns {")
-            && sig_contains(&src, "let mut items: Vec<String> = owner.patterns().to_vec();")
+            && sig_contains(
+                &src,
+                "let mut items: Vec<String> = owner.patterns().to_vec();"
+            )
             && sig_contains(&src, "items.reverse();"),
         "missing/incorrect OwnedPatterns::wrap collect\n{src}"
     );
@@ -320,7 +363,8 @@ fn replace_all_callback_emitted() {
 
     // The callback method: haystack + a JacCallback, returning a fallible String.
     assert!(
-        sig_contains(&src,
+        sig_contains(
+            &src,
             "pub fn replace_all(&self, haystack: &str, rep: JacCallback) -> Result<String, String>"
         ),
         "missing replace_all callback signature\n{src}"
@@ -328,15 +372,22 @@ fn replace_all_callback_emitted() {
     // The replacer closure walks the crate's Captures, feeds each match's text to
     // the callback, and splices in the returned replacement.
     assert!(
-        sig_contains(&src, "self.0.replace_all(haystack, |caps: &regex::Captures| {")
-            && sig_contains(&src, "let m = caps.get(0).map_or(\"\", |x| x.as_str());")
+        sig_contains(
+            &src,
+            "self.0.replace_all(haystack, |caps: &regex::Captures| {"
+        ) && sig_contains(&src, "let m = caps.get(0).map_or(\"\", |x| x.as_str());")
             && sig_contains(&src, "match rep.call(m) {"),
         "missing/incorrect replacer closure body\n{src}"
     );
     // The first callback error is captured and surfaced as the method's Err.
     assert!(
-        sig_contains(&src, "if err.borrow().is_none() { *err.borrow_mut() = Some(e); }")
-            && sig_contains(&src, "match err.into_inner() { Some(e) => Err(e), None => Ok(out) }"),
+        sig_contains(
+            &src,
+            "if err.borrow().is_none() { *err.borrow_mut() = Some(e); }"
+        ) && sig_contains(
+            &src,
+            "match err.into_inner() { Some(e) => Err(e), None => Ok(out) }"
+        ),
         "missing callback-error propagation\n{src}"
     );
 }
@@ -349,8 +400,16 @@ fn cargo_toml_correct_shape() {
     let spec = classify(&doc);
     let toml = emit_cargo_toml(&spec, "../jac-bridge");
 
-    assert!(sig_contains(&toml, "name = \"jac-bridge-regex\""), "wrong crate name\n{}", toml);
-    assert!(sig_contains(&toml, "crate-type = [\"cdylib\", \"rlib\"]"), "missing cdylib\n{}", toml);
+    assert!(
+        sig_contains(&toml, "name = \"jac-bridge-regex\""),
+        "wrong crate name\n{}",
+        toml
+    );
+    assert!(
+        sig_contains(&toml, "crate-type = [\"cdylib\", \"rlib\"]"),
+        "missing cdylib\n{}",
+        toml
+    );
     // Pinned exact version so generated crates are reproducible.
     assert!(
         sig_contains(&toml, "regex = \"=1.12.4\""),
@@ -369,7 +428,14 @@ fn cargo_toml_correct_shape() {
 #[test]
 fn cursor_types_not_emitted() {
     let src = generated();
-    for name in &["Match", "Captures", "CaptureMatches", "Matches", "Split", "SplitN"] {
+    for name in &[
+        "Match",
+        "Captures",
+        "CaptureMatches",
+        "Matches",
+        "Split",
+        "SplitN",
+    ] {
         assert!(
             !sig_contains(&src, &format!("pub struct {}(", name)),
             "cursor type {} leaked into codegen output\n{}",

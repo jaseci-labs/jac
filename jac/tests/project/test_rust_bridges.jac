@@ -122,13 +122,57 @@ test "bundle copies configured bridges next to the artifact" {
             }
         }
         assert copied == 2 , copied;
-        assert (dest / "libjac_bridge_regex.so").is_file();
-        assert (dest / "libjac_bridge_uuid.so").is_file();
+        bridges = dest / "rust-bridges";
+        assert (bridges / "libjac_bridge_regex.so").is_file();
+        assert (bridges / "libjac_bridge_uuid.so").is_file();
     }
 }
 
 
-test "bundle warns and skips an uncached bridge" {
+test "find_bridge_lib honors a version constraint over lexicographic order" {
+    import from jaclang.compiler.rust_bridge._finder { find_bridge_lib, _target_triple }
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        triple = _target_triple();
+        # A cache with 1.9.0 and 1.12.4 side by side. Lexicographically "1.9.0"
+        # sorts *above* "1.12.4"; numeric ordering must prefer 1.12.4.
+        for ver in ("1.9.0", "1.12.4") {
+            _write_dummy_bridge(
+                base / "cache" / "jac" / "rust-bridges" / "regex" / ver / triple,
+                "regex"
+            );
+        }
+        saved = {};
+        for k in ("XDG_CACHE_HOME", "JAC_RUST_BRIDGES_PATH") {
+            saved[k] = os.environ.get(k);
+        }
+        os.environ["XDG_CACHE_HOME"] = str(base / "cache");
+        os.environ.pop("JAC_RUST_BRIDGES_PATH", None);
+        try {
+            # Unconstrained: highest numeric version wins, not the lexicographic max.
+            hit_any = find_bridge_lib("regex");
+            # A 1.9-series constraint must not resolve the 1.12 artifact.
+            hit_19 = find_bridge_lib("regex", constraint="1.9");
+            # A constraint with no cached match returns None (forcing a fetch/build).
+            hit_11 = find_bridge_lib("regex", constraint="1.11");
+        } finally {
+            for (k, v) in saved.items() {
+                if v is None {
+                    os.environ.pop(k, None);
+                } else {
+                    os.environ[k] = v;
+                }
+            }
+        }
+        assert hit_any is not None;
+        assert "1.12.4" in str(hit_any) , hit_any;
+        assert hit_19 is not None and "1.9.0" in str(hit_19) , hit_19;
+        assert hit_11 is None , hit_11;
+    }
+}
+
+
+test "bundle copies zero bridges when crate is uncached" {
     with TemporaryDirectory() as tmp {
         dest = Path(tmp) / "out";
         cfg = JacConfig.from_toml_str(

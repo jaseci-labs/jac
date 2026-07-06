@@ -101,85 +101,99 @@ def build_bridge(crate: str, version: str = "*", workspace: object = None) -> Pa
             "the bridges/ directory that contains jac-bridge and jac-bridge-binder."
         );
     }
-    stem = crate.replace("-", "_");
+    import from jaclang.compiler.rust_bridge._finder { crate_lib_stem }
+    stem = crate_lib_stem(crate);
     jac_bridge_path = (ws / "jac-bridge").resolve();
 
     work = Path(tempfile.mkdtemp(prefix="jac-bridge-build-"));
-    proj = work / "fetch";
-    proj.mkdir(parents=True, exist_ok=True);
+    try {
+        proj = work / "fetch";
+        proj.mkdir(parents=True, exist_ok=True);
 
-    _check(
-        _run(["cargo", "init", "--lib", "--quiet", "--name", "bridgefetch"], cwd=proj),
-        "cargo init"
-    );
-    add_spec = crate if version in ("", "*") else f"{crate}@{version}";
-    _check(
-        _run(["cargo", "add", "--quiet", add_spec], cwd=proj), f"cargo add {add_spec}"
-    );
-
-    exact = _resolved_version(proj, crate);
-
-    _check(
-        _run(
-            [
-                "cargo",
-                f"+{_NIGHTLY}",
-                "rustdoc",
-                "-p",
-                crate,
-                "-Z",
-                "unstable-options",
-                "--output-format",
-                "json",
-                "--quiet"
-            ],
-            cwd=proj
-        ),
-        "cargo rustdoc"
-    );
-    doc_json = proj / "target" / "doc" / f"{stem}.json";
-    if not doc_json.is_file() {
-        raise RuntimeError(f"rustdoc did not produce {doc_json}");
-    }
-
-    gen = work / "gen";
-    gen.mkdir(parents=True, exist_ok=True);
-    binder = _binder_cmd(ws);
-    _check(
-        _run(
-            binder + [doc_json, "--out", gen, "--jac-bridge", jac_bridge_path], cwd=ws
-        ),
-        "jac-bridge-binder"
-    );
-
-    _check(
-        _run(
-            [
-                "cargo",
-                "build",
-                "--release",
-                "--quiet",
-                "--manifest-path",
-                gen / "Cargo.toml"
-            ],
-            cwd=gen
-        ),
-        "cargo build (bridge)"
-    );
-
-    rel = gen / "target" / "release";
-    built = rel / f"libjac_bridge_{stem}.so";
-    if not built.is_file() {
-        built = rel / f"lib{stem}.so";
-    }
-    if not built.is_file() {
-        raise RuntimeError(
-            f"bridge build did not produce a .so under {gen}/target/release"
+        _check(
+            _run(
+                ["cargo", "init", "--lib", "--quiet", "--name", "bridgefetch"], cwd=proj
+            ),
+            "cargo init"
         );
-    }
+        add_spec = crate if version in ("", "*") else f"{crate}@{version}";
+        _check(
+            _run(["cargo", "add", "--quiet", add_spec], cwd=proj),
+            f"cargo add {add_spec}"
+        );
 
-    import from jaclang.compiler.rust_bridge { install_bridge }
-    dest = install_bridge(built, exact);
-    shutil.rmtree(work, ignore_errors=True);
+        exact = _resolved_version(proj, crate);
+
+        _check(
+            _run(
+                [
+                    "cargo",
+                    f"+{_NIGHTLY}",
+                    "rustdoc",
+                    "-p",
+                    crate,
+                    "-Z",
+                    "unstable-options",
+                    "--output-format",
+                    "json",
+                    "--quiet"
+                ],
+                cwd=proj
+            ),
+            "cargo rustdoc"
+        );
+        doc_json = proj / "target" / "doc" / f"{stem}.json";
+        if not doc_json.is_file() {
+            raise RuntimeError(f"rustdoc did not produce {doc_json}");
+        }
+
+        gen = work / "gen";
+        gen.mkdir(parents=True, exist_ok=True);
+        binder = _binder_cmd(ws);
+        _check(
+            _run(
+                binder + [doc_json, "--out", gen, "--jac-bridge", jac_bridge_path],
+                cwd=ws
+            ),
+            "jac-bridge-binder"
+        );
+
+        _check(
+            _run(
+                [
+                    "cargo",
+                    "build",
+                    "--release",
+                    "--quiet",
+                    "--manifest-path",
+                    gen / "Cargo.toml"
+                ],
+                cwd=gen
+            ),
+            "cargo build (bridge)"
+        );
+
+        import from jaclang.compiler.rust_bridge._finder { built_lib_candidates }
+        rel = gen / "target" / "release";
+        built = None;
+        for name in built_lib_candidates(crate) {
+            cand = rel / name;
+            if cand.is_file() {
+                built = cand;
+                break;
+            }
+        }
+        if built is None {
+            raise RuntimeError(
+                f"bridge build did not produce a cdylib "
+                f"(.so/.dylib/.dll) under {gen}/target/release"
+            );
+        }
+
+        import from jaclang.compiler.rust_bridge { install_bridge }
+        dest = install_bridge(built, exact);
+    } finally {
+        shutil.rmtree(work, ignore_errors=True);
+    }
     return dest;
 }

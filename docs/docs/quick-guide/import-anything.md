@@ -265,6 +265,56 @@ na {
 !!! info "Fixed-width types at the C boundary"
     The `import from` declaration uses fixed-width types (`f64`, `i32`, `u8`, `c_void`, …) so the signature matches the C ABI exactly. Carry those same fixed-width types through any function that passes values into a C call -- the native backend coerces, but mixing plain `float`/`int` with `f64`/`i32` at a call site is best avoided. Library paths are platform-specific -- `.so` on Linux, `.dylib` on macOS, and system libraries live in different locations per platform.
 
+### Rust crate bridges
+
+Beyond raw C libraries, Jac can import from **Rust crates** that ship a `jac-bridge-*` shared library. The import names the crate under the reserved `rust.` namespace -- the compiler resolves the bridge, generates the marshaling, and gives you the crate's types and methods with Jac-native strings, lists, and dicts. A crate type like `regex::Regex` crosses as an opaque handle you construct and call methods on:
+
+```jac
+import from rust.regex { Regex }
+
+with entry {
+    re = Regex(r"^\d+$");
+    print(re.is_match("12345"));   # True
+    re.close();
+}
+```
+
+The same `import from rust.<crate>` works from both the CPython runtime (`jac run`) and the native compiler step (`jac nc`).
+
+**Declaring a dependency.** Add a bridge to your project's `jac.toml` with `jac add`, using an optional `@version` (or `==version`) constraint:
+
+```bash
+jac add rust:regex@1.12      # pin the 1.12.x series
+jac add rust:uuid            # any available version
+```
+
+This records the crate under a `[rust-bridges]` table:
+
+```toml
+[rust-bridges]
+regex = "1.12"
+uuid = "*"
+```
+
+`jac install` then resolves every declared bridge. A version constraint like `"1.12"` matches the whole `1.12.x` series and always selects the **highest** matching version numerically (`1.12` outranks `1.9`).
+
+**Where bridges come from.** On a cache miss `jac install` tries, in order:
+
+1. the local cache (`$XDG_CACHE_HOME/jac/rust-bridges/<crate>/<version>/<triple>/`),
+2. a registry, if `JAC_BRIDGE_REGISTRY` points at an index (URL or local path) -- downloads are verified against the index `sha256`,
+3. a local build, if the Rust toolchain is installed and `JAC_BRIDGE_WORKSPACE` points at a crate workspace.
+
+If none is available, `jac install` records the dependency but reports that the bridge is **not installed** (non-zero exit) rather than claiming success -- set `JAC_BRIDGE_REGISTRY` or the toolchain to complete it.
+
+**Bundling.** `jac bundle` copies each resolved bridge library into a `rust-bridges/` folder beside the sealed image; the runtime rediscovers them there, so a bundled app carries its bridges with it.
+
+!!! info "Bridge resolution environment variables"
+    - `JAC_RUST_BRIDGES_PATH` -- extra `os.pathsep`-separated directories to search for bridge libraries (checked before the cache).
+    - `JAC_BRIDGE_REGISTRY` -- registry index URL or local path used to fetch bridges on a cache miss.
+    - `JAC_BRIDGE_WORKSPACE` -- Rust workspace root for building bridges locally.
+
+    The binary ABI these libraries implement is specified in the [Rust Bridge ABI](../internals/rust_bridge_abi.md) internals doc.
+
 ---
 
 ## Crossing codespaces

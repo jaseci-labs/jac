@@ -6,7 +6,16 @@
 # recorded reason (a genuine upstream API removal on a fixture bump).
 #
 #   bridged = constructors + methods emitted into the bridge source
-#   total   = bridged + skipped (every public item classify considered)
+#   dropped = whole public types removed before method classification
+#             (unpinned generics, const generics, lifetime-bearing structs)
+#   total   = bridged + skipped + dropped (every public unit classify considered)
+#
+# `dropped` makes hidden surface honest: a generic/lifetime type the binder can't
+# yet reach is charged one unit of considered-but-unbridged surface instead of
+# vanishing from the ratio. The gate FAILS if a crate's live `dropped` count
+# exceeds its floor here (coverage must not improve by hiding unsupported types);
+# a legitimate increase is ratcheted in by raising the crate's `dropped` with a
+# rationale, exactly like `bridged`.
 #
 # Current numbers reflect the v1 (M3) rule set: opaque types, ctors,
 # scalar/str/bool/void, str returns. The low ratios are the whole point —
@@ -46,13 +55,21 @@
 # was fixed from a visited-ever set to an active-path stack so two sibling readers
 # (Captures::name AND Captures::get) both produce OwnedMatch instead of the first
 # starving the second. `total` unchanged (77): every gain flips a skip to bridged.
+# `total` 77 -> 84 and `dropped` 7: regex's seven lifetime-bearing types (Match,
+# Captures, the iterator/cursor structs, …) are now counted as one unit each of
+# hidden surface instead of being invisible. bridged is unchanged — those types
+# were never emitted; they are only now honestly tallied.
 [regex]
 bridged = 31
-total = 77
+total = 84
+dropped = 7
 
+# `total` 7 -> 11 and `dropped` 4: base64's four generic engine/config structs are
+# now tallied as hidden surface rather than silently absent.
 [base64]
 bridged = 1
-total = 7
+total = 11
+dropped = 4
 
 # chrono dropped from a *wrong* 11/264 to a correct 7/192 (M4 Phase B monomorphize):
 # the generic structs Date<Tz> and DateTime<Tz> were previously emitted as bare
@@ -69,9 +86,17 @@ total = 7
 # 192 -> 174 (a warn, not a fail): several methods that were top-level integer-param
 # skips are now folded in as owning-wrapper readers (counted as bridged wrapper
 # methods, not as standalone surface items).
+#
+# Honest error typing (`impl std::error::Error` detection, not just the `*Error`
+# name heuristic) then lifted chrono 30 -> 33: fallible methods returning
+# `Result<_, E>` where `E` implements `Error` but isn't named `*Error` now resolve
+# their error type and bridge instead of skipping. `dropped` 4 counts chrono's
+# remaining unpinned generic structs (Date/DateTime<Tz> without a monomorphize
+# overlay); `total` 174 -> 181 folds those four in as hidden surface.
 [chrono]
-bridged = 30
-total = 174
+bridged = 33
+total = 181
+dropped = 4
 
 [uuid]
 bridged = 0

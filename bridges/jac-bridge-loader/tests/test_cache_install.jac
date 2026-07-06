@@ -111,3 +111,43 @@ test "no fallback without install" {
         shutil.rmtree(td, ignore_errors=True);
     }
 }
+
+
+test "hyphenated crate name normalizes with no dash leak" {
+    # cargo underscores a crate name for its lib, so `tokio-util` builds
+    # `libjac_bridge_tokio_util.*`. The build-output helper must never emit the
+    # raw dashed name, or the finder (which searches the underscored stem) misses it.
+    import from jaclang.compiler.rust_bridge._finder {
+        crate_lib_stem,
+        built_lib_candidates
+    }
+    assert crate_lib_stem("tokio-util") == "tokio_util";
+    cands = built_lib_candidates("tokio-util");
+    assert all([("tokio-util" not in c) for c in cands]) , f"dash leaked: {cands}";
+    assert "libjac_bridge_tokio_util.so" in cands;
+}
+
+
+test "hyphenated crate resolves (build and lookup names agree)" {
+    # End-to-end: a file named exactly as a local build of `tokio-util` produces
+    # must be found by find_bridge_lib("tokio-util"). Guards the builder/finder
+    # split that broke hyphenated crates.
+    td = tempfile.mkdtemp();
+    libdir = Path(tempfile.mkdtemp());
+    _saved = _save_env(
+        ["XDG_CACHE_HOME", "JAC_RUST_BRIDGES_PATH", "JAC_BRIDGE_DEV_FALLBACK"]
+    );
+    os.environ["XDG_CACHE_HOME"] = td;
+    os.environ.pop("JAC_BRIDGE_DEV_FALLBACK", None);
+    os.environ["JAC_RUST_BRIDGES_PATH"] = str(libdir);
+    try {
+        (libdir / "libjac_bridge_tokio_util.so").write_bytes(b"");
+        found = find_bridge_lib("tokio-util");
+        assert found is not None , "hyphenated crate must resolve to its underscored lib name";
+        assert found.name == "libjac_bridge_tokio_util.so";
+    } finally {
+        _restore_env(_saved);
+        shutil.rmtree(td, ignore_errors=True);
+        shutil.rmtree(str(libdir), ignore_errors=True);
+    }
+}

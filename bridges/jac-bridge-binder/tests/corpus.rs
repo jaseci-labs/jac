@@ -38,8 +38,7 @@ fn corpus_classify_and_codegen() {
 
     for path in &fixtures {
         let name = path.file_stem().unwrap().to_string_lossy();
-        let data = std::fs::read_to_string(path)
-            .unwrap_or_else(|_| panic!("read {name}"));
+        let data = std::fs::read_to_string(path).unwrap_or_else(|_| panic!("read {name}"));
         let doc: rustdoc_types::Crate =
             serde_json::from_str(&data).unwrap_or_else(|e| panic!("{name}: {e}"));
 
@@ -65,7 +64,17 @@ fn corpus_classify_and_codegen() {
         let mut struct_names: Vec<&str> = src
             .lines()
             .filter(|l| l.trim_start().starts_with("pub struct "))
-            .map(|l| l.trim_start().trim_start_matches("pub struct ").split('(').next().unwrap().split(';').next().unwrap().trim())
+            .map(|l| {
+                l.trim_start()
+                    .trim_start_matches("pub struct ")
+                    .split('(')
+                    .next()
+                    .unwrap()
+                    .split(';')
+                    .next()
+                    .unwrap()
+                    .trim()
+            })
             .collect();
         struct_names.sort_unstable();
         let deduped: Vec<&str> = {
@@ -73,7 +82,10 @@ fn corpus_classify_and_codegen() {
             d.dedup();
             d
         };
-        assert_eq!(struct_names, deduped, "{name}: duplicate structs in codegen output");
+        assert_eq!(
+            struct_names, deduped,
+            "{name}: duplicate structs in codegen output"
+        );
 
         let cargo = jac_bridge_binder::emit_cargo_toml(&spec, "../jac-bridge");
         assert!(
@@ -95,6 +107,12 @@ fn corpus_classify_and_codegen() {
 struct Floor {
     bridged: usize,
     total: usize,
+    /// Ceiling on whole types dropped before method classification. Defaults to 0
+    /// for older baseline entries. The gate FAILS if the live `dropped` count
+    /// exceeds this, so coverage can't improve by hiding unsupported types; a
+    /// legitimate increase is ratcheted in by raising this floor with a rationale.
+    #[serde(default)]
+    dropped: usize,
 }
 
 /// The north-star gate (D6): coverage must never regress below the checked-in
@@ -119,8 +137,8 @@ fn coverage_does_not_regress() {
     let mut failures: Vec<String> = vec![];
     let mut seen: Vec<String> = vec![];
 
-    eprintln!("\ncrate            bridged / total   pct   floor");
-    eprintln!("---------------  ---------------   ---   -----");
+    eprintln!("\ncrate            bridged / total   pct   dropped   floor");
+    eprintln!("---------------  ---------------   ---   -------   -----");
     for path in &fixtures {
         let data = std::fs::read_to_string(path).unwrap();
         let doc: rustdoc_types::Crate = serde_json::from_str(&data).unwrap();
@@ -141,11 +159,12 @@ fn coverage_does_not_regress() {
 
         let ok = cov.bridged >= floor.bridged;
         eprintln!(
-            "{:<15}  {:>5} / {:<5}   {:>3}%  >= {}  {}",
+            "{:<15}  {:>5} / {:<5}   {:>3}%   {:>7}   >= {}  {}",
             cov.module,
             cov.bridged,
             cov.total(),
             cov.pct(),
+            cov.dropped,
             floor.bridged,
             if ok { "ok" } else { "REGRESSED" }
         );
@@ -153,6 +172,21 @@ fn coverage_does_not_regress() {
             failures.push(format!(
                 "{}: bridged {} < floor {} — coverage regressed",
                 cov.module, cov.bridged, floor.bridged
+            ));
+        }
+        // A rising count of wholesale-dropped types means more public surface is
+        // being hidden than the baseline recorded. That is exactly the failure mode
+        // this metric exists to catch ("coverage can't improve by hiding
+        // unsupported types"), so it FAILS the gate. A legitimate increase (a
+        // fixture bump that adds generics) is recorded by bumping the `dropped`
+        // floor in coverage-baseline.toml with a rationale, the same ratchet the
+        // `bridged` floor uses.
+        if cov.dropped > floor.dropped {
+            failures.push(format!(
+                "{}: dropped types {} > floor {} — more public surface is now hidden; \
+                 fix the classifier or raise the `dropped` floor in \
+                 coverage-baseline.toml with a rationale",
+                cov.module, cov.dropped, floor.dropped
             ));
         }
         // A shrinking surface (fewer items considered) usually means the parser
@@ -174,5 +208,9 @@ fn coverage_does_not_regress() {
         }
     }
 
-    assert!(failures.is_empty(), "coverage gate failed:\n  {}", failures.join("\n  "));
+    assert!(
+        failures.is_empty(),
+        "coverage gate failed:\n  {}",
+        failures.join("\n  ")
+    );
 }

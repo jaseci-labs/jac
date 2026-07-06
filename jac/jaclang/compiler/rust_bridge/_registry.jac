@@ -4,7 +4,13 @@ import os;
 import from pathlib { Path }
 import from urllib.parse { urljoin, urlparse }
 import from urllib.request { urlopen, pathname2url }
-import from jaclang.compiler.rust_bridge._finder { _cache_root, _target_triple }
+import from jaclang.compiler.rust_bridge._finder {
+    _cache_root,
+    _target_triple,
+    _ver_key,
+    _matches,
+    crate_lib_stem
+}
 
 
 def registry_url -> object {
@@ -46,34 +52,6 @@ def fetch_index(base: object = None) -> object {
     }
     raw = _fetch(_index_url(base));
     return json.loads(raw);
-}
-
-
-def _ver_key(version: str) -> list {
-    out = [];
-    for part in version.split(".") {
-        digits = "";
-        for ch in part {
-            if ch.isdigit() {
-                digits = digits + ch;
-            } else {
-                break;
-            }
-        }
-        out.append(int(digits) if digits else 0);
-    }
-    return out;
-}
-
-
-def _matches(version: str, constraint: str) -> bool {
-    if constraint in ("", "*") {
-        return True;
-    }
-    if version == constraint {
-        return True;
-    }
-    return version.startswith(constraint + ".");
 }
 
 
@@ -146,6 +124,7 @@ def fetch_bridge(
         }
     }
 
-    filename = Path(urlparse(url).path).name or f"libjac_bridge_{crate}.so";
+    filename = Path(urlparse(url).path).name
+    or f"libjac_bridge_{crate_lib_stem(crate)}.so";
     return _install_bytes(crate, entry["version"], filename, data);
 }

@@ -122,8 +122,6 @@ class _Synth {
         ret = tag_base(fd.ret);
         if tag_is_map(fd.ret) or tag_is_list(fd.ret) {
             params.append("out_buf: bytes");
-        } elif ret == TAG_VOID {
-            pass;
         } elif ret == TAG_BOOL {
             params.append("out_bool: bytes");
         } elif tag_is_ref(fd.ret) {
@@ -132,6 +130,8 @@ class _Synth {
             params.append("out_buf: bytes");
         } elif ret == TAG_INT or ret == TAG_UINT {
             params.append("out_int: bytes");
+        } elif ret == TAG_VOID {
+            pass;
         } else {
             return None;
         }

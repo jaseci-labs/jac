@@ -42,8 +42,7 @@ fn regex_bridge_compiles_clean() {
 
     let jac_bridge = manifest_dir().join("../jac-bridge");
     let lib_src = jac_bridge_binder::emit(&spec);
-    let cargo_src =
-        jac_bridge_binder::emit_cargo_toml(&spec, &jac_bridge.to_string_lossy());
+    let cargo_src = jac_bridge_binder::emit_cargo_toml(&spec, &jac_bridge.to_string_lossy());
 
     // Write the generated crate under target/ so it is gitignored and can reuse
     // the workspace's cargo registry cache for deps.
@@ -72,12 +71,21 @@ fn regex_bridge_compiles_clean() {
     );
 
     // Overlay took effect: injected method + renamed export are in the source.
-    assert!(lib_src.contains("pub fn find_str("), "inject missing\n{lib_src}");
-    assert!(lib_src.contains("pub fn matches(&self,"), "rename missing\n{lib_src}");
+    assert!(
+        lib_src.contains("pub fn find_str("),
+        "inject missing\n{lib_src}"
+    );
+    assert!(
+        lib_src.contains("pub fn matches(&self,"),
+        "rename missing\n{lib_src}"
+    );
 
     // Owning-wrapper synthesis (M4 Phase B v1): the generated crate compiling
     // under -D warnings is the real proof the ouroboros transmute is sound.
-    assert!(lib_src.contains("pub struct OwnedMatch {"), "OwnedMatch missing\n{lib_src}");
+    assert!(
+        lib_src.contains("pub struct OwnedMatch {"),
+        "OwnedMatch missing\n{lib_src}"
+    );
     assert!(
         lib_src.contains("std::mem::transmute(inner)"),
         "wrap transmute missing\n{lib_src}"
@@ -86,19 +94,23 @@ fn regex_bridge_compiles_clean() {
     // The compiled cdylib must export the auto-generated shim + drop symbols.
     let so = out.join("target/release/libjac_bridge_regex.so");
     assert!(so.exists(), "cdylib not produced at {}", so.display());
-    let nm = Command::new("nm").args(["-D"]).arg(&so).output().expect("nm");
+    let nm = Command::new("nm")
+        .args(["-D"])
+        .arg(&so)
+        .output()
+        .expect("nm");
     let syms = String::from_utf8_lossy(&nm.stdout);
     for want in [
         "jac_regex_Regex_new",
-        "jac_regex_Regex_matches", // is_match, renamed by the overlay
-        "jac_regex_Regex_find_str", // injected by the overlay
-        "jac_regex_Regex_find",     // producer of the synthesized wrapper
+        "jac_regex_Regex_matches",     // is_match, renamed by the overlay
+        "jac_regex_Regex_find_str",    // injected by the overlay
+        "jac_regex_Regex_find",        // producer of the synthesized wrapper
         "jac_regex_OwnedMatch_as_str", // wrapper reader
         "jac_regex_OwnedMatch_is_empty",
-        "jac_regex_OwnedMatch_drop", // wrapper is an opaque handle
+        "jac_regex_OwnedMatch_drop",    // wrapper is an opaque handle
         "jac_regex_RegexSet_patterns",  // Vec/slice-drain producer (M4 Phase B)
-        "jac_regex_OwnedPatterns_next",  // its drain pull method
-        "jac_regex_OwnedPatterns_drop",  // the drain is an opaque handle
+        "jac_regex_OwnedPatterns_next", // its drain pull method
+        "jac_regex_OwnedPatterns_drop", // the drain is an opaque handle
         "jac_regex_Regex_drop",
         "jac_regex_error_message",
         "jac_regex_free_buf",

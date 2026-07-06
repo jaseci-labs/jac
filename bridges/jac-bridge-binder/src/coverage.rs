@@ -3,10 +3,13 @@
 //! Coverage is measured over *functions* (constructors + methods): every public
 //! method on a bridged type is either emitted or a recorded [`Skip`], so the
 //! ratio is honest by construction. Types that classify drops wholesale (e.g.
-//! lifetime-bearing cursor types) surface here indirectly — the methods that
-//! return or consume them appear as skips on the types that *are* bridged.
+//! lifetime-bearing cursor types, unpinned generics) are counted too — each as
+//! one unit of considered-but-unbridged surface (`dropped`) — so the ratio can
+//! never improve merely by hiding an unsupported type. A dropped type is charged
+//! one unit rather than its true method count because it is dropped *before* its
+//! methods are classified; one unit is the honest floor, not an exact debit.
 
-use crate::types::{BridgeSpec, SkipReason};
+use crate::types::{BridgeSpec, DropReason, SkipReason};
 
 /// Coverage summary for one crate.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,12 +20,16 @@ pub struct Coverage {
     pub bridged: usize,
     /// Public items skipped with a machine-readable reason.
     pub skipped: usize,
+    /// Whole public types dropped before method classification (unpinned
+    /// generics, const generics, lifetime-bearing structs). Each counts as one
+    /// unit of unbridged surface so hiding a type can't inflate the ratio.
+    pub dropped: usize,
 }
 
 impl Coverage {
-    /// Total public items considered (bridged + skipped).
+    /// Total public surface considered (bridged + skipped + dropped types).
     pub fn total(&self) -> usize {
-        self.bridged + self.skipped
+        self.bridged + self.skipped + self.dropped
     }
 
     /// Percent of the considered surface that was bridged, rounded to the
@@ -48,6 +55,7 @@ pub fn coverage(spec: &BridgeSpec) -> Coverage {
         version: spec.crate_version.clone(),
         bridged,
         skipped: spec.skips.len(),
+        dropped: spec.dropped.len(),
     }
 }
 
@@ -76,19 +84,42 @@ pub fn report(spec: &BridgeSpec) -> String {
         cov.bridged,
         cov.total(),
     );
-    if spec.skips.is_empty() {
+    if spec.skips.is_empty() && spec.dropped.is_empty() {
         out.push(';');
         return out;
     }
-    out.push_str(";\n  skipped: ");
-    let mut items: Vec<String> = spec
-        .skips
-        .iter()
-        .map(|s| format!("{} ({})", s.item, reason_label(&s.reason)))
-        .collect();
-    items.sort();
-    out.push_str(&items.join(", "));
+    if !spec.skips.is_empty() {
+        out.push_str(";\n  skipped: ");
+        let mut items: Vec<String> = spec
+            .skips
+            .iter()
+            .map(|s| format!("{} ({})", s.item, reason_label(&s.reason)))
+            .collect();
+        items.sort();
+        out.push_str(&items.join(", "));
+    }
+    // Dropped whole types are listed separately from per-method skips so the
+    // hidden surface is visible, not silently absent from the report.
+    if !spec.dropped.is_empty() {
+        out.push_str(";\n  dropped types: ");
+        let mut items: Vec<String> = spec
+            .dropped
+            .iter()
+            .map(|d| format!("{} ({})", d.name, drop_label(&d.reason)))
+            .collect();
+        items.sort();
+        out.push_str(&items.join(", "));
+    }
     out
+}
+
+/// Short prose label for a drop reason, stable for corpus diffs.
+fn drop_label(r: &DropReason) -> &'static str {
+    match r {
+        DropReason::Lifetime => "lifetime-bearing struct",
+        DropReason::ConstGeneric => "const-generic struct",
+        DropReason::UnpinnedGeneric => "unpinned generic (needs monomorphize overlay)",
+    }
 }
 
 /// Short prose label for a skip reason — machine-readable and stable so the CI

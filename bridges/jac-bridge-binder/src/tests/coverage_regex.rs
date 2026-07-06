@@ -52,8 +52,17 @@ fn coverage_ratio_is_honest() {
     assert_eq!(cov.version, "1.12.4");
     // Regex::new + is_match at minimum are bridged.
     assert!(cov.bridged >= 2, "expected the ctor + is_match to bridge");
-    assert!(cov.skipped > 0, "regex has lifetime/cursor methods that must skip");
-    assert_eq!(cov.total(), cov.bridged + cov.skipped);
+    assert!(
+        cov.skipped > 0,
+        "regex has lifetime/cursor methods that must skip"
+    );
+    // Total counts every considered unit: bridged fns + per-method skips + whole
+    // types dropped before method classification (lifetime/const/unpinned generics).
+    assert_eq!(cov.total(), cov.bridged + cov.skipped + cov.dropped);
+    assert!(
+        cov.dropped > 0,
+        "regex has lifetime-bearing types dropped wholesale"
+    );
     assert!(cov.pct() <= 100);
     // bridged count must equal what codegen actually emits (no phantom coverage).
     let emitted: usize = spec
@@ -90,6 +99,7 @@ fn empty_surface_is_full_coverage() {
         crate_version: "0.1.0".into(),
         types: vec![],
         skips: vec![],
+        dropped: vec![],
     };
     assert_eq!(coverage(&spec).pct(), 100);
 }
