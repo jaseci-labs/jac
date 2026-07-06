@@ -48,14 +48,14 @@ def main -> int {
         }
     }
     if not fragments {
-        print("error: no manifest-*.json fragments found", file=sys.stderr);
+        sys.stderr.write("error: no manifest-*.json fragments found\n");
         return 2;
     }
 
     crates = {};
     total = 0;
     for frag in fragments {
-        for rec in json.loads(frag.read_text(encoding="utf-8")) {
+        for rec in json.loads(str(frag.read_text(encoding="utf-8"))) {
             crate = crates.setdefault(rec["crate"], {});
             version = crate.setdefault(rec["version"], {});
             triple = rec["triple"];
@@ -63,9 +63,8 @@ def main -> int {
             if triple in version and version[triple] != entry {
                 crate_name = rec["crate"];
                 ver_name = rec["version"];
-                print(
-                    f"warning: conflicting artifact for {crate_name} {ver_name} " + f"{triple}; keeping first",
-                    file=sys.stderr,
+                sys.stderr.write(
+                    f"warning: conflicting artifact for {crate_name} {ver_name} " + f"{triple}; keeping first\n"
                 );
                 continue;
             }

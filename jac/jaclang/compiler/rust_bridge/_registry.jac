@@ -124,7 +124,7 @@ def fetch_bridge(
         }
     }
 
-    filename = Path(urlparse(url).path).name
-    or f"libjac_bridge_{crate_lib_stem(crate)}.so";
+    fallback = "libjac_bridge_" + crate_lib_stem(crate) + ".so";
+    filename = Path(urlparse(url).path).name or fallback;
     return _install_bytes(crate, entry["version"], filename, data);
 }

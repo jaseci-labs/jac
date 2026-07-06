@@ -69,7 +69,7 @@ def _binder_cmd(ws: Path) -> list {
 def _resolved_version(proj: Path, crate: str) -> str {
     result = _run(["cargo", "metadata", "--format-version", "1"], cwd=proj);
     _check(result, "cargo metadata");
-    meta = json.loads(result.stdout);
+    meta = json.loads(str(result.stdout));
     for pkg in meta.get("packages", []) {
         if pkg.get("name") == crate {
             return str(pkg.get("version"));

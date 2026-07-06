@@ -232,9 +232,8 @@ def main -> int {
     ws = Path(str(args.workspace)).resolve();
     out_dir = Path(str(args.out));
     if not (ws / "jac-bridge").is_dir() {
-        print(
-            f"error: {ws} is not the bridges workspace (no jac-bridge/)",
-            file=sys.stderr,
+        sys.stderr.write(
+            f"error: {ws} is not the bridges workspace (no jac-bridge/)\n"
         );
         return 2;
     }
@@ -250,7 +249,7 @@ def main -> int {
             records.append(build_one(crate, version, ws, out_dir, triple));
         } except Exception as exc {
             failures.append((spec, str(exc)));
-            print(f"  FAIL {spec}: {exc}", file=sys.stderr);
+            sys.stderr.write(f"  FAIL {spec}: {exc}\n");
         }
     }
 
@@ -258,7 +257,7 @@ def main -> int {
     manifest.write_text(json.dumps(records, indent=2), encoding="utf-8");
     print(f"wrote {len(records)} record(s) to {manifest}");
     if failures {
-        print(f"{len(failures)} crate(s) failed to build", file=sys.stderr);
+        sys.stderr.write(f"{len(failures)} crate(s) failed to build\n");
         return 1;
     }
     return 0;
