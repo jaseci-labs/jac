@@ -857,47 +857,26 @@ def _candidate_from_stub_package(
     return None;
 }
 
-def _is_package_dir(dir_: Path) -> bool {
-    return (dir_ / '__init__.py').exists() or (dir_ / '__init__.pyi').exists();
-}
-
-"""Whether `path` is an installed third-party `.py` module with no types.
-
-True when the module lives under a site-packages/dist-packages directory (an
-installed dependency, not the project's own source) and ships no type
-information per PEP 561: no py.typed marker anywhere in its package chain and no
-sibling .pyi stub. Such modules are treated as an opaque foreign Any instead of
-being analyzed as source, so inference gaps in code the user cannot annotate do
-not cascade as hard type errors.
-"""
 def is_untyped_third_party_module(path: str) -> bool {
     if not path.endswith('.py') {
         return False;
     }
     normalized = path.replace('\\', '/');
-    if ('/site-packages/' not in normalized) and (
-        '/dist-packages/' not in normalized
-    ) {
+    if ('/site-packages/' not in normalized)
+    and ('/dist-packages/' not in normalized) {
         return False;
     }
     mod_path = Path(path);
-    # A sibling stub (`foo.py` alongside `foo.pyi`) means the module is typed.
     if mod_path.with_suffix('.pyi').exists() {
         return False;
     }
-    # Walk the enclosing package chain for a PEP 561 `py.typed` marker. It is
-    # placed at the distribution package root, but check every level to be safe
-    # and stop once we leave the importable package or reach the install root.
     pkg_dir = mod_path.parent;
-    while True {
-        if pkg_dir.name in ('site-packages', 'dist-packages') {
-            break;
-        }
+    while pkg_dir.name not in ('site-packages', 'dist-packages') {
         if (pkg_dir / 'py.typed').exists() {
             return False;
         }
         parent = pkg_dir.parent;
-        if parent == pkg_dir or not _is_package_dir(pkg_dir) {
+        if parent == pkg_dir {
             break;
         }
         pkg_dir = parent;
