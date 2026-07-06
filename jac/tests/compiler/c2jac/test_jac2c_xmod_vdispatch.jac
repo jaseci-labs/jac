@@ -112,8 +112,7 @@ def _c_output -> str {
     rt = os.path.join(RUNTIME, "jacrt.c");
     cc = _cc();
     subprocess.run(
-        [cc, "-std=c11", "-I", RUNTIME] + cpaths + [rt, drv, "-o", binp],
-        check=True
+        [cc, "-std=c11", "-I", RUNTIME] + cpaths + [rt, drv, "-o", binp], check=True
     );
     proc = subprocess.run([binp], capture_output=True, text=True, check=True);
     return proc.stdout.strip();
