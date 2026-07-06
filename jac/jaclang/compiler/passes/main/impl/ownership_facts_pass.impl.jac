@@ -1,4 +1,7 @@
 impl OwnershipFacts.category_of(nd: uni.UniNode) -> Ownership {
+    if not isinstance(nd, uni.UniNode) {
+        return Ownership.BORROWED;
+    }
     return self.value_category.get(nd.loc.pos_start, Ownership.BORROWED);
 }
 
@@ -7,6 +10,9 @@ impl OwnershipFacts.is_owned(nd: uni.UniNode) -> bool {
 }
 
 impl OwnershipFacts.is_last_use(nd: uni.UniNode) -> bool {
+    if not isinstance(nd, uni.UniNode) {
+        return False;
+    }
     return nd.loc.pos_start in self.last_uses;
 }
 
