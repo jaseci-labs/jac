@@ -20,11 +20,7 @@ import tempfile;
 import pytest;
 import from subprocess { run }
 
-import from .test_helpers {
-    copy_fixture,
-    get_env_with_bun,
-    get_jac_command
-}
+import from .test_helpers { copy_fixture, get_env_with_bun, get_jac_command }
 
 """A fullstack client importing @jac/wasm_host builds and ships a dist.
 
@@ -38,7 +34,6 @@ test "fullstack client importing @jac/wasm_host builds" {
         project_dir = copy_fixture("wasm_host_app", temp_dir);
         jac_cmd = get_jac_command();
         env = get_env_with_bun();
-
         add_result = run(
             [*jac_cmd, "add", "--npm"],
             cwd=project_dir,
@@ -53,7 +48,6 @@ test "fullstack client importing @jac/wasm_host builds" {
                 f"STDERR:\n{add_result.stderr[:2000]}\n"
             );
         }
-
         build_result = run(
             [*jac_cmd, "build", "--client", "web", "main.jac"],
             cwd=project_dir,
@@ -66,14 +60,12 @@ test "fullstack client importing @jac/wasm_host builds" {
             f"STDOUT:\n{build_result.stdout[:2000]}\n"
             f"STDERR:\n{build_result.stderr[:2000]}\n"
         );
-
         wasm_host_js = os.path.join(
             project_dir, ".jac", "client", "compiled", "wasm_host.js"
         );
         assert os.path.isfile(wasm_host_js) , (
             f"@jac/wasm_host provider should be materialized at {wasm_host_js}"
         );
-
         dist_dir = os.path.join(project_dir, ".jac", "client", "dist");
         assert os.path.isdir(dist_dir) , (
             f"client bundle should ship a dist at {dist_dir}"
