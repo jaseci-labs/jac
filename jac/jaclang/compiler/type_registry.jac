@@ -259,6 +259,7 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              }
          ),
          _exception_parents={
+             "Error": None,
              "BaseException": None,
              "Exception": "BaseException",
              "ArithmeticError": "Exception",
