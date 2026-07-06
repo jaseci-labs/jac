@@ -1,15 +1,13 @@
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client { get_bun }
-import from jaclang.runtimelib.client_bundle { ClientBundleError }
+import from jaclang.runtimelib.client.bun_installer { bun_unavailable_message }
+import from jaclang.runtimelib.client_bundle { ClientBundleError, MissingBunError }
 
 
 def _require_bun -> str {
     bun = get_bun();
     if not bun {
-        raise ClientBundleError(
-            'Bun is required but could not be found or installed. '
-            'Install manually: https://bun.sh'
-        ) from None;
+        raise MissingBunError(bun_unavailable_message()) from None;
     }
     return bun;
 }
@@ -264,32 +262,15 @@ impl ViteBundler.add_packages(
         console.print("  ✔ Created package.json");
     }
 
-    npm_ok = False;
-    try {
-        probe = subprocess.run(
-            ['npm', '--version'], capture_output=True, text=True, timeout=10
-        );
-        npm_ok = probe.returncode == 0;
-    } except Exception {
-        npm_ok = False;
+    bun = get_bun();
+    if bun is None {
+        raise RuntimeError("bun unavailable: cannot install client dependencies");
     }
-    if npm_ok {
-        cmd = ['npm', 'install'];
-        if dev {
-            cmd.append('--save-dev');
-        }
-        cmd.extend(packages);
-    } else {
-        bun = get_bun();
-        if bun is None {
-            raise RuntimeError("bun unavailable: cannot install client dependencies");
-        }
-        cmd = [bun, 'add'];
-        if dev {
-            cmd.append('--dev');
-        }
-        cmd.extend(packages);
+    cmd = [bun, 'add'];
+    if dev {
+        cmd.append('--dev');
     }
+    cmd.extend(packages);
     console.print(f"  Installing: {' '.join(packages)}");
     subprocess.run(cmd, cwd=target_dir, check=True, capture_output=False);
 }
@@ -423,20 +404,24 @@ impl ViteBundler._generate_vite_config_content(
     }
 
     if entry_relative.endswith('/build/main.js') {
-        compiled_utils_relative = entry_relative[:-13] + '/compiled/client_runtime.js';
-        compiled_pwa_relative = entry_relative[:-13] + '/compiled/pwa_runtime.js';
-        compiled_desktop_relative = entry_relative[:-13] + '/compiled/desktop_api.js';
-        compiled_assets_relative = entry_relative[:-13] + '/compiled/assets';
-    } elif entry_relative.endswith('build/main.js') {
-        compiled_utils_relative = 'compiled/client_runtime.js';
-        compiled_pwa_relative = 'compiled/pwa_runtime.js';
-        compiled_desktop_relative = 'compiled/desktop_api.js';
-        compiled_assets_relative = 'compiled/assets';
+        compiled_base = entry_relative[:-13] + '/compiled';
     } else {
-        compiled_utils_relative = 'compiled/client_runtime.js';
-        compiled_pwa_relative = 'compiled/pwa_runtime.js';
-        compiled_desktop_relative = 'compiled/desktop_api.js';
-        compiled_assets_relative = 'compiled/assets';
+        compiled_base = 'compiled';
+    }
+    compiled_utils_relative = f"{compiled_base}/client_runtime.js";
+    compiled_pwa_relative = f"{compiled_base}/pwa_runtime.js";
+    compiled_desktop_relative = f"{compiled_base}/desktop_api.js";
+    compiled_wasm_host_relative = f"{compiled_base}/wasm_host.js";
+    compiled_ui_relative = f"{compiled_base}/client_mobui.js";
+    compiled_assets_relative = f"{compiled_base}/assets";
+
+    ui_alias_str = (
+        f'\n      "@jac/mobui": path.resolve(buildDir, "{compiled_ui_relative}"),'
+    );
+
+    pkg_deps = self.config_loader.get_package_config().get('dependencies', {});
+    if 'react-native-web' in pkg_deps {
+        ui_alias_str += '\n      "react-native": "react-native-web",';
     }
 
     pwa_alias_str = '';
@@ -468,6 +453,13 @@ impl ViteBundler._generate_vite_config_content(
         os.path.join(str(self._get_client_dir()), compiled_desktop_relative)
     ) {
         desktop_alias_str = f'\n      "@jac/desktop": path.resolve(buildDir, "{compiled_desktop_relative}"),';
+    }
+
+    wasm_host_alias_str = '';
+    if os.path.isfile(
+        os.path.join(str(self._get_client_dir()), compiled_wasm_host_relative)
+    ) {
+        wasm_host_alias_str = f'\n      "@jac/wasm_host": path.resolve(buildDir, "{compiled_wasm_host_relative}"),';
     }
     plugins = [];
     plugin_imports = [];
@@ -651,6 +643,85 @@ function jacPortReporter() {{
     }},
   }};
 }}
+
+// Vite plugin: surface Jac build errors via Vite's native error overlay.
+// The jac dev server mirrors build health to .jac-build-error.json; the file
+// existing means broken (show overlay), removed means recovered (reload).
+function jacBuildErrorOverlay() {{
+  const statusFile = path.resolve(buildDir, ".jac-build-error.json");
+  let lastRaw = null;
+  const read = () => {{
+    try {{ return fs.readFileSync(statusFile, "utf-8"); }} catch (e) {{ return ""; }}
+  }};
+  return {{
+    name: "jac-build-error-overlay",
+    configureServer(server) {{
+      const push = (raw) => {{
+        if (raw === lastRaw) return;
+        // lastRaw is the last KNOWN state, not the last sent one: record it
+        // before any skip, or a recovery that happens with zero clients would
+        // leave the old error latched here and dedup-suppress an identical
+        // error recurring later.
+        lastRaw = raw;
+        // No live clients: skip the broadcast (Vite would buffer it and replay
+        // stale state to the first client; the connection handler replays the
+        // CURRENT state instead).
+        if (server.ws.clients && server.ws.clients.size === 0) return;
+        if (!raw) {{
+          server.ws.send({{ type: "full-reload", path: "*" }});
+          return;
+        }}
+        let file = "", message = raw;
+        try {{
+          const data = JSON.parse(raw);
+          file = data.file || "";
+          message = data.message || "Jac build error";
+        }} catch (e) {{}}
+        server.ws.send({{
+          type: "error",
+          err: {{ message: message, stack: "", id: file, plugin: "jac" }},
+        }});
+      }};
+      try {{ server.watcher.add(statusFile); }} catch (e) {{}}
+      const onWrite = (f) => {{ if (path.resolve(f) === statusFile) push(read()); }};
+      server.watcher.on("add", onWrite);
+      server.watcher.on("change", onWrite);
+      server.watcher.on("unlink", (f) => {{
+        const abs = path.resolve(f);
+        if (abs === statusFile) {{
+          push("");
+          return;
+        }}
+        // A served module was deleted (e.g. its Jac source was removed while
+        // still imported). Importers keep a cached transform pointing at the
+        // dead file, which 404s into a blank page with no overlay. Invalidate
+        // them and reload so the fresh transform surfaces Vite's own
+        // "Failed to resolve import" error overlay.
+        try {{
+          const mods = server.moduleGraph.getModulesByFile(abs);
+          if (mods && mods.size) {{
+            let hadImporters = false;
+            for (const mod of mods) {{
+              for (const importer of mod.importers) {{
+                hadImporters = true;
+                server.moduleGraph.invalidateModule(importer);
+              }}
+              server.moduleGraph.invalidateModule(mod);
+            }}
+            if (hadImporters) {{
+              server.ws.send({{ type: "full-reload", path: "*" }});
+            }}
+          }}
+        }} catch (e) {{}}
+      }});
+      // A browser opened (or reloaded) while broken gets the overlay immediately
+      server.ws.on("connection", () => {{
+        const raw = read();
+        if (raw) {{ lastRaw = null; push(raw); }}
+      }});
+    }},
+  }};
+}}
 {mobile_compiled_block}
 /**
  * Vite DEV configuration for HMR mode
@@ -663,7 +734,10 @@ export default defineConfig({{
   }},
   plugins: [
     jacErrorReporter(),
-    jacPortReporter(),{mobile_plug_in}{(newline + plugins_str + newline + '  ')
+    jacPortReporter(),
+    jacBuildErrorOverlay(),{mobile_plug_in}{(
+            newline + plugins_str + newline + '  '
+        )
             if plugins_str
             else ''}],
   root: buildDir,
@@ -732,7 +806,7 @@ export default defineConfig({{
   }},
   resolve: {{
     alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{framework_alias_str}
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{wasm_host_alias_str}{framework_alias_str}{ui_alias_str}
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
@@ -852,7 +926,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{framework_alias_str}
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{desktop_alias_str}{wasm_host_alias_str}{framework_alias_str}{ui_alias_str}
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],

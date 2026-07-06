@@ -5,6 +5,8 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
+glob VALID_CLIENT_KINDS: list[str] = ["web", "mobui"];
+
 obj PersonConfig {
     has name: str = "",
         email: str = "";
@@ -18,6 +20,7 @@ obj PackageIncludeConfig {
 obj ProjectConfig {
     has name: str = "",
         version: str = "0.1.0",
+        client_kind: str = "web",
         description: str = "",
         authors: list[PersonConfig] = [],
         maintainers: list[PersonConfig] = [],
@@ -74,6 +77,10 @@ obj ServeConfig {
 
 obj FormatConfig {
     has outfile: str = "";
+}
+
+obj PrecommitConfig {
+    has typecheck: bool = True;
 }
 
 obj LintConfig {
@@ -157,6 +164,7 @@ obj JacConfig {
         test: TestConfig = TestConfig(),
         serve: ServeConfig = ServeConfig(),
         format: FormatConfig = FormatConfig(),
+        precommit: PrecommitConfig = PrecommitConfig(),
         check: CheckConfig = CheckConfig(),
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),

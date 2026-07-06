@@ -93,19 +93,23 @@ def apply_dev_source_override() -> None:
 
     The source dir comes from one of two places, in order:
 
-    1. A ``jac_linked_source`` marker baked into a linked dev binary
-       (``zig build -Ddev`` / ``-Djaclang-dir``; see ``_baked_source_dir``).
-       This wins because it is fixed at build time and cwd-independent -- the
-       "linked compiler" mode, where the binary ships no bundled ``jaclang``.
-    2. Otherwise, ``[dev] jaclang_source`` from the nearest ``jac.toml``::
+    1. ``[dev] jaclang_source`` from the nearest ``jac.toml``::
 
            [dev]
            jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
 
-       This repo ships it in both the root ``jac.toml`` and ``jac/jac.toml``
+       This wins: inside a repo that declares its own compiler source, THAT
+       source is the developer's intent -- even when the running binary is a
+       linked dev binary baked to a different checkout (working across two
+       clones must not silently compile repo B with repo A's tree). This repo
+       ships the stanza in both the root ``jac.toml`` and ``jac/jac.toml``
        (both pointing at the same source), so the loop holds from the repo root
        AND from ``cd jac`` (where the suite runs); other subprojects opt in by
        adding their own stanza.
+    2. Otherwise, a ``jac_linked_source`` marker baked into a linked dev binary
+       (``zig build -Ddev`` / ``-Djaclang-dir``; see ``_baked_source_dir``) --
+       the cwd-independent "linked compiler" mode, where the binary ships no
+       bundled ``jaclang``.
 
     Either way the directory is prepended to the FRONT of ``sys.path`` so
     ``import jaclang`` resolves to the live source instead of the single binary's
@@ -129,19 +133,16 @@ def apply_dev_source_override() -> None:
     """
     try:
         # A baked marker is a LINKED dev binary's ONLY compiler -- there is no
-        # bundled jaclang to fall back on -- so it must apply even when
+        # bundled jaclang to fall back on -- so it must still apply even when
         # JAC_NO_DEV_SOURCE is set. That flag means "use the shipped compiler,
         # not a dev tree"; for a linked binary the linked tree IS the shipped
         # compiler, so honoring it here would brick the binary (sys.path never
         # gets the source, `import jaclang` then fails). JAC_NO_DEV_SOURCE only
         # suppresses the jac.toml-based loop, where a bundled jaclang takes over.
-        baked = _baked_source_dir()
-        if baked is not None:
-            src_dir: str | None = baked
-        elif os.environ.get("JAC_NO_DEV_SOURCE"):
-            return
-        else:
-            src_dir = _dev_source_from_toml()
+        toml_src: str | None = None
+        if not os.environ.get("JAC_NO_DEV_SOURCE"):
+            toml_src = _dev_source_from_toml()
+        src_dir = toml_src or _baked_source_dir()
         if src_dir is None:
             return
         # Must contain a `jaclang/` package, else this would shadow nothing

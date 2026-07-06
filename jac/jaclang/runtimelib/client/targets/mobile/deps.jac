@@ -182,25 +182,21 @@ def _check_ios_dependencies -> None {
 def _check_and_report_dependencies(plat: str = "android") {
     console.print("\n📦 Checking mobile build dependencies...", style="bold");
 
-    (node_ok, node_ver) = _check_command_available(["node", "--version"]);
-    if node_ok {
-        console.print(f"  ✔ Node.js found: {node_ver}", style="success");
+    bun = get_bun();
+    if bun {
+        (bun_ok, bun_ver) = _check_command_available([bun, "--version"]);
     } else {
-        bun = get_bun();
-        if bun {
-            (bun_ok, bun_ver) = _check_command_available([bun, "--version"]);
-        } else {
-            (bun_ok, bun_ver) = (False, None);
-        }
-        if bun_ok {
-            console.print(f"  ✔ Bun found: {bun_ver}", style="success");
-        } else {
-            console.warning("  ✖ Node.js or Bun not found");
-            console.print(
-                "    Install Node.js (https://nodejs.org) or Bun (https://bun.sh)",
-                style="muted"
-            );
-        }
+        (bun_ok, bun_ver) = (False, None);
+    }
+    if bun_ok {
+        console.print(f"  ✔ Bundled Bun: {bun_ver}", style="success");
+    } else {
+        console.warning("  ✖ Bundled Bun not found");
+        console.print(
+            "    Shipped jac binaries include it; for a source checkout run "
+            "`zig build fetch-bun`, or set JAC_BUN to a bun binary.",
+            style="muted"
+        );
     }
 
     if plat == "android" {

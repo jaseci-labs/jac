@@ -1,5 +1,6 @@
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
+import from kubernetes.config.config_exception { ConfigException }
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
@@ -10,6 +11,7 @@ import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
+import from jaclang.scale.deploy.target.kubernetes { kubernetes_target as kt_module }
 
 test "deployment target factory creates kubernetes target" {
     config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
@@ -22,6 +24,31 @@ test "deployment target factory creates kubernetes target" {
     assert hasattr(target, "get_status");
     assert hasattr(target, "scale");
     assert target.k8s_config.app_name == "test-app";
+}
+
+test "kubernetes target creation auto-syncs missing deploy tooling globally" {
+    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.missing_capability_dists"
+    ) as mock_missing, unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.ensure_global_capability"
+    ) as mock_ensure {
+        mock_missing.return_value = ["kubernetes>=34.1.0,<35.0.0"];
+        target = DeploymentTargetFactory.create("kubernetes", config);
+        assert target is not None;
+        mock_ensure.assert_called_once_with("deploy.k8s");
+    }
+
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.missing_capability_dists"
+    ) as mock_missing, unittest.mock.patch(
+        "jaclang.scale.deploy.target.factory.ensure_global_capability"
+    ) as mock_ensure {
+        mock_missing.return_value = [];
+        DeploymentTargetFactory.create("kubernetes-microservice", config);
+        mock_ensure.assert_not_called();
+    }
 }
 
 test "deployment target factory raises for unsupported target" {
@@ -362,4 +389,23 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
             assert mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.call_count == 2;
         }
     }
+}
+
+test "kubernetes_target falls back to in-cluster config when kubeconfig is unavailable" {
+    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
+    target = DeploymentTargetFactory.create("kubernetes", config);
+
+    fake_cfg = unittest.mock.MagicMock();
+    # Simulate running in a pod: no ~/.kube/config, so load_kube_config raises.
+    fake_cfg.load_kube_config.side_effect = ConfigException("no kubeconfig");
+    # Halt after the fallback; get_status folds the error into an UNKNOWN status.
+    fake_cfg.load_incluster_config.side_effect = RuntimeError("stop after fallback");
+
+    with unittest.mock.patch.object(kt_module, "k8s_cluster_config", fake_cfg) {
+        target.get_status("test-app");
+    }
+
+    # The except ConfigException clause must catch and reach the in-cluster fallback.
+    fake_cfg.load_kube_config.assert_called_once();
+    fake_cfg.load_incluster_config.assert_called_once();
 }

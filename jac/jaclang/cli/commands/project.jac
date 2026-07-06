@@ -414,7 +414,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
 @registry.command(
     name="bundle",
-    help="Build a .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
+    help="Build a pure-Python .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
     args=[
         Arg.create(
             "output",
@@ -425,14 +425,19 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
         Arg.create(
             "target",
             default="wheel",
-            help="Build target: 'wheel' (PyPI), 'npm' (npmjs), 'all', or 'npm-runtime'",
+            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'sealed' (precompiled JIR image, runtime never compiles source, #7135), 'binary' (self-contained executable), 'all', or 'npm-runtime'",
             short="t"
         ),
 
     ],
     examples=[
-        ("jac bundle", "Build wheel into dist/"),
+        ("jac bundle", "Build a pure-Python wheel into dist/ (.jac transpiled to .py)"),
         ("jac bundle --target npm", "Build an npm .tgz into dist/"),
+        (
+            "jac bundle --target sealed",
+            "Build a sealed (precompiled JIR) image into dist/"
+        ),
+        ("jac bundle --target binary", "Build a self-contained executable into dist/"),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],

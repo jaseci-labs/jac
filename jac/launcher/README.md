@@ -40,7 +40,9 @@ site/                                  <- jaclang + _jac_finder + llvmlite
 
 > Unlike a static embed, the shared interpreter loads its C extensions from
 > `lib-dynload/` on demand, so that directory is **kept** (a static build prunes
-> it). The launcher points the interpreter at this tree via `PYTHONHOME`.
+> it). The launcher points the interpreter at this tree through the PEP 741
+> init config (`home` / `pythonpath_env`) -- never via `PYTHONHOME`/`PYTHONPATH`
+> environment variables, which children would inherit (#7047).
 
 ## Build
 
@@ -77,10 +79,35 @@ archive is only a payload input; it is never linked.
   modules precompiled, so a cold run does **0 live compilations** (vs ~100
   without the bundle). The precompiler intentionally leaves a few core modules
   (`jir`, `archetype`, `modresolver`) to compile at runtime and exits non-zero;
-  the tool judges success by JIR produced (>=300), not the exit code.
-  - Cold start is then dominated by payload extraction + first-time JIR cache
-    laundering, not compilation. Sealing the runtime (shipping JIR-only, no
-    `.jac`/live compile of the bootstrap layer) is the further win -- issue
-    #6852 Phase 4.
+  the tool judges success by the `PRECOMPILE_RESULT.json` completion marker
+  written at the end of an uncrashed run, not the exit code, and the seal
+  finalize pass verifies every sealable module actually produced a JIR.
+- **Sealed runtime (the only bundled shape; #6852 Phase 4 / #7135).** A bundled
+  `zig build` payload boots from a sealed JIR *image*: `_precompiled/MANIFEST.json`
+  maps module fullnames to JIR (full compiler) + frozen bootstrap JIRs (the
+  jac0core layer, incl. `modresolver`), and jaclang's own `JacMetaImporter`
+  resolves its modules by name from the manifest **first** -- no filesystem
+  `.jac` probing, no per-load source re-hash, no runtime compilation of sealed
+  modules. The `.jac` sources still ship alongside (tracebacks, `inspect`, and
+  fallback for an unreadable JIR): the seal is about trust and load semantics,
+  not source concealment. Trust moves to build time (the manifest) + the
+  existing payload sha256 trailer; explicitly registered app images are
+  additionally hash-verified per JIR. The runtime fail-closes on a
+  manifest/tag/JIR-format mismatch rather than degrading to live compilation.
+  Sealing is strict: any precompile failure aborts the build.
+  - `--seal` (passed by `mkpayload` for every bundled build) freezes the
+    bootstrap layer, verifies completeness, and emits the manifest. It is inert
+    only where there is nothing to seal: `-Ddev`/`-Djaclang-dir` (linked
+    source, the compiler is served from a live tree) and `-Dskip-precompile`.
+    `-Ddebug-src` embeds source text in each JIR so tracebacks render from the
+    JIR itself (via the loader's `get_source` + `linecache`); release omits it.
+  - Same image, two products: `jac bundle --target sealed` emits the identical
+    manifest+JIR image for a **user app**, loadable in a host jac
+    via `jaclang.jac0core.sealed.register_image(<dir>/_precompiled)`;
+    `jac bundle --target binary` wraps that image onto a copy of the running
+    sealed binary (trailer surgery: rebuild the gzip'd tar with the app under
+    `site/<app>/` + a `site/jac_app.json` boot marker, re-emit
+    `[stub][payload][JACBIN01 trailer]`), yielding a self-contained executable
+    that `cli_boot` dispatches to instead of the jac CLI.
 - **Linux**: the staged shared lib is named `libpython3.14.so` (pbs may ship
   `libpython3.14.so.1.0` -- `mkpayload` dereferences it to the bare name).

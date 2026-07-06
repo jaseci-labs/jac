@@ -75,6 +75,7 @@ import from jaclang.jac0core.diagnostics {
     E1104,
     E1110,
     E1111,
+    E1120,
     W0062,
     W1050,
     W1051,
@@ -100,6 +101,7 @@ obj PrefetchedTypes {
         bytes_class: types.ClassType | None = None,
         dict_class: types.ClassType | None = None,
         list_class: types.ClassType | None = None,
+        slice_class: types.ClassType | None = None,
         module_type_class: types.ClassType | None = None,
         typed_dict_class: types.ClassType | None = None,
         typed_dict_private_class: types.ClassType | None = None,
@@ -213,9 +215,13 @@ obj TypeEvaluator {
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
+        _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
+        _ts_decl_cache: dict[str, (dict | None)] = {},
+        _ts_decl_path_cache: dict[str, (str | None)] = {},
+        _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
@@ -245,6 +251,23 @@ obj TypeEvaluator {
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
     def forget_module(resolved_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
+    def _resolve_client_npm_module(node_: uni.ModulePath) -> (str | None);
+    def _get_ts_declared_item_type(
+        from_loc: uni.ModulePath, item_name: str
+    ) -> (TypeBase | None);
+
+    def _ts_declared_type_from_file(
+        dts_path: str, item_name: str
+    ) -> (TypeBase | None);
+
+    def _load_ts_declarations(dts_path: str) -> (dict | None);
+    def _map_ts_decl(decl: object, decls: dict, item_name: str) -> (TypeBase | None);
+    def _map_ts_type(
+        ts: object, decls: dict, seen: (set[str] | None) = None
+    ) -> TypeBase;
+
+    def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;
+    def _untyped_external_is_error(node_: uni.UniNode) -> bool;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def _type_from_union_annotation_arg(val: uni.Expr) -> TypeBase;
@@ -295,6 +318,7 @@ obj TypeEvaluator {
         node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
+    def slice_assignment_is_valid(target: uni.Expr, value_node: uni.Expr) -> bool;
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
     def _assign_callable(
         src_func: types.FunctionType,
@@ -506,9 +530,12 @@ obj TypeEvaluator {
         name: uni.JsxElementName
     ) -> types.FunctionType | None;
 
+    def _is_mobui_module(nd: uni.UniNode) -> bool;
     def _get_intrinsic_props_type(tag_name: str) -> types.ClassType | None;
     def _validate_component_jsx_props(
-        expr: uni.JsxElement, component_name: str
+        expr: uni.JsxElement,
+        component_name: str,
+        func_type: types.FunctionType | None = None
     ) -> None;
 
     def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;

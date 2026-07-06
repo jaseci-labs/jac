@@ -1,3 +1,4 @@
+import re;
 import subprocess;
 import sys;
 import from pathlib { Path }
@@ -50,6 +51,8 @@ def capability_specs_for_install(
 ) -> list[str];
 
 def pip_command(python: str, args: list[str]) -> list[str];
+
+def summarize_pip_failure(specs: list[str], stderr: str) -> tuple[str | None, str];
 
 def get_venv_site_packages(venv_dir: Path) -> Path;
 

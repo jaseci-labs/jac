@@ -650,6 +650,95 @@ test "other root access" {
     }
 }
 
+test "get object read access" {
+    _tmpdir = mkdtemp();
+    _orig_base = Jac.get_base_path_dir();
+    Jac.set_base_path(_tmpdir);
+    try {
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="create_other_root",
+            args=[]
+        );
+        root1 = capture_get(captured).strip();
+
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="create_other_root",
+            args=[]
+        );
+        root2 = capture_get(captured).strip();
+
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="create_node",
+            args=[1],
+            **{"root": root1}
+        );
+        node_id = capture_get(captured).strip();
+
+        # ---------- OWNER READS OWN NODE ---------- #
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root1}
+        );
+        assert capture_get(captured).strip() == "A(val=1)";
+
+        # ------- OTHER ROOT DENIED BY-ID READ ----- #
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root2}
+        );
+        assert capture_get(captured).strip() == "None";
+
+        # -------- GRANT READ, THEN READABLE ------- #
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="allow_other_root_access",
+            args=[root2, 0],
+            **{"root": root1},
+            nd=node_id
+        );
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root2}
+        );
+        assert capture_get(captured).strip() == "A(val=1)";
+
+        # ------- REVOKE, DENIED AGAIN ------------- #
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="disallow_other_root_access",
+            args=[root2],
+            **{"root": root1},
+            nd=node_id
+        );
+        captured = capture_start();
+        execution.enter(
+            filename=os.path.join(FIXTURES, "other_root_access.jac"),
+            entrypoint="read_target_node",
+            args=[node_id],
+            **{"root": root2}
+        );
+        assert capture_get(captured).strip() == "None";
+    } finally {
+        Jac.set_base_path(_orig_base);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
 test "savable object" {
     _tmpdir = mkdtemp();
     _orig_base = Jac.get_base_path_dir();
@@ -670,7 +759,7 @@ test "savable object" {
             "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
             "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
             "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
-        );
+        ) , f"create printed: {prints!r}";
 
         captured = capture_start();
 
@@ -679,11 +768,28 @@ test "savable object" {
             entrypoint="get_custom_object",
             args=[id]
         );
-        assert capture_get(captured).strip() == (
+        got = capture_get(captured).strip();
+        expected = (
             "SavableObject(val=0, arr=[], json={}, parent=Parent(val=1, arr=[1], json"
             "={'a': 1}, enum_field=<Enum.B: 'b'>, child=Child(val=2, arr=[1, 2], json"
             "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>)), enum_field=<Enum.A: 'a'>)"
         );
+        diag = "";
+        if got != expected {
+            import from jaclang.runtimelib.serializer { Serializer }
+            import from jaclang.runtimelib { typecache }
+            reg_cls = Serializer._registry.get("__main__.SavableObject");
+            cached = typecache._cache.get(reg_cls) if reg_cls else None;
+            resolved = typecache.get_field_types(reg_cls) if reg_cls else None;
+            diag = (
+                f" | main={sys.modules.get('__main__')!r}"
+                f" | reg_cls={reg_cls!r}"
+                f" | ann={reg_cls?.__annotations__!r}"
+                f" | cached={cached!r}"
+                f" | ft={resolved!r}"
+            );
+        }
+        assert got == expected , f"reload printed: {got!r}{diag}";
 
         captured = capture_start();
 
@@ -693,11 +799,12 @@ test "savable object" {
             args=[id]
         );
 
-        assert capture_get(captured).strip() == (
+        got = capture_get(captured).strip();
+        assert got == (
             "SavableObject(val=1, arr=[1], json={'a': 1}, parent=Parent(val=2, arr=[1, 2], json"
             "={'a': 1, 'b': 2}, enum_field=<Enum.C: 'c'>, child=Child(val=3, arr=[1, 2, 3], json"
             "={'a': 1, 'b': 2, 'c': 3}, enum_field=<Enum.A: 'a'>)), enum_field=<Enum.B: 'b'>)"
-        );
+        ) , f"update printed: {got!r}";
 
         captured = capture_start();
 
@@ -712,7 +819,8 @@ test "savable object" {
             entrypoint="get_custom_object",
             args=[id]
         );
-        assert capture_get(captured).strip() == "None";
+        got = capture_get(captured).strip();
+        assert got == "None" , f"post-delete get printed: {got!r}";
     } finally {
         Jac.set_base_path(_orig_base);
         shutil.rmtree(_tmpdir, ignore_errors=True);
@@ -939,15 +1047,16 @@ test "custom access validation" {
 }
 
 test "run persistent reuse" {
+    import json;
     import sqlite3;
-    import from pickle { loads }
 
     _tmpdir = mkdtemp();
     _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
-        # Database path is auto-generated at _tmpdir/.jac/data/main.db
-        db_path = os.path.join(_tmpdir, ".jac", "data", "main.db");
+        # Database path is auto-generated at
+        # _tmpdir/.jac/data/<target file stem>.db
+        db_path = os.path.join(_tmpdir, ".jac", "data", "simple_node_connection.db");
 
         ##############################################
         #          FIRST RUN - CREATE NODES          #
@@ -962,8 +1071,8 @@ test "run persistent reuse" {
         );
         row = cursor.fetchone();
         assert row is not None , "Root should be persisted to database";
-        root_data = loads(row[0]);
-        first_run_edges = len(root_data.edges);
+        root_data = json.loads(row[0]);
+        first_run_edges = len(root_data["edges"]);
         cursor = conn.execute("SELECT COUNT(*) FROM anchors");
         first_run_keys = cursor.fetchone()[0];
         conn.close();
@@ -985,8 +1094,8 @@ test "run persistent reuse" {
             ("00000000-0000-0000-0000-000000000000", )
         );
         row = cursor.fetchone();
-        root_data = loads(row[0]);
-        second_run_edges = len(root_data.edges);
+        root_data = json.loads(row[0]);
+        second_run_edges = len(root_data["edges"]);
         cursor = conn.execute("SELECT COUNT(*) FROM anchors");
         second_run_keys = cursor.fetchone()[0];
         conn.close();

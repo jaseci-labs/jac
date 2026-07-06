@@ -183,7 +183,7 @@ npm pack dist/<name>-<version>.tgz   # optional: inspect the contents
 npm publish dist/<name>-<version>.tgz --access public
 ```
 
-In CI, authenticate with an automation token via `NODE_AUTH_TOKEN` (see the `publish-npm` job in `.github/workflows/publish-release.yml`, which publishes any package with an `[npm]` section).
+In CI, authenticate with an automation token via `NODE_AUTH_TOKEN`.
 
 ## Editable installs
 
