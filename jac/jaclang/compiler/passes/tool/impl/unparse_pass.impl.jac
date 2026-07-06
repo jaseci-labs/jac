@@ -113,8 +113,6 @@ impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
         prefix = "&";
     } elif nd.ownership == OwnershipKind.VAL {
         prefix = "val ";
-    } elif nd.ownership == OwnershipKind.LINEAR {
-        prefix = "linear ";
     }
     nd.gen.jac = ": " + prefix + nd.tag.gen.jac;
 }

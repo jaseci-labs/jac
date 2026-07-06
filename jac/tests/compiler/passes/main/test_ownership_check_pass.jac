@@ -8,58 +8,15 @@ just one code, so any code that silently appears or disappears is caught.
 
 Ownership here is affine (issue #6905, decision #2): a plain `own` value that is
 never consumed is simply dropped at scope end and reclaimed by the managed RC/GC
-floor, so that is NOT an error. E1305 ("never consumed") is reserved for the
-optional `linear` resource marker (Phase 3) and is not emitted for plain `own`;
-a borrow-conflict or escape fixture therefore reports only its borrow code.
+floor, so that is NOT an error. A borrow-conflict or escape fixture therefore
+reports only its borrow code.
 """
 
-import os;
-import jaclang.jac0core.unitree as uni;
-import from tests.support { JAC_ROOT }
-import from jaclang.jac0core.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "ownership"
-     ),
-     OWNERSHIP_PREFIX = "E13";
-
-"""Compile a fixture with type checking. Returns the JacProgram."""
-def compile_fixture(fixture_name: str) -> JacProgram {
-    path = os.path.join(FIXTURES, fixture_name);
-    program = JacProgram();
-    program.compile(path, type_check=True);
-    return program;
-}
-
-"""Return the sorted multiset of E13xx ownership codes a program emits."""
-def ownership_codes(program: JacProgram) -> list[str] {
-    codes: list[str] = [];
-    for alert in (list(program.errors_had) + list(program.warnings_had)) {
-        if alert.code is not None and alert.code.code.startswith(OWNERSHIP_PREFIX) {
-            codes.append(alert.code.code);
-        }
-    }
-    codes.sort();
-    return codes;
-}
-
-"""Render every alert (code + message) for readable failure output."""
-def render_alerts(program: JacProgram) -> str {
-    parts: list[str] = [];
-    for alert in (list(program.errors_had) + list(program.warnings_had)) {
-        code = alert.code.code if alert.code is not None else "<no-code>";
-        parts.append(f"{code}: {alert.msg}");
-    }
-    return "\n  ".join(parts);
-}
-
-"""Assert a program emits exactly the given E13xx ownership codes (any order)."""
-def expect_ownership_codes(program: JacProgram, expected: list[str]) {
-    actual = ownership_codes(program);
-    wanted = sorted(expected);
-    assert actual == wanted , f"expected E13xx codes {wanted}, got {actual}; all alerts:\n  {render_alerts(
-        program
-    )}";
+import from tests.ownership_helpers {
+    compile_fixture,
+    ownership_codes,
+    render_alerts,
+    expect_ownership_codes
 }
 
 test "E1301: use of an own binding after it is moved" {
@@ -241,10 +198,7 @@ test "moving an owner after its borrow is dead (NLL) is clean" {
 # in `tests/compiler/passes/native/test_move_elision.jac`; the checker no longer
 # writes any backend-consumed fact. --------------------------------------------
 test "a consumed, unborrowed own binding raises no ownership diagnostics" {
-    path = os.path.join(FIXTURES, "proven_unique_ok.jac");
-    program = JacProgram();
-    program.compile(path, type_check=True);
-    expect_ownership_codes(program, []);
+    expect_ownership_codes(compile_fixture("proven_unique_ok.jac"), []);
 }
 
 # --- Regression: diagnostic help text is a template, formatted with the same

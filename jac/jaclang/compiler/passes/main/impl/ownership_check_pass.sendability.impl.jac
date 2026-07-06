@@ -24,13 +24,6 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
                 }
                 break;
             }
-            sid = self._sym_id(nm);
-            if sid is not None
-            and sid in self.linear_decl
-            and not self._is_move_producing_use(nm) {
-                self.emit(E1308, node_override=nm, name=nm.sym_name);
-                break;
-            }
         }
     }
 }

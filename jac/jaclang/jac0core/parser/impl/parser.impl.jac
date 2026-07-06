@@ -5012,13 +5012,6 @@ impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
         val_tok = self.advance();
         kids.append(self.make_uni_token(val_tok));
         return OwnershipKind.VAL;
-    } elif self.check(TokenKind.NAME)
-    and self.current().value == "linear"
-    and not self.check_peek(TokenKind.EQ)
-    and not self.check_peek(TokenKind.SEMI) {
-        linear_tok = self.advance();
-        kids.append(self.make_uni_token(linear_tok));
-        return OwnershipKind.LINEAR;
     } elif self.check(TokenKind.BW_AND) {
         amp_tok = self.advance();
         kids.append(self.make_uni_token(amp_tok));

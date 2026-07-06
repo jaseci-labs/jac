@@ -14,5 +14,4 @@ with entry {
     m: &mut Buffer = &mut b;
     use_mut(m);
     w: val Buffer = Buffer();
-    f: linear Buffer = Buffer();
 }
