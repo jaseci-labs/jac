@@ -119,7 +119,7 @@ exposes its own `__all__` under the `jaclang.byllm` namespace:
 - **Runtime**: `by` (the `by` operator entry point), `MockLLM`, `Model`, `ModelPool`, `MTIR`, `MTRuntime`
 - **Message/tool types**: `Message`, `MessageRole`, `Tool`, `ToolCallResultMsg`, `Image`, `Video`, `StreamEvent`, `IterationAction`, `IterationContext`, `MockToolCall`
 - **MCP**: `McpClient`, `McpTool`
-- **Errors**: `ByLLMError`, `AuthenticationError`, `RateLimitError`, `ModelNotFoundError`, `OutputConversionError`, `UnknownToolError`, `FinishToolError`, `ConfigurationError`, `McpError`
+- **Errors**: `ByLLMError`, `AuthenticationError`, `RateLimitError`, `ModelNotFoundError`, `OutputConversionError`, `FinishToolError`, `ConfigurationError`, `McpError`
 - **Telemetry & batching**: `register_agent_callback`, `dispatch_batch`, `mark_serialize`
 
 ### scale (`jac/jaclang/scale/`, formerly the `jac-scale` plugin)

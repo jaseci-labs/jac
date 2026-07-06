@@ -1732,7 +1732,6 @@ ByLLMError (base)
 ├── RateLimitError               - Rate limit or quota exceeded
 ├── ModelNotFoundError           - Model name does not exist or is unavailable
 ├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
-├── UnknownToolError             - LLM called a tool name that was not registered
 ├── FinishToolError              - finish_tool output failed validation against the declared return type
 ├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
 └── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
@@ -1748,7 +1747,6 @@ All exceptions are importable from `byllm.lib`.
 | `RateLimitError` | Provider rate limit or token quota is exceeded |
 | `ModelNotFoundError` | The requested `model_name` does not exist or is unavailable |
 | `OutputConversionError` | LLM returned a value that could not be converted to the declared return type; the raw string is on `e.raw_output` |
-| `UnknownToolError` | The LLM tried to call a tool function that was not in the registered tool list |
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
 | `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
@@ -1763,7 +1761,6 @@ All exceptions are importable from `byllm.lib`.
         RateLimitError,
         ModelNotFoundError,
         OutputConversionError,
-        UnknownToolError,
         ConfigurationError,
         CompactionNotEffectiveError
     }
@@ -1777,7 +1774,6 @@ All exceptions are importable from `byllm.lib`.
         RateLimitError,
         ModelNotFoundError,
         OutputConversionError,
-        UnknownToolError,
         ConfigurationError,
         CompactionNotEffectiveError,
     )
