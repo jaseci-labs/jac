@@ -250,6 +250,12 @@ impl jac2c(filename: str) -> int {
             return 1;
         }
         units = emit_translation_units(filename, ir, prog);
+        if prog.errors_had {
+            for error in prog.errors_had {
+                console.error(f"{error}");
+            }
+            return 1;
+        }
         chunks: list[str] = [];
         for (path, src) in units {
             if not src.strip() {
