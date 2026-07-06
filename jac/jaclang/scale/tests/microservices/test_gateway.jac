@@ -319,7 +319,7 @@ def _serve_fragment(payload: dict) -> tuple {
 
     body = json.dumps(payload).encode();
 
-    def _do_get(handler_self: any) -> None {
+    def _do_get(handler_self: any) {
         handler_self.send_response(200);
         handler_self.send_header("Content-Type", "application/json");
         handler_self.send_header("Content-Length", str(len(body)));
@@ -327,7 +327,7 @@ def _serve_fragment(payload: dict) -> tuple {
         handler_self.wfile.write(body);
     }
 
-    def _log_quiet(handler_self: any, fmt: str, *args: any) -> None {}
+    def _log_quiet(handler_self: any, fmt: str, *args: any) { }
 
     handler_cls = type(
         "_FragmentHandler",
@@ -401,11 +401,7 @@ test "/graph/data merges the graph fragments of every healthy service" {
 }
 
 test "/graph/data still answers when one service is down (partial merge)" {
-    frag_a = {
-        "version": "1.0",
-        "nodes": [{"id": "r", "label": "root"}],
-        "edges": []
-    };
+    frag_a = {"version": "1.0", "nodes": [{"id": "r", "label": "root"}], "edges": []};
     (srv_a, port_a) = _serve_fragment(frag_a);
 
     reg = ServiceRegistry();

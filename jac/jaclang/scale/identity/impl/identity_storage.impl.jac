@@ -5,9 +5,13 @@ impl IdentityStorage.hash_password(password: str) -> str {
 }
 
 impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool {
-    return bool(
-        bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
-    );
+    try {
+        return bool(
+            bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+        );
+    } except ValueError {
+        return False;
+    }
 }
 
 impl IdentityStorage.create_user(
@@ -114,21 +118,6 @@ impl IdentityStorage.authenticate(
             continue;
         }
         pw_hash = cred.get('password_hash', '');
-
-        if cred.get('algorithm') == 'sha256' {
-            if hashlib.sha256(password.encode()).hexdigest() == pw_hash {
-                cred['password_hash'] = IdentityStorage.hash_password(password);
-                cred.pop('algorithm', None);
-                self._update_credentials(user_id, credentials);
-                return {
-                    'user_id': user_id,
-                    'root_id': user['root_id'],
-                    'role': user.get('role', 'user')
-                };
-            }
-            continue;
-        }
-
         if IdentityStorage.verify_password(password, pw_hash) {
             return {
                 'user_id': user_id,
@@ -196,7 +185,6 @@ impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str
     for cred in credentials {
         if cred.get('type') == 'password' {
             cred['password_hash'] = new_hash;
-            cred.pop('algorithm', None);
             password_set = True;
         }
     }

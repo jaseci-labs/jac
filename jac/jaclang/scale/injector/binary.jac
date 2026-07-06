@@ -11,12 +11,13 @@ import tempfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
+import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR, APP_MOUNT_PATH }
 
 glob logger = logging.getLogger(__name__);
 
 glob BINARY_ARCNAME: str = "bin/jac",
      OVERLAY_SUBDIR: str = "jaclang-src",
+     JIR_SEED_SUBDIR: str = "jir-seed",
      _HTTP_TIMEOUT: int = 60,
      _SUBPROCESS_TIMEOUT: int = 300,
      _JASECI_REPO: str = "https://github.com/jaseci-labs/jaseci",
@@ -255,8 +256,61 @@ def ensure_admin_dist_built(source_root: Path) -> None {
 }
 
 
+glob _JIR_ADOPT_PY: str = """\
+# Re-home host-precompiled .jir seeds via the baked manifest (#7138); pure stdlib on system python3 - invoking jac here would compile the overlay first.
+import os
+import shutil
+from pathlib import Path
+
+seed_root = Path(__file__).resolve().parent
+manifest = seed_root / "_manifest.tsv"
+xdg = os.environ.get("XDG_CACHE_HOME")
+cache_base = Path(xdg) if xdg else (Path.home() / ".cache")
+dest_dir = cache_base / "jac" / "jir" / "modules"
+dest_dir.mkdir(parents=True, exist_ok=True)
+adopted = 0
+for line in manifest.read_text().splitlines():
+    if not line.strip():
+        continue
+    seed_rel, dest_name = line.split("\\t", 1)
+    seed = seed_root / seed_rel
+    if not seed.is_file():
+        continue
+    dest = dest_dir / dest_name
+    shutil.copy2(str(seed), str(dest))
+    os.utime(str(dest), None)  # fresher than the untarred source -> cache valid
+    adopted += 1
+print("[jac-scale] adopted %d host-precompiled modules" % adopted)
+""";
+
+
+def _host_jir_cache_for(source_path: Path) -> (Path | None) {
+    # Host-side compiled .jir for this source, if the driver (same binary as pods) compiled it; best-effort.
+    try {
+        import from jaclang.jac0core.jir { get_module_cache_path }
+        cache = get_module_cache_path(str(source_path));
+        return cache if cache.is_file() else None;
+    } except Exception {
+        return None;
+    }
+}
+
+
+def _pod_seed_dest_name(rel: str) -> str {
+    # Literal pod-side cache filename: content key matches, only the path hash differs and the pod path is fixed.
+    import sys;
+    pod_abs = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}";
+    path_hash = hashlib.sha256(pod_abs.encode()).hexdigest()[:8];
+    stem = Path(rel).stem;
+    (major, minor) = (sys.version_info.major, sys.version_info.minor);
+    return f"{stem}.{path_hash}.cpython-{major}{minor}.jir";
+}
+
+
 def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
     ensure_admin_dist_built(source_root);
+    seeded = 0;
+    manifest: list[str] = [];
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
@@ -270,7 +324,35 @@ def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
             }
             rel = path.relative_to(source_root);
             tar.add(str(path), arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}");
+            # Ship the host's compiled .jir so pods validate instead of recompiling (#7138).
+            if str(path).endswith(".jac") {
+                cache = _host_jir_cache_for(path);
+                if cache is not None {
+                    tar.add(
+                        str(cache),
+                        arcname=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{rel}.jir"
+                    );
+                    manifest.append(f"{rel}.jir\t{_pod_seed_dest_name(str(rel))}");
+                    seeded += 1;
+                }
+            }
         }
+        if seeded {
+            for (name, payload) in [
+                ("_adopt.py", _JIR_ADOPT_PY),
+                ("_manifest.tsv", "\n".join(manifest) + "\n")
+            ] {
+                raw = payload.encode("utf-8");
+                info = tarfile.TarInfo(
+                    name=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{name}"
+                );
+                info.size = len(raw);
+                tar.addfile(info, io.BytesIO(raw));
+            }
+        }
+    }
+    if seeded {
+        logger.info(f"Packed {seeded} host-precompiled modules into the overlay.");
     }
     return buf.getvalue();
 }

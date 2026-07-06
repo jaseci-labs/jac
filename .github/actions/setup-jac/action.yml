@@ -6,20 +6,31 @@ description: >
 
   The binary is an OUTPUT cache keyed on the content that goes into it (jaclang
   source, build.zig, and the launcher -- including payload.zig, which pins the
-  pbs tag / python version / bundled pip deps). The first job in any workflow on
-  a branch to build it populates the cache; every other job and workflow restores
-  the prebuilt binary in seconds instead of rebuilding. Exact-key match only
-  (no restore-keys), so a stale binary can never be served -- which is why this
-  is safe even though zig's own incremental cache stays disabled (it doesn't
-  reliably invalidate on a jaclang/payload change).
+  pbs tag / python version / bundled pip deps). Merges to main seed the cache;
+  every other job and workflow restores the prebuilt binary in seconds instead
+  of rebuilding (PR branches cross-restore main's entry, and build their own on
+  a miss). Exact-key match only (no restore-keys), so a stale binary can never
+  be served -- which is why this is safe even though zig's own incremental cache
+  stays disabled (it doesn't reliably invalidate on a jaclang/payload change).
 runs:
   using: composite
   steps:
     # typeshed stdlib stubs are vendored as plain files now (no submodule);
     # third-party stubs are installed per-project by `jac add` (PEP 561 types-*).
+    #
+    # Restore/save split with the SAVE GATED TO MAIN, same as the read-mostly
+    # caches below. The binary key changes on every jaclang/launcher edit, so a
+    # per-PR save has almost no reuse value (only a follow-up push touching
+    # neither jaclang nor the launcher would hit it) yet a high pool cost
+    # (~0.1-0.2 GB each). Left unbounded it dominated the 10 GB pool -- dozens of
+    # per-branch binaries -- and its LRU churn evicted the Linux read-mostly
+    # caches (pbs/bun) this action relies on. PR jobs still build their own
+    # binary on a miss (and ci.yml publishes it as an artifact for the same-run
+    # test jobs); only main seeds the shared copy. Exact-key match only (no
+    # restore-keys), so a stale binary can never be served.
     - name: Restore cached jac binary
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         # Also cache the gitignored typeshed stdlib stubs: they are materialized
         # during `zig build` and ci.yml publishes them as an artifact for
@@ -163,6 +174,20 @@ runs:
           SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
         fi
         zig build "${SHIM_ARG[@]}" --summary all
+
+    # Seed the shared binary cache from main only (see the note by the restore
+    # step). Saved after the build so both the binary and the materialized
+    # typeshed stdlib stubs (part of this cache's path) exist.
+    - name: Save jac binary cache (main only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          jac/zig-out/bin/jac
+          jac/jaclang/vendor/typeshed/stdlib
+        key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**') }}
 
     # Seed the shared read-mostly caches -- from main only (see the note above
     # the restore steps). Every merge to main runs this action, so a pin bump

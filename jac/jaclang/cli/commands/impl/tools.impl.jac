@@ -89,6 +89,33 @@ impl lsp -> int {
     }
 }
 
+impl ninja -> int {
+    import os;
+    import sys;
+
+    exe = os.environ.get('JAC_EXECUTABLE');
+    reexec_guard = os.environ.get('JAC_NINJA_REEXEC');
+    if exe and os.path.exists(exe) and not reexec_guard {
+        os.environ['JAC_NINJA_REEXEC'] = '1';
+        os.execv(exe, [exe, 'ninja'] + sys.argv[2:]);
+    }
+    if reexec_guard {
+        console.error(
+            "This jac binary's launcher predates the fused editor "
+            "(it did not intercept 'ninja'). Rebuild the binary "
+            "(zig build) to get jac ninja."
+        );
+    } else {
+        console.error(
+            "jac ninja is fused into the self-contained jac binary "
+            "(the launcher dispatches it before Python ever starts). "
+            "This jaclang is running as a plain Python package, which has "
+            "no bundled editor -- install the jac binary release to use it."
+        );
+    }
+    return 1;
+}
+
 impl completions(shell: str = "bash", install: bool = False) -> int {
     import from jaclang.cli.jaccomplete { static_shellcode as shellcode }
     import from jaclang.cli.registry { get_registry }

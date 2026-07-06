@@ -1,4 +1,3 @@
-import from jaclang.runtimelib.client { BUN_VERSION }
 import from jaclang.scale.injector.bundle {
     JAC_HOME,
     APP_VOLUME_NAME,
@@ -49,33 +48,23 @@ def build_runtime_install_commands(
 
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
-    commands.append(
-        'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
-    );
-
-    commands.append(
-        'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
-    );
-    commands.append(
-        'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
-    );
-
-    commands.append(
-        'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
-        '-o Acquire::https::Timeout=20 update || true'
-    );
-
-    base_packages = ['git', 'curl', 'unzip'];
+    # apt only for declared packages: the binary bundles bun+python and the overlay ships as a tar, so the default boot needs nothing from apt.
     if config.additional_packages {
-        base_packages.extend(config.additional_packages);
+        commands.append(
+            'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
+        );
+        commands.append(
+            'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
+        );
+        commands.append(
+            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
+        );
+        commands.append(
+            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+            '-o Acquire::https::Timeout=20 update || true'
+        );
+        commands.append(f"apt-get install -y {' '.join(config.additional_packages)}");
     }
-    commands.append(f"apt-get install -y {' '.join(base_packages)}");
-
-    commands.append(
-        f'curl -fsSL https://bun.sh/install | bash -s "bun-v{BUN_VERSION}"'
-    );
-    commands.append('export BUN_INSTALL="$HOME/.bun"');
-    commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
     commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
@@ -112,17 +101,15 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
-def _shared_first_boot_install -> str {
-    # Elect one pod via an atomic mkdir lock on the shared PVC to warm the venv + `.jir` cache first; the rest wait then no-op. Best-effort: a timed-out waiter or stale lock just installs itself.
-    lock = f"{APP_MOUNT_PATH}/.jac/.bootstrap.lock";
+def _first_boot_install -> str {
+    # Adopt jir seeds via system python3 BEFORE any jac invocation (jac would compile the overlay first); best-effort fallback compiles as before (#7138).
+    adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
     return (
-        f'mkdir -p {APP_MOUNT_PATH}/.jac; '
-        f'if mkdir "{lock}" 2>/dev/null; then '
-        f'jac install; rc=$?; rmdir "{lock}" 2>/dev/null || true; exit $rc; '
-        f'else '
-        f'n=0; while [ -d "{lock}" ] && [ $n -lt 210 ]; do sleep 2; n=$((n+1)); done; '
-        f'rmdir "{lock}" 2>/dev/null || true; jac install; '
-        f'fi'
+        f'if [ -f "{adopt}" ]; then '
+        f'python3 "{adopt}" '
+        f'|| echo "[jac-scale] jir-seed adoption failed; compiling from source"; '
+        f'fi; '
+        f'jac install'
     );
 }
 
@@ -132,7 +119,7 @@ def build_bootstrap_init_container(
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config, overlay_source);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    commands.append(_shared_first_boot_install());
+    commands.append(_first_boot_install());
     script = ' && '.join(commands);
     return {
         "name": "jac-bootstrap",

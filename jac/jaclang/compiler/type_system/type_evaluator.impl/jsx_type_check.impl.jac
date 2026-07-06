@@ -248,7 +248,7 @@ impl TypeEvaluator._validate_component_jsx_props(
     }
 
     for (pname, p) in param_map.items() {
-        if pname not in matched_params and p.default_value is None {
+        if pname not in matched_params and not p.is_optional {
             self.emit_diag(E1102, expr, component=component_name, name=pname);
         }
     }

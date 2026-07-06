@@ -894,6 +894,11 @@ impl `test(
                 pargs.append(target);
             }
 
+            if directory and not paths {
+                pargs.append('--jac-test-dir');
+                pargs.append(str(Path(directory).resolve()));
+            }
+
             if ignore {
                 pargs.append('--ignore=' + ignore);
             }

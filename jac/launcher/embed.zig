@@ -37,10 +37,10 @@ const Io = std.Io;
 /// config must NEVER go through the environment (children inherit it, #7047).
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
-/// Bundled CPython minor version. Must stay in lockstep with payload.zig
-/// (PBS_PY / py_ver) staging; it names the dlopened libpython and the
-/// lib-dynload path. A single bump point for the embedded interpreter, shared by
-/// every frontend that embeds it.
+/// Bundled CPython minor version -- the ONE definition; payload.zig imports it
+/// and comptime-asserts its PBS_PY patch pin matches. It names the dlopened
+/// libpython and the lib-dynload path, shared by every frontend that embeds
+/// the interpreter.
 pub const py_ver = "3.14";
 
 pub const lib_basename = switch (builtin.os.tag) {
