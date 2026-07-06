@@ -521,7 +521,7 @@ impl ViteBundler._generate_vite_config_content(
         } else {
             mobile_hmr_str = "";
         }
-        mobile_plug_in: str = "\n    jacMobileCompiledReload(),"
+        compiled_reload_plug_in: str = "\n    jacCompiledReload(),"
             if reload_enabled
             else "";
         if for_mobile_dev and mobile_hmr_host {
@@ -573,9 +573,9 @@ function sendFullReload(server) {
   return sent;
 }
 
-function jacMobileCompiledReload() {
+function jacCompiledReload() {
   return {
-    name: "jac-mobile-compiled-reload",
+    name: "jac-compiled-reload",
     configureServer(server) {
       const compiled = path.resolve(buildDir, "compiled");
       try { server.watcher.add(compiled); } catch (e) {}
@@ -669,7 +669,9 @@ export default defineConfig({{
   }},
   plugins: [
     jacErrorReporter(),
-    jacPortReporter(),{mobile_plug_in}{(newline + plugins_str + newline + '  ')
+    jacPortReporter(),{compiled_reload_plug_in}{(
+            newline + plugins_str + newline + '  '
+        )
             if plugins_str
             else ''}],
   root: buildDir,

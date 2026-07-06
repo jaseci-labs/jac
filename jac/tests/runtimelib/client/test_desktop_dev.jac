@@ -53,7 +53,7 @@ test "vite config emits reload plugin + broker proxy for desktop dev" {
             vite_content = vite_config_path.read_text();
 
             # The reload mechanism: without this plugin, recompiles are inert.
-            assert "jacMobileCompiledReload" in vite_content , (
+            assert "jacCompiledReload" in vite_content , (
                 "desktop dev config must emit the compiled-dir reload plugin"
             );
             # SSO/session broker routed to the pinned loopback port via Vite.
@@ -85,7 +85,7 @@ test "vite config omits reload plugin + broker proxy by default" {
             vite_config_path = bundler.create_vite_config(entry_file, is_dev=True);
             vite_content = vite_config_path.read_text();
 
-            assert "jacMobileCompiledReload" not in vite_content , (
+            assert "jacCompiledReload" not in vite_content , (
                 "reload plugin must not be emitted for non-desktop dev builds"
             );
             assert '"/__jac"' not in vite_content , (
