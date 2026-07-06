@@ -35,6 +35,15 @@ obj _Spinner {
         self.text = text;
     }
 
+    def clear {
+        try {
+            self.stream.write("\r\033[K");
+            self.stream.flush();
+        } except (BrokenPipeError, OSError) {
+            ;
+        }
+    }
+
     def _run {
         idx = 0;
         while not self._stop.is_set() {
@@ -63,13 +72,7 @@ obj _Spinner {
         if self._thread is not None {
             self._thread.join(timeout=1.0);
         }
-
-        try {
-            self.stream.write("\r\033[K");
-            self.stream.flush();
-        } except (BrokenPipeError, OSError) {
-            ;
-        }
+        self.clear();
     }
 }
 
@@ -77,13 +80,19 @@ obj _NullStatus {
     def update(text: str = '') -> None {
         return;
     }
+
+    def clear -> None {
+        return;
+    }
 }
 
 obj ConsoleRenderer {
     has use_emoji: bool = True,
-        use_color: bool = True;
+        use_color: bool = True,
+        _active_status: any = None;
 
     def configure(use_emoji: bool, use_color: bool) -> None;
+    def clear_status -> None;
     def emit(spans: list[Span], stream: any = None) -> None;
     def emit_raw(args: list, stream: any, style: str | None, kwargs: dict) -> None;
     def header(title: str, version: str | None = None) -> None;
