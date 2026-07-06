@@ -777,6 +777,12 @@ Native Jac uses **automatic reference counting** for memory management. Heap-all
 !!! warning "Current Status"
     Deep release of nested structures is currently disabled to prevent use-after-free in complex ownership scenarios. This means certain long-running native programs may leak memory. Programs with bounded allocation are unaffected. Proper ownership tracking is a planned improvement.
 
+### Reserved `__rc_*` runtime hooks
+
+Five names are **reserved intrinsics** on the native pathway: `__rc_debug_enable()`, `__rc_debug_disable()`, `__rc_gc_disable()`, `__rc_gc_enable()`, and `__rc_collect_cycles()`. A call to any of them is dispatched by name to the corresponding runtime helper *before* normal call classification and symbol resolution -- ahead of builtins, module functions, and locals. You therefore cannot define or import your own function under one of these names in native code and expect it to be called; the name is claimed by the RC runtime (defining one would also collide with the runtime's own emitted symbol). The dispatch lives in a single table in the native code generator (`_codegen_rc_intrinsic`).
+
+These hooks exist only in native code. On the Python backend they have no runtime implementation, and a call surfaces an unresolved-type diagnostic at check time rather than silently type-checking.
+
 ### Reference-count elision
 
 A move assignment `b = a` would normally emit a defensive `__rc_retain` on the source so that both slots can be released independently. When the move is the *last* use of `a`, that retain is pure overhead: the reference can simply be handed to `b` and the source slot nulled, so `a`'s later cleanup release loads null and is a no-op and the object is freed exactly once.
