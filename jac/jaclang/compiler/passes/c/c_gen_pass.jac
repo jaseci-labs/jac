@@ -1,10 +1,22 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.compiler.passes.main.layout_pass {
-    get_layout_registry, get_shared_layout_registry
+    get_layout_registry,
+    get_shared_layout_registry,
+    LayoutRegistry
 }
-import from jaclang.compiler.passes.main.ownership_facts_pass { get_ownership_facts }
+import from jaclang.compiler.passes.main.ownership_facts_pass {
+    get_ownership_facts,
+    OwnershipFacts
+}
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import from jaclang.compiler.arch_types {
+    is_ref_arch as arch_is_ref,
+    type_tag_name,
+    ret_type_name as sig_ret_name,
+    arch_type_maps,
+    infer_type
+}
 import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
 
 glob C_PRIM_TYPES: dict[str, str] = {
@@ -35,8 +47,8 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         exc_ctr: int = 0,
         exc_frames: list[str] = [],
         needs_rt: bool = False,
-        layout: object = None,
-        facts: object = None,
+        layout: LayoutRegistry | None = None,
+        facts: OwnershipFacts | None = None,
         arg_pre: list[str] = [],
         arg_post: list[str] = [],
         cur_pad: str = "",
@@ -45,7 +57,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         extern_funcs: list[str] = [],
         extern_func_defs: dict[str, uni.Ability] = {},
         seen_imports: list[str] = [],
-        shared_layout: object = None,
+        shared_layout: LayoutRegistry | None = None,
         strict_c: bool = False;
 
     def transform(ir_in: uni.Module) -> uni.Module {
@@ -65,21 +77,14 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         return ir_in;
     }
 
-    def _unsupported(nd: uni.UniNode, code: str, **kw: object) -> None {
+    def _unsupported(nd: uni.UniNode, code: str, **kw: object) {
         if self.strict_c {
             self.emit(DIAGNOSTICS[code], node_override=nd, **kw);
         }
     }
 
     def is_ref_arch(arch: uni.Archetype) -> bool {
-        has_methods = False;
-        for stmt in (arch.body or []) {
-            if isinstance(stmt, uni.Ability) {
-                has_methods = True;
-            }
-        }
-        has_bases = arch.base_classes is not None and len(arch.base_classes) > 0;
-        return has_methods or has_bases;
+        return arch_is_ref(arch);
     }
 
     def classify(mod: uni.Module) {
@@ -111,10 +116,16 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
                 continue;
             }
             self.seen_imports.append(path);
-            try {
-                sub = JacProgram().compile(file_path=path);
-            } except Exception {
-                continue;
+            sub = self.prog.find_module(path) if self.prog is not None else None;
+            if sub is None {
+                try {
+                    sub = JacProgram().compile(file_path=path);
+                } except Exception {
+                    if self.strict_c {
+                        raise;
+                    }
+                    continue;
+                }
             }
             self.index_imported(sub);
         }
@@ -150,21 +161,14 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def index_arch(arch: uni.Archetype) {
         name = arch.name.value;
         self.arch_nodes[name] = arch;
-        fmap: dict[str, str] = {};
-        rmap: dict[str, str] = {};
+        (fmap, rmap) = arch_type_maps(arch);
         omap: dict[str, str] = {};
         dmap: dict[str, uni.Ability] = {};
         for member in (arch.body or []) {
-            if isinstance(member, uni.ArchHas) {
-                for hv in member.vars {
-                    fmap[hv.name.value] = self.type_name(hv.type_tag);
-                }
-            } elif isinstance(member, uni.Ability) {
+            if isinstance(member, uni.Ability) {
                 mname = member.name_ref.value;
                 omap[mname] = name;
                 dmap[mname] = member;
-                sig = member.signature;
-                rmap[mname] = self.ret_type_name(sig.return_type if sig else None);
             }
         }
         self.field_types[name] = fmap;
@@ -179,6 +183,9 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         try {
             self.facts = get_ownership_facts(mod, self.prog);
         } except Exception {
+            if self.strict_c {
+                raise;
+            }
             self.facts = None;
         }
         self.needs_rt = len(self.type_ids) > 0;
@@ -250,7 +257,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         mod.gen.c_src = "\n\n".join(parts) + "\n";
     }
 
-    def extern_decls() -> list[str] {
+    def extern_decls -> list[str] {
         out: list[str] = [];
         for tname in self.extern_types {
             arch = self.arch_nodes.get(tname);
@@ -283,6 +290,9 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
             try {
                 self.layout = get_layout_registry(mod, self.prog);
             } except Exception {
+                if self.strict_c {
+                    raise;
+                }
                 self.layout = None;
             }
         }
@@ -358,24 +368,11 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     }
 
     def type_name(type_tag: object) -> str {
-        if type_tag is None {
-            return "";
-        }
-        tag = type_tag.tag;
-        if isinstance(tag, uni.Name) {
-            return tag.value;
-        }
-        return tag.unparse();
+        return type_tag_name(type_tag);
     }
 
     def ret_type_name(ret: object) -> str {
-        if ret is None {
-            return "";
-        }
-        if isinstance(ret, uni.Name) {
-            return ret.value;
-        }
-        return ret.unparse();
+        return sig_ret_name(ret);
     }
 
     def gen_struct(arch: uni.Archetype) -> str {
@@ -1066,67 +1063,14 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     }
 
     def expr_type_name(e: object) -> str {
-        if isinstance(e, uni.AtomUnit) {
-            return self.expr_type_name(e.value);
-        }
-        if isinstance(e, (uni.String, uni.MultiString)) {
-            return "str";
-        }
-        if isinstance(e, uni.Bool) {
-            return "bool";
-        }
-        if isinstance(e, uni.Int) {
-            return "int";
-        }
-        if isinstance(e, uni.Float) {
-            return "float";
-        }
-        if isinstance(e, uni.Name) {
-            return self.local_types.get(e.value, "");
-        }
-        if isinstance(e, uni.BinaryExpr) {
-            lt = self.expr_type_name(e.left);
-            rt = self.expr_type_name(e.right);
-            if e.op.value == "+" and (lt == "str" or rt == "str") {
-                return "str";
-            }
-            if lt == "float" or rt == "float" {
-                return "float";
-            }
-            if lt == "int" or rt == "int" {
-                return "int";
-            }
-            return "";
-        }
-        if isinstance(e, uni.CompareExpr) {
-            return "bool";
-        }
-        if isinstance(e, uni.FuncCall) {
-            tgt = e.target;
-            if isinstance(tgt, uni.Name) and tgt.value in self.type_ids {
-                return tgt.value;
-            }
-            if isinstance(tgt, uni.Name) and tgt.value in self.func_returns {
-                return self.func_returns[tgt.value];
-            }
-            if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
-                recv_ty = self.expr_type_name(tgt.target);
-                mname = self.attr_name(tgt.right);
-                if recv_ty in self.method_returns
-                and mname in self.method_returns[recv_ty] {
-                    return self.method_returns[recv_ty][mname];
-                }
-            }
-            return "";
-        }
-        if isinstance(e, uni.AtomTrailer) and e.is_attr {
-            recv_ty = self.expr_type_name(e.target);
-            fname = self.attr_name(e.right);
-            if recv_ty in self.field_types and fname in self.field_types[recv_ty] {
-                return self.field_types[recv_ty][fname];
-            }
-        }
-        return "";
+        return infer_type(
+            e,
+            self.local_types,
+            self.type_ids,
+            self.func_returns,
+            self.method_returns,
+            self.field_types
+        );
     }
 
     def c_op(op_val: str) -> str {
@@ -1341,7 +1285,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
 def import_path(mp: uni.ModulePath) -> (str | None) {
     try {
         return mp.resolve_relative_path();
-    } except Exception {
+    } except (OSError, ValueError, AttributeError) {
         return None;
     }
 }
@@ -1369,7 +1313,7 @@ def direct_import_paths(mod: uni.Module) -> list[str] {
 }
 
 def discover_import_graph(
-    main_path: str, main_mod: uni.Module, prog: any
+    main_path: str, main_mod: uni.Module, prog: any, strict_c: bool = False
 ) -> list[tuple[str, uni.Module]] {
     import from jaclang.jac0core.program { JacProgram }
     seen: dict[str, uni.Module] = {main_path: main_mod};
@@ -1381,10 +1325,16 @@ def discover_import_graph(
             if path in seen {
                 continue;
             }
-            try {
-                sub = JacProgram().compile(file_path=path);
-            } except Exception {
-                continue;
+            sub = prog.find_module(path) if prog is not None else None;
+            if sub is None {
+                try {
+                    sub = JacProgram().compile(file_path=path);
+                } except Exception {
+                    if strict_c {
+                        raise;
+                    }
+                    continue;
+                }
             }
             seen[path] = sub;
             order.append(path);
@@ -1397,7 +1347,7 @@ def discover_import_graph(
 def emit_translation_units(
     main_path: str, main_mod: uni.Module, prog: any
 ) -> list[tuple[str, str]] {
-    graph = discover_import_graph(main_path, main_mod, prog);
+    graph = discover_import_graph(main_path, main_mod, prog, strict_c=True);
     mods = [m for (_, m) in graph];
     reg = get_shared_layout_registry(mods, prog);
     out: list[tuple[str, str]] = [];
