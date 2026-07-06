@@ -106,7 +106,6 @@ glob LLVMTargetRef = _opaque("LLVMTarget");
 glob LLVMTargetMachineRef = _opaque("LLVMTargetMachine");
 glob LLVMMemoryBufferRef = _opaque("LLVMMemoryBuffer");
 glob LLVMAttributeListIterator = _opaque("LLVMAttributeListIterator");
-glob LLVMElementIterator = _opaque("LLVMElementIterator");
 glob LLVMAttributeSetIterator = _opaque("LLVMAttributeSetIterator");
 glob LLVMGlobalsIterator = _opaque("LLVMGlobalsIterator");
 glob LLVMFunctionsIterator = _opaque("LLVMFunctionsIterator");

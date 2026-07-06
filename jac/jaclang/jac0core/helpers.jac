@@ -309,11 +309,6 @@ def read_toml_with_encoding(file_path: str) -> dict {
     }
 }
 
-def _safe_repr(v: object, limit: int = 120) -> str {
-    s = repr(v);
-    return s if (len(s) <= limit) else (s[:(limit - 1)] + '…');
-}
-
 obj DistFacade {
     has _dist: (object | None);
     has project_name: str { getter; }

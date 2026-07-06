@@ -27,39 +27,6 @@ class Type(_StrCaching) {
         return not (self == other);
     }
 
-    def _get_ll_global_value_type(
-        self: Type, target_data: Any, context: Any = None
-    ) -> object {
-        import from jaclang.compiler.passes.native.llvm.ir { Module, GlobalVariable }
-        import from jaclang.compiler.passes.native.llvm.binding { parse_assembly }
-        if (context is None) {
-            m = Module();
-        } else {
-            m = Module(context=context);
-        }
-        foo = GlobalVariable(m, self, name="foo");
-        with parse_assembly(str(m)) as llmod {
-            return llmod.get_global_variable(foo.name).global_value_type;
-        }
-    }
-
-    def get_abi_size(self: Type, target_data: Any, context: Any = None) -> object {
-        llty = self._get_ll_global_value_type(target_data, context);
-        return target_data.get_abi_size(llty);
-    }
-
-    def get_element_offset(
-        self: Type, target_data: Any, ndx: Any, context: Any = None
-    ) -> object {
-        llty = self._get_ll_global_value_type(target_data, context);
-        return target_data.get_element_offset(llty, ndx);
-    }
-
-    def get_abi_alignment(self: Type, target_data: Any, context: Any = None) -> object {
-        llty = self._get_ll_global_value_type(target_data, context);
-        return target_data.get_abi_alignment(llty);
-    }
-
     def format_constant(self: Type, value: Any) -> object {
         return str(value);
     }
