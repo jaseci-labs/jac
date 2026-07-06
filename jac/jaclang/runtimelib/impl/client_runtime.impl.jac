@@ -103,169 +103,8 @@ impl JacAwaiting(props: dict) -> JsxElement {
     );
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
-    return
-        <div
-            role="alert"
-            style={{
-                minHeight: "100vh",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                backgroundColor: "#f9fafb",
-                fontFamily: "system-ui, sans-serif",
-
-            }}
-        >
-            <div
-                role="alert"
-                style={{
-                    minHeight: "100vh",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    backgroundColor: "#f9fafb",
-                    fontFamily: "system-ui, sans-serif",
-
-                }}
-            >
-                <h2 style={{color: "#dc2626", marginBottom: "12px"}}>
-                    🚨 Something went wrong
-                </h2>
-                <p style={{color: "#374151", marginBottom: "16px"}}>
-                    An unexpected error occurred. Please try again.
-                </p>
-                <pre
-                    style={{
-                        color: "#991b1b",
-                        background: "#fee2e2",
-                        padding: "12px",
-                        borderRadius: "8px",
-                        fontSize: "14px",
-                        overflowX: "auto",
-                        marginBottom: "16px",
-
-                    }}
-                >
-                    {error.error.message}
-                </pre>
-                <button
-                    onClick={lambda { error.resetErrorBoundary(); }}
-                    style={{
-                        backgroundColor: "#2563eb",
-                        color: "#fff",
-                        padding: "10px 16px",
-                        borderRadius: "8px",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "14px",
-
-                    }}
-                >
-                    🔄 Try again
-                </button>
-            </div>
-        </div>;
-}
-
-impl errorOverlay(filePath: str, errors: str) -> JsxElement {
-    return (
-        <div
-            style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                background: "rgba(0, 0, 0, 0.85)",
-                color: "#fff",
-                fontFamily: "'Monaco', 'Menlo', 'Ubuntu Mono', monospace",
-                fontSize: 14,
-                zIndex: 999999,
-                overflow: "auto",
-                padding: 20,
-                boxSizing: "border-box",
-
-            }}
-        >
-            <div style={{maxWidth: 1200, margin: "0 auto"}}>
-                <div
-                    style={{
-                        background: "#d32f2f",
-                        color: "white",
-                        padding: "16px 24px",
-                        borderRadius: "8px 8px 0 0",
-                        fontSize: 18,
-                        fontWeight: "bold",
-
-                    }}
-                >
-                    ⚠️ Compilation Error
-                </div>
-                <div
-                    style={{
-                        background: "#1e1e1e",
-                        padding: 24,
-                        borderRadius: "0 0 8px 8px",
-
-                    }}
-                >
-                    <div style={{marginBottom: 16}}>
-                        <div style={{color: "#888", marginBottom: 8}}>File:</div>
-                        <div style={{color: "#64b5f6", fontWeight: "bold"}}>
-                            {filePath}
-                        </div>
-                    </div>
-                    <div>
-                        <div style={{color: "#888", marginBottom: 8}}>Error:</div>
-                        <pre
-                            style={{
-                                background: "#2d2d2d",
-                                padding: 16,
-                                borderRadius: 4,
-                                overflowX: "auto",
-                                margin: 0,
-                                borderLeft: "4px solid #d32f2f",
-                                lineHeight: 1.6,
-                                color: "#ff6b6b",
-
-                            }}
-                        >
-                            {errors}
-                        </pre>
-                    </div>
-                    <div
-                        style={{
-                            marginTop: 24,
-                            paddingTop: 16,
-                            borderTop: "1px solid #444",
-                            color: "#888",
-                            fontSize: 13,
-
-                        }}
-                    >
-                        💡 Fix the error and save the file to continue development.
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
-
 impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
-    actualSchema = schema;
-    try {
-        if not schema.shape {
-            if schema._def and schema._def.schema {
-                actualSchema = schema._def.schema;
-            } elif schema.def and schema.def.schema {
-                actualSchema = schema.def.schema;
-            }
-        }
-    } except Exception as e {
-        console.warn("Failed to unwrap schema:", e);
-    }
+    actualSchema = __unwrapFormSchema(schema);
     schemaShape = actualSchema.shape || {};
     defaults = {};
     for key in Object.keys(schemaShape) {
@@ -301,18 +140,7 @@ impl JacForm(props: dict) -> JsxElement {
     gridColumns = props.gridColumns || 2;
     validateMode = props.validateMode || "onTouched";
     className = props.className || "";
-    actualSchema = schema;
-    try {
-        if not schema.shape {
-            if schema._def and schema._def.schema {
-                actualSchema = schema._def.schema;
-            } elif schema.def and schema.def.schema {
-                actualSchema = schema.def.schema;
-            }
-        }
-    } except Exception as e {
-        console.warn("Failed to unwrap schema:", e);
-    }
+    actualSchema = __unwrapFormSchema(schema);
     schemaShape = actualSchema.shape || {};
     fieldNames = Object.keys(schemaShape);
     form = useJacForm(validateMode, schema, onSubmit);
@@ -666,14 +494,4 @@ impl JacForm(props: dict) -> JsxElement {
             </form.Subscribe>
         </form>
     );
-}
-
-
-impl __jacReactErrorHandler(error: any, info: any) -> None {
-    try {
-        message = error.message if error else "Unknown error";
-        stack = error.stack if error else "";
-        componentStack = info.componentStack if info else "";
-        __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
-    } except Exception { }
 }
