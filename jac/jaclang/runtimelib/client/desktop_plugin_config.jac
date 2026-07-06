@@ -20,6 +20,12 @@ obj PluginMetadata {
 }
 
 
+def desktop_sdk_path -> str {
+    this_dir = os.path.dirname(os.path.abspath(__file__));
+    return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.cl.jac');
+}
+
+
 def desktop_sdk_exports -> list[str] {
     return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
 }
