@@ -26,3 +26,8 @@ test "a moved `own` value is sendable across a `flow` boundary" {
     prog = compile_fixture("send_own_moved_ok.jac");
     expect_ownership_codes(prog, []);
 }
+
+test "E1308: a plain mutable (unannotated) value passed to `flow` is not sendable" {
+    prog = compile_fixture("send_plain_mutable.jac");
+    expect_ownership_codes(prog, ["E1308"]);
+}

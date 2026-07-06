@@ -30,7 +30,8 @@ impl OwnershipCheckPass.transform(ir_in: uni.Module) -> uni.Module {
     if not self.owned_decl
     and not self.borrow_meta
     and not self.val_decl
-    and not self._has_region_blocks() {
+    and not self._has_region_blocks()
+    and not self.idx_concurrent {
         return ir_in;
     }
 
@@ -113,9 +114,9 @@ impl OwnershipCheckPass._borrow_source_owner(nd: uni.Assignment) -> (uni.Name | 
     }
     operand = nd.value.operand;
     if self._owned_sym_of_expr(operand) is not None {
-        root = self._place_of(operand);
-        if root is not None {
-            return root;
+        place = self._place_of(operand);
+        if place is not None {
+            return place;
         }
     }
     return None;
@@ -317,7 +318,7 @@ impl OwnershipCheckPass._call_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
             } elif isinstance(param, uni.Expr) {
                 arg = param;
             }
-            owned = self._owned_sym_of_expr(arg);
+            owned = self._owned_sym_of(arg);
             if owned is not None {
                 gen.add(owned);
             }
@@ -339,7 +340,7 @@ impl OwnershipCheckPass._return_move_gen(nd: uni.UniCFGNode) -> set[SymId] {
         if self._cfg_owner(ret) is not nd {
             continue;
         }
-        owned = self._owned_sym_of_expr(ret.expr);
+        owned = self._owned_sym_of(ret.expr);
         if owned is not None {
             gen.add(owned);
         }
@@ -929,11 +930,10 @@ impl OwnershipCheckPass._escaping_borrow_owner(nd: uni.Expr | None) -> (str | No
     }
     if isinstance(nd, uni.UnaryExpr) and nd.op.name == Tok.BW_AND {
         operand = nd.operand;
-        root = self._place_of(operand);
-        if isinstance(root, uni.Name) and root.sym {
-            if is_borrow_kind(nd.ownership)
-            or self._sym_id(root) in self.owned_decl {
-                return root.sym_name;
+        place = self._place_of(operand);
+        if isinstance(place, uni.Name) and place.sym {
+            if is_borrow_kind(nd.ownership) or self._sym_id(place) in self.owned_decl {
+                return place.sym_name;
             }
         }
         return None;
