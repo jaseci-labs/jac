@@ -329,7 +329,10 @@ jobs:
             printf '%s\n' "$FILES" | tr '\n' '\0' \
               | xargs -0 --no-run-if-empty jac format --check --lintfix
           else
-            find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -path "*/passes/native/llvm/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
+            # Sweep only git-tracked files: the build materializes generated
+            # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
+            # own sample .jac files), and a bare `find .` walks those too.
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac format --check --lintfix
           fi
 
       - name: Verify jir_registry.jac is up to date

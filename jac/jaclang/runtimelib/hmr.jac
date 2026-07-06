@@ -35,8 +35,8 @@ obj HotReloader {
     def build_status -> dict;
     def record_ok -> None;
     def record_error(file_path: str, message: str) -> None;
-    def _process_change(file_path: str) -> None;
-    def _dispatch_change(file_path: str) -> None;
+    def _process_change(file_path: str, is_directory: bool = False) -> None;
+    def _dispatch_change(file_path: str, is_directory: bool = False) -> None;
     def _reload_server_module(file_path: str) -> None;
     def _recompile_client_code(
         file_path: str, visited: set | None = None, force: bool = True
@@ -44,6 +44,7 @@ obj HotReloader {
 
     def _recompile_client_unified(file_path: str) -> None;
     def _remove_compiled_output(file_path: str) -> None;
+    def _remove_compiled_dir(file_path: str) -> None;
     def _refresh_routing(file_path: str) -> None;
     def _entry_module_path -> Path;
     def _error_file_path -> Path;

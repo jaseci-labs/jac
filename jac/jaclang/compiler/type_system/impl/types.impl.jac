@@ -406,6 +406,39 @@ impl ClassType.ClassDetailsShared.postinit -> None {
     self.mro = [];
 }
 
+impl ClassType.ClassDetailsShared.canonical_key -> (tuple[str, int, int, str] | None) {
+    if self._identity_key is not None {
+        return self._identity_key;
+    }
+    decl = self.symbol_table;
+    if decl is None or decl.loc is None {
+        return None;
+    }
+    import os;
+    mod_path = decl.loc.mod_path;
+    canon_path = os.path.realpath(mod_path) if mod_path else "";
+    self._identity_key = (
+        canon_path,
+        decl.loc.first_line,
+        decl.loc.col_start,
+        self.class_name
+    );
+    return self._identity_key;
+}
+
+impl ClassType.ClassDetailsShared.same_class(
+    other: ClassType.ClassDetailsShared
+) -> bool {
+    if self is other {
+        return True;
+    }
+    key = self.canonical_key();
+    if key is None {
+        return False;
+    }
+    return key == other.canonical_key();
+}
+
 impl TypeBase.is_class_instance -> bool {
     return ((self.category == TypeCategory.Class) and self.is_instance());
 }

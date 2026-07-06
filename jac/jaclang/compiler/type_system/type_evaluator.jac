@@ -101,6 +101,7 @@ obj PrefetchedTypes {
         bytes_class: types.ClassType | None = None,
         dict_class: types.ClassType | None = None,
         list_class: types.ClassType | None = None,
+        slice_class: types.ClassType | None = None,
         module_type_class: types.ClassType | None = None,
         typed_dict_class: types.ClassType | None = None,
         typed_dict_private_class: types.ClassType | None = None,
@@ -317,6 +318,7 @@ obj TypeEvaluator {
         node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
+    def slice_assignment_is_valid(target: uni.Expr, value_node: uni.Expr) -> bool;
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
     def _assign_callable(
         src_func: types.FunctionType,
