@@ -674,8 +674,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                         if isinstance(sym_type, types.FunctionType) {
                             overloaded_fns: list[types.FunctionType] = [sym_type];
 
+                            overload_scope = base_type.symbol_table;
+                            if sym.parent_tab is not None {
+                                overload_scope = sym.parent_tab;
+                            }
                             all_syms = type_utils.collect_member_syms(
-                                base_type.symbol_table, expr.right.value
+                                overload_scope, expr.right.value
                             );
                             for overload_symbol in all_syms {
                                 if overload_symbol == sym {
