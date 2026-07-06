@@ -28,10 +28,7 @@ import os;
 import shutil;
 import sys;
 import from pathlib { Path }
-import from jaclang.compiler.rust_bridge._build_core {
-    run_build_pipeline,
-    target_triple
-}
+import from typing { cast }
 
 
 def cdylib_name(stem: str, triple: str) -> str {
@@ -64,25 +61,27 @@ def built_cdylib(release_dir: Path, stem: str, triple: str) -> Path {
 
 
 def build_one(crate: str, version: str, ws: Path, out: Path, triple: str) -> dict {
+    import from jaclang.compiler.rust_bridge._build_core { run_build_pipeline }
     stem = crate.replace("-", "_");
-    pipeline = run_build_pipeline(crate, version, ws);
-    exact = pipeline[0];
-    gen = pipeline[1];
-    work = pipeline[2];
+    (exact, gen, work) = run_build_pipeline(crate, version, ws);
+    exact_ver: str = cast(str, exact);
+    release_dir: Path = cast(Path, gen) / "target" / "release";
     try {
-        built = built_cdylib(gen / "target" / "release", f"jac_bridge_{stem}", triple);
+        built = built_cdylib(release_dir, f"jac_bridge_{stem}", triple);
         canonical = cdylib_name(f"jac_bridge_{stem}", triple);
-        dest_dir = out / crate / exact / triple;
+        dest_dir = out / crate / exact_ver / triple;
         dest_dir.mkdir(parents=True, exist_ok=True);
         dest = dest_dir / canonical;
         shutil.copy2(built, dest);
 
         digest = hashlib.sha256(dest.read_bytes()).hexdigest();
-        relpath = str(Path(crate) / exact / triple / canonical).replace(os.sep, "/");
-        print(f"  OK {crate} {exact} [{triple}] {digest[:12]}... -> {relpath}");
+        relpath = str(Path(crate) / exact_ver / triple / canonical).replace(
+            os.sep, "/"
+        );
+        print(f"  OK {crate} {exact_ver} [{triple}] {digest[:12]}... -> {relpath}");
         return {
             "crate": crate,
-            "version": exact,
+            "version": exact_ver,
             "triple": triple,
             "filename": canonical,
             "sha256": digest,
@@ -96,6 +95,7 @@ def build_one(crate: str, version: str, ws: Path, out: Path, triple: str) -> dic
 
 
 def main -> int {
+    import from jaclang.compiler.rust_bridge._build_core { target_triple }
     ap = argparse.ArgumentParser();
     ap.add_argument("--workspace", required=True);
     ap.add_argument("--out", required=True);
@@ -103,7 +103,7 @@ def main -> int {
     ap.add_argument("specs", nargs="+", help="crate or crate@version");
     args = ap.parse_args();
 
-    triple = str(args.triple) if args.triple else target_triple();
+    triple: str = str(args.triple) if args.triple else cast(str, target_triple());
     ws = Path(str(args.workspace)).resolve();
     out_dir = Path(str(args.out));
     if not (ws / "jac-bridge").is_dir() {

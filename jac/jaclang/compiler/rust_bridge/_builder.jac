@@ -45,10 +45,7 @@ def build_bridge(crate: str, version: str = "*", workspace: object = None) -> Pa
     }
     import from jaclang.compiler.rust_bridge._build_core { run_build_pipeline }
     import from jaclang.compiler.rust_bridge._finder { built_lib_candidates }
-    pipeline = run_build_pipeline(crate, version, ws);
-    exact = pipeline[0];
-    gen = pipeline[1];
-    work = pipeline[2];
+    (exact, gen, work) = run_build_pipeline(crate, version, ws);
     try {
         rel = gen / "target" / "release";
         built: Path | None = None;
