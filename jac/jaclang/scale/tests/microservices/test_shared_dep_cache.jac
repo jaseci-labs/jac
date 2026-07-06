@@ -4,7 +4,10 @@ import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.injector.pvc_injector { BUNDLE_MOUNT_PATH }
+import from jaclang.scale.injector.pvc_injector {
+    BUNDLE_MOUNT_PATH,
+    BUNDLE_VOLUME_NAME
+}
 
 
 test "bootstrap points pip/bun caches at the shared bundle PVC, best-effort" {
@@ -16,5 +19,5 @@ test "bootstrap points pip/bun caches at the shared bundle PVC, best-effort" {
     assert script.index("if mkdir") < script.index("PIP_CACHE_DIR");
     assert script.index("PIP_CACHE_DIR") < script.index("jac install");
     mounts = [m["name"] for m in ctr["volumeMounts"]];
-    assert "jac-bundles" in mounts;
+    assert BUNDLE_VOLUME_NAME in mounts;
 }

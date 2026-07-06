@@ -144,6 +144,10 @@ def build_bootstrap_init_container(
     cache = f"{BUNDLE_MOUNT_PATH}/.cache";
     commands.append(
         f'if mkdir -p {cache}/pip 2>/dev/null; then '
+        # Bound the cache so it cannot squeeze the bundles off the shared PVC
+        # (default size 1Gi): past ~512MB it is wiped and rewarmed by this boot.
+        f'if [ "$(du -sm {cache} 2>/dev/null | cut -f1)" -gt 512 ] 2>/dev/null; then '
+        f'rm -rf {cache}/pip && mkdir -p {cache}/pip; fi; '
         f'export PIP_CACHE_DIR={cache}/pip; '
         f'fi'
     );
