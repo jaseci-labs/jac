@@ -284,9 +284,6 @@ jac/jaclang/byllm/cli.jac
 jac/jaclang/byllm/config_loader.jac
 jac/jaclang/byllm/examples/agentic_ai/friendzone-lite/friendzone_lite.jac
 jac/jaclang/byllm/examples/agentic_ai/task-manager-lite/task_manager.jac
-jac/jaclang/byllm/examples/microbenchmarks/text_to_type.jac
-jac/jaclang/byllm/examples/prompt_caching/react_with_caching.jac
-jac/jaclang/byllm/examples/vision/personality_finder.jac
 jac/jaclang/byllm/impl/config_loader.impl.jac
 jac/jaclang/byllm/impl/mcp.impl.jac
 jac/jaclang/byllm/llm.impl/modelpool.impl.jac
