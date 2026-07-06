@@ -289,7 +289,6 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     }
 
     (package, detail) = summarize_pip_failure(specs, stderr);
-    _clear_status_line();
     header = (
         f"Failed to install {package}"
             if package
@@ -439,16 +438,6 @@ impl DependencyResolver.resolve(include_dev: bool = False) -> list[ResolvedDepen
         }
     }
     return resolved;
-}
-
-def _clear_status_line {
-    out: any = sys.stdout;
-    try {
-        if out.isatty() {
-            out.write("\r\033[K");
-            out.flush();
-        }
-    } except Exception { }
 }
 
 def _spec_base_name(spec: str) -> str {
