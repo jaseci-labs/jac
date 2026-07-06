@@ -287,13 +287,13 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
         }
         return True;
     }
-    # Concise error (pip's final line, not the traceback); full output on --verbose.
+
     (package, detail) = summarize_pip_failure(specs, stderr);
-    _clear_status_line();  # don't collide with the caller's spinner
+    _clear_status_line();
     header = (
         f"Failed to install {package}"
-        if package
-        else f"Failed to install {len(specs)} package(s)"
+            if package
+            else f"Failed to install {len(specs)} package(s)"
     );
     console.error(
         f"{header}\n  {detail}" if detail else header,
@@ -441,7 +441,6 @@ impl DependencyResolver.resolve(include_dev: bool = False) -> list[ResolvedDepen
     return resolved;
 }
 
-# Erase the caller's live spinner line so a following error starts fresh (TTY only).
 def _clear_status_line {
     import sys;
     out: any = sys.stdout;
@@ -453,19 +452,19 @@ def _clear_status_line {
     } except Exception { }
 }
 
-# Distribution name of a plain PyPI spec (before version/extras/marker), lowered;
-# "" for VCS/URL/path specs, which we don't identify by name.
 def _spec_base_name(spec: str) -> str {
     import re;
-    m = re.match(r"^([A-Za-z0-9._-]+)\s*(?:[<>=!~;\[]|$)", spec.strip());
+    m = re.match(r"^([A-Za-z0-9._-]+)\s*(?:[<>=!~@;\[]|$)", spec.strip());
     return m.group(1).lower() if m else "";
 }
 
-# pip's real cause is its last `ERROR:`/`SomeError:` line, so scan bottom-up
-# (skipping the "ERROR: Exception:" preamble + traceback); else the last line.
 def _extract_terminal_error(stderr: str) -> str {
     import re;
-    lines = [ln.strip() for ln in stderr.splitlines() if ln.strip()];
+    lines = [
+        ln.strip()
+        for ln in stderr.splitlines()
+        if ln.strip()
+    ];
     if not lines {
         return "";
     }
@@ -480,15 +479,15 @@ def _extract_terminal_error(stderr: str) -> str {
     return lines[-1];
 }
 
-# The failing spec: the one whose (plain PyPI) name appears in pip's output, or
-# the sole spec; else None. VCS/URL specs have no name and are matched only alone.
 def _identify_failed_package(specs: list[str], stderr: str) -> str | None {
     low = stderr.lower();
-    named = [
-        s
-        for s in specs
-        if _spec_base_name(s) and _spec_base_name(s) in low
-    ];
+    named: list[str] = [];
+    for s in specs {
+        name = _spec_base_name(s);
+        if name and name in low {
+            named.append(s);
+        }
+    }
     if len(named) == 1 {
         return named[0];
     }
@@ -498,7 +497,6 @@ def _identify_failed_package(specs: list[str], stderr: str) -> str | None {
     return None;
 }
 
-# Boil a pip failure down to (failing-spec-or-None, pip's own final error line).
 impl summarize_pip_failure(specs: list[str], stderr: str) -> tuple[str | None, str] {
     return (_identify_failed_package(specs, stderr), _extract_terminal_error(stderr));
 }

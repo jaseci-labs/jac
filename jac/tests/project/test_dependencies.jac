@@ -291,7 +291,9 @@ test "DependencyInstaller install_package failure" {
 test "summarize_pip_failure names package and keeps final error line" {
     # Traceback collapses to pip's last line; the named spec is pinned.
     stderr = "ERROR: Exception:\nTraceback (most recent call last):\n  File \"pip/_internal/x.py\", line 109\nBuilding wheel for numpy (pyproject.toml) did not run successfully.\npip._vendor.pyproject_hooks._impl.BackendUnavailable: Cannot import 'setuptools.build_meta'\n";
-    (package, detail) = summarize_pip_failure(["sympy>=1.10.0", "numpy==1.24.3"], stderr);
+    (package, detail) = summarize_pip_failure(
+        ["sympy>=1.10.0", "numpy==1.24.3"], stderr
+    );
     assert package == "numpy==1.24.3";
     assert detail == "pip._vendor.pyproject_hooks._impl.BackendUnavailable: Cannot import 'setuptools.build_meta'";
 }
@@ -309,6 +311,15 @@ test "summarize_pip_failure leaves ambiguous batch unpinned" {
     (package, detail) = summarize_pip_failure(["flask>=3.0", "django>=5.0"], stderr);
     assert package is None;
     assert detail == "something went wrong during install";
+}
+
+test "summarize_pip_failure names a PEP 440 direct-reference spec" {
+    # "name @ url" specs still carry a plain name before the "@".
+    spec = "mypkg @ https://example.com/mypkg.tar.gz";
+    stderr = "ERROR: Could not install packages due to an error building mypkg\n";
+    (package, detail) = summarize_pip_failure([spec, "flask>=3.0"], stderr);
+    assert package == spec;
+    assert detail == "Could not install packages due to an error building mypkg";
 }
 
 test "summarize_pip_failure does not match VCS/URL specs by name" {
