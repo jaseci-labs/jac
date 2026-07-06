@@ -181,7 +181,7 @@ def det_tar_member(info: tarfile.TarInfo) -> tarfile.TarInfo {
 }
 
 
-def open_det_tar(buf: io.BytesIO) -> tuple {
+def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
     # gzip stamps the current time into its header - zero it for determinism.
     gz = gzip.GzipFile(fileobj=buf, mode="wb", mtime=0);
     return (tarfile.open(fileobj=gz, mode="w"), gz);
@@ -192,26 +192,29 @@ def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();
     (tar, gz) = open_det_tar(buf);
-    with tar {
-        for path in sorted(base.rglob("*")) {
-            if not path.is_file() {
-                continue;
+    try {
+        with tar {
+            for path in sorted(base.rglob("*")) {
+                if not path.is_file() {
+                    continue;
+                }
+                rel = path.relative_to(base);
+                if is_excluded(rel) {
+                    continue;
+                }
+                tar.add(str(path), arcname=str(rel), filter=det_tar_member);
             }
-            rel = path.relative_to(base);
-            if is_excluded(rel) {
-                continue;
+            sanitized = sanitized_jac_toml(base, provisioned_database);
+            if sanitized is not None {
+                data = sanitized.encode("utf-8");
+                info = tarfile.TarInfo(name="jac.toml");
+                info.size = len(data);
+                tar.addfile(info, io.BytesIO(data));
             }
-            tar.add(str(path), arcname=str(rel), filter=det_tar_member);
         }
-        sanitized = sanitized_jac_toml(base, provisioned_database);
-        if sanitized is not None {
-            data = sanitized.encode("utf-8");
-            info = tarfile.TarInfo(name="jac.toml");
-            info.size = len(data);
-            tar.addfile(info, io.BytesIO(data));
-        }
+    } finally {
+        gz.close();
     }
-    gz.close();
     return buf.getvalue();
 }
 

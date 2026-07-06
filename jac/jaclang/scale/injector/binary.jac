@@ -188,13 +188,16 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
     import from jaclang.scale.injector.bundle { open_det_tar }
     buf = io.BytesIO();
     (tar, gz) = open_det_tar(buf);
-    with tar {
-        info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
-        info.size = len(binary_bytes);
-        info.mode = 0o755;
-        tar.addfile(info, io.BytesIO(binary_bytes));
+    try {
+        with tar {
+            info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
+            info.size = len(binary_bytes);
+            info.mode = 0o755;
+            tar.addfile(info, io.BytesIO(binary_bytes));
+        }
+    } finally {
+        gz.close();
     }
-    gz.close();
     return buf.getvalue();
 }
 
@@ -317,51 +320,54 @@ def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
     import from jaclang.scale.injector.bundle { open_det_tar, det_tar_member }
     buf = io.BytesIO();
     (tar, gz) = open_det_tar(buf);
-    with tar {
-        info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
-        info.size = len(binary_bytes);
-        info.mode = 0o755;
-        tar.addfile(info, io.BytesIO(binary_bytes));
-        jac_pkg = source_root / "jaclang";
-        for path in sorted(jac_pkg.rglob("*")) {
-            if not path.is_file() or _skip(path) {
-                continue;
+    try {
+        with tar {
+            info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
+            info.size = len(binary_bytes);
+            info.mode = 0o755;
+            tar.addfile(info, io.BytesIO(binary_bytes));
+            jac_pkg = source_root / "jaclang";
+            for path in sorted(jac_pkg.rglob("*")) {
+                if not path.is_file() or _skip(path) {
+                    continue;
+                }
+                rel = path.relative_to(source_root);
+                tar.add(
+                    str(path),
+                    arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}",
+                    filter=det_tar_member
+                );
+                # Ship the host's compiled .jir so pods validate instead of recompiling (#7138).
+                if str(path).endswith(".jac") {
+                    cache = _host_jir_cache_for(path);
+                    if cache is not None {
+                        tar.add(
+                            str(cache),
+                            arcname=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{rel}.jir",
+                            filter=det_tar_member
+                        );
+                        manifest.append(f"{rel}.jir\t{_pod_seed_dest_name(str(rel))}");
+                        seeded += 1;
+                    }
+                }
             }
-            rel = path.relative_to(source_root);
-            tar.add(
-                str(path),
-                arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}",
-                filter=det_tar_member
-            );
-            # Ship the host's compiled .jir so pods validate instead of recompiling (#7138).
-            if str(path).endswith(".jac") {
-                cache = _host_jir_cache_for(path);
-                if cache is not None {
-                    tar.add(
-                        str(cache),
-                        arcname=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{rel}.jir",
-                        filter=det_tar_member
+            if seeded {
+                for (name, payload) in [
+                    ("_adopt.py", _JIR_ADOPT_PY),
+                    ("_manifest.tsv", "\n".join(manifest) + "\n")
+                ] {
+                    raw = payload.encode("utf-8");
+                    info = tarfile.TarInfo(
+                        name=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{name}"
                     );
-                    manifest.append(f"{rel}.jir\t{_pod_seed_dest_name(str(rel))}");
-                    seeded += 1;
+                    info.size = len(raw);
+                    tar.addfile(info, io.BytesIO(raw));
                 }
             }
         }
-        if seeded {
-            for (name, payload) in [
-                ("_adopt.py", _JIR_ADOPT_PY),
-                ("_manifest.tsv", "\n".join(manifest) + "\n")
-            ] {
-                raw = payload.encode("utf-8");
-                info = tarfile.TarInfo(
-                    name=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{name}"
-                );
-                info.size = len(raw);
-                tar.addfile(info, io.BytesIO(raw));
-            }
-        }
+    } finally {
+        gz.close();
     }
-    gz.close();
     if seeded {
         logger.info(f"Packed {seeded} host-precompiled modules into the overlay.");
     }

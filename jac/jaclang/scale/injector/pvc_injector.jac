@@ -220,8 +220,10 @@ obj PvcInjector(Injector) {
                         f"(content-addressed hit); skipping upload."
                     );
                     continue;
-                } except Exception {
-                    ;
+                } except RuntimeError as probe_err {
+                    # Expected when the object is absent (test -f exits 1); any
+                    # real infra problem resurfaces loudly on the upload below.
+                    logger.debug(f"pvc-injector: presence probe: {probe_err}");
                 }
                 with tempfile.NamedTemporaryFile(
                     suffix=".tar.gz", delete=False

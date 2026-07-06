@@ -16,5 +16,10 @@ test "identical content packs to identical bytes (content-address stable)" {
     first = pack_source(d);
     # A different mtime on the same content must not change the digest.
     os.utime(str(src), (0, 0));
-    assert content_address(pack_source(d)) == content_address(first);
+    try {
+        assert content_address(pack_source(d)) == content_address(first);
+    } finally {
+        import shutil;
+        shutil.rmtree(d, ignore_errors=True);
+    }
 }
