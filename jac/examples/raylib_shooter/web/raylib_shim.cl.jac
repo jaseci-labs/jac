@@ -1,10 +1,17 @@
 """WebGL shim for the rlgl/input externs of a wasm-compiled na game.
 
 A reusable client library (the moral equivalent of raylib for the browser):
-it emulates the scalar rlgl immediate-mode API + input on WebGL/DOM, supplies
-the libc/__multi3 the Jac native runtime needs, instantiates /static/<name>.wasm,
-and drives init()/frame() per requestAnimationFrame. Lives in a .cl.jac so it is
-compiled (not strictly type-checked) like other client deps."""
+it emulates the scalar rlgl immediate-mode API + input on WebGL/DOM,
+instantiates /static/<name>.wasm, and drives init()/frame() per
+requestAnimationFrame. Lives in a .cl.jac so it is compiled (not strictly
+type-checked) like other client deps.
+
+libc is no longer stubbed here: the native floor links it into the wasm
+module itself, and the remaining host surface (console write, os, time) is
+the versioned jac_host1 contract supplied by @jac/wasm_host. The env object
+this shim builds is ONLY the game's raylib FFI."""
+
+import from "@jac/wasm_host" { instantiate_na_wasm }
 
 obj Shim {
     has gl: any = None,
@@ -200,6 +207,7 @@ def _read_cstr(sh: any, p: int) -> str {
     return s;
 }
 
+
 def _flush(sh: any) -> None {
     if len(sh.verts) == 0 {
         return;
@@ -293,56 +301,7 @@ def _build_env(sh: any) -> dict {
         "LoadFileText": lambda p: int { return 0; },
         "TextToInteger": lambda p: int { return 0; },
         "SaveFileText": lambda p: int , t: int { return 0; },
-        "malloc": lambda n: int {
-            # n arrives as an i64 (BigInt at the JS boundary); coerce so the
-            # bump-allocator arithmetic stays Number-only (see web shim).
-            sz = Number(n);
-            p = sh.heap;
-            sh.heap = (sh.heap + sz + 7) & ~7;
-            return p;
-        },
-        "calloc": lambda c: int , s: int {
-            n = Number(c) * Number(s);
-            p = sh.heap;
-            sh.heap = (sh.heap + n + 7) & ~7;
-            new(Uint8Array, sh.mem.buffer).fill(0, p, p + n);
-            return p;
-        },
-        "free": lambda p: int { },
-        "malloc_usable_size": lambda p: int { return 0; },
-        "memcpy": lambda d: int , s: int , n: int {
-            sz = Number(n);
-            new(Uint8Array, sh.mem.buffer).copyWithin(d, s, s + sz);
-            return d;
-        },
-        "memcmp": lambda a: int , b: int , n: int {
-            u8 = new(Uint8Array, sh.mem.buffer);
-            sz = Number(n);
-            i = 0;
-            while i < sz {
-                df = u8[a + i] - u8[b + i];
-                if df != 0 {
-                    return df;
-                }
-                i = i + 1;
-            }
-            return 0;
-        },
-        "puts": lambda p: int { return 0; },
-        "printf": lambda a: int { return 0; },
-        "snprintf": lambda a: int , b: int , c: int , d: int { return 0; },
-        "getenv": lambda p: int { return 0; },
-        "fflush": lambda p: int { return 0; },
-        "abort": lambda { },
-        "__multi3": lambda res: int , al: int , ah: int , bl: int , bh: int {
-            k = (BigInt(1) << BigInt(64)) - BigInt(1);
-            a = (BigInt.asUintN(64, ah) << BigInt(64)) | BigInt.asUintN(64, al);
-            b = (BigInt.asUintN(64, bh) << BigInt(64)) | BigInt.asUintN(64, bl);
-            p = BigInt.asUintN(128, a * b);
-            dv = new(DataView, sh.mem.buffer);
-            dv.setBigUint64(res, p & k, True);
-            dv.setBigUint64(res + 8, (p >> BigInt(64)) & k, True);
-        }
+
     };
 }
 
@@ -456,13 +415,11 @@ async def:pub run_game(canvas: any, on_tick: any = None) {
     sh.mv = _m_ident();
     _init_gl(sh);
     _install_input(sh);
-    env = {"env": _build_env(sh)};
-    res: any = await WebAssembly.instantiateStreaming(fetch("/static/main.wasm"), env);
-    inst: any = res.instance;
-    sh.exports = inst.exports;
-    sh.mem = inst.exports.memory;
-    sh.heap = inst.exports.__heap_base.value;
-    inst.exports.__jac_glob_init();
+    # jac_host1 (console/os/time + everything libc needs from the host) comes
+    # from the runtime; this shim supplies only the game's own raylib externs.
+    inst: any = await instantiate_na_wasm(
+        "/static/main.wasm", sh, {"env": _build_env(sh)}
+    );
     inst.exports.init();
     requestAnimationFrame(lambda ts: float { _frame_tick(sh, ts); });
 }

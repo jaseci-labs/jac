@@ -1,0 +1,168 @@
+import os;
+import io;
+import tarfile;
+import tempfile;
+import tomllib;
+import from unittest.mock { patch }
+import from jaclang.scale.injector.bundle { bake_database_intent, pack_source }
+import from jaclang.scale.injector.pvc_injector { PvcInjector, build_bundle_pvc }
+
+
+def _make_project(project: str, toml: str) {
+    with open(os.path.join(project, "app.jac"), "w") as handle {
+        handle.write("walker Main {}");
+    }
+    with open(os.path.join(project, "jac.toml"), "w") as handle {
+        handle.write(toml);
+    }
+}
+
+
+def _bundled_toml(raw: bytes) -> dict {
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
+        return tomllib.loads(tar.extractfile("jac.toml").read().decode("utf-8"));
+    }
+}
+
+
+test "pack_source keeps scale capability intents but strips only the secrets sub-table (both forms)" {
+    with tempfile.TemporaryDirectory() as project {
+        with open(os.path.join(project, "app.jac"), "w") as handle {
+            handle.write("walker Main {}");
+        }
+        with open(os.path.join(project, ".env"), "w") as handle {
+            handle.write("SECRET=1");
+        }
+        with open(os.path.join(project, "tls.key"), "w") as handle {
+            handle.write("PRIVATE");
+        }
+        with open(os.path.join(project, "jac.toml"), "w") as handle {
+            handle.write(
+                "plugins.scale.secrets.jwt = \"topsecret\"\n" + "[project]\nname = \"x\"\n" + "[plugins.scale.database]\nbackend = \"mongo\"\n" + "[plugins.scale]\n# nested creds annotation\nsecrets.token = \"nestedshh\"\n" + "[plugins.scale.secrets]\nmongodb_uri = \"mongodb://u:p@h\"\n" + "# s3 access creds\n[scale.secrets]\napi_key = \"shhhh\"\n"
+            );
+        }
+        raw = pack_source(project);
+        names: list[str] = [];
+        toml_text = "";
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
+            names = tar.getnames();
+            toml_text = tar.extractfile("jac.toml").read().decode("utf-8");
+        }
+        assert "app.jac" in names;
+        assert ".env" not in names;
+        assert "tls.key" not in names;
+        assert "[project]" in toml_text;
+        assert "name = \"x\"" in toml_text;
+        assert "[plugins.scale.database]" in toml_text;
+        assert "backend = \"mongo\"" in toml_text;
+        assert "[plugins.scale.secrets]" not in toml_text;
+        assert "[scale.secrets]" not in toml_text;
+        assert "topsecret" not in toml_text;
+        assert "mongodb" not in toml_text;
+        assert "shhhh" not in toml_text;
+        assert "nestedshh" not in toml_text;
+        assert "secrets.token" not in toml_text;
+        assert "nested creds annotation" not in toml_text;
+        assert "s3 access creds" not in toml_text;
+    }
+}
+
+
+test "pack_source bakes the provisioned database into an intent-less manifest (#7137)" {
+    with tempfile.TemporaryDirectory() as project {
+        _make_project(project, "[project]\nname = \"x\"\nversion = \"0.1.0\"\n");
+        data = _bundled_toml(pack_source(project, provisioned_database="mongo"));
+        assert data["plugins"]["scale"]["database"]["backend"] == "mongo";
+    }
+}
+
+
+test "pack_source never overrides a declared database backend" {
+    with tempfile.TemporaryDirectory() as project {
+        _make_project(
+            project,
+            "[project]\nname = \"x\"\n\n[plugins.scale.database]\nbackend = \"redis\"\n"
+        );
+        data = _bundled_toml(pack_source(project, provisioned_database="mongo"));
+        assert data["plugins"]["scale"]["database"]["backend"] == "redis";
+    }
+}
+
+
+test "pack_source bakes into [scale.database] when the project uses the [scale] form" {
+    with tempfile.TemporaryDirectory() as project {
+        _make_project(
+            project, "[project]\nname = \"x\"\n\n[scale.events]\nbackend = \"redis\"\n"
+        );
+        data = _bundled_toml(pack_source(project, provisioned_database="mongo"));
+        # scale_intent_from_config prefers [scale] over [plugins.scale], so the
+        # baked intent must land where the pod will actually read it.
+        assert data["scale"]["database"]["backend"] == "mongo";
+        assert "plugins" not in data;
+    }
+}
+
+
+test "bake_database_intent warns and ships unbaked when the toml will not parse" {
+    broken = "[project\nname = \"x\"\n";
+    with patch("logging.Logger.warning") as mock_warn {
+        assert bake_database_intent(broken, "mongo") == broken;
+        mock_warn.assert_called_once();
+    }
+}
+
+
+test "pack_source bakes nothing when no database is provisioned" {
+    with tempfile.TemporaryDirectory() as project {
+        _make_project(project, "[project]\nname = \"x\"\n");
+        data = _bundled_toml(pack_source(project));
+        assert "plugins" not in data;
+        assert "scale" not in data;
+    }
+}
+
+
+test "the bundle pvc is ReadWriteMany so every pod can mount it" {
+    pvc = build_bundle_pvc("orders", "prod", "5Gi", "efs-sc");
+    assert pvc["kind"] == "PersistentVolumeClaim";
+    assert pvc["spec"]["accessModes"] == ["ReadWriteMany"];
+    assert pvc["spec"]["storageClassName"] == "efs-sc";
+}
+
+
+test "the bundle pvc fails fast when RWX is requested without a storage class" {
+    raised = False;
+    try {
+        build_bundle_pvc("orders", "prod", "5Gi", "");
+    } except ValueError as e {
+        raised = True;
+        assert "orders-bundles" in str(e);
+        assert "ReadWriteMany" in str(e);
+        assert "bundle_storage_class" in str(e);
+    }
+    assert raised , "Expected ValueError for an RWX bundle PVC without a storage class";
+}
+
+
+test "prepare + mutate_pod_spec wires the pvc, an init container, and the app mount" {
+    with tempfile.TemporaryDirectory() as project {
+        with open(os.path.join(project, "app.jac"), "w") as handle {
+            handle.write("walker Main {}");
+        }
+        injector = PvcInjector();
+        injector.prepare("orders", "prod", project);
+        pod_spec: dict[str, any] = {
+            "_jac_meta": {"app_name": "orders", "namespace": "prod"},
+            "containers": [{"name": "app", "image": "python:3.12-slim"}]
+        };
+        result = injector.mutate_pod_spec(pod_spec, "python:3.12-slim");
+        volume_names = [volume["name"] for volume in result["volumes"]];
+        assert "jac-app" in volume_names;
+        assert "jac-bundles" in volume_names;
+        assert len(result["initContainers"]) == 1;
+        mount_names = [
+            mount["name"] for mount in result["containers"][0]["volumeMounts"]
+        ];
+        assert "jac-app" in mount_names;
+    }
+}

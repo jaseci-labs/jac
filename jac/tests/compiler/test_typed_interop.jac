@@ -14,13 +14,12 @@ the boundary type manifest and hydration codegen are implemented.
 import os;
 import unittest;
 import tempfile;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURE_DIR = os.path.join(
+glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_typed_interop_");
@@ -152,6 +151,22 @@ test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
     assert "def AnalyticsReport(" not in py , (
         "an sv-imported archetype must not degrade into a callable function stub"
     );
+}
+
+# A `.cl.jac` that `sv import`s a function AND the obj type it returns must not
+# emit an `async function <Type>()` RPC stub for the type. The type already
+# lowers to a wire `class <Type>`, so a second `<Type>` declaration collides at
+# bundle time with `The symbol "<Type>" has already been declared` (#6795 -- the
+# cl->sv analog of the Python-path #6710 fix). Only the function gets a stub.
+test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
+    js = compile_fixture("sv_import_type_client.cl.jac").gen.js;
+    assert "async function Todo(" not in js , (
+        "an sv-imported type must not degrade into a callable RPC function stub"
+    );
+    assert "async function list_todos(" in js , (
+        "the sv-imported function must still get its RPC stub"
+    );
+    assert "__jacCallFunction" in js;
 }
 
 # Inline cl block with def:pub produces __jacCallFunction

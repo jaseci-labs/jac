@@ -1,22 +1,9 @@
-"""`jac db` — inspect, manage aliases, and recover anchors.
-
-These commands let developers and operators reason about persistence
-state from the outside: see what's stored, what's quarantined, add
-rescue-time aliases without a code deploy, and re-attempt loading of
-quarantined rows after fixing the schema.
-
-The default DB path is resolved by globbing `.jac/data/*.db` in the
-current directory: if exactly one is found, it's used; otherwise an
-explicit `--path` is required.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
 
-"""Summary of a Jac persistence DB: format version, counts, aliases."""
 @registry.command(
     name="db",
     help="Inspect, rescue, and manage Jac persistence databases",

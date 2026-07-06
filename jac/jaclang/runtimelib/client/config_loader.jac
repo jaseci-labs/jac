@@ -1,18 +1,6 @@
-"""Configuration loader for Jac Client build system.
-
-This module provides configuration access for the client plugin.
-Configuration is loaded from jac.toml under [plugins.client] section.
-
-Inherits from PluginConfigBase to eliminate boilerplate code.
-"""
 import from pathlib { Path }
 import from jaclang.project.plugin_config { PluginConfigBase }
 
-"""Client-specific configuration loader.
-
-Provides access to vite, ts, and package configuration
-from the [plugins.client] section of jac.toml.
-"""
 class JacClientConfig(PluginConfigBase) {
     override def get_plugin_name(self: JacClientConfig) -> str;
     override def get_default_config(self: JacClientConfig) -> dict[str, any];
@@ -38,4 +26,6 @@ class JacClientConfig(PluginConfigBase) {
     def is_pwa_enabled(self: JacClientConfig) -> bool;
     def check_runtime_version(self: JacClientConfig) -> tuple[bool, str, str];
     def sync_runtime_version(self: JacClientConfig) -> None;
+    def get_mobile_config(self: JacClientConfig) -> dict[str, any];
+    def get_react_native_config(self: JacClientConfig) -> dict[str, any];
 }

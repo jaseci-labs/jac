@@ -4,11 +4,13 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), all packages are already included -- skip to the version check below. If you prefer pip:
+**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework and the built-in `scale` deployment subsystem) plus the **byllm** plugin for AI. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
+
+This installs the self-contained `jac` binary -- no Python, pip, or uv required.
 
 Verify your installation meets the minimum requirements:
 
@@ -16,19 +18,17 @@ Verify your installation meets the minimum requirements:
 jac --version
 ```
 
-The `jac --version` output lists all installed plugins and their versions. Check that the following minimums are met:
+The `jac --version` output lists the binary version and any installed plugins. Check that the following minimums are met (the full-stack client framework and the `scale` subsystem ship inside `jaclang`, so there are no separate versions for them):
 
 | Package | Minimum Version |
 |---------|----------------|
 | jaclang | 0.11.0 |
-| jac-client | 0.3.0 |
-| jac-scale | 0.2.0 |
 | byllm | 0.5.0 |
 
 **Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
 
 ```bash
-pip install 'byllm[local]'
+jac install 'byllm[local]'
 ```
 
 The first AI call downloads ~5 GB of GGUF weights to your machine and caches them; subsequent runs are instant. If you'd rather use a cloud model (Anthropic Claude, Google Gemini, Ollama, etc.), see the "Use a cloud model instead" callout in [Part 5](#part-5-making-it-smart-with-ai).
@@ -345,12 +345,11 @@ graph LR
     root --> T3["Task(#quot;Go for a run#quot;)"]
 ```
 
-The `++>` operator returns a list containing the newly created node. You can capture it:
+The `++>` operator mirrors its right-hand side: connecting to a single node returns that node (connecting to a list returns a list). You can capture it:
 
 <!-- jac-skip -->
 ```jac
-result = root ++> Task(title="Buy groceries");
-task = result[0];  # The new Task node
+task = root ++> Task(title="Buy groceries");  # The new Task node
 print(task.title);  # "Buy groceries"
 ```
 
@@ -496,12 +495,12 @@ With the fundamentals of Jac syntax and graph data in place, you're now ready to
 **Create the Project**
 
 ```bash
-jac create day-planner --use client
+jac create day-planner --use web-static
 cd day-planner
 ```
 
 !!! note "Bun required"
-    The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
+    The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
 
 You can delete the scaffolded `main.jac` and the `components/` directory -- you'll replace them with the code below. Also create an empty `styles.css` file next to `main.jac` (we'll fill it in Part 4).
 
@@ -511,7 +510,7 @@ In Part 2, you learned that every node has a built-in unique identifier. The `ji
 
 <!-- jac-skip -->
 ```jac
-task = (root ++> Task(title="Buy groceries"))[0];
+task = root ++> Task(title="Buy groceries");
 print(jid(task));  # e.g., "1be2c28fc5924de28c55f68cc5ccaeb6"
 ```
 
@@ -528,7 +527,7 @@ This is one of the most powerful ideas in Jac. Simply mark a function `def:pub` 
 """Add a task and return it."""
 def:pub add_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return task[0];
+    return task;
 }
 ```
 
@@ -552,7 +551,7 @@ node Task {
 """Add a task and return it."""
 def:pub add_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return task[0];
+    return task;
 }
 
 """Get all tasks."""
@@ -945,7 +944,7 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
     """Add a task and return it."""
     def:pub add_task(title: str) -> Task {
         task = root ++> Task(title=title);
-        return task[0];
+        return task;
     }
 
     """Get all tasks."""
@@ -1090,7 +1089,7 @@ Your day planner works, but it doesn't leverage AI yet. This part introduces one
 Jac's AI features need an LLM to run. The tutorial defaults to a **local model** -- Google Gemma 4 E4B, running in-process via `llama.cpp` -- so there's no API key to manage and no per-call cost. Install the local-model dependency once:
 
 ```bash
-pip install 'byllm[local]'
+jac install 'byllm[local]'
 ```
 
 The first time you run an AI feature, byLLM prompts you (in an interactive terminal) to download the ~5 GB GGUF weights, caches them under `~/.cache/jac/models/`, and uses the cached copy from then on. If you'd rather pre-fetch the weights now -- useful in CI, Docker, or just to know the download is done -- run:
@@ -1115,7 +1114,7 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
 
     | Provider | `default_model` value | Notes |
     |----------|-----------------------|-------|
-    | Anthropic Claude | `"claude-sonnet-4-20250514"` | Set `ANTHROPIC_API_KEY`; get credits at [console.anthropic.com](https://console.anthropic.com) |
+    | Anthropic Claude | `"anthropic/claude-sonnet-4-6"` | Set `ANTHROPIC_API_KEY`; get credits at [console.anthropic.com](https://console.anthropic.com) |
     | Google Gemini | `"gemini/gemini-2.5-flash"` | Set `GEMINI_API_KEY`; free tier at [ai.google.dev](https://ai.google.dev/) |
     | Ollama (local daemon) | `"ollama/llama3.2:1b"` | Requires [Ollama](https://ollama.ai/) running locally |
 
@@ -1125,12 +1124,12 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
     You can also initialize the model from Jac source, which is useful when you want the choice of model to be visible in the code itself or vary by file:
 
     ```jac
-    import from byllm.lib { Model }
+    import from jaclang.byllm.lib { Model }
 
     glob llm = Model(model_name="local:gemma-4-e4b");
     ```
 
-    `import from byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
+    `import from jaclang.byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
 
 **Enums as Output Constraints**
 
@@ -1185,7 +1184,7 @@ Then update `add_task` to call the AI:
 def:pub add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
     task = root ++> Task(title=title, category=category);
-    return task[0];
+    return task;
 }
 ```
 
@@ -1736,7 +1735,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     def:pub add_task(title: str) -> Task {
         category = str(categorize(title)).split(".")[-1].lower();
         task = root ++> Task(title=title, category=category);
-        return task[0];
+        return task;
     }
 
     """Get all tasks."""
@@ -1974,7 +1973,7 @@ jac start main.jac  # or: jac start
 !!! warning "Common issue"
     If adding a task silently fails (nothing happens), check the terminal running `jac start` for error messages. The most common culprits:
 
-    - `byllm[local]` not installed -- re-run `pip install 'byllm[local]'`
+    - `byllm[local]` not installed -- re-run `jac install 'byllm[local]'`
     - Weights not downloaded yet in a non-interactive terminal -- run `jac model pull gemma-4-e4b` once, or set `BYLLM_AUTO_DOWNLOAD=1` and let `jac start` fetch them
     - If you switched to a cloud model, a missing or invalid API key causes a server error -- check the export
 
@@ -2157,7 +2156,7 @@ When `isLoggedIn` flips from `False` to `True`, this ability fires automatically
 Create a new project for the authenticated version:
 
 ```bash
-jac create day-planner-auth --use client
+jac create day-planner-auth --use web-static
 cd day-planner-auth
 ```
 
@@ -2228,7 +2227,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     def:priv add_task(title: str) -> Task {
         category = str(categorize(title)).split(".")[-1].lower();
         task = root ++> Task(title=title, category=category);
-        return task[0];
+        return task;
     }
 
     """Get all tasks."""
@@ -2872,7 +2871,7 @@ The best way to understand walkers is to compare them directly with the function
 def:priv add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
     task = root ++> Task(title=title, category=category);
-    return task[0];
+    return task;
 }
 ```
 
@@ -2888,7 +2887,7 @@ walker AddTask {
             title=self.title,
             category=category
         );
-        report new_task[0];
+        report new_task;
     }
 }
 ```
@@ -2900,7 +2899,7 @@ Study the differences carefully -- each maps directly to a concept from the func
 - **`can create with Root entry`** -- an **ability** that fires when the walker enters a `Root` node. The `with Root entry` part means "execute this code when I arrive at a Root node."
 - **`here`** -- the current node the walker is visiting. In the function version, you wrote `root` directly; in the walker version, `here` is whatever node the walker is currently at.
 - **`self.title`** -- the walker's own properties. Since the walker *is* an object, its data is accessed through `self`.
-- **`report new_task[0]`** -- sends the typed `Task` node back to whoever spawned the walker. This replaces `return`. The reported object crosses the client-server boundary as a fully typed object, just like function return values.
+- **`report new_task`** -- sends the typed `Task` node back to whoever spawned the walker. This replaces `return`. The reported object crosses the client-server boundary as a fully typed object, just like function return values.
 
 Spawn it:
 
@@ -2924,7 +2923,7 @@ walker AddTask {
     can create with Root entry {
         category = str(categorize(self.title)).split(".")[-1].lower();
         new_task = here ++> Task(title=self.title, category=category);
-        report new_task[0];
+        report new_task;
     }
 }
 ```
@@ -2933,7 +2932,7 @@ walker AddTask {
 
 The shape of the type depends on what you report:
 
-- **One typed object per ability** -- `report new_task[0];` reporting a `Task` → `reports: list[Task] = []`
+- **One typed object per ability** -- `report new_task;` reporting a `Task` → `reports: list[Task] = []`
 - **A whole list at once** -- `report self.results;` where `results: list[Task]` → `reports: list[list[Task]] = []`
 - **Plain dicts** -- `report {"deleted": id};` → you can leave `reports` undeclared; the channel stays `list[any]`, which is fine for status responses
 
@@ -3180,7 +3179,7 @@ When you use `walker:priv`, the walker runs on the authenticated user's **own pr
 To try the walker-based version, create a new project:
 
 ```bash
-jac create day-planner-v2 --use client
+jac create day-planner-v2 --use web-static
 cd day-planner-v2
 ```
 
@@ -3270,7 +3269,7 @@ The three files that change are in the collapsible sections below. Copy the unch
         can create with Root entry {
             category = str(categorize(self.title)).split(".")[-1].lower();
             new_task = here ++> Task(title=self.title, category=category);
-            report new_task[0];
+            report new_task;
         }
     }
 
@@ -3648,7 +3647,7 @@ The concepts you've learned are interconnected. Types constrain AI output. Graph
 
 Now that you have a solid foundation, here are some directions to deepen your understanding:
 
-- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac-scale` to take your app to production
+- **Deploy** -- [Deploy to Kubernetes](../production/kubernetes.md) with `jac start --scale` (the built-in scale subsystem) to take your app to production
 - **Go deeper on walkers** -- [Object-Spatial Programming](../language/osp.md) covers advanced graph patterns like recursive traversals and multi-hop queries
 - **More AI** -- [byLLM Quickstart](../ai/quickstart.md) for standalone examples and [Agentic AI](../ai/agentic.md) for building tool-using agents
 - **Examples** -- Explore [community examples](https://github.com/Jaseci-Labs/jaseci/tree/main/examples) for inspiration on what to build next

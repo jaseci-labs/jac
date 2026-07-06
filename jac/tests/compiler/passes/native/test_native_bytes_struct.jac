@@ -11,14 +11,11 @@ import ctypes;
 import os;
 import tempfile;
 import from pathlib { Path }
-import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
-import from llvmlite.binding { ExecutionEngine }
+import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
-     );
+glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
 """Compile a .na.jac fixture and return the JIT engine."""
 def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {

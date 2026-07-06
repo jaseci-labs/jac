@@ -23,7 +23,7 @@ nav:
 
 To open a preview of the mkdocs server locally, following steps should be followed.
 
-1. Install necessaries such as pygments and jaclang syntax highlighting from source.
+1. Install the docs tooling (MkDocs plus the `jac-highlighter` Pygments lexer for Jac syntax highlighting). This is the standalone docs-preview package -- it does not install jaclang.
 
     ```bash
     cd docs

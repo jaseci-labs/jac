@@ -1,28 +1,5 @@
-"""Pure psABI classification for the native foreign boundary
-(One Owner Per Analysis, Phase 8).
+import from jaclang.compiler.passes.native.llvm { ir }
 
-No pass state: callers supply a struct's flattened scalar layout - a list
-of (byte_offset, is_float, bit_width) leaves - plus its total size and
-alignment, and the target triple. The returned plan dict is the single
-authority for how a by-value C struct crosses the call boundary:
-
-  - "memory": passed indirectly (byval pointer / caller copy / sret)
-  - "coerce": list[ir.Type] register pieces when not memory
-  - "byval": for memory args, whether the indirect pointer carries
-    `byval` (System V: backend copies) vs a caller-made copy passed as a
-    plain pointer (AAPCS)
-  - "safe": for register structs, whether the coerce pieces must be
-    loaded via an over-read-safe buffer (AAPCS coerces a partial struct
-    up to a full register) vs loaded in place (System V sizes each
-    eightbyte exactly)
-  - "size", "align"
-
-Directly unit-tested (tests/compiler/test_abi_lib.jac) against
-hand-computed System V AMD64 and AArch64 AAPCS expectations.
-"""
-import from llvmlite { ir }
-
-"""Size/align/scalar-class of a primitive LLVM type for ABI layout."""
 def scalar_layout(llt: (ir.Type | None)) -> tuple {
     if isinstance(llt, ir.DoubleType) {
         return (8, 8, [(0, True, 64)]);
@@ -41,11 +18,10 @@ def scalar_layout(llt: (ir.Type | None)) -> tuple {
     if isinstance(llt, ir.PointerType) {
         return (8, 8, [(0, False, 64)]);
     }
-    # Fallback: treat unknown as a 64-bit integer eightbyte.
+
     return (8, 8, [(0, False, 64)]);
 }
 
-"""System V AMD64 eightbyte classification (see module docstring)."""
 def classify_struct_sysv(size: int, align: int, scalars: list) -> dict {
     if size == 0 {
         return {
@@ -57,7 +33,7 @@ def classify_struct_sysv(size: int, align: int, scalars: list) -> dict {
             "safe": False
         };
     }
-    # Aggregates larger than two eightbytes are MEMORY class (byval / sret).
+
     if size > 16 {
         return {
             "size": size,
@@ -113,8 +89,6 @@ def classify_struct_sysv(size: int, align: int, scalars: list) -> dict {
                 coerce.append(ir.FloatType());
             }
         } else {
-            # INTEGER (NONE padding also folds here). Round the used bytes up to
-            # the nearest power-of-two integer width.
             if used <= 1 {
                 coerce.append(ir.IntType(8));
             } elif used <= 2 {
@@ -136,10 +110,6 @@ def classify_struct_sysv(size: int, align: int, scalars: list) -> dict {
     };
 }
 
-"""AArch64 AAPCS classification (see module docstring): homogeneous
-floating-point aggregates (<=4 same-type float/double leaves) ride
-SIMD/FP registers; other aggregates <=16 bytes ride general registers;
-larger ones pass indirectly via a caller-made copy."""
 def classify_struct_aapcs(size: int, align: int, scalars: list) -> dict {
     if size == 0 {
         return {
@@ -151,7 +121,7 @@ def classify_struct_aapcs(size: int, align: int, scalars: list) -> dict {
             "safe": True
         };
     }
-    # HFA: every leaf scalar is the same floating-point type, at most 4 of them.
+
     is_hfa = len(scalars) >= 1 and len(scalars) <= 4;
     hfa_bits = scalars[0][2] if scalars else 0;
     for (_off, _is_sse, _bits) in scalars {
@@ -170,7 +140,7 @@ def classify_struct_aapcs(size: int, align: int, scalars: list) -> dict {
             "safe": True
         };
     }
-    # Non-HFA aggregates larger than 16 bytes are passed indirectly.
+
     if size > 16 {
         return {
             "size": size,
@@ -181,7 +151,7 @@ def classify_struct_aapcs(size: int, align: int, scalars: list) -> dict {
             "safe": True
         };
     }
-    # Otherwise: general-purpose registers, one i64 per (partial) eightbyte.
+
     if size <= 8 {
         coerce: list = [ir.IntType(64)];
     } else {
@@ -197,7 +167,6 @@ def classify_struct_aapcs(size: int, align: int, scalars: list) -> dict {
     };
 }
 
-"""Classify a by-value struct for the C ABI selected by `triple`."""
 def classify_struct(size: int, align: int, scalars: list, triple: str) -> dict {
     if "aarch64" in triple or "arm64" in triple {
         return classify_struct_aapcs(size, align, scalars);
@@ -205,36 +174,6 @@ def classify_struct(size: int, align: int, scalars: list, triple: str) -> dict {
     return classify_struct_sysv(size, align, scalars);
 }
 
-"""Marshalling plan for a foreign function: the single decision of HOW a
-declared C signature crosses the call boundary on the active target.
-
-Inputs are declaration-surface facts only: the foreign struct model
-(targets.foreign.collect_foreign_structs), the declared
-(param_name, type_name) pairs in order, the declared return type name,
-and the target triple. Returns None when no by-value foreign struct is
-involved - pure-scalar foreign functions (sqrt, strlen, calloc, ...)
-keep the backend's legacy declaration path, which also handles reuse of
-the compiler's canonical extern declarations.
-
-The returned dict is the stored call plan:
-
-  - "params": one entry per declared parameter, in order:
-      {"kind": "scalar",     "pname", "tname", "argpos"}
-      {"kind": "struct_mem", "pname", "sname", "align", "byval", "argpos"}
-      {"kind": "struct_reg", "pname", "sname", "coerce", "safe", "argpos"}
-  - "ret": {"kind": "scalar"} | {"kind": "sret", "sname", "align"}
-           | {"kind": "struct_reg", "sname", "coerce", "safe"}
-  - "sret": True when the return is MEMORY class; the hidden sret pointer
-    is argument 0 and every parameter "argpos" is already shifted by one
-  - "sig": the expanded LLVM argument slots, one per actual argument:
-      ("sretptr", sname) | ("structptr", sname) | ("coerce", ir.Type)
-      | ("scalar", param_index)
-    Struct pointer slots are left symbolic: identified struct types are
-    LLVM-module-context-bound, so the backend materializes them. Scalar
-    slots reference the declared parameter by index for the same reason
-    (scalar lowering consults the checker-typed annotation).
-  - "sig_ret": ("void",) | ("coerce", [pieces]) | ("scalar",)
-"""
 def classify_foreign_fn(
     structs: dict, params: list, ret_tname: (str | None), triple: str
 ) -> (dict | None) {

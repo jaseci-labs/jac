@@ -1,30 +1,27 @@
-"""Implementation of the source file collector."""
-
 import fnmatch;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 
 def _is_excluded(file_path: Path, pkg_root: Path) -> bool {
-    # Reject every file from an egg-info package directory.
     if pkg_root.name.endswith(".egg-info") {
         return True;
     }
-    # Check every path component for excluded directory names
+
     try {
         rel = file_path.relative_to(pkg_root);
     } except ValueError {
         return False;
     }
-    for part in rel.parts[:-1] {  # skip the filename itself
+    for part in rel.parts[:-1] {
         if part in EXCLUDED_DIRS {
             return True;
         }
-        # Also skip egg-info directories (e.g. byllm.egg-info/)
+
         if part.endswith(".egg-info") {
             return True;
         }
     }
-    # Check the suffix of the file itself
+
     for suffix in EXCLUDED_SUFFIXES {
         if file_path.name.endswith(suffix) {
             return True;
@@ -34,10 +31,6 @@ def _is_excluded(file_path: Path, pkg_root: Path) -> bool {
 }
 
 def _make_recursive(pattern: str) -> str {
-    # Simple filename patterns like "*.jac" or "*.py" (no path separator,
-    # no ** prefix) must be made recursive so that sub-directories like
-    # jac_client/plugin/ are also covered — mirroring how pip applies
-    # package-data patterns to each discovered sub-package.
     if "/" not in pattern and not pattern.startswith("**") {
         return f"**/{pattern}";
     }
@@ -58,7 +51,7 @@ def _collect_from_dir(
             if _is_excluded(file_path, pkg_dir) {
                 continue;
             }
-            # Wheel-relative path uses forward slashes
+
             wheel_path = str(file_path.relative_to(proj_root)).replace("\\", "/");
             if wheel_path in seen {
                 continue;
@@ -104,17 +97,13 @@ impl collect_source_files(
     pkg_include = config.project.include;
     data_map = pkg_include.data;
 
-    # Global patterns: "*" key overrides defaults; if absent, defaults apply.
     global_patterns: list[str] = list(data_map.get("*", DEFAULT_INCLUDE_PATTERNS));
 
     seen: set = set();
     result: list[SourceFile] = [];
 
-    # ── Discover package directories ─────────────────────────────────────────
     package_patterns = pkg_include.packages;
 
-    # When no explicit packages list is given, fall back to a directory whose
-    # name matches the package name (normalized: hyphens → underscores).
     if not package_patterns and config.project.name {
         package_patterns = [config.project.name.replace("-", "_")];
     }
@@ -131,12 +120,41 @@ impl collect_source_files(
                 continue;
             }
 
-            # Combine global patterns with any package-specific ones
             specific: list[str] = list(data_map.get(candidate.name, []));
             patterns = global_patterns + specific;
 
             pkg_files = _collect_from_dir(candidate, proj_root, patterns, seen);
             result.extend(pkg_files);
+        }
+    }
+
+    if not result {
+        pkg_name = config.project.name.replace("-", "_");
+        for pattern in global_patterns {
+            for file_path in sorted(proj_root.glob(_make_recursive(pattern))) {
+                if not file_path.is_file() {
+                    continue;
+                }
+                if _is_excluded(file_path, proj_root) {
+                    continue;
+                }
+                rel = str(file_path.relative_to(proj_root)).replace("\\", "/");
+                if rel.split("/")[0] in FLAT_EXCLUDED_DIRS {
+                    continue;
+                }
+                wheel_path = f"{pkg_name}/{rel}";
+                if wheel_path in seen {
+                    continue;
+                }
+                seen.add(wheel_path);
+                result.append(SourceFile(wheel_path=wheel_path, source_path=file_path));
+            }
+        }
+        init_py = f"{pkg_name}/__init__.py";
+        init_jac = f"{pkg_name}/__init__.jac";
+        if result and init_py not in seen and init_jac not in seen {
+            seen.add(init_py);
+            result.append(SourceFile(wheel_path=init_py, content=b""));
         }
     }
 

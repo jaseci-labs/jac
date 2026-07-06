@@ -65,6 +65,29 @@ def ternary_test(x: int) -> int {
     return result;
 }
 
+# Mixed-type ternary: branches need a numeric coercion before the merge phi
+# (#6987). The cast must land in the predecessor block, not ahead of the phi
+# in the merge block, or the LLVM verifier rejects the module ("PHI nodes not
+# grouped at top of basic block"). The two below exercise each predecessor
+# side; ternary_widen_test exercises the int-width zext path.
+def ternary_int_float_test(x: int) -> float {
+    # float "then" + int "else": the int else-branch gets sitofp'd.
+    v = 1.5 if x > 0 else 2;
+    return v;
+}
+
+def ternary_float_int_test(x: int) -> float {
+    # int "then" + float "else": the int then-branch gets sitofp'd.
+    v = 2 if x > 0 else 1.5;
+    return v;
+}
+
+def ternary_widen_test(x: int) -> int {
+    # bool "then" (i1) + int "else" (i64): the narrow then-branch gets zext'd.
+    v = True if x > 0 else 5;
+    return v;
+}
+
 def enum_kind_test(k: int) -> int {
     if k == Kind.PAWN {
         return 100;

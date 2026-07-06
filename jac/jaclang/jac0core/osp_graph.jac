@@ -1,32 +1,9 @@
-# Native (LLVM) in-memory edge adjacency for Object-Spatial traversal.
-#
-# The portable `osp_kernel.jac` owns the walk (`spawn`/`visit`/`disengage`/
-# `report`/scope); the *adjacency* (which nodes an edge connects) is the one
-# backend-specific piece -- cl stores it on JS object fields (`__ospConn`/
-# `__ospRefs`), sv on Python node objects. Native keeps it here, in a module
-# compiled to native IR and concatenated into the kernel's `.na.jac` copy (so it
-# links through the same `osp_kernel` transitive-source path; issue #6146).
-#
-# Edges are recorded as opaque `int` handles (`ptrtoint` of the node/edge
-# pointer). Storing handles -- not pointers -- keeps the edge<->node graph out
-# of the reference-counter, so there is no edge/node refcount cycle; teardown is
-# a program-lifetime arena (the lists below), matching the immortal descriptor
-# singletons. Parallel lists (not a dict) keep the lowered surface to `list`
-# append/index, which native exercises heavily already.
-#
-# `osp_refs` mirrors cl's `__ospRefs` exactly: filter incident edges by optional
-# type tag and direction (undirected edges count as ANY), de-duplicate neighbors
-# first-seen so visit order is stable.
 glob _e_src: list = [],
      _e_tgt: list = [],
      _e_undir: list = [],
      _e_tag: list = [],
      _e_handle: list = [];
 
-"""Record one edge `src -> tgt` (handles are `ptrtoint`'d node pointers).
-`undirected` != 0 makes the edge bidirectional; `edge_tag` is the edge
-archetype's type tag, or -1 for an untyped `++>` edge. Returns `tgt` so a
-connect expression yields its right operand (chaining)."""
 def osp_conn(src: int, tgt: int, eobj: int, undirected: int, edge_tag: int) -> int {
     _e_src.append(src);
     _e_tgt.append(tgt);
@@ -36,10 +13,6 @@ def osp_conn(src: int, tgt: int, eobj: int, undirected: int, edge_tag: int) -> i
     return tgt;
 }
 
-"""Neighbors (or edges, when `edges_only`) reachable from `origin` along edges
-matching `dir` (IN=1, OUT=2, ANY=3) and `edge_tag` (>=0 filters by edge type,
-<0 matches any). Returns a fresh `list` of `int` handles -- the same `list`
-type the kernel's `osp_visit` consumes, so it feeds straight into `visit`."""
 def osp_refs(origin: int, dir: int, edge_tag: int, edges_only: int) -> list {
     out: list = [];
     i = 0;
@@ -77,20 +50,12 @@ def osp_refs(origin: int, dir: int, edge_tag: int, edges_only: int) -> list {
     return out;
 }
 
-"""Wrap a single location handle into a `list` of the kernel's `list` type, so
-`visit <node>` (a bare target, not an edge ref) can be handed to `osp_visit`
-without the backend having to materialize the kernel's list layout itself."""
 def osp_wrap1(x: int) -> list {
     out: list = [];
     out.append(x);
     return out;
 }
 
-"""Disconnect the edge identified by `edge_handle` (the `ptrtoint`'d edge
-object) -- the native lowering of `del e` on an edge. Drops the matching row
-from every parallel adjacency list so the edge no longer joins its endpoints;
-returns 1 if a row was removed, 0 if no edge with that handle was recorded.
-Each connect records exactly one row per edge handle, so at most one matches."""
 def osp_disconnect(edge_handle: int) -> int {
     i = 0;
     n = len(_e_handle);

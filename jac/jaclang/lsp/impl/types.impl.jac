@@ -1,5 +1,3 @@
-"""Implementations for LSP core types."""
-
 impl Position.__repr__ -> str {
     return f"{self.line}:{self.character}";
 }

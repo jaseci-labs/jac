@@ -20,7 +20,7 @@ edge Posted {}
 # reachable by OTHER users. littleX is built on exactly this.
 def post_tweet(content: str) -> str {
     prof = [root --> [?:Profile]][0];
-    t = (prof +>:Posted:+> Tweet(content=content))[0];
+    t = prof +>:Posted:+> Tweet(content=content);
     grant(t, level=WritePerm);   # likes/comments MUTATE tweet fields -> WritePerm
     return t.content;
 }
@@ -48,11 +48,11 @@ def global_feed() -> list[dict] {
 
 **Pick the level by what the interaction does to the target.** Edge-attach interactions (follow a Profile, join a Channel) need only `ConnectPerm`. Interactions that MUTATE FIELDS on the target need `WritePerm`: littleX stores likes/comments as fields ON the tweet (`here.likes`, `here.comments`), so Tweets get `WritePerm` while Profiles and Channels get `ConnectPerm`.
 
-**Vocabulary mapping:** the jac-scale reference spells these `perm_grant` / `perm_revoke` / `allow_root` / `disallow_root` with levels `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` - same machinery as the ambient `grant` / `revoke` + `NoPerm`..`WritePerm` names used here.
+**Vocabulary mapping:** the Scale reference spells these `perm_grant` / `perm_revoke` / `allow_root` / `disallow_root` with levels `NO_ACCESS` / `READ` / `CONNECT` / `WRITE` - same machinery as the ambient `grant` / `revoke` + `NoPerm`..`WritePerm` names used here.
 
 ## Per-user grants: allow_root
 
-"Share with user B only" - `grant()` over-shares to all users. `allow_root` is the per-user form. It is NOT ambient (calling bare `allow_root(...)` passes `jac check` with a warning but **NameErrors at runtime** - the jac-scale docs' bare usage is misleading); import the runtime:
+"Share with user B only" - `grant()` over-shares to all users. `allow_root` is the per-user form. It is NOT ambient (calling bare `allow_root(...)` passes `jac check` with a warning but **NameErrors at runtime** - the Scale docs' bare usage is misleading); import the runtime:
 
 ```jac
 import from jaclang { JacRuntime as Jac }
@@ -77,7 +77,7 @@ Every served deployment has one public graph besides the per-user roots: the gue
 ```jac
 def publish(text: str) {                     # authenticated author, public post
     fresh = root.shared ++> Tweet(content=text);
-    grant(fresh[0], level=ReadPerm);         # author still owns it; open it to readers
+    grant(fresh, level=ReadPerm);            # author still owns it; open it to readers
 }
 
 def:pub read_feed() -> list[str] {           # works anonymous or logged-in

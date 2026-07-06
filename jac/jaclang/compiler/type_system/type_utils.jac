@@ -1,21 +1,9 @@
-"""
-Functions that operate on Type objects.
-
-PyrightReference: packages/pyright-internal/src/analyzer/typeUtils.ts
-"""
 import from enum { Enum }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.unitree { Symbol }
 import from . { types }
-"""Result of get_property_write_type: classifies the assignment target.
 
-NOT_PROPERTY  — symbol is not @property / @cached_property; fall through
-               to the normal declared-type path.
-READ_ONLY     — @property with no setter; assignment is illegal.
-WRITABLE      — @cached_property or @property with setter; `write_type`
-               holds the type that values must match.
-"""
 class PropertyWriteKind(Enum) {
     with entry {
         NOT_PROPERTY = 0;
@@ -29,7 +17,6 @@ obj PropertyWriteResult {
         write_type: (types.TypeBase | None) = None;
 }
 
-"""Represents a member of a class."""
 obj ClassMember {
     has symbol: Symbol,
         class_type: types.ClassType,
@@ -45,48 +32,14 @@ obj ClassMember {
 
 def compute_mro_linearization(cls: types.ClassType) -> None;
 
-"""Resolve a type to its primitive type name (str/int/list/...), or None.
-
-Returns the primitive name if `ty` is a primitive `ClassType` (per
-JAC_TYPE_REGISTRY), walking the MRO so subtypes like `LiteralString` resolve to
-`str`. The single source of truth for "what primitive is this type", shared by
-codegen backends instead of each re-deriving it.
-"""
 def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
 
-"""
-Primitive type name of an EXPRESSION, resolved through the program's type
-authority, or "" when unknown.
-
-This is the sanctioned codegen-time read of expression types: the
-evaluator is the single type authority and `Expr.type` is its
-memoization, populated lazily - checking stamps what its rules evaluate,
-and the first query for anything else computes and caches it (diagnostics
-from such late queries are deferred/managed by the checker's reporter
-machinery, see TypeCheckPass.emit). Backends call this instead of
-importing the evaluator, so expression-type derivation has exactly one
-owner. (Measured across the ES + OSP corpora: a stamp, when present,
-never disagrees with the evaluator - the lazy query only ever fills
-gaps.)
-"""
 def expr_primitive_name(prog: object, expr_node: uni.UniNode) -> str;
 
-"""
-Tracks parameter assignments for function calls.
-
-    This class helps in tracking which parameters have been matched
-    with arguments in a function call. It supports positional, named,
-    *args, and **kwargs arguments.
-"""
 obj ParamAssignmentTracker {
     has params: list[types.Parameter],
         curr_param_idx: int = 0,
         matched_params: set[types.Parameter] = set(),
-        # Params *possibly* filled by a `*`/`**` spread of statically-unknown
-        # contents. Kept apart from `matched_params` (definite positional/keyword
-        # binds): a spread satisfies required-param checks but must NOT trigger a
-        # duplicate-argument error for a later explicit keyword, since we cannot
-        # prove the spread actually set that key.
         spread_filled: set[types.Parameter] = set(),
         varargs: (types.Parameter | None) = None,
         kwargs: (types.Parameter | None) = None;
@@ -100,14 +53,12 @@ obj ParamAssignmentTracker {
     def get_unmatched_required_params -> list[types.Parameter];
 }
 
-"""A completion item."""
 obj CompletionItem {
     has label: str,
         kind: int,
         detail: (str | None) = None;
 }
 
-"""The kind of a completion entry."""
 enum CompletionItemKind {
     Text = 1,
     Method = 2,
@@ -146,8 +97,6 @@ def lookup_symtab(
     symtable: uni.UniScopeNode, name: str, builtins_to_inject: uni.Module
 ) -> (Symbol | None);
 
-"""Collect a name's [primary, *overloads], descending only the statically-live
-branch of `if`/`elif`/`else` guards so dead-branch declarations don't resolve."""
 def collect_member_syms(
     scope: uni.UniScopeNode, name: str, deep: bool = False
 ) -> list[Symbol];
@@ -156,93 +105,45 @@ def class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: any = None
 ) -> bool;
 
-# Generator / Iterator return-type helpers.
-"""Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
 def get_generator_type_args(
     return_type: types.TypeBase
 ) -> (list[types.TypeBase] | None);
 
-"""Yield type Y of a generator-like return type, or None.
-
-`is_async` selects the `Async*` family; otherwise the sync family
-(Generator/Iterator/Iterable/AwaitableGenerator).
-"""
 def get_generator_yield_type(
     declared_return_type: types.TypeBase, is_async: bool
 ) -> (types.TypeBase | None);
 
-"""R parameter of Generator[Y, S, R] (send/return), or None."""
 def get_declared_generator_return_type(
     return_type: types.TypeBase
 ) -> (types.TypeBase | None);
 
-"""True if `return_type` is any generator/iterator-family builtin."""
 def is_generator_family_type(return_type: types.TypeBase) -> bool;
 
-"""
-Module source flags computed from file path.
-
-Similar to Pyright's SourceFileInfo flags (_isStubFile, _isTypingStubFile, etc.).
-These flags are computed once when a module is loaded and stored on ModuleType.
-"""
 obj ModuleSourceFlags {
-    has is_stub_file: bool = False,  # True if .pyi file
-        is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
-        is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
-        is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
+    has is_stub_file: bool = False,
+        is_stdlib_stub: bool = False,
+        is_typing_stub: bool = False,
+        is_builtin_stub: bool = False;
 }
 
 def compute_module_source_flags(file_path: str) -> ModuleSourceFlags;
 
-# -------------------------------------------------------------------------
-# Type specialization utilities
-# -------------------------------------------------------------------------
-"""
-Convert a type to its instance form.
-
-- ClassType (instantiable) -> ClassType (instance)
-- UnionType -> converted members
-- Other types -> unchanged
-"""
 def convert_to_instance(ty: types.TypeBase) -> types.TypeBase;
 
-"""Synthesize the implicit `Self` TypeVar marker.
-
-The marker is keyed by `is_self=True`. The binding context (which class
-`Self` resolves to) is supplied by the caller of `apply_solved_type_vars`.
-"""
 def synthesize_self_type_var -> types.TypeVarType;
 
-"""
-Apply type variable substitutions to a type.
-
-This is the unified function for TypeVar substitution. It handles:
-- Direct TypeVarType -> lookup in solution or class type_args
-- Self type -> class_type instance
-- Nested TypeVars in ClassType (e.g., tuple[int, T] -> tuple[int, Item])
-- UnionType -> specialize each member
-- FunctionType -> specialize parameters and return type
-"""
 def apply_solved_type_vars(
     ty: types.TypeBase,
     solution: dict[str, types.TypeBase],
     class_type: (types.ClassType | None) = None
 ) -> types.TypeBase;
 
-"""
-Build a cumulative TypeVar name -> concrete type mapping for a specialized class.
-
-Walks the MRO accumulating bindings so that inherited TypeVars are resolved
-transitively. Used by specialize_member_type and FunctionType.specialize.
-"""
 def build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase];
 
-"""Build type_params → type_args mapping from a specialized class."""
 def build_solution_from_specialized_class(
     class_type: types.ClassType
 ) -> dict[str, types.TypeBase];
 
-"""Specialize a base class using type args from the derived class."""
 def specialize_for_base_class(
     src_type: types.ClassType, base_class: types.ClassType
 ) -> types.ClassType;

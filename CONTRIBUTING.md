@@ -16,32 +16,75 @@ After forking, clone your fork and set up the upstream remote:
 # Clone your fork (replace YOUR_USERNAME with your GitHub username)
 git clone https://github.com/YOUR_USERNAME/jaseci.git
 cd jaseci
-git submodule update --init --recursive
 git remote add upstream https://github.com/jaseci-labs/jaseci.git
 git remote -v
 ```
 
-**Setting Up Your Dev Envrionment**
+**Setting Up Your Dev Environment**
+
+`jaclang` ships as the single `jac` binary (a Zig launcher + a private bundled CPython) -- there is no pip-installed jaclang. You build that binary once, then use the editable dev loop below so day-to-day edits to `jac/jaclang` run live without rebuilding.
+
+**1. Install Zig**
+
+The binary is built with [Zig](https://ziglang.org/) **0.16.0** (the version is pinned -- newer/older majors will fail to build). Zig plus a network connection are the only build-time deps: `launcher/payload.zig` does all the HTTP fetching, integrity checks, and (de)compression in Zig's std, so there's nothing else to install (the old `curl`/`git`/`zstd`/`tar` shellouts are gone).
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e jac
-jac install -e jac-byllm
-jac install -e jac-scale
-jac install -e jac-client
-jac install -e jac-super
-jac install -e jac-mcp
-pip install pre-commit
-pre-commit install
-pip install pytest pytest-xdist pytest-asyncio
+# Zig: download the 0.16.0 tarball for your platform and put it on PATH
+#   https://ziglang.org/download/
+# (Most distro/Homebrew zig packages lag behind; prefer the official tarball.)
+zig version          # must print 0.16.0
 ```
+
+(One optional host tool: if `strip` is on PATH the build shrinks the bundled libpython from ~245 MiB to ~20 MiB; without it the build still succeeds, the binary is just larger.)
+
+(The vendored typeshed stdlib stubs are not committed -- `zig build` fetches them at the pinned commit on first build, so there is nothing to check out manually.)
+
+**2. Build the binary and set up plugins + pre-commit**
+
+The bootstrap script builds the binary, puts it on PATH for the current shell, installs the plugins editable, and sets up pre-commit:
+
+```bash
+./scripts/fresh_env.sh
+```
+
+(It runs `cd jac && zig build` under the hood; the binary lands at `jac/zig-out/bin/jac`.) The script prints the line to add the binary to your PATH permanently, e.g.:
+
+```bash
+export PATH="$PWD/jac/zig-out/bin:$PATH"
+```
+
+**3. The editable dev loop (skip rebuilds for jaclang edits)**
+
+Without help, a change to `jac/jaclang` would only take effect after another `zig build`, because the binary runs its own bundled copy of jaclang. This repo's root `jac.toml` points `jac` at the in-repo source so you don't have to rebuild per edit:
+
+```toml
+[dev]
+jaclang_source = "jac"   # dir containing jaclang/, relative to this jac.toml
+```
+
+With this enabled, `import jaclang` resolves to `jac/jaclang` (it's prepended to `sys.path` at startup), so edits to jaclang's `.py` and `.jac` source -- the compiler, passes, CLI, runtime -- run live. The per-module compile cache is content-keyed, so edits self-invalidate; the dev loop also skips the binary's shipped precompiled bundle automatically (no manual cache clearing needed). Comment the stanza out to fall back to the binary's bundled jaclang.
+
+**Faster builds: `zig build -Ddev`.** `fresh_env.sh` builds with `zig build -Ddev`, which *bakes* this link into the binary: the compiler is not bundled at all (no ~100 MB tree copy, no JIR precompile -- a much smaller, faster build), and the binary reroutes `import jaclang` to the build-root source from any directory, so the loop holds with no `[dev]` stanza in scope. It's the fastest build and the right default for compiler work; the tradeoff is the binary hard-depends on that source dir, so it's dev-only and not distributable. Use `-Djaclang-dir=PATH` to bake an explicit compiler dir, or a plain `zig build` for the fully self-contained release binary. Because the compiler imports the native passes at startup, a `-Ddev` binary still needs the LLVMPY_* shim **placed in the linked tree** (the same `zig build fetch-llvm` prerequisite as a release build -- `-Ddev` then compiles and places it automatically; without it the build stops with a clear message). `fresh_env.sh` runs `fetch-llvm` for you.
+
+The stanza is read from the **nearest `jac.toml`** (like every other config setting), so it ships in *both* the repo root and `jac/jac.toml` (both pointing at the same source) -- the loop is active whether you work from the repo root or `cd jac` to run the suite. Other subprojects (`jac-byllm/`, `jac-mcp/`, ...) opt in by adding their own `[dev]` stanza. To force the loop *off* for a single command -- e.g. to test the shipped binary's bundled + precompiled jaclang instead of your edits -- set `JAC_NO_DEV_SOURCE=1` (CI's binary self-test does this).
+
+You still need to `zig build` again when you change the parts that live *inside* the binary rather than in jaclang source: the launcher (`jac/launcher/*.zig`, `jac/build.zig`), the payload bootstrap (`jac/sitecustomize.py`, `jac/_jac_finder.py`), or the bundled CPython version.
 
 **Run Some Tests**
 
+Tests run through the binary's bundled test runner (pytest + xdist ship inside it -- no separate install). `JAC_TEST_JOBS=auto` runs them in parallel:
+
 ```bash
-pytest jac -n auto
+cd jac
+JAC_TEST_JOBS=auto jac test tests
 # See ci jobs in github actions for more stuff to run
+```
+
+The worker count can also be set persistently in `jac.toml` so you don't have to prefix every run -- the `JAC_TEST_JOBS` env var still overrides it when set:
+
+```toml
+[dev]
+test_jobs = "auto"   # "auto" = one worker per core; "0" = serial; or a fixed count like "4"
 ```
 
 **Build something awesome, or fix something that's broken**
@@ -94,7 +137,8 @@ python docs/scripts/mkdocs_serve.py
 Every PR that changes package code must include a release note fragment file:
 
 1. Create a file at `docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md`
-   - **Packages**: `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`
+   - **Packages**: `jaclang`, `byllm`
+   - **Note**: The Jac client and desktop runtimes, the `scale` deployment subsystem, and the MCP server are now part of `jaclang` core (under `jac/jaclang/runtimelib/client/`, `jac/jaclang/scale/`, and `jac/jaclang/cli/mcp/`); changes to them use the `jaclang` package fragment.
    - **Categories**: `feature`, `bugfix`, `breaking`, `refactor`, or `docs`
    - **Example**: `docs/docs/community/release_notes/unreleased/jaclang/1234.bugfix.md`
 
@@ -147,50 +191,40 @@ The docs site has three tiers with different expectations for contributors:
 
 ## Release Flow (for maintainers)
 
-Releasing new versions to PyPI is a two-step process using GitHub Actions.
+Releasing is a two-step process using GitHub Actions. `jaclang` ships as the
+native `jac` binary -- built per platform and attached to the GitHub Release.
+**Nothing is published to PyPI**: the `scale` subsystem, byLLM (`jaclang.byllm`),
+the MCP server, and the client/desktop runtimes are all bundled into the binary.
 
 ```
 ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
-│  Create Release PR  │ ─▶ │  Close & reopen PR  │ ─▶ │   Merge to main     │ ─▶ │  Approve & Publish  │
+│  Create Release PR  │ ─▶ │  Close & reopen PR  │ ─▶ │   Merge to main     │ ─▶ │  Approve & Release  │
 │  (manual trigger)   │    │  (so CI runs) +     │    │  (auto-merge;       │    │  (one-click on the  │
-│                     │    │  enable auto-merge  │    │  triggers publish)  │    │  pypi environment)  │
+│                     │    │  enable auto-merge  │    │  triggers publish)  │    │  release-approval   │
+│                     │    │                     │    │                     │    │  environment)       │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
 
 ### Step 1: Create the Release PR
 
-1. Go to **GitHub Actions** → **Create Release PR**
-2. Click **Run workflow**
-3. For each package, select the version bump type (`skip`, `patch`, `minor`, or `major`):
-   - `jaclang`, `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`, `jac-desktop`, `jaseci`
-4. Click **Run workflow**
-5. The workflow validates versions against PyPI, bumps them, and creates a PR from a `release/*` branch
-6. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach to the PR. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
-7. Once the checks attach, enable **auto-merge** on the PR
-8. When CI passes, the PR auto-merges to `main` (or **approve and merge** it manually)
+1. Go to **GitHub Actions** -> **Release**
+2. Click **Run workflow**, set `action` to `create-pr`, and pick the `jaclang` bump type (`patch`, `minor`, or `major`)
+3. The workflow bumps the version in `jac/jac.toml` (the single source of truth) and opens a PR from a `release/*` branch
+4. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
+5. Once the checks attach, enable **auto-merge** on the PR (or approve and merge manually when CI passes)
 
-### Step 2: Approve Publishing
+### Step 2: Approve the Release
 
-After the release PR is merged, the **Publish Release** workflow triggers automatically:
+After the release PR is merged, the **Release** workflow triggers automatically:
 
-1. It parses the packages and versions from the PR title
-2. **Manual approval required** (only maintainers with `pypi` environment access can approve):
-   - Go to **GitHub Actions** → find the running **Publish Release** workflow
-   - The workflow will pause at the "approve-release" job waiting for approval
-   - Click on the job, then click **Review deployments**
-   - Select the `pypi` environment and click **Approve and deploy**
-3. The workflow then handles everything automatically:
-   - Builds all packages once ([precompiling bytecode](https://docs.jaseci.org/reference/publishing/) for packages that need it)
-   - Publishes in dependency order (tiered):
-     - **Tier 1**: `jaclang` (base package; everything depends on it)
-     - **Tier 2**: `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp` (depend only on `jaclang`)
-     - **Tier 3**: `jac-desktop` (depends on a tier-2 plugin, `jac-client`)
-     - **Tier 4**: `jaseci` (meta-package; depends on everything above)
-   - Pushes git tags (`{package}-v{version}`, plus `v{version}` for jaseci)
-   - Creates a GitHub Release with artifacts
-   - Builds standalone binaries (if jaseci was released)
+1. **Manual approval required** (only maintainers with `release-approval` environment access):
+   - Go to **GitHub Actions** -> find the running **Release** workflow
+   - Click the paused job, then **Review deployments**, select `release-approval`, and **Approve and deploy**
+2. The workflow then handles everything automatically:
+   - Tags `v<version>` at the merge commit and creates/updates the GitHub Release
+   - Builds the native `jac` binary per platform (Linux x86_64 + aarch64 at a pinned glibc 2.17 floor, macOS arm64), smoke-tests each on real hardware, verifies the Linux glibc floors, and attaches the binaries + checksums to the Release
 
-> **Note**: The workflow waits for each tier on PyPI before publishing the next, so a package never lands before a dependency it pins. Tiers are configured per package in `scripts/release_utils.jac`.
+Every step is idempotent: re-running a partial release converges instead of erroring (existing tags are left in place, the release is updated in place, and asset uploads clobber).
 
 ### Troubleshooting
 
@@ -199,6 +233,5 @@ After the release PR is merged, the **Publish Release** workflow triggers automa
 | CI checks not running / not showing on the release PR | Expected: GitHub skips `pull_request` checks for PRs opened by the `github-actions[bot]` / `GITHUB_TOKEN` actor. **Close and reopen the PR** so the reopen event comes from a real user, and the checks then run and attach. (A GitHub App / PAT token authoring the PR would remove this step.) |
 | Auto-merge won't enable / PR won't merge | Auto-merge needs the PR's required status checks to be attached; do the close/reopen above first so the checks exist on the PR |
 | Publish workflow didn't trigger | Ensure the PR branch started with `release/` |
-| A tier failed to publish | Re-run the failed job from GitHub Actions; already-published packages are skipped (`skip-existing`) |
-| Need to re-publish after the release PR is merged | Manually trigger **Publish Release** (`workflow_dispatch`) and check the packages to publish |
-| Version conflict on PyPI | The `Create Release PR` workflow validates this upfront - if you hit this, someone manually published |
+| Binaries missing from the release | Re-run **Build jac native binaries** via `workflow_dispatch` with the release tag (e.g. `v0.30.4`); it rebuilds and re-attaches idempotently. An empty tag builds artifacts only (a dry run that attaches nothing) |
+| Need to re-run after the release PR is merged | Manually trigger **Release** with `action: publish`; the version is re-read from `jac/jac.toml` |

@@ -24,7 +24,62 @@ walker create {
 
 After `jac enter app.jac create`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac enter app.jac dump` (with a walker that traverses `[-->]`) sees them.
 
-**Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Install [`jac-scale`](plugins/jac-scale.md) and configure `MONGODB_URI` and persistence flips to `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
+**Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
+
+---
+
+## Concurrent writes: check-then-create and convergence
+
+A common walker pattern is *find-or-create*: look something up, create it only if it's missing.
+
+```jac
+walker ensure_profile {
+    can go with Root entry {
+        profiles = [-->(?:UserProfile)];
+        if profiles {
+            report profiles[0];
+        } else {
+            here ++> UserProfile(tier="free");   # only when missing
+        }
+    }
+}
+```
+
+Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->(?:UserProfile)]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
+
+**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->(?:UserProfile)]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
+
+**Convergence (default).** A rejected request does not error. The server aborts its uncommitted work, reloads the node, and **replays the walker (or function) from the start**. The replay re-reads the graph -- now containing the winner's node -- takes the *find* branch, and returns normally. Two racing find-or-creates converge on one node; the client sees a normal `200`, not a duplicate and not an error.
+
+**The losing unit of work is atomic.** A walker's writes are staged child-node-first, then its edge, then the edge-list link onto the parent that carries the compare-and-swap -- so a naive flush could persist the loser's child *before* the link fails, stranding it. The runtime does not allow that:
+
+- On **SQLite** (the default local store), `apply()` runs the whole unit in one transaction and **rolls it back** on a conflict. A lost race leaves the store byte-for-byte unchanged -- no orphan.
+- On **Mongo** (multi-pod), there is no cross-document rollback, so `apply()` runs a **version precheck before staging any write**: a read-gated node whose stored version already moved aborts the unit before the child/edge docs are written. The common case (the winner committed first) leaves no orphan. In the narrow window where the winner commits *during* the loser's `apply()`, the in-line CAS still rejects the link, leaving the loser's child reachable only by a *half-linked* edge (cited by the child, refused by the parent). That residual is invisible to traversal and is reclaimed by [`jac db fsck`](cli/index.md#database-operations), which now sweeps half-linked edges and the nodes they strand.
+
+**Blind appends stay lock-free.** The compare-and-swap only fires on nodes the request *read*. A walker that appends without first reading -- `here ++> LogEntry(...)` with no preceding `[-->...]` -- takes no dependency, so concurrent appends to the same node merge instead of serializing. Only check-then-create pays the conflict-and-replay cost, and only on the node it actually checked.
+
+**Side effects and replay: `on_commit`.** Because a losing request replays from scratch, an *external* side effect in the body (charging a card, sending mail, registering a token) would otherwise run more than once. Defer such effects with the `on_commit(...)` ambient builtin (no import needed): it registers a callback that runs only after the unit of work commits successfully, and is discarded on abort/replay -- so it fires exactly once, for the attempt that wins.
+
+```jac
+walker me {
+    can go with Root entry {
+        if not [-->(?:UserProfile)] {
+            new = here ++> UserProfile(tier="free");
+            on_commit(lambda () { grant_signup_bonus(new); });   # once, post-commit
+        }
+    }
+}
+```
+
+**Configuration.** The policy is set in [`jac.toml`](config/index.md#serve) under `[serve]`:
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `on_conflict` | `"retry"` | `"retry"` converges via replay; `"fail"` returns a typed `409 write_conflict` immediately (for clients that handle conflicts themselves) |
+| `conflict_max_attempts` | `5` | Max attempts under `"retry"` before giving up with a `409` |
+| `conflict_backoff_ms` | `0` | Linear backoff (ms x attempt) between replay attempts |
+
+**Scope.** Conflict detection lives in the `MongoBackend` and `SqliteMemory` backends, so it holds on both the local SQLite store and a multi-pod Mongo deployment. Granularity is per node: two *different* find-or-creates on the same node (say a `UserProfile` and a `Settings` both attached to `root`) may each trigger one extra replay even though they don't truly duplicate -- harmless, since the replay re-confirms and proceeds.
 
 ---
 
@@ -133,7 +188,7 @@ In every such case, the row is **moved to a quarantine sidecar**:
 
 The quarantine row carries the full original payload, the timestamp, the error message, and the source format version. **Nothing is ever silently deleted** -- that's the contract. Inspect with `jac db quarantine list` / `jac db quarantine show <id>`. Recover (after you fix the cause) with `jac db recover` / `jac db recover-all`.
 
-On the Mongo backend, quarantined documents additionally carry a machine-readable `reason_code` and are [auto-retried at startup](#jac-scale-lazy-read-repair-and-self-healing-quarantine) when a new deploy plausibly fixes them.
+On the Mongo backend, quarantined documents additionally carry a machine-readable `reason_code` and are [auto-retried at startup](#scale-lazy-read-repair-and-self-healing-quarantine) when a new deploy plausibly fixes them.
 
 If you've used Jac before and remember "delete `.jac/data/` to run again after editing a node," that workflow is no longer required. Schema edits don't wipe data; they at worst move data to quarantine where you can rescue it.
 
@@ -281,9 +336,9 @@ On load, a row with *both* keys is recognized as dual-written, not drifted: an e
 | `detect` | Drift is detected and logged (`steps not applied: [...]`) but nothing is mutated -- a production dry-run |
 | `off` | Legacy load behavior (no renames, no upgrades, no new atticing). Previously written attics still round-trip so data is never lost |
 
-### jac-scale: lazy read-repair and self-healing quarantine
+### scale: lazy read-repair and self-healing quarantine
 
-With the [`jac-scale`](plugins/jac-scale.md) Mongo backend, repair goes one step further:
+With the [scale](plugins/jac-scale.md) Mongo backend, repair goes one step further:
 
 - **Read-repair write-back.** When a load applies repair steps, the upgraded document is written back with compare-and-set on the originally stored fingerprint. A concurrent writer on an older app version cleanly wins the race; the document simply repairs again on its next read. The L2 Redis cache is invalidated on write-back. (SQLite repairs in memory on every load; the write-back optimization is Mongo-only.)
 - **Quarantine reason codes.** Quarantined documents are stamped with a machine-readable `reason_code` -- `CLASS_MISSING`, `FIELD_RECONSTRUCT`, `DESER_ERROR`, or `CASCADE` -- visible via `jac db quarantine show`.
@@ -349,7 +404,7 @@ Registered schema drift rules
 
 ## Backend portability
 
-Everything above is **backend-agnostic**. The `PersistentMemory` interface defines the contract; both `SqliteMemory` and the `jac-scale` `MongoBackend` implement it, and so will any future plugin-provided backend (Postgres, DynamoDB, whatever).
+Everything above is **backend-agnostic**. The `PersistentMemory` interface defines the contract; both `SqliteMemory` and the built-in scale `MongoBackend` implement it, and so will any future plugin-provided backend (Postgres, DynamoDB, whatever).
 
 That means the same set of guarantees holds regardless of where your data lives:
 
@@ -463,6 +518,6 @@ Currently out of scope (planned follow-on work):
 - **Background sweep** -- repair is lazy (on read) plus startup auto-retry; cold documents that are never read stay at their old shape until touched. They repair correctly whenever that happens.
 - **Compiler enforcement** -- there's no build-time lint yet that detects an undeclared breaking change against a schema lockfile.
 - **Deep container coercion** -- `list[int] → list[str]` doesn't recurse into elements (a `schema_upgrade` callback covers this case today).
-- **Redis cache parity** -- the L2 cache (`RedisBackend` in jac-scale) still uses pickle. Since it's a cache (the L3 backend is the source of truth), the impact is bounded; the same machinery could be ported when needed.
+- **Redis cache parity** -- the L2 cache (`RedisBackend` in the scale subsystem) still uses pickle. Since it's a cache (the L3 backend is the source of truth), the impact is bounded; the same machinery could be ported when needed.
 
 For arbitrary transforms the escape hatch is `schema_upgrade` -- a `dict -> dict` callback with full control over the raw stored document. If something still can't be expressed, the quarantine sidecar preserves the original payload for manual handling.

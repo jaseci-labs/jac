@@ -1,5 +1,3 @@
-"""Implementation for plugin system."""
-
 impl HookimplMarker.__call__(function: _F) -> _F {
     setattr(function, _IMPL_ATTR, True);
     return function;
@@ -10,6 +8,19 @@ impl HookspecMarker.__call__(
 ) -> (_F | Callable[([_F], _F)]) {
     def mark(func: _F) -> _F {
         setattr(func, _SPEC_ATTR, {'firstresult': firstresult});
+        return func;
+    }
+    if function is not None {
+        return mark(function);
+    }
+    return mark;
+}
+
+impl HookableMarker.__call__(
+    function: (_F | None) = None, *, firstresult: bool = True
+) -> (_F | Callable[([_F], _F)]) {
+    def mark(func: _F) -> _F {
+        setattr(func, _HOOKABLE_ATTR, {'firstresult': firstresult});
         return func;
     }
     if function is not None {

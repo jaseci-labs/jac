@@ -274,15 +274,11 @@ def:pub Tab(props: any) -> JsxElement {
 
 ## shadcn/ui Integration
 
-[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. The [`jac-super`](https://pypi.org/project/jac-super/) plugin provides first-class support -- the full component set ships bundled with the plugin, so `jac add --shadcn` installs pre-built, themed components **offline** (no registry fetch).
+[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. shadcn support is built into **jaclang** -- the full component set ships bundled with jaclang, so `jac add --shadcn` installs pre-built, themed components **offline** (no registry fetch).
 
-### Installation & Setup
+### Setup
 
-```bash
-pip install jac-super
-```
-
-Create a new themed project (fully offline -- the component set, styles, and color themes all ship with the plugin):
+Create a new themed project (fully offline -- the component set, styles, and color themes all ship with jaclang):
 
 ```bash
 jac create --use jac-shadcn --theme rose --font inter myapp
@@ -598,7 +594,7 @@ def:pub SplitView() -> JsxElement {
 | Import package | `import from "<package>" { named_export }` |
 | Import React hooks | `import from react { useRef, useCallback }` |
 | Setup Tailwind | Add vite plugin config + CSS import |
-| Setup shadcn | `pip install jac-super` + `[jac-shadcn]` in jac.toml |
+| Setup shadcn | `[jac-shadcn]` in jac.toml |
 | Use cn() utility | Write in Jac with clsx + tailwind-merge |
 
 ---

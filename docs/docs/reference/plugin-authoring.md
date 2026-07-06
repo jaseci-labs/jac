@@ -1,8 +1,8 @@
 # Plugin Authoring Guide
 
-This guide is for developers who want to write a Jaclang plugin: a Python (or Jac) package that extends the `jac` CLI, replaces parts of the runtime, ships project templates, or otherwise customizes how Jac behaves on a user's machine. If you just want to *use* an existing plugin like `jac-scale` or `jac-client`, see its page under [CLI Plugins](plugins/jac-scale.md) instead.
+This guide is for developers who want to write a Jaclang plugin: a Python (or Jac) package that extends the `jac` CLI, replaces parts of the runtime, ships project templates, or otherwise customizes how Jac behaves on a user's machine. If you just want to *use* the built-in deployment subsystem, see the [Scale Reference](plugins/jac-scale.md) instead.
 
-The five plugins shipped in the Jaclang monorepo -- [jac-scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-scale), [jac-client](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-client), [jac-byllm](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm), [jac-super](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-super), and [jac-mcp](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mcp) -- between them exercise every extension point in this guide. Where a recipe references a real plugin, the file:line citations point to the canonical implementation you can read alongside the explanation.
+The real subsystems in the Jaclang monorepo -- the built-in [scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale) deployment provider (`jaclang.scale`), the built-in [`jac mcp` server](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp), and the built-in [byLLM provider](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/byllm) (`jaclang.byllm`) -- between them exercise every extension point in this guide. Scale, byLLM, the MCP server, and the client/desktop framework now ship built into `jaclang` core as built-in providers (rather than separately-installed packages), but they still register through the same hooks and `@registry.command` mechanism shown here, so they remain useful worked examples. Where a recipe references one of them, the file:line citations point to the canonical implementation you can read alongside the explanation.
 
 ## What a plugin can do
 
@@ -10,12 +10,12 @@ A Jaclang plugin can:
 
 - **[Add a new CLI command](#recipe-1-add-a-new-cli-command)** (e.g., `jac mcp`, `jac destroy`).
 - **[Extend an existing CLI command](#recipe-2-extend-an-existing-cli-command)** by injecting new flags and pre/post hooks (e.g., `jac start --scale`, `jac eject --client desktop`).
-- **[Override runtime behavior](#recipe-3-override-runtime-behavior)** like the API server class, the user manager, the storage backend, or the console (e.g., jac-scale swapping in a FastAPI server).
+- **[Override runtime behavior](#recipe-3-override-runtime-behavior)** like the API server class, the user manager, the storage backend, or the console (e.g., scale swapping in a FastAPI server).
 - **[Define `jac.toml` config schemas](#recipe-4-define-plugin-config-in-jactoml)** with validation, defaults, and `[plugins.<name>]` sections.
 - **[Ship project templates](#recipe-5-ship-a-project-template)** that show up in `jac create --use <name>`.
 - **[Register custom dependency types](#recipe-6-register-a-custom-dependency-type)** like `npm` alongside the built-in PyPI dependency handler.
 
-All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered as an entry point in `pyproject.toml` under the `jac` group, and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
+All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered under `[entrypoints.jac]` in the plugin's `jac.toml` (the `jac` entry-point group), and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
 
 ## Project layout
 
@@ -28,13 +28,13 @@ jac-myplugin/
 │   ├── plugin.jac            # CLI extension (`JacCmd.create_cmd` hook)
 │   ├── plugin_config.jac     # Config schema, templates, dep types
 │   └── impl/                 # Implementation modules
-└── pyproject.toml            # Dependencies + [project.entry-points."jac"]
+└── jac.toml                  # Metadata + [entrypoints.jac]
 ```
 
-The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points in `pyproject.toml`:
+The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points under `[entrypoints.jac]` in `jac.toml` (written into the wheel's `jac` entry-point group by `jac bundle`, and read directly by `jac install -e`):
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 myplugin = "jac_myplugin.plugin:JacCmd"
 myplugin_plugin_config = "jac_myplugin.plugin_config:JacMypluginPluginConfig"
 ```
@@ -58,7 +58,7 @@ There are three "layers" of hooks a plugin can implement, defined as classes in 
 | **Runtime** | `JacRuntimeInterface` (and its mixins: `JacAPIServer`, `JacConsole`, `JacClientBundle`, `JacByLLM`, …) | Many hooks called throughout program execution. Plugins override individual methods (`get_user_manager`, `create_server`, `get_console`, …) to swap in their own implementations. |
 | **Config / packaging** | `JacPluginConfig` | Metadata, jac.toml schema, project templates, and custom dependency types. Called by `jac plugins`, `jac create`, `jac add`, and config validation. |
 
-A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- `jac-super` only implements `get_console`, `jac-byllm` only implements LLM-related runtime hooks, and `jac-mcp` only adds a CLI command.
+A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- the built-in byLLM provider only implements LLM-related runtime hooks, and the built-in `jac mcp` command (now part of core) only adds a single CLI command.
 
 ## Recipes
 
@@ -120,19 +120,23 @@ class JacCmd {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
 [project]
 name = "jac-hello"
 version = "0.1.0"
-dependencies = ["jaclang"]
 
-[project.entry-points."jac"]
+[entrypoints.jac]
 hello = "jac_hello.plugin:JacCmd"
 ```
 
-After `pip install -e .`, `jac --help` will list `hello` in the *general* group and `jac hello Alice --shout` will print `HELLO, ALICE!`.
+> Note: plugins do **not** depend on PyPI `jaclang` - `jaclang` is the host runtime provided by the `jac` binary that loads your plugin, so it never belongs in `dependencies`.
+
+!!! warning "Use `jac.toml`, not `pyproject.toml`, for the `jac`-native dev loop"
+    `jac install -e` and `jac bundle` read the plugin's `jac.toml`. A plugin folder with only a `pyproject.toml` declaring `[project.entry-points."jac"]` links without error under `jac install -e`, but the entry point is never registered and the command silently doesn't appear. The `pyproject.toml` form still works for plugins installed into the host Python environment with `pip`.
+
+After `jac install -e .`, `jac --help` will list `hello` in the *general* group and `jac hello Alice --shout` will print `HELLO, ALICE!`.
 
 A few things worth noticing:
 
@@ -141,11 +145,11 @@ A few things worth noticing:
 - **`priority=CommandPriority.PLUGIN`** tells the registry that this is a plugin command (vs. a `CORE` jaclang command or a `USER`-level override). It affects conflict resolution if two plugins try to register the same command name.
 - **The function returns an `int`** -- that's the process exit code the CLI propagates.
 
-**Real reference**: [jac-scale's `destroy` command](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/plugin.jac#L244-L371) is a fuller example of this exact pattern.
+**Real reference**: [scale's `destroy` command](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/plugin.jac) is a fuller example of this exact pattern.
 
 ### Recipe 2: Extend an existing CLI command
 
-When you want to *add a flag* to an existing core command and run your own logic when the user passes it, use `registry.extend_command(...)`. This is how `jac-scale` adds `--scale` to `jac start`, how `jac-client` adds `--client desktop` to `jac start` and `jac build`, and how `jac-client` adds `--npm` to `jac add` and `jac remove`.
+When you want to *add a flag* to an existing core command and run your own logic when the user passes it, use `registry.extend_command(...)`. This is how the built-in `scale` provider adds `--scale` to `jac start`, how the built-in `client` provider adds `--client desktop` to `jac start` and `jac build`, and how that same `client` provider adds `--npm` to `jac add` and `jac remove`.
 
 **`jac_verbose/plugin.jac`** -- adds a `--trace` flag to `jac run`:
 
@@ -209,7 +213,7 @@ Pre-hook order, handler invocation, and post-hook order are all in [jac/jaclang/
 
 **Pattern A -- augment**: the pre-hook does some setup (env vars, logging), the default handler runs, the post-hook does some teardown. This is the example above.
 
-**Pattern B -- replace**: the pre-hook does the entire job and short-circuits the default handler. This is how `jac-scale` handles `jac start --scale`: when the flag is set, the pre-hook does the full Kubernetes deployment and tells the executor to skip the normal `start` impl. The cancel mechanism is two `ctx.set_data` keys:
+**Pattern B -- replace**: the pre-hook does the entire job and short-circuits the default handler. This is how the built-in `scale` provider handles `jac start --scale`: when the flag is set, the pre-hook does the full Kubernetes deployment and tells the executor to skip the normal `start` impl. The cancel mechanism is two `ctx.set_data` keys:
 
 ```jac
 def _scale_pre_hook(ctx: HookContext) -> None {
@@ -245,8 +249,8 @@ When `cancel_execution` is `True`, the executor skips the handler and returns im
 
 **Real references**:
 
-- [jac-scale extending `jac start --scale`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/plugin.jac#L25-L242) -- the canonical "replace" pattern.
-- [jac-client extending `jac add --npm`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-client/jac_client/plugin/cli.jac#L119-L132) and [`jac start --client`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-client/jac_client/plugin/cli.jac#L162-L179) -- multiple flags on multiple commands from the same plugin.
+- [scale extending `jac start --scale`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/plugin.jac) -- the canonical "replace" pattern.
+- [the built-in client framework extending `jac add --npm` and `jac start --client`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/cli.jac) -- multiple flags on multiple commands from the same provider.
 
 ### Recipe 3: Override runtime behavior
 
@@ -256,11 +260,11 @@ The most commonly overridden hooks:
 
 | Hook | Signature | What it controls |
 |---|---|---|
-| `get_api_server_class` | `() -> type` | The class used by `jac start` for the HTTP server. Default: `JacAPIServer` (stdlib `HTTPServer`). jac-scale returns its FastAPI-based `JFastApiServer`. |
+| `get_api_server_class` | `() -> type` | The class used by `jac start` for the HTTP server. Default: `JacAPIServer` (stdlib `HTTPServer`). scale returns its FastAPI-based `JFastApiServer`. |
 | `create_server` | `(jac_server, host, port, max_retries=10) -> HTTPServer` | The actual server *instance* used by `jac start`. Plugins can return a custom server with different lifecycle semantics. |
-| `get_user_manager` | `(base_path: str) -> UserManager` | The user manager used for register/login/auth. Default: SQLite-backed `UserManager`. jac-scale returns a JWT/SSO-backed implementation. |
-| `store` | `(base_path='./storage', create_dirs=True) -> Storage` | The graph/object storage backend. Default: `LocalStorage`. jac-scale returns S3/GCS/Azure backends from `[plugins.scale]` config. |
-| `get_console` | `() -> ConsoleImpl` | The console used for all CLI output. jac-super returns a Rich-backed implementation with colors, panels, and spinners. |
+| `get_user_manager` | `(base_path: str) -> UserManager` | The user manager used for register/login/auth. Default: SQLite-backed `UserManager`. scale returns a JWT/SSO-backed implementation. |
+| `store` | `(base_path='./storage', create_dirs=True) -> Storage` | The graph/object storage backend. Default: `LocalStorage`. scale returns S3/GCS/Azure backends from `[plugins.scale]` config. |
+| `get_console` | `() -> ConsoleImpl` | The console used for all CLI output. The default `get_console` returns jaclang's built-in Rich-style console (box panels/tables, animated spinner) implemented in pure Jac; plugins may still override it. |
 | `get_client_bundle_builder` | `() -> ClientBundleBuilder` | The bundler used to compile `.cl.jac` modules to JS. jac-client returns a Vite-backed builder. |
 | `render_page` | `(introspector, function_name, args, username) -> dict[str, any]` | Server-side rendering of client components. jac-client implements full SSR. |
 | `format_build_error` | `(error_output: str, project_dir: Path, config) -> str` | Pretty error messages for client build failures. |
@@ -301,14 +305,14 @@ class JacTimestampPlugin {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 timestamp = "jac_timestamp.plugin:JacTimestampPlugin"
 ```
 
-A plugin class can implement multiple runtime hooks side-by-side; jac-scale's [`JacRuntimeInterfaceImpl`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/plugin.jac#L430-L476) overrides `create_j_context`, `create_server`, `get_api_server_class`, `get_user_manager`, and `store` in a single class.
+A provider class can implement multiple runtime hooks side-by-side; scale's [`JacRuntimeInterfaceImpl`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/plugin.jac) overrides `create_j_context`, `create_server`, `get_api_server_class`, `get_user_manager`, and `store` in a single class.
 
 **A note on first-result-wins**: pluggy returns the first non-`None` result it sees, in reverse registration order. If two plugins both implement `get_console`, the most recently registered one wins. There is currently no fine-grained priority system for runtime hooks (only for CLI commands), so plugins that override the same runtime hook need to coordinate or use the `JAC_DISABLED_PLUGINS` env var to opt out of one of them.
 
@@ -411,9 +415,9 @@ The `type` field accepts `"str"`, `"int"`, `"float"`, `"bool"`, `"list"`, or `"d
 
 **Real references**:
 
-- [jac-byllm's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-byllm/byllm/plugin_config.jac#L25-L103) -- concise example with model selection, API keys, and LiteLLM passthrough.
-- [jac-scale's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/plugin_config.jac#L19-L328) -- large, multi-section schema (`jwt`, `sso`, `database`, `kubernetes`, `secrets`, `monitoring`, `sandbox`).
-- [jac-mcp's three-tier fallback](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-mcp/jac_mcp/plugin.jac#L78-L97) -- pre-hook that resolves CLI arg → jac.toml → CLI default in priority order.
+- [byLLM's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/byllm/plugin_config.jac#L25-L103) -- concise example with model selection, API keys, and LiteLLM passthrough.
+- [scale's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/config/plugin_config.jac) -- large, multi-section schema (`jwt`, `sso`, `database`, `kubernetes`, `secrets`, `monitoring`, `sandbox`).
+- [the built-in `jac mcp` command's three-tier fallback](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/cli/commands/impl/mcp.impl.jac) -- command body that resolves CLI arg → jac.toml → CLI default in priority order.
 
 ### Recipe 5: Ship a project template
 
@@ -472,7 +476,7 @@ def _post_create_starter(project_path: any, project_name: str) -> None {
 | `directories` | `list[str]` | Empty directories created alongside the file tree. |
 | `post_create` | `Callable[[Path, str], None]` | Optional callback run after files are written. Receives `(project_path, project_name)`. |
 
-**Real reference**: [jac-client ships two templates (`client` and `fullstack`)](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-client/jac_client/plugin/plugin_config.jac#L120-L133) by loading them from disk via `load_template_from_directory(...)`. The post-create hook for jac-client installs Bun and runs `bun install` to bootstrap the frontend. If your template is large, prefer the disk-loading approach over inlining `files` in code.
+**Real reference**: [the built-in client framework ships project templates (`web-static` and `web-app`)](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/plugin_config.jac) by loading them from disk via `load_template_from_directory(...)`. The post-create hook installs Bun and runs `bun install` to bootstrap the frontend. If your template is large, prefer the disk-loading approach over inlining `files` in code.
 
 ### Recipe 6: Register a custom dependency type
 
@@ -511,7 +515,7 @@ def _cargo_remove(packages: list[str], dev: bool, install_dir: str) -> int {
 
 This adds a `[dependencies.cargo]` section to `jac.toml`, a `--cargo` flag to `jac add` and `jac remove`, and routes installation through your handlers when `jac install` runs.
 
-**Real reference**: [jac-client's npm dependency type](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-client/jac_client/plugin/plugin_config.jac#L106-L117) is the only dependency type currently in the monorepo. Its handlers shell out to `bun` (or `npm` if Bun isn't available) to manage the project's frontend packages.
+**Real reference**: [the client framework's npm dependency type](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/plugin_config.jac) is the only dependency type currently in the monorepo. Its handlers shell out to `bun` (or `npm` if Bun isn't available) to manage the project's frontend packages.
 
 ### Recipe 7: Custom persistence backends
 
@@ -572,7 +576,7 @@ through a delete intent.
 | `remove_alias(old)` | `True` if an entry was deleted; also `pop` from `Serializer._aliases` |
 | `quarantine_dangling(missing_id, referrer_id, kind)` | File a quarantine row for a citation to a now-missing document, under the `DANGLING_REF` reason code. Idempotent; never raises |
 | `is_recoverable_quarantine(id)` | `True` iff `id` is quarantined under a **recoverable** reason. MUST exclude `DANGLING_REF` rows, else the read-path healer is poisoned by its own forensic records and stops pruning a genuine dangler |
-| `fsck(repair=False)` | Scan for dangling references and orphans; return the report dict (`dangling_node_edge`, `dangling_edge_node`, `orphan_edges`, `orphan_nodes`, `repaired`, `repaired_counts`). With `repair=True`, prune danglers (filing each via `quarantine_dangling`) and collect orphans, atomically where the store allows |
+| `fsck(repair=False)` | Scan for dangling references and orphans; return the report dict (`dangling_node_edge`, `dangling_edge_node`, `orphan_edges`, `orphan_nodes`, `half_linked_edges`, `repaired`, `repaired_counts`). `half_linked_edges` are edges cited by only one of their two endpoints -- the optimistic-concurrency residual: the non-citing endpoint refused the link, so on `repair=True` the edge and the node it strands are collected. With `repair=True`, prune danglers (filing each via `quarantine_dangling`) and collect orphans + half-linked edges, atomically where the store allows |
 
 **Required guarantees:**
 
@@ -586,7 +590,7 @@ through a delete intent.
 **Reference implementations:**
 
 - `jac/jaclang/runtimelib/impl/memory.impl.jac` -- `SqliteMemory`. The simplest backend; uses three tables (`anchors`, `anchors_quarantine`, `aliases`).
-- `jac-scale/jac_scale/impl/memory_hierarchy.mongo.impl.jac` -- `MongoBackend`. Document-store version; uses a main collection plus `<collection>_quarantine` and `<collection>_aliases` sidecars. Worth reading alongside SqliteMemory to see the same contract expressed against a different storage shape.
+- `jac/jaclang/scale/memory/impl/memory_hierarchy.mongo.impl.jac` -- `MongoBackend`. Document-store version; uses a main collection plus `<collection>_quarantine` and `<collection>_aliases` sidecars. Worth reading alongside SqliteMemory to see the same contract expressed against a different storage shape.
 
 Once your backend implements the interface, users get `jac db inspect`, `jac db quarantine list/show`, `jac db alias add/list/remove`, `jac db recover/recover-all`, and `jac db fsck` against it for free. No CLI registration required -- `jac db` discovers your backend through the runtime context (`ctx.mem.l3`) at command time.
 
@@ -705,7 +709,7 @@ A condensed list of every hook plugins can override. The full definitions are in
 | `store` | `(base_path: str = "./storage", create_dirs: bool = True) -> Storage` |
 | `get_persistent_memory` | `(config: dict) -> PersistentMemory \| None` |
 
-`get_persistent_memory` is the seam for a custom L3 backend (see [Recipe 7](#recipe-7-custom-persistence-backends)). `TieredMemory.postinit` consults it before falling back to `SqliteMemory`, and `ScaleTieredMemory` consults it before falling back to `MongoBackend`. The core default returns `None` (so absent a plugin nothing changes), and because every hook is `firstresult` the first plugin to return a backend wins. A backend plugin is therefore just a `PersistentMemory` subclass plus this one hookimpl, instead of a whole `create_j_context` replacement that would mutually exclude jac-scale.
+`get_persistent_memory` is the seam for a custom L3 backend (see [Recipe 7](#recipe-7-custom-persistence-backends)). `TieredMemory.postinit` consults it before falling back to `SqliteMemory`, and `ScaleTieredMemory` consults it before falling back to `MongoBackend`. The core default returns `None` (so absent a plugin nothing changes), and because every hook is `firstresult` the first plugin to return a backend wins. A backend plugin is therefore just a `PersistentMemory` subclass plus this one hookimpl, instead of a whole `create_j_context` replacement that would mutually exclude scale.
 
 **Console (`JacConsole` mixin):**
 
@@ -764,14 +768,15 @@ name = "jac-myplugin"
 version = "0.1.0"
 description = "What this plugin does"
 requires-python = ">=3.12"
-dependencies = ["jaclang>=0.13"]
 
 [project.entry-points."jac"]
 myplugin = "jac_myplugin.plugin:JacCmd"
 myplugin_plugin_config = "jac_myplugin.plugin_config:JacMypluginPluginConfig"
 ```
 
-Build a wheel with `python -m build` and publish with `twine upload`. The plugin becomes active in any environment that has both your wheel and `jaclang` installed -- no other registration step is required.
+> Note: do **not** list PyPI `jaclang` in `dependencies` - `jaclang` is the host runtime supplied by the `jac` binary that loads your plugin, not a PyPI package.
+
+Build a wheel with `jac bundle` (the Jac-native build path; `python -m build` also works) and publish with `twine upload` -- plugins **are** distributed on PyPI. The plugin becomes active in any project using the `jac` binary once it is installed there (`jac install <plugin>`) -- no other registration step is required.
 
 ### `jac plugins` command
 
@@ -789,19 +794,16 @@ The disabled list is stored under `[plugins].disabled` in `jac.toml`. The `JAC_D
 
 ## Tour of existing plugins
 
-Each plugin in the monorepo exercises a different subset of the extension surface. Read them as canonical examples:
+Each subsystem in the monorepo exercises a different subset of the extension surface. Read them as canonical examples (note that `scale` is now a built-in core provider rather than a separately-installed package, but it still registers through the same hooks):
 
-| Plugin | What it adds | What to study it for |
+| Provider | What it adds | What to study it for |
 |---|---|---|
-| [**jac-scale**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-scale) | Cloud deployment, FastAPI server, JWT/SSO auth, MongoDB/Redis storage, Kubernetes deploys via `--scale`. | The "replace a CLI command via pre-hook" pattern (`_scale_pre_hook` for `jac start`), the most extensive runtime-hook overrides (`get_user_manager`, `create_server`, `store`), and a multi-section config schema with secrets and env-var resolution. |
-| [**jac-client**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-client) | Full-stack web framework: JSX components, Vite dev server, client-side rendering, npm dependency type, project templates. | Multiple plugin entry points (`serve`, `cli`, `plugin_config`), dependency-type registration, project template loading from disk with post-create hooks, and the polymorphic `TargetFactory` pattern for web/PWA/mobile build targets. |
-| [**jac-desktop**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-desktop) | Native desktop target (PyTauri shell + PyInstaller sidecar), `jac desktop plugin` CLI, `[plugins.desktop]` config. | `jac_client` entry-point group + `JacClientPluginSpec.get_client_targets` hook (typed `ClientTarget`), separate from jaclang core. |
+| [**scale** (built into core)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale) | Cloud deployment, FastAPI server, JWT/SSO auth, MongoDB/Redis storage, Kubernetes deploys via `--scale`. | The "replace a CLI command via pre-hook" pattern (`_scale_pre_hook` for `jac start`), the most extensive runtime-hook overrides (`get_user_manager`, `create_server`, `store`), and a multi-section config schema with secrets and env-var resolution. |
 | [**jac-byllm**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm) | The `by llm()` language feature -- annotate a function and have an LLM implement it at runtime. | Pure runtime-hook plugin with no CLI commands. Shows how to bridge compile-time IR to runtime via `get_mtir`, and how a single hook (`call_llm`) can dispatch across many providers via LiteLLM. |
-| [**jac-super**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-super) | Rich-formatted console output (colors, panels, spinners). | The smallest possible plugin -- a single `@hookimpl` for `get_console`, no CLI, no config. A great copy-paste starting point. |
-| [**jac-mcp**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mcp) | An MCP (Model Context Protocol) server that exposes the Jac project to AI coding assistants. | Single new CLI command (`jac mcp`) with the "module-level `@registry.command` + pre-hook" pattern, three-tier config fallback (CLI arg → `jac.toml` → default), and an `--inspect` mode that dumps the server's resources/tools/prompts. |
+| [**`jac mcp`** (built into core)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp) | An MCP (Model Context Protocol) server that exposes the Jac project to AI coding assistants. Once the separate `jac-mcp` plugin, now part of jaclang core. | A single new CLI command via `@registry.command` with decl/impl separation (`commands/mcp.jac` + `commands/impl/mcp.impl.jac`), three-tier config fallback (CLI arg → `jac.toml` → default), and an `--inspect` mode that dumps the server's resources/tools/prompts. |
 
 ## See also
 
 - [Codebase Guide § Plugin Architecture](../community/codebase-guide.md) -- high-level architectural notes on where plugins fit in the broader Jaclang codebase.
 - [CLI Reference](cli/index.md) -- every built-in CLI command with its full argument schema.
-- Per-plugin reference pages: [jac-scale](plugins/jac-scale.md), [jac-client](plugins/jac-client.md), [byllm](plugins/byllm.md).
+- Per-subsystem reference pages: [Scale](plugins/jac-scale.md), [Client](plugins/jac-client.md), [byllm](plugins/byllm.md).

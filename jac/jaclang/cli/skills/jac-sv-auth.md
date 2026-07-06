@@ -9,6 +9,7 @@ Jac's server auth is built on **per-user data isolation**: every registered user
 
 - **`def:pub` / `walker:pub`** - no auth required. An **anonymous** caller runs on the shared guest graph (`root` is `root.shared`); a caller who *does* send a valid token runs on **their own root**. So `root` inside a `:pub` endpoint is not one fixed graph - it depends on the caller's token.
 - **Plain `def` / `def:priv`** (and plain `walker` / `walker:priv`) - JWT required (`401 UNAUTHORIZED` without one); runs on the caller's own isolated root. **Plain and `:priv` behave identically** - secure by default; `:priv` is just the explicit spelling.
+- **`def:protect` / `walker:protect`** - for auth, identical to `:priv`: JWT required, own root. `:protect` is *not* a middle auth tier - **only `:pub` skips auth**. Its three-way gradient (`:pub`/`:protect`/`:priv`) is the *source-visibility* axis (module vs project vs world), not the auth axis. Don't pick `:protect` expecting lighter auth.
 - **`def _helper`** - underscore prefix keeps a function off the API entirely (underscore *walkers* become middleware - see `jac-sv-endpoints`).
 
 ```jac
@@ -30,7 +31,7 @@ def:priv my_todos() -> list[Todo] {
 }
 
 def:priv add_todo(title: str) -> Todo {
-    return (root ++> Todo(title=title))[0];
+    return root ++> Todo(title=title);
 }
 ```
 
@@ -62,7 +63,7 @@ Identity types: `username`, `email` (max one of each; login works with either). 
 
 ## Roles
 
-jac-scale HAS a built-in role system: `admin` / `system` / `user`, stored on the user and carried in JWT claims (login and `/user/me` return it). New registrations are `user`; the bootstrap admin is created on first start. Set roles via the admin API or the admin portal at `/admin`:
+Scale HAS a built-in role system: `admin` / `system` / `user`, stored on the user and carried in JWT claims (login and `/user/me` return it). New registrations are `user`; the bootstrap admin is created on first start. Set roles via the admin API or the admin portal at `/admin`:
 
 ```bash
 curl -X PUT http://localhost:8000/admin/users/alice \

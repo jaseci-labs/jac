@@ -364,8 +364,8 @@ Key components of the client backend:
   is shared between the server and client AST generators so JSX tags compile
   consistently regardless of where they appear.
 
-The `jac-client` plugin packages the generated `module.gen.js`, the JS
-runtime, and an HTML shell into a static bundle. Cross-codespace calls
+The client framework (built into `jaclang` core) packages the generated
+`module.gen.js`, the JS runtime, and an HTML shell into a static bundle. Cross-codespace calls
 (`cl → sv`) are lowered into HTTP requests against the walker / function
 endpoints exposed by `jac start`. The client is currently **CSR-only**:
 the server returns an HTML shell with a bootstrapping payload, and the
@@ -466,7 +466,7 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 | `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--shared` build is loaded across the process boundary instead | `PyastGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
 | `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the in-tree linker | `InteropAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
-| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by `jac-scale` |
+| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by the built-in `scale` subsystem |
 
 Boundary types are serialised through the schemas in
 [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac).

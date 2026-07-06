@@ -1,21 +1,3 @@
-"""Memory Hierarchy for Jac Language.
-
-This module defines the complete memory hierarchy:
-
-Abstract Interfaces:
-- Memory: Base interface for all memory operations
-- CacheMemory: Extends Memory with ephemeral cache operations (L2)
-- PersistentMemory: Extends Memory with durable storage operations (L3)
-
-Concrete Implementations:
-- VolatileMemory: Simple dict-based, no persistence (L1)
-- LocalCacheMemory: In-process cache with TTL support (L2)
-- SqliteMemory: SQLite-based persistent memory with proper concurrency (L3)
-- TieredMemory: Composes L1 + L2 + L3 with write-through semantics
-
-jac-scale extends this to override L2 (Redis) and L3 (database).
-"""
-
 import logging;
 import sqlite3;
 import threading;
@@ -28,10 +10,6 @@ import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.typecache { get_field_types }
 
 glob logger = logging.getLogger(__name__),
-     # Quarantine reason code for a dangling reference (a citation to a
-     # document that no longer exists). Shared vocabulary across backends so
-     # the read-path healer, `jac db fsck`, and the `jac db quarantine`
-     # surface all agree on one machine-readable code.
      DANGLING_REF = 'DANGLING_REF',
      __all__ = [
          'Memory',
@@ -44,14 +22,6 @@ glob logger = logging.getLogger(__name__),
          'DANGLING_REF'
      ];
 
-# =============================================================================
-# Abstract Interfaces
-# =============================================================================
-"""Base Memory Interface.
-
-All memory implementations (volatile, cache, persistent, tiered) implement this interface.
-This enables ExecutionContext to work with any memory type transparently.
-"""
 obj Memory {
     def is_available -> bool abs;
     def get(id: UUID) -> (Anchor | None) abs;
@@ -73,58 +43,16 @@ obj Memory {
     ) -> (Anchor | None) abs;
 
     def commit(anchor: (Anchor | None) = None) -> None abs;
-    """Discard this memory's uncommitted unit of work. Default is a no-op;
-    TieredMemory implements the real thing (drop pending intents and evict
-    dirty anchors so a later commit/close cannot re-collect them)."""
     def abort -> None;
-
-    """Heal a dangling reference discovered on the read path: file the missing
-    referent into the durable quarantine store (reason DANGLING_REF) for
-    operator visibility, and prune the stale citation from `referrer` in
-    memory so traversal stops re-paying for it and the edge-list repair
-    flushes through the normal commit path. Default is a no-op (volatile /
-    cache tiers own no durable store); TieredMemory implements the real
-    thing. Never raises into the traversal that called it."""
     def quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None;
-
-    """True if `id` sits in the durable quarantine store under a RECOVERABLE
-    reason (schema drift, class missing, cascade) that `jac db recover` can
-    still restore. The read-path healer consults this to tell such a referent
-    (leave its citations intact) from a GENUINE dangler (referent absent
-    everywhere - heal it). DANGLING_REF rows are EXCLUDED: they are the
-    healer's own forensic records, not recoverable state, so they must not
-    make the healer treat a genuine dangler as recoverable (and skip pruning
-    it on the next pass). Default False (volatile / cache tiers own no
-    quarantine)."""
     def is_recoverable_quarantine(id: UUID) -> bool;
-
     def get_mem -> dict[UUID, Anchor] abs;
-    # ---- Pushdown protocol ----
-    # Backends opt into native query pushdown by declaring `capabilities()` and
-    # implementing `execute_plan()`. The runtime planner consults
-    # `capabilities()` against a `QueryPlan.needs()` set and routes accordingly:
-    #   - all needs covered → backend's `execute_plan` is authoritative
-    #   - partial coverage → planner narrows via topology_index, hands a
-    #     reduced plan (typically with `id_in` populated) to the backend
-    #   - no coverage      → universal floor (topology_index → batch_get)
-    # See `jaclang.runtimelib.query_plan` for the capability vocabulary and
-    # `jaclang.runtimelib.planner` for the strategy chooser. Defaults below
-    # mean a backend that does nothing extra still gets the floor for free.
     def capabilities -> set[str];
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
-    # Convenience surface that delegates to execute_plan. Lifted here from
-    # the Mongo-only API so every backend with `type_pushdown` capability
-    # gets ergonomic type+field queries for free; backends without it return
-    # an empty result (callers should fall back to `query()` + Python filter).
     def query_by_type(
         arch_type_name: str, field_filter: (dict | None) = None
     ) -> Generator[Anchor, None, None];
-    # ---- Async hot-path mirrors ----
-    # Non-abstract: default implementations delegate to the sync variant via
-    # asyncio.to_thread so every existing backend (SQLite, Volatile, Tiered)
-    # gets non-blocking behavior under an event loop without a rewrite. Native
-    # async backends (aiosqlite, asyncpg, motor) can override these to drop
-    # the thread hop entirely.
+
     async def aget(id: UUID) -> (Anchor | None);
     async def aput(anchor: Anchor) -> None;
     async def adelete(id: UUID) -> None;
@@ -132,142 +60,30 @@ obj Memory {
     async def acommit(anchor: (Anchor | None) = None) -> None;
 }
 
-"""Cache Memory Interface.
-
-Extends Memory with operations specific to ephemeral caching.
-Cache backends are expected to be fast but data loss is acceptable.
-Used for L2 (local or distributed cache like Redis) in the tiered hierarchy.
-"""
 obj CacheMemory(Memory) {
     def exists(id: UUID) -> bool abs;
     def put_if_exists(anchor: Anchor) -> bool abs;
     def invalidate(id: UUID) -> None abs;
 }
 
-"""Persistent Memory Interface.
-
-Extends Memory with operations specific to durable storage.
-Implementations must guarantee data durability after sync().
-
-The second block of abstract methods (`inspect_summary` onward) is the
-backend-agnostic surface that the `jac db` CLI calls into. Any backend
-plugin that implements PersistentMemory automatically gets the full
-Layer 1+2+3 feature set — schema fingerprints, quarantine-on-failure,
-alias-based class rename resolution, operator rescue — exposed via a
-uniform CLI, regardless of whether the underlying store is SQLite,
-MongoDB, Postgres, or anything else.
-"""
 obj PersistentMemory(Memory) {
-    """Flush a unit of work. Non-transactional backends MUST honor the
-    stage order from `changeset.staged()` and the per-intent `depends_on`
-    (skip intents whose dependencies failed); transactional backends may
-    collapse all stages into one transaction. Storage I/O for graph
-    mutations happens here and only here."""
     def apply(changeset: ChangeSet) -> ApplyReport abs;
-    # ---- Layer 1+2+3 operator/inspection surface ----
-    """Summary for `jac db inspect`: format version, live row count,
-    quarantine count, alias count, and per-archetype breakdowns.
-
-    Expected shape:
-        {
-            'format_version': str,
-            'anchors_total': int,
-            'anchors_by_type': list[(str, int)],
-            'quarantine_total': int,
-            'quarantine_by_type': list[(str, int)],
-            'aliases_total': int,
-            'location': str,  # path / URI / collection name — for display
-        }
-    """
     def inspect_summary -> dict abs;
-
-    """List the N most recent quarantined anchors.
-
-    Each entry: {'id', 'arch', 'fingerprint', 'error', 'quarantined_at'}.
-    Sorted newest-first. `limit` bounds the result size.
-    """
     def list_quarantined(limit: int = 50) -> list abs;
-
-    """Full detail for one quarantined anchor by id (or unique prefix).
-
-    Returns None if no row matches, a multi-hit sentinel {'error': ...}
-    if a prefix is ambiguous, else {'id', 'type', 'arch_module',
-    'arch_type', 'fingerprint', 'error', 'quarantined_at',
-    'from_format_version', 'data': <parsed-json>}.
-    """
     def show_quarantined(id_prefix: str) -> (dict | None) abs;
-
-    """Attempt to re-deserialize one quarantined row and move it back.
-
-    On success, re-stamps the row with the live class's identity +
-    fingerprint so subsequent reads hit the registry directly.
-    Returns (True, 'recovered') on success; (False, reason) on failure.
-    """
     def recover_one(id_prefix: str) -> tuple abs;
-
-    """Batch variant: attempts every quarantined row.
-
-    Returns (n_recovered: int, still_stuck: list[(id, reason)]).
-    """
     def recover_all -> tuple abs;
-
-    """Return all persistent aliases: list of {'old_name', 'new_name',
-    'created_at'}."""
     def list_aliases -> list abs;
-
-    """Persist an alias mapping `old_name` -> `new_name` and merge into the
-    in-process Serializer registry. Idempotent (INSERT OR REPLACE-style)."""
     def add_alias(old_name: str, new_name: str) -> None abs;
-
-    """Remove an alias. Returns True if an entry was removed, False otherwise."""
     def remove_alias(old_name: str) -> bool abs;
-
-    # ---- Referential-integrity surface (read-path healing + `jac db fsck`) ----
-    """Record a dangling reference — a citation to a document that no longer
-    exists — in the quarantine store under the DANGLING_REF reason code so it
-    surfaces through `jac db quarantine list/show`. `missing_id` is the absent
-    referent, `referrer_id` the document that cites it, `kind` the referent's
-    kind ('edge' | 'node'). Best-effort and idempotent; never raises."""
     def quarantine_dangling(
         missing_id: UUID, referrer_id: (UUID | None), kind: str
     ) -> None abs;
 
-    """True iff `id` is quarantined under a RECOVERABLE reason (anything but
-    DANGLING_REF). The read-path healer's gate: a recoverable referent is left
-    to `jac db recover`; a genuine dangler (no row, or only a DANGLING_REF
-    forensic row) is healed. Abstract here so every backend is guarded — a
-    backend that returns the Memory default (False) would treat a recoverable
-    quarantine as a dangler and prune its citations. Backends MUST exclude
-    DANGLING_REF rows so the healer is not poisoned by its own records."""
     def is_recoverable_quarantine(id: UUID) -> bool abs;
-
-    """Scan stored documents for referential-integrity violations, the basis
-    for `jac db fsck`. Read-only by default (a safe monitoring probe); with
-    `repair=True`, prune dangling citations (filing each under DANGLING_REF)
-    and collect orphans, atomically where the backend supports it.
-
-    Report shape:
-        {
-            'location': str,
-            'dangling_node_edge': list[tuple[str, str]],  # node -> missing edge
-            'dangling_edge_node': list[tuple[str, str]],  # edge -> missing node
-            'orphan_edges': list[str],   # unreferenced/broken edge docs
-            'orphan_nodes': list[str],   # unreferenced edgeless non-root nodes
-            'repaired': bool,
-            'repaired_counts': {'pruned': int, 'quarantined': int, 'collected': int},
-        }
-    """
     def fsck(repair: bool = False) -> dict abs;
 }
 
-# =============================================================================
-# Concrete Implementations
-# =============================================================================
-"""Volatile Memory - Simple in-memory storage with no persistence.
-
-This is the L1 tier in a tiered memory hierarchy. All data is lost when
-the process exits. Used as the fast cache layer in TieredMemory.
-"""
 obj VolatileMemory(Memory) {
     has __mem__: dict[UUID, Anchor] by postinit;
 
@@ -295,23 +111,12 @@ obj VolatileMemory(Memory) {
     def get_mem -> dict[UUID, Anchor];
 }
 
-"""Local Cache Memory - In-process cache implementing CacheMemory interface.
-
-Extends VolatileMemory with cache-specific methods (exists, put_if_exists, invalidate).
-This is the default L2 tier. jac-scale overrides with Redis-based distributed cache.
-"""
 obj LocalCacheMemory(VolatileMemory, CacheMemory) {
-    # CacheMemory interface
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
 }
 
-"""SQLite-based Persistent Memory.
-
-Uses SQLite with WAL mode for concurrent reads and proper transaction support.
-Maintains an in-memory cache for fast reads with write-through to database.
-"""
 obj SqliteMemory(PersistentMemory) {
     has path: str,
         __mem__: dict[UUID, Anchor] by postinit,
@@ -320,9 +125,7 @@ obj SqliteMemory(PersistentMemory) {
         l3_fetch_count: int by postinit;
 
     def postinit -> None;
-    # Lazy connection initialization - DB only created when data is written
     def _ensure_connection -> None;
-    # Memory interface
     def is_available -> bool;
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
@@ -343,7 +146,6 @@ obj SqliteMemory(PersistentMemory) {
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
-    # PersistentMemory interface
     def apply(changeset: ChangeSet) -> ApplyReport;
     def _apply_one(conn: sqlite3.Connection, intent: WriteIntent) -> None;
     def _merge_write(conn: sqlite3.Connection, intent: WriteIntent) -> None;
@@ -364,31 +166,11 @@ obj SqliteMemory(PersistentMemory) {
     def get_mem -> dict[UUID, Anchor];
 }
 
-"""Tiered Memory - Extends VolatileMemory with L2 cache + L3 persistent tiers.
-
-This is the main memory abstraction used by ExecutionContext. It provides:
-- Fast reads via inherited L1 (VolatileMemory) with L2/L3 fallback and automatic promotion
-- Write-through to all tiers with access control
-- Configurable tiers (L2 and L3 are optional)
-- Automatic L3 initialization when base_path is provided
-
-TieredMemory IS the L1 tier (inherits __mem__ from VolatileMemory).
-jac-scale extends this by providing Redis-based L2 and database L3.
-"""
 obj TieredMemory(VolatileMemory) {
     has base_path: (str | None) = None,
-        # App identity used to derive the L3 SQLite filename. When None,
-        # `get_db_path` falls back to `Jac.get_full_target_path()` (the
-        # bootstrap seed) for compatibility with CLI flows. The
-        # ExecutionContext that owns this memory passes its own captured
-        # `full_target_path` here so the filename is decided at this
-        # memory's construction time, not by later seed mutations.
         target_path: (str | None) = None,
         l2: (CacheMemory | None) by postinit,
         l3: (PersistentMemory | None) by postinit,
-        # The request's unit of work: typed write intents accumulated by
-        # put()/delete()/the collect pass, flushed atomically (or in
-        # dependency order) by commit() -> l3.apply().
         changes: ChangeSet by postinit,
         use_cache: bool = False;
 
@@ -396,7 +178,6 @@ obj TieredMemory(VolatileMemory) {
     def reset_l3_fetch_count -> None;
     def postinit -> None;
     def _resolve_l3_backend(db_path: str) -> PersistentMemory;
-    # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
     def get_roots -> Generator[Root, None, None];
@@ -407,13 +188,9 @@ obj TieredMemory(VolatileMemory) {
     def abort -> None;
     def quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> None;
     def is_recoverable_quarantine(id: UUID) -> bool;
-    # Collect L1 dirtiness into the unit of work (decision logic lives
-    # here, in the runtime — backends only execute intents).
     def _collect_into(changes: ChangeSet) -> None;
-    # Refresh hash/field/edge baselines for applied intents post-flush.
     def _post_apply(apply_report: ApplyReport) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
-    # Pushdown protocol — delegate to L3 (the only tier that can push down).
     def capabilities -> set[str];
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
 }

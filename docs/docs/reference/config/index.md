@@ -14,11 +14,11 @@ jac create myapp
 cd myapp
 
 # Full-stack web app (recommended for web development)
-jac create myapp --use client
+jac create myapp --use web-static
 cd myapp
 ```
 
-This creates a `jac.toml` with default settings. When using `--use client`, the scaffolded project includes:
+This creates a `jac.toml` with default settings. When using `--use web-static`, the scaffolded project includes:
 
 ```
 myapp/
@@ -32,7 +32,7 @@ myapp/
 └── .gitignore
 ```
 
-The auto-generated `jac.toml` for a `--use client` project looks like:
+The auto-generated `jac.toml` for a `--use web-static` project looks like:
 
 ```toml
 [project]
@@ -66,7 +66,7 @@ name = "myapp"
 version = "1.0.0"
 description = "My Jac application"
 entry-point = "main.jac"
-kind = "api-service"   # drives `jac run` (omit to infer from the entry-point)
+kind = "service"   # drives `jac run` (omit to infer from the entry-point)
 jac-version = ">=0.15.0"
 
 # Publishing metadata -- only needed to run `jac bundle`
@@ -88,7 +88,7 @@ repository = "https://github.com/user/repo"
 | `version` | string | Semantic version (default: `0.1.0`) |
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
-| `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `native-app`, `native-binary`, `shared-library`, `api-service`, `microservices`, `pypi-package`, `npm-package`, `fullstack`, `wasm`, `desktop`, `mobile` |
+| `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile` |
 | `jac-version` | string | Required Jac compiler version |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
@@ -117,7 +117,13 @@ pytest = ">=8.0.0"
 
 [dependencies.git]
 my-lib = { git = "https://github.com/user/repo.git", branch = "main" }
+
+[dependencies.system]
+git = "*"
+ffmpeg = "*"
 ```
+
+`[dependencies.system]` declares OS (apt) packages your app needs at runtime. On a `jac-scale` Kubernetes deploy they are installed into the service container at startup (Debian only; keys are apt package names). See [System Dependencies](../plugins/jac-scale-kubernetes.md#system-dependencies).
 
 **Version specifiers:**
 
@@ -201,7 +207,16 @@ session = ""             # Session name
 main = true              # Run as main module
 cl_route_prefix = "cl"   # URL prefix for client apps
 base_route_app = ""      # Client app to serve at /
+
+# Optimistic-concurrency policy for concurrent check-then-create races
+# (see Persistence -> Concurrent writes).
+on_conflict = "retry"        # "retry": abort + replay so the loser converges
+                             # "fail":  no replay, return HTTP 409 immediately
+conflict_max_attempts = 5    # max walker/function attempts under "retry"
+conflict_backoff_ms = 0      # linear backoff between replay attempts (0 = none)
 ```
+
+`on_conflict` controls what happens when two concurrent requests race a "look it up, create it if missing" against the same node and the loser's commit is rejected. `retry` (default) re-runs the request against the now-current graph so it converges on the winner's node; `fail` surfaces a typed `409 write_conflict` for the client to handle. See [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence) for the full model.
 
 ---
 
@@ -314,8 +329,21 @@ select = ["combine-has", "remove-empty-parens"]
 | `fix-impl-signature` | `W3010` | Fix signature mismatches between declarations and implementations | default |
 | `remove-import-semi` | `W3011` | Remove trailing semicolons from `import from X { ... }` | default |
 | `no-print` | `E3012` | Error on bare `print()` calls (use console abstraction instead) | all |
+| `strip-comments` | `W3050` | Remove **all** comments | opt-in |
+| `strip-docstrings` | `W3051` | Remove **all** docstrings | opt-in |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
+
+**Opt-in (deslop) rules:**
+
+`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. Unlike every other rule, they are **never** activated by `select = ["all"]` or `select = ["default"]`; they fire only when named explicitly. A project that wants them on by default lists them alongside its other selections:
+
+```toml
+[check.lint]
+select = ["default", "strip-comments", "strip-docstrings"]
+```
+
+The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac format --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
 
 **Excluding files from lint:**
 
@@ -367,8 +395,8 @@ dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
 
 ### [storage]
 
-!!! warning "Plugin-Specific Configuration"
-    The `[storage]` section requires the **jac-scale** plugin and may not be available in all configurations. Running `jac config list -g storage` will return "Unknown group 'storage'" if the plugin is not installed.
+!!! note "Scale Configuration"
+    The `[storage]` section is provided by the built-in **scale** subsystem (part of `jaclang` core). Its cloud backends (S3/GCS/Azure) require the relevant client libraries in the project venv -- declare the backend in config and run `jac install` to pull them in.
 
 File storage configuration:
 
@@ -395,7 +423,7 @@ create_dirs = true           # Auto-create directories
 
 Configuration priority: `jac.toml` > environment variables > defaults.
 
-See [Storage Reference](../plugins/jac-scale.md#storage) for the full storage API.
+See [Storage Reference](../plugins/jac-scale-persistence.md#storage) for the full storage API.
 
 ---
 
@@ -417,29 +445,27 @@ api_key = "${OPENAI_API_KEY}"
 [plugins.byllm.call_params]
 temperature = 0.7
 
-# Server settings (jac-scale)
+# Server settings (scale)
 [plugins.scale.server]
 port = 8000
 host = "0.0.0.0"
 docs_enabled = true              # Set to false to disable /docs, /redoc, /openapi.json
 
-# Webhook settings (jac-scale)
+# Webhook settings (scale)
 [plugins.scale.webhook]
 secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
 api_key_expiry_days = 365
 
-# Kubernetes version pinning (jac-scale)
+# Kubernetes version pinning (scale) -- scale, byLLM, the MCP server, and the
+# client/desktop framework all ship inside the `jac` binary, so they need no
+# pinning. Use this only to pin a genuine third-party PyPI plugin for the pod image.
 [plugins.scale.kubernetes.plugin_versions]
-jaclang = "latest"
-jac_scale = "latest"
-jac_client = "latest"
-jac_byllm = "none"           # Use "none" to skip installation
-jac_mcp = "latest"
+my_plugin = "1.2.3"          # pin a version, or "none" to skip, "latest" to track
 ```
 
-**Prometheus Metrics (jac-scale):**
+**Prometheus Metrics (scale):**
 
 ```toml
 [plugins.scale.monitoring]
@@ -449,9 +475,9 @@ namespace = "myapp"
 walker_metrics = true
 ```
 
-See [Prometheus Metrics](../plugins/jac-scale.md#prometheus-metrics) for details.
+See [Prometheus Metrics](../plugins/jac-scale-kubernetes.md#prometheus-metrics) for details.
 
-**Kubernetes Secrets (jac-scale):**
+**Kubernetes Secrets (scale):**
 
 ```toml
 [plugins.scale.secrets]
@@ -459,9 +485,9 @@ OPENAI_API_KEY = "${OPENAI_API_KEY}"
 DATABASE_PASSWORD = "${DB_PASS}"
 ```
 
-See [Kubernetes Secrets](../plugins/jac-scale.md#kubernetes-secrets) for details.
+See [Kubernetes Secrets](../plugins/jac-scale-kubernetes.md#kubernetes-secrets) for details.
 
-See also [jac-scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
+See also [Scale Webhooks](../plugins/jac-scale-http.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale-kubernetes.md#kubernetes-deployment) for more options.
 
 **Built-in Local Models (byllm):**
 
@@ -477,6 +503,26 @@ auto_download  = false                # true = skip the first-run TTY prompt
 ```
 
 Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>/` on first use and managed via `jac model list/pull/rm`. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) for the full reference and [`jac model`](../cli/index.md#jac-model) for cache management.
+
+**Frontend Framework (jac-client):**
+
+```toml
+[plugins.client]
+framework = "react"   # "react" (default), "solid" (experimental), or "preact"
+```
+
+Controls which JavaScript framework the `cl` compiler target emits. The default is `"react"`.
+
+| Value | Status | Notes |
+|-------|--------|-------|
+| `"react"` | Stable | Default. Uses React hooks and `@vitejs/plugin-react`. |
+| `"solid"` | Experimental | Uses Solid signals and `vite-plugin-solid`. API may change. |
+| `"preact"` | Stable | Drop-in React alternative with a smaller bundle. |
+
+Switching frameworks automatically adjusts the installed npm packages and the generated Vite config; no other changes are needed. Delete your `.jac/client/` build cache after switching so the previous framework's output is not mixed in.
+
+!!! warning "Solid support is experimental"
+    The `solid` framework target is under active development. Some jac-client features (error boundaries, suspense slots, advanced routing) may not yet be fully supported. Check the [release notes](../../community/release_notes/jac-client.md) before upgrading.
 
 **Import Path Aliases (jac-client):**
 
@@ -576,9 +622,9 @@ JAC_PROFILE=production jac run main.jac
 
 ---
 
-## Environment Variables
+## Environment Variable Interpolation
 
-Use environment variable interpolation:
+Use environment variable interpolation inside `jac.toml` values:
 
 ```toml
 [plugins.byllm.model]
@@ -760,6 +806,11 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `NO_EMOJI` | Disable emoji in terminal output |
 | `JAC_PROFILE` | Activate a configuration profile (e.g., `production`) |
 | `JAC_BASE_PATH` | Override base directory for data/storage |
+| `JAC_DATA_PATH` | Override the base directory for application data (graph storage, user db) |
+| `JACPATH` | Colon-separated extra search path for Jac module resolution (like `PYTHONPATH`) |
+| `JAC_DISABLED_PLUGINS` | Comma-separated plugins to disable: `*` for all, `package:*`, or `package:plugin` (same effect as `[plugins].disabled` in `jac.toml`) |
+| `JAC_SCHEMA_REPAIR` | Schema-drift handling on load: `repair` (default) or `strict` |
+| `JAC_STRICT_PERMISSIONS` | Enable strict permission checking for security-sensitive operations (`1`/`true`) |
 
 ### Storage
 
@@ -769,14 +820,18 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `JAC_STORAGE_PATH` | Base directory for file storage |
 | `JAC_STORAGE_CREATE_DIRS` | Auto-create directories |
 
-### jac-scale: Database
+### Scale: Database
 
 | Variable | Description |
 |----------|-------------|
 | `MONGODB_URI` | MongoDB connection URI |
 | `REDIS_URL` | Redis connection URL |
+| `FIRESTORE_PROJECT_ID` | Firestore / Firebase project ID |
+| `FIREBASE_PROJECT_ID` | Shared Firebase project ID fallback for Auth SSO, Firestore, Storage |
 
-### jac-scale: Authentication
+Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAGE_FIREBASE_PROJECT_ID`, `JAC_STORAGE_GCS_PROJECT_ID`) override `FIREBASE_PROJECT_ID` when set.
+
+### Scale: Authentication
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -786,8 +841,23 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `SSO_HOST` | SSO callback host URL | `http://localhost:8000/sso` |
 | `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | None |
 | `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | None |
+| `EMAILER_SMTP_PASSWORD` | SMTP password for the built-in email sender | None |
 
-### jac-scale: Webhooks
+### Scale: Microservices
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_SV_ROUTES` | JSON object mapping service module names to URL route prefixes |
+| `JAC_SV_<MODULE>_URL` | Point an `sv import` of `<MODULE>` at a remote provider URL |
+
+### Client
+
+| Variable | Description |
+|----------|-------------|
+| `JAC_CLIENT_SKIP_NPM_INSTALL` | Skip `npm install` during client build setup |
+| `JAC_MOBILE_PLATFORM` | Mobile platform selection for dev/build (`auto`, `android`, `ios`) |
+
+### Scale: Webhooks
 
 | Variable | Description |
 |----------|-------------|
@@ -796,19 +866,14 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `WEBHOOK_VERIFY_SIGNATURE` | Enable signature verification |
 | `WEBHOOK_API_KEY_EXPIRY_DAYS` | API key expiry in days |
 
-### jac-scale: Kubernetes
+### Scale: Kubernetes
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `APP_NAME` | Application name for K8s resources | `jaseci` |
-| `K8s_NAMESPACE` | Kubernetes namespace | `default` |
-| `K8s_NODE_PORT` | External NodePort | `30001` |
-| `K8s_CPU_REQUEST` | CPU resource request | None |
-| `K8s_CPU_LIMIT` | CPU resource limit | None |
-| `K8s_MEMORY_REQUEST` | Memory resource request | None |
-| `K8s_MEMORY_LIMIT` | Memory resource limit | None |
-| `DOCKER_USERNAME` | DockerHub username | None |
-| `DOCKER_PASSWORD` | DockerHub password/token | None |
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[plugins.scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+
+| Variable | Description |
+|----------|-------------|
+| `K8S_APP_NAME` | Application name (used by observability and admin tooling inside the pod) |
+| `K8S_NAMESPACE` | Namespace the workload runs in |
 
 ---
 

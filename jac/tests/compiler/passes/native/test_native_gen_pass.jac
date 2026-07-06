@@ -10,15 +10,15 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT, TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
 import jaclang.jac0core.unitree as uni;
-import from llvmlite.binding { ExecutionEngine }
+import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
 """Compile a .na.jac fixture and return the JIT engine."""
@@ -88,6 +88,102 @@ test "native osp: spawn returns the walker" {
     # `(Collector() spawn Item(val=v)).total` — spawn evaluates to the walker.
     assert collect_one(7) == 7;
     assert collect_one(0) == 0;
+}
+
+test "native osp: skip in an impl-annex walker event ability (issue #6794)" {
+    # `skip` is a valid Return-family statement in a walker `with X entry` event
+    # ability, and native lowers it there. When the ability is split decl/impl,
+    # the `skip` lives in an `impl Walker.ability with X entry` ImplDef in the
+    # annex. Before the fix the native capability check — now scanning annex
+    # bodies (#6754) — saw the ImplDef (not an inline Ability) around the `skip`
+    # and falsely rejected it (E5090), producing no IR; a module importing it
+    # then failed to link (E5024) and `jac test` reported "native engine
+    # unavailable". Here `grab` skips val==0 nodes and sums the rest.
+    (eng, _) = compile_native("osp_skip_annex.na.jac");
+    collect = get_func(
+        eng, "collect", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert collect(10, 0, 32) == 42;  # the val==0 node is skipped
+    assert collect(0, 0, 0) == 0;  # every node skipped
+    assert collect(5, 5, 5) == 15;
+}
+
+# --- Partial-native classes / per-method opt-out (workstream A4, #6930) ---
+test "native partial class: un-lowerable method skipped, sibling stays native" {
+    # `Literal.evaluate` uses `eval` (no native lowering). Before A4 its E5090
+    # poisoned the whole module, so the class lost its native layout and every
+    # sibling method. Now the un-lowerable method is demoted to Python-only and
+    # the rest of the class compiles: native construction + the native-eligible
+    # `length` work, the module reports no errors.
+    (eng, ir) = compile_native("partial_native.na.jac");
+    measure = get_func(eng, "measure", ctypes.c_int64, ctypes.c_char_p);
+    assert measure(b"hello") == 5;
+    assert measure(b"") == 0;
+    layout = ir.gen.native_layout;
+    # The native-eligible method is exported; the eval-using one is skipped.
+    assert "Literal.length" in layout.methods;
+    assert "Literal.evaluate" not in layout.methods;
+}
+
+test "native partial class: demotion warns on the terminal by default (#6934)" {
+    # warn_native_seams defaults True, so demoting an un-lowerable method prints
+    # a terminal warning naming the method — a silent native fallback is visible
+    # during a build. The compile still succeeds (A4 demotes, no errors).
+    _saved = sys.stderr;
+    _cap = io.StringIO();
+    sys.stderr = _cap;
+    try {
+        prog = JacProgram();
+        prog.compile(file_path=str(os.path.join(FIXTURES, "partial_native.na.jac")));
+    } finally {
+        sys.stderr = _saved;
+    }
+    assert not prog.errors_had;
+    _out = _cap.getvalue();
+    assert "native seam" in _out;
+    assert "Literal.evaluate" in _out;
+    assert "Python-only" in _out;
+}
+
+test "native partial class: native caller of a demoted method errors, not silent" {
+    # A method demoted to Python-only is not callable from native code: the
+    # native pathway cannot fall back to Python mid-stream. A native call site
+    # must surface E5090 (loud) instead of silently dropping to a null result.
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(FIXTURES, "partial_native_native_caller.na.jac"))
+    );
+    codes = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code
+    ];
+    assert "E5090" in codes , (
+        f"expected E5090 for native call to a demoted method, got {codes}"
+    );
+    # The diagnostic names the call site (the method), not the discarded
+    # eval body that was demoted away.
+    msgs = " ".join(str(e) for e in (prog.errors_had or []));
+    assert "Box.evaluate" in msgs , f"E5090 should name Box.evaluate, got: {msgs}";
+}
+
+test "native partial class: un-lowerable virtual method stays a hard error" {
+    # `render` is virtual (Base + Derived override -> vtable slot). A virtual
+    # method the backend cannot lower must NOT be demoted: native polymorphic
+    # dispatch cannot fall back to Python, and demoting it would leave a
+    # dangling vtable index / abort-stub slot. So the eval gap stays E5090.
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(FIXTURES, "partial_native_virtual.na.jac"))
+    );
+    codes = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code
+    ];
+    assert "E5090" in codes , (
+        f"expected E5090 for un-lowerable virtual method, got {codes}"
+    );
 }
 
 test "arithmetic negate" {
@@ -167,6 +263,22 @@ test "nested functions helper recursion and module global" {
     # x + BASE, BASE == 100
     assert uses_global(0) == 100;
     assert uses_global(7) == 107;
+}
+
+test "glob declared in an impl annex resolves on native (issue #6754)" {
+    # A `glob` declared in the canonical bare IMPL ANNEX
+    # (`impl/annex_glob.impl.jac`, base name resolved before the `.na` variant
+    # suffix), not the head file, must be registered in the native module's
+    # globals and resolved by references in the annexed ability bodies. Before
+    # the fix, native global collection swept only the head module's `body`, so
+    # the annex glob was never emitted and references bailed with E5090
+    # 'Name'/'BinaryExpr'. The byte-identical program with the glob in the head
+    # file always compiled.
+    (eng, _) = compile_native("annex_glob.na.jac");
+    get_sz = get_func(eng, "get_sz", ctypes.c_int64);
+    double_sz = get_func(eng, "double_sz", ctypes.c_int64);
+    assert get_sz() == 21;  # bare `Name` reference to the annex glob
+    assert double_sz() == 42;  # `BinaryExpr` reference to the annex glob
 }
 
 # --- TestNativeContextIsolation ---
@@ -254,6 +366,29 @@ test "enums loops ternary" {
     assert f(0) == -10;
 }
 
+# Regression for #6987: a ternary whose two branches need a numeric coercion
+# (int<->float, or differing int widths) used to emit the cast into the merge
+# block ahead of the phi, so the LLVM verifier rejected the module with "PHI
+# nodes not grouped at top of basic block" and native compilation failed. The
+# cast now lands in the predecessor block before its branch, leaving the phi at
+# the top of the merge block. If the fix regresses, compile_native here fails
+# (no native engine) rather than asserting a wrong value.
+test "mixed-type ternary coerces in predecessor block (#6987)" {
+    (eng, _) = compile_native("enums_loops.na.jac");
+    # float "then" + int "else": int branch promoted to double.
+    f1 = get_func(eng, "ternary_int_float_test", ctypes.c_double, ctypes.c_int64);
+    assert f1(1) == 1.5;
+    assert f1(0) == 2.0;
+    # int "then" + float "else": the other predecessor side.
+    f2 = get_func(eng, "ternary_float_int_test", ctypes.c_double, ctypes.c_int64);
+    assert f2(1) == 2.0;
+    assert f2(0) == 1.5;
+    # bool "then" (i1) + int "else" (i64): the int-width zext path.
+    f3 = get_func(eng, "ternary_widen_test", ctypes.c_int64, ctypes.c_int64);
+    assert f3(1) == 1;
+    assert f3(0) == 5;
+}
+
 # --- TestNativeStrings ---
 test "strings greet" {
     (eng, _) = compile_native("strings.na.jac");
@@ -281,6 +416,55 @@ test "strings simple escapes still decode" {
     (eng, _) = compile_native("strings.na.jac");
     f = get_func(eng, "escapes_simple", ctypes.c_char_p);
     assert f() == b"p\tq\nr";
+}
+
+# str(float) must be CPython's shortest round-trip repr, not %g (#6978 0.3).
+# Every value below is compared byte-for-byte against Python's own repr(), so
+# fixed vs. exponential notation, the trailing `.0`, -0.0, and inf/nan spelling
+# are all held to sv parity.
+test "float repr shortest round-trip matches CPython (na == sv) (#6978 0.3)" {
+    (eng, _) = compile_native("float_repr.na.jac");
+    f = get_func(eng, "frepr", ctypes.c_char_p, ctypes.c_double);
+    cases = [
+        0.0,
+        1.0,
+        -0.0,
+        -1.0,
+        0.1,
+        0.2,
+        0.3,
+        1.1,
+        3.14,
+        2.5,
+        0.5,
+        -2.75,
+        100.0,
+        1234.5,
+        100000.0,
+        0.001,
+        0.0001,
+        0.000123,
+        1234567890123456.0,
+        123456789.123456789,
+        0.1 + 0.2,
+        1e16,
+        1.5e16,
+        1e-5,
+        1e-10,
+        1e100,
+        1e-100,
+        1.7976931348623157e308,
+        2.2250738585072014e-308,
+        5e-324,
+        float("inf"),
+        float("-inf"),
+        float("nan")
+    ];
+    for v in cases {
+        assert f(v) == repr(v).encode("utf-8") , (
+            f"str({v!r}): na={f(v)!r} sv={repr(v).encode('utf-8')!r}"
+        );
+    }
 }
 
 test "strings str equal" {
@@ -505,6 +689,25 @@ test "objects empty dict in struct ctor" {
     (eng, _) = compile_native("objects.na.jac");
     f = get_func(eng, "test_empty_dict_ctor_field", ctypes.c_int64);
     assert f() == 30;
+}
+
+# --- TestNativeOpaqueForeignField (issue #6930, Workstream A3) ---
+# A field whose type the native backend cannot model (here `ast3.AST | None`,
+# resolved by the checker to `<Unknown> | NoneType`) must lower to a nullable
+# opaque slot, null at native construction, rather than rejecting the whole
+# declaration with E5090. The native path touches only native fields, so the
+# carrier still constructs and its native methods run. This is what keeps
+# unitree's ~150 foreign-typed node declarations untouched (Tier-1-only).
+test "opaque foreign field: carrier compiles with a native-unmodeled field type" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_name_len", ctypes.c_int64);
+    assert f() == 5;  # len("store"), proving native construction + method work
+}
+
+test "opaque foreign field: native method reads only native fields" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_label", ctypes.c_char_p);
+    assert f() == b"store";  # py_ctx stays null; label() returns the native field
 }
 
 # --- TestNativeSliceObjectField (issue #6473) ---
@@ -1007,6 +1210,91 @@ test "chess play random moves stress" {
         "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
+}
+
+# --- TestNativeClassName (issue #6930 workstream A2) ---
+test "class name: __class__.__name__ is polymorphic over subclasses" {
+    # `kind` is defined only on the base `Widget`, so a subclass instance must
+    # recover its own runtime class name through the vtable, not freeze to the
+    # declaring class. Before A2 these reads E5090'd ("attribute access
+    # '__name__'"); now they lower to the per-class name.
+    (eng, _) = compile_native("class_name.na.jac");
+    bk = get_func(eng, "button_kind", ctypes.c_char_p);
+    sk = get_func(eng, "slider_kind", ctypes.c_char_p);
+    wk = get_func(eng, "widget_kind", ctypes.c_char_p);
+    assert bk() == b"Button";
+    assert sk() == b"Slider";
+    assert wk() == b"Widget";
+}
+
+test "class name: type(self).__name__ matches __class__.__name__" {
+    (eng, _) = compile_native("class_name.na.jac");
+    f = get_func(eng, "button_kind_via_type", ctypes.c_char_p);
+    assert f() == b"Button";
+}
+
+test "class name: vtable-less class lowers to a constant name" {
+    # `Lone` has no parents and no subclasses, so it carries no vtable; the
+    # access lowers to a constant load rather than a vtable read.
+    (eng, _) = compile_native("class_name.na.jac");
+    f = get_func(eng, "lone_kind", ctypes.c_char_p);
+    assert f() == b"Lone";
+}
+
+test "class name: method-less vtable hierarchy still reads its own name" {
+    # `Tag`/`SubA`/`SubB` declare no methods, so their vtable method layout is
+    # empty -- but `Tag` is still vtable-flagged (it has subclasses). The vtable
+    # must be emitted anyway so the per-class name slot exists; otherwise reading
+    # `t.__class__.__name__` off a base-typed receiver dereferences an
+    # uninitialized field-0 slot (segfault, PR #6933 review).
+    (eng, _) = compile_native("class_name.na.jac");
+    a = get_func(eng, "suba_name", ctypes.c_char_p);
+    b = get_func(eng, "subb_name", ctypes.c_char_p);
+    assert a() == b"SubA";
+    assert b() == b"SubB";
+}
+
+# --- TestNativeIsinstanceUserArchetype (issue #6930, workstream A1) ---
+test "isinstance user compiles" {
+    (eng, ir) = compile_native("isinstance_user.na.jac");
+    assert ir.gen.llvm_ir is not None;
+}
+
+test "isinstance user exact and subclass match" {
+    # 0=Shape, 1=Circle, 2=Square, 3=ColoredSquare(<:Square).
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_kind", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 0;  # Shape: neither Circle nor Square
+    assert f(1) == 1;  # Circle
+    assert f(2) == 2;  # Square
+    assert f(3) == 2;  # ColoredSquare matches Square via inheritance
+}
+
+test "isinstance user narrowed field access" {
+    # After `isinstance(s, Square)`, `s.side` must resolve to a field offset.
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_side", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == -1;  # Shape: not a Square
+    assert f(1) == -1;  # Circle: not a Square
+    assert f(2) == 3;  # Square(side=3)
+    assert f(3) == 4;  # ColoredSquare(side=4): inherited `side` offset holds
+}
+
+test "isinstance user tuple of classes" {
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_round_or_square", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 0;  # Shape
+    assert f(1) == 1;  # Circle
+    assert f(2) == 1;  # Square
+    assert f(3) == 1;  # ColoredSquare (<: Square)
+}
+
+test "isinstance user no-vtable operand is clean false" {
+    # A standalone struct (no vtable) checked against a vtable class must be a
+    # principled False, never a garbage read of its first user field.
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_loose_not_square", ctypes.c_int64);
+    assert f() == 0;
 }
 
 # --- TestNativeDicts ---
@@ -1767,6 +2055,28 @@ test "cross module struct execution" {
     assert result2 == 7 , f"Expected 7, got {result2}";
 }
 
+test "unstamped imported struct return: entry module compiles without errors (issue #6822)" {
+    # An UNANNOTATED local bound to an imported factory (`p = make_point(...)`)
+    # gets its type from the imported `-> Point` return annotation alone. When
+    # this module is the entry, that annotation can be unstamped, so the field
+    # accesses `p.x`/`p.y` used to E5090 ("attribute access not supported")
+    # because the return lowered to the i64 fallback instead of `Point*`.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_unstamped_struct_ret.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "unstamped imported struct return: field sum is correct (issue #6822)" {
+    # compute(5) = make_point(5, 6).x + make_point(5, 6).y = 5 + 6 = 11.
+    # Proves the receiver resolved to the real Point struct, not a scalar.
+    (eng, _) = compile_native("fix_unstamped_struct_ret.na.jac");
+    compute = get_func(eng, "compute", ctypes.c_int64, ctypes.c_int64);
+    assert compute(5) == 11 , f"Expected 11, got {compute(5)}";
+    assert compute(0) == 1 , f"Expected 1, got {compute(0)}";
+}
+
 # --- TestCrossModuleGlobalLinkage ---
 # Regression tests for: global-internal-linkage-breaks-cross-module
 # Before fix: module globals were emitted with LLVM `internal` linkage. The
@@ -1905,6 +2215,28 @@ test "clib import produces extern declares" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "single-file clib: _clib_symbol_lib attributes each symbol to its source lib" {
+    # The PE linker attributes each extern import to a DLL via symbol_lib_map
+    # (defaulting every unmapped symbol to needed_libs[0] = msvcrt.dll →
+    # WinError 127). For a single-file program the symbol→DLL map is built
+    # directly on the entry module during IR gen (NaIRGenPass sets
+    # _cur_lib = _clib_paths[-1] and writes _clib_symbol_lib[fn] = _cur_lib),
+    # so it needs no cross-module propagation. This test pins that path so a
+    # future regression in single-file clib attribution can't hide behind the
+    # multi-module propagation tests (PR #6828 review).
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    sym_lib = ir.gen._clib_symbol_lib;
+    assert sym_lib , "_clib_symbol_lib not set on single-file module IR";
+    assert "sqrt" in sym_lib , f"'sqrt' missing from _clib_symbol_lib: {sym_lib}";
+    assert "pow" in sym_lib , f"'pow' missing from _clib_symbol_lib: {sym_lib}";
+    assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong lib: {sym_lib[
+        'sqrt'
+    ]}";
+    assert "libm" in sym_lib["pow"] , f"pow attributed to wrong lib: {sym_lib['pow']}";
+}
+
 test "clib decl with no return arrow lowers to void, not i64" {
     prog = JacProgram();
     ir = prog.compile(
@@ -1937,6 +2269,30 @@ test "clib import inside na block" {
     # Library path should be stored
     assert ir.gen._clib_paths is not None;
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+}
+
+test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
+    # A `bytes` parameter on a foreign signature is the C buffer-protocol
+    # convention: the extern declares an `i8*` (not the internal jacbytes
+    # `{ i64 len, [n x i8] }` struct pointer), and the call site passes the
+    # pointer to the first data byte so C never reads the 8-byte length header
+    # as leading data. The element count travels through the explicit length
+    # parameter. This is the FFI floor under the bundled na_stdlib zlib tier.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_bytes_buffer.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # The extern's bytes parameter is declared as a raw i8*, not jacbytes*.
+    assert 'declare i64 @"crc32_z"(i64 %"crc", i8* %"buf", i64 %"len")' in llvm_ir_str , (
+        f"clib bytes param not declared as i8*: {llvm_ir_str}"
+    );
+    # The call passes the data pointer (the by.data GEP/bitcast), and the
+    # jacbytes struct pointer is never handed to C.
+    assert 'call i64 @"crc32_z"(i64 0, i8* %"by.data.i8"' in llvm_ir_str , (
+        f"clib call did not pass the bytes data pointer: {llvm_ir_str}"
+    );
+    assert 'i8* %"by.data.i8"' in llvm_ir_str , "no data-pointer bitcast emitted";
 }
 
 test "clib extensionless logical import produces extern declares (issue #6387)" {
@@ -2394,10 +2750,25 @@ test "default params omitted trailing defaults" {
     assert free_f() == 142;  # 42 + 100 (bias default)
 }
 
+test "keyword arguments bind to their named parameters (issue #7026)" {
+    (eng, _) = compile_native("kwargs_call.na.jac");
+    cases = {
+        "test_positional": 305,
+        "test_keyword": 407,
+        "test_keyword_partial": 201,
+        "test_keyword_reordered": 509,
+        "test_mixed_pos_kw": 304,
+        "test_method_keyword": 1206,
+        "test_xmod_keyword": 508
+    };
+    for (name, expected) in cases.items() {
+        f = get_func(eng, name, ctypes.c_int64);
+        assert f() == expected , f"{name}() == {f()}, expected {expected}";
+    }
+}
+
 # --- Auto-Promotion Tests ---
-glob CHESS_JAC = str(
-         Path(jaclang.__file__).parent.parent / "examples" / "chess" / "chess.jac"
-     );
+glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
 """Compile a regular .jac file with auto-promotion and return the engine."""
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
@@ -2463,6 +2834,49 @@ test "auto promote chess.jac runs via cli" {
     assert "executed natively" in combined , (
         "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
+}
+
+test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Finding 2)" {
+    # A regular `.jac` (no `na {}` block) that imports a bundled na_stdlib module
+    # is auto-promoted by `jac nacompile`. The entry point emits a call to each
+    # imported module's `__jac_glob_init_<safe>` (driven by
+    # native_transitive_sources), so the cross-module merge MUST link those
+    # modules' definitions. Before the fix, BoundaryAnalysisPass only classified
+    # the imports as native cross-module when the main file was a `.na.jac` or the
+    # import sat in a `na {}` block, so the auto-promote case left
+    # native_cross_module_imports empty: the merge was skipped, the glob-init
+    # symbol stayed `declare`-only, and the loader aborted with
+    # `undefined symbol: __jac_glob_init_zlib_na_*`. The `.na.jac` form already
+    # worked; this pins the auto-promote (plain `.jac`) form on Linux/ELF.
+    import platform;
+    fixture = str(os.path.join(FIXTURES, "autopromote_bundled_zlib.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out = os.path.join(tmpdir, "autopromote_bundled_zlib");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out],
+            capture_output=True,
+            text=True,
+            timeout=180
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stdout: {comp.stdout[-600:]}\nstderr: {comp.stderr[-600:]}"
+        );
+        assert os.path.exists(out) , "nacompile produced no binary";
+        # Only a Linux x86_64 host can execute the produced ELF. A missing merge
+        # leaves `__jac_glob_init_zlib_na_*` an undefined symbol, so the loader
+        # aborts before `main` -- a clean run with the right CRC proves the merge.
+        if sys.platform.startswith("linux") and ("x86_64" in platform.machine()) {
+            res = subprocess.run([out], capture_output=True, text=True, timeout=30);
+            assert res.returncode == 0 , (
+                f"binary aborted (bundled module not linked): exit={res.returncode}\n"
+                f"stdout: {res.stdout[-400:]}\nstderr: {res.stderr[-400:]}"
+            );
+            assert "crc32: 3421780262" in res.stdout , (
+                f"unexpected output: stdout={res.stdout!r} stderr={res.stderr!r}"
+            );
+        }
+    }
 }
 
 # --- Native sys Module Tests ---
@@ -2667,11 +3081,11 @@ test "native osp node constructed in a non-OSP module carries its dispatch tag (
 test "native osp construct living only in an impl annex materializes imported archetypes" {
     # A builder module IMPORTS OSP archetypes (`Hub`/`Area`) from another native
     # module and wires them (`++>`) from an IMPL ANNEX (`.na.impl.jac`), not its
-    # head file. DeclImplMatchPass attaches an annex body via `decl.body =
-    # <ImplDef from the annex module>`, never splicing it into the head decl's
-    # `kid`, so the OSP construct is reachable only through `mod.impl_mod`.
-    # The OSP construct scan (now `OspAnalysis._uses_construct`) swept just the
-    # head module's `iter_context_stmts` + kid tree, classified the builder as a
+    # head file. The annex body is spliced into the head module's tree by
+    # JacAnnexPass while keeping its own `loc.mod_path`, so the OSP construct
+    # lives off the head but originates in the annex file.
+    # The OSP construct scan (now `OspAnalysis._uses_construct`) historically
+    # swept just the head file's own statements, classified the builder as a
     # non-OSP user, and never gave the imported archetypes their stable type-tag
     # -- the annexed `++>` then failed with
     # E5090 ("not materialized") at nacompile (or mis-codegen SIGSEGV in a fuller
@@ -2761,7 +3175,7 @@ test "elf linker rejects unhandled relocation (issue #6366 guard)" {
     # relocation targeting an emitted section has no handler, rather than
     # silently leaving the reference pointing at NULL (the #6366 failure mode).
     # Pure link-time check -- no execution, so it runs without qemu.
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
@@ -2808,7 +3222,7 @@ test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
     # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
     # resolves needed libraries relative to the executable. Pure link-time
     # check -- no execution, so it runs without qemu.
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import struct;
     import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
     llvm.initialize_all_targets();
@@ -3079,7 +3493,7 @@ test "jir bitcode cache round-trip" {
     assert len(sec_data) > 2 , "SEC_NATIVE_OBJ too short";
     (triple_len, ) = struct.unpack_from('<H', sec_data, 0);
     cached_triple = sec_data[2:2 + triple_len].decode('utf-8');
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     assert cached_triple == llvm.get_default_triple() , (
         f"Triple mismatch: {cached_triple} != {llvm.get_default_triple()}"
     );
@@ -3480,6 +3894,78 @@ test "transitive import: same result on repeated calls (no state corruption)" {
     assert run_fn() == 99 , f"Third call: expected 99, got {run_fn()}";
 }
 
+# ─── Mixed transitive duplicate linking ───────────────────────────────────────
+# When B imports A, B's IR carries A's symbols as definitions. If A is linked
+# before B, the old has_collision=True path skipped all of B — including B's
+# unique exports. The scan-then-decide fix demotes benign duplicates to
+# available_externally and still link_in()s B's unique symbols.
+test "mixed transitive dup: compiles without errors when A is linked before B" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_mixed_dup_entry.na.jac")));
+    assert ir is not None , "Expected successful compile";
+    assert not prog.errors_had , (
+        f"Expected no errors, got: {[str(e) for e in prog.errors_had]}"
+    );
+}
+
+test "mixed transitive dup: unique symbol from B resolves after A was linked" {
+    # get_foo()=10 from A, get_bar()=42 from B, call_foo()=10 via B's import.
+    (eng, _) = compile_native("fix_mixed_dup_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_fn = get_func(eng, "run_mixed_dup_test", ctypes.c_int64);
+    assert run_fn() == 62 , f"Expected 62 (10+42+10), got {run_fn()}";
+}
+
+# ─── native_safe_sym: per-module glob-init / entry symbol uniqueness ──────────
+# native_safe_sym is the single naming contract shared by the emit side
+# (na_compile_pass.impl.jac, func.impl.jac), the AOT shared-init emitter
+# (nacompile.impl.jac), and the JIT runtime lookup
+# (native_marshal.init_native_globals). The legacy `re.sub(r'[^a-zA-Z0-9_]',
+# '_', src)` collapsed 'math_utils.na' (flat) and 'math/utils.na' (dotted
+# math.utils) to the same 'math_utils_na', so two distinct transitive native
+# deps collided on __jac_glob_init_<safe> and LLVM's first-seen-wins silently
+# dropped the second module's initializer. The hash suffix must keep them
+# distinct, and the result must stay LLVM-identifier-safe.
+test "native_safe_sym disambiguates flat vs dotted path collision" {
+    import re;
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
+    flat = "math_utils.na";
+    dotted = "math/utils.na";
+    # Document the pre-existing collision under the legacy transform: both
+    # collapse to 'math_utils_na', which is exactly why the hash is required.
+    legacy_flat = re.sub(r'[^a-zA-Z0-9_]', '_', flat);
+    legacy_dotted = re.sub(r'[^a-zA-Z0-9_]', '_', dotted);
+    assert legacy_flat == legacy_dotted , (
+        f"Sanity: legacy transform must collide for this pair, got "
+        f"{legacy_flat!r} vs {legacy_dotted!r}"
+    );
+    sym_flat = native_safe_sym(flat);
+    sym_dotted = native_safe_sym(dotted);
+    assert sym_flat != sym_dotted , (
+        f"native_safe_sym must disambiguate: {sym_flat!r} == {sym_dotted!r}"
+    );
+    # LLVM identifier safety: only [a-zA-Z0-9_].
+    valid = re.compile(r'^[a-zA-Z0-9_]+$');
+    assert valid.match(sym_flat) , f"unsafe symbol: {sym_flat!r}";
+    assert valid.match(sym_dotted) , f"unsafe symbol: {sym_dotted!r}";
+    # Deterministic: same input → same output (emit and lookup sides agree).
+    assert native_safe_sym(flat) == sym_flat , "native_safe_sym must be deterministic";
+    # The full glob-init symbols built from these must also differ.
+    assert f"__jac_glob_init_{sym_flat}" != f"__jac_glob_init_{sym_dotted}";
+    # The osp_kernel SENTINEL must bypass the hash and map to the bare slug: the
+    # portable OSP kernel is linked under a fixed, hash-free symbol by
+    # _link_osp_kernel / _emit_osp_setup and probed by name, so appending the
+    # disambiguating hash would leave the entry's __jac_glob_init_osp_kernel call
+    # dangling against the kernel's hash-free definition (undefined symbol at
+    # load, issue #6669). Pin it here so the bypass can't silently regress.
+    assert native_safe_sym("osp_kernel") == "osp_kernel" , (
+        f"osp_kernel sentinel must stay hash-free, got {native_safe_sym(
+            'osp_kernel'
+        )!r}"
+    );
+}
+
 test "del list item: length decrements after delete" {
     # Container starts with [10, 20, 30]; after del items[2] length must be 2.
     (eng, _) = compile_native("fix_del_list.na.jac");
@@ -3669,6 +4155,25 @@ test "transitive clib: _clib_paths of dep module propagated to entry module" {
     clib_paths = ir.gen._clib_paths;
     assert clib_paths , "_clib_paths not set on entry module IR";
     assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in transitive _clib_paths: {clib_paths}";
+}
+
+test "transitive clib: _clib_symbol_lib of dep module propagated to entry module" {
+    # The symbol→library map that the PE linker uses to attribute each import
+    # to the right DLL must propagate transitively, just like _clib_paths.
+    # Before the fix only _clib_paths crossed the module boundary while
+    # _clib_symbol_lib was dropped, so on Windows every Win32 symbol imported
+    # from a sub-module fell back to msvcrt.dll → WinError 127 at runtime.
+    # The dep declares `sqrt` from libm; assert the entry module inherits that
+    # symbol→lib mapping (regression guard for PR #6828).
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    sym_lib = ir.gen._clib_symbol_lib;
+    assert sym_lib , "_clib_symbol_lib not propagated to entry module IR";
+    assert "sqrt" in sym_lib , f"transitive symbol 'sqrt' missing from _clib_symbol_lib: {sym_lib}";
+    assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong library: {sym_lib[
+        'sqrt'
+    ]}";
 }
 
 test "transitive clib: JIT call through dep-module extern returns correct value" {
@@ -4408,11 +4913,17 @@ test "a failing native test must not abort the host process" {
 
 test "jac test runs .na.jac test blocks end to end" {
     fixture = os.path.join(FIXTURES, "test_blocks.na.jac");
+    # Pure .na.jac (native) test blocks are run by the native runner; the pytest
+    # collector handles .jac (incl. inline na) but not standalone .na.jac yet, so
+    # force the native runner here. 3 tests, exactly 1 deliberate failure.
+    env = dict(os.environ);
+    env["JAC_TEST_NATIVE"] = "1";
     result = subprocess.run(
         [sys.executable, "-m", "jaclang", "test", fixture],
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
+        env=env
     );
     output = result.stdout + result.stderr;
     assert "Ran 3 tests" in output , (
@@ -4437,13 +4948,11 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
         timeout=300
     );
     output = result.stdout + result.stderr;
-    assert "NO TESTS RAN" not in output , "inline na-block tests were silently dropped";
-    assert "Ran 2 tests" in output , (
-        f"expected 2 tests to run.\nstdout: {result.stdout[-800:]}\n"
+    assert "no tests ran" not in output , "inline na-block tests were silently dropped";
+    # jac test routes through pytest: 2 tests, exactly 1 deliberate failure.
+    assert "1 passed" in output and "1 failed" in output , (
+        f"expected 2 tests to run with 1 failure.\nstdout: {result.stdout[-800:]}\n"
         f"stderr: {result.stderr[-800:]}"
-    );
-    assert "FAILED (failures=1)" in output , (
-        f"expected exactly the deliberate failure.\noutput tail: {output[-800:]}"
     );
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }
@@ -4463,4 +4972,27 @@ test "isinstance mixed tuple unsupported type errors" {
     assert "E5090" in codes , (
         f"expected E5090 for mixed-tuple isinstance, got {codes}"
     );
+}
+
+# ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
+# Before the fix, buf[i] on a clib struct pointer emitted E5090.
+# Fix: a struct-typed param/local (`buf: Color`) lowers to a StructName*, so
+# NaIRGenPass emits a single-index GEP (one index advances a whole struct) for
+# buf[i], and a struct load + store into the element pointer for buf[i] = val.
+test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "ptr_subscript.na.jac")));
+    e5090 = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code and e.code.code == "E5090"
+    ];
+    assert not e5090 , f"Unexpected E5090 errors: {e5090}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # Read path (#6708): single-index GEP on the StructName* base yields the
+    # element pointer, which is returned as-is (aliases the buffer, no copy).
+    assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";
+    # Write path (#6707): GEP the element, load the source struct value, store.
+    assert "arr.val.struct" in s , "Expected struct load for write (arr.val.struct)";
 }

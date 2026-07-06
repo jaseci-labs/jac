@@ -57,7 +57,7 @@ An `any` value cannot silently flow into a declared non-`any` destination (annot
 
 The 3-step playbook for an untyped boundary (PyPI call, `json.loads`, walker report):
 
-1. **Type the source** - add a return annotation, a `.pyi` stub next to the Python file, or a typed `has reports: list[T] = [];` on the walker. Best: downstream code stays clean.
+1. **Type the source** - add a return annotation, a `.pyi` stub next to the Python file, install a third-party lib's stub package (`jac add types-requests` - only stdlib stubs ship in the binary, so third-party `types-*` are PEP 561-resolved from `.jac/venv`), or a typed `has reports: list[T] = [];` on the walker. Best: downstream code stays clean.
 2. **Accept-and-narrow** - take it into an inferred/`any` local, then `isinstance`-narrow before flowing into typed destinations.
 3. **Cast at the use site** - `value as Type` when you know the runtime shape (see above).
 

@@ -80,26 +80,24 @@ test "parameter count mismatch" {
 test "ability connected to decl" {
     state = (out := JacProgram()).compile(os.path.join(FIXTURES, "base.jac"));
     assert not out.errors_had;
-    assert "impl.Test.say_hi" in state.impl_mod[0].sym_tab.names_in_scope;
-    say_hi_node = (
-        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of
-    );
+    # Annex impls are spliced into the head module's own scope, so impl symbols
+    # resolve directly off the head's symbol table (no separate impl module).
+    assert "impl.Test.say_hi" in state.sym_tab.names_in_scope;
+    say_hi_node = state.sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of;
     assert isinstance(say_hi_node, uni.ImplDef) and say_hi_node.body is not None;
-    assert "impl.Test.init" in state.impl_mod[0].sym_tab.names_in_scope;
-    init_node = state.impl_mod[0].sym_tab.names_in_scope["impl.Test.init"].decl.name_of;
+    assert "impl.Test.init" in state.sym_tab.names_in_scope;
+    init_node = state.sym_tab.names_in_scope["impl.Test.init"].decl.name_of;
     assert isinstance(init_node, uni.ImplDef) and init_node.body is not None;
 }
 
 test "ability connected to decl post" {
     state = (out := JacProgram()).compile(os.path.join(FIXTURES, "base2.jac"));
     assert not out.errors_had;
-    assert "impl.Test.say_hi" in state.impl_mod[0].sym_tab.names_in_scope;
-    say_hi_node = (
-        state.impl_mod[0].sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of
-    );
+    assert "impl.Test.say_hi" in state.sym_tab.names_in_scope;
+    say_hi_node = state.sym_tab.names_in_scope["impl.Test.say_hi"].decl.name_of;
     assert isinstance(say_hi_node, uni.ImplDef) and say_hi_node.body is not None;
-    assert "impl.Test.init" in state.impl_mod[0].sym_tab.names_in_scope;
-    init_node = state.impl_mod[0].sym_tab.names_in_scope["impl.Test.init"].decl.name_of;
+    assert "impl.Test.init" in state.sym_tab.names_in_scope;
+    init_node = state.sym_tab.names_in_scope["impl.Test.init"].decl.name_of;
     assert isinstance(init_node, uni.ImplDef) and init_node.body is not None;
 }
 
@@ -117,7 +115,9 @@ test "arch ref has sym" {
 
 test "single impl annex" {
     mypass = JacProgram().compile(os.path.join(LANG_FIXTURES, "circle_pure.jac"));
-    assert mypass.impl_mod[0].pp().count("ImplDef - impl.Circle.area") == 1;
+    # The impl annex is spliced once into the head; its ImplDef appears exactly
+    # once in the unified tree.
+    assert mypass.pp().count("ImplDef - impl.Circle.area") == 1;
 }
 
 test "impl decl resolution fix" {
@@ -157,15 +157,12 @@ test "impl body symbol resolution" {
     );
     assert not out.errors_had , f"Compilation errors: {out.errors_had}";
 
-    # Find the impl module
-    assert len(state.impl_mod) == 1 , "Expected one impl module";
-    impl_mod = state.impl_mod[0];
-
-    # Get the ImplDef nodes
+    # The impl annex is merged into the head's tree; its ImplDefs are reachable
+    # off the head and tagged with the annex file via loc.mod_path.
     impl_defs = [
         node
-        for node in impl_mod.get_all_sub_nodes(uni.ImplDef)
-        if isinstance(node, uni.ImplDef)
+        for node in state.get_all_sub_nodes(uni.ImplDef)
+        if isinstance(node, uni.ImplDef) and node.loc.mod_path.endswith(".impl.jac")
     ];
     assert len(impl_defs) == 2 , f"Expected 2 ImplDef nodes, got {len(impl_defs)}";
 
@@ -200,13 +197,11 @@ test "impl has var type not shadowed" {
         os.path.join(FIXTURES, "impl_has_var_type_shadow.jac")
     );
     assert not out.errors_had , f"Compilation errors: {out.errors_had}";
-    assert len(state.impl_mod) == 1 , "Expected one impl module";
-    impl_mod = state.impl_mod[0];
 
-    # Find the add_task ImplDef (the one with the assignment).
+    # Find the add_task ImplDef (the one with the assignment) in the merged tree.
     impl_defs = [
         node
-        for node in impl_mod.get_all_sub_nodes(uni.ImplDef)
+        for node in state.get_all_sub_nodes(uni.ImplDef)
         if isinstance(node, uni.ImplDef) and "add_task" in node.sym_name
     ];
     assert len(impl_defs) == 1 , f"Expected 1 add_task ImplDef, got {len(impl_defs)}";
@@ -313,14 +308,16 @@ test "standalone def/obj/node/walker in .impl.jac get symbol resolution" {
     state = (out := JacProgram()).compile(
         os.path.join(FIXTURES, "standalone_def_in_annex.jac")
     );
-    assert len(state.impl_mod) == 1;
-    impl_mod = state.impl_mod[0];
 
-    # Collect every Load-context read in the annex whose target is a local
-    # assignment (msg / local_label / v / n) and assert each has a resolved sym.
+    # Collect every Load-context read that came from the merged .impl.jac annex
+    # (identified by loc.mod_path) whose target is a local assignment
+    # (msg / local_label / v / n) and assert each has a resolved sym.
     resolvable = {"msg", "local_label", "v", "n"};
     reads_checked = 0;
-    for nm in impl_mod.get_all_sub_nodes(uni.Name) {
+    for nm in state.get_all_sub_nodes(uni.Name) {
+        if not nm.loc.mod_path.endswith(".impl.jac") {
+            continue;
+        }
         if nm.value not in resolvable {
             continue;
         }
