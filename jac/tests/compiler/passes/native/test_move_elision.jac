@@ -1,17 +1,18 @@
-"""Regression tests for proven-unique RC move-lowering (#6905, Phase 2 payoff).
+"""Regression tests for native RC move-lowering (#6905 payoff, borrow-checker split).
 
-When an assignment's RHS is a bare `Name` bound to a proven-unique owned binding
-(`OwnershipCheckPass` stamped `Symbol.is_proven_unique`), the native pass lowers
-it as a MOVE instead of an alias-copy: it skips the defensive `__rc_retain` and
-nulls the source slot so the source's later scope/iter cleanup release is a
-no-op. The destination inherits the single reference and frees it exactly once.
+When an assignment `b = a` binds a bare local `Name` that the native
+`RcElisionProofPass` proves safe (LOCAL source, every use an alias-value, dead-out
+at the move site), the native pass lowers it as a MOVE instead of an alias-copy:
+it skips the defensive `__rc_retain` and nulls the source slot so the source's
+later scope/iter cleanup release is a no-op. The destination inherits the single
+reference and frees it exactly once.
 
 These tests lock both halves: that the retain is actually elided (IR count) and
 that the result is sound at runtime (no leak, no double free over a heavy loop).
 
-Note: proven-unique marking requires the ownership checker, so every compile
-here passes `type_check=True` -- a bare compile skips the type-check schedule and
-`is_proven_unique` is never stamped (the retain would not be elided).
+The proof is now native-owned and does NOT depend on the ownership checker, so
+move-lowering fires identically with `type_check=True` and `type_check=False`
+(the `nacompile` path) -- pinned by `move-lowering is independent of type_check`.
 """
 
 import ctypes;
@@ -27,15 +28,19 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
-"""Stand-in for `_try_move_lower` that disables move-lowering (baseline)."""
-def _no_move_lower(pass_self: object, rhs: object) -> bool {
+"""Stand-in for `_can_native_move_lower` that disables move-lowering (baseline)."""
+def _no_move_lower(pass_self: object, nd: object) -> bool {
     return False;
 }
 
-"""Compile a fixture WITH the ownership checker and return (engine, ir)."""
-def compile_checked(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
+"""Compile a fixture and return (engine, ir). Defaults to the nacompile path."""
+def compile_fixture(
+    fixture: str, type_check: bool = False
+) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), type_check=True);
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), type_check=type_check
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -44,16 +49,16 @@ def compile_checked(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
 }
 
 """Count emitted __rc_retain call sites, optionally with move-lowering off."""
-def retain_calls(fixture: str, move_lower: bool) -> int {
-    orig = NaIRGenPass._try_move_lower;
+def retain_calls(fixture: str, move_lower: bool, type_check: bool = False) -> int {
+    orig = NaIRGenPass._can_native_move_lower;
     if not move_lower {
-        NaIRGenPass._try_move_lower = _no_move_lower;
+        NaIRGenPass._can_native_move_lower = _no_move_lower;
     }
     try {
-        (eng, ir) = compile_checked(fixture);
+        (eng, ir) = compile_fixture(fixture, type_check);
         return str(ir.gen.llvm_ir).count('call void @"__rc_retain"');
     } finally {
-        NaIRGenPass._try_move_lower = orig;
+        NaIRGenPass._can_native_move_lower = orig;
     }
 }
 
@@ -74,8 +79,17 @@ test "move-lowering elides exactly the `b = a` alias retain" {
     assert on == 0 , f"expected 0 retain calls after move-lowering, got {on}";
 }
 
+test "move-lowering is independent of type_check (native-owned proof)" {
+    # The proof lives in the native codegen path, not the type-check schedule, so
+    # `nacompile`'s `type_check=False` gets the same elision the checker path does.
+    on_unchecked = retain_calls("move_elision.na.jac", True, False);
+    on_checked = retain_calls("move_elision.na.jac", True, True);
+    assert on_unchecked == 0 , f"expected 0 retains with type_check=False, got {on_unchecked}";
+    assert on_checked == 0 , f"expected 0 retains with type_check=True, got {on_checked}";
+}
+
 test "move-lowering nulls the source slot (keeps the free sound)" {
-    (eng, ir) = compile_checked("move_elision.na.jac");
+    (eng, ir) = compile_fixture("move_elision.na.jac");
     text = str(ir.gen.llvm_ir);
     # Nulling the moved-from slot is what makes eliding the retain sound: the
     # source's cleanup release then loads null and is a no-op, so the object is
@@ -84,7 +98,7 @@ test "move-lowering nulls the source slot (keeps the free sound)" {
 }
 
 test "move-lowering is sound at runtime: correct result, no leak, no double free" {
-    (eng, _) = compile_checked("move_elision.na.jac");
+    (eng, _) = compile_fixture("move_elision.na.jac");
     f = get_func(eng, "run_moves", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
     # A heavy loop: a double free would corrupt the heap and crash here; a leak

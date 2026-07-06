@@ -84,3 +84,12 @@ test "E1307: a region-local stored via a tuple into an outer binding escapes" {
 test "a container of a region-local kept inside the region is clean" {
     expect(compile_fixture("region_container_local_ok.jac"), []);
 }
+
+# Default-deny: a region-local routed through an opaque call in an escaping
+# position is an escape. The old container-literal whitelist saw through list/
+# tuple/dict literals only and silently passed `return wrap(x)` — a latent
+# use-after-free once the arena is freed. The place collector treats a call's
+# result as aliasing its arguments, so this is now caught.
+test "E1307: a region-local passed through a call in a return escapes" {
+    expect(compile_fixture("region_escape_through_call.jac"), ["E1307"]);
+}

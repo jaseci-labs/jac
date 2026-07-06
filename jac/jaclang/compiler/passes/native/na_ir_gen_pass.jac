@@ -794,6 +794,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         b: ir.IRBuilder, obj_i8: ir.Value, trace_fn: ir.Function
     ) -> None;
 
+    def _require_trace_fn(type_name: str, participates: bool, has_trace: bool) -> None;
+    def _struct_has_ref_fields(arch_name: str) -> bool;
+    def _container_type_name(dtor_fn: object) -> str;
+    def _emit_container_trace_fn(
+        trace_fn_name: str, container_ptr_type: ir.Type, pointer_data_fields: list
+    ) -> ir.Function;
+
     def _emit_rc_collect_cycles -> None;
     def _emit_rc_color_load(
         b: ir.IRBuilder, obj_i8: ir.Value
@@ -802,6 +809,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_rc_color_store(
         b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
     ) -> None;
+
+    def _emit_rc_is_buffered(
+        b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
+    ) -> ir.Value;
 
     def _emit_rc_trace_dispatch(
         fn: ir.Function,
@@ -843,9 +854,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
-    def _mark_proven_unique(val: ir.Value) -> ir.Value;
-    def _is_proven_unique(val: ir.Value) -> bool;
-    def _try_move_lower(rhs: object) -> bool;
+    def _can_native_move_lower(nd: object) -> bool;
     def _release_owned_operands(
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
     ) -> None;

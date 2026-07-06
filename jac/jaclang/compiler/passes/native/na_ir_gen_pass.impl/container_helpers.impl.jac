@@ -25,13 +25,114 @@ impl NaIRGenPass._emit_container_new_fn(
         _i64_n = ir.IntType(64);
         _i64p_n = _i64_n.as_pointer();
         _raw_n = b.bitcast(container_ptr, _i8p_n, name="new_raw");
-        _dtor_slot_n = b.gep(_raw_n, [ir.Constant(_i64_n, -8)], name="dtor_slot");
+        _dtor_slot_n = b.gep(
+            _raw_n, [ir.Constant(_i64_n, HDR_DTOR_OFF)], name="dtor_slot"
+        );
         _dtor_slot_i64_n = b.bitcast(_dtor_slot_n, _i64p_n, name="dtor_slot_i64");
         _dtor_i64_n = b.ptrtoint(dtor_fn, _i64_n, name="dtor_i64");
         b.store(_dtor_i64_n, _dtor_slot_i64_n);
     }
+
+    _ptr_data_fields = [
+        (i + 2, dt)
+        for (i, dt) in enumerate(data_types)
+        if isinstance(dt, ir.PointerType)
+    ];
+    _cont_i8_tr = b.bitcast(
+        container_ptr, ir.IntType(8).as_pointer(), name="new.i8.tr"
+    );
+    _cont_type_name = self._container_type_name(dtor_fn);
+    _cont_has_trace = False;
+    if _ptr_data_fields {
+        _cont_trace_fn = self._emit_container_trace_fn(
+            f"__rc_trace_{_cont_type_name}", container_ptr_type, _ptr_data_fields
+        );
+        self._emit_set_trace_fn(b, _cont_i8_tr, _cont_trace_fn);
+        _cont_has_trace = True;
+    }
+    self._require_trace_fn(_cont_type_name, bool(_ptr_data_fields), _cont_has_trace);
     b.ret(container_ptr);
     return new_fn;
+}
+
+impl NaIRGenPass._container_type_name(dtor_fn: object) -> str {
+    if dtor_fn is None {
+        return "container";
+    }
+    _dtor_name = dtor_fn?.name or str(dtor_fn);
+    if _dtor_name.startswith("__rc_release_") {
+        return _dtor_name[len("__rc_release_"):];
+    }
+    return "container";
+}
+
+impl NaIRGenPass._emit_container_trace_fn(
+    trace_fn_name: str, container_ptr_type: ir.Type, pointer_data_fields: list
+) -> ir.Function {
+    i8_ptr = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    visitor_ptype = ir.FunctionType(ir.VoidType(), [i8_ptr]).as_pointer();
+    trace_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, i8_ptr]);
+
+    try {
+        _existing = self.llvm_module.get_global(trace_fn_name);
+        if isinstance(_existing, ir.Function) and not _existing.blocks {
+            trace_fn = _existing;
+            trace_fn.linkage = "private";
+        } else {
+            trace_fn = ir.Function(self.llvm_module, trace_fnty, name=trace_fn_name);
+            trace_fn.linkage = "private";
+        }
+    } except KeyError {
+        trace_fn = ir.Function(self.llvm_module, trace_fnty, name=trace_fn_name);
+        trace_fn.linkage = "private";
+    }
+    trace_fn.args[0].name = "obj";
+    trace_fn.args[1].name = "vis";
+
+    entry_bb = trace_fn.append_basic_block("entry");
+    done_bb = trace_fn.append_basic_block("done");
+    b = ir.IRBuilder(entry_bb);
+    _vis = b.bitcast(trace_fn.args[1], visitor_ptype, name="vis.fn");
+    _cont = b.bitcast(trace_fn.args[0], container_ptr_type, name="cont.typed");
+    _len = b.load(
+        b.gep(_cont, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"),
+        name="len"
+    );
+
+    for (field_idx, _elem_type) in pointer_data_fields {
+        _data_arr = b.load(
+            b.gep(
+                _cont,
+                [ir.Constant(i32, 0), ir.Constant(i32, field_idx)],
+                name=f"data{field_idx}.ptr"
+            ),
+            name=f"data{field_idx}"
+        );
+        _iv = b.alloca(i64, name=f"ti{field_idx}");
+        b.store(ir.Constant(i64, 0), _iv);
+        cond_bb = trace_fn.append_basic_block(f"tcond{field_idx}");
+        body_bb = trace_fn.append_basic_block(f"tbody{field_idx}");
+        end_bb = trace_fn.append_basic_block(f"tend{field_idx}");
+        b.branch(cond_bb);
+        b = ir.IRBuilder(cond_bb);
+        _i = b.load(_iv, name="ti");
+        b.cbranch(b.icmp_unsigned("<", _i, _len, name="tcmp"), body_bb, end_bb);
+        b = ir.IRBuilder(body_bb);
+        _elem = b.load(
+            b.gep(_data_arr, [b.load(_iv, name="ti2")], name="elem.ptr"),
+            name="elem.val"
+        );
+        b.call(_vis, [b.bitcast(_elem, i8_ptr, name="elem.i8")]);
+        b.store(b.add(b.load(_iv, name="ti3"), ir.Constant(i64, 1), name="tinc"), _iv);
+        b.branch(cond_bb);
+        b = ir.IRBuilder(end_bb);
+    }
+    b.branch(done_bb);
+    b = ir.IRBuilder(done_bb);
+    b.ret_void();
+    return trace_fn;
 }
 
 impl NaIRGenPass._emit_container_len_fn(
@@ -128,7 +229,7 @@ impl NaIRGenPass._emit_container_release_fn(
     _cl_aid_ptr = b.bitcast(_cont_raw, _i64_ptr_c, name="cl.aid.ptr");
     _cl_aid_raw = b.load(_cl_aid_ptr, name="cl.aid.raw");
     _cl_aid = b.and_(_cl_aid_raw, ir.Constant(_i64c, 4294967295), name="cl.aid");
-    _cl_tag_raw = b.gep(_cont_i8, [ir.Constant(_i64c, -24)], name="cl.tag.raw");
+    _cl_tag_raw = b.gep(_cont_i8, [ir.Constant(_i64c, HDR_TAG_OFF)], name="cl.tag.raw");
     _cl_tag_pp = b.bitcast(_cl_tag_raw, _i8pc.as_pointer(), name="cl.tag.pp");
     _cl_tag = b.load(_cl_tag_pp, name="cl.tag");
     log_free_cont_bb = release_fn.append_basic_block("log_free_cont");

@@ -777,6 +777,22 @@ Native Jac uses **automatic reference counting** for memory management. Heap-all
 !!! warning "Current Status"
     Deep release of nested structures is currently disabled to prevent use-after-free in complex ownership scenarios. This means certain long-running native programs may leak memory. Programs with bounded allocation are unaffected. Proper ownership tracking is a planned improvement.
 
+### Reference-count elision
+
+A move assignment `b = a` would normally emit a defensive `__rc_retain` on the source so that both slots can be released independently. When the move is the *last* use of `a`, that retain is pure overhead: the reference can simply be handed to `b` and the source slot nulled, so `a`'s later cleanup release loads null and is a no-op and the object is freed exactly once.
+
+The native backend decides where this is safe with `RcElisionProofPass`, a small intraprocedural pass that runs unconditionally in the native codegen path -- *before* `NaIRGenPass` and independent of the [ownership & borrow checker](ownership-borrowing.md), which does not run under `nacompile` (`type_check=False`). The pass reads only the syntactic AST and the CFG; it consults no checker or symbol facts, so the elision is sound whether or not the ownership diagnostics ever ran.
+
+It is deliberately conservative -- it proves only the safe case and retains everywhere else. An assignment `b = a` is elided only when:
+
+- `b` is a single, plain, **local** name (never a field, subscript, global, or parameter);
+- the binding is not a `borrow`/`val` binding;
+- `a` is a plain **local** name (an `own` *parameter* is never elided);
+- **every** use of `a` in its function is an alias-value into a plain local -- this one invariant excludes call-args, returns, field/container stores, `&a` borrows, and closure/concurrent captures, any of which is a use that is not an alias-value; and
+- `a` is **dead-out** at the move site, proven by backward liveness over the CFG. A later use reached through a loop back-edge without an intervening redefinition keeps `a` live and blocks the elision, so a `b = a` inside a loop is elided only when `a` is redefined each iteration before the move.
+
+The proof is scoped to the exact move site (`Assignment.na_move_lowerable`), not to a symbol, so a variable moved at its last use elides there even if it was aliased earlier.
+
 ---
 
 ## Testing

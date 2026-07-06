@@ -88,7 +88,6 @@ obj Symbol {
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
         semstr: str by postinit,
-        is_proven_unique: bool = False,
         ownership: OwnershipKind = OwnershipKind.NONE;
 
     def init(
@@ -935,7 +934,8 @@ obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
     has target: Sequence[Expr],
         value: Expr | YieldExpr | None,
         mutable: bool = True,
-        aug_op: (Token | None) = None;
+        aug_op: (Token | None) = None,
+        na_move_lowerable: bool = False;
 
     def postinit -> None;
 }

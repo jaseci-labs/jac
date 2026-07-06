@@ -356,9 +356,15 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b = ir.IRBuilder(cycle_check_bb);
     _cy_dis_flag = b.load(self.rc_gc_disabled_gv, name="cy.dis.flag");
     _cy_coll_flag = b.load(self.rc_collecting_gv, name="cy.coll.flag");
+
+    _cy_cyc_flag = b.load(self.rc_cycles_enabled_gv, name="cy.cyc.flag");
     _cy_skip = b.or_(
-        b.icmp_unsigned("!=", _cy_dis_flag, ir.Constant(i8, 0), name="cy.dis"),
-        b.icmp_unsigned("!=", _cy_coll_flag, ir.Constant(i8, 0), name="cy.coll"),
+        b.or_(
+            b.icmp_unsigned("!=", _cy_dis_flag, ir.Constant(i8, 0), name="cy.dis"),
+            b.icmp_unsigned("!=", _cy_coll_flag, ir.Constant(i8, 0), name="cy.coll"),
+            name="cy.skip.gc"
+        ),
+        b.icmp_unsigned("==", _cy_cyc_flag, ir.Constant(i8, 0), name="cy.cyc.off"),
         name="cy.skip"
     );
     color_check_bb = release_fn.append_basic_block("color_check");
@@ -388,6 +394,14 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     }
     b.branch(dbg_rel_bb);
     b = ir.IRBuilder(check_dtor_bb);
+
+    _cd_is_buffered = self._emit_rc_is_buffered(
+        b, release_fn.args[0], name_prefix="cd"
+    );
+    reclaim_bb = release_fn.append_basic_block("do_reclaim");
+    b.cbranch(_cd_is_buffered, dbg_rel_bb, reclaim_bb);
+
+    b = ir.IRBuilder(reclaim_bb);
     dtor_raw = b.gep(
         release_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="dtor.raw"
     );
@@ -433,20 +447,12 @@ impl NaIRGenPass._is_owned(val: ir.Value) -> bool {
     return bool(getattr(val, 'is_owned', False));
 }
 
-impl NaIRGenPass._mark_proven_unique(val: ir.Value) -> ir.Value {
-    val.proven_unique = True;
-    return val;
-}
-
-impl NaIRGenPass._is_proven_unique(val: ir.Value) -> bool {
-    return bool(getattr(val, 'proven_unique', False));
-}
-
-impl NaIRGenPass._try_move_lower(rhs: object) -> bool {
-    if not isinstance(rhs, uni.Name) {
+impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
+    if not isinstance(nd, uni.Assignment) or not nd.na_move_lowerable {
         return False;
     }
-    if rhs.sym is None or not rhs.sym.is_proven_unique {
+    rhs = nd.value;
+    if not isinstance(rhs, uni.Name) {
         return False;
     }
     src_alloca = self.local_vars.get(rhs.value);
