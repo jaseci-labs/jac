@@ -616,16 +616,18 @@ function jacErrorReporter() {{
           }} catch(e) {{}}
         }}
         console.error("Client error: " + data.type + ": " + data.message + loc);
-        server.ws.send({{
-          type: "error",
-          err: {{
-            message: data.message,
-            stack: data.stack || "",
-            id: data.source || "compiled/_entry.js",
-            frame: "",
-            plugin: "jac-error-reporter",
-          }},
-        }});
+        if (data.phase === "load") {{
+          server.ws.send({{
+            type: "error",
+            err: {{
+              message: data.message,
+              stack: data.stack || "",
+              id: data.source || "compiled/_entry.js",
+              frame: "",
+              plugin: "jac-error-reporter",
+            }},
+          }});
+        }}
       }});
     }},
   }};
@@ -1290,11 +1292,12 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
           type: err instanceof Error ? err.constructor.name : "Error",
           message: err instanceof Error ? err.message : String(err),
           stack: err instanceof Error ? err.stack : null,
-          source: null, line: null, column: null
+          source: null, line: null, column: null,
+          phase: "load"
         });
       });
     } else {
-      import("/compiled/_entry.js");
+      import("/compiled/_entry.js").catch(function() {});
     }
     </script>
   </body>
