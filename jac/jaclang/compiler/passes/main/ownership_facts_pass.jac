@@ -1,6 +1,13 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.compiler.ownership { Ownership, result_ownership }
+import from jaclang.compiler.arch_types {
+    is_ref_arch as arch_is_ref,
+    type_tag_name,
+    ret_type_name as sig_ret_name,
+    arch_type_maps,
+    infer_type
+}
 
 obj OwnershipFacts {
     has value_category: dict[int, Ownership] = {},
@@ -8,7 +15,7 @@ obj OwnershipFacts {
         consumed_params: dict[str, object] = {};
 
     def category_of(nd: object) -> Ownership {
-        return self.value_category.get(id(nd), Ownership.BORROWED);
+        return self.value_category.get(nd.loc.pos_start, Ownership.BORROWED);
     }
 
     def is_owned(nd: object) -> bool {
@@ -16,7 +23,7 @@ obj OwnershipFacts {
     }
 
     def is_last_use(nd: object) -> bool {
-        return id(nd) in self.last_uses;
+        return nd.loc.pos_start in self.last_uses;
     }
 
     def is_consumed(key: str, idx: int) -> bool {
@@ -55,7 +62,7 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
 
     def analyze(mod: uni.Module) {
         for stmt in mod.body {
-            if isinstance(stmt, uni.Archetype) and self.is_ref_arch(stmt) {
+            if isinstance(stmt, uni.Archetype) and arch_is_ref(stmt) {
                 self.ref_types[stmt.name.value] = True;
             }
         }
@@ -82,54 +89,19 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
         }
     }
 
-    def is_ref_arch(arch: uni.Archetype) -> bool {
-        for stmt in (arch.body or []) {
-            if isinstance(stmt, uni.Ability) {
-                return True;
-            }
-        }
-        return arch.base_classes is not None and len(arch.base_classes) > 0;
-    }
-
     def index_arch(arch: uni.Archetype) {
         name = arch.name.value;
-        fmap: dict[str, str] = {};
-        rmap: dict[str, str] = {};
-        for member in (arch.body or []) {
-            if isinstance(member, uni.ArchHas) {
-                for hv in member.vars {
-                    fmap[hv.name.value] = self.tag_name(hv.type_tag);
-                }
-            } elif isinstance(member, uni.Ability) and member.name_ref is not None {
-                sig = member.signature;
-                rmap[member.name_ref.value] = self.ret_name(
-                    sig.return_type if sig else None
-                );
-            }
-        }
+        (fmap, rmap) = arch_type_maps(arch);
         self.field_types[name] = fmap;
         self.method_returns[name] = rmap;
     }
 
     def tag_name(type_tag: object) -> str {
-        if type_tag is None {
-            return "";
-        }
-        tag = type_tag.tag;
-        if isinstance(tag, uni.Name) {
-            return tag.value;
-        }
-        return tag.unparse();
+        return type_tag_name(type_tag);
     }
 
     def ret_name(ret: object) -> str {
-        if ret is None {
-            return "";
-        }
-        if isinstance(ret, uni.Name) {
-            return ret.value;
-        }
-        return ret.unparse();
+        return sig_ret_name(ret);
     }
 
     def analyze_ability(ab: uni.Ability, cls: str) {
@@ -174,7 +146,7 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
                         self.facts.consumed_params[key] = s;
                     }
                     s.add(idx);
-                    self.facts.value_category[id(store)] = Ownership.OWNED;
+                    self.facts.value_category[store.loc.pos_start] = Ownership.OWNED;
                 }
             }
             idx += 1;
@@ -315,7 +287,9 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
         if isinstance(e, uni.AtomUnit) {
             self.categorize(e.value);
 
-            self.facts.value_category[id(e)] = self.facts.category_of(e.value);
+            self.facts.value_category[e.loc.pos_start] = self.facts.category_of(
+                e.value
+            );
             return;
         }
         if isinstance(e, uni.FuncCall) {
@@ -330,7 +304,7 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
         } elif isinstance(e, uni.AtomTrailer) {
             self.categorize(e.target);
         }
-        self.facts.value_category[id(e)] = self.ownership_of(e);
+        self.facts.value_category[e.loc.pos_start] = self.ownership_of(e);
     }
 
     def ownership_of(e: uni.Expr) -> Ownership {
@@ -349,54 +323,14 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
     }
 
     def type_of(e: object) -> str {
-        if isinstance(e, uni.AtomUnit) {
-            return self.type_of(e.value);
-        }
-        if isinstance(e, (uni.String, uni.MultiString)) {
-            return "str";
-        }
-        if isinstance(e, uni.Name) {
-            return self.local_types.get(e.value, "");
-        }
-        if isinstance(e, uni.BinaryExpr) {
-            if e.op.value == "+"
-            and (self.type_of(e.left) == "str" or self.type_of(e.right) == "str") {
-                return "str";
-            }
-            return "";
-        }
-        if isinstance(e, uni.FuncCall) {
-            tgt = e.target;
-            if isinstance(tgt, uni.Name) and tgt.value in self.ref_types {
-                return tgt.value;
-            }
-            if isinstance(tgt, uni.Name) and tgt.value in self.func_returns {
-                return self.func_returns[tgt.value];
-            }
-            if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
-                recv = self.type_of(tgt.target);
-                m = self.attr_name(tgt.right);
-                if recv in self.method_returns and m in self.method_returns[recv] {
-                    return self.method_returns[recv][m];
-                }
-            }
-            return "";
-        }
-        if isinstance(e, uni.AtomTrailer) and e.is_attr {
-            recv = self.type_of(e.target);
-            f = self.attr_name(e.right);
-            if recv in self.field_types and f in self.field_types[recv] {
-                return self.field_types[recv][f];
-            }
-        }
-        return "";
-    }
-
-    def attr_name(nd: object) -> str {
-        if isinstance(nd, uni.Name) {
-            return nd.value;
-        }
-        return "";
+        return infer_type(
+            e,
+            self.local_types,
+            self.ref_types,
+            self.func_returns,
+            self.method_returns,
+            self.field_types
+        );
     }
 
     def mark_last_uses(body: list) {
@@ -405,7 +339,7 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
             self.collect_reads(st, last_read);
         }
         for (nm, node) in last_read.items() {
-            self.facts.last_uses[id(node)] = True;
+            self.facts.last_uses[node.loc.pos_start] = True;
         }
     }
 
