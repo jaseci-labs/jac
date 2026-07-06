@@ -38,6 +38,34 @@ obj DeleteResult {
     has deleted_count: int;
 }
 
+def _wait_mongo_ready(
+    client: MongoClient, tries: int = 15, delay: float = 2.0
+) -> None {
+    # The k8s wait-for-mongodb init container probes TCP only, and mongod
+    # accepts sockets before its auth subsystem is ready - a pod booting into
+    # that window crashed on its first real operation and restarted (#7179).
+    # Bounded ping-retry on the first handshake instead of crash-looping;
+    # gated to the pod runtime so local CLI use never waits on a dead mongo.
+    import os;
+    import time;
+    if not os.environ.get("JAC_SCALE_RUNTIME") {
+        return;
+    }
+    import from jaclang.scale._optdeps.pymongo { PyMongoError }
+    for attempt in range(tries) {
+        try {
+            client.admin.command("ping");
+            return;
+        } except PyMongoError {
+            if attempt == tries - 1 {
+                raise;
+            }
+            time.sleep(delay);
+        }
+    }
+}
+
+
 def get_mongo_client(uri: (str | None) = None) -> MongoClient {
     require_optional("pymongo", "data.mongo");
     global _mongo_clients;
@@ -45,9 +73,11 @@ def get_mongo_client(uri: (str | None) = None) -> MongoClient {
     resolved_uri = _resolve_uri(uri, DatabaseType.MONGODB);
 
     if resolved_uri not in _mongo_clients {
-        _mongo_clients[resolved_uri] = DatabaseProviderFactory.create_client(
+        client = DatabaseProviderFactory.create_client(
             DatabaseType.MONGODB, uri=resolved_uri
         );
+        _wait_mongo_ready(client);
+        _mongo_clients[resolved_uri] = client;
     }
 
     return _mongo_clients[resolved_uri];
