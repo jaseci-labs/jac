@@ -3,50 +3,24 @@ import os;
 import from jaclang.cli.console { console }
 import from pathlib { Path }
 import from jaclang.project.plugin_config { deep_merge }
+import from jaclang.runtimelib.client.npm_provider {
+    CORE_DEV_DEPS,
+    CORE_RUNTIME_DEPS,
+    LEGACY_META_PACKAGES,
+    OPTIONAL_RUNTIME_DEPS,
+    target_scoped_npm_deps
+}
 
-glob CORE_RUNTIME_DEPS: dict[str, str] = {
-         "react": "^18.2.0",
-         "react-dom": "^18.2.0",
-         "react-router-dom": "^6.22.0",
-         "react-error-boundary": "^5.0.0"
-     },
-     OPTIONAL_RUNTIME_DEPS: dict[str, str] = {
-         "@tanstack/react-form": "^1.33.0",
-         "zod": "^4.3.6"
-     },
-     CORE_DEV_DEPS: dict[str, str] = {
-         "vite": "^6.4.1",
-         "@vitejs/plugin-react": "^4.2.1",
-         "typescript": "^5.3.3",
-         "@types/react": "^18.2.0",
-         "@types/react-dom": "^18.2.0"
-     },
-     LEGACY_META_PACKAGES = {"jac-client-node", "@jac-client/dev-deps"};
-
-def _ensure_dependencies(
-    jac_config: any,
-    deps: dict,
-    required: dict[str, str],
-    is_dev: bool,
-    description: str
-) -> tuple[dict, bool] {
-    needs_reinstall = False;
+"""Merge required client core deps into the effective dep set (in-memory
+only): jac.toml stays untouched; the resolver/bundler always sees them."""
+def _inject_missing(deps: dict, required: dict[str, str]) -> dict {
+    merged = dict(deps);
     for (name, version) in required.items() {
-        if name not in deps {
-            console.warning(
-                f"Missing required {'dev ' if is_dev else ''}dependency: {name}"
-            );
-            console.print(f"  {description}");
-            jac_config.add_dependency(name, version, dev=is_dev, dep_type='npm');
-            deps = {name: version, ** deps};
-            console.success(f"Added {name}@{version} to jac.toml");
-            needs_reinstall = True;
+        if name not in merged {
+            merged[name] = version;
         }
     }
-    if needs_reinstall {
-        jac_config.save();
-    }
-    return (deps, needs_reinstall);
+    return merged;
 }
 
 def _migrate_legacy_meta_packages(
@@ -122,27 +96,6 @@ def _resolve_client_target(client_config: dict) -> str {
     return normalized;
 }
 
-def _get_target_scoped_npm_deps(jac_config: any, target_name: str) -> dict[str, str] {
-    npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get("npm", {}));
-    deps: dict[str, str] = {};
-    key1 = str(target_name or "").strip();
-    key2 = key1.replace("_", "-");
-    for key in [key1, key2] {
-        if key == "" {
-            continue;
-        }
-        section = npm_plugin_deps.get(key, {});
-        if isinstance(section, dict) {
-            for (name, version) in section.items() {
-                if isinstance(version, str) {
-                    deps[name] = version;
-                }
-            }
-        }
-    }
-    return deps;
-}
-
 impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
     return "client";
 }
@@ -185,7 +138,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     target_name = _resolve_client_target(client_config);
 
     npm_deps = jac_config.get_plugin_deps('npm');
-    target_scoped_npm_deps = _get_target_scoped_npm_deps(jac_config, target_name);
+    target_scoped_deps = target_scoped_npm_deps(jac_config, target_name);
 
     npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
     dev_section = npm_plugin_deps.get('dev', {});
@@ -195,32 +148,19 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
             jac_config, npm_deps, npm_dev_deps
         );
-        needs_reinstall = migrated;
-
-        all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
-        (npm_deps, added) = _ensure_dependencies(
-            jac_config,
-            npm_deps,
-            all_runtime,
-            is_dev=False,
-            description="Core client runtime library."
-        );
-        needs_reinstall = needs_reinstall or added;
-
-        (npm_dev_deps, added) = _ensure_dependencies(
-            jac_config,
-            npm_dev_deps,
-            CORE_DEV_DEPS,
-            is_dev=True,
-            description="Build toolchain dependency."
-        );
-        needs_reinstall = needs_reinstall or added;
-
-        if needs_reinstall {
+        if migrated {
             _clear_node_modules(self.get_jac_config().get_client_dir());
         }
+
+        # Core client deps are injected at resolve time (never written back):
+        # the bundler and provider plan always include them, jac.toml only
+        # records what the user asked for.
+        npm_deps = _inject_missing(
+            npm_deps, {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS}
+        );
+        npm_dev_deps = _inject_missing(npm_dev_deps, CORE_DEV_DEPS);
     }
-    merged_npm_deps = {** npm_deps, ** target_scoped_npm_deps};
+    merged_npm_deps = {** npm_deps, ** target_scoped_deps};
 
     user_config: dict[str, any] = {
         'api': client_config.get('api', {}),

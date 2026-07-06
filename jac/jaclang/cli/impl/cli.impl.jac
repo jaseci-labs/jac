@@ -204,14 +204,14 @@ def _load_project_config {
     import from jaclang.jac0core.helpers { MalformedJacTomlError }
     try {
         import from jaclang.project.config { get_config, set_config }
-        import from jaclang.project.dependencies { add_venv_to_path }
+        import from jaclang.project.venv { add_venv_to_path }
 
         config = get_config();
         if config is not None {
             add_venv_to_path(config);
         }
 
-        _initialize_dependency_registry();
+        _initialize_provider_registry();
 
         _initialize_template_registry();
     } except MalformedJacTomlError as exc {
@@ -232,10 +232,10 @@ def _exit_on_malformed_jac_toml(exc: 'Any') {
     sys.exit(2);
 }
 
-def _initialize_dependency_registry {
+def _initialize_provider_registry {
     try {
-        import from jaclang.project.dep_registry { initialize_dependency_registry }
-        initialize_dependency_registry();
+        import from jaclang.project.providers { initialize_provider_registry }
+        initialize_provider_registry();
     } except Exception { }
 }
 

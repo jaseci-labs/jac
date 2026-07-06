@@ -1,7 +1,6 @@
 import os;
 import from pathlib { Path }
 import from jaclang.jac0core.runtime { hookimpl }
-import from jaclang.project.config { JacConfig }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 
 class JacClientPluginConfig {
@@ -88,16 +87,9 @@ class JacClientPluginConfig {
     }
 
     @hookimpl
-    static def register_dependency_type -> dict[str, any] {
-        return {
-            "name": "npm",
-            "dev_name": "npm.dev",
-            "cli_flag": "--npm",
-            "install_dir": ".jac/client/configs",
-            "install_handler": _npm_install_handler,
-            "install_all_handler": _npm_install_all_handler,
-            "remove_handler": _npm_remove_handler
-        };
+    static def register_ecosystem_providers -> list {
+        import from jaclang.runtimelib.client.npm_provider { NpmProvider }
+        return [NpmProvider()];
     }
 
     static def client_project_templates -> list[dict[str, any]] {
@@ -229,65 +221,3 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
     }
 }
 
-def _npm_install_handler(
-    config: JacConfig,
-    package_name: str,
-    version: str | None = None,
-    is_dev: bool = False
-) {
-    if config.project_root is None {
-        raise RuntimeError("No project root found");
-    }
-
-    package_version: str = version or "latest";
-    config.add_dependency(package_name, package_version, dev=is_dev, dep_type="npm");
-    config.save();
-
-    _regenerate_and_install(Path(str(config.project_root)));
-}
-
-def _npm_install_all_handler(config: JacConfig) {
-    if config.project_root is None {
-        raise RuntimeError("No project root found");
-    }
-
-    _regenerate_and_install(Path(str(config.project_root)));
-}
-
-def _npm_remove_handler(config: JacConfig, package_name: str, is_dev: bool = False) {
-    if config.project_root is None {
-        raise RuntimeError("No project root found");
-    }
-
-    project_dir: Path = Path(str(config.project_root));
-
-    result = config.remove_dependency(package_name, dev=is_dev, dep_type="npm");
-    if not result {
-        deps_key = "dev-dependencies" if is_dev else "dependencies";
-        raise RuntimeError(f'Package "{package_name}" not found in {deps_key}');
-    }
-
-    config.save();
-
-    _regenerate_and_install(project_dir);
-}
-
-def _regenerate_and_install(project_dir: Path) {
-    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
-    import from jaclang.runtimelib.client { get_bun }
-    import from jaclang.runtimelib.client.bun_installer { bun_unavailable_message }
-
-    bun = get_bun();
-    if not bun {
-        raise RuntimeError(bun_unavailable_message()) from None;
-    }
-
-    bundler = ViteBundler(project_dir);
-    bundler.create_package_json();
-
-    try {
-        bundler.install_packages(force=True);
-    } except ClientBundleError as e {
-        raise RuntimeError(f"Failed to install packages: {e}") from e;
-    }
-}

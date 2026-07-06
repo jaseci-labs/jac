@@ -215,15 +215,11 @@ def _handle_create_skip(ctx: HookContext) {
     }
 }
 
-def _handle_npm_add(ctx: HookContext) -> None {
-    npm_flag = ctx.get_arg("npm", False);
-    if not npm_flag {
-        return;
-    }
-
+"""Resolve the npm provider for a --npm add/remove hook; cancels the command
+with an error when the project or provider is unavailable."""
+def _npm_hook_context(ctx: HookContext) -> tuple | None {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dep_registry { get_dependency_registry }
-    import from jaclang.project.dependencies { DependencyResolver }
+    import from jaclang.project.providers { get_provider_registry }
     import from jaclang.cli.console { console }
 
     config = get_config();
@@ -233,66 +229,70 @@ def _handle_npm_add(ctx: HookContext) -> None {
         );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
-        return;
+        return None;
     }
 
-    registry = get_dependency_registry();
-    dep_type = registry.get_by_flag("--npm");
-    if dep_type is None {
+    provider = get_provider_registry().get_by_flag("--npm");
+    if provider is None {
         console.error(
             "--npm dependency support is unavailable",
             hint="The client framework ships with jaclang; reinstall jaclang if this persists."
         );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
+        return None;
+    }
+    return (config, provider);
+}
+
+def _handle_npm_add(ctx: HookContext) -> None {
+    npm_flag = ctx.get_arg("npm", False);
+    if not npm_flag {
         return;
     }
+    import from jaclang.project.providers { InstallContext }
+    import from jaclang.cli.console { console }
 
+    hook_ctx = _npm_hook_context(ctx);
+    if hook_ctx is None {
+        return;
+    }
+    (config, provider) = hook_ctx;
     packages = ctx.get_arg("packages", []);
     dev = ctx.get_arg("dev", False);
+    install_ctx = InstallContext();
 
-    if not packages {
-        if dep_type.install_all_handler is None {
-            console.error(f"No install_all handler registered for {dep_type.name}");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-            return;
-        }
-        try {
+    try {
+        if not packages {
             console.print(
-                f"\n📦 Installing all {dep_type.name} packages from jac.toml",
+                f"\n📦 Installing all {provider.name} packages from jac.toml",
                 style="bold"
             );
             with console.status(
-                f"Installing {dep_type.name} packages...", spinner="dots"
+                f"Installing {provider.name} packages...", spinner="dots"
             ) as status {
-                dep_type.install_all_handler(config);
+                provider.install_all(
+                    config, provider.resolve(config), install_ctx
+                );
             }
-            console.success(f"Installed all {dep_type.name} packages");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 0);
-        } except Exception as e {
-            console.error(f"Failed to install packages: {e}");
-            ctx.set_data("cancel_execution", True);
-            ctx.set_data("cancel_return_code", 1);
-        }
-        return;
-    }
-
-    try {
-        resolver = DependencyResolver(config=config);
-        console.print(
-            f"\n📦 Adding {len(packages)} {dep_type.name} package(s)", style="bold"
-        );
-        for pkg_spec in packages {
-            (name, version) = resolver.parse_spec(pkg_spec);
-            with console.status(f"Installing {name}...", spinner="dots") as status {
-                dep_type.install_handler(config, name, version, dev);
+            console.success(f"Installed all {provider.name} packages");
+        } else {
+            console.print(
+                f"\n📦 Adding {len(packages)} {provider.name} package(s)",
+                style="bold"
+            );
+            for pkg_spec in packages {
+                (name, version) = provider.parse_spec(pkg_spec);
+                with console.status(
+                    f"Installing {name}...", spinner="dots"
+                ) as status {
+                    provider.add_package(config, name, version, dev, install_ctx);
+                }
+                console.print(f"  ✔ {name}", style="success");
             }
-            console.print(f"  ✔ {name}", style="success");
+            section = f"dependencies.{provider.name}" + (".dev" if dev else "");
+            console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
         }
-        section = f"dependencies.{dep_type.dev_name if dev else dep_type.name}";
-        console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 0);
     } except Exception as e {
@@ -630,19 +630,14 @@ def _handle_npm_remove(ctx: HookContext) -> None {
     if not npm_flag {
         return;
     }
-
-    import from jaclang.project.config { get_config }
-    import from jaclang.project.dep_registry { get_dependency_registry }
+    import from jaclang.project.providers { InstallContext }
     import from jaclang.cli.console { console }
 
-    config = get_config();
-    if config is None {
-        console.error("No jac.toml found. Run 'jac create' to create a project.");
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
+    hook_ctx = _npm_hook_context(ctx);
+    if hook_ctx is None {
         return;
     }
-
+    (config, provider) = hook_ctx;
     packages = ctx.get_arg("packages", []);
     if not packages {
         console.error("No packages specified.");
@@ -650,26 +645,16 @@ def _handle_npm_remove(ctx: HookContext) -> None {
         ctx.set_data("cancel_return_code", 1);
         return;
     }
-
-    registry = get_dependency_registry();
-    dep_type = registry.get_by_flag("--npm");
-    if dep_type is None {
-        console.error("--npm dependency support is unavailable.");
-        console.print(
-            "The client framework ships with jaclang; reinstall jaclang if this persists.",
-            style="muted"
-        );
-        ctx.set_data("cancel_execution", True);
-        ctx.set_data("cancel_return_code", 1);
-        return;
-    }
-
     dev = ctx.get_arg("dev", False);
+    install_ctx = InstallContext();
 
     try {
         for name in packages {
-            console.info(f"Removing {name} ({dep_type.name})...");
-            dep_type.remove_handler(config, name, dev);
+            console.info(f"Removing {name} ({provider.name})...");
+            if not provider.remove_package(config, name, dev, install_ctx) {
+                deps_key = "dev-dependencies" if dev else "dependencies";
+                raise RuntimeError(f'Package "{name}" not found in {deps_key}');
+            }
         }
         console.success(f"Removed {len(packages)} package(s)");
         ctx.set_data("cancel_execution", True);
