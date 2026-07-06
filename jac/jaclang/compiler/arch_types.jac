@@ -9,7 +9,7 @@ def is_ref_arch(arch: uni.Archetype) -> bool {
     return arch.base_classes is not None and len(arch.base_classes) > 0;
 }
 
-def type_tag_name(type_tag: object) -> str {
+def type_tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str {
     if type_tag is None {
         return "";
     }
@@ -20,7 +20,7 @@ def type_tag_name(type_tag: object) -> str {
     return tag.unparse();
 }
 
-def ret_type_name(ret: object) -> str {
+def ret_type_name(ret: uni.Expr | None) -> str {
     if ret is None {
         return "";
     }
@@ -40,8 +40,8 @@ def arch_type_maps(arch: uni.Archetype) -> tuple[dict[str, str], dict[str, str]]
             }
         } elif isinstance(member, uni.Ability) and member.name_ref is not None {
             sig = member.signature;
-            rmap[member.name_ref.value] = ret_type_name(
-                sig.return_type if sig else None
+            rmap[member.name_ref.sym_name] = ret_type_name(
+                sig.return_type if isinstance(sig, uni.FuncSignature) else None
             );
         }
     }
@@ -90,7 +90,9 @@ def infer_type(
         rt = infer_type(
             e.right, local_types, ref_types, func_returns, method_returns, field_types
         );
-        if e.op.value == "+" and (lt == "str" or rt == "str") {
+        if isinstance(e.op, uni.Token)
+        and e.op.value == "+"
+        and (lt == "str" or rt == "str") {
             return "str";
         }
         if lt == "float" or rt == "float" {
