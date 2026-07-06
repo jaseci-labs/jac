@@ -47,10 +47,10 @@ test "resolve_entry picks the highest matching version for this triple" {
         }
     );
     entry = reg.resolve_entry(idx, "regex", "*");
-    assert entry["version"] == "1.12.4" , entry;
+    assert entry.version == "1.12.4" , entry;
     # A dotted-prefix constraint stays within its series.
     entry2 = reg.resolve_entry(idx, "regex", "1.11");
-    assert entry2["version"] == "1.11.4" , entry2;
+    assert entry2.version == "1.11.4" , entry2;
 }
 
 
