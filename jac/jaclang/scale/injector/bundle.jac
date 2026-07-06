@@ -1,7 +1,11 @@
 import io;
+import os;
 import hashlib;
 import logging;
+import shutil;
+import subprocess;
 import tarfile;
+import tempfile;
 import tomllib;
 import from pathlib { Path }
 
@@ -168,8 +172,68 @@ def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | Non
 }
 
 
-def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
+def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
+    # Precompile the app's modules with the POD binary so pods load content-keyed
+    # .jir from _precompiled/ instead of cold-compiling on first boot (#7179).
+    # Best-effort by design: any failure means pods compile exactly as before.
+    stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
+    stage = stage_root / "app";
+    try {
+        for path in sorted(base.rglob("*")) {
+            if not path.is_file() or is_excluded(path.relative_to(base)) {
+                continue;
+            }
+            dest = stage / path.relative_to(base);
+            dest.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(str(path), str(dest));
+        }
+        # The precompiler discovers a package by its __init__; app projects are
+        # flat, so mark the staged copy (the marker's .jir is not packed).
+        marker = stage / "__init__.jac";
+        added_marker = not marker.exists();
+        if added_marker {
+            marker.write_text("");
+        }
+        jac_path = stage_root / ".pod-jac";
+        jac_path.write_bytes(pod_binary);
+        jac_path.chmod(0o755);
+        script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
+        result = subprocess.run(
+            [str(jac_path), "run", str(script), str(stage_root)],
+            capture_output=True,
+            text=True,
+            timeout=600
+        );
+        jac_path.unlink();
+        if added_marker {
+            for junk in (stage / "_precompiled").rglob("__init__.jir") {
+                junk.unlink();
+            }
+        }
+        if result.returncode != 0 or not (stage / "_precompiled").is_dir() {
+            logger.warning(
+                f"App precompile with the pod binary did not complete "
+                f"({(result.stderr or result.stdout).strip()[-300:]}); pods will "
+                f"compile on first boot."
+            );
+            return None;
+        }
+        return stage;
+    } except Exception as e {
+        logger.warning(f"App precompile skipped ({e}); pods will compile on boot.");
+        return None;
+    }
+}
+
+
+def pack_source(
+    project_dir: str, provisioned_database: str = "", pod_binary: bytes = b""
+) -> bytes {
     base = Path(project_dir).resolve();
+    staged: (Path | None) = None;
+    if pod_binary {
+        staged = _precompile_app(base, pod_binary);
+    }
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
         for path in sorted(base.rglob("*")) {
@@ -181,6 +245,19 @@ def pack_source(project_dir: str, provisioned_database: str = "") -> bytes {
                 continue;
             }
             tar.add(str(path), arcname=str(rel));
+        }
+        if staged is not None {
+            pre = staged / "_precompiled";
+            count = 0;
+            for path in sorted(pre.rglob("*")) {
+                if path.is_file() {
+                    rel = path.relative_to(staged);
+                    tar.add(str(path), arcname=str(rel));
+                    count += 1;
+                }
+            }
+            logger.info(f"Bundled {count} precompiled app-module artifacts.");
+            shutil.rmtree(str(staged), ignore_errors=True);
         }
         sanitized = sanitized_jac_toml(base, provisioned_database);
         if sanitized is not None {
