@@ -27,8 +27,7 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.bccache { discover_base_file }
 
 glob BATCH_DIR = str(
-         Path(jaclang.__file__).parent
-         / "compiler" / "tests" / "fixtures" / "global_narrowing"
+         Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures" / "global_narrowing"
      );
 
 
@@ -59,20 +58,26 @@ def check_batch(files: list[str]) -> list[str] {
 
 """Keep only the return-slot cascade this issue is about (`NoneType, expected`)."""
 def return_cascades(errors: list[str]) -> list[str] {
-    return [e for e in errors if "NoneType, expected" in e];
+    return [
+        e
+        for e in errors
+        if "NoneType, expected" in e
+    ];
 }
 
 
 """Type-check `src` with `search_dir` visible on `sys.path`."""
 def check_src(src: str, search_dir: str) -> JacProgram {
-    sys.path.insert(0, search_dir);
-    importlib.invalidate_caches();
     try {
+        sys.path.insert(0, search_dir);
+        importlib.invalidate_caches();
         prog = JacProgram();
         prog.compile(file_path="gn_src.jac", use_str=src, type_check=True);
         return prog;
     } finally {
-        sys.path.remove(search_dir);
+        if search_dir in sys.path {
+            sys.path.remove(search_dir);
+        }
         importlib.invalidate_caches();
     }
 }
@@ -105,16 +110,16 @@ test "foreign-Any singleton from an untyped third-party call checks clean" {
         }
 
         src = "import untyped_client;\n"
-            "\n"
-            "glob _conn: (dict[str, int] | None) = None;\n"
-            "\n"
-            "def get_conn -> dict[str, int] {\n"
-            "    global _conn;\n"
-            "    if _conn is None {\n"
-            "        _conn = untyped_client.connect();\n"
-            "    }\n"
-            "    return _conn;\n"
-            "}\n";
+        "\n"
+        "glob _conn: (dict[str, int] | None) = None;\n"
+        "\n"
+        "def get_conn -> dict[str, int] {\n"
+        "    global _conn;\n"
+        "    if _conn is None {\n"
+        "        _conn = untyped_client.connect();\n"
+        "    }\n"
+        "    return _conn;\n"
+        "}\n";
         prog = check_src(src, sp);
         errors = [str(e) for e in prog.errors_had];
         assert errors == [] , errors;

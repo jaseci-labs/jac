@@ -3789,21 +3789,13 @@ impl TypeEvaluator._get_type_from_flow_node(
                         flat_target_matched
                         and self.is_explicit_any(assigned_type)
                         and self._union_contains_none(declared_type)
-                        and self.prefetch.none_type_class
                     ) {
-                        # A flat assignment of an imprecise `Any` value (e.g.
-                        # `json.loads`, a call into an untyped third-party
-                        # package) still writes a concrete non-`None` value on
-                        # this path. `Any` is imprecise, not `None`, so narrow
-                        # the optional slot to its non-`None` form rather than
-                        # discarding the narrow and letting the declared
-                        # `T | None` cascade into a misleading return diagnostic
-                        # (issue #7165). A genuinely incompatible concrete
-                        # initializer is still surfaced at the assignment site.
-                        narrowed_from_assignment = self.exclude_type_from_union(
-                            declared_type,
-                            self._convert_to_instance(self.prefetch.none_type_class)
-                        );
+                        none_cls = self.prefetch.none_type_class;
+                        if none_cls is not None {
+                            narrowed_from_assignment = self.exclude_type_from_union(
+                                declared_type, self._convert_to_instance(none_cls)
+                            );
+                        }
                     }
                 }
                 if narrowed_from_assignment is not None {
