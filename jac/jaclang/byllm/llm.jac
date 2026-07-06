@@ -21,7 +21,6 @@ import from jaclang.byllm.exceptions {
     OutputConversionError,
     RateLimitError,
     ModelNotFoundError,
-    UnknownToolError,
     ConfigurationError,
     CompactionNotEffectiveError
 }
