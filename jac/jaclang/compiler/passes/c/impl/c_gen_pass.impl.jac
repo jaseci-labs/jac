@@ -39,8 +39,8 @@ impl CGenPass.classify(mod: uni.Module) {
             self.index_arch(stmt);
         } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
             sig = stmt.signature;
-            self.func_returns[stmt.name_ref.value] = self.ret_type_name(
-                sig.return_type if sig else None
+            self.func_returns[stmt.name_ref.sym_name] = self.ret_type_name(
+                sig.return_type if isinstance(sig, uni.FuncSignature) else None
             );
         }
     }
@@ -82,13 +82,13 @@ impl CGenPass.index_imported(sub: uni.Module) {
             self.extern_types.append(name);
             self.index_arch(stmt);
         } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
-            fname = stmt.name_ref.value;
+            fname = stmt.name_ref.sym_name;
             if fname in self.func_returns {
                 continue;
             }
             sig = stmt.signature;
             self.func_returns[fname] = self.ret_type_name(
-                sig.return_type if sig else None
+                sig.return_type if isinstance(sig, uni.FuncSignature) else None
             );
             self.extern_funcs.append(fname);
             self.extern_func_defs[fname] = stmt;
@@ -103,8 +103,8 @@ impl CGenPass.index_arch(arch: uni.Archetype) {
     omap: dict[str, str] = {};
     dmap: dict[str, uni.Ability] = {};
     for member in (arch.body or []) {
-        if isinstance(member, uni.Ability) {
-            mname = member.name_ref.value;
+        if isinstance(member, uni.Ability) and member.name_ref is not None {
+            mname = member.name_ref.sym_name;
             omap[mname] = name;
             dmap[mname] = member;
         }
@@ -205,7 +205,7 @@ impl CGenPass.extern_decls -> list[str] {
         out.append(self.gen_ref_struct(arch));
         out.append("extern " + self.ctor_head(arch) + ";");
         for ab in self.method_list(arch) {
-            if ab.name_ref.value == "init" {
+            if ab.name_ref is not None and ab.name_ref.sym_name == "init" {
                 continue;
             }
             out.append("extern " + self.method_head(arch, ab) + ";");
@@ -386,6 +386,9 @@ impl CGenPass.gen_vtable(arch: uni.Archetype) -> str {
     if not self.has_vtable(name) {
         return "";
     }
+    if self.layout is None {
+        return "";
+    }
     lay = self.layout.get_layout(name);
 
     slots: list[str] = [];
@@ -409,7 +412,9 @@ impl CGenPass.ctor_head(arch: uni.Archetype) -> str {
     name = arch.name.value;
     init = self.find_init(arch);
     params: list[str] = [];
-    if init is not None and init.signature and init.signature.params {
+    if isinstance(init, uni.Ability)
+    and isinstance(init.signature, uni.FuncSignature)
+    and init.signature.params {
         for p in init.signature.params {
             pty = self.c_type(self.type_name(p.type_tag));
             params.append(f"{pty} {p.name.value}");
@@ -421,11 +426,15 @@ impl CGenPass.ctor_head(arch: uni.Archetype) -> str {
 
 impl CGenPass.method_head(arch: uni.Archetype, ab: uni.Ability) -> str {
     cname = arch.name.value;
-    mname = ab.name_ref.value;
+    mname = ab.name_ref.sym_name if ab.name_ref is not None else "";
     sig = ab.signature;
-    ret = self.c_type(self.ret_type_name(sig.return_type if sig else None));
+    ret = self.c_type(
+        self.ret_type_name(
+            sig.return_type if isinstance(sig, uni.FuncSignature) else None
+        )
+    );
     params: list[str] = [f"struct {cname} *self"];
-    if sig and sig.params {
+    if isinstance(sig, uni.FuncSignature) and sig.params {
         for p in sig.params {
             pty = self.c_type(self.type_name(p.type_tag));
             params.append(f"{pty} {p.name.value}");
@@ -439,7 +448,7 @@ impl CGenPass.ref_protos(arch: uni.Archetype) -> list[str] {
     out: list[str] = [f"static void {name}__dtor(void *self);"];
     out.append(self.ctor_head(arch) + ";");
     for ab in self.method_list(arch) {
-        if ab.name_ref.value == "init" {
+        if ab.name_ref is not None and ab.name_ref.sym_name == "init" {
             continue;
         }
         out.append(self.method_head(arch, ab) + ";");
@@ -450,7 +459,7 @@ impl CGenPass.ref_protos(arch: uni.Archetype) -> list[str] {
 impl CGenPass.gen_ref_defs(arch: uni.Archetype) -> list[str] {
     out: list[str] = [self.gen_dtor(arch), self.gen_ctor(arch)];
     for ab in self.method_list(arch) {
-        if ab.name_ref.value == "init" {
+        if ab.name_ref is not None and ab.name_ref.sym_name == "init" {
             continue;
         }
         out.append(self.gen_method(arch, ab));
@@ -510,8 +519,8 @@ impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
         lines.append(f"    self->{fname} = " + self.gen_expr(dexpr) + ";");
     }
     init = self.find_init(arch);
-    if init is not None {
-        if init.signature and init.signature.params {
+    if isinstance(init, uni.Ability) {
+        if isinstance(init.signature, uni.FuncSignature) and init.signature.params {
             for p in init.signature.params {
                 self.local_types[p.name.value] = self.type_name(p.type_tag);
             }
@@ -548,9 +557,11 @@ impl CGenPass.gen_method(arch: uni.Archetype, ab: uni.Ability) -> str {
 
     sig = ab.signature;
     self.cur_ret_cty = self.c_type(
-        self.ret_type_name(sig.return_type if sig else None)
+        self.ret_type_name(
+            sig.return_type if isinstance(sig, uni.FuncSignature) else None
+        )
     );
-    if sig and sig.params {
+    if isinstance(sig, uni.FuncSignature) and sig.params {
         for p in sig.params {
             self.local_types[p.name.value] = self.type_name(p.type_tag);
         }
@@ -567,11 +578,15 @@ impl CGenPass.enter_method(cls: str) {
 }
 
 impl CGenPass.func_head(ab: uni.Ability) -> str {
-    name = ab.name_ref.value;
+    name = ab.name_ref.sym_name if ab.name_ref is not None else "";
     sig = ab.signature;
-    ret = self.c_type(self.ret_type_name(sig.return_type if sig else None));
+    ret = self.c_type(
+        self.ret_type_name(
+            sig.return_type if isinstance(sig, uni.FuncSignature) else None
+        )
+    );
     params: list[str] = [];
-    if sig and sig.params {
+    if isinstance(sig, uni.FuncSignature) and sig.params {
         for p in sig.params {
             pty = self.c_type(self.type_name(p.type_tag));
             params.append(f"{pty} {p.name.value}");
@@ -587,9 +602,11 @@ impl CGenPass.gen_func(ab: uni.Ability) -> str {
     self.cur_class = "";
     sig = ab.signature;
     self.cur_ret_cty = self.c_type(
-        self.ret_type_name(sig.return_type if sig else None)
+        self.ret_type_name(
+            sig.return_type if isinstance(sig, uni.FuncSignature) else None
+        )
     );
-    if sig and sig.params {
+    if isinstance(sig, uni.FuncSignature) and sig.params {
         for p in sig.params {
             self.local_types[p.name.value] = self.type_name(p.type_tag);
         }
@@ -620,7 +637,7 @@ impl CGenPass.scope_release_lines(pad: str, skip_name: str) -> list[str] {
     return out;
 }
 
-impl CGenPass.ref_field_store(st: uni.Assignment, pad: str) -> object {
+impl CGenPass.ref_field_store(st: uni.Assignment, pad: str) -> (str | None) {
     if st.type_tag is not None or st.aug_op is not None or st.value is None {
         return None;
     }
@@ -658,7 +675,7 @@ impl CGenPass.ref_field_store(st: uni.Assignment, pad: str) -> object {
     return "\n".join(lines);
 }
 
-impl CGenPass.ref_local_copy(st: uni.Assignment, pad: str) -> object {
+impl CGenPass.ref_local_copy(st: uni.Assignment, pad: str) -> (str | None) {
     if st.aug_op is not None or st.value is None {
         return None;
     }
@@ -1194,9 +1211,13 @@ impl CGenPass.virtual_call(
     intro = self.resolve_introducer(recv_ty, mname);
     ab = self.method_defs[intro][mname];
     sig = ab.signature;
-    ret = self.c_type(self.ret_type_name(sig.return_type if sig else None));
+    ret = self.c_type(
+        self.ret_type_name(
+            sig.return_type if isinstance(sig, uni.FuncSignature) else None
+        )
+    );
     ptypes: list[str] = [f"struct {intro} *"];
-    if sig and sig.params {
+    if isinstance(sig, uni.FuncSignature) and sig.params {
         for p in sig.params {
             ptypes.append(self.c_type(self.type_name(p.type_tag)));
         }

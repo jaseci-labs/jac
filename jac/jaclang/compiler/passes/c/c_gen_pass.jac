@@ -76,12 +76,12 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def resolve_introducer(cls: str, m: str) -> str;
     def layout_fields(name: str) -> list;
     def c_type(jac_ty: str) -> str;
-    def type_name(type_tag: object) -> str;
-    def ret_type_name(ret: object) -> str;
+    def type_name(type_tag: uni.SubTag[uni.Expr] | None) -> str;
+    def ret_type_name(ret: uni.Expr | None) -> str;
     def gen_struct(arch: uni.Archetype) -> str;
     def field_list(arch: uni.Archetype) -> list[uni.HasVar];
     def method_list(arch: uni.Archetype) -> list[uni.Ability];
-    def find_init(arch: uni.Archetype) -> object;
+    def find_init(arch: uni.Archetype) -> (uni.Ability | None);
     def gen_ref_struct(arch: uni.Archetype) -> str;
     def gen_vtable(arch: uni.Archetype) -> str;
     def ctor_head(arch: uni.Archetype) -> str;
@@ -98,8 +98,8 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def gen_func(ab: uni.Ability) -> str;
     def gen_block(stmts: object, ind: int) -> str;
     def scope_release_lines(pad: str, skip_name: str) -> list[str];
-    def ref_field_store(st: uni.Assignment, pad: str) -> object;
-    def ref_local_copy(st: uni.Assignment, pad: str) -> object;
+    def ref_field_store(st: uni.Assignment, pad: str) -> (str | None);
+    def ref_local_copy(st: uni.Assignment, pad: str) -> (str | None);
     def gen_stmt(st: object, ind: int, is_last: bool) -> str;
     def render_stmt(st: object, ind: int, is_last: bool) -> str;
     def gen_for(st: uni.IterForStmt, ind: int) -> str;
