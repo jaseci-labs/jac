@@ -81,7 +81,7 @@ impl NaIRGenPass._infer_unpack_struct_ptr(nd: object) -> (ir.Type | None) {
 
 impl NaIRGenPass._codegen_tuple_unpack(
     targets: list, tuple_val: ir.Value, tuple_node: (object | None)
-) -> None {
+) -> bool {
     struct_type: (ir.LiteralStructType | None) = None;
     is_value = False;
     if isinstance(tuple_val.type, ir.LiteralStructType) {
@@ -106,7 +106,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
         }
     }
     if struct_type is None {
-        return;
+        return False;
     }
 
     for (i, target) in enumerate(targets) {
@@ -137,6 +137,7 @@ impl NaIRGenPass._codegen_tuple_unpack(
             self.local_vars[var_name] = alloca;
         }
     }
+    return True;
 }
 
 impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {

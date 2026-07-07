@@ -100,6 +100,27 @@ def _bootstrap_compile(
     return code
 
 
+def _module_scoped_alerts(program: object, file_path: str) -> list:
+    """Collect compile alerts recorded against file_path (or its annexes).
+
+    `foo.na.jac` -> prefix `foo.na.` also matches annex paths such as
+    `foo.na.impl.jac` and `foo.na.impl/bar.jac`, so errors reported against
+    an impl file count as the module's own.
+    """
+    norm = os.path.normpath(file_path)
+    stem = norm[:-4] if norm.endswith(".jac") else norm
+    prefix = stem + "."
+    alerts = []
+    for alert in getattr(program, "errors_had", []):
+        try:
+            alert_path = os.path.normpath(alert.loc.mod_path)
+        except Exception:
+            continue
+        if alert_path == norm or alert_path.startswith(prefix):
+            alerts.append(alert)
+    return alerts
+
+
 # Bootstrap modresolver.jac before JacMetaImporter is registered. This module
 # must be available for find_spec()/get_code(), but normal .jac imports are not
 # yet operational at this point. In a sealed image its code object is served
@@ -301,6 +322,17 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             if is_pkg:
                 # Empty package is OK - just register it
                 return
+            alerts = _module_scoped_alerts(program, file_path)
+            if not alerts:
+                # Files under the jaclang tree compile into the compiler's
+                # internal program, so their diagnostics live there rather
+                # than in the runtime program handed to us.
+                internal = getattr(compiler, "internal_program", None)
+                if internal is not None:
+                    alerts = _module_scoped_alerts(internal, file_path)
+            if alerts:
+                details = "\n".join(a.pretty_print() for a in alerts)
+                raise ImportError(f"{file_path} failed to compile:\n{details}")
             raise ImportError(f"No bytecode found for {file_path}")
 
         # MTIR is written keyed by file stem but byllm looks up by func.__module__;

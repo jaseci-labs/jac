@@ -755,7 +755,6 @@ A condensed list of every hook plugins can override. The full definitions are in
 | `call_llm` | `(model, mt_run) -> any` |
 | `by` | `(model) -> Callable` |
 | `by_operator` | `(lhs, rhs) -> any` |
-| `filter_visitable_by` | `(connected_nodes, model, descriptions: str = "") -> list` |
 
 **CLI (`JacCmd` mixin):**
 

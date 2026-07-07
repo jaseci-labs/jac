@@ -313,11 +313,6 @@ def register_image(precompiled_dir: str | Path) -> SealedImage | None:
     return image
 
 
-def is_sealed() -> bool:
-    """True when jaclang itself runs from a sealed image."""
-    return _jaclang_image() is not None
-
-
 def find_module(fullname: str) -> tuple[SealedImage, dict, str] | None:
     """Resolve ``fullname`` across all sealed images.
 

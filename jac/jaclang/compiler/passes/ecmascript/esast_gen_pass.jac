@@ -463,6 +463,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_atom_unit(nd: uni.AtomUnit) -> None;
     def exit_list_val(nd: uni.ListVal) -> None;
     def exit_set_val(nd: uni.SetVal) -> None;
+    def _gen_seq_array(nd: uni.UniNode) -> None;
     def exit_tuple_val(nd: uni.TupleVal) -> None;
     def exit_dict_val(nd: uni.DictVal) -> None;
     def exit_k_v_pair(nd: uni.KVPair) -> None;

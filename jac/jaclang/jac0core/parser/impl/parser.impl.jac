@@ -519,10 +519,10 @@ impl Parser.parse_access_tag -> SubTag | None {
     return None;
 }
 
-impl Parser.make_string(tok: Token) -> String {
-    return String(
+impl Parser._make_literal(node_cls: type, name: str, tok: Token) -> object {
+    return node_cls(
         orig_src=self.get_source(),
-        name=Tok.STRING.value,
+        name=name,
         value=tok.value,
         line=tok.loc.line,
         end_line=tok.loc.end_line,
@@ -531,6 +531,10 @@ impl Parser.make_string(tok: Token) -> String {
         pos_start=tok.loc.pos_start,
         pos_end=tok.loc.pos_end
     );
+}
+
+impl Parser.make_string(tok: Token) -> String {
+    return self._make_literal(String, Tok.STRING.value, tok);
 }
 
 impl Parser.make_string_from_value(value: str) -> String {
@@ -548,73 +552,23 @@ impl Parser.make_string_from_value(value: str) -> String {
 }
 
 impl Parser.make_int(tok: Token) -> Int {
-    return Int(
-        orig_src=self.get_source(),
-        name=Tok.INT.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Int, Tok.INT.value, tok);
 }
 
 impl Parser.make_float(tok: Token) -> Float {
-    return Float(
-        orig_src=self.get_source(),
-        name=Tok.FLOAT.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Float, Tok.FLOAT.value, tok);
 }
 
 impl Parser.make_bool(tok: Token) -> Bool {
-    return Bool(
-        orig_src=self.get_source(),
-        name=Tok.BOOL.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Bool, Tok.BOOL.value, tok);
 }
 
 impl Parser.make_null(tok: Token) -> Null {
-    return Null(
-        orig_src=self.get_source(),
-        name=Tok.NULL.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Null, Tok.NULL.value, tok);
 }
 
 impl Parser.make_ellipsis(tok: Token) -> EllipsisLit {
-    return EllipsisLit(
-        orig_src=self.get_source(),
-        name=Tok.ELLIPSIS.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(EllipsisLit, Tok.ELLIPSIS.value, tok);
 }
 
 impl Parser.make_semi -> Semi {

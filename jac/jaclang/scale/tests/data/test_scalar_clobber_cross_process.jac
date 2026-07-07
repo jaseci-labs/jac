@@ -20,7 +20,6 @@ Test 2 — issue #6022 (dispatch guard):
 import contextlib;
 import gc;
 import os;
-import socket;
 import subprocess;
 import sys;
 import time;
@@ -30,20 +29,10 @@ import from typing { cast }
 import requests;
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
-import from jaclang.scale.tests.server_support { get_free_port }
+import from jaclang.scale.tests.server_support { call_walker, extract, get_free_port }
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "clobber_app.jac";
-
-def extract(json_response: any) -> any {
-    if isinstance(json_response, list) and len(json_response) == 2 {
-        json_response = json_response[1];
-    }
-    if isinstance(json_response, dict) and "data" in json_response {
-        return json_response["data"];
-    }
-    return json_response;
-}
 
 def register_and_login(base_url: str, username: str) -> str {
     res = requests.post(
@@ -78,18 +67,6 @@ def login(base_url: str, username: str) -> str {
     );
     assert login_res.status_code == 200 , f"login failed on pod2: {login_res.status_code}";
     return cast(dict, extract(login_res.json()))["token"];
-}
-
-def call_walker(
-    base_url: str, walker_name: str, token: str, payload: dict | None = None
-) -> any {
-    res = requests.post(
-        f"{base_url}/walker/{walker_name}",
-        json=payload or {},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15
-    );
-    return res.json();
 }
 
 def start_pod(

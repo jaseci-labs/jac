@@ -409,7 +409,7 @@ test "generate source map json produces valid map" {
     assert data["sources"] == ["test.jac"];
     assert len(data["mappings"]) > 0;
     # Verify round-trip resolution
-    index = _parse_mappings(data["mappings"], len(data["sources"]));
+    index = _parse_mappings(data["mappings"]);
     sm = SourceMap(sources=data["sources"], source_comments={}, _index=index);
     loc = sm.resolve(1, 0);
     assert loc is not None;
