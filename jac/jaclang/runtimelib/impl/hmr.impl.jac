@@ -104,15 +104,15 @@ impl HotReloader.on_file_change(event: any) -> None {
         return;
     }
 
-    self._process_change(event.path);
+    self._process_change(event.path, bool(getattr(event, 'is_directory', False)));
 }
 
-impl HotReloader._process_change(file_path: str) -> None {
+impl HotReloader._process_change(file_path: str, is_directory: bool = False) -> None {
     with HotReloader._build_lock {
         self._build_status = BuildStatus.COMPILING;
     }
     try {
-        self._dispatch_change(file_path);
+        self._dispatch_change(file_path, is_directory);
     } except Exception as e {
         self.record_error(file_path, f"{type(e).__name__}: {e}");
         raise;
@@ -123,7 +123,14 @@ impl HotReloader._process_change(file_path: str) -> None {
     }
 }
 
-impl HotReloader._dispatch_change(file_path: str) -> None {
+impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) -> None {
+    if is_directory {
+        if not Path(file_path).exists() {
+            self._remove_compiled_dir(file_path);
+        }
+        self._refresh_routing(file_path);
+        return;
+    }
     if file_path.endswith(
         tuple(
             p[1:] if p.startswith("*") else p for p in self.watcher.additional_patterns
@@ -203,6 +210,38 @@ impl HotReloader._remove_compiled_output(file_path: str) -> None {
     }
 }
 
+impl HotReloader._remove_compiled_dir(file_path: str) -> None {
+    base_dir = Path(self.base_path).resolve();
+    source_path = Path(file_path);
+    try {
+        source_path = source_path.resolve();
+    } except OSError { }
+    try {
+        rel = source_path.relative_to(base_dir);
+    } except ValueError {
+        return;
+    }
+    if self.client_compiler {
+        compiled_root = Path(
+            str(self.client_compiler.jac_client_compiler.compiled_dir)
+        );
+    } else {
+        compiled_root = Path(self.base_path) / self._client_output_dir;
+    }
+    target = compiled_root / rel;
+    try {
+        if str(target.resolve()) == str(compiled_root.resolve()) {
+            return;
+        }
+        if target.is_dir() {
+            shutil.rmtree(target);
+            console.warning(
+                f"Removed compiled output for deleted directory {file_path}"
+            );
+        }
+    } except OSError { }
+}
+
 impl HotReloader._refresh_routing(file_path: str) -> None {
     if not self.client_compiler {
         return;
@@ -213,16 +252,32 @@ impl HotReloader._refresh_routing(file_path: str) -> None {
     try {
         changed = changed.resolve();
     } except OSError { }
-    under_pages = str(changed).startswith(str(pages_dir) + os.sep);
+    under_pages = (
+        str(changed) == str(pages_dir)
+        or str(changed).startswith(str(pages_dir) + os.sep)
+    );
     jcc = self.client_compiler.jac_client_compiler;
     routes_file = Path(str(jcc.compiled_dir)) / '_routes.js';
     routes_missing = pages_dir.is_dir() and not routes_file.exists();
-    if not (under_pages or routes_missing) {
+
+    routes_stale = routes_file.exists() and not pages_dir.is_dir();
+    if not (under_pages or routes_missing or routes_stale) {
         return;
     }
     try {
-        self.client_compiler._has_pages = jcc.rescan_pages();
+        has_pages = jcc.rescan_pages();
+        self.client_compiler._has_pages = has_pages;
         self.client_compiler.create_entry_file(self._entry_module_path());
+        if not has_pages {
+            if routes_file.exists() {
+                routes_file.unlink();
+            }
+            compiled_pages = Path(str(jcc.compiled_dir)) / 'pages';
+            if compiled_pages.is_dir() {
+                shutil.rmtree(compiled_pages);
+            }
+            console.warning("Routing deactivated: pages/ no longer exists");
+        }
     } except Exception as e {
         console.error(f"Routing refresh failed for {file_path}: {e}");
         self.record_error(file_path, f"Routing refresh failed: {e}");

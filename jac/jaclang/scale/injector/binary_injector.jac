@@ -18,11 +18,16 @@ glob logger = logging.getLogger(__name__);
 obj BinaryInjector(PvcInjector) {
     has dev: DevDeploy = DevDeploy(),
         _toolchain_object_key: str = "",
-        _toolchain_bytes: bytes = b"";
+        _toolchain_bytes: bytes = b"",
+        _pod_binary_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        super.prepare(app_name, namespace, project_dir);
+        # Download the pod binary FIRST so pack_source can precompile the app's
+        # modules with it (#7179): .jir is version-locked to the compiling
+        # binary, so the driver's own jac cannot produce pod-valid seeds.
         payload = download_release_binary(self.dev.channel, node_arch());
+        self._pod_binary_bytes = payload;
+        super.prepare(app_name, namespace, project_dir);
         if self.dev.overlays_source() {
             (src, cleanup) = resolve_overlay_source(
                 self.dev.repo, self.dev.branch, self.dev.jaclang_source, project_dir

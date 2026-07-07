@@ -232,3 +232,63 @@ def is_test(path: str) -> bool:
 def is_client_test(path: str) -> bool:
     """True for a ``.test.cl.jac`` client test file."""
     return path.endswith(".test.cl.jac")
+
+
+# Tool-owned directory names that never hold importable Jac source; pruned from
+# the namespace-package subtree walk (dot-prefixed dirs -- .git, .venv, .jac --
+# are pruned by the leading-dot rule below).
+_WALK_SKIP_DIRS = frozenset({"__pycache__", "node_modules"})
+
+
+def _subtree_has_jac(directory: str) -> bool:
+    """True if a ``.jac`` source exists in *directory* or below (early-exit).
+
+    Each directory's own files are inspected before descending, so a leaf
+    package whose ``.jac`` files sit right there returns without recursing.
+    Unreadable directories are skipped, subdirectories are not followed through
+    symlinks (which avoids symlink cycles), and tool-owned trees that never hold
+    Jac source (``__pycache__``, ``node_modules``, dot-directories) are pruned to
+    bound the walk in deep project trees.
+    """
+    stack = [directory]
+    while stack:
+        try:
+            scan = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with scan:
+            subdirs: list[str] = []
+            for entry in scan:
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        name = entry.name
+                        if not name.startswith(".") and name not in _WALK_SKIP_DIRS:
+                            subdirs.append(entry.path)
+                    elif entry.is_file() and is_jac(entry.name):
+                        return True
+                except OSError:
+                    continue
+            stack.extend(subdirs)
+    return False
+
+
+def is_jac_namespace_package(directory: str) -> bool:
+    """True when *directory* is an implicit Jac namespace package (PEP 420).
+
+    A namespace package has no ``__init__`` of any kind, yet belongs to Jac
+    because a ``.jac`` source lives somewhere in its subtree. This is what lets
+    Python's per-component import machinery descend through an *intermediate*
+    package: in ``import from engine.math.vec3 { ... }`` the directory
+    ``engine/`` may hold only the ``math/`` subpackage and no ``.jac`` file of
+    its own, but must still be claimed so ``import engine`` succeeds -- mirroring
+    how ``modresolver`` joins the whole dotted path against a search root in one
+    shot (the native runner's path). A directory that is a regular package
+    (any ``__init__``) or whose subtree holds no Jac source is left to Python's
+    own ``PathFinder`` (issue #7211).
+    """
+    if os.path.isfile(os.path.join(directory, "__init__.py")):
+        return False
+    for init_name in INIT_FILES:
+        if os.path.isfile(os.path.join(directory, init_name)):
+            return False
+    return _subtree_has_jac(directory)

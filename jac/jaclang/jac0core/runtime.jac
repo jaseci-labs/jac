@@ -548,8 +548,8 @@ class JacConfig {
 
     static def on_config_loaded(config: dict[(str, Any)]) -> None;
     static def validate_config(config: dict[(str, Any)]) -> list[str];
-    @hookable
-    static def register_dependency_type -> (dict[(str, Any)] | None);
+    @hookable(firstresult=False)
+    static def register_ecosystem_providers -> (list | None);
 
     @hookable(firstresult=False)
     static def register_project_template -> (dict[(str, Any)] | None);

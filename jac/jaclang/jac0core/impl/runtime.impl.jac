@@ -2064,7 +2064,7 @@ impl JacConfig.validate_config(config: dict[(str, Any)]) -> list[str] {
     return [];
 }
 
-impl JacConfig.register_dependency_type -> (dict[(str, Any)] | None) {
+impl JacConfig.register_ecosystem_providers -> (list | None) {
     return None;
 }
 
