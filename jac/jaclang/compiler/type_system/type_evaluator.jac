@@ -343,9 +343,11 @@ obj TypeEvaluator {
     def _get_enum_member_type_for_decl(
         node_: uni.Name
     ) -> (types.EnumMemberType | None);
+
     def get_type_of_member(
         member: type_utils.ClassMember, class_type: types.ClassType
     ) -> TypeBase;
+
     def specialize_member_type(
         member_type: TypeBase, class_type: types.ClassType
     ) -> TypeBase;
