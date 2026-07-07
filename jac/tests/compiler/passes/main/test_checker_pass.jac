@@ -4412,19 +4412,21 @@ test "membership_narrowing" {
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
+    all_errors = "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
     assert_error_pretty_found(
         """
         if ak in (other, "walker")
         else "obj";  # <-- Error: tuple has a non-literal element, no narrowing possible
     """,
-        program.errors_had[0].pretty_print()
+        all_errors
     );
 
     assert_error_pretty_found(
         """
         return ak;  # <-- Error: `in` only narrows the true branch, ak is still str | None here
     """,
-        program.errors_had[1].pretty_print()
+        all_errors
     );
 }
 

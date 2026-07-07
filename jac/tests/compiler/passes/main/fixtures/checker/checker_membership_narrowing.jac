@@ -12,6 +12,22 @@ def test_membership_in_list(ak: str | None) -> str {
     return ak if ak in ["node", "walker"] else "obj";
 }
 
+def test_membership_not_in_list(ak: str | None) -> str {
+    return "obj" if ak not in ["node", "walker"] else ak;
+}
+
+def test_membership_in_tuple_int(n: int | None) -> int {
+    return n if n in (1, 2, 3) else 0;
+}
+
+def test_membership_in_tuple_float(f: float | None) -> float {
+    return f if f in (1.5, 2.5) else 0.0;
+}
+
+def test_membership_in_tuple_bool(b: bool | None) -> bool {
+    return b if b in (True, False) else False;
+}
+
 def test_string_literal_eq(v: str | None) -> str {
     r: str = "obj";
     if v == "node" {
