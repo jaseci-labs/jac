@@ -266,6 +266,10 @@ obj PvcInjector(Injector) {
                         ],
                         cwd=tmp_path.parent
                     );
+                    # Concatenated, not an f-string: a jac f-string with two
+                    # quoted interpolations collapses them into ONE quoted
+                    # operand ("mv -f 'src dst'"), so mv sees a single argument
+                    # and the seed fails with a usage error.
                     run_kubectl_command(
                         [
                             "exec",
@@ -275,7 +279,7 @@ obj PvcInjector(Injector) {
                             "--",
                             "sh",
                             "-c",
-                            f"mv -f '{staging_path}' '{bundle_path}'"
+                            "mv -f '" + staging_path + "' '" + bundle_path + "'"
                         ]
                     );
                     logger.info(
