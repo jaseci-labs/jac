@@ -742,7 +742,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _foreign_model -> dict;
     def _foreign_fns -> dict;
     def _foreign_fields_of(name: str) -> list;
-    def _classify_clib_struct(name: str) -> dict;
     def _clib_has_nested(name: str) -> bool;
     def _clib_c_type(name: str) -> ir.Type;
     def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;

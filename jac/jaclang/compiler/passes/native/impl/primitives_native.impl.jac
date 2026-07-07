@@ -4121,39 +4121,6 @@ impl NativeSetEmitter.emit_clear(
     return ir.Constant(i64, 0);
 }
 
-impl NativeSetEmitter._emit_set_iterate(
-    self, ctx: NativeEmitCtx, source: ir.Value, prefix: str
-) -> tuple {
-    p = ctx.pass_ref;
-    helpers = p.set_helpers.get(ctx.type_key);
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    len_ptr = b.gep(
-        source, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"{prefix}.len.ptr"
-    );
-    elems_ptr = b.gep(
-        source, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{prefix}.elems.ptr"
-    );
-    set_len = b.load(len_ptr, name=f"{prefix}.len");
-    elems_arr = b.load(elems_ptr, name=f"{prefix}.elems");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name=f"{prefix}.loop");
-    body_bb = func.append_basic_block(name=f"{prefix}.body");
-    done_bb = func.append_basic_block(name=f"{prefix}.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name=f"{prefix}.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, set_len, name=f"{prefix}.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name=f"{prefix}.ep");
-    ev = b.load(ep, name=f"{prefix}.ev");
-    return (helpers, b, i64, idx, ev, entry_bb, loop_bb, body_bb, done_bb);
-}
-
 impl NativeSetEmitter.emit_union(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {

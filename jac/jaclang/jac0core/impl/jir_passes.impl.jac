@@ -432,36 +432,10 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
                 self._wire_source(last_node);
             }
             self._fix_param_kinds();
-
-            import from jaclang.jac0core.jir {
-                SEC_BYTECODE,
-                SEC_MTIR,
-                SEC_LLVM_IR,
-                SEC_INTEROP
-            }
-            secs = self._read_trailing_sections(data);
-            self.bytecode_section = secs.get(SEC_BYTECODE);
-            self.mtir_section = secs.get(SEC_MTIR);
-            self.llvm_ir_section = secs.get(SEC_LLVM_IR);
-            self.interop_section = secs.get(SEC_INTEROP);
             return last_node;
         }
     }
     return None;
-}
-
-impl JirReader._read_trailing_sections(data: bytes) -> dict[int, bytes] {
-    import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
-    try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return {};
-        }
-        return read_sections(data, pos + len(magic_bytes));
-    } except Exception {
-        return {};
-    }
 }
 
 impl JirReader._wire_source(module: Module) -> None {

@@ -22,8 +22,7 @@ import from jaclang.jac0core.jir {
     read_bytecode_only,
     read_sections,
     SECTIONS_MAGIC,
-    HEADER_SIZE,
-    write_sections
+    HEADER_SIZE
 }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { read_file_with_encoding }

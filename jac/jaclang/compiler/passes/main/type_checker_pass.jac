@@ -34,7 +34,6 @@ import from jaclang.jac0core.diagnostics {
     E2015
 }
 
-import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 class TypeCheckPass(UniPass) {
     static has inference_only: bool = False;

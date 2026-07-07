@@ -3290,9 +3290,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
-    self.prefetch.union_type_class = get_types_class("UnionType");
 
-    self.prefetch.awaitable_class = get_typing_class("Awaitable");
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
 
@@ -3337,17 +3335,6 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(
         "_JsxIntrinsicElements"
     );
-
-    self.prefetch.i8_class = get_jac_builtin_class("i8");
-    self.prefetch.u8_class = get_jac_builtin_class("u8");
-    self.prefetch.i16_class = get_jac_builtin_class("i16");
-    self.prefetch.u16_class = get_jac_builtin_class("u16");
-    self.prefetch.i32_class = get_jac_builtin_class("i32");
-    self.prefetch.u32_class = get_jac_builtin_class("u32");
-    self.prefetch.i64_class = get_jac_builtin_class("i64");
-    self.prefetch.u64_class = get_jac_builtin_class("u64");
-    self.prefetch.f32_class = get_jac_builtin_class("f32");
-    self.prefetch.f64_class = get_jac_builtin_class("f64");
 }
 
 impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {

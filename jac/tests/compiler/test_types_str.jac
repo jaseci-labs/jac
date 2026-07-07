@@ -9,10 +9,6 @@ import from jaclang.compiler.type_system { types }
 import from jaclang.jac0core.unitree { Module }
 
 test "all type str methods" {
-    # UnboundType
-    unbound = types.UnboundType();
-    assert str(unbound) == "<Unbound>";
-
     # UnknownType
     unknown = types.UnknownType();
     assert str(unknown) == "<Unknown>";

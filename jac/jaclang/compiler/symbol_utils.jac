@@ -90,19 +90,6 @@ def classify_call(nd: uni.FuncCall) -> CallKind {
     return CallKind.FUNCTION;
 }
 
-def resolve_attr_chain(expr: uni.AtomTrailer) -> list[uni.Symbol] {
-    result: list[uni.Symbol] = [];
-    attrs = expr.as_attr_list;
-    if attrs {
-        for attr in attrs {
-            if isinstance(attr, uni.AstSymbolNode) and attr.sym {
-                result.append(attr.sym);
-            }
-        }
-    }
-    return result;
-}
-
 def ability_of_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None) {
     if sym is None or not sym.defn {
         return None;
