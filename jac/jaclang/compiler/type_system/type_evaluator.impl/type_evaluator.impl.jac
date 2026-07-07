@@ -4018,8 +4018,7 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
             all_literal = True;
             for elem in right_expr.values {
                 if isinstance(
-                    elem,
-                    (uni.String, uni.Int, uni.Float, uni.Bool, uni.MultiString)
+                    elem, (uni.String, uni.Int, uni.Float, uni.Bool, uni.MultiString)
                 ) {
                     elem_types.append(self.get_type_of_expression(elem));
                 } else {
@@ -4031,8 +4030,8 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
                 op_name = condition.ops[0].name;
                 narrow_type = (
                     elem_types[0]
-                    if len(elem_types) == 1
-                    else types.UnionType(types=elem_types)
+                        if len(elem_types) == 1
+                        else types.UnionType(types=elem_types)
                 );
                 if op_name == Tok.KW_IN {
                     return ConditionInfo(
