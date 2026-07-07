@@ -201,12 +201,17 @@ def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
         # Isolate the pod binary from the driver's dev loop, which otherwise
         # makes it recompile all of jaclang (~minutes wasted): the staging cwd
         # keeps a [dev] jaclang_source in the driver's jac.toml out of scope,
-        # and the env drops the markers the driver's own dev override exports
+        # and the env drops every route a driver source tree can hijack the
+        # subprocess's `import jaclang` - the markers the dev override exports
         # (JAC_DEV_SOURCE, and JAC_NO_PRECOMPILE which disables the binary's
-        # shipped precompiled jaclang, see jir.jac).
+        # shipped precompiled jaclang, see jir.jac), plus PYTHONPATH/PYTHONHOME,
+        # which source-checkout drivers (bench/CI) set and which the embedded
+        # interpreter resolves ahead of the bundled site.
         env = {** os.environ, "JAC_NO_DEV_SOURCE": "1"};
         env.pop("JAC_DEV_SOURCE", None);
         env.pop("JAC_NO_PRECOMPILE", None);
+        env.pop("PYTHONPATH", None);
+        env.pop("PYTHONHOME", None);
         result = subprocess.run(
             [str(jac_path), "run", str(script), str(stage_root)],
             capture_output=True,

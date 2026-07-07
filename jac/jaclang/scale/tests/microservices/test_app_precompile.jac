@@ -50,9 +50,15 @@ test "precompile runs from the staging dir with dev sourcing off" {
         done.stderr = "stub";
         return done;
     }
-    # The driver's own dev override exports these (see _jac_finder); they must
-    # not leak into the pod binary or it recompiles jaclang from source.
-    dev_markers = {"JAC_DEV_SOURCE": "/driver/checkout/jac", "JAC_NO_PRECOMPILE": "1"};
+    # Every route a driver source tree can hijack the subprocess's jaclang:
+    # the dev override's markers (see _jac_finder) and PYTHONPATH/PYTHONHOME
+    # as set by source-checkout drivers. None may leak into the pod binary.
+    dev_markers = {
+        "JAC_DEV_SOURCE": "/driver/checkout/jac",
+        "JAC_NO_PRECOMPILE": "1",
+        "PYTHONPATH": "/driver/checkout/jac",
+        "PYTHONHOME": "/driver/python"
+    };
     with mock.patch("jaclang.scale.injector.bundle.subprocess.run", fake_run), mock.patch.dict(
         os.environ, dev_markers
     ) {
@@ -61,8 +67,9 @@ test "precompile runs from the staging dir with dev sourcing off" {
     stage_root = seen["cmd"][3];
     assert seen["cwd"] == stage_root , seen;
     assert seen["env"]["JAC_NO_DEV_SOURCE"] == "1" , seen;
-    assert "JAC_DEV_SOURCE" not in seen["env"] , seen;
-    assert "JAC_NO_PRECOMPILE" not in seen["env"] , seen;
+    for leak in ["JAC_DEV_SOURCE", "JAC_NO_PRECOMPILE", "PYTHONPATH", "PYTHONHOME"] {
+        assert leak not in seen["env"] , (leak, seen);
+    }
     # The rest of the driver's environment still flows through.
     assert "PATH" in seen["env"];
 }
