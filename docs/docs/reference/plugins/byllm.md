@@ -817,6 +817,7 @@ Parameters passed to `by llm()` at call time:
 | `max_tokens` | int | Maximum tokens in response |
 | `max_output_retries` | int | Retries after the first attempt to regenerate a structured output that came back empty or unparseable (`0` disables). Default: 3. See [Typed-Output Retry](#typed-output-retry) |
 | `tools` | list | Tool functions for agentic behavior (automatically enables ReAct loop) |
+| `finish_tool` | callable | Designate one of your functions as the terminal tool that ends the ReAct loop and yields the call's output. byLLM enforces it (re-prompts once if the model tries to end without calling it) and does not inject its own generic finish tool. See [Tool Calling](#terminal-tool-finish_tool) |
 | `incl_info` | dict | Additional context key-value pairs injected into the prompt |
 | `stream` | bool | Enable streaming output (only supports `str` return type) |
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
@@ -1002,6 +1003,34 @@ obj Calculator {
     );
 }
 ```
+
+### Terminal Tool (`finish_tool=`)
+
+By default byLLM injects an internal `finish_tool` and the ReAct loop ends when the model stops calling tools. When a task is only complete after a **specific** tool runs (submit an answer, commit a transaction, mark a task done), pass that function as `finish_tool=` to make it the terminal tool. This solves the "natural exit" failure where a model does the work but never calls the completion step, so the task silently never finishes.
+
+```jac
+"""Submit the final answer and complete the task."""
+def finish(answer: str) -> str {
+    return answer;
+}
+sem finish = "Submit the final answer. Call this to complete the task.";
+
+def agent(task: str) -> str by llm(
+    tools=[lookup, execute],
+    finish_tool=finish
+);
+```
+
+Semantics:
+
+- **`finish` becomes the tool that ends the loop**, and its return value is the call's output. byLLM does not inject its own generic `finish_tool` when a terminal is designated.
+- **It is enforced.** If the model tries to end the loop without calling `finish` (a plain-text response with no tool call), byLLM re-prompts once with only `finish` available so the completion step runs.
+- **You do not also need it in `tools=[...]`.** Passing `finish_tool=finish` registers it as a tool and marks it terminal. If it is already in `tools`, the same instance is flagged (it is not duplicated).
+
+byLLM emits a non-blocking warning when a tool literally named `finish_tool` appears in `tools=[...]` (it is reserved and shadows byLLM's terminal without output validation), or when a tool named `finish` is present but no terminal was designated (the loop will not guarantee it is called; pass `finish_tool=finish`).
+
+!!! note "Optional tool parameters"
+    A tool parameter with a default (for example `finish(answer: str = "")`) is not marked `required` in the generated tool schema, so the model may legitimately omit it instead of padding a value.
 
 ### Interrupting the ReAct Loop
 
