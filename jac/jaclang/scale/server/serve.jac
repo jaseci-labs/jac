@@ -174,11 +174,13 @@ obj JacAPIServerEndpoints {
     ) -> list[APIParameter];
 
     def get_walker_protocol(walker_name: str) -> str;
+    def get_function_protocol(func_name: str) -> str;
     def register_webhook_endpoints -> None;
     def create_webhook_callback(walker_name: str) -> Callable[..., TransportResponse];
     def create_webhook_parameters(walker_name: str) -> list[APIParameter];
     def get_ws_manager -> WebSocketConnectionManager;
     def create_websocket_handler(walker_name: str) -> Callable;
+    def create_websocket_function_handler(func_name: str) -> Callable;
     def register_websocket_endpoints -> None;
 }
 
