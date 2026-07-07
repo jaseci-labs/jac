@@ -128,5 +128,35 @@ impl collect_source_files(
         }
     }
 
+    if not result {
+        pkg_name = config.project.name.replace("-", "_");
+        for pattern in global_patterns {
+            for file_path in sorted(proj_root.glob(_make_recursive(pattern))) {
+                if not file_path.is_file() {
+                    continue;
+                }
+                if _is_excluded(file_path, proj_root) {
+                    continue;
+                }
+                rel = str(file_path.relative_to(proj_root)).replace("\\", "/");
+                if rel.split("/")[0] in FLAT_EXCLUDED_DIRS {
+                    continue;
+                }
+                wheel_path = f"{pkg_name}/{rel}";
+                if wheel_path in seen {
+                    continue;
+                }
+                seen.add(wheel_path);
+                result.append(SourceFile(wheel_path=wheel_path, source_path=file_path));
+            }
+        }
+        init_py = f"{pkg_name}/__init__.py";
+        init_jac = f"{pkg_name}/__init__.jac";
+        if result and init_py not in seen and init_jac not in seen {
+            seen.add(init_py);
+            result.append(SourceFile(wheel_path=init_py, content=b""));
+        }
+    }
+
     return result;
 }

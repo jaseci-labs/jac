@@ -230,6 +230,13 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
 
     k8s_config['admin_username'] = self.get_admin_config().get('username', 'admin');
 
+    system_deps = self.get_jac_config().get_plugin_deps("system");
+    k8s_config['service_dependencies'] = [
+        name
+        for name in system_deps.keys()
+        if name
+    ];
+
     import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
         KubernetesConfig
     }

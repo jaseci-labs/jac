@@ -25,6 +25,7 @@ import jaclang.jac0 as _jac0_mod
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
 from jaclang.jac0core import ext_registry  # noqa: E402
+from jaclang.jac0core import sealed as _sealed  # noqa: E402
 from jaclang.jac0core.cache_paths import get_bootstrap_cache_dir  # noqa: E402
 
 _jac0_source_path = getattr(_jac0_mod, "__file__", "")
@@ -99,15 +100,26 @@ def _bootstrap_compile(
     return code
 
 
-# Bootstrap modresolver.jac with jac0 before JacMetaImporter is registered.
-# This module must be available for find_spec()/get_code(), but normal
-# .jac imports are not yet operational at this point.
+# Bootstrap modresolver.jac before JacMetaImporter is registered. This module
+# must be available for find_spec()/get_code(), but normal .jac imports are not
+# yet operational at this point. In a sealed image its code object is served
+# frozen from the manifest; a missing/corrupt JIR falls back to the retained
+# source, which jac0 transpiles live.
 _jac0core_dir = os.path.join(os.path.dirname(__file__), "jac0core")
 _modresolver_jac = os.path.join(_jac0core_dir, "modresolver.jac")
-with open(_modresolver_jac, encoding="utf-8") as _f:
-    _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
+_modresolver_code = None
+_modresolver_origin = _modresolver_jac
+_frozen_modresolver = _sealed.find_module("jaclang.jac0core.modresolver")
+if _frozen_modresolver is not None and _frozen_modresolver[1].get("bootstrap"):
+    _mr_image = _frozen_modresolver[0]
+    _modresolver_code = _mr_image.bootstrap_code("jaclang.jac0core.modresolver")
+    if _modresolver_code is not None:
+        _modresolver_origin = _mr_image.virtual_origin(_frozen_modresolver[2])
+if _modresolver_code is None:
+    with open(_modresolver_jac, encoding="utf-8") as _f:
+        _modresolver_code = _bootstrap_compile(_modresolver_jac, _f.read())
 _modresolver = types.ModuleType("jaclang.jac0core.modresolver")
-_modresolver.__file__ = _modresolver_jac
+_modresolver.__file__ = _modresolver_origin
 _modresolver.__package__ = "jaclang.jac0core"
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
 sys.modules["jaclang.jac0core.modresolver"] = _modresolver
@@ -141,6 +153,15 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         target: ModuleType | None = None,
     ) -> importlib.machinery.ModuleSpec | None:
         """Find the spec for the module."""
+        # Sealed image is authoritative: a sealed binary resolves its modules
+        # from the manifest by name, with no filesystem probing for .jac. This
+        # is the primary path (not a fallback) so a sealed runtime never touches
+        # the disk for its own code. In an unsealed dev tree no image is loaded,
+        # so this is a no-op and resolution falls through to the source search.
+        sealed_spec = self._sealed_spec(fullname)
+        if sealed_spec is not None:
+            return sealed_spec
+
         if path is None:
             # Top-level import
             paths_to_search = get_jac_search_paths()
@@ -164,15 +185,16 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                             loader=self,
                             submodule_search_locations=[candidate_path],
                         )
-                # No __init__.jac found — treat as Jac namespace package if
-                # the directory contains .jac files but no __init__.py
-                # (which would make it a regular Python package).  Without
-                # this, Python's PathFinder must create the namespace
-                # package, which only works when the parent directory
-                # happens to be on sys.path at that moment.
-                if not os.path.isfile(
-                    os.path.join(candidate_path, "__init__.py")
-                ) and any(ext_registry.is_jac(f) for f in os.listdir(candidate_path)):
+                # No __init__.jac found — treat as an implicit Jac namespace
+                # package when a .jac source lives anywhere in its subtree (and
+                # it is not a regular Python package). Without this, Python's
+                # PathFinder must create the namespace package, which only works
+                # when the parent directory happens to be on sys.path at that
+                # moment. The subtree check (not just direct .jac files) is what
+                # lets per-component import descend through an *intermediate*
+                # namespace package like ``engine/`` in ``engine.math.vec3``
+                # (issue #7211).
+                if ext_registry.is_jac_namespace_package(candidate_path):
                     spec = importlib.machinery.ModuleSpec(
                         fullname, loader=None, is_package=True
                     )
@@ -188,6 +210,23 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         return None
 
+    def _sealed_spec(self, fullname: str) -> importlib.machinery.ModuleSpec | None:
+        found = _sealed.find_module(fullname)
+        if found is None:
+            return None
+        image, entry, src_rel = found
+        origin = image.virtual_origin(src_rel)
+        is_pkg = entry.get("package", False)
+        spec = importlib.machinery.ModuleSpec(
+            fullname, self, origin=origin, is_package=is_pkg
+        )
+        # Populate __file__ from the (virtual) origin so tracebacks and code
+        # that inspects __file__ behave as if the source were on disk.
+        spec._set_fileattr = True
+        if is_pkg:
+            spec.submodule_search_locations = [os.path.dirname(origin)]
+        return spec
+
     def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType | None:
         """Create the module."""
         return None  # use default machinery
@@ -199,6 +238,15 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         They are compiled with the lightweight jac0 transpiler rather than
         the full Jac compiler, which depends on them.
         """
+        # Sealed image: the bootstrap code object is frozen in the manifest;
+        # there is no .jac source to transpile.
+        frozen = _sealed.find_module(module.__name__)
+        if frozen is not None and frozen[1].get("bootstrap"):
+            code = frozen[0].bootstrap_code(module.__name__)
+            if code is not None:
+                exec(code, module.__dict__)  # noqa: S102
+                return
+
         with open(file_path, encoding="utf-8") as f:
             jac_source = f.read()
 
@@ -224,8 +272,13 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         file_path = module.__spec__.origin
 
-        # Bootstrap path: .jac files inside jaclang/ are compiled with jac0
-        if self._is_bootstrap_jac(file_path):
+        # Bootstrap tier: a sealed module the manifest flags as bootstrap, or (in
+        # an unsealed tree) a .jac under jaclang/jac0core/. Either way it is
+        # compiled/loaded via jac0, never the full compiler.
+        sealed = _sealed.find_module(module.__name__)
+        if (
+            sealed is not None and sealed[1].get("bootstrap")
+        ) or self._is_bootstrap_jac(file_path):
             self._exec_bootstrap(module, file_path)
             return
 
@@ -306,12 +359,36 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                         f"Native wrapper install failed for {file_path}: {e}"
                     )
 
+    def get_source(self, fullname: str) -> str | None:
+        """Return module source text when available.
+
+        For sealed modules the ``.jac`` file is absent, but a ``--debug-src``
+        image embeds the source in the JIR; ``linecache`` calls this to render
+        source lines in tracebacks. Returns None when no debug source exists
+        (release images), which leaves tracebacks with file:line but no echo.
+        """
+        return _sealed.source_for(fullname)
+
     def get_code(self, fullname: str) -> object | None:
         """Get the code object for a module.
 
         This method is required by runpy when using `python -m module`.
         """
         from jaclang.jac0core.runtime import JacRuntime as Jac
+
+        # Sealed image is authoritative (see find_spec): resolve a sealed module
+        # by name from the manifest, no filesystem probing. One lookup: the
+        # bootstrap tier loads via bootstrap_code, the rest via get_bytecode at
+        # the virtual origin.
+        found = _sealed.find_module(fullname)
+        if found is not None:
+            image, entry, src_rel = found
+            if entry.get("bootstrap"):
+                return image.bootstrap_code(fullname)
+            return Jac.get_compiler().get_bytecode(
+                full_target=image.virtual_origin(src_rel),
+                target_program=Jac.get_program(),
+            )
 
         # Find the .jac file for this module
         paths_to_search = get_jac_search_paths()

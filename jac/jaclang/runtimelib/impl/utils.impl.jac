@@ -71,23 +71,25 @@ impl traverse_graph(
 impl collect_node_connections(
     current_node: NodeArchetype, visited_nodes: set, connections: set, edge_ids: set
 ) -> None {
+    import from jaclang.jac0core.runtime { resolve_ref }
     if (current_node not in visited_nodes) {
         visited_nodes.add(current_node);
-        edges = current_node.__jac__.edges;
-        for edge_ in edges {
-            if (edge_.id in edge_ids) {
+        node_anchor = current_node.__jac__;
+        edges = list(node_anchor.edges);
+        for edge_stub in edges {
+            if (edge_stub.id in edge_ids) {
                 continue;
             }
-            edge_ids.add(edge_.id);
-            target = edge_.target;
-            if target {
+            edge_ids.add(edge_stub.id);
+            edge_ = resolve_ref(edge_stub, node_anchor);
+            if edge_ is None {
+                continue;
+            }
+            source = resolve_ref(edge_.source, edge_);
+            target = resolve_ref(edge_.target, edge_);
+            if source and target {
                 connections.add(
-                    (
-                        edge_.id,
-                        edge_.source.archetype,
-                        target.archetype,
-                        edge_.archetype
-                    )
+                    (edge_.id, source.archetype, target.archetype, edge_.archetype)
                 );
                 collect_node_connections(
                     target.archetype, visited_nodes, connections, edge_ids

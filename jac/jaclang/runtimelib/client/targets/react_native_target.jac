@@ -15,8 +15,7 @@ obj ReactNativeTarget(ClientTarget) {
     has name: str = "react-native",
         default: bool = False,
         requires_setup: bool = True,
-        config_section: str = "react_native",
-        output_dir: Path = Path("mobile-rn/dist");
+        config_section: str = "react_native";
 
     override def setup(project_dir: Path) -> None;
     override def build(

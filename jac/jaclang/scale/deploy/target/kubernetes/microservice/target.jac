@@ -194,6 +194,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         total = len(names);
         elapsed = 0;
         ready = 0;
+        # console.status is an in-place spinner that never streams on a non-TTY log (CI); fall back to plain lines so progress isn't stuck at "0/{total}".
+        interactive = bool(getattr(console, "is_terminal", False));
+        last_line = "";
 
         app_names = [
             (dep["metadata"]["labels"] or {}).get("app")
@@ -249,10 +252,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                 }
                 detail = ", ".join(phases) if phases else "scheduling pods";
-                st.update(
+                line = (
                     f"Rolling out fleet: {ready}/{total} ready - {elapsed}s "
                     f"elapsed ({detail}) - pods install jac + start the app"
                 );
+                st.update(line);
+                # Emit to CI when the count moves or ~every 30s; dedupe to avoid spam.
+                if not interactive {
+                    stamp = f"{ready}/{total} {detail}";
+                    if stamp != last_line or elapsed % 30 == 0 {
+                        console.print(line);
+                        last_line = stamp;
+                    }
+                }
                 time.sleep(10);
                 elapsed += 10;
             }
@@ -385,7 +397,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             deploy_context=self._deploy_context,
             logger=self.logger,
             no_image=True,
-            experimental=app_config.experimental,
+            dev=app_config.dev,
             project_dir=app_config.code_folder,
             microservices_config=self.microservices_config
         );

@@ -123,10 +123,12 @@ obj MicroserviceOrchestrator {
     def _build_registry -> ServiceRegistry {
         registry = ServiceRegistry();
         routes = self.ms_config.get("routes", {});
+        service_files = dict(self.ms_config.get("service_files", {}) or {});
         for (route_name, prefix) in routes.items() {
             name_str: str = str(route_name);
+            svc_file: str = str(service_files.get(name_str) or f"{name_str}.jac");
             svc_entry = ServiceEntry(
-                name=name_str, file=f"{name_str}.jac", prefix=str(prefix), port=0
+                name=name_str, file=svc_file, prefix=str(prefix), port=0
             );
             registry.register(svc_entry);
             logger.info(f"Registered route: {name_str} -> {svc_entry.prefix}");
@@ -207,14 +209,24 @@ obj MicroserviceOrchestrator {
         while time.time() - start_time < max_wait {
             results = pm.check_all_health();
             healthy_count: int = 0;
-            for v in results.values() {
-                if v {
+            dead_count: int = 0;
+            for (name, entry) in registry.entries.items() {
+                if results.get(name) {
                     healthy_count += 1;
+                } elif entry.status == ServiceStatus.STOPPED {
+                    dead_count += 1;
                 }
             }
             if healthy_count == len(results) {
                 all_healthy = True;
                 logger.info(f"All {len(results)} services healthy!");
+                break;
+            }
+            if healthy_count + dead_count == len(results) {
+                logger.warning(
+                    f"{dead_count} service(s) exited during boot and cannot "
+                    "become healthy; not waiting further"
+                );
                 break;
             }
             logger.info(

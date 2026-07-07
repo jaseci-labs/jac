@@ -76,6 +76,7 @@ obj TargetRegistry {
     def register(target: ClientTarget) -> None;
     def get(name: str) -> Optional[ClientTarget];
     def get_all -> list[ClientTarget];
+    def clear -> None;
 }
 
 obj TargetFactory {

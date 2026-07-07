@@ -71,6 +71,9 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.capability_check_pass {
             CapabilityCheckPass
         }
+        import from jaclang.compiler.passes.main.jsx_intrinsic_guard_pass {
+            JsxIntrinsicGuardPass
+        }
 
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
@@ -83,7 +86,8 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             SemDefMatchPass,
             CFGBuildPass,
             MTIRGenPass,
-            CapabilityCheckPass
+            CapabilityCheckPass,
+            JsxIntrinsicGuardPass
         ];
     } except ImportError {
         return [
@@ -368,7 +372,11 @@ obj JacCompiler {
         full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
     ) -> None;
 
-    def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None);
+    def _get_precompiled_jir_bytecode(
+        full_target: str, allow_unsealed: bool = True
+    ) -> (bytes | None);
+
+    def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _build_interop_dict(result: uni.Module) -> dict;
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def parse_str(

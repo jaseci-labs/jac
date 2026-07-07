@@ -251,11 +251,11 @@ test "process change settles to ok unless an error was recorded" {
         # A change whose rebuild records no error ends healthy,
         # even when the build was previously broken.
         reloader.record_error("app.jac", "old failure");
-        reloader._dispatch_change = lambda p : None ;
+        reloader._dispatch_change = lambda p , d : None ;
         reloader._process_change("app.jac");
         assert reloader.build_status() == {"status": "ok", "error": None};
         # A change whose rebuild records an error stays broken.
-        reloader._dispatch_change = lambda p : reloader.record_error(p, "boom");
+        reloader._dispatch_change = lambda p , d : reloader.record_error(p, "boom");
         reloader._process_change("app.jac");
         status = reloader.build_status();
         assert status["status"] == "error";
@@ -319,5 +319,58 @@ test "multiple file changes handled" {
         assert len(changed_files) >= 2 , f"Expected 2+ changes, got {len(
             changed_files
         )}";
+    }
+}
+
+# --- TestWatcherMovesAndResilience ---
+test "moves emit delete plus create; directories flagged, noise filtered" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        (temp_dir / "a.jac").write_text("glob x = 1;");
+        (temp_dir / "pagesx").mkdir();
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda e : events.append(e));
+        watcher.start();
+        time.sleep(0.3);
+        import os;
+        os.rename(str(temp_dir / "a.jac"), str(temp_dir / "b.jac"));
+        os.rename(str(temp_dir / "pagesx"), str(temp_dir / "pages"));
+        (temp_dir / "node_modules").mkdir();
+        (temp_dir / ".git").mkdir();
+        time.sleep(0.6);
+        watcher.stop();
+        kinds = {(Path(e.path).name, e.change_type, e.is_directory) for e in events};
+        assert ("a.jac", ChangeType.DELETED, False) in kinds , f"file rename must emit DELETED(old), got {kinds}";
+        assert ("b.jac", ChangeType.CREATED, False) in kinds , f"file rename must emit CREATED(new), got {kinds}";
+        assert ("pagesx", ChangeType.DELETED, True) in kinds , f"dir move must emit directory-flagged DELETED, got {kinds}";
+        assert ("pages", ChangeType.CREATED, True) in kinds , f"dir move must emit directory-flagged CREATED, got {kinds}";
+        noise = {
+            n
+            for (n, _, d) in kinds
+            if d and n in {"node_modules", ".git"}
+        };
+        assert not noise , f"tooling directories must never reach callbacks, got {noise}";
+    }
+}
+
+test "flush loop survives an exception and keeps delivering" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda e : events.append(e));
+        original_flush = watcher._debounce_flush;
+        def exploding_flush {
+            raise RuntimeError("boom");
+        }
+        watcher._debounce_flush = exploding_flush;
+        watcher.start();
+        time.sleep(0.3);  # flush loop hits the exploding flush several times
+        watcher._debounce_flush = original_flush;
+        watcher._on_change(str(temp_dir / "late.jac"), ChangeType.MODIFIED);
+        time.sleep(0.4);
+        watcher.stop();
+        assert len(events) >= 1 , "flush loop must survive an exception and keep delivering events";
     }
 }

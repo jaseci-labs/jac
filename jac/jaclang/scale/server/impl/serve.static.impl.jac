@@ -432,16 +432,21 @@ impl JacAPIServerStatic.graph_data(Authorization: (str | None) = None) -> JSONRe
 
         collect_node_connections(user_root, visited_nodes, connections, edge_ids);
 
-        nodes.append({'id': str(id(user_root)), 'label': 'root'});
+        # jids, not id(obj): stable across processes and refreshes so the
+        # gateway can merge sibling services' fragments, and the same ref
+        # format walker payloads expose as _jac_id / jobj() accepts.
+        nodes.append({'id': Jac.object_ref(user_root), 'label': 'root'});
         for node_arch in visited_nodes {
             if (node_arch != user_root) {
-                nodes.append({'id': str(id(node_arch)), 'label': repr(node_arch)});
+                nodes.append(
+                    {'id': Jac.object_ref(node_arch), 'label': repr(node_arch)}
+                );
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
             edge_data: dict = {
-                'from': str(id(source_node)),
-                'to': str(id(target_node))
+                'from': Jac.object_ref(source_node),
+                'to': Jac.object_ref(target_node)
             };
             if (repr(edge_arch) != 'GenericEdge()') {
                 edge_data['label'] = repr(edge_arch);

@@ -41,10 +41,16 @@ const zstd = std.compress.zstd;
 const Dir = Io.Dir;
 const runtime = @import("runtime.zig");
 
-// --- pinned versions (keep in lockstep with launcher.zig `py_ver`) -----------
-const py_ver = "3.14";
+// --- pinned versions ----------------------------------------------------------
+// The bundled CPython minor version has ONE definition (embed.zig); only the
+// pbs patch release is pinned here and must match it.
+const py_ver = @import("embed.zig").py_ver;
 const PBS_TAG = "20260610";
 const PBS_PY = "3.14.6";
+comptime {
+    if (!std.mem.startsWith(u8, PBS_PY, py_ver ++ "."))
+        @compileError("PBS_PY must be a patch release of embed.zig's py_ver");
+}
 const PBS_FLAVOR = "pgo+lto-full";
 const PBS_BASE = "https://github.com/astral-sh/python-build-standalone/releases/download";
 // The window pbs compresses its archives with (verified: `zstd -lv` reports
@@ -64,11 +70,13 @@ const BUN_BASE = "https://github.com/oven-sh/bun/releases/download";
 
 const MAX_PATH = Dir.max_path_bytes;
 
-const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", mkpayload, @"typeshed-sha" };
+const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", @"build-musl", @"build-wasm-libc", mkpayload, @"typeshed-sha" };
 
-// LLVM release whose static archives the LLVMPY_* shim (jac/native) links
-// against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
-const LLVM_VER = "22.1.8";
+// The pinned LLVM release + per-platform slice table lives in llvm_release.zig
+// (shared with build.zig, so the fetch and the build can't drift).
+const llvm_release = @import("llvm_release.zig");
+const LLVM_VER = llvm_release.LLVM_VER;
+const LlvmRelease = llvm_release.LlvmRelease;
 
 // jaseci-labs/llvm-slice repackages the official LLVM release into a per-member,
 // HTTP-range-fetchable zip. fetchLlvmSlice pulls only the ~84 MB the shim needs
@@ -79,44 +87,9 @@ const LLVM_VER = "22.1.8";
 const SLICE_BASE = "https://github.com/jaseci-labs/llvm-slice/releases/download";
 const SLICE_TAG = "v" ++ LLVM_VER;
 
-// The release is selected per host. `dirname` is the release's top-level dir (also
-// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync).
-// `triple`/`manifest_sha256`/`zip_size` drive the slice fetch. Add a row to
-// support another host platform.
-const LlvmRelease = struct {
-    dirname: []const u8,
-    triple: []const u8,
-    manifest_sha256: []const u8,
-    zip_size: u64,
-};
+// The release is selected for the build host (this tool runs on it).
 fn llvmRelease() ?LlvmRelease {
-    return switch (builtin.os.tag) {
-        .linux => switch (builtin.cpu.arch) {
-            .x86_64 => .{
-                .dirname = "LLVM-22.1.8-Linux-X64",
-                .triple = "x86_64-linux",
-                .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
-                .zip_size = 970350875,
-            },
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-Linux-ARM64",
-                .triple = "aarch64-linux",
-                .manifest_sha256 = "b1aae9c16de5feff6fd4441f0bf32671b27c6dda98382ee389d305db6351e598",
-                .zip_size = 932506999,
-            },
-            else => null,
-        },
-        .macos => switch (builtin.cpu.arch) {
-            .aarch64 => .{
-                .dirname = "LLVM-22.1.8-macOS-ARM64",
-                .triple = "aarch64-apple-darwin",
-                .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
-                .zip_size = 743879473,
-            },
-            else => null,
-        },
-        else => null,
-    };
+    return llvm_release.llvmRelease(builtin.os.tag, builtin.cpu.arch);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -160,12 +133,16 @@ pub fn main(init: std.process.Init) !void {
             if (n < 5) die("usage: payload build-musl <os-arch> <dest-dir> <zig-exe>", .{});
             try buildMusl(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4]);
         },
+        .@"build-wasm-libc" => {
+            if (n < 5) die("usage: payload build-wasm-libc <wasm-rt-src-dir> <dest-dir> <zig-exe>", .{});
+            try buildWasmLibc(io, gpa, a, argv[2], argv[3], argv[4]);
+        },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH] [--precompiled-cache=DIR] [--nvim=DIR] [--seal] [--debug-src]\n(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
@@ -173,6 +150,12 @@ pub fn main(init: std.process.Init) !void {
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
             var musl_dir: ?[]const u8 = null;
+            var wasm_libc_dir: ?[]const u8 = null;
+            var precompiled_cache: ?[]const u8 = null;
+            var nvim_dir: ?[]const u8 = null;
+            var ninja_link: ?[]const u8 = null;
+            var seal = false;
+            var debug_src = false;
             var i: usize = 5;
             while (i < n) : (i += 1) {
                 const arg = argv[i];
@@ -188,9 +171,21 @@ pub fn main(init: std.process.Init) !void {
                     link_source = arg["--link-source=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--musl=")) {
                     musl_dir = arg["--musl=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--wasm-libc=")) {
+                    wasm_libc_dir = arg["--wasm-libc=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--precompiled-cache=")) {
+                    precompiled_cache = arg["--precompiled-cache=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--nvim=")) {
+                    nvim_dir = arg["--nvim=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--ninja-link=")) {
+                    ninja_link = arg["--ninja-link=".len..];
+                } else if (std.mem.eql(u8, arg, "--seal")) {
+                    seal = true;
+                } else if (std.mem.eql(u8, arg, "--debug-src")) {
+                    debug_src = true;
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source, musl_dir, wasm_libc_dir, precompiled_cache, nvim_dir, ninja_link, seal, debug_src);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -659,6 +654,111 @@ fn buildMusl(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Envi
     if (staged < 4) die("build-musl: incomplete harvest ({d}/6 artifacts)", .{staged});
 }
 
+// ========================================================== build-wasm-libc ===
+
+/// Compile the in-repo wasm_rt libc (vendored musl/wasi-libc subset + the jac
+/// allocator/io/abi adapters) to LLVM bitcode for wasm32, one .bc per source
+/// file, into `dest`. wasm_build.jac links these into every na->wasm module so
+/// pure-compute libc never becomes a browser import (#7048). Like build-musl
+/// this is BUILT from the bundled Zig (its clang emits wasm32 bitcode that the
+/// jacllvm LLVM reads); unlike musl the output is target-independent, so there
+/// is one set for all platforms. Idempotent by mtime: a .bc is rebuilt when it
+/// is missing or older than its source (headers count against every unit), so
+/// editing wasm_rt sources Just Works on the next build.
+fn buildWasmLibc(io: Io, gpa: Allocator, a: Allocator, src_root: []const u8, dest: []const u8, zig_exe: []const u8) !void {
+    // Collect sources: jac_*.c at the wasm_rt root, then everything under
+    // vendor/. Output names flatten the vendor path (string/strlen.c ->
+    // string_strlen.bc) to match wasm_build.jac's flat directory scan.
+    var srcs: std.ArrayList([]const u8) = .empty; // absolute-ish source paths
+    defer srcs.deinit(gpa);
+    var outs: std.ArrayList([]const u8) = .empty; // matching .bc basenames
+    defer outs.deinit(gpa);
+    var hdr_m: i96 = 0; // newest non-.c file (headers/prelude) under wasm_rt
+    {
+        var root = Dir.cwd().openDir(io, src_root, .{ .iterate = true }) catch
+            die("build-wasm-libc: wasm_rt source dir missing at {s}", .{src_root});
+        defer root.close(io);
+        var it = root.iterate();
+        while (it.next(io) catch null) |entry| {
+            if (entry.kind != .file) continue;
+            const full = try std.fmt.allocPrint(a, "{s}/{s}", .{ src_root, entry.name });
+            if (!std.mem.startsWith(u8, entry.name, "jac_") or !std.mem.endsWith(u8, entry.name, ".c")) {
+                hdr_m = @max(hdr_m, mtimeNs(io, full) orelse 0);
+                continue;
+            }
+            try srcs.append(gpa, full);
+            try outs.append(gpa, try std.fmt.allocPrint(a, "{s}bc", .{entry.name[0 .. entry.name.len - 1]}));
+        }
+        const vendor = try std.fmt.allocPrint(a, "{s}/vendor", .{src_root});
+        var vdir = Dir.cwd().openDir(io, vendor, .{ .iterate = true }) catch
+            die("build-wasm-libc: vendor dir missing at {s}", .{vendor});
+        defer vdir.close(io);
+        var walker = vdir.walk(gpa) catch die("build-wasm-libc: vendor walk failed", .{});
+        defer walker.deinit();
+        while (walker.next(io) catch null) |entry| {
+            if (entry.kind != .file) continue;
+            const full = try std.fmt.allocPrint(a, "{s}/{s}", .{ vendor, entry.path });
+            if (!std.mem.endsWith(u8, entry.path, ".c")) {
+                hdr_m = @max(hdr_m, mtimeNs(io, full) orelse 0);
+                continue;
+            }
+            try srcs.append(gpa, full);
+            const flat = try a.dupe(u8, entry.path);
+            for (flat) |*ch| {
+                if (ch.* == '/' or ch.* == '\\') ch.* = '_';
+            }
+            try outs.append(gpa, try std.fmt.allocPrint(a, "{s}bc", .{flat[0 .. flat.len - 1]}));
+        }
+    }
+    if (srcs.items.len == 0) die("build-wasm-libc: no sources found under {s}", .{src_root});
+
+    try Dir.cwd().createDirPath(io, dest);
+    var stale: usize = 0;
+    for (srcs.items, outs.items) |src, out_name| {
+        const out_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, out_name });
+        const out_m = mtimeNs(io, out_path) orelse {
+            stale += 1;
+            continue;
+        };
+        if (@max(mtimeNs(io, src) orelse 0, hdr_m) > out_m) stale += 1;
+    }
+    if (stale == 0) {
+        log("==> wasm libc bitcode up to date in {s}; skipping", .{dest});
+        return;
+    }
+
+    log("==> compiling {d} stale/missing wasm_rt source(s) to bitcode via {s} ...", .{ stale, zig_exe });
+    // wasm32-wasi supplies the public libc headers; the vendored internal
+    // headers ride -I flags. -fno-builtin keeps libc-defining TUs from
+    // folding into themselves; -g0 because debug relocs would bloat objects
+    // the in-house WasmLinker then has to skip.
+    const prelude = try std.fmt.allocPrint(a, "{s}/prelude.h", .{src_root});
+    const inc_include = try std.fmt.allocPrint(a, "-I{s}/vendor/include", .{src_root});
+    const inc_internal = try std.fmt.allocPrint(a, "-I{s}/vendor/internal", .{src_root});
+    const inc_arch = try std.fmt.allocPrint(a, "-I{s}/vendor/arch/wasm32", .{src_root});
+    const inc_private = try std.fmt.allocPrint(a, "-I{s}/vendor/private", .{src_root});
+    const inc_math = try std.fmt.allocPrint(a, "-I{s}/vendor/math", .{src_root});
+    var built: usize = 0;
+    for (srcs.items, outs.items) |src, out_name| {
+        const out_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, out_name });
+        if (mtimeNs(io, out_path)) |out_m| {
+            if (@max(mtimeNs(io, src) orelse 0, hdr_m) <= out_m) continue;
+        }
+        if (!runChild(io, &.{
+            zig_exe,                                                                       "cc",         "-target",    "wasm32-wasi",  "-O2",      "-g0",
+            "-w",                                                                          "-c",         "-emit-llvm", "-fno-builtin", "-include", prelude,
+            inc_include,                                                                   inc_internal, inc_arch,     inc_private,    inc_math,   "-D__wasilibc_printscan_no_long_double",
+            "-D__wasilibc_printscan_full_support_option=\"long double support disabled\"", "-o",         out_path,     src,
+        }, null, false))
+            die("build-wasm-libc: zig cc failed for {s}", .{src});
+        built += 1;
+    }
+    // The merged-module cache is derived from the parts; a fresh compile
+    // invalidates it.
+    Dir.cwd().deleteFile(io, try std.fmt.allocPrint(a, "{s}/_merged.bc", .{dest})) catch {};
+    log("==> compiled {d} wasm libc bitcode file(s) -> {s}", .{ built, dest });
+}
+
 /// Extract the single zip member whose name ends with `suffix` from an in-memory
 /// zip, returning its decompressed bytes (caller frees). Reuses the central-
 /// directory parsing helpers from the llvm-slice path; bun's zips are small so
@@ -823,6 +923,39 @@ fn mkPayload(
     // fully static-link Linux executables against musl at `nacompile` time, with
     // no toolchain. Null for mac/windows builds (musl is Linux-only).
     musl_dir: ?[]const u8,
+    // The vendored wasm32 libc bitcode dir (payload build-wasm-libc output).
+    // Bundled so an installed binary links pure-compute libc INTO na->wasm
+    // modules instead of leaking env imports (#7048). Target-independent, so
+    // every platform's payload carries the same set.
+    wasm_libc_dir: ?[]const u8,
+    // Persistent JIR precompile cache dir. When set, site/jaclang/_precompiled
+    // is seeded from it before the precompile and the refreshed tree is copied
+    // back after -- the precompiler validates every seeded .jir by its
+    // content-addressed module key and recompiles only stale ones, so the
+    // multi-minute full precompile shrinks to just the changed modules. A
+    // stale or partial dir is harmless (it only misses reuse), which is why
+    // CI can restore it with prefix-fallback keys unlike the binary cache.
+    precompiled_cache: ?[]const u8,
+    // The assembled ninja editor tree (jac/build.zig composes it from the
+    // neovim dependency's exported runtime + the jac/editor/ninja config
+    // layer). Staged verbatim under stage/nvim/ -- the launcher's `jac ninja`
+    // dispatch points VIMRUNTIME at <rt>/nvim/runtime and sources
+    // <rt>/nvim/ninja/init.lua. Null when the build disables the editor.
+    nvim_dir: ?[]const u8,
+    // Editable dev loop (the ninja analog of --link-source): path to the live
+    // jac/editor/ninja source tree, baked as nvim/ninja_linked_source so the
+    // launcher serves the config layer from source -- edit, relaunch, no
+    // rebuild. Null for release (bundled-only) builds.
+    ninja_link: ?[]const u8,
+    // Seal the runtime (issue #7135): freeze the jac0core bootstrap layer and
+    // emit _precompiled/MANIFEST.json so the payload boots from JIR (sources
+    // ship for tracebacks but are never compiled at runtime). Strict: any
+    // precompile failure aborts the build rather than shipping a half-sealed
+    // tree.
+    seal: bool,
+    // Embed zlib-compressed source text in each sealed .jir (dev sealed
+    // builds); release omits it.
+    debug_src: bool,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -954,7 +1087,22 @@ fn mkPayload(
     if (skip_precompile or link_source != null) {
         log("==> skipping JIR precompile; modules compile on first run", .{});
     } else {
-        try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
+        const site_pre = try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site});
+        if (precompiled_cache) |pc| {
+            if (Dir.cwd().openDir(io, pc, .{ .iterate = true })) |d| {
+                var seed = d;
+                defer seed.close(io);
+                log("==> seeding JIR precompile from {s}", .{pc});
+                try copyTree(io, gpa, a, seed, site_pre, skipNone);
+            } else |_| {} // no seed yet; first build populates it below
+        }
+        try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site, seal, debug_src);
+        if (precompiled_cache) |pc| {
+            Dir.cwd().deleteTree(io, pc) catch {};
+            var fresh = try Dir.cwd().openDir(io, site_pre, .{ .iterate = true });
+            defer fresh.close(io);
+            try copyTree(io, gpa, a, fresh, pc, skipNone);
+        }
     }
 
     // Bundle runtime helpers (pytest/-xdist -> `jac test`, watchdog -> `jac start
@@ -965,7 +1113,24 @@ fn mkPayload(
     Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/__pycache__", .{site})) catch {};
     _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "--target", site }, null, false);
 
-    try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir);
+    try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
+
+    // ninja editor: the assembled nvim tree (runtime/ + ninja/) rides the
+    // payload verbatim -- the launcher's `jac ninja` dispatch resolves it at
+    // <rt>/nvim without booting Python.
+    if (nvim_dir) |nd| {
+        log("==> bundling ninja editor tree (nvim runtime + config)", .{});
+        var nsrc = try Dir.cwd().openDir(io, nd, .{ .iterate = true });
+        defer nsrc.close(io);
+        try copyTree(io, gpa, a, nsrc, try std.fmt.allocPrint(a, "{s}/nvim", .{stage}), skipNone);
+        if (ninja_link) |nl| {
+            log("==> ninja linked-source mode: config layer served from {s}", .{nl});
+            try Dir.cwd().writeFile(io, .{
+                .sub_path = try std.fmt.allocPrint(a, "{s}/nvim/ninja_linked_source", .{stage}),
+                .data = nl,
+            });
+        }
+    }
 
     log("==> packing tar | gzip", .{});
     try tarGzDir(io, gpa, a, stage, out);
@@ -983,24 +1148,48 @@ fn resolvePython(io: Io, a: Allocator, pbs_py_dir: []const u8) ![]const u8 {
 
 /// Precompile jaclang -> _precompiled JIR for a fast first run. The precompiler
 /// intentionally cannot bytecode-compile a few core modules and exits non-zero;
-/// success is judged by the JIR count, not the exit code.
-fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, py: []const u8, pbs_py_dir: []const u8, site: []const u8) !void {
+/// success is judged by the PRECOMPILE_RESULT.json completion marker it writes
+/// at the end of an uncrashed run, not the exit code.
+fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, py: []const u8, pbs_py_dir: []const u8, site: []const u8, seal: bool, debug_src: bool) !void {
     const pc = try std.fmt.allocPrint(a, "{s}/jaclang/utils/precompile_bytecode.jac", .{site});
     if (!fileExists(io, pc)) return;
-    log("==> precompiling jaclang -> _precompiled JIR (fast first run)", .{});
+    if (seal) {
+        log("==> precompiling + SEALING jaclang (JIR-authoritative image, #7135)", .{});
+    } else {
+        log("==> precompiling jaclang -> _precompiled JIR (fast first run)", .{});
+    }
 
+    // One fixed boot shim for both passes; the precompiler's arguments travel
+    // through the child's real argv, never spliced into Python source. Pass 1
+    // is compile-only (--seal-compile excludes jac0core and does NOT finalize),
+    // so a mid-loop crash on an un-precompilable native module leaves the
+    // generated JIRs intact for the crash-isolated --seal-finalize pass below.
     const boot = try std.fmt.allocPrint(a, "{s}/precompile_boot.py", .{site});
     try Dir.cwd().writeFile(io, .{
         .sub_path = boot,
-        .data = try std.fmt.allocPrint(a,
-            \\import sys
-            \\import _jac_finder; _jac_finder.install()
-            \\sys.argv = ['jac', 'run', r'''{s}''', r'''{s}''']
-            \\from jaclang.jac0core.cli_boot import start_cli
-            \\start_cli()
-            \\
-        , .{ pc, site }),
+        .data =
+        \\import sys
+        \\import _jac_finder; _jac_finder.install()
+        \\sys.argv = ['jac', 'run'] + sys.argv[1:]
+        \\from jaclang.jac0core.cli_boot import start_cli
+        \\start_cli()
+        \\
+        ,
     });
+    var argv_buf: [7][]const u8 = undefined;
+    var argc: usize = 0;
+    for ([_][]const u8{ py, "-S", boot, pc, site }) |s| {
+        argv_buf[argc] = s;
+        argc += 1;
+    }
+    if (seal) {
+        argv_buf[argc] = "--seal-compile";
+        argc += 1;
+    }
+    if (seal and debug_src) {
+        argv_buf[argc] = "--debug-src";
+        argc += 1;
+    }
 
     // Controlled, hermetic env (clone parent, then override) -- mirrors the env
     // the shell prefixed the precompiler with. DONTWRITEBYTECODE so importing
@@ -1023,33 +1212,56 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
     // bundle fail validation at runtime and every module recompiles on first run.
     // JAC_NO_DEV_SOURCE keeps pkg_version reading the staged dist-info we ship.
     try env.put("JAC_NO_DEV_SOURCE", "1");
+    // The staged jaclang imports itself to run the precompiler; it must run
+    // UNSEALED (from source), never sealed-load the manifest it is regenerating
+    // (which may still be a seeded, older-format image). #7135.
+    try env.put("JAC_NO_SEAL", "1");
 
-    _ = runChild(io, &.{ py, "-S", boot }, &env, true); // non-zero exit is by design
+    _ = runChild(io, argv_buf[0..argc], &env, true); // non-zero exit is by design
 
-    const jir = countJir(io, gpa, try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site}));
-    if (jir >= 300) {
-        log("   _precompiled: {d} JIR generated (a few core modules compile at runtime by design)", .{jir});
-    } else {
-        // Below the healthy floor means the precompiler crashed, not the handful
-        // of by-design skips. Fail rather than ship a slow cold-start binary.
-        die("mkpayload: only {d} JIR produced (expected >=300); precompiler likely crashed.", .{jir});
+    // The precompiler removes PRECOMPILE_RESULT.json before its loop and
+    // rewrites it after (see precompile_bytecode.jac RESULT_NAME); presence
+    // means "ran to completion", the one thing the exit code cannot say.
+    const pre_dir = try std.fmt.allocPrint(a, "{s}/jaclang/_precompiled", .{site});
+    const result = try std.fmt.allocPrint(a, "{s}/PRECOMPILE_RESULT.json", .{pre_dir});
+    if (!fileExists(io, result))
+        die("mkpayload: precompiler did not run to completion (no {s}); it likely crashed. Fail rather than ship a slow cold-start binary.", .{result});
+    Dir.cwd().deleteFile(io, result) catch {};
+    log("   _precompiled: compile pass ran to completion", .{});
+
+    if (seal) {
+        // Second, crash-isolated pass: the best-effort precompile above can die
+        // mid-loop on an un-precompilable native module (the "exits non-zero by
+        // design" case), which would skip the inline seal. --seal-finalize does
+        // ONLY the seal (verify every sealable module has a JIR, build the
+        // manifest, freeze the bootstrap) with no compilation, so it always
+        // completes -- and it fails loudly when the compile pass left gaps.
+        var fin_argc: usize = 0;
+        for ([_][]const u8{ py, "-S", boot, pc, site, "--seal-finalize" }) |s| {
+            argv_buf[fin_argc] = s;
+            fin_argc += 1;
+        }
+        if (debug_src) {
+            argv_buf[fin_argc] = "--debug-src";
+            fin_argc += 1;
+        }
+        log("==> sealing (finalize): completeness check + manifest + freeze bootstrap", .{});
+        if (!runChild(io, argv_buf[0..fin_argc], &env, true))
+            die("mkpayload: seal-finalize failed (see log above).", .{});
+
+        // Strict: MANIFEST.json (sealed.py MANIFEST_NAME) must exist -- never
+        // ship a half-sealed tree.
+        const manifest = try std.fmt.allocPrint(a, "{s}/MANIFEST.json", .{pre_dir});
+        if (!fileExists(io, manifest)) {
+            die("mkpayload: seal produced no MANIFEST.json; the seal failed (see log above).", .{});
+        }
+        log("   sealed: MANIFEST.json present; payload boots from JIR (sources ship for tracebacks, never compiled).", .{});
     }
 }
 
-fn countJir(io: Io, gpa: Allocator, dir_path: []const u8) usize {
-    var dir = Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch return 0;
-    defer dir.close(io);
-    var walker = dir.walk(gpa) catch return 0;
-    defer walker.deinit();
-    var count: usize = 0;
-    while (walker.next(io) catch null) |entry| {
-        if (entry.kind == .file and std.mem.endsWith(u8, entry.path, ".jir")) count += 1;
-    }
-    return count;
-}
 
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
-fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8) !void {
+fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8, wasm_libc_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
     const lib_dst = try std.fmt.allocPrint(a, "{s}/python/lib", .{stage});
     try Dir.cwd().createDirPath(io, lib_dst);
@@ -1069,8 +1281,8 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     );
     // pbs ships the pgo+lto-full libpython UNSTRIPPED (debug info + .llvmbc LTO
     // bitcode) at ~245 MiB. Strip it to ~20 MiB -- the single biggest payload
-    // win. The exported dynamic symbols the launcher dlsym's (Py_Initialize,
-    // Py_BytesMain, ...) live in .dynsym and are kept; only debug / local
+    // win. The exported dynamic symbols the launcher dlsym's (PyInitConfig_*,
+    // Py_RunMain, ...) live in .dynsym and are kept; only debug / local
     // symbols / dead bitcode go, so the PGO+LTO-optimized code is untouched.
     stripBestEffort(io, staged_lib);
 
@@ -1112,6 +1324,10 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // Vendored static-musl runtime, so an installed binary can fully static-link
     // Linux executables against musl at `nacompile` time (no glibc/loader dep).
     if (musl_dir) |md| try stageMusl(io, a, md, stage);
+
+    // Vendored wasm32 libc bitcode, so an installed binary links libc into
+    // na->wasm modules (in-module libc + jac_host1 import contract, #7048).
+    if (wasm_libc_dir) |wd| try stageWasmLibc(io, a, wd, stage);
 }
 
 /// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names
@@ -1197,6 +1413,37 @@ fn stageMusl(io: Io, a: Allocator, musl_dir: []const u8, stage: []const u8) !voi
         staged += 1;
     }
     log("==> staged {d} musl runtime artifact(s) -> python/floor/{s}/musl", .{ staged, osarch });
+}
+
+/// Stage the vendored wasm32 libc bitcode into the payload so an installed
+/// binary links libc into na->wasm modules at build time (in-module libc +
+/// jac_host1 import contract, #7048). Lands at `python/floor/wasm32/libc/`,
+/// exactly where wasm_build.jac's _wasm_libc_dir looks in a shipped binary;
+/// NOT arch-keyed — bitcode for wasm32 is the same on every build host. The
+/// derived `_merged.bc` cache is skipped: it is regenerated on first use.
+fn stageWasmLibc(io: Io, a: Allocator, wasm_libc_dir: []const u8, stage: []const u8) !void {
+    const dst = try std.fmt.allocPrint(a, "{s}/python/floor/wasm32/libc", .{stage});
+    try Dir.cwd().createDirPath(io, dst);
+    var dir = Dir.cwd().openDir(io, wasm_libc_dir, .{ .iterate = true }) catch
+        die("wasm-libc staging: dir missing at {s} (run `zig build vendor-wasm-libc`)", .{wasm_libc_dir});
+    defer dir.close(io);
+    var staged: usize = 0;
+    var it = dir.iterate();
+    while (it.next(io) catch null) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".bc")) continue;
+        if (std.mem.eql(u8, entry.name, "_merged.bc")) continue;
+        try Dir.cwd().copyFile(
+            try std.fmt.allocPrint(a, "{s}/{s}", .{ wasm_libc_dir, entry.name }),
+            Dir.cwd(),
+            try std.fmt.allocPrint(a, "{s}/{s}", .{ dst, entry.name }),
+            io,
+            .{},
+        );
+        staged += 1;
+    }
+    log("==> staged {d} wasm libc bitcode file(s) -> python/floor/wasm32/libc", .{staged});
+    if (staged == 0) die("wasm-libc staging: no .bc files in {s}", .{wasm_libc_dir});
 }
 
 /// Locate certifi's `cacert.pem` in the pbs tree (pip vendors it). Tries the
@@ -1293,6 +1540,14 @@ fn fileExists(io: Io, path: []const u8) bool {
     const f = Dir.cwd().openFile(io, path, .{}) catch return false;
     f.close(io);
     return true;
+}
+
+/// File mtime in ns, or null if unreadable. Backs the wasm-libc staleness check.
+fn mtimeNs(io: Io, path: []const u8) ?i96 {
+    const f = Dir.cwd().openFile(io, path, .{}) catch return null;
+    defer f.close(io);
+    const st = f.stat(io) catch return null;
+    return st.mtime.nanoseconds;
 }
 
 fn sha256Hex(bytes: []const u8) [64]u8 {

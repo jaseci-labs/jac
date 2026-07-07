@@ -13,9 +13,9 @@ A Jaclang plugin can:
 - **[Override runtime behavior](#recipe-3-override-runtime-behavior)** like the API server class, the user manager, the storage backend, or the console (e.g., scale swapping in a FastAPI server).
 - **[Define `jac.toml` config schemas](#recipe-4-define-plugin-config-in-jactoml)** with validation, defaults, and `[plugins.<name>]` sections.
 - **[Ship project templates](#recipe-5-ship-a-project-template)** that show up in `jac create --use <name>`.
-- **[Register custom dependency types](#recipe-6-register-a-custom-dependency-type)** like `npm` alongside the built-in PyPI dependency handler.
+- **[Register an ecosystem dependency provider](#recipe-6-register-an-ecosystem-dependency-provider)** like `npm` alongside the built-in PyPI dependency handler.
 
-All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered as an entry point in `pyproject.toml` under the `jac` group, and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
+All of these are layered on the same hook system: a plugin is a class whose methods are decorated with `@hookimpl`, registered under `[entrypoints.jac]` in the plugin's `jac.toml` (the `jac` entry-point group), and discovered by jaclang at startup via [pluggy](https://pluggy.readthedocs.io/).
 
 ## Project layout
 
@@ -28,13 +28,13 @@ jac-myplugin/
 │   ├── plugin.jac            # CLI extension (`JacCmd.create_cmd` hook)
 │   ├── plugin_config.jac     # Config schema, templates, dep types
 │   └── impl/                 # Implementation modules
-└── pyproject.toml            # Dependencies + [project.entry-points."jac"]
+└── jac.toml                  # Metadata + [entrypoints.jac]
 ```
 
-The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points in `pyproject.toml`:
+The two files that matter to jaclang are `plugin.jac` (containing a `JacCmd` class with the CLI hooks) and `plugin_config.jac` (containing a `Jac<Name>PluginConfig` class with metadata, schema, templates, and dependency types). Both are registered as entry points under `[entrypoints.jac]` in `jac.toml` (written into the wheel's `jac` entry-point group by `jac bundle`, and read directly by `jac install -e`):
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 myplugin = "jac_myplugin.plugin:JacCmd"
 myplugin_plugin_config = "jac_myplugin.plugin_config:JacMypluginPluginConfig"
 ```
@@ -120,18 +120,21 @@ class JacCmd {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
 [project]
 name = "jac-hello"
 version = "0.1.0"
 
-[project.entry-points."jac"]
+[entrypoints.jac]
 hello = "jac_hello.plugin:JacCmd"
 ```
 
 > Note: plugins do **not** depend on PyPI `jaclang` - `jaclang` is the host runtime provided by the `jac` binary that loads your plugin, so it never belongs in `dependencies`.
+
+!!! warning "Use `jac.toml`, not `pyproject.toml`, for the `jac`-native dev loop"
+    `jac install -e` and `jac bundle` read the plugin's `jac.toml`. A plugin folder with only a `pyproject.toml` declaring `[project.entry-points."jac"]` links without error under `jac install -e`, but the entry point is never registered and the command silently doesn't appear. The `pyproject.toml` form still works for plugins installed into the host Python environment with `pip`.
 
 After `jac install -e .`, `jac --help` will list `hello` in the *general* group and `jac hello Alice --shout` will print `HELLO, ALICE!`.
 
@@ -302,10 +305,10 @@ class JacTimestampPlugin {
 }
 ```
 
-**`pyproject.toml`**
+**`jac.toml`**
 
 ```toml
-[project.entry-points."jac"]
+[entrypoints.jac]
 timestamp = "jac_timestamp.plugin:JacTimestampPlugin"
 ```
 
@@ -475,44 +478,66 @@ def _post_create_starter(project_path: any, project_name: str) -> None {
 
 **Real reference**: [the built-in client framework ships project templates (`web-static` and `web-app`)](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/plugin_config.jac) by loading them from disk via `load_template_from_directory(...)`. The post-create hook installs Bun and runs `bun install` to bootstrap the frontend. If your template is large, prefer the disk-loading approach over inlining `files` in code.
 
-### Recipe 6: Register a custom dependency type
+### Recipe 6: Register an ecosystem dependency provider
 
-The core `jac add` and `jac install` commands manage Python dependencies via PyPI. If your plugin manages packages from a different registry -- npm, Cargo, gem, Helm chart repos, anything -- register a custom dependency type so users can do `jac add <pkg> --<your-flag>` and `jac install` will pick it up too.
+The core `jac add` and `jac install` commands manage Python dependencies via PyPI through the built-in `python` provider. If your plugin manages packages from a different registry -- npm, Cargo, gem, Helm chart repos, anything -- register an `EcosystemProvider` so the ecosystem becomes first-class: its manifest slice lives in `[dependencies.<name>]`, `jac install` dispatches to it, `jac deps` reports it, and `jac eject`/publish can materialize it as standalone artifacts.
 
 ```jac
+import from jaclang.project.providers {
+    EcosystemProvider, InstallContext, ResolvedDependency, manifest_plugin_deps
+}
+
+"""A 'cargo' ecosystem for Rust crates."""
+obj CargoProvider(EcosystemProvider) {
+    has name: str = "cargo",
+        manifest_key: str = "cargo",
+        cli_flag: str = "--cargo";
+
+    override def resolve(
+        config: JacConfig, include_dev: bool = False
+    ) -> list[ResolvedDependency] {
+        (deps, dev_deps) = manifest_plugin_deps(config, "cargo");
+        # Map the manifest slice to ResolvedDependency entries (set
+        # ecosystem="cargo" and an origin such as "manifest").
+        return [];
+    }
+
+    override def install_all(
+        config: JacConfig, deps: list[ResolvedDependency], ctx: InstallContext
+    ) -> bool {
+        # Run `cargo install <pkg>` for each resolved dependency.
+        return True;
+    }
+
+    override def add_package(
+        config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
+    ) -> str | None {
+        # Install, record via config.add_dependency(..., dep_type="cargo"),
+        # config.save(), and return the recorded version spec.
+        return version or "latest";
+    }
+
+    override def remove_package(
+        config: JacConfig, name: str, dev: bool, ctx: InstallContext
+    ) -> bool {
+        return config.remove_dependency(name, dev=dev, dep_type="cargo");
+    }
+}
+
 """Plugin config for jac-myplugin."""
 class JacMypluginPluginConfig {
     # ... other hooks ...
 
-    """Register a 'cargo' dependency type for Rust crates."""
     @hookimpl
-    static def register_dependency_type -> dict[str, any] | None {
-        return {
-            "name": "cargo",
-            "dev_name": "cargo.dev",
-            "cli_flag": "--cargo",
-            "install_dir": ".jac/cargo",
-            "install_handler": _cargo_install,
-            "remove_handler": _cargo_remove
-        };
+    static def register_ecosystem_providers -> list {
+        return [CargoProvider()];
     }
-}
-
-"""Install one or more cargo packages declared in jac.toml."""
-def _cargo_install(packages: list[str], dev: bool, install_dir: str) -> int {
-    # Run `cargo install <pkg>` for each package.
-    return 0;
-}
-
-"""Remove one or more cargo packages."""
-def _cargo_remove(packages: list[str], dev: bool, install_dir: str) -> int {
-    return 0;
 }
 ```
 
-This adds a `[dependencies.cargo]` section to `jac.toml`, a `--cargo` flag to `jac add` and `jac remove`, and routes installation through your handlers when `jac install` runs.
+This adds a `[dependencies.cargo]` section to `jac.toml`, routes `jac install` through your provider, and (once you wire the `--cargo` flag onto `add`/`remove` via `registry.extend_command`) enables `jac add <pkg> --cargo`. Optionally override `emit_standalone(...)` to materialize the slice for `jac eject` (the npm provider emits a vanilla `package.json` this way). Providers must be side-effect-free for projects that don't declare their manifest key: `resolve()` should return an empty list when `[dependencies.cargo]` is absent.
 
-**Real reference**: [the client framework's npm dependency type](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/plugin_config.jac) is the only dependency type currently in the monorepo. Its handlers shell out to `bun` (or `npm` if Bun isn't available) to manage the project's frontend packages.
+**Real reference**: [the client framework's npm provider](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/npm_provider.jac) is the only non-python provider currently in the monorepo. It resolves the `[dependencies.npm]` slice (plus self-healed client core deps), installs through `bun` via the vite bundler, and emits a standalone `package.json` for ejected apps.
 
 ### Recipe 7: Custom persistence backends
 
@@ -746,7 +771,7 @@ A condensed list of every hook plugins can override. The full definitions are in
 | `get_config_schema` | `() -> dict \| None` | Return the `jac.toml` schema (see Recipe 4). |
 | `on_config_loaded` | `(config: dict) -> None` | Called after the user's config is loaded -- useful for caching parsed values. |
 | `validate_config` | `(config: dict) -> list[str]` | Return a list of error messages (empty if valid). |
-| `register_dependency_type` | `() -> dict \| None` | Register a custom dependency manager (see Recipe 6). |
+| `register_ecosystem_providers` | `() -> list \| None` | Register ecosystem dependency providers (see Recipe 6). |
 | `register_project_template` | `() -> dict \| None` | Register a `jac create` template (see Recipe 5). |
 
 ## Distribution

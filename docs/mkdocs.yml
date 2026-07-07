@@ -3,6 +3,9 @@ site_url: https://docs.jaseci.org
 repo_url: https://github.com/Jaseci-Labs/jaseci
 edit_uri: edit/main/docs/docs
 use_directory_urls: true
+validation:
+  links:
+    anchors: warn   # broken #anchors fail `mkdocs build --strict`
 exclude_docs: |
   community/release_notes/unreleased/
 nav:
@@ -47,11 +50,16 @@ nav:
           - Structured Outputs: "tutorials/ai/structured-outputs.md"
           - Agentic AI: "tutorials/ai/agentic.md"
           - Multimodal: "tutorials/ai/multimodal.md"
+          - AI-Assisted Development (MCP): "tutorials/ai/mcp-quickstart.md"
       - Desktop & Mobile Tutorials:
           - Desktop App: "tutorials/fullstack/desktop.md"
           - Mobile App: "tutorials/fullstack/mobile.md"
       - Native Tutorials:
           - Build a Chess Engine: "tutorials/native/chess.md"
+          - WebAssembly in the Browser: "tutorials/native/wasm.md"
+      - Package & Extend:
+          - Publish a Library: "tutorials/extend/publish-a-library.md"
+          - Build a Jac Plugin: "tutorials/extend/build-a-plugin.md"
       - Ship It — Deploy & Scale:
           - Local API Server: "tutorials/production/local.md"
           - Microservices with sv import: "tutorials/production/microservices.md"
@@ -101,7 +109,6 @@ nav:
       - Codebase Guide: "community/codebase-guide.md"
       - FAQ: "quick-guide/faq.md"
       - Breaking Changes: "community/breaking-changes.md"
-      - PR Leaderboard: "community/contributors.md"
       - Jac Playground: https://playground.jaseci.org/cl/app
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
@@ -299,7 +306,8 @@ plugins:
         quick-guide/next-steps.md: quick-guide/faq.md
         reference/language/index.md: reference/language/foundation.md
         tutorials/roadmap.md: quick-guide/index.md
-        community/top_contributors.md: community/contributors.md
+        community/top_contributors.md: community/contributing.md
+        community/contributors.md: community/contributing.md
 
         # Documentation restructure redirects
         full-docs-guide.md: reference/index.md

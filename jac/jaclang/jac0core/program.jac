@@ -9,6 +9,21 @@ import type from jaclang.jac0core.compiler { JacCompiler }
 import type from jaclang.jac0core.passes { Transform }
 
 class JacProgram {
+    has mod: uni.ProgramModule,
+        py_raise_map: dict[(str, str)],
+        mtir_map: dict[(str, Info)],
+        errors_had: list[Alert],
+        warnings_had: list[Alert],
+        type_evaluator: TypeEvaluator | None,
+        _compiler: JacCompiler | None,
+        _compile_options: CompileOptions,
+        _native_cache: dict[(str, any)],
+        _hub_cache_times: dict[str, float],
+        _dependents: dict[str, set[str]],
+        _track_dependencies: bool,
+        _auto_promote_native: bool,
+        _auto_promote_target: str;
+
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
@@ -23,7 +38,7 @@ class JacProgram {
     def record_module_dependencies(self: JacProgram, mod: uni.Module) -> None;
     def transitive_dependents(self: JacProgram, target_path: str) -> set[str];
     def invalidate_module(self: JacProgram, resolved_path: str) -> None;
-    def _search_hubs(self: JacProgram) -> list[dict];
+    def _search_hubs(self: JacProgram) -> list[dict[(str, uni.Module)]];
     def find_module(self: JacProgram, path: str) -> (uni.Module | None);
     def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
     def parse_str(

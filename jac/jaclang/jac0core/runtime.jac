@@ -144,6 +144,14 @@ def resolve_ref(
     if ctx.mem.is_recoverable_quarantine(stub.id) {
         return None;
     }
+
+    if os.environ.get("JAC_SV_SIBLING") == "1" {
+        logger.debug(
+            f"unresolvable ref {type(stub).__name__} [{stub.id}] in sibling "
+            "service; skipping without heal (peer-owned or owner will heal)"
+        );
+        return None;
+    }
     ref_repr = referrer.id if referrer is not None else '?';
     logger.error(
         f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
@@ -540,8 +548,8 @@ class JacConfig {
 
     static def on_config_loaded(config: dict[(str, Any)]) -> None;
     static def validate_config(config: dict[(str, Any)]) -> list[str];
-    @hookable
-    static def register_dependency_type -> (dict[(str, Any)] | None);
+    @hookable(firstresult=False)
+    static def register_ecosystem_providers -> (list | None);
 
     @hookable(firstresult=False)
     static def register_project_template -> (dict[(str, Any)] | None);
