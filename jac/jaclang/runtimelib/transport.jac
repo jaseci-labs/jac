@@ -1,7 +1,6 @@
 import json;
 import from collections.abc { Callable }
 import from typing { Any }
-import from enum { Enum }
 
 enum MessageType {
     RESPONSE = "response",

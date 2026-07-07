@@ -15,33 +15,19 @@ import from jaclang.jac0core.diagnostics {
     E0004,
     E0005,
     E0006,
-    E0010,
-    E0011,
     E0012,
     E0013,
-    E0020,
-    E0021,
     E0022,
-    E0023,
     E0025,
     E0026,
     E0027,
     E0028,
     E0030,
-    E0031,
     E0032,
-    E0033,
     E0034,
-    E0040,
-    E0041,
-    E0042,
-    E0043,
-    E0044,
     E0045,
     E0046,
     E0047,
-    E0050,
-    E0051,
     E2023,
     E2028,
     W0060,
@@ -181,13 +167,7 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComment }
 
-import from jaclang.jac0core.constant {
-    Tokens as Tok,
-    SymbolAccess,
-    SymbolType,
-    EdgeDir,
-    CodeContext
-}
+import from jaclang.jac0core.constant { Tokens as Tok, EdgeDir, CodeContext }
 
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.INT: Tok.INT.value,
@@ -427,6 +407,7 @@ obj Parser {
     def make_special_name(tok: Token) -> Name;
     def make_name_or_special(tok: Token) -> Name;
     def parse_access_tag -> SubTag | None;
+    def _make_literal(node_cls: type, name: str, tok: Token) -> object;
     def make_string(tok: Token) -> String;
     def make_string_from_value(value: str) -> String;
     def make_int(tok: Token) -> Int;

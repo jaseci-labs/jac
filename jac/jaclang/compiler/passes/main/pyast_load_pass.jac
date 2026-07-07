@@ -107,6 +107,7 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt;
     def proc_pass(nd: py_ast.Pass) -> uni.Semi;
     def proc_set(nd: py_ast.Set) -> uni.SetVal;
+    def _proc_compr(nd: py_ast.AST, compr_cls: type) -> uni.UniNode;
     def proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr;
     def proc_slice(nd: py_ast.Slice) -> uni.IndexSlice;
     def proc_starred(nd: py_ast.Starred) -> uni.UnaryExpr;

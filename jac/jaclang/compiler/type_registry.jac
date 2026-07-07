@@ -60,10 +60,6 @@ obj JacTypeRegistry {
         return name in self._exception_parents;
     }
 
-    def exception_parent(name: str) -> str | None {
-        return self._exception_parents.get(name, None);
-    }
-
     def exception_entries -> list[tuple[str, str | None]] {
         return [(name, parent) for (name, parent) in self._exception_parents.items()];
     }
