@@ -26,9 +26,9 @@ from jaclang.jac0core.runtime import (  # noqa: E402, F401
     JacRuntimeInterface,
 )
 
-# Transition shim: full eager bootstrap for callers that still assume every
-# provider is registered at import time (e.g. the test suite). Real library /
-# CLI users leave this unset and get the lazy product bootstrap instead.
+# TODO: remove JAC_EAGER_BOOTSTRAP once all callers are audited against the
+# lazy bootstrap. Tests that inspect plugin_manager.get_plugins() directly
+# should call bootstrap_product() in their fixture instead of relying on this.
 if os.environ.get("JAC_EAGER_BOOTSTRAP") == "1":
     bootstrap_product()
 

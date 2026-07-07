@@ -77,7 +77,8 @@ glob logger = getLogger(__name__),
      ),
      _default_base_path_dir: list = [os.getcwd()],
      _default_full_target_path: list = [None],
-     _shared_root_resolver: list = [None, None];
+     _shared_root_resolver: list = [None, None],
+     _product_done: list = [False];
 
 glob _scale_provider_cache: list = [];
 
@@ -97,10 +98,18 @@ def _scale_provider -> any {
 }
 
 def _ensure_product_for_hook(name: str) {
+    if _product_done[0] {
+        return;
+    }
     try {
-        import from jaclang.bootstrap { ensure_for_hook }
-        ensure_for_hook(name);
-    } except Exception { }
+        import from jaclang.bootstrap { ensure_for_hook, is_product_bootstrapped }
+        ensure_for_hook();
+        if is_product_bootstrapped() {
+            _product_done[0] = True;
+        }
+    } except Exception as exc {
+        logger.warning(f"product bootstrap failed before hook '{name}': {exc}");
+    }
 }
 }
 

@@ -70,7 +70,29 @@ from jaclang.jac0core.runtime import (
 
 sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
-__all__ = ["JacRuntime", "JacRuntimeInterface"]
+if not plugin_manager.is_registered(JacRuntimeImpl):
+    plugin_manager.register(JacRuntimeImpl)
+
+__all__ = ["JacRuntime", "JacRuntimeImpl", "JacRuntimeInterface", "plugin_manager"]
+''',
+     _BYLLM_INIT_EXTRA: str = '''
+
+def _register_vendored_byllm_provider():
+    """Register the vendored byLLM provider (the `by llm()` feature)."""
+    try:
+        from jaclang.byllm.plugin import JacRuntime as JacByllmRuntime
+        from jaclang.byllm.plugin_config import JacByllmPluginConfig
+    except Exception as exc:
+        import warnings
+
+        warnings.warn(f"Vendored byLLM provider unavailable: {exc}", stacklevel=2)
+        return
+    for _provider in (JacByllmRuntime, JacByllmPluginConfig):
+        if not plugin_manager.is_registered(_provider):
+            plugin_manager.register(_provider)
+
+
+_register_vendored_byllm_provider()
 ''',
      _BYLLM_INIT_EXTRA: str = '',
      _CLOSURE_CACHE: dict[tuple, dict[str, str]] = {};

@@ -23,18 +23,31 @@ scale, byllm, LLVM bindings, ``jaclang.project.config`` ...) at startup.
 from __future__ import annotations
 
 import contextlib
+import enum
 import sys
+import threading
 import warnings
 
-# Product-bootstrap state machine: "idle" -> "bootstrapping" -> "done".
+
+class _BootstrapState(enum.Enum):
+    IDLE = "idle"
+    BOOTSTRAPPING = "bootstrapping"
+    DONE = "done"
+
+
+# Product-bootstrap state machine: IDLE -> BOOTSTRAPPING -> DONE.
 #
-# The "bootstrapping" state makes ``ensure_for_hook`` re-entrancy-safe: a hook
+# On failure the state returns to IDLE so a later call can retry; only a
+# fully successful run stamps DONE.
+#
+# The BOOTSTRAPPING state makes ``ensure_for_hook`` re-entrancy-safe: a hook
 # fired *during* ``bootstrap_product()`` (e.g. by a plugin running code at
 # registration time, or by the native-accel scheduler) must not re-enter
 # ``bootstrap_product()`` and recurse. While bootstrapping, hook dispatch
 # proceeds against whatever providers have been registered so far -- which is
 # the same partial-registration behaviour the old eager ``__init__`` exhibited.
-_PRODUCT_STATE = "idle"
+_PRODUCT_STATE = _BootstrapState.IDLE
+_PRODUCT_LOCK = threading.Lock()
 
 
 def bootstrap_kernel() -> None:
@@ -82,13 +95,16 @@ def bootstrap_product() -> None:
     with ``JAC_EAGER_BOOTSTRAP=1``.
     """
     global _PRODUCT_STATE
-    if _PRODUCT_STATE == "done":
+    if _PRODUCT_STATE == _BootstrapState.DONE:
         return
-    if _PRODUCT_STATE == "bootstrapping":
-        # Re-entrant call (a hook fired during registration). Don't recurse;
-        # let dispatch proceed against the partially-registered plugin set.
-        return
-    _PRODUCT_STATE = "bootstrapping"
+    with _PRODUCT_LOCK:
+        if _PRODUCT_STATE == _BootstrapState.DONE:
+            return
+        if _PRODUCT_STATE == _BootstrapState.BOOTSTRAPPING:
+            # Re-entrant call (a hook fired during registration). Don't recurse;
+            # let dispatch proceed against the partially-registered plugin set.
+            return
+        _PRODUCT_STATE = _BootstrapState.BOOTSTRAPPING
     try:
         from jaclang.jac0core.helpers import (
             get_disabled_plugins,
@@ -96,14 +112,10 @@ def bootstrap_product() -> None:
         )
         from jaclang.jac0core.runtime import plugin_manager
 
-        # External plugins with disabling support.
-        # Disabling is configured via JAC_DISABLED_PLUGINS env var or
-        # jac.toml [plugins].disabled. Use "*" to disable all external plugins,
-        # "package:*" for all from a package, or "package:plugin" for a specific
-        # plugin. Always go through load_plugins_with_disabling so plugin-load
-        # failures surface as warnings instead of being silently swallowed by
-        # pluggy's load_setuptools_entrypoints. The disable list may be empty.
-        load_plugins_with_disabling(plugin_manager, get_disabled_plugins())
+        try:
+            load_plugins_with_disabling(plugin_manager, get_disabled_plugins())
+        except Exception as exc:
+            warnings.warn(f"External plugin loading failed: {exc}", stacklevel=2)
 
         _register_builtin_client_providers(plugin_manager)
         _register_builtin_shadcn_provider(plugin_manager)
@@ -112,25 +124,26 @@ def bootstrap_product() -> None:
         _register_builtin_byllm_provider(plugin_manager)
 
         _maybe_schedule_native_accel()
-    finally:
-        _PRODUCT_STATE = "done"
+        _PRODUCT_STATE = _BootstrapState.DONE
+    except Exception:
+        _PRODUCT_STATE = _BootstrapState.IDLE
+        raise
 
 
 def is_product_bootstrapped() -> bool:
     """Return True once :func:`bootstrap_product` has completed."""
-    return _PRODUCT_STATE == "done"
+    return _PRODUCT_STATE == _BootstrapState.DONE
 
 
-def ensure_for_hook(name: str | None = None) -> None:
+def ensure_for_hook() -> None:
     """Ensure product-tier providers are registered before a hook dispatches.
 
     Called from the hook-dispatch proxy in ``jaclang.jac0core.runtime`` so that
     library code or tests invoking ``Jac.<hook>(...)`` after a bare
     ``import jaclang`` still resolve every provider -- without paying for that
-    registration at import time. Idempotent and re-entrancy-safe; ``name`` is
-    accepted for diagnostics but does not gate which providers load.
+    registration at import time. Idempotent and re-entrancy-safe.
     """
-    if _PRODUCT_STATE != "done":
+    if _PRODUCT_STATE != _BootstrapState.DONE:
         bootstrap_product()
 
 
@@ -207,7 +220,7 @@ def _register_builtin_scale_provider(plugin_manager: object) -> None:
     except Exception as exc:  # keep core usable if scale fails to import
         warnings.warn(f"Built-in scale provider unavailable: {exc}", stacklevel=2)
         return
-    for _provider in (JacCmd, JacScalePluginConfig, JacScalePlugin()):
+    for _provider in (JacCmd, JacScalePluginConfig, JacScalePlugin):
         if not plugin_manager.is_registered(_provider):
             plugin_manager.register(_provider)
 
