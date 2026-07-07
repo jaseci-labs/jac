@@ -616,7 +616,6 @@ def capability_dependencies(
         action = plan.action if plan else "execute";
     }
     intent = scale_intent_from_config(config);
-    # A jac-scale project is served, so resolve serve deps even when the entry infers kind=cli.
     if intent and action != "serve" {
         action = "serve";
     }
