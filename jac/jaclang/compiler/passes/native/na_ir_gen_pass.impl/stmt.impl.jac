@@ -603,9 +603,77 @@ impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> N
     }
 }
 
+# Build an empty dict/list value matching a resolved container pointer type
+# `cont_t`. Returns None if `cont_t` is not one of the registered container
+# specs. Used so an empty annotated literal (`x: list[str] = []`) allocates the
+# exact native helper its annotation implies, not the default i64 spec.
+impl NaIRGenPass._emit_empty_container_for_type(
+    cont_t: (ir.Type | None), nd: uni.UniNode
+) -> (ir.Value | None) {
+    if cont_t is None or not isinstance(cont_t, ir.PointerType) {
+        return None;
+    }
+    _loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    for (_spec, _dt) in self.dict_types.items() {
+        if cont_t == _dt.as_pointer() {
+            _h = self.dict_helpers.get(_spec);
+            if _h is not None {
+                return self._rc_call_with_ctx(
+                    _h["new"],
+                    [],
+                    op="new",
+                    loc=_loc,
+                    name="dict.empty"
+                );
+            }
+            return None;
+        }
+    }
+    for (_spec, _lt) in self.list_types.items() {
+        if cont_t == _lt.as_pointer() {
+            _h = self.list_helpers.get(_spec);
+            if _h is not None {
+                return self._rc_call_with_ctx(
+                    _h["new"],
+                    [],
+                    op="new",
+                    loc=_loc,
+                    name="list.empty"
+                );
+            }
+            return None;
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.errors_had);
-    value = self._codegen_expr(nd.value) if nd.value else None;
+
+    # Empty container literal with an explicit type annotation: the annotation
+    # is authoritative for the native shape. Resolve it BEFORE codegenning the
+    # (element-less) literal — otherwise the empty literal defaults to the i64
+    # spec and loses its annotation (regression: `x: list[str] = []` lowered to
+    # List.i64 while a later `.append("a")` used List.ptr, a type mismatch).
+    value: (ir.Value | None) = None;
+    _empty_lit = (
+        nd.type_tag is not None
+        and nd.type_tag.tag is not None
+        and isinstance(nd.value, (uni.DictVal, uni.ListVal))
+        and (
+            (isinstance(nd.value, uni.DictVal) and not nd.value.kv_pairs)
+            or (isinstance(nd.value, uni.ListVal) and not nd.value.values)
+        )
+    );
+    if _empty_lit {
+        _cont_t = self._resolve_container_annotation(nd.type_tag.tag);
+        value = self._emit_empty_container_for_type(_cont_t, nd);
+    }
+    if value is None {
+        value = self._codegen_expr(nd.value) if nd.value else None;
+    }
 
     if value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
@@ -626,56 +694,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             self._mark_owned(value);
                         }
                         break;
-                    }
-                }
-            }
-        }
-    }
-    if value is None
-    and nd.type_tag
-    and nd.type_tag.tag
-    and isinstance(nd.value, (uni.DictVal, uni.ListVal)) {
-        _empty_lit = (
-            (isinstance(nd.value, uni.DictVal) and not nd.value.kv_pairs)
-            or (isinstance(nd.value, uni.ListVal) and not nd.value.values)
-        );
-        if _empty_lit {
-            _cont_t = self._resolve_container_annotation(nd.type_tag.tag);
-            if isinstance(_cont_t, ir.PointerType) {
-                for (_spec, _dt) in self.dict_types.items() {
-                    if _cont_t == _dt.as_pointer() {
-                        _h = self.dict_helpers.get(_spec);
-                        if _h is not None {
-                            value = self._rc_call_with_ctx(
-                                _h["new"],
-                                [],
-                                op="new",
-                                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                                    if nd.loc
-                                    else 0}",
-                                name="dict.empty"
-                            );
-                        }
-                        break;
-                    }
-                }
-                if value is None {
-                    for (_spec, _lt) in self.list_types.items() {
-                        if _cont_t == _lt.as_pointer() {
-                            _h = self.list_helpers.get(_spec);
-                            if _h is not None {
-                                value = self._rc_call_with_ctx(
-                                    _h["new"],
-                                    [],
-                                    op="new",
-                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
-                                        if nd.loc
-                                        else 0}",
-                                    name="list.empty"
-                                );
-                            }
-                            break;
-                        }
                     }
                 }
             }
