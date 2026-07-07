@@ -3,6 +3,7 @@ import pathlib;
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.console { console }
+import from jaclang.jac0core.runtime { hookimpl }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .config.config_loader { get_scale_config }
@@ -697,3 +698,21 @@ class JacScalePlugin {
         return http_transport().call_walker(module_name, walker_name, args, stub_cls);
     }
 }
+
+
+import inspect;
+glob func = JacScalePlugin.create_j_context,
+     sig = inspect.signature(func),
+     sig_nodef = sig.replace(
+         parameters=[
+             p.replace(default=inspect.Parameter.empty) for p in sig.parameters.values()
+         ]
+     );
+
+with entry {
+    func.__signature__ = sig_nodef;
+}
+# JacScalePlugin is registered explicitly by
+# jaclang.bootstrap._register_builtin_scale_provider (product tier) rather
+# than as an import side effect, so importing this module no longer
+# mutates global plugin state.

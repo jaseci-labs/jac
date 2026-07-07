@@ -96,6 +96,14 @@ def _scale_provider -> any {
     return result;
 }
 
+def _ensure_product_for_hook(name: str) {
+    try {
+        import from jaclang.bootstrap { ensure_for_hook }
+        ensure_for_hook(name);
+    } except Exception { }
+}
+}
+
 def _prefetch_edges(origin: list[NodeArchetype]) -> None {
     ctx = JacRuntimeInterface.get_context();
     if not hasattr(ctx.mem, 'batch_get') {
@@ -524,6 +532,93 @@ class JacConfig {
 }
 
 class JacRuntimeInterface(JacClassReferences, JacContext, JacPersistence, JacAccessValidation, JacGraph, JacWalker, JacArchetype, JacModule, JacIntrospection, JacLLM, JacServe, JacTest, JacBuiltin, JacCmd, JacConfig) {}
+
+def build_plugin_hook_layer(iface: type[any]) -> tuple[(type[any], type[any])] {
+    spec_methods = {};
+    impl_methods = {};
+    proxy_methods = {};
+    for (name, method) in inspect.getmembers(iface, predicate=inspect.isfunction) {
+        if name.startswith('_') {
+            continue;
+        }
+        raw = inspect.getattr_static(iface, name, None);
+        hook_opts = raw?._jac_hookable;
+        if hook_opts is None {
+            continue;
+        }
+        sig = inspect.signature(method);
+        sig_nodef = sig.replace(
+            parameters=[
+                p.replace(`default=inspect.Parameter.empty)
+                for p in sig.parameters.values()
+            ]
+        );
+        doc = method.__doc__ or '';
+        """Create a placeholder method for the spec class.""";
+        def make_spec(
+            name: str, sig_nodef: inspect.Signature, doc: str, method: Callable
+        ) -> Callable {
+            @wraps(method)
+            def placeholder(*args: object, **kwargs: object) {
+                ;
+            }
+            placeholder.__name__ = name;
+            placeholder.__doc__ = doc;
+            placeholder.__signature__ = sig_nodef;
+            return placeholder;
+        }
+        spec_methods[name] = hookspec(firstresult=hook_opts.get('firstresult', True))(
+            make_spec(name, sig_nodef, doc, method)
+        );
+        wrapped_impl = wraps(method)(method);
+        wrapped_impl.__signature__ = sig_nodef;
+        impl_methods[name] = hookimpl(wrapped_impl);
+        """Create a proxy method that dispatches through plugin_manager.""";
+        def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
+            if is_coro {
+                async def async_proxy(*args: object, **kwargs: object) -> object {
+                    bound = sig.bind_partial(*args, **kwargs);
+                    bound.apply_defaults();
+                    _ensure_product_for_hook(name);
+                    hookcaller = getattr(plugin_manager.hook, name);
+                    result = hookcaller(**bound.arguments);
+                    if inspect.iscoroutine(result) {
+                        return await result;
+                    }
+                    return result;
+                }
+                async_proxy.__name__ = name;
+                async_proxy.__signature__ = sig;
+                return async_proxy;
+            }
+            def proxy(*args: object, **kwargs: object) -> object {
+                bound = sig.bind_partial(*args, **kwargs);
+                bound.apply_defaults();
+                _ensure_product_for_hook(name);
+                hookcaller = getattr(plugin_manager.hook, name);
+                return hookcaller(**bound.arguments);
+            }
+            proxy.__name__ = name;
+            proxy.__signature__ = sig;
+            return proxy;
+        }
+        proxy_methods[name] = make_proxy(
+            name, sig, inspect.iscoroutinefunction(method)
+        );
+    }
+    spec_cls = `type(f"{iface.__name__}Spec", (object, ), spec_methods);
+    impl_cls = `type(f"{iface.__name__}Impl", (object, ), impl_methods);
+
+    for (hname, proxy_fn) in proxy_methods.items() {
+        setattr(iface, hname, staticmethod(proxy_fn));
+    }
+    return (spec_cls, impl_cls);
+}
+
+with entry {
+    (JacRuntimeSpec, JacRuntimeImpl) = build_plugin_hook_layer(JacRuntimeInterface);
+    plugin_manager.add_hookspecs(JacRuntimeSpec);
+}
 
 class JacRuntime(JacRuntimeInterface) {
     with entry {

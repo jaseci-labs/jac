@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
+# Transition shim: keep the test suite on the legacy *eager* product bootstrap
+# (every provider registered at `import jaclang` time) until individual tests are
+# audited against the lazy bootstrap. Real library/CLI users leave this unset.
+# See jaclang.bootstrap.
+os.environ.setdefault("JAC_EAGER_BOOTSTRAP", "1")
+
 from collections.abc import Generator
 from pathlib import Path
 
