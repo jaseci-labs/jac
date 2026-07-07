@@ -2,7 +2,7 @@
 
 `for (a, b) in <list-of-tuples>` must bind each target from the tuple's
 per-position element type, so heterogeneous payloads (str + bytes) type and
-lower correctly — the same idiom that already works on the @sv pathway.
+lower correctly, the same idiom that already works on the @sv pathway.
 """
 
 def sum_products(pairs: list[tuple[int, int]]) -> int {
