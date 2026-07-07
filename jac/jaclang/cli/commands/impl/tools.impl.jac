@@ -15,7 +15,30 @@ impl tool(tool: str, args: list = []) -> int {
     }
     if tool == "grammar" {
         import from jaclang.cli.commands.analysis { grammar }
-        return grammar();
+        # `grammar` is a tombstoned verb -- forward its `-o/--output` flag from
+        # the REMAINDER so `jac tool grammar -o <file>` keeps parity with the
+        # old `jac grammar`. (Lark output was dropped in the clean break: the
+        # Lark parser is long gone, so its emitter had no consumer.)
+        output = "";
+        i = 0;
+        while i < len(args) {
+            a = args[i];
+            if a in ("-o", "--output") {
+                if i + 1 >= len(args) {
+                    console.error("Usage: jac tool grammar [-o <file>]");
+                    return 1;
+                }
+                i += 1;
+                output = args[i];
+            } elif a.startswith("--output=") {
+                output = a.split("=", 1)[1];
+            } else {
+                console.error(f"jac tool grammar: unknown argument '{a}'");
+                return 1;
+            }
+            i += 1;
+        }
+        return grammar(output=output);
     }
     if hasattr(AstTool, tool) {
         try {

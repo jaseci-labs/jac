@@ -2125,20 +2125,6 @@ test "jac grammar" {
     assert "module" in stdout_value , "Grammar should contain module rule";
 }
 
-test "jac grammar lark" {
-    captured = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured;
-    try {
-        result = analysis.grammar(lark=True);
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout_value = captured.getvalue();
-    assert result == 0 , "grammar lark command should exit with code 0";
-    assert len(stdout_value) > 0 , "Lark output should not be empty";
-}
-
 test "jac cli check ignore patterns" {
     test_dir = fixture_path("deep");
     result_count = _run_jac_check(
