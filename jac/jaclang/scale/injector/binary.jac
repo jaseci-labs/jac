@@ -97,8 +97,15 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         want = parts[0].strip().lower();
         cached = _binary_cache_path(channel, arch);
         if cached.is_file() {
-            payload = cached.read_bytes();
-            if hashlib.sha256(payload).hexdigest() == want {
+            # Read defensively: the file can vanish between is_file() and here
+            # (cache-cleanup job, manual removal, a concurrent deploy's rename),
+            # so a read failure is just a cache miss, not a failed deploy.
+            try {
+                payload = cached.read_bytes();
+            } except OSError {
+                payload = None;
+            }
+            if payload is not None and hashlib.sha256(payload).hexdigest() == want {
                 logger.info(f"Using the cached {channel} jac binary (checksum match).");
                 return payload;
             }

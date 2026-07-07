@@ -1,4 +1,5 @@
 import os;
+import shutil;
 import tempfile;
 
 glob _calls: list[str] = [],
@@ -49,5 +50,6 @@ test "an unchanged release is served from the local cache, not re-downloaded" {
         } else {
             os.environ["JAC_SCALE_CACHE_DIR"] = saved_env;
         }
+        shutil.rmtree(cache_dir, ignore_errors=True);
     }
 }
