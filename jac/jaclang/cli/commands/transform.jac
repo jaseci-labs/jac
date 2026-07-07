@@ -9,7 +9,6 @@ def jac2py(filename: str) -> int;
 
 def jac2js(filename: str) -> int;
 
-"""Convert C to Jac."""
 @registry.command(
     name="c2jac",
     help="Convert C code to Jac (writes Jac to stdout; best-effort sites are flagged inline in the output)",
@@ -65,7 +64,6 @@ def c2jac(
     nostdinc: bool = False
 ) -> int;
 
-"""Deprecated alias for jac2js."""
 @registry.command(
     name="js",
     help="[Deprecated] Alias for 'jac2js'. Convert Jac code to JavaScript",

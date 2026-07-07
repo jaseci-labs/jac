@@ -1180,8 +1180,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="terminals", kind=5),
                  FieldDesc(name="stub_only", kind=2),
                  FieldDesc(name="src_terminals", kind=5),
-                 FieldDesc(name="is_raised_from_py", kind=2),
-                 FieldDesc(name="has_synthesized_tokens", kind=2)
+                 FieldDesc(name="is_raised_from_py", kind=2)
              )
          ),
          NodeSpec(

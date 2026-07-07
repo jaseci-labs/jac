@@ -3,7 +3,6 @@ import ast as ast3;
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { flatten_append }
 
-"""Convert Python to Jac."""
 impl py2jac(filename: str) -> int {
     import jaclang.jac0core.unitree as uni;
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
@@ -37,7 +36,6 @@ impl py2jac(filename: str) -> int {
     return 0;
 }
 
-"""Convert C to Jac."""
 impl c2jac(
     filename: str,
     incdir: list | None = None,
@@ -78,7 +76,6 @@ impl c2jac(
     return 0;
 }
 
-"""Convert Jac to Python."""
 impl jac2py(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {

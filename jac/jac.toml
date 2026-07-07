@@ -54,6 +54,9 @@ exclude = [
     # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale
     # -- a large self-contained subsystem whose inline comments are kept.
     "*/byllm/*",
+    # c2jac C-to-Jac transpiler: a large self-contained subsystem whose inline
+    # comments document C-idiom-to-Jac mapping and coupling constraints, kept.
+    "*/c2jac/*",
     "console.impl.jac",
     "cli_boot.jac",
     # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:
