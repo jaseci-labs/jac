@@ -172,7 +172,9 @@ enum NarrowingKind {
     TRUTHINESS = "truthiness",
     LITERAL_EQ = "literal_eq",
     LITERAL_NE = "literal_ne",
-    HASATTR = "hasattr"
+    HASATTR = "hasattr",
+    MEMBERSHIP_IN = "membership_in",
+    MEMBERSHIP_NOT_IN = "membership_not_in"
 }
 
 obj ConditionInfo {
