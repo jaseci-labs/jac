@@ -117,7 +117,13 @@ pytest = ">=8.0.0"
 
 [dependencies.git]
 my-lib = { git = "https://github.com/user/repo.git", branch = "main" }
+
+[dependencies.system]
+git = "*"
+ffmpeg = "*"
 ```
+
+`[dependencies.system]` declares OS (apt) packages your app needs at runtime. On a `jac-scale` Kubernetes deploy they are installed into the service container at startup (Debian only; keys are apt package names). See [System Dependencies](../plugins/jac-scale-kubernetes.md#system-dependencies).
 
 **Version specifiers:**
 

@@ -13,9 +13,6 @@ obj KubernetesRealizer {
     has ms_config: dict[str, any];
 
     def realize(context: HookContext) -> None {
-        for _embedded_python_var in ["PYTHONHOME", "PYTHONPATH"] {
-            os.environ.pop(_embedded_python_var, None);
-        }
         enabled = self.ms_config.get("enabled", None);
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");

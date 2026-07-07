@@ -273,9 +273,17 @@ impl Serializer.deserialize(data: dict[str, object]) -> (object | None) {
     if (cls := Serializer._get_class(data.get('__module__'), type_name)) {
         try {
             instance = cls.__new__(cls);
+            field_types = get_field_types(cls);
             for (k, v) in data.items() {
                 if not k.startswith('__') {
-                    setattr(instance, k, Serializer._deserialize_value(v));
+                    deser_v = Serializer._deserialize_value(v);
+                    if (target := field_types.get(k)) is not None {
+                        (coerced, ok) = Serializer.coerce(deser_v, target);
+                        if ok {
+                            deser_v = coerced;
+                        }
+                    }
+                    setattr(instance, k, deser_v);
                 }
             }
             return instance;
@@ -306,8 +314,13 @@ impl Serializer._deserialize_value(val: object) -> object {
 
 impl Serializer.register(cls: type) -> None {
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
-    import from jaclang.runtimelib.typecache { invalidate as _invalidate_typecache }
+    import from jaclang.runtimelib.typecache {
+        invalidate as _invalidate_typecache,
+        warm as _warm_typecache
+    }
     _invalidate_typecache(cls);
+
+    _warm_typecache(cls);
     try {
         cls.__jac_fingerprint__ = Serializer.fingerprint(cls);
     } except Exception as e {

@@ -815,9 +815,11 @@ impl _parse_toml_data(
     }
     if "format" in data {
         fmt = data["format"];
-        config.format = FormatConfig(
-            outfile=fmt.get("outfile", ""), fix=fmt.get("fix", False)
-        );
+        config.format = FormatConfig(outfile=fmt.get("outfile", ""));
+    }
+    if "precommit" in data {
+        pc_data = data["precommit"];
+        config.precommit = PrecommitConfig(typecheck=pc_data.get("typecheck", True));
     }
     if "check" in data {
         check_data = data["check"];

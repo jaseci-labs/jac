@@ -616,7 +616,6 @@ impl JacPersistence.on_commit(callback: Callable) -> None {
 }
 
 impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
-    import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
@@ -626,17 +625,20 @@ impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
     persistence = mem.l3;
     conn = persistence?.__conn__ if persistence else None;
     if (conn and isinstance(conn, sqlite3.Connection)) {
-        cursor = conn.execute('SELECT data FROM anchors');
-        anchors = [pickle.loads(row[0]) for row in cursor.fetchall()];
+        cursor = conn.execute("SELECT id, json_extract(data, '$.root') FROM anchors");
+        candidates = [(UUID(row[0]), row[1]) for row in cursor.fetchall()];
     } else {
-        anchors = `list(mem.get_mem().values());
+        candidates = [
+            (anchor.id, str(anchor.root) if anchor.root else None)
+            for anchor in mem.get_mem().values()
+        ];
     }
-    for anchor in anchors {
-        if ((anchor == ranchor) or (anchor.root != ranchor.id)) {
+    for (aid, aroot) in candidates {
+        if ((aid == ranchor.id) or (aroot != str(ranchor.id))) {
             continue;
         }
-        deleted_ids.add(anchor.id);
-        mem.delete(anchor.id);
+        deleted_ids.add(aid);
+        mem.delete(aid);
         deleted_count += 1;
     }
     ranchor.edges = [
@@ -652,6 +654,9 @@ impl JacPersistence.get_object(id: str) -> (Archetype | None) {
     if (id == 'root') {
         return JacRuntimeInterface.get_context().user_root.archetype;
     } elif (`obj := JacRuntimeInterface.get_context().mem.get(UUID(id))) {
+        if not JacRuntimeInterface.check_read_access(`obj) {
+            return None;
+        }
         return `obj.archetype;
     }
     return None;
@@ -663,6 +668,9 @@ impl JacPersistence.aget_object(id: str) -> (Archetype | None) {
     }
     `obj = await JacRuntimeInterface.get_context().mem.aget(UUID(id));
     if `obj is not None {
+        if not JacRuntimeInterface.check_read_access(`obj) {
+            return None;
+        }
         return `obj.archetype;
     }
     return None;
@@ -2056,7 +2064,7 @@ impl JacConfig.validate_config(config: dict[(str, Any)]) -> list[str] {
     return [];
 }
 
-impl JacConfig.register_dependency_type -> (dict[(str, Any)] | None) {
+impl JacConfig.register_ecosystem_providers -> (list | None) {
     return None;
 }
 
@@ -2112,7 +2120,8 @@ impl JacRuntime.get_shared_root -> Root {
         }
         _shared_root_resolver[1] = root_id;
     }
-    shared = JacRuntimeInterface.get_object(root_id);
+    shared_anchor = JacRuntimeInterface.get_context().mem.get(UUID(root_id));
+    shared = shared_anchor.archetype if shared_anchor else None;
     if not isinstance(shared, Root) {
         raise RuntimeError(
             f"Shared root unavailable: id {root_id} did not resolve to a Root node."

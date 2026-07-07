@@ -63,6 +63,31 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
     console.print(
         f"  Native wasm module: /static/{module_path.stem}.wasm ({len(wasm)} bytes)"
     );
+
+    try {
+        import json;
+        import from jaclang.compiler.passes.native.wasm_build { wasm_import_map }
+        import from jaclang.compiler.passes.native.wasm_host_abi { WASM_HOST_MODULE }
+        imports = wasm_import_map(wasm);
+        manifest_path = dist / f"{module_path.stem}.wasm.imports.json";
+        manifest_path.write_text(
+            json.dumps({"abi": WASM_HOST_MODULE, "imports": imports}, indent=2),
+            encoding='utf-8',
+        );
+        app_ffi = [];
+        for mod_nm in imports {
+            if mod_nm != WASM_HOST_MODULE {
+                app_ffi.extend(imports[mod_nm]);
+            }
+        }
+        if app_ffi {
+            console.print(
+                f"    app FFI imports ({len(app_ffi)}): provide via the shim's" + " env at instantiation (see .wasm.imports.json)"
+            );
+        }
+    } except Exception as e {
+        console.warning(f"Could not write wasm import manifest: {e}");
+    }
 }
 
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
@@ -77,6 +102,14 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
     } else {
         entry_content = backend.build_entry_script(module_path.stem);
     }
+    entry_file.parent.mkdir(parents=True, exist_ok=True);
+
+    try {
+        if entry_file.exists()
+        and entry_file.read_text(encoding='utf-8') == entry_content {
+            return;
+        }
+    } except OSError { }
     entry_file.write_text(entry_content, encoding='utf-8');
 }
 

@@ -1,4 +1,3 @@
-import from jaclang.runtimelib.client { BUN_VERSION }
 import from jaclang.scale.injector.bundle {
     JAC_HOME,
     APP_VOLUME_NAME,
@@ -8,6 +7,33 @@ import from jaclang.scale.injector.bundle {
 import from jaclang.scale.injector.binary { overlay_pod_path }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
+}
+
+
+def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
+    # apt install for the service container (not the discarded init layer).
+    packages = k8s_config.service_dependencies;
+    if not packages {
+        return "";
+    }
+    import re;
+    valid = re.compile(r"^[a-z0-9][a-z0-9.+\-]*$");
+    for pkg in packages {
+        if not valid.match(pkg) {
+            raise ValueError(
+                f"[dependencies.system] package name {pkg!r} is not a valid "
+                "Debian package name (allowed characters: a-z 0-9 . + -)."
+            );
+        }
+    }
+    pkg_list = ' '.join(sorted(set(packages)));
+    # Trailing ` && ` (not `;`) chains the install into the app-start command so
+    # a failed apt aborts the container boot instead of starting without the deps.
+    return (
+        "export DEBIAN_FRONTEND=noninteractive && "
+        "apt-get update && apt-get install -y --no-install-recommends "
+        f"{pkg_list} && "
+    );
 }
 
 
@@ -22,33 +48,23 @@ def build_runtime_install_commands(
 
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
-    commands.append(
-        'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
-    );
-
-    commands.append(
-        'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
-    );
-    commands.append(
-        'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
-    );
-
-    commands.append(
-        'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
-        '-o Acquire::https::Timeout=20 update || true'
-    );
-
-    base_packages = ['git', 'curl', 'unzip'];
+    # apt only for declared packages: the binary bundles bun+python and the overlay ships as a tar, so the default boot needs nothing from apt.
     if config.additional_packages {
-        base_packages.extend(config.additional_packages);
+        commands.append(
+            'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
+        );
+        commands.append(
+            'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
+        );
+        commands.append(
+            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
+        );
+        commands.append(
+            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+            '-o Acquire::https::Timeout=20 update || true'
+        );
+        commands.append(f"apt-get install -y {' '.join(config.additional_packages)}");
     }
-    commands.append(f"apt-get install -y {' '.join(base_packages)}");
-
-    commands.append(
-        f'curl -fsSL https://bun.sh/install | bash -s "bun-v{BUN_VERSION}"'
-    );
-    commands.append('export BUN_INSTALL="$HOME/.bun"');
-    commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
     commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
@@ -85,12 +101,39 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
+def _first_boot_install -> str {
+    # Adopt jir seeds via system python3 BEFORE any jac invocation (jac would compile the overlay first); best-effort fallback compiles as before (#7138).
+    adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
+    return (
+        f'if [ -f "{adopt}" ]; then '
+        f'python3 "{adopt}" '
+        f'|| echo "[jac-scale] jir-seed adoption failed; compiling from source"; '
+        f'fi; '
+        f'jac install'
+    );
+}
+
+
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig, base_image: str, overlay_source: bool = False
+    k8s_config: KubernetesConfig,
+    base_image: str,
+    overlay_source: bool = False,
+    is_gateway: bool = True
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config, overlay_source);
     commands.append(f'cd {APP_MOUNT_PATH}');
-    commands.append('jac install');
+    if not is_gateway {
+        # npm deps exist only to build the client, which only the gateway
+        # serves - service pods were installing 500+ packages for nothing
+        # (~1 min/pod, #7179). Strip the npm tables from this pod's own copy
+        # of jac.toml so `jac install` skips them.
+        commands.append(
+            "awk 'BEGIN{skip=0} /^\\[dependencies\\.npm(\\]|\\.)/{skip=1;next} "
+            "/^\\[/{skip=0} !skip' jac.toml > /tmp/jac.toml.nonpm "
+            "&& cat /tmp/jac.toml.nonpm > jac.toml"
+        );
+    }
+    commands.append(_first_boot_install());
     script = ' && '.join(commands);
     return {
         "name": "jac-bootstrap",

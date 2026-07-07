@@ -9,7 +9,7 @@ import from jaclang.jac0core.ext_registry { is_native_module }
 def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
     import from jaclang.project.config { JacConfig, get_config, set_config }
-    import from jaclang.project.dependencies { add_venv_to_path }
+    import from jaclang.project.pyvenv { add_venv_to_path }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     file_path = Path(filename).resolve();
@@ -498,8 +498,21 @@ impl start(
             import from jaclang.runtimelib.watcher { JacFileWatcher }
 
             watcher = JacFileWatcher(watch_paths=[base]);
+            client_compiler = None;
+            if not no_client {
+                try {
+                    client_compiler = server.introspector._bundle_builder._get_compiler();
+                } except Exception as e {
+                    console.warning(
+                        f"Client compiler unavailable, HMR uses legacy mode: {e}"
+                    );
+                }
+            }
             hot_reloader = HotReloader(
-                base_path=base, module_name=mod, watcher=watcher
+                base_path=base,
+                module_name=mod,
+                watcher=watcher,
+                client_compiler=client_compiler
             );
             hot_reloader.start();
 
@@ -594,7 +607,8 @@ def _watchdog_importable -> bool {
 
 def _ensure_watchdog_installed -> bool {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller, add_venv_to_path }
+    import from jaclang.project.pyvenv { add_venv_to_path }
+    import from jaclang.project.providers { InstallContext, get_python_provider }
 
     if _watchdog_importable() {
         return True;
@@ -610,8 +624,8 @@ def _ensure_watchdog_installed -> bool {
     console.print(
         "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
     );
-    installer = DependencyInstaller(config=config, verbose=False);
-    if installer.install_package(["watchdog>=3.0.0"]) {
+    python = get_python_provider();
+    if python.install_specs(config, ["watchdog>=3.0.0"], InstallContext()) {
         add_venv_to_path(config);
         if _watchdog_importable() {
             console.success("watchdog installed");
@@ -802,7 +816,7 @@ def _tool_site_dirs(use_global: bool) -> list {
     import site;
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { get_venv_site_packages }
+    import from jaclang.project.pyvenv { get_venv_site_packages }
 
     sites: list = [];
     if not use_global {

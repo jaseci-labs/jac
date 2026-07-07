@@ -309,7 +309,7 @@ impl ParamAssignmentTracker.get_unmatched_required_params -> list[types.Paramete
         if (
             (param not in self.matched_params)
             and (param not in self.spread_filled)
-            and (param.default_value is None)
+            and not param.is_optional
             and (
                 param.param_kind not in (types.ParamKind.VARARG, types.ParamKind.KWARG)
             )

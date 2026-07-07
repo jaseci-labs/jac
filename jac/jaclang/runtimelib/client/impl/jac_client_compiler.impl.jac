@@ -147,6 +147,17 @@ impl JacClientCompiler._copy_js_file(
     }
 }
 
+impl JacClientCompiler._output_path_for(
+    self: JacClientCompiler, module_path: Path, source_root: Path
+) -> Path {
+    try {
+        relative_path = module_path.relative_to(source_root);
+        return self.compiled_dir / self._jac_path_to_js(str(relative_path));
+    } except ValueError {
+        return self.compiled_dir / self._jac_path_to_js(module_path.name);
+    }
+}
+
 impl JacClientCompiler.compile_dependencies_recursively(
     self: JacClientCompiler,
     module_path: Path,
@@ -154,7 +165,8 @@ impl JacClientCompiler.compile_dependencies_recursively(
     collected_exports: (set[str] | None) = None,
     collected_globals: (dict[(str, Any)] | None) = None,
     source_root: (Path | None) = None,
-    target_name: str = "web"
+    target_name: str = "web",
+    skip_existing: bool = False
 ) -> None {
     if (visited is None) {
         visited = set();
@@ -231,13 +243,18 @@ impl JacClientCompiler.compile_dependencies_recursively(
             continue;
         }
         if (path_obj.suffix == '.jac') {
+            if skip_existing
+            and self._output_path_for(path_obj, source_root).exists() {
+                continue;
+            }
             self.compile_dependencies_recursively(
                 path_obj,
                 visited,
                 collected_exports=collected_exports,
                 collected_globals=collected_globals,
                 source_root=source_root,
-                target_name=target_name
+                target_name=target_name,
+                skip_existing=skip_existing
             );
         } elif (path_obj.suffix == '.js') {
             self._copy_js_file(path_obj, source_root);
@@ -549,6 +566,33 @@ impl JacClientCompiler._scan_and_compile_pages(
     return True;
 }
 
+impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
+    scanner = RouteScanner(self.project_dir);
+    if not scanner.has_pages_dir() {
+        return False;
+    }
+    routes = scanner.scan();
+    if not routes and not scanner.get_layouts() {
+        return False;
+    }
+    self._route_scanner = scanner;
+
+    for page_file in scanner.get_page_files() {
+        if self._output_path_for(page_file, self.project_dir).exists() {
+            continue;
+        }
+        try {
+            self.compile_dependencies_recursively(
+                page_file, source_root=self.project_dir, skip_existing=True
+            );
+        } except Exception as e {
+            console.warning(f"Could not compile page {page_file}: {e}");
+        }
+    }
+    self._generate_routes_manifest();
+    return True;
+}
+
 impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> None {
     scanner = self._route_scanner;
     routes = scanner._routes;
@@ -600,7 +644,15 @@ impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> Non
     lines.append('');
     manifest_path = self.compiled_dir / '_routes.js';
     manifest_path.parent.mkdir(parents=True, exist_ok=True);
-    manifest_path.write_text("\n".join(lines), encoding='utf-8');
+    new_content = "\n".join(lines);
+
+    try {
+        if manifest_path.exists()
+        and manifest_path.read_text(encoding='utf-8') == new_content {
+            return;
+        }
+    } except OSError { }
+    manifest_path.write_text(new_content, encoding='utf-8');
 }
 
 impl JacClientCompiler.init(
