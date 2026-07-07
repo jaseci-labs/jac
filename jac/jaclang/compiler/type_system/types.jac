@@ -53,14 +53,6 @@ obj TypeBase(ABC) {
     def is_any_type -> bool;
 }
 
-obj UnboundType(TypeBase) {
-    with entry {
-        CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unbound;
-    }
-
-    def __str__ -> str;
-}
-
 obj UnknownType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
@@ -93,10 +85,6 @@ obj ModuleType(TypeBase) {
     has mod_name: str = "",
         file_uri: Path = Path(""),
         symbol_table: SymbolTable | None = None,
-        is_stub_file: bool = False,
-        is_stdlib_stub: bool = False,
-        is_typing_stub: bool = False,
-        is_builtin_stub: bool = False,
         is_external: bool = False;
 
     with entry {

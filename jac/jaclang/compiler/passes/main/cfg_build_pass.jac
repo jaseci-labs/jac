@@ -1,5 +1,4 @@
 import from collections.abc { Sequence }
-import from threading { Event }
 import from typing { cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }

@@ -1,7 +1,4 @@
-import from jaclang.runtimelib.client.targets.registry {
-    get_target_registry,
-    TargetRegistry
-}
+import from jaclang.runtimelib.client.targets.registry { get_target_registry }
 import from jaclang.runtimelib.client.targets.web_target { WebTarget }
 import from jaclang.runtimelib.client.targets.pwa_target { PWATarget }
 import from jaclang.runtimelib.client.targets.static_target { StaticTarget }

@@ -1,5 +1,3 @@
-import from uuid { UUID }
-
 def _is_enabled -> bool;
 
 def _get_root_anchor(anchor: any) -> any;

@@ -41,7 +41,7 @@ pre-commit run --all-files
 
 - Core logic: `byllm/lib.py`, `llm_connector.py`
 - Schema definitions: `schema.py`
-- Examples: `examples/agentic_ai/`, `examples/tool_calling/`
+- Examples: `examples/agentic_ai/`
 
 ### Client & Desktop Runtimes
 

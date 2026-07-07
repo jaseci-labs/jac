@@ -109,7 +109,7 @@ test "mock outputs consumed in order" {
 
 ## Errors & retries
 
-- All byLLM exceptions inherit `ByLLMError`, importable from `byllm.lib`: `AuthenticationError`, `RateLimitError`, `ModelNotFoundError`, `OutputConversionError`, `UnknownToolError`, `ConfigurationError`.
+- All byLLM exceptions inherit `ByLLMError`, importable from `byllm.lib`: `AuthenticationError`, `RateLimitError`, `ModelNotFoundError`, `OutputConversionError`, `ConfigurationError`.
 - Typed (non-`str`) returns auto-retry malformed output with corrective feedback: `max_output_retries` (default 3, `0` disables). `str` returns are never retried.
 - The rejected text rides on `OutputConversionError` - read it with `getattr(e, "raw_output", "")`; direct `e.raw_output` fails `jac check` (E1030, it's a dynamic attribute).
 

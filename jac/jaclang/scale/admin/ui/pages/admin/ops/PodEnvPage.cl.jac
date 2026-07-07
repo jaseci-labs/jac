@@ -8,11 +8,13 @@ display secret material. A pod selector switches between this pod and the
 listed pods.
 """
 
-import from "lucide-react" { KeyRound, RefreshCw, AlertTriangle, Lock }
+import from "lucide-react" { KeyRound, Lock }
 
 import from react { useEffect }
+import from ....components.common.PageHeader { PageHeader, OpsUnavailableBanner }
 import from ....context.AuthContext { useAuth }
 import from ....services.opsService { getPodEnv }
+import from ....utils.api { getErrorMessage }
 
 def:pub PodEnvPage -> JsxElement {
     has isLoading: bool = False,
@@ -40,7 +42,7 @@ def:pub PodEnvPage -> JsxElement {
                 pods = data["pods"] or [];
                 errorMsg = "";
             } elif result["error"] {
-                errorMsg = result["error"]["message"] or "Failed to load pod env";
+                errorMsg = getErrorMessage(result, "Failed to load pod env");
             }
         } except Exception as e {
             console.error("podenv load error:", e);
@@ -69,22 +71,12 @@ def:pub PodEnvPage -> JsxElement {
 
     return
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <KeyRound className="w-5 h-5 text-accent"/>
-                    <h1 className="text-lg font-semibold text-fg">Pod Environment</h1>
-                    {<span className="text-xs text-faint">{namespace}</span>
-                        if namespace
-                        else None}
-                </div>
-                <button
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors"
-                    onClick={lambda { load(); }}
-                >
-                    <RefreshCw className="w-3.5 h-3.5"/>
-                    Refresh
-                </button>
-            </div>
+            <PageHeader
+                icon={KeyRound}
+                title="Pod Environment"
+                namespace={namespace}
+                onRefresh={lambda { load(); }}
+            />
             <div className="flex items-center gap-2 text-xs text-faint">
                 <Lock className="w-3.5 h-3.5"/>
                 <span>
@@ -97,16 +89,12 @@ def:pub PodEnvPage -> JsxElement {
             {<div className="text-faint text-sm">Loading...</div>
                 if (isLoading and not loadedOnce)
                 else None}
-            {<div
-                className="flex items-start gap-2 text-warning text-sm bg-warning-weak border border-line rounded-md p-3"
-            >
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
-                <span className="text-muted">
-                    Other pods unavailable: {detail}. Showing this pod only. Enable [plugins.scale.kubernetes].ops_console for the rest.
-                </span>
-            </div>
-                if (loadedOnce and not available)
-                else None}
+            <OpsUnavailableBanner
+                show={loadedOnce and not available}
+                detail={detail}
+                label="Other pods unavailable"
+                remediation="Showing this pod only. Enable [plugins.scale.kubernetes].ops_console for the rest."
+            />
             <select
                 value={selected}
                 onChange={lambda e: any { selected = e.target.value; }}

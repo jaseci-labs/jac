@@ -27,39 +27,6 @@ class Type(_StrCaching) {
         return not (self == other);
     }
 
-    def _get_ll_global_value_type(
-        self: Type, target_data: Any, context: Any = None
-    ) -> object {
-        import from jaclang.compiler.passes.native.llvm.ir { Module, GlobalVariable }
-        import from jaclang.compiler.passes.native.llvm.binding { parse_assembly }
-        if (context is None) {
-            m = Module();
-        } else {
-            m = Module(context=context);
-        }
-        foo = GlobalVariable(m, self, name="foo");
-        with parse_assembly(str(m)) as llmod {
-            return llmod.get_global_variable(foo.name).global_value_type;
-        }
-    }
-
-    def get_abi_size(self: Type, target_data: Any, context: Any = None) -> object {
-        llty = self._get_ll_global_value_type(target_data, context);
-        return target_data.get_abi_size(llty);
-    }
-
-    def get_element_offset(
-        self: Type, target_data: Any, ndx: Any, context: Any = None
-    ) -> object {
-        llty = self._get_ll_global_value_type(target_data, context);
-        return target_data.get_element_offset(llty, ndx);
-    }
-
-    def get_abi_alignment(self: Type, target_data: Any, context: Any = None) -> object {
-        llty = self._get_ll_global_value_type(target_data, context);
-        return target_data.get_abi_alignment(llty);
-    }
-
     def format_constant(self: Type, value: Any) -> object {
         return str(value);
     }
@@ -136,11 +103,6 @@ class PointerType(Type) {
     def __hash__(self: PointerType) -> object {
         return hash(PointerType);
     }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        return cls();
-    }
 }
 
 class _TypedPointerType(PointerType) {
@@ -192,11 +154,6 @@ class VoidType(Type) {
     def __hash__(self: VoidType) -> object {
         return hash(VoidType);
     }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        return cls();
-    }
 }
 
 class FunctionType(Type) {
@@ -237,16 +194,6 @@ class FunctionType(Type) {
 
     def __hash__(self: FunctionType) -> object {
         return hash(FunctionType);
-    }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        params = `tuple(
-            x.as_ir(ir_ctx=ir_ctx) for x in typeref.get_function_parameters()
-        );
-        ret = typeref.get_function_return().as_ir(ir_ctx=ir_ctx);
-        is_vararg = typeref.is_function_vararg;
-        return cls(ret, params, is_vararg);
     }
 }
 
@@ -315,11 +262,6 @@ class IntType(Type) {
         }
         return val;
     }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        return IntType(typeref.type_width);
-    }
 }
 
 def _as_float(value: Any) -> object {
@@ -363,11 +305,6 @@ class _BaseFloatType(Type) {
     @classmethod
     def _create_instance(cls: Any) -> object {
         cls._instance_cache = super.__new__(cls);
-    }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        return cls();
     }
 }
 
@@ -502,14 +439,6 @@ class VectorType(Type) {
             for (ty, val) in zip(self.elements, values)
         ];
     }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        [elemtyperef] = typeref.elements;
-        elemty = elemtyperef.as_ir(ir_ctx=ir_ctx);
-        count = typeref.element_count;
-        return cls(elemty, count);
-    }
 }
 
 class Aggregate(Type) {
@@ -573,14 +502,6 @@ class ArrayType(Aggregate) {
         );
         return "[{0}]".format(itemstring);
     }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        [elemtyperef] = typeref.elements;
-        elemty = elemtyperef.as_ir(ir_ctx=ir_ctx);
-        count = typeref.element_count;
-        return cls(elemty, count);
-    }
 }
 
 class BaseStructType(Aggregate) {
@@ -638,16 +559,6 @@ class BaseStructType(Aggregate) {
             return '<{}>'.format(textrepr);
         } else {
             return textrepr;
-        }
-    }
-
-    @classmethod
-    def from_llvm(cls: Any, typeref: Any, ir_ctx: Any) -> object {
-        if typeref.is_literal_struct {
-            elems = [el.as_ir(ir_ctx=ir_ctx) for el in typeref.elements];
-            return cls(elems, typeref.is_packed_struct);
-        } else {
-            return ir_ctx.get_identified_type(typeref.name);
         }
     }
 }

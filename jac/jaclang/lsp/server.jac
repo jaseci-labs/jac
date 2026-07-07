@@ -117,7 +117,6 @@ obj LanguageServer {
     def _send_response(msg_id: any, result: any) -> None;
     def _write_message(body: dict) -> None;
     def _read_message(stream: any) -> Optional[dict];
-    def _dispatch(msg: dict) -> None;
     def _handle_initialize(params: dict) -> dict;
     def _build_capabilities -> dict;
 }

@@ -14,7 +14,6 @@ import from ctypes {
 import enum;
 import from jaclang.compiler.passes.native.llvm.binding { ffi }
 import from jaclang.compiler.passes.native.llvm.binding.common { _decode_string, _encode_string }
-import from jaclang.compiler.passes.native.llvm.binding.typeref { TypeRef }
 class Linkage(`enum.IntEnum) {
     with entry {
         external = 0;
@@ -221,23 +220,16 @@ class ValueRef(ffi.ObjectRef) {
     }
 
     """
-        This value's LLVM type.
-        """
-    @property
-    def `type(self: ValueRef) -> object {
-        return TypeRef(ffi.lib.LLVMPY_TypeOf(self));
-    }
-
-    """
-        Uses ``LLVMGlobalGetValueType()``.
-        Needed for opaque pointers in globals.
-        > For globals, use getValueType().
-        See https://llvm.org/docs/OpaquePointers.html#migration-instructions
+        The printed LLVM type of this global's value (LLVMGlobalGetValueType),
+        as a string. Kept for the wasm libc linker, which compares signatures
+        to enforce the jac_host1 import contract (see wasm_build._link_wasm_libc).
         """
     @property
     def global_value_type(self: ValueRef) -> object {
         assert (self.is_global or self.is_function);
-        return TypeRef(ffi.lib.LLVMPY_GlobalGetValueType(self));
+        return ffi.ret_string(
+            ffi.lib.LLVMPY_PrintType(ffi.lib.LLVMPY_GlobalGetValueType(self))
+        );
     }
 
     """
@@ -541,12 +533,10 @@ with entry {
     ffi.lib.LLVMPY_GetValueName.argtypes = [ffi.LLVMValueRef];
     ffi.lib.LLVMPY_GetValueName.restype = c_char_p;
     ffi.lib.LLVMPY_SetValueName.argtypes = [ffi.LLVMValueRef, c_char_p];
-    ffi.lib.LLVMPY_TypeOf.argtypes = [ffi.LLVMValueRef];
-    ffi.lib.LLVMPY_TypeOf.restype = ffi.LLVMTypeRef;
     ffi.lib.LLVMPY_GlobalGetValueType.argtypes = [ffi.LLVMValueRef];
     ffi.lib.LLVMPY_GlobalGetValueType.restype = ffi.LLVMTypeRef;
-    ffi.lib.LLVMPY_GetTypeName.argtypes = [ffi.LLVMTypeRef];
-    ffi.lib.LLVMPY_GetTypeName.restype = c_void_p;
+    ffi.lib.LLVMPY_PrintType.argtypes = [ffi.LLVMTypeRef];
+    ffi.lib.LLVMPY_PrintType.restype = c_void_p;
     ffi.lib.LLVMPY_GetLinkage.argtypes = [ffi.LLVMValueRef];
     ffi.lib.LLVMPY_GetLinkage.restype = c_int;
     ffi.lib.LLVMPY_SetLinkage.argtypes = [ffi.LLVMValueRef, c_int];

@@ -82,6 +82,38 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         }
     }
 
+    # Fetch the (tiny) checksum first: it both verifies the download and keys a
+    # local cache, so an unchanged release never re-downloads the 130-170MB
+    # binary on every deploy (#7179 warm-redeploy cost).
+    want = "";
+    if checksum_url {
+        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
+        if not parts {
+            raise RuntimeError(
+                f"Checksum file at {checksum_url} is empty or malformed; "
+                f"cannot verify the downloaded binary."
+            );
+        }
+        want = parts[0].strip().lower();
+        cached = _binary_cache_path(channel, arch);
+        if cached.is_file() {
+            # Read defensively: the file can vanish between is_file() and here
+            # (cache-cleanup job, manual removal, a concurrent deploy's rename),
+            # so a read failure is just a cache miss, not a failed deploy.
+            cached_bytes: bytes | None = None;
+            try {
+                cached_bytes = cached.read_bytes();
+            } except OSError {
+                ;
+            }
+            if cached_bytes is not None
+            and hashlib.sha256(cached_bytes).hexdigest() == want {
+                logger.info(f"Using the cached {channel} jac binary (checksum match).");
+                return cached_bytes;
+            }
+        }
+    }
+
     try {
         payload = _http_get_bytes(binary_url);
     } except HTTPError as e {
@@ -94,15 +126,7 @@ def download_release_binary(channel: str, arch: str) -> bytes {
         }
         raise;
     }
-    if checksum_url {
-        parts = _http_get_bytes(checksum_url).decode("utf-8").split();
-        if not parts {
-            raise RuntimeError(
-                f"Checksum file at {checksum_url} is empty or malformed; "
-                f"cannot verify the downloaded binary."
-            );
-        }
-        want = parts[0].strip().lower();
+    if want {
         got = hashlib.sha256(payload).hexdigest();
         if got != want {
             raise RuntimeError(
@@ -110,8 +134,32 @@ def download_release_binary(channel: str, arch: str) -> bytes {
                 f"(expected {want}, got {got}); refusing to ship it."
             );
         }
+        try {
+            cached = _binary_cache_path(channel, arch);
+            cached.parent.mkdir(parents=True, exist_ok=True);
+            tmp = cached.with_suffix(f".{os.getpid()}.tmp");
+            tmp.write_bytes(payload);
+            tmp.rename(cached);
+        } except Exception as e {
+            logger.warning(f"Could not cache the downloaded binary ({e}).");
+        }
     }
     return payload;
+}
+
+
+def _binary_cache_path(channel: str, arch: str) -> Path {
+    # Cache on the DEPLOY-DRIVER machine (laptop / CI runner / operator pod),
+    # not the cluster: the driver needs the binary before the PVC exists, and
+    # this one copy serves every app/cluster it deploys. The PVC hop is
+    # deduplicated separately by the content-addressed seeder (#7198).
+    base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
+    cache_root = Path(base)
+        if base
+        else (
+            Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache")) / "jac" / "scale-binaries"
+        );
+    return Path(cache_root) / f"jac-{channel}-linux-{arch}";
 }
 
 
@@ -185,14 +233,28 @@ def _skip(path: Path) -> bool {
 
 
 def pack_binary_bytes(binary_bytes: bytes) -> bytes {
+    import from jaclang.scale.injector.bundle { open_det_tar }
     buf = io.BytesIO();
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
-        info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
-        info.size = len(binary_bytes);
-        info.mode = 0o755;
-        tar.addfile(info, io.BytesIO(binary_bytes));
+    (tar, gz) = open_det_tar(buf);
+    try {
+        with tar {
+            info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
+            info.size = len(binary_bytes);
+            info.mode = 0o755;
+            tar.addfile(info, io.BytesIO(binary_bytes));
+        }
+    } finally {
+        gz.close();
     }
     return buf.getvalue();
+}
+
+
+def jac_executable -> str {
+    # The driver invoking ITSELF must not depend on `jac` being on PATH (the
+    # launcher exports its real path as JAC_EXECUTABLE); bench/operator hosts
+    # without PATH setup otherwise silently fall back to on-pod builds.
+    return os.environ.get("JAC_EXECUTABLE", "") or shutil.which("jac") or "jac";
 }
 
 
@@ -216,7 +278,7 @@ def ensure_admin_dist_built(source_root: Path) -> None {
     );
     try {
         result = subprocess.run(
-            ["jac", "build", "main.jac"],
+            [jac_executable(), "build", "main.jac"],
             cwd=str(ui),
             capture_output=True,
             text=True,
@@ -311,45 +373,56 @@ def pack_overlay(binary_bytes: bytes, source_root: Path) -> bytes {
     ensure_admin_dist_built(source_root);
     seeded = 0;
     manifest: list[str] = [];
+    import from jaclang.scale.injector.bundle { open_det_tar, det_tar_member }
     buf = io.BytesIO();
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
-        info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
-        info.size = len(binary_bytes);
-        info.mode = 0o755;
-        tar.addfile(info, io.BytesIO(binary_bytes));
-        jac_pkg = source_root / "jaclang";
-        for path in sorted(jac_pkg.rglob("*")) {
-            if not path.is_file() or _skip(path) {
-                continue;
+    (tar, gz) = open_det_tar(buf);
+    try {
+        with tar {
+            info = tarfile.TarInfo(name=f"{TOOLCHAIN_SUBDIR}/{BINARY_ARCNAME}");
+            info.size = len(binary_bytes);
+            info.mode = 0o755;
+            tar.addfile(info, io.BytesIO(binary_bytes));
+            jac_pkg = source_root / "jaclang";
+            for path in sorted(jac_pkg.rglob("*")) {
+                if not path.is_file() or _skip(path) {
+                    continue;
+                }
+                rel = path.relative_to(source_root);
+                tar.add(
+                    str(path),
+                    arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}",
+                    filter=det_tar_member
+                );
+                # Ship the host's compiled .jir so pods validate instead of recompiling (#7138).
+                if str(path).endswith(".jac") {
+                    cache = _host_jir_cache_for(path);
+                    if cache is not None {
+                        tar.add(
+                            str(cache),
+                            arcname=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{rel}.jir",
+                            filter=det_tar_member
+                        );
+                        manifest.append(f"{rel}.jir\t{_pod_seed_dest_name(str(rel))}");
+                        seeded += 1;
+                    }
+                }
             }
-            rel = path.relative_to(source_root);
-            tar.add(str(path), arcname=f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/{rel}");
-            # Ship the host's compiled .jir so pods validate instead of recompiling (#7138).
-            if str(path).endswith(".jac") {
-                cache = _host_jir_cache_for(path);
-                if cache is not None {
-                    tar.add(
-                        str(cache),
-                        arcname=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{rel}.jir"
+            if seeded {
+                for (name, payload) in [
+                    ("_adopt.py", _JIR_ADOPT_PY),
+                    ("_manifest.tsv", "\n".join(manifest) + "\n")
+                ] {
+                    raw = payload.encode("utf-8");
+                    info = tarfile.TarInfo(
+                        name=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{name}"
                     );
-                    manifest.append(f"{rel}.jir\t{_pod_seed_dest_name(str(rel))}");
-                    seeded += 1;
+                    info.size = len(raw);
+                    tar.addfile(info, io.BytesIO(raw));
                 }
             }
         }
-        if seeded {
-            for (name, payload) in [
-                ("_adopt.py", _JIR_ADOPT_PY),
-                ("_manifest.tsv", "\n".join(manifest) + "\n")
-            ] {
-                raw = payload.encode("utf-8");
-                info = tarfile.TarInfo(
-                    name=f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/{name}"
-                );
-                info.size = len(raw);
-                tar.addfile(info, io.BytesIO(raw));
-            }
-        }
+    } finally {
+        gz.close();
     }
     if seeded {
         logger.info(f"Packed {seeded} host-precompiled modules into the overlay.");

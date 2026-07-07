@@ -69,6 +69,7 @@ obj MicroserviceManifestBuilder {
         import os;
         import subprocess;
         import from jaclang.cli.console { console }
+        import from jaclang.scale.injector.binary { jac_executable }
         client_entry = self._client_entry();
         if not client_entry {
             return;
@@ -81,7 +82,10 @@ obj MicroserviceManifestBuilder {
         console.print(f"Building the client bundle on the host ({client_entry}).");
         try {
             subprocess.run(
-                ["jac", "build", client_entry], cwd=project_dir, check=True, timeout=900
+                [jac_executable(), "build", client_entry],
+                cwd=project_dir,
+                check=True,
+                timeout=900
             );
             if os.path.isfile(os.path.join(dist, "index.html")) {
                 console.print("Client bundle built; shipping it to the gateway pod.");
@@ -575,14 +579,10 @@ obj MicroserviceManifestBuilder {
         return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
     }
 
-    def _k8s_safe_name(svc_name: str) -> str {
-        return k8s_safe_name(svc_name);
-    }
-
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, any]
     ) -> dict[str, any] {
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
         labels: dict[str, str] = {
             "app": k8s_name,
@@ -612,7 +612,7 @@ obj MicroserviceManifestBuilder {
     }
 
     def _build_service_manifest(svc_name: str) -> dict[str, any] {
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
         spec: dict[str, any] = {
             "type": "ClusterIP",
@@ -742,7 +742,7 @@ obj MicroserviceManifestBuilder {
         if not cfg.get("enabled", True) {
             return None;
         }
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         max_u: int = int(cfg.get("max_unavailable", 1));
         return {
             "apiVersion": "policy/v1",
@@ -864,7 +864,8 @@ obj MicroserviceManifestBuilder {
             build_bootstrap_init_container(
                 self.k8s_config,
                 self.k8s_config.python_image,
-                self.dev.overlays_source()
+                self.dev.overlays_source(),
+                is_gateway=(svc_name == GATEWAY_NAME)
             )
         );
         return spec;
