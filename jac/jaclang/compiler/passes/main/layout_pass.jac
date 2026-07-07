@@ -1,4 +1,3 @@
-import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
@@ -73,9 +72,6 @@ obj LayoutRegistry {
     def get_layout(name: str) -> (ArchetypeLayout | None);
     def get_mro(name: str) -> list[str];
     def get_topo_order -> list[str];
-    def get_field_index(class_name: str, field_name: str) -> (int | None);
-    def get_method_slot(class_name: str, method_name: str) -> (int | None);
-    def is_subclass(child: str, parent: str) -> bool;
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 

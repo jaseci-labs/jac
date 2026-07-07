@@ -2,8 +2,9 @@
 
 Canonical, copy-paste-free versions of small utilities that several server,
 quarantine, and data tests need: allocating a free TCP port for a subprocess
-server, scrubbing leftover SQLite/shelf files between runs, and unwrapping the
-TransportResponse envelope returned by the API.
+server, scrubbing leftover SQLite/shelf files between runs, unwrapping the
+TransportResponse envelope returned by the API, registering/logging in a test
+user, invoking walkers over HTTP, and starting a `jac start` subprocess.
 
 Example:
     import from jaclang.scale.tests.server_support { get_free_port }
@@ -12,9 +13,15 @@ Example:
 
 import socket;
 import glob;
+import os;
 import shutil;
+import subprocess;
+import sys;
+import time;
 import contextlib;
+import requests;
 import from pathlib { Path }
+import from typing { cast }
 
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
@@ -91,4 +98,78 @@ def _extract_transport_response_data(
     }
 
     return json_response;
+}
+
+"""Unwrap a TransportResponse envelope down to its data payload."""
+def extract(resp: any) -> any {
+    if isinstance(resp, list) and len(resp) == 2 {
+        resp = resp[1];
+    }
+    if isinstance(resp, dict) and "data" in resp {
+        return resp["data"];
+    }
+    return resp;
+}
+
+"""Register a user (idempotent) then log in, returning the auth token."""
+def register_user(base_url: str, username: str) -> str {
+    requests.post(
+        f"{base_url}/user/register",
+        json={
+            "identities": [{"type": "username", "value": username}],
+            "credential": {"type": "password", "password": "pass123"}
+        },
+        timeout=5
+    );
+    res = requests.post(
+        f"{base_url}/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": "pass123"}
+        },
+        timeout=5
+    );
+    assert res.status_code == 200;
+    return cast(dict, extract(res.json()))["token"];
+}
+
+"""POST to a walker endpoint with a bearer token and return the raw JSON."""
+def call_walker(
+    base_url: str, walker_name: str, token: str, payload: dict | None = None
+) -> any {
+    res = requests.post(
+        f"{base_url}/walker/{walker_name}",
+        json=payload or {},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15
+    );
+    return res.json();
+}
+
+"""Start `jac start` in fixtures_dir and block until /healthz responds."""
+def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Popen {
+    jac_executable = shutil.which("jac") or str(Path(sys.executable).parent / "jac");
+    cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
+    env = os.environ.copy();
+    server = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(fixtures_dir),
+        env=env
+    );
+    base_url = f"http://localhost:{port}";
+    for _ in range(30) {
+        try {
+            r = requests.get(f"{base_url}/healthz", timeout=1);
+            if r.status_code == 200 {
+                return server;
+            }
+        } except Exception {
+            time.sleep(1);
+        }
+    }
+    (stdout, stderr) = server.communicate(timeout=2);
+    raise RuntimeError(f"server failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 }

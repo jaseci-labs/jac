@@ -23,6 +23,7 @@ import from ....components.common.Input { Input }
 import from ....components.common.Select { Select }
 import from ....context.AuthContext { useAuth }
 import from ....services.logsService { getLogServices, getLogs, getTraceLogs }
+import from ....utils.api { getErrorMessage }
 
 def:pub LogsPage -> JsxElement {
     has isLoading: bool = True,
@@ -85,7 +86,7 @@ def:pub LogsPage -> JsxElement {
                 nextBefore = String(result["data"]["next_before"] or "");
                 errorMsg = "";
             } elif result["error"] {
-                errorMsg = result["error"]["message"] or "Failed to load logs";
+                errorMsg = getErrorMessage(result, "Failed to load logs");
                 # 502 = Loki unreachable. Distinguish so we can show a
                 # helpful hint about logs.enabled / observability stack.
                 if "unavailable" in (errorMsg or "").toLowerCase() {
@@ -140,7 +141,7 @@ def:pub LogsPage -> JsxElement {
                 traceLines = result["data"]["lines"] or [];
                 traceServices = result["data"]["services_touched"] or [];
             } elif result["error"] {
-                errorMsg = result["error"]["message"] or "Failed to load trace";
+                errorMsg = getErrorMessage(result, "Failed to load trace");
             }
         } except Exception as e {
             console.error("loadTrace error:", e);

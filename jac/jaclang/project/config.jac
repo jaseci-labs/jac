@@ -10,6 +10,8 @@ import from typing { Any }
 # [plugins.<name>]; they are now first-class top-level sections collected into
 # JacConfig.plugins for feature config access via get_plugin_config(<name>).
 
+glob VALID_CLIENT_KINDS: list[str] = ["web", "mobui"];
+
 obj PersonConfig {
     has name: str = "",
         email: str = "";
@@ -23,6 +25,7 @@ obj PackageIncludeConfig {
 obj ProjectConfig {
     has name: str = "",
         version: str = "0.1.0",
+        client_kind: str = "web",
         description: str = "",
         authors: list[PersonConfig] = [],
         maintainers: list[PersonConfig] = [],
@@ -79,6 +82,10 @@ obj ServeConfig {
 
 obj FormatConfig {
     has outfile: str = "";
+}
+
+obj PrecommitConfig {
+    has typecheck: bool = True;
 }
 
 obj LintConfig {
@@ -156,6 +163,7 @@ obj JacConfig {
         test: TestConfig = TestConfig(),
         serve: ServeConfig = ServeConfig(),
         format: FormatConfig = FormatConfig(),
+        precommit: PrecommitConfig = PrecommitConfig(),
         check: CheckConfig = CheckConfig(),
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
@@ -190,6 +198,7 @@ obj JacConfig {
     ) -> JacConfig;
 
     def apply_env_interpolation -> None;
+    def _section_map -> dict;
     def apply_profile(profile_name: str, _visited: set | None = None) -> None;
     def apply_profile_overlay(profile_name: str | None = None) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, any];

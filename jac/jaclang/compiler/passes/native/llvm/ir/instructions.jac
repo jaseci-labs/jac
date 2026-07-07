@@ -286,33 +286,6 @@ class Ret(Terminator) {
 }
 class Branch(Terminator) {}
 class ConditionalBranch(PredictableInstr, Terminator) {}
-class IndirectBranch(PredictableInstr, Terminator) {
-    def init(self: IndirectBranch, parent: Any, opname: Any, addr: Any) -> object {
-        super.init(parent, opname, [addr]);
-        self.destinations = [];
-    }
-    @property
-    def address(self: IndirectBranch) -> object {
-        return self.operands[0];
-    }
-    def add_destination(self: IndirectBranch, block: Any) -> object {
-        assert isinstance(block, Block);
-        self.destinations.append(block);
-    }
-    def descr(self: IndirectBranch, buf: Any) -> object {
-        destinations = [
-            "label {0}".format(blk.get_reference()) for blk in self.destinations
-        ];
-        buf.append(
-            "indirectbr {0} {1}, [{2}]  {3}\n".format(
-                self.address.type,
-                self.address.get_reference(),
-                ', '.join(destinations),
-                self._stringify_metadata(leading_comma=True)
-            )
-        );
-    }
-}
 class SelectInstr(Instruction) {
     def init(
         self: SelectInstr,
@@ -634,40 +607,6 @@ class PhiInstr(Instruction) {
         self.incomings = [
             (new if (val is old) else val, blk) for (val, blk) in self.incomings
         ];
-    }
-}
-class InsertElement(Instruction) {
-    def init(
-        self: InsertElement,
-        parent: Any,
-        vector: Any,
-        value: Any,
-        index: Any,
-        name: Any = ''
-    ) -> object {
-        if not isinstance(vector.type, types.VectorType) {
-            raise TypeError("vector needs to be of VectorType.");
-        }
-        if not (value.type == vector.type.element) {
-            raise TypeError(
-                "value needs to be of type {} not {}.".format(
-                    vector.type.element, value.type
-                )
-            );
-        }
-        if not isinstance(index.type, types.IntType) {
-            raise TypeError("index needs to be of IntType.");
-        }
-        typ = vector.type;
-        super.init(parent, typ, "insertelement", [vector, value, index], name=name);
-    }
-    def descr(self: InsertElement, buf: Any) -> object {
-        operands = ", ".join(
-            "{0} {1}".format(op.type, op.get_reference()) for op in self.operands
-        );
-        buf.append(
-            "{opname} {operands}\n".format(opname=self.opname, operands=operands)
-        );
     }
 }
 class ExtractValue(Instruction) {

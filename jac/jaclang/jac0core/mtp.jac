@@ -75,32 +75,6 @@ def mk_tuple(*types: object) -> tuple {
     return (('tuple', ) + `tuple(types));
 }
 
-def mk_union(*types: object) -> tuple {
-    return (('union', ) + `tuple(types));
-}
-
-def is_list_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) >= 2) and (t[0] == 'list'));
-}
-
-def is_dict_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) == 3) and (t[0] == 'dict'));
-}
-
-def is_tuple_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) >= 2) and (t[0] == 'tuple'));
-}
-
-def is_union_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) >= 2) and (t[0] == 'union'));
-}
-
-def inner_types(t: object) -> tuple {
-    if (isinstance(t, `tuple) and (len(t) >= 2)) {
-        return t[1:];
-    }
-    return ();
-}
 
 def type_to_str(t: object) -> str {
     if (t is None) {

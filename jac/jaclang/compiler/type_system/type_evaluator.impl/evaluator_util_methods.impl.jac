@@ -1171,6 +1171,23 @@ impl TypeEvaluator._resolve_from_path(from_mod: uni.ModulePath) -> Path {
     return Path(from_mod.resolve_relative_path());
 }
 
+impl TypeEvaluator._resolve_client_npm_module(node_: uni.ModulePath) -> (str | None) {
+    if not (
+        node_.path and len(node_.path) == 1 and isinstance(node_.path[0], uni.String)
+    ) {
+        return None;
+    }
+    if not node_.in_client_context() {
+        return None;
+    }
+    mod_path = node_.loc.mod_path if node_.loc else None;
+    if not mod_path {
+        return None;
+    }
+    import from jaclang.jac0core.modresolver { resolve_client_npm_package }
+    return resolve_client_npm_package(node_.path[0].lit_value, mod_path);
+}
+
 impl TypeEvaluator._is_fstring_all_literal(fstring: uni.FString) -> bool {
     for part in fstring.parts {
         if isinstance(part, uni.String) {
@@ -1619,6 +1636,34 @@ impl TypeEvaluator._collect_return_types(
 
         if isinstance(stmt, (uni.IterForStmt, uni.InForStmt, uni.WhileStmt)) {
             self._collect_return_types(list(stmt.body), out);
+            if (
+                isinstance(stmt, uni.WhileStmt)
+                and isinstance(stmt.condition, uni.Bool)
+                and stmt.condition.lit_value
+            ) {
+                _has_break = False;
+                import from jaclang.jac0core.constant { Tokens as _Tok }
+                _loop_types = (uni.WhileStmt, uni.IterForStmt, uni.InForStmt);
+                for _ctrl in stmt.get_all_sub_nodes(uni.CtrlStmt) {
+                    if _ctrl.ctrl.name != _Tok.KW_BREAK {
+                        continue;
+                    }
+                    _anc = _ctrl.parent;
+                    while _anc is not None and _anc is not stmt {
+                        if isinstance(_anc, _loop_types) {
+                            break;
+                        }
+                        _anc = _anc.parent;
+                    }
+                    if _anc is stmt {
+                        _has_break = True;
+                        break;
+                    }
+                }
+                if not _has_break {
+                    return True;
+                }
+            }
             continue;
         }
     }

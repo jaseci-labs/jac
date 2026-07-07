@@ -1,3 +1,4 @@
+import json;
 import logging;
 import os;
 import sys;
@@ -51,6 +52,7 @@ impl HotReloader.record_ok -> None {
         self._build_error_file = "";
         self._build_error = "";
     }
+    self._sync_error_file();
 }
 
 impl HotReloader.record_error(file_path: str, message: str) -> None {
@@ -59,6 +61,34 @@ impl HotReloader.record_error(file_path: str, message: str) -> None {
         self._build_error_file = file_path;
         self._build_error = message;
     }
+    self._sync_error_file();
+}
+
+impl HotReloader._error_file_path -> Path {
+    if self.client_compiler {
+        try {
+            compiled = Path(str(self.client_compiler.jac_client_compiler.compiled_dir));
+            return compiled.parent / '.jac-build-error.json';
+        } except Exception { }
+    }
+    return Path(self.base_path) / '.jac' / 'client' / '.jac-build-error.json';
+}
+
+impl HotReloader._sync_error_file -> None {
+    try {
+        with HotReloader._build_lock {
+            is_error = self._build_status is BuildStatus.ERROR;
+            payload = {"file": self._build_error_file, "message": self._build_error};
+        }
+        error_file = self._error_file_path();
+        if is_error {
+            if error_file.parent.is_dir() {
+                error_file.write_text(json.dumps(payload), encoding='utf-8');
+            }
+        } elif error_file.exists() {
+            error_file.unlink();
+        }
+    } except OSError { }
 }
 
 impl get_build_status -> dict {
@@ -74,15 +104,15 @@ impl HotReloader.on_file_change(event: any) -> None {
         return;
     }
 
-    self._process_change(event.path);
+    self._process_change(event.path, bool(getattr(event, 'is_directory', False)));
 }
 
-impl HotReloader._process_change(file_path: str) -> None {
+impl HotReloader._process_change(file_path: str, is_directory: bool = False) -> None {
     with HotReloader._build_lock {
         self._build_status = BuildStatus.COMPILING;
     }
     try {
-        self._dispatch_change(file_path);
+        self._dispatch_change(file_path, is_directory);
     } except Exception as e {
         self.record_error(file_path, f"{type(e).__name__}: {e}");
         raise;
@@ -93,7 +123,14 @@ impl HotReloader._process_change(file_path: str) -> None {
     }
 }
 
-impl HotReloader._dispatch_change(file_path: str) -> None {
+impl HotReloader._dispatch_change(file_path: str, is_directory: bool = False) -> None {
+    if is_directory {
+        if not Path(file_path).exists() {
+            self._remove_compiled_dir(file_path);
+        }
+        self._refresh_routing(file_path);
+        return;
+    }
     if file_path.endswith(
         tuple(
             p[1:] if p.startswith("*") else p for p in self.watcher.additional_patterns
@@ -112,6 +149,13 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
         }
     }
 
+    if not Path(target_path).exists() {
+        self._remove_compiled_output(target_path);
+        self._reload_server_module(target_path);
+        self._refresh_routing(target_path);
+        return;
+    }
+
     (has_client, has_server) = self._classify_declarations(target_path);
 
     if has_server {
@@ -121,6 +165,122 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
     if has_client {
         visited: set = set();
         self._recompile_client_code(target_path, visited);
+    }
+
+    self._refresh_routing(target_path);
+}
+
+impl HotReloader._entry_module_path -> Path {
+    return Path(self.base_path) / f"{self.module_name}.jac";
+}
+
+impl HotReloader._remove_compiled_output(file_path: str) -> None {
+    base_dir = Path(self.base_path).resolve();
+    source_path = Path(file_path);
+    try {
+        source_path = source_path.resolve();
+    } except OSError { }
+    if self.client_compiler {
+        output_path = self.client_compiler.jac_client_compiler._output_path_for(
+            source_path, base_dir
+        );
+    } else {
+        try {
+            rel_dir = source_path.parent.relative_to(base_dir);
+        } except ValueError {
+            rel_dir = Path('.');
+        }
+        output_path = (
+            Path(self.base_path) / self._client_output_dir / rel_dir / self._get_js_filename(
+                file_path
+            )
+        );
+    }
+    removed = False;
+    for target in (Path(str(output_path)), Path(str(output_path) + '.map')) {
+        try {
+            if target.exists() {
+                target.unlink();
+                removed = True;
+            }
+        } except OSError { }
+    }
+    if removed {
+        console.warning(f"Removed compiled output for deleted {file_path}");
+    }
+}
+
+impl HotReloader._remove_compiled_dir(file_path: str) -> None {
+    base_dir = Path(self.base_path).resolve();
+    source_path = Path(file_path);
+    try {
+        source_path = source_path.resolve();
+    } except OSError { }
+    try {
+        rel = source_path.relative_to(base_dir);
+    } except ValueError {
+        return;
+    }
+    if self.client_compiler {
+        compiled_root = Path(
+            str(self.client_compiler.jac_client_compiler.compiled_dir)
+        );
+    } else {
+        compiled_root = Path(self.base_path) / self._client_output_dir;
+    }
+    target = compiled_root / rel;
+    try {
+        if str(target.resolve()) == str(compiled_root.resolve()) {
+            return;
+        }
+        if target.is_dir() {
+            shutil.rmtree(target);
+            console.warning(
+                f"Removed compiled output for deleted directory {file_path}"
+            );
+        }
+    } except OSError { }
+}
+
+impl HotReloader._refresh_routing(file_path: str) -> None {
+    if not self.client_compiler {
+        return;
+    }
+    base_dir = Path(self.base_path).resolve();
+    pages_dir = base_dir / 'pages';
+    changed = Path(file_path);
+    try {
+        changed = changed.resolve();
+    } except OSError { }
+    under_pages = (
+        str(changed) == str(pages_dir)
+        or str(changed).startswith(str(pages_dir) + os.sep)
+    );
+    jcc = self.client_compiler.jac_client_compiler;
+    routes_file = Path(str(jcc.compiled_dir)) / '_routes.js';
+    routes_missing = pages_dir.is_dir() and not routes_file.exists();
+
+    routes_stale = routes_file.exists() and not pages_dir.is_dir();
+    if not (under_pages or routes_missing or routes_stale) {
+        return;
+    }
+    try {
+        has_pages = jcc.rescan_pages();
+        self.client_compiler._has_pages = has_pages;
+        self.client_compiler.create_entry_file(self._entry_module_path());
+        if not has_pages {
+            if routes_file.exists() {
+                routes_file.unlink();
+            }
+            compiled_pages = Path(str(jcc.compiled_dir)) / 'pages';
+            if compiled_pages.is_dir() {
+                shutil.rmtree(compiled_pages);
+            }
+            console.warning("Routing deactivated: pages/ no longer exists");
+        }
+    } except Exception as e {
+        console.error(f"Routing refresh failed for {file_path}: {e}");
+        self.record_error(file_path, f"Routing refresh failed: {e}");
     }
 }
 
@@ -150,10 +310,6 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
             target=self.module_name, base_path=self.base_path, reload_module=True
         );
         console.print(f"[HMR] Reloaded: {file_path}");
-
-        if self._overlay_entry {
-            self._update_entry_point();
-        }
     } except SyntaxError as e {
         line_info = f":{e.lineno}" if e?.lineno and e.lineno else "";
         console.error(
@@ -163,13 +319,47 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
         self.record_error(file_path, f"Syntax error{line_info}: {e?.msg or str(e)}");
     } except ImportError as e {
         console.error(f"Import error in {file_path}: {e}");
-        self._emit_client_error_overlay(file_path, str(e));
         self.record_error(file_path, f"Import error: {e}");
     } except Exception as e {
         error_type = type(e).__name__;
         console.error(f"{error_type} in {file_path}: {e}");
-        self._emit_client_error_overlay(file_path, str(e));
         self.record_error(file_path, f"{error_type}: {e}");
+    }
+}
+
+impl HotReloader._recompile_client_unified(file_path: str) -> None {
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.runtimelib.client_bundle { ClientBundleError }
+    try {
+        source_path = Path(file_path).resolve();
+        if not source_path.exists() {
+            return;
+        }
+
+        program = Jac.program;
+        if program is not None {
+            for key in {file_path, str(source_path)} {
+                if key in program.mod.hub {
+                    del program.mod.hub[key];
+                }
+            }
+            program.errors_had.clear();
+        }
+        jcc = self.client_compiler.jac_client_compiler;
+        jcc.compile_dependencies_recursively(
+            source_path, source_root=Path(self.base_path).resolve(), skip_existing=True
+        );
+        console.success(
+            f"Recompiled: {file_path} -> {self._get_js_filename(file_path)}"
+        );
+    } except ClientBundleError as e {
+        base_prefix = str(Path(self.base_path).resolve()) + '/';
+        errors = str(e).replace(base_prefix, '');
+        console.error(f"Compile error in {file_path}:\n{errors}");
+        self.record_error(file_path, errors);
+    } except Exception as e {
+        console.error(f"Compile error in {file_path}: {e}");
+        self.record_error(file_path, str(e));
     }
 }
 
@@ -177,6 +367,10 @@ impl HotReloader._recompile_client_code(
     file_path: str, visited: set | None = None, force: bool = True
 ) -> None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    if self.client_compiler {
+        self._recompile_client_unified(file_path);
+        return;
+    }
     try {
         source_path = Path(file_path).resolve();
         source_key = str(source_path);
@@ -223,17 +417,12 @@ impl HotReloader._recompile_client_code(
                     str(err).replace(base_prefix, '') for err in Jac.program.errors_had
                 );
                 console.error(f"Compile error in {file_path}:\n{errors}");
-                self._emit_client_error_overlay(file_path, errors);
                 self.record_error(file_path, errors);
             } else {
                 console.warning(f"Errors compiling dependency {file_path}, skipping");
             }
             Jac.program.errors_had.clear();
             return;
-        }
-
-        if force and self._overlay_entry {
-            self._update_entry_point();
         }
 
         js_code = mod.gen.js or '';
@@ -342,20 +531,6 @@ impl HotReloader._path_to_module(file_path: str) -> str {
     return ".".join(module_parts);
 }
 
-impl HotReloader._emit_client_error_overlay(file_path: str, errors: str) -> None {
-    output_base = Path(self.base_path) / self._client_output_dir;
-    output_dir = output_base;
-    output_dir.mkdir(parents=True, exist_ok=True);
-    js_filename = "_entry.js";
-    output_path = output_dir / js_filename;
-    entry_content = f'import React from "react";\nimport {{ createRoot }} from "react-dom/client";\nimport {{ errorOverlay }} from "@jac/runtime";\n\nconst root = createRoot(document.getElementById("root"));\nroot.render(errorOverlay("{file_path} ", ` {errors}`), null);\n';
-
-    output_path.write_text(entry_content, encoding='utf-8');
-
-    self._overlay_entry = True;
-    return;
-}
-
 impl HotReloader._copy_frontend_files(file_path: str) -> None {
     try {
         source_path = Path(file_path).resolve();
@@ -373,14 +548,9 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
                 output_path.unlink();
                 console.warning(f"Removed deleted frontend file: {rel_path}");
             }
-            self._emit_client_error_overlay(file_path, f"No module in {rel_path}");
-            self.record_error(file_path, f"No module in {rel_path}");
             return;
         }
         try {
-            if self._overlay_entry {
-                self._update_entry_point();
-            }
             output_path.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(source_path, output_path);
         } except (FileNotFoundError, OSError) { }
@@ -389,20 +559,4 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
         console.error(f"Copy error in {file_path}: {e}");
         self.record_error(file_path, f"Copy error: {e}");
     }
-}
-
-impl HotReloader._update_entry_point -> None {
-    import from jaclang.compiler.passes.ecmascript.backends.registry {
-        resolve_active_backend
-    }
-    backend = resolve_active_backend();
-    output_base = Path(self.base_path) / self._client_output_dir;
-    output_base.mkdir(parents=True, exist_ok=True);
-    output_path = output_base / "_entry.js";
-
-    entry_content = backend.build_entry_script(
-        self.module_name, install_global_handlers=False
-    );
-    output_path.write_text(entry_content, encoding='utf-8');
-    self._overlay_entry = False;
 }

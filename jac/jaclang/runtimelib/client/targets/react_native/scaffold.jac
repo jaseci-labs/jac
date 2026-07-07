@@ -6,6 +6,7 @@ import from jaclang.runtimelib.client.targets.react_native.common {
     DEFAULT_APP_NAME,
     DEFAULT_APP_SLUG,
     EXPO_SDK_VERSION,
+    EAS_CLI_VERSION,
     REACT_NATIVE_VERSION,
     run_manifest_install
 }
@@ -130,8 +131,7 @@ def _build_app_json(app_slug: str, app_id: str, app_name: str) -> str {
     return json.dumps(cfg, indent=2) + "\n";
 }
 
-def _build_metro_config(compiled_dir_rel: str) -> str {
-    _ = compiled_dir_rel;
+def _build_metro_config -> str {
     return (
         _SCAFFOLD_MARKER + "\n"
         "const { getDefaultConfig } = require('expo/metro-config');\n"
@@ -142,7 +142,7 @@ def _build_metro_config(compiled_dir_rel: str) -> str {
         "const config = getDefaultConfig(projectRoot);\n"
         "\n"
         "// Resolve `@jac/runtime` to the *staged* native runtime that the\n"
-        "// build copies into mobile-rn/jac-src/. This deliberately does NOT\n"
+        "// build copies into the Expo project's jac-src/. This deliberately does NOT\n"
         "// point at the shared .jac/client/compiled dir: during `jac start\n"
         "// --dev` the Jac API backend rebuilds the *web* client into that\n"
         "// same dir, which would overwrite client_runtime.js with a\n"
@@ -155,10 +155,10 @@ def _build_metro_config(compiled_dir_rel: str) -> str {
         "config.resolver.extraNodeModules = {\n"
         "  ...(config.resolver.extraNodeModules || {}),\n"
         "  '@jac/runtime': path.resolve(projectRoot, 'jac-src', 'client_runtime.js'),\n"
-        "  // JacSX @jac/ui primitives. On native `react-native` is the real\n"
+        "  // mobUI @jac/mobui primitives. On native `react-native` is the real\n"
         "  // package (no alias) so View/Text are RN components; only the web\n"
         "  // build rewrites react-native -> react-native-web.\n"
-        "  '@jac/ui': path.resolve(projectRoot, 'jac-src', 'client_ui.js'),\n"
+        "  '@jac/mobui': path.resolve(projectRoot, 'jac-src', 'client_mobui.js'),\n"
         "};\n"
         "config.resolver.nodeModulesPaths = [\n"
         "  path.resolve(projectRoot, 'node_modules'),\n"
@@ -256,7 +256,7 @@ def _build_placeholder_jac_app -> str {
 
 def _build_eas_json -> str {
     cfg = {
-        "cli": {"version": f">={EXPO_SDK_VERSION}.0.0", "appVersionSource": "remote"},
+        "cli": {"version": f">={EAS_CLI_VERSION}.0.0", "appVersionSource": "remote"},
         "build": {
             "preview": {
                 "distribution": "internal",
@@ -299,18 +299,6 @@ def write_expo_scaffold(
 
     (rn_dir / "assets").mkdir(parents=True, exist_ok=True);
 
-    import os;
-    compiled_abs = (project_root / ".jac" / "client" / "compiled").resolve();
-    try {
-        rel_path = os.path.relpath(compiled_abs, rn_dir.resolve());
-    } except ValueError {
-        rel_path = str(compiled_abs);
-        console.warning(
-            "  Compiled dir is on a different drive than mobile-rn/; "
-            "metro.config.js will use an absolute path."
-        );
-    }
-
     any_written = False;
     any_written |= _write_if_managed(
         rn_dir / ".gitignore", _build_gitignore(), ".gitignore"
@@ -322,7 +310,7 @@ def write_expo_scaffold(
         rn_dir / "app.json", _build_app_json(app_slug, app_id, app_name), "app.json"
     );
     any_written |= _write_if_managed(
-        rn_dir / "metro.config.js", _build_metro_config(rel_path), "metro.config.js"
+        rn_dir / "metro.config.js", _build_metro_config(), "metro.config.js"
     );
     any_written |= _write_if_managed(
         rn_dir / "babel.config.js", _build_babel_config(), "babel.config.js"

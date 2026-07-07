@@ -73,7 +73,6 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `E0010` | '{keyword}' is not supported in Jac |
-| `E0011` | Jac does not allow this keyword in any syntactic position |
 | `E0012` | Use the `new(target, ...args)` ambient builtin to create new instances |
 | `E0013` | '{keyword}' is a keyword and cannot be used as a {context} name |
 
@@ -93,7 +92,6 @@ Emitted by the parser and lexer during source code parsing.
 | `E0030` | Unexpected semicolon at module level |
 | `E0031` | Module-level 'with' blocks only support 'entry', not 'exit' |
 | `E0032` | Unexpected '{token}' -- must follow its parent statement (if/try/match/switch) |
-| `E0033` | '{modifier}' is not a valid prefix modifier |
 | `E0034` | Expected 'with' after 'can' ability name (use 'def' for function-style declarations) |
 
 ### Block / Body Requirements
@@ -256,6 +254,17 @@ Emitted by the type checker and type evaluator.
 | `E1097` | Connection right operand must be a node instance |
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
+
+### mobUI-Project JSX Host Tags
+
+Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native target](plugins/jac-client.md#react-native-target-beta)) uses a raw HTML host tag in JSX. The guard resolves every tag name in the enclosing scope; only **unresolved lowercase names** are treated as HTML host elements and rejected. Uppercase components and lowercase components that resolve to an in-scope symbol are allowed. `.cl.jac` web-boundary files (but not `.native.cl.jac` files, which target React Native) and modules outside the project root are exempt; the client kind is discovered from each module's own project `jac.toml`, never the process cwd.
+
+| Code | Message |
+|------|---------|
+| `E1105` | JSX tag '<{tag}>' is not in scope in a mobUI project; use {suggestion} instead |
+
+!!! tip "Fixing `E1105`"
+    `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
 
 ### Type Warnings
 
@@ -432,14 +441,6 @@ Emitted during code generation, formatting, and native compilation.
 | Code | Message |
 |------|---------|
 | `E5060` | C library import declaration '{name}' must not have a body |
-
-### Language Server
-
-| Code | Message |
-|------|---------|
-| `E5070` | Error during type check: {error} |
-| `E5071` | Error during formatting: {error} |
-| `W5072` | Attribute error when accessing node attributes: {error} |
 
 ---
 

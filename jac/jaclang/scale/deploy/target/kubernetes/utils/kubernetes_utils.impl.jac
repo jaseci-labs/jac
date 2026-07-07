@@ -95,25 +95,15 @@ impl validate_resource_limits(
 }
 
 impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None {
-    import os;
     import shutil;
     import subprocess;
     if (shutil.which('kubectl') is None) {
         raise RuntimeError('kubectl is required to seed the bundle PVC.');
     }
 
-    child_env = {
-        k: v
-        for (k, v) in os.environ.items()
-        if k not in ('PYTHONHOME', 'PYTHONPATH')
-    };
     try {
         subprocess.run(
-            ['kubectl', *args],
-            check=True,
-            text=True,
-            cwd=str(cwd) if cwd else None,
-            env=child_env
+            ['kubectl', *args], check=True, text=True, cwd=str(cwd) if cwd else None
         );
     } except subprocess.CalledProcessError as exc {
         raise RuntimeError(
@@ -740,11 +730,5 @@ impl delete_k8s_secret(
         if e.status != 404 {
             raise;
         }
-    }
-}
-
-impl debug_print(statement: str, debug_only: bool = False) -> None {
-    if debug_only {
-        console.print(statement);
     }
 }

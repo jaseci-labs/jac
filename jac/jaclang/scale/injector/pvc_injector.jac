@@ -1,3 +1,4 @@
+import os;
 import logging;
 import from jaclang.scale.injector.injector { Injector }
 import from jaclang.scale.injector.bundle {
@@ -28,8 +29,20 @@ def bundle_pvc_path(object_key: str) -> str {
 def build_bundle_pvc(
     app_name: str, namespace: str, size: str, storage_class: str
 ) -> dict[str, any] {
+    access_modes = ["ReadWriteMany"];
+    if not storage_class {
+        raise ValueError(
+            f"Bundle PVC '{bundle_pvc_name(app_name)}' requests accessModes "
+            "[ReadWriteMany] but no bundle_storage_class is set, so it would use "
+            "the cluster default StorageClass. Most cloud defaults (e.g. EKS gp3 / "
+            "ebs.csi.aws.com) are ReadWriteOnce and cannot provision a "
+            "ReadWriteMany volume, leaving the bundle-loader pod Pending. Set "
+            "'bundle_storage_class' under [scale.kubernetes] to a "
+            "RWX-capable StorageClass (e.g. 'efs-sc')."
+        );
+    }
     spec: dict[str, any] = {
-        "accessModes": ["ReadWriteMany"],
+        "accessModes": access_modes,
         "resources": {"requests": {"storage": size}}
     };
     if storage_class {
@@ -86,6 +99,7 @@ obj PvcInjector(Injector) {
     has size: str = "1Gi",
         storage_class: str = "",
         loader_image: str = "busybox:1.36",
+        provisioned_database: str = "",
         _object_key: str = "",
         _bundle_bytes: bytes = b"";
 
@@ -98,7 +112,12 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        raw = pack_source(project_dir);
+        # BinaryInjector sets _pod_binary_bytes so the app's modules ship precompiled (#7179); plain PVC deploys pack source only.
+        raw = pack_source(
+            project_dir,
+            self.provisioned_database,
+            getattr(self, "_pod_binary_bytes", b"")
+        );
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);
         self._bundle_bytes = raw;
@@ -185,12 +204,45 @@ obj PvcInjector(Injector) {
             for (object_key, raw) in self._seed_artifacts() {
                 bundle_path = bundle_pvc_path(object_key);
                 parent_dir = str(Path(bundle_path).parent);
+                # Object keys are content-addressed (sha256 of the bytes), so a
+                # file already on the PVC IS this payload - skip the upload.
+                # This is what makes warm redeploys cheap: the ~170MB toolchain
+                # and unchanged bundles never cross the wire twice (#7179).
+                try {
+                    run_kubectl_command(
+                        [
+                            "exec",
+                            "-n",
+                            namespace,
+                            loader_pod,
+                            "--",
+                            "sh",
+                            "-c",
+                            f"test -f '{bundle_path}'"
+                        ]
+                    );
+                    logger.info(
+                        f"pvc-injector: {object_key} already seeded "
+                        f"(content-addressed hit); skipping upload."
+                    );
+                    continue;
+                } except RuntimeError as probe_err {
+                    # Expected when the object is absent (test -f exits 1); any
+                    # real infra problem resurfaces loudly on the upload below.
+                    logger.debug(f"pvc-injector: presence probe: {probe_err}");
+                }
                 with tempfile.NamedTemporaryFile(
                     suffix=".tar.gz", delete=False
                 ) as tmp {
                     tmp.write(raw);
                     tmp_path = Path(tmp.name);
                 }
+                # Copy to a unique staging path first, then atomically `mv` it
+                # into the content-addressed slot. `kubectl cp` is not atomic, so
+                # an interruption mid-transfer would otherwise leave a truncated
+                # file that `test -f` accepts forever (poisoning the cache); the
+                # mv only names the object once its bytes are complete.
+                staging_path = f"{bundle_path}.{os.getpid()}.part";
                 try {
                     run_kubectl_command(
                         [
@@ -210,9 +262,25 @@ obj PvcInjector(Injector) {
                             "-n",
                             namespace,
                             tmp_path.name,
-                            f"{loader_pod}:{bundle_path}"
+                            f"{loader_pod}:{staging_path}"
                         ],
                         cwd=tmp_path.parent
+                    );
+                    # Concatenated, not an f-string: a jac f-string with two
+                    # quoted interpolations collapses them into ONE quoted
+                    # operand ("mv -f 'src dst'"), so mv sees a single argument
+                    # and the seed fails with a usage error.
+                    run_kubectl_command(
+                        [
+                            "exec",
+                            "-n",
+                            namespace,
+                            loader_pod,
+                            "--",
+                            "sh",
+                            "-c",
+                            "mv -f '" + staging_path + "' '" + bundle_path + "'"
+                        ]
                     );
                     logger.info(
                         f"pvc-injector: seeded {len(raw)} bytes to "

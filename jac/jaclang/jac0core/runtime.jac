@@ -6,9 +6,8 @@ import os;
 import sys;
 import types;
 import from collections { OrderedDict }
-import from collections.abc { Callable, Coroutine, Iterator, Mapping, Sequence }
+import from collections.abc { Callable, Coroutine, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
-import from contextlib { contextmanager, suppress }
 import from contextvars { ContextVar }
 import dataclasses;
 import from dataclasses { dataclass, field }
@@ -166,6 +165,14 @@ def resolve_ref(
     if ctx.mem.is_recoverable_quarantine(stub.id) {
         return None;
     }
+
+    if os.environ.get("JAC_SV_SIBLING") == "1" {
+        logger.debug(
+            f"unresolvable ref {type(stub).__name__} [{stub.id}] in sibling "
+            "service; skipping without heal (peer-owned or owner will heal)"
+        );
+        return None;
+    }
     ref_repr = referrer.id if referrer is not None else '?';
     logger.error(
         f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
@@ -210,7 +217,6 @@ class JacContext {
     ) -> ExecutionContext;
 
     static def attach_program(jac_program: JacProgram) -> None;
-    static def attach_compiler(jac_compiler: JacCompiler) -> None;
     static def thread_run(func: Callable, *args: object) -> Future;
     static def thread_wait(future: any) -> None;
 }
@@ -398,6 +404,7 @@ class JacModule {
 
 class JacIntrospection {
     static def list_modules -> list[str];
+    static def _list_members_of(module_name: str, archetype_cls: type) -> list[str];
     static def list_walkers(module_name: str) -> list[str];
     static def list_nodes(module_name: str) -> list[str];
     static def list_edges(module_name: str) -> list[str];
@@ -429,10 +436,6 @@ class JacLLM {
     static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> any;
 
     static def `by(model: LLMModel) -> Callable;
-
-    static def filter_visitable_by(
-        connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
-    ) -> list[NodeArchetype];
 
     static def by_operator(lhs: any, rhs: any) -> any;
 
@@ -575,4 +578,3 @@ class JacRuntime(JacRuntimeInterface) {
     static def push_request_context(context: ExecutionContext) -> any;
     static def reset_request_context(token: any) -> None;
 }
-

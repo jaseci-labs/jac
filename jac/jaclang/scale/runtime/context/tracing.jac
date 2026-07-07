@@ -127,10 +127,6 @@ class _JacIdGenerator(IdGenerator) {
         }
         return int.from_bytes(os.urandom(16), "big") & _MASK_128;
     }
-
-    def is_trace_id_random(self: any) -> bool {
-        return True;
-    }
 }
 
 def install_tracing(

@@ -6,6 +6,12 @@ Jac's native ``test`` keyword.  It supports two naming conventions:
 - ``test_*.jac``  -- standalone test files (pytest naming convention)
 - ``*.test.jac``  -- annex test files attached to a base module (Jac convention)
 
+In addition, every ``.jac`` file that lives under a declared Jac ``[test]``
+root (the ``[test] directory`` from jac.toml or ``-d <dir>``, passed by
+``jac test`` via ``--jac-test-dir``) is a test suite regardless of its name --
+preserving the native runner's contract that a configured ``[test] directory``
+runs the ``test`` blocks of *every* ``.jac`` file beneath it (issue #7151).
+
 When *jaclang* is installed the plugin is automatically registered via the
 ``pytest11`` entry point so ``pytest`` discovers Jac tests alongside Python
 tests with zero configuration.
@@ -48,6 +54,33 @@ def _ext_registry() -> types.ModuleType:
 
 
 # ---------------------------------------------------------------------------
+# Hook -- option registration
+# ---------------------------------------------------------------------------
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register ``--jac-test-dir``, used to declare Jac ``[test]`` roots.
+
+    ``jac test`` adds one entry for the declared ``[test]`` root (jac.toml's
+    ``[test] directory`` or ``-d <dir>``) so the collector treats every ``.jac``
+    file beneath it as a suite (issue #7151). The option is harmless (and
+    unused) for plain ``pytest`` invocations.
+    """
+    group = parser.getgroup("jac", "Jac test collection")
+    group.addoption(
+        "--jac-test-dir",
+        action="append",
+        default=[],
+        dest="jac_test_dir",
+        metavar="DIR",
+        help=(
+            "Directory whose every .jac file is collected as a Jac test suite "
+            "(the [test] directory contract). May be given multiple times."
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Hook -- file collection
 # ---------------------------------------------------------------------------
 
@@ -72,6 +105,35 @@ def _explicit_targets(config: pytest.Config) -> set[str]:
     return cache
 
 
+def _test_root_dirs(config: pytest.Config) -> set[str]:
+    """Resolved paths of directories declared as Jac ``[test]`` roots.
+
+    ``jac test`` passes ``--jac-test-dir <dir>`` for the declared test root
+    (the ``[test] directory`` from jac.toml or an explicit ``-d <dir>``),
+    marking every ``.jac`` file beneath it as a test suite -- matching the
+    native runner's directory-walk contract (issue #7151). Cached on the
+    config since the collect hook fires once per file.
+    """
+    cache = getattr(config, "_jac_test_root_dirs", None)
+    if cache is None:
+        cache = set()
+        for raw in config.getoption("jac_test_dir", default=[]) or []:
+            path = Path(raw)
+            if path.is_dir():
+                cache.add(str(path.resolve()))
+        config._jac_test_root_dirs = cache  # type: ignore[attr-defined]
+    return cache
+
+
+def _under_test_root(file_path: Path, config: pytest.Config) -> bool:
+    """True when *file_path* lives inside a declared ``[test]`` root dir."""
+    roots = _test_root_dirs(config)
+    if not roots:
+        return False
+    resolved = file_path.resolve()
+    return any(resolved.is_relative_to(root) for root in roots)
+
+
 def pytest_collect_file(
     parent: pytest.Collector, file_path: Path
 ) -> JacFile | ClJacFile | None:
@@ -92,6 +154,14 @@ def pytest_collect_file(
     if not explicit and any(p.name == "fixtures" for p in file_path.parents):
         return None
 
+    # A .jac file beneath a declared [test] root directory is a test suite
+    # regardless of its name: this preserves the native runner's contract that
+    # `jac test`/`[test] directory` runs the `test` blocks of every `.jac` file
+    # under the directory, not just `test_*`/`*.test` names (issue #7151).
+    # Client modules keep their own naming gate below since their `test` blocks
+    # run under bun via a separate collector, not this Python one.
+    under_test_root = not explicit and _under_test_root(file_path, parent.config)
+
     # Client (cl) test files run their `test` blocks under bun, not Python.
     # test_*.cl.jac / *.test.cl.jac -> dedicated client collector.
     if reg.is_client_module(name):
@@ -99,8 +169,14 @@ def pytest_collect_file(
             return ClJacFile.from_parent(parent, path=file_path)
         return None
 
-    # Collect test_*.jac (pytest convention) and *.test.jac (Jac convention).
-    if explicit or (name.startswith("test_") and reg.is_jac(name)) or reg.is_test(name):
+    # Collect test_*.jac (pytest convention), *.test.jac (Jac convention), and
+    # any .jac file under a declared [test] root directory.
+    if (
+        explicit
+        or under_test_root
+        or (name.startswith("test_") and reg.is_jac(name))
+        or reg.is_test(name)
+    ):
         return JacFile.from_parent(parent, path=file_path)
 
     return None
@@ -251,6 +327,8 @@ class JacFile(pytest.File):
     def collect(self) -> list[JacTestItem]:  # noqa: C901
         from jaclang.runtimelib.test import JacTestCheck
 
+        reg = _ext_registry()
+
         _ensure_jac_runtime()
         _fresh_jac_state()
         JacTestCheck.reset()
@@ -278,7 +356,13 @@ class JacFile(pytest.File):
                     pass
 
             base_dir = str(Path(filepath).parent)
-            mod_name = Path(filepath).stem
+            # Derive the importable module name via the extension registry's
+            # canonical longest-suffix matcher: a compound codespace suffix
+            # (``foo.na.jac`` / ``foo.sv.jac``) imports as module ``foo``, so a
+            # bare ``Path.stem`` would leave the ``.na`` component and the
+            # importer would read it as a package path and fail to resolve the
+            # file (issue #7150).
+            mod_name = reg.base_stem(Path(filepath).name)
 
             # Import the test module under a synthetic namespace package so
             # that relative imports (``from .sibling import ...``) resolve
@@ -289,8 +373,34 @@ class JacFile(pytest.File):
             try:
                 with _scoped_syspath(base_dir):
                     importlib.import_module(qualified_name)
-            except Exception:
-                # Import failure -- nothing to collect from this file.
+            except Exception as exc:
+                # A test file that fails to import is not an empty result --
+                # swallowing it silently converts a broken test module into a
+                # passing run (issue #7150). When the file was named directly on
+                # the command line (``jac test foo.na.jac``) surface it as a hard
+                # collection error, matching pytest's contract for an
+                # unimportable ``test_*.py``, so a broken target can never
+                # masquerade as a pass. During directory recursion, where one
+                # unrelated broken file should not abort the whole sweep,
+                # downgrade to a non-fatal diagnostic on stderr instead.
+                explicit = str(self.path.resolve()) in _explicit_targets(self.config)
+                # ImportError messages carry the compiler's own diagnostics
+                # (e.g. native codegen errors); render them verbatim so the
+                # collection error shows the real compile failure instead of
+                # a repr with escaped newlines.
+                exc_text = (
+                    f"{type(exc).__name__}: {exc}"
+                    if isinstance(exc, ImportError)
+                    else repr(exc)
+                )
+                if explicit:
+                    raise self.CollectError(
+                        f"failed to import Jac test module {self.path}: {exc_text}"
+                    ) from exc
+                sys.stderr.write(
+                    f"jac: skipping test file that failed to import: "
+                    f"{self.path}: {exc_text}\n"
+                )
                 return []
         finally:
             sys.stdout.close()
@@ -313,7 +423,7 @@ class JacFile(pytest.File):
         # test_server.py vs test_server.jac).  We intentionally keep other
         # modules (vendored libs, compiler internals) so that class identity
         # (isinstance checks) and forward-reference resolution remain intact.
-        test_mod_name = Path(self.path).stem
+        test_mod_name = reg.base_stem(self.path.name)
         for name in list(sys.modules.keys()):
             if name not in modules_before and (
                 name == test_mod_name or name.endswith(f".{test_mod_name}")

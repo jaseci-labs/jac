@@ -192,40 +192,6 @@ impl JFastApiServer.get_app(self: JFastApiServer) -> FastAPI {
     return self.app;
 }
 
-impl JFastApiServer._create_response_model(
-    self: JFastApiServer, response_config: (dict[(str, Any)] | None) = None
-) -> (type[BaseModel] | None) {
-    if not response_config {
-        return None;
-    }
-    model_name = response_config.get('name', 'ResponseModel');
-    fields = response_config.get('fields', {});
-    if not fields {
-        return None;
-    }
-    pydantic_fields: dict[(str, Any)] = {};
-    for (field_name, field_config) in fields.items() {
-        field_type = self._get_python_type(field_config.get('type', 'str'));
-        required = field_config.get('required', True);
-        description = field_config.get('description', '');
-        if required {
-            pydantic_fields[field_name] = (
-                field_type,
-                Field(..., description=description)
-            );
-        } else {
-            default_value = field_config.get('default');
-            pydantic_fields[field_name] = (
-                (field_type | None),
-                Field(default_value, description=description)
-            );
-        }
-    }
-    model = create_model(model_name, **pydantic_fields);
-    self._models[model_name] = model;
-    return model;
-}
-
 impl JFastApiServer._get_python_type(
     self: JFastApiServer, type_string: str
 ) -> type[any] {

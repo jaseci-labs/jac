@@ -527,6 +527,55 @@ test "run test" {
     assert "run_test.jac" in out;
 }
 
+test "run test native codespace file" {
+    # A compound-codespace test file (`foo.na.jac`) must collect and run its
+    # `test` blocks. Regression for issue #7150: the pytest collector derived
+    # the module name with `Path(...).stem`, leaving the `.na` suffix so the
+    # import resolved as a package path, failed, and was silently swallowed --
+    # 0 items collected, exit 0, CI green while running nothing.
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        analysis.test(fixture_path("native_run_test.na.jac"), maxfail=2);
+        out = captured.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+    }
+
+    assert "native_run_test.na.jac" in out;
+    # One block passes and one fails -- proving both were actually collected
+    # and executed (not silently skipped as "no tests ran").
+    assert "1 failed" in out;
+    assert "1 passed" in out;
+    assert "no tests ran" not in out;
+}
+
+test "run test native broken import surfaces error" {
+    # A test file that was explicitly collected but fails to import must be a
+    # collection error, not an empty (silently passing) result (issue #7150).
+    # Since the native error gate (issue #7239) the failure surfaces at
+    # compile time: the unresolvable imported symbol makes native codegen
+    # error, the module publishes no artifact, and the collection error
+    # carries the compiler diagnostics naming that symbol and the file.
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        rc = analysis.test(fixture_path("native_broken_import_test.na.jac"));
+        out = captured.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+    }
+
+    # Non-zero exit and a visible error -- never a silent green pass.
+    assert rc != 0;
+    assert "native_broken_import_test" in out;
+    assert "E5090" in out;
+    assert "nope" in out;
+    assert "passed" not in out;
+}
+
 test "run test with directory filter" {
     # Directory discovery + glob filter over fixture files is native-runner
     # behavior (the pytest collector skips fixtures/ and non-test_ names).
@@ -1458,7 +1507,7 @@ test "jac install -e links all packages for space-separated and repeated flag fo
 
 test "jac install <pkg> routes package names to the project venv installer" {
     # Verifies CLI wiring: positional args map into `packages` and are installed
-    # into the current project's venv. install_package is patched so the test
+    # into the current project's venv. install_specs is patched so the test
     # touches neither the network nor a real venv.
     import from unittest.mock { patch }
 
@@ -1470,13 +1519,14 @@ test "jac install <pkg> routes package names to the project venv installer" {
         );
         os.chdir(_tmpdir);
         captured: list = [];
-        def fake_install_package(self: object, specs: object) -> bool {
+        def fake_install_specs(
+            self: object, config: object, specs: object, ctx: object
+        ) -> bool {
             captured.append(specs);
             return True;
         }
         with patch(
-            "jaclang.project.dependencies.DependencyInstaller.install_package",
-            fake_install_package
+            "jaclang.project.providers.PythonProvider.install_specs", fake_install_specs
         ) {
             result = project.install(packages=["numpy", "pandas"]);
         }

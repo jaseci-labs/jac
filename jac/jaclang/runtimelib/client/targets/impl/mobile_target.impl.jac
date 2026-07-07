@@ -21,7 +21,6 @@ import from jaclang.runtimelib.client.targets.mobile.common {
     DEFAULT_APP_ID,
     DEFAULT_APP_NAME,
     MOBILE_SETUP_MODES,
-    SUBPROCESS_TIMEOUT_SHORT,
     _ensure_android_cleartext_for_lan_dev,
     _normalize_mobile_platform,
     _run_cap_cmd
@@ -42,7 +41,6 @@ import from jaclang.runtimelib.client.targets.mobile.dev {
     _get_api_base_url_str,
     _inject_capacitor_dev_url,
     _mobile_ensure_watchdog,
-    _mobile_hmr_on_jac_changed,
     _mobile_read_dev_env,
     _mobile_setup_android_port_reverse,
     _mobile_start_backend_server,
@@ -56,6 +54,13 @@ import from jaclang.runtimelib.client.targets.mobile.scaffold {
     _ensure_android_platform,
     _ensure_ios_platform,
     _ensure_placeholder_index
+}
+import from jaclang.runtimelib.client.targets.client_dev_common {
+    _ClientHmrHandler,
+    prepare_vite_dev_compilation,
+    install_dev_signal_handlers,
+    stop_dev_watcher,
+    terminate_dev_processes
 }
 
 impl MobileTarget.setup(project_dir: Path) -> None {
@@ -217,13 +222,6 @@ impl MobileTarget.build(
 impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
-    import from jaclang.runtimelib.client.vite_client_bundle {
-        make_client_bundle_builder
-    }
-    import signal;
-    import sys;
-
     hot_watcher: any = None;
     (host_override, plat_mode) = _mobile_read_dev_env();
     vite_port = resolve_mobile_vite_port(project_dir, port);
@@ -256,27 +254,7 @@ impl MobileTarget.dev(
         _ensure_android_cleartext_for_lan_dev(project_dir);
     }
 
-    console.print("  Preparing compilation for Vite dev…", style="muted");
-    bundler = ViteBundler(
-        project_dir=project_dir, output_dir=None, minify=False, config_path=None
-    );
-    package_json_path = bundler._get_client_dir() / "configs" / "package.json";
-    if not package_json_path.exists() {
-        bundler.create_package_json();
-    }
-    builder = make_client_bundle_builder(project_dir);
-    if not builder.vite_package_json or not builder.vite_package_json.exists() {
-        builder.vite_package_json = package_json_path;
-    }
-    compiler = builder._get_compiler();
-    compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
-
-    (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
-    if not mod {
-        raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
-    }
-    compiler.compile(mod, entry_file);
-    console.print("  ✔ Client modules compiled for dev mode", style="success");
+    (bundler, compiler) = prepare_vite_dev_compilation(project_dir, entry_file);
 
     toml_base_url = _get_api_base_url_str(project_dir);
     server_port = cast(int, resolve_mobile_server_port(toml_base_url, effective_api));
@@ -311,7 +289,7 @@ impl MobileTarget.dev(
     if _mobile_ensure_watchdog() {
         import from jaclang.runtimelib.watcher { JacFileWatcher }
 
-        hmr_handler = _MobileHmrHandler(
+        hmr_handler = _ClientHmrHandler(
             compiler=compiler, entry_file=entry_file, project_dir=project_dir
         );
         hot_watcher = JacFileWatcher(watch_paths=[str(project_dir.resolve())]);
@@ -326,35 +304,12 @@ impl MobileTarget.dev(
 
     def cleanup_servers {
         console.print("\n  Stopping Vite and API server…", style="muted");
-        if hot_watcher {
-            try {
-                hot_watcher.stop();
-            } except Exception { }
-        }
-        if vite_p {
-            try {
-                vite_p.terminate();
-                vite_p.wait(timeout=SUBPROCESS_TIMEOUT_SHORT);
-            } except Exception {
-                vite_p.kill();
-            }
-        }
-        if srv_p {
-            try {
-                srv_p.terminate();
-                srv_p.wait(timeout=SUBPROCESS_TIMEOUT_SHORT);
-            } except Exception {
-                srv_p.kill();
-            }
-        }
+        stop_dev_watcher(hot_watcher);
+        terminate_dev_processes([vite_p, srv_p]);
         console.print("  ✔ Stopped", style="success");
     }
 
-    def on_signal(signum: int, frame: any) {
-        sys.exit(0);
-    }
-    signal.signal(cast(int, signal.SIGINT), on_signal);
-    signal.signal(cast(int, signal.SIGTERM), on_signal);
+    install_dev_signal_handlers();
 
     web_dist_dir = Path(bundler.output_dir).resolve();
     _ensure_capacitor_config(project_dir, web_dist_dir);
@@ -428,8 +383,4 @@ impl MobileTarget.start(
 
     _run_cap_cmd(project_dir, ["sync", plat], f"cap sync {plat}");
     _run_cap_cmd(project_dir, ["run", plat], f"cap run {plat}");
-}
-
-impl _MobileHmrHandler.on_event(evt: FileChangeEvent) -> None {
-    _mobile_hmr_on_jac_changed(evt, self.compiler, self.entry_file, self.project_dir);
 }

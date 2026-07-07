@@ -25,10 +25,21 @@ import from jaclang.project.kinds {
     resolve_entry,
     resolve_project_kind
 }
-import from jaclang.project.dependencies {
-    DependencyInstaller,
-    DependencyResolver,
+import from jaclang.project.providers {
+    DependencyPlan,
+    EcosystemProvider,
+    InstallContext,
+    ProviderRegistry,
+    PythonProvider,
     ResolvedDependency,
+    capability_dependencies,
+    get_provider_registry,
+    get_python_provider,
+    initialize_provider_registry,
+    manifest_plugin_deps,
+    resolve_plan
+}
+import from jaclang.project.pyvenv {
     get_venv_site_packages,
     add_venv_to_path,
     remove_venv_from_path,
@@ -79,9 +90,18 @@ glob __all__ = [
          'find_project_root',
          'is_in_project',
          'interpolate_env_vars',
-         'DependencyInstaller',
-         'DependencyResolver',
+         'DependencyPlan',
+         'EcosystemProvider',
+         'InstallContext',
+         'ProviderRegistry',
+         'PythonProvider',
          'ResolvedDependency',
+         'capability_dependencies',
+         'get_provider_registry',
+         'get_python_provider',
+         'initialize_provider_registry',
+         'manifest_plugin_deps',
+         'resolve_plan',
          'get_venv_site_packages',
          'add_venv_to_path',
          'remove_venv_from_path',

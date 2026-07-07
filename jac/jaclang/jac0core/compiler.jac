@@ -22,8 +22,7 @@ import from jaclang.jac0core.jir {
     read_bytecode_only,
     read_sections,
     SECTIONS_MAGIC,
-    HEADER_SIZE,
-    write_sections
+    HEADER_SIZE
 }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { read_file_with_encoding }
@@ -71,6 +70,9 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.capability_check_pass {
             CapabilityCheckPass
         }
+        import from jaclang.compiler.passes.main.jsx_intrinsic_guard_pass {
+            JsxIntrinsicGuardPass
+        }
 
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
@@ -83,7 +85,8 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             SemDefMatchPass,
             CFGBuildPass,
             MTIRGenPass,
-            CapabilityCheckPass
+            CapabilityCheckPass,
+            JsxIntrinsicGuardPass
         ];
     } except ImportError {
         return [
@@ -125,15 +128,13 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         }
         import from jaclang.compiler.passes.main.access_check_pass { AccessCheckPass }
         import from jaclang.compiler.passes.main.capability_check_pass {
-            PortabilityWarnPass,
-            NativeCapabilityCheckPass
+            PortabilityWarnPass
         }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
         return [
             StaticAnalysisPass,
             AccessCheckPass,
             PortabilityWarnPass,
-            NativeCapabilityCheckPass,
             JacLintCheckPass
         ];
     } except ImportError {
@@ -368,7 +369,11 @@ obj JacCompiler {
         full_target: str, actual_program: JacProgram, secs: dict[int, bytes]
     ) -> None;
 
-    def _get_precompiled_jir_bytecode(full_target: str) -> (bytes | None);
+    def _get_precompiled_jir_bytecode(
+        full_target: str, allow_unsealed: bool = True
+    ) -> (bytes | None);
+
+    def _sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None);
     def _build_interop_dict(result: uni.Module) -> dict;
     def _deserialize_interop_table(cached_interop: dict[str, any]) -> InteropManifest;
     def parse_str(
@@ -402,6 +407,14 @@ obj JacCompiler {
     static def _count_module_blocking_errors(
         target_program: JacProgram, mod_path: str
     ) -> int;
+
+    static def _module_scoped_errors(
+        target_program: JacProgram, mod_path: str
+    ) -> bool;
+
+    static def _scrub_native_artifacts_on_error(
+        target_program: JacProgram, mod: uni.Module
+    ) -> bool;
 
     static def _prepare_tool_program(
         source_str: str, file_path: str

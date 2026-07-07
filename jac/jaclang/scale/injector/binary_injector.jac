@@ -1,25 +1,45 @@
+import logging;
 import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
 import from jaclang.scale.injector.binary {
-    host_repo_root,
-    build_release_binary,
-    precompile_plugins,
-    pack_toolchain,
+    download_release_binary,
+    node_arch,
+    resolve_overlay_source,
+    cleanup_overlay_source,
+    pack_binary_bytes,
+    pack_overlay,
     toolchain_object_key
 }
 import from jaclang.scale.injector.bundle { content_address }
+import from jaclang.scale.config.dev_config { DevDeploy }
+
+glob logger = logging.getLogger(__name__);
 
 
 obj BinaryInjector(PvcInjector) {
-    has _toolchain_object_key: str = "",
-        _toolchain_bytes: bytes = b"";
+    has dev: DevDeploy = DevDeploy(),
+        _toolchain_object_key: str = "",
+        _toolchain_bytes: bytes = b"",
+        _pod_binary_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
+        # Download the pod binary FIRST so pack_source can precompile the app's
+        # modules with it (#7179): .jir is version-locked to the compiling
+        # binary, so the driver's own jac cannot produce pod-valid seeds.
+        payload = download_release_binary(self.dev.channel, node_arch());
+        self._pod_binary_bytes = payload;
         super.prepare(app_name, namespace, project_dir);
-        repo_root = host_repo_root();
-        binary = build_release_binary(repo_root);
-
-        precompile_plugins(repo_root);
-        raw = pack_toolchain(repo_root, binary);
+        if self.dev.overlays_source() {
+            (src, cleanup) = resolve_overlay_source(
+                self.dev.repo, self.dev.branch, self.dev.jaclang_source, project_dir
+            );
+            try {
+                raw = pack_overlay(payload, src);
+            } finally {
+                cleanup_overlay_source(cleanup);
+            }
+        } else {
+            raw = pack_binary_bytes(payload);
+        }
         self._toolchain_object_key = toolchain_object_key(
             app_name, content_address(raw)
         );
@@ -40,43 +60,48 @@ obj BinaryInjector(PvcInjector) {
 }
 
 
+def _blurb(dev: DevDeploy) -> str {
+    if not dev.overlays_source() {
+        if dev.channel == "dev" {
+            return "downloading the rolling `dev` (main HEAD) jac binary";
+        }
+        return "downloading the latest published (stable) jac release";
+    }
+    where = (
+        f"{dev.repo}@{dev.branch}"
+            if dev.repo
+            else (dev.jaclang_source or "jaseci main")
+    );
+    return f"downloading the dev binary + overlaying jaclang source ({where})";
+}
+
+
 def select_injector(
-    experimental: bool,
+    dev: DevDeploy,
     storage_class: str,
     app_name: str,
     namespace: str,
-    project_dir: str
-) -> tuple[PvcInjector, bool, str] {
-    if experimental {
-        import from jaclang.cli.console { console }
-        import logging;
-        try {
-            console.print(
-                "Building the jac binary on the host to ship into pods "
-                "(--experimental) - one-time (cached after), a few minutes on the "
-                "first run. The faster, OOM-free alternative to the in-pod build."
-            );
-            binary_injector = BinaryInjector(storage_class=storage_class);
-            binary_injector.prepare(app_name, namespace, project_dir);
-            console.print(
-                "Built jac binary; shipping your local code to pods (pods skip "
-                "the in-pod build)."
-            );
-            return (binary_injector, True, binary_injector._toolchain_object_key);
-        } except Exception as exc {
-            logging.getLogger(__name__).warning(
-                f"--experimental binary-ship failed: {exc}"
-            );
-            raise RuntimeError(
-                f"--experimental could not ship a host-built jac binary: {exc}. "
-                "Put zig 0.16.0 on PATH and run 'cd jac && zig build --prefix "
-                ".ship-out', or deploy without --experimental to use the published "
-                "release. (Not silently falling back to the in-pod build - it OOMs "
-                "small nodes.)"
-            );
-        }
+    project_dir: str,
+    provisioned_database: str = ""
+) -> tuple[PvcInjector, str] {
+    import from jaclang.cli.console { console }
+    try {
+        console.print(f"Preparing the '{dev.channel}' jac runtime for pods.");
+        injector = BinaryInjector(
+            dev=dev,
+            storage_class=storage_class,
+            provisioned_database=provisioned_database
+        );
+        injector.prepare(app_name, namespace, project_dir);
+        console.print(f"Ready: {_blurb(dev)}.");
+        return (injector, injector._toolchain_object_key);
+    } except Exception as exc {
+        logger.warning(f"[{dev.channel}] binary/source prep failed: {exc}");
+        raise RuntimeError(
+            f"Could not prepare the '{dev.channel}' jac runtime: {exc}. Check "
+            f"network access to github.com/jaseci-labs/jaseci releases (and "
+            f"JAC_NODE_ARCH for cross-arch nodes); for [dev] with repo/branch "
+            f"ensure the branch exists and has a jac/jaclang source tree."
+        );
     }
-    source_injector = PvcInjector(storage_class=storage_class);
-    source_injector.prepare(app_name, namespace, project_dir);
-    return (source_injector, False, "");
 }

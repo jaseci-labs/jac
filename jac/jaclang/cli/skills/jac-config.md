@@ -24,9 +24,9 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[scripts]` | named command shortcuts run via `jac script <name>` |
 | `[environments]` / `[environment]` | per-profile overrides (below) |
 | `[plugins]` | `enabled` / `disabled` lists; `[plugins.<name>.*]` plugin settings (byllm models, scale server, client paths/vite) |
-| `[plugins.client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the `cl` target emits; `[plugins.client.routing] auth_redirect = "/path"` for unauthenticated redirects |
-| `[plugins.client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
-| `[plugins.desktop]` / `[plugins.desktop.plugins]` | desktop app identity + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
+| `[client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the `cl` target emits; `[client.routing] auth_redirect = "/path"` for unauthenticated redirects |
+| `[client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
+| `[desktop]` / `[desktop.plugins]` | desktop app identity + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
 | `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac add --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |
@@ -58,7 +58,7 @@ jac config path               # where the jac.toml is         jac config list -o
 `${VAR}` interpolation works in any string value:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 api_key = "${OPENAI_API_KEY}"                  # error if unset
 default_model = "${LLM_MODEL:-gpt-4o-mini}"    # default if unset
 base_url = "${BASE_URL:?Base URL is required}" # custom error if unset

@@ -8,7 +8,6 @@ import from jaclang.scale.observability.logger { Logger }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
-import from jaclang.scale.injector.bundle { JAC_ZIG_VERSION }
 import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_name }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_bootstrap_init_container,
@@ -37,7 +36,8 @@ import from jaclang.scale._optdeps.optional_deps { require_optional }
 import from jaclang.scale._optdeps.kubernetes {
     client,
     config as k8s_cluster_config,
-    ApiException
+    ApiException,
+    ConfigException
 }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
@@ -178,11 +178,16 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def _build_runtime_setup_command(app_config: AppConfig) -> list[str] {
+        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+            build_service_apt_prefix
+        }
+        apt_prefix = build_service_apt_prefix(self.k8s_config);
         commands = [
             f"cd {self.k8s_config.app_mount_path}",
             f"jac start {app_config.file_name}"
         ];
-        return ['bash', '-c', ' && '.join(commands)];
+        script = ' && '.join(commands);
+        return ['bash', '-c', apt_prefix + script];
     }
 
     def _build_container_config(
@@ -1007,12 +1012,15 @@ obj KubernetesTarget(DeploymentTarget) {
             probe_configs = self._build_probe_config(health_check_path);
 
             import from jaclang.scale.injector.binary_injector { select_injector }
-            (injector, ship_binary, _tc_key) = select_injector(
-                app_config.experimental,
+            (injector, _tc_key) = select_injector(
+                app_config.dev,
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
-                app_config.code_folder
+                app_config.code_folder,
+                provisioned_database=(
+                    "mongo" if self.k8s_config.mongodb_enabled else ""
+                )
             );
             ensure_pvc_exists(
                 core_v1,
@@ -1080,9 +1088,8 @@ obj KubernetesTarget(DeploymentTarget) {
             template_spec['initContainers'].append(
                 build_bootstrap_init_container(
                     self.k8s_config,
-                    app_config.experimental,
                     self.k8s_config.python_image,
-                    ship_binary
+                    app_config.dev.overlays_source()
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

@@ -7,7 +7,8 @@ path end-to-end.
 ```
 micr-s-example/
   main.jac              client UI entry (cl block only)
-  jac.toml              [plugins.scale.microservices] config
+  jac.toml              ZERO scale config - services, routes, database and
+                        client entry are all auto-derived (#7137/#7140)
   products_app.jac      list_products, get_product
   cart_app.jac          add_to_cart, view_cart, remove_from_cart, clear_cart
   orders_app.jac        create_order, list_orders, get_order, cancel_order
@@ -22,13 +23,9 @@ to the gateway.
 
 ## Dev setup
 
-Microservice mode lives in jac-scale 0.2.14+ and depends on a hookspec
-that isn't on PyPI yet. Editable install both:
-
-```bash
-pip install -e /path/to/jaseci/jac
-jac install -e /path/to/jaseci/jac-scale
-```
+Microservice mode is built into jaclang core (`jaclang.scale`) -- there is no
+separate package to install. Point `jac` at your checkout via the `[dev]`
+`jaclang_source` stanza in `jac.toml` (see `CONTRIBUTING.md`), then run below.
 
 ## Run
 
@@ -44,8 +41,9 @@ for the full config reference.
 
 ## Real K8s e2e (incl. M-14.a observability stack)
 
-The fixture's `jac.toml` has `[plugins.scale.microservices.logs].enabled = true`,
-so [`../../../scripts/k8s_microservice_real_e2e.sh`](../../../scripts/k8s_microservice_real_e2e.sh)
+The committed `jac.toml` is zero-config; the e2e script appends its test-only
+opt-ins (logs/ingress/CORS) at run time, so
+[`../../../scripts/k8s_microservice_real_e2e.sh`](../../../scripts/k8s_microservice_real_e2e.sh)
 will additionally deploy Prometheus + Grafana + Loki + Alloy + node-exporter
 
 + kube-state-metrics, wait for them to be Ready, and run a LogQL probe

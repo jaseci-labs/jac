@@ -10,7 +10,6 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _find_cef_dir,
     _jac_bin,
     _jac_subprocess_env,
-    _loopback_serve_py,
     _patch_host_rpath,
     _stage_pyembed_shim,
     _bundle_runtime,
@@ -19,9 +18,8 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     fetch_cef_dist,
 }
 import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
-    _dispatch_boot_py,
-    _jacpyembed_import_block,
-    _make_plugin_bootstrap_py
+    _host_boot_py,
+    _jacpyembed_import_block
 }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     ensure_dev_build_env,
@@ -99,14 +97,14 @@ def _generate_host_source(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
 ) -> str {
-    serve_py = _loopback_serve_py(
+    boot_py = _host_boot_py(
         app_name,
-        _make_plugin_bootstrap_py(plugin_configs) + "_host.setup_cef()\n" + "_data = os.environ.get('JAC_DATA_PATH', _root)\n" + _dispatch_boot_py(
-            entry_rel, dispatch_timeout_s, dispatch_max_queue, dispatch_debug
-        ),
-        ", dispatch=_dispatch_fn, events=_host",
-        True,
-        ", sv_bridge=inprocess_dispatch.forward"
+        "cef",
+        entry_rel,
+        dispatch_timeout_s,
+        dispatch_max_queue,
+        dispatch_debug,
+        plugin_configs
     );
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
@@ -118,7 +116,7 @@ def _generate_host_source(
         "    cef_run_loop,\n"
         "    cef_cleanup,\n"
         "}\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
-        f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
+        f"glob BOOT_PY: str = {json.dumps(boot_py, ensure_ascii=False)};\n"
         "with entry {\n"
         "    code: i32 = cef_execute_subprocess();\n"
         "    if code >= 0 {\n"
@@ -132,13 +130,13 @@ def _generate_host_source(
         "    if engine_rc != 0 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        "    rc_py: i32 = jpy_PyRun_SimpleString(SERVE_PY);\n"
+        "    rc_py: i32 = jpy_PyRun_SimpleString(BOOT_PY);\n"
         "    if rc_py != 0 {\n"
         "        sys.exit(1);\n"
         "    }\n"
         '    main_mod = jpy_PyImport_AddModule("__main__");\n'
         "    d = jpy_PyModule_GetDict(main_mod);\n"
-        '    port_obj: int = jpy_PyRun_String("_port", PY_EVAL, d, d);\n'
+        '    port_obj: int = jpy_PyRun_String("_ctx.port", PY_EVAL, d, d);\n'
         "    if port_obj == 0 {\n"
         "        sys.exit(1);\n"
         "    }\n"
@@ -309,8 +307,9 @@ impl CefDesktopTarget.start(
 impl CefDesktopTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    console.print(
-        "  cef --dev: building and launching (HMR not yet wired)", style="muted"
+    raise RuntimeError(
+        "CEF desktop HMR is not supported yet. CEF routes RPC through the "
+        "loopback broker, so a Vite dev origin breaks the app. Use "
+        "`jac start --client desktop` (native webview) or web mode for HMR."
     );
-    self.start(entry_file, project_dir, api_port);
 }

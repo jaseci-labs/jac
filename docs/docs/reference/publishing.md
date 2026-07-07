@@ -107,13 +107,7 @@ This writes `dist/<name>-<version>-py3-none-any.whl`. Build to a different direc
 jac bundle -o /tmp/wheels
 ```
 
-`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Use `--precompile` (`-p`) to compile `.jac` → `.jir` automatically before packaging:
-
-```bash
-jac bundle --precompile
-```
-
-The flag compiles all `.jac` sources through the `jac` binary's bundled interpreter and folds the resulting `.jir` files into the wheel. Shipped bytecode is keyed by Python version and validated against a source hash; on a consumer running a different Python version (or if the bytecode is missing or stale), the runtime transparently recompiles the bundled `.jac` source on first import -- a mismatch never breaks the package.
+`jac bundle` ships `.jir` bytecode files only if they already exist in your source tree -- it does not regenerate them. Shipped bytecode is keyed by Python version and validated against a source hash; on a consumer running a different Python version (or if the bytecode is missing or stale), the runtime transparently recompiles the bundled `.jac` source on first import -- a mismatch never breaks the package.
 
 Wheels are reproducible: every ZIP entry uses a fixed timestamp, so the same source produces a byte-identical wheel.
 
@@ -189,7 +183,7 @@ npm pack dist/<name>-<version>.tgz   # optional: inspect the contents
 npm publish dist/<name>-<version>.tgz --access public
 ```
 
-In CI, authenticate with an automation token via `NODE_AUTH_TOKEN` (see the `publish-npm` job in `.github/workflows/publish-release.yml`, which publishes any package with an `[npm]` section).
+In CI, authenticate with an automation token via `NODE_AUTH_TOKEN`.
 
 ## Editable installs
 

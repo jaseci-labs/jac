@@ -21,14 +21,7 @@ import from jaclang.compiler.type_system.types { TypeBase }
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
     E1001,
-    E1002,
-    E1003,
-    E1004,
     E1010,
-    E1011,
-    E1020,
-    E1021,
-    E1022,
     E1023,
     E1030,
     E1031,
@@ -46,8 +39,6 @@ import from jaclang.jac0core.diagnostics {
     E1054,
     E1056,
     E1057,
-    E1060,
-    E1061,
     E1062,
     E1063,
     E1064,
@@ -58,12 +49,6 @@ import from jaclang.jac0core.diagnostics {
     E1073,
     E1080,
     E1081,
-    E1090,
-    E1091,
-    E1092,
-    E1093,
-    E1094,
-    E1095,
     E1096,
     E1097,
     E1098,
@@ -75,6 +60,7 @@ import from jaclang.jac0core.diagnostics {
     E1104,
     E1110,
     E1111,
+    E1120,
     W0062,
     W1050,
     W1051,
@@ -87,11 +73,8 @@ obj PrefetchedTypes {
     has none_type_class: types.ClassType | None = None,
         object_class: types.ClassType | None = None,
         type_class: types.ClassType | None = None,
-        union_type_class: types.ClassType | None = None,
-        awaitable_class: types.ClassType | None = None,
         coroutine_class: types.ClassType | None = None,
         function_class: types.ClassType | None = None,
-        method_class: types.ClassType | None = None,
         tuple_class: types.ClassType | None = None,
         bool_class: types.ClassType | None = None,
         int_class: types.ClassType | None = None,
@@ -100,12 +83,7 @@ obj PrefetchedTypes {
         bytes_class: types.ClassType | None = None,
         dict_class: types.ClassType | None = None,
         list_class: types.ClassType | None = None,
-        module_type_class: types.ClassType | None = None,
-        typed_dict_class: types.ClassType | None = None,
-        typed_dict_private_class: types.ClassType | None = None,
-        supports_keys_and_get_item_class: types.ClassType | None = None,
-        mapping_class: types.ClassType | None = None,
-        template_class: types.ClassType | None = None,
+        slice_class: types.ClassType | None = None,
         type_var_class: types.ClassType | None = None,
         param_spec_class: types.ClassType | None = None,
         type_var_tuple_class: types.ClassType | None = None,
@@ -122,16 +100,6 @@ obj PrefetchedTypes {
         jsx_element_class: types.ClassType | None = None,
         html_common_props_class: types.ClassType | None = None,
         jsx_intrinsic_elements_class: types.ClassType | None = None,
-        i8_class: types.ClassType | None = None,
-        u8_class: types.ClassType | None = None,
-        i16_class: types.ClassType | None = None,
-        u16_class: types.ClassType | None = None,
-        i32_class: types.ClassType | None = None,
-        u32_class: types.ClassType | None = None,
-        i64_class: types.ClassType | None = None,
-        u64_class: types.ClassType | None = None,
-        f32_class: types.ClassType | None = None,
-        f64_class: types.ClassType | None = None,
         enum_class: types.ClassType | None = None,
         set_class: types.ClassType | None = None;
 }
@@ -192,19 +160,6 @@ obj TypeEvaluator {
         _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
         ambient_typing_names_by_module: dict[str, set[str]] = {},
         _ENUM_STUB_FILE_PATH: str by postinit,
-        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
-            "Union",
-            "Protocol",
-            "Callable",
-            "Type",
-            "NoReturn",
-            "ClassVar",
-            "Optional",
-            "Tuple",
-            "Final",
-            "Literal",
-            "TypedDict"
-        ),
         symbol_resolution_stack: list[SymbolResolutionStackEntry] = [],
         prefetch: PrefetchedTypes by postinit,
         _pass: object | None = None,
@@ -213,9 +168,13 @@ obj TypeEvaluator {
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
+        _mobui_module_cache: dict[str, bool] = {},
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
+        _ts_decl_cache: dict[str, (dict | None)] = {},
+        _ts_decl_path_cache: dict[str, (str | None)] = {},
+        _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
         enum_module: uni.Module by postinit,
@@ -245,6 +204,23 @@ obj TypeEvaluator {
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
     def forget_module(resolved_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
+    def _resolve_client_npm_module(node_: uni.ModulePath) -> (str | None);
+    def _get_ts_declared_item_type(
+        from_loc: uni.ModulePath, item_name: str
+    ) -> (TypeBase | None);
+
+    def _ts_declared_type_from_file(
+        dts_path: str, item_name: str
+    ) -> (TypeBase | None);
+
+    def _load_ts_declarations(dts_path: str) -> (dict | None);
+    def _map_ts_decl(decl: object, decls: dict, item_name: str) -> (TypeBase | None);
+    def _map_ts_type(
+        ts: object, decls: dict, seen: (set[str] | None) = None
+    ) -> TypeBase;
+
+    def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;
+    def _untyped_external_is_error(node_: uni.UniNode) -> bool;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def _type_from_union_annotation_arg(val: uni.Expr) -> TypeBase;
@@ -295,6 +271,7 @@ obj TypeEvaluator {
         node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
+    def slice_assignment_is_valid(target: uni.Expr, value_node: uni.Expr) -> bool;
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
     def _assign_callable(
         src_func: types.FunctionType,
@@ -364,6 +341,11 @@ obj TypeEvaluator {
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
+    def _tuple_has_variadic_arg(cls: types.ClassType) -> bool;
+    def _tuple_literal_index_type(
+        base_type: TypeBase, subscript_arg: uni.Expr
+    ) -> TypeBase | None;
+
     def _extract_tuple_element_type_path(
         tuple_type: TypeBase, path: list[int]
     ) -> TypeBase | None;
@@ -506,9 +488,12 @@ obj TypeEvaluator {
         name: uni.JsxElementName
     ) -> types.FunctionType | None;
 
+    def _is_mobui_module(nd: uni.UniNode) -> bool;
     def _get_intrinsic_props_type(tag_name: str) -> types.ClassType | None;
     def _validate_component_jsx_props(
-        expr: uni.JsxElement, component_name: str
+        expr: uni.JsxElement,
+        component_name: str,
+        func_type: types.FunctionType | None = None
     ) -> None;
 
     def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;

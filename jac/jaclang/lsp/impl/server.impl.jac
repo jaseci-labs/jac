@@ -353,6 +353,10 @@ impl LanguageServer.start_io -> None {
             msg_id = msg.get("id");
             params = msg.get("params", {});
 
+            if method is None {
+                continue;
+            }
+
             if method == INITIALIZE {
                 result = self._handle_initialize(params);
                 self._send_response(msg_id, result);
@@ -514,10 +518,6 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
         return None;
     }
     return json.loads(body.decode("utf-8"));
-}
-
-impl LanguageServer._dispatch(msg: dict) -> None {
-    ;
 }
 
 impl LanguageServer._handle_initialize(params: dict) -> dict {

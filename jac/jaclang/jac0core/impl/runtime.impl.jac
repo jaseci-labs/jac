@@ -615,7 +615,6 @@ impl JacPersistence.on_commit(callback: Callable) -> None {
 }
 
 impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
-    import pickle;
     import sqlite3;
     ctx = JacRuntimeInterface.get_context();
     mem = ctx.mem;
@@ -625,17 +624,20 @@ impl JacContext.reset_graph(root_node: (Root | None) = None) -> int {
     persistence = mem.l3;
     conn = persistence?.__conn__ if persistence else None;
     if (conn and isinstance(conn, sqlite3.Connection)) {
-        cursor = conn.execute('SELECT data FROM anchors');
-        anchors = [pickle.loads(row[0]) for row in cursor.fetchall()];
+        cursor = conn.execute("SELECT id, json_extract(data, '$.root') FROM anchors");
+        candidates = [(UUID(row[0]), row[1]) for row in cursor.fetchall()];
     } else {
-        anchors = `list(mem.get_mem().values());
+        candidates = [
+            (anchor.id, str(anchor.root) if anchor.root else None)
+            for anchor in mem.get_mem().values()
+        ];
     }
-    for anchor in anchors {
-        if ((anchor == ranchor) or (anchor.root != ranchor.id)) {
+    for (aid, aroot) in candidates {
+        if ((aid == ranchor.id) or (aroot != str(ranchor.id))) {
             continue;
         }
-        deleted_ids.add(anchor.id);
-        mem.delete(anchor.id);
+        deleted_ids.add(aid);
+        mem.delete(aid);
         deleted_count += 1;
     }
     ranchor.edges = [
@@ -651,6 +653,9 @@ impl JacPersistence.get_object(id: str) -> (Archetype | None) {
     if (id == 'root') {
         return JacRuntimeInterface.get_context().user_root.archetype;
     } elif (`obj := JacRuntimeInterface.get_context().mem.get(UUID(id))) {
+        if not JacRuntimeInterface.check_read_access(`obj) {
+            return None;
+        }
         return `obj.archetype;
     }
     return None;
@@ -662,6 +667,9 @@ impl JacPersistence.aget_object(id: str) -> (Archetype | None) {
     }
     `obj = await JacRuntimeInterface.get_context().mem.aget(UUID(id));
     if `obj is not None {
+        if not JacRuntimeInterface.check_read_access(`obj) {
+            return None;
+        }
         return `obj.archetype;
     }
     return None;
@@ -1420,7 +1428,7 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     import time;
     import threading;
     import urllib.request;
-    import from http.server { HTTPServer }
+    import from http.server { ThreadingHTTPServer }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.server { JacAPIServer as CoreJacAPIServer }
     if module_name in sv_client._registry {
@@ -1455,7 +1463,7 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
     srv.port = port;
     srv.load_module();
     handler_class = srv.create_handler();
-    httpd = HTTPServer(('127.0.0.1', port), handler_class);
+    httpd = ThreadingHTTPServer(('127.0.0.1', port), handler_class);
     srv.server = httpd;
     thread = threading.Thread(target=httpd.serve_forever, daemon=True);
     thread.start();
@@ -1489,7 +1497,12 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
         return _sp.sv_service_call(module_name, func_name, args);
     }
     import from jaclang.runtimelib { sv_client }
-    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
+
+    import from jaclang.runtimelib.sv_sse {
+        sv_http_post,
+        wrap_sse_keepalive,
+        wrap_sse_keepalive_conn
+    }
 
     func_label = f"{module_name}.{func_name}";
 
@@ -1499,7 +1512,7 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
         resp = stream_cm.__enter__();
         ct = resp.headers.get("content-type", "");
         if ct.startswith("text/event-stream") {
-            return _wrap_sse_keepalive(stream_cm, resp, None, func_label);
+            return wrap_sse_keepalive(stream_cm, resp, None, func_label);
         }
         try {
             resp.read();
@@ -1508,27 +1521,20 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
             stream_cm.__exit__(None, None, None);
         }
     } else {
+        import json;
         url = sv_client.resolve_url(module_name);
-        try {
-            import httpx;
-        } except ImportError {
-            raise RuntimeError(
-                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
-            );
-        }
-        client = httpx.Client();
-        stream_cm = client.stream("POST", f"{url}/function/{func_name}", json=args);
-        resp = stream_cm.__enter__();
-        ct = resp.headers.get("content-type", "");
+        (resp, conn) = sv_http_post(url, f"/function/{func_name}", args);
+        ct = resp.headers.get("Content-Type", "") or "";
         if ct.startswith("text/event-stream") {
-            return _wrap_sse_keepalive(stream_cm, resp, client, func_label);
+            if conn.sock is not None {
+                conn.sock.settimeout(None);
+            }
+            return wrap_sse_keepalive_conn(resp, conn, func_label);
         }
         try {
-            resp.read();
-            data = resp.json();
+            data = json.loads(resp.read().decode('utf-8'));
         } finally {
-            stream_cm.__exit__(None, None, None);
-            client.close();
+            conn.close();
         }
     }
 
@@ -1555,6 +1561,7 @@ impl JacServe.sv_walker_call(
         return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
     }
     import from jaclang.runtimelib { sv_client }
+    import from jaclang.runtimelib.sv_sse { sv_http_post }
 
     label = f"{module_name}.{walker_name}";
 
@@ -1563,20 +1570,13 @@ impl JacServe.sv_walker_call(
         resp = client.post(f"/walker/{walker_name}", json=args);
         data = resp.json();
     } else {
+        import json;
         url = sv_client.resolve_url(module_name);
+        (resp, conn) = sv_http_post(url, f"/walker/{walker_name}", args);
         try {
-            import httpx;
-        } except ImportError {
-            raise RuntimeError(
-                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
-            );
-        }
-        client = httpx.Client();
-        try {
-            resp = client.post(f"{url}/walker/{walker_name}", json=args);
-            data = resp.json();
+            data = json.loads(resp.read().decode('utf-8'));
         } finally {
-            client.close();
+            conn.close();
         }
     }
 
@@ -1605,30 +1605,6 @@ impl JacServe.sv_walker_call(
 }
 
 
-def _wrap_sse_keepalive(
-    stream_cm: any, resp: any, client: any, func_label: str
-) -> any {
-    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
-    try {
-        for ev in consume_sse_stream(resp, func_label) {
-            yield ev;
-        }
-    } finally {
-        try {
-            stream_cm.__exit__(None, None, None);
-        } except Exception {
-            ;
-        }
-        if client {
-            try {
-                client.close();
-            } except Exception {
-                ;
-            }
-        }
-    }
-}
-
 impl JacServe.get_sv_registry -> dict[str, str] {
     _sp = _scale_provider();
     if _sp is not None {
@@ -1648,11 +1624,12 @@ impl JacServe.create_server(
             return _scaled;
         }
     }
+    import from http.server { ThreadingHTTPServer }
     handler_class = jac_server.create_handler();
     current_port = port;
     for _ in range(max_retries) {
         try {
-            server = HTTPServer((host, current_port), handler_class);
+            server = ThreadingHTTPServer((host, current_port), handler_class);
             if current_port != port {
                 import from jaclang.cli.console { console }
                 console.print(
@@ -1771,36 +1748,6 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
         return _wrapped_caller;
     }
     return _decorator;
-}
-
-impl JacLLM.filter_visitable_by(
-    connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
-) -> list[NodeArchetype] {
-    import from jaclang.jac0core.helpers { _describe_nodes_list }
-    visitable_list: list = [];
-    """
-        Determine which connected nodes are visitable using an LLM.
-
-        The input represents structurally reachable nodes. This function
-applies
-        semantic reasoning to decide which of those nodes a walker is
-allowed
-        or intended to visit, returning their indexes in priority order.
-
-        Returns an empty list if no nodes are deemed visitable.
-        """;
-    @JacLLM.by (model=model)
-    def _filter_visitable_by(
-        connected_nodes: list[NodeArchetype], descriptions: str = ''
-    ) -> list[int] {
-        return [];
-    }
-    descriptions = _describe_nodes_list(connected_nodes);
-    indexes = _filter_visitable_by(connected_nodes, descriptions);
-    for idx in indexes {
-        visitable_list.append(connected_nodes[idx]);
-    }
-    return visitable_list;
 }
 
 impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
@@ -1932,10 +1879,6 @@ impl JacContext.attach_program(jac_program: JacProgram) -> None {
     JacRuntime.program = jac_program;
 }
 
-impl JacContext.attach_compiler(jac_compiler: JacCompiler) -> None {
-    JacRuntime.compiler = jac_compiler;
-}
-
 impl JacModule.load_module(
     module_name: str, module: types.ModuleType, force: bool = False
 ) -> None {
@@ -1949,58 +1892,36 @@ impl JacIntrospection.list_modules -> list[str] {
     return `list(JacRuntime.loaded_modules.keys());
 }
 
-impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+impl JacIntrospection._list_members_of(
+    module_name: str, archetype_cls: type
+) -> list[str] {
     module = JacRuntime.loaded_modules.get(module_name);
     if module {
-        walkers = [];
+        members = [];
         for (name, `obj) in inspect.getmembers(module) {
             if (
                 isinstance(`obj, `type)
-                and issubclass(`obj, WalkerArchetype)
+                and issubclass(`obj, archetype_cls)
                 and (`obj.__module__ == module_name)
             ) {
-                walkers.append(name);
+                members.append(name);
             }
         }
-        return walkers;
+        return members;
     }
     return [];
+}
+
+impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+    return JacIntrospection._list_members_of(module_name, WalkerArchetype);
 }
 
 impl JacIntrospection.list_nodes(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        nodes = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, NodeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                nodes.append(name);
-            }
-        }
-        return nodes;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, NodeArchetype);
 }
 
 impl JacIntrospection.list_edges(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        edges = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, EdgeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                edges.append(name);
-            }
-        }
-        return edges;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, EdgeArchetype);
 }
 
 impl JacModule.create_archetype_from_source(
@@ -2210,7 +2131,8 @@ impl JacRuntime.get_shared_root -> Root {
         }
         _shared_root_resolver[1] = root_id;
     }
-    shared = JacRuntimeInterface.get_object(root_id);
+    shared_anchor = JacRuntimeInterface.get_context().mem.get(UUID(root_id));
+    shared = shared_anchor.archetype if shared_anchor else None;
     if not isinstance(shared, Root) {
         raise RuntimeError(
             f"Shared root unavailable: id {root_id} did not resolve to a Root node."

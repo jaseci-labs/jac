@@ -60,8 +60,8 @@ with entry {                       # generated host.na.jac
   ├─ cef_execute_subprocess()      # CEF subprocess? exit early
   ├─ cef_startup(cache_path, …)    # CEF init / dispatch bootstrap
   ├─ Py_Initialize()               # embed CPython (AOT-linked)
-  ├─ PyRun_SimpleString(SERVE_PY)  # loopback server + oauth broker (daemon thread)
-  ├─ read _port → build URL
+  ├─ PyRun_SimpleString(BOOT_PY)   # host_boot.boot(): plugins + in-process runtime + loopback server
+  ├─ read _ctx.port → build URL
   ├─ cef_open_browser(url, …)      # create window + navigate
   ├─ PyEval_SaveThread()           # release GIL
   ├─ cef_run_loop()                # CEF message loop
@@ -72,9 +72,10 @@ with entry {                       # generated host.na.jac
 
 ### Comparison with the native `desktop` target
 
-Both targets share the same loopback-server Python (`SERVE_PY`) and
-`oauth_broker.py`, and both compile a generated `host.na.jac` via `jac
-nacompile`. They differ only in the renderer:
+Both targets boot through the same runtime module (`native/host_boot.jac` --
+plugins, in-process dispatch, loopback server + `oauth_broker`), and both
+compile a generated `host.na.jac` via `jac nacompile`. They differ only in
+the renderer:
 
 | | Native (`desktop`) | CEF (`cef`) |
 |--|-------------------|---------------------|

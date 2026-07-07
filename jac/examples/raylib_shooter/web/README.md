@@ -25,13 +25,21 @@ main.jac
 
 raylib_shim.cl.jac   (reusable client library)
   emulates raylib's scalar rlgl immediate-mode API + input on WebGL/DOM,
-  supplies the libc/__multi3 the Jac native runtime needs, instantiates
-  /static/main.wasm, and drives init()/frame() per requestAnimationFrame.
+  instantiates /static/main.wasm via @jac/wasm_host, and drives
+  init()/frame() per requestAnimationFrame.
 ```
 
 The `na` block's `import from raylib { ... }` externs do **not** link a native
 library here - they become the wasm module's **imports**, which `raylib_shim`
 satisfies. Same source contract as the native build; a different host fulfills it.
+
+libc is NOT part of that contract anymore: the native floor links its libc
+(string/float formatting, allocator, libm) into `main.wasm` itself, and the
+remaining host surface (console `write`, os stubs, time) is the versioned
+`jac_host1` import module supplied by the `@jac/wasm_host` runtime library.
+The shim provides only the game's raylib externs under `env`. The build also
+writes `main.wasm.imports.json` next to the module listing the exact import
+surface per namespace.
 
 ### Why the shim is a separate `.cl.jac`
 
@@ -52,6 +60,6 @@ This renders with a hand-written WebGL emulation of the rlgl subset the game use
 | File | Role |
 |------|------|
 | `main.jac` | `na {}` game (-> `main.wasm`) + `cl {}` page that mounts the canvas |
-| `raylib_shim.cl.jac` | WebGL/DOM shim: rlgl + input + libc -> the wasm's `env` imports |
-| `jac.toml` | project + `[plugins.client]` + react deps |
+| `raylib_shim.cl.jac` | WebGL/DOM shim: rlgl + input -> the wasm's `env` (app FFI) imports; `jac_host1` comes from `@jac/wasm_host` |
+| `jac.toml` | project + `[client]` + react deps |
 | `.jac/client/dist/` | build output (git-ignored): `client.*.js` + `main.wasm` |

@@ -31,8 +31,6 @@ impl JacScaleUserManager.postinit -> None {
         client = get_mongo_client();
         db = client['jac_db'];
         self._identity_storage = MongoIdentityStorage(users_col=db['users']);
-
-        self._identity_storage.migrate_legacy_users();
         self._identity_storage.ensure_indexes();
     } else {
         import os;

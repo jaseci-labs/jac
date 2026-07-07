@@ -14,11 +14,13 @@ The trace_id here is the same id the logs page surfaces (the K-12
 UUID's 128 bits), so the two views cross-link directly.
 """
 
-import from "lucide-react" { Workflow, RefreshCw, AlertTriangle, X }
+import from "lucide-react" { Workflow, AlertTriangle, X }
 
 import from react { useEffect }
+import from ....components.common.PageHeader { PageHeader }
 import from ....context.AuthContext { useAuth }
 import from ....services.tracesService { getTraceServices, searchTraces, getTrace }
+import from ....utils.api { getErrorMessage }
 
 def:pub TracesPage -> JsxElement {
     has isLoading: bool = False,
@@ -65,7 +67,7 @@ def:pub TracesPage -> JsxElement {
                 traces = result["data"]["traces"] or [];
                 errorMsg = "";
             } elif result["error"] {
-                errorMsg = result["error"]["message"] or "Failed to load traces";
+                errorMsg = getErrorMessage(result, "Failed to load traces");
                 if "unavailable" in (errorMsg or "").toLowerCase() {
                     backendOffline = True;
                 }
@@ -88,7 +90,7 @@ def:pub TracesPage -> JsxElement {
                 traceStartNs = result["data"]["start_ns"] or 0;
                 traceTotalMs = result["data"]["total_ms"] or 0.0;
             } elif result["error"] {
-                errorMsg = result["error"]["message"] or "Failed to load trace";
+                errorMsg = getErrorMessage(result, "Failed to load trace");
             }
         } except Exception as e {
             console.error("openTrace error:", e);
@@ -209,21 +211,11 @@ def:pub TracesPage -> JsxElement {
 
     return
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <Workflow className="w-5 h-5 text-accent"/>
-                    <h1 className="text-lg font-semibold text-fg">
-                        Distributed Traces
-                    </h1>
-                </div>
-                <button
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors"
-                    onClick={lambda { loadTraces(); }}
-                >
-                    <RefreshCw className="w-3.5 h-3.5"/>
-                    Refresh
-                </button>
-            </div>
+            <PageHeader
+                icon={Workflow}
+                title="Distributed Traces"
+                onRefresh={lambda { loadTraces(); }}
+            />
             <div className="flex flex-wrap gap-3 items-end">
                 <select
                     value={filterService}

@@ -13,33 +13,14 @@ import from jaclang.scale.jserver.jserver {
     ParameterType
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.admin.service_urls { service_base_url }
 
 glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*"),
      logger = logging.getLogger(__name__);
 
 
 def _loki_base_url -> str {
-    env = os.getenv("LOKI_URL", "").strip();
-    if env {
-        return env.rstrip("/");
-    }
-    app_name = os.getenv("K8S_APP_NAME", "").strip();
-    if not app_name {
-        try {
-            k8s_cfg = get_scale_config().get_kubernetes_config();
-            raw = str(k8s_cfg.get("app_name", "") or "").strip();
-            expanded = os.path.expandvars(raw);
-            if expanded and "${" not in expanded {
-                app_name = expanded;
-            }
-        } except Exception {
-            app_name = "";
-        }
-    }
-    if not app_name {
-        return "http://localhost:3100";
-    }
-    return f"http://{app_name}-loki-service:3100";
+    return service_base_url("LOKI_URL", "loki-service", 3100);
 }
 
 

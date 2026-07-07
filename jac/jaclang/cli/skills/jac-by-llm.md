@@ -130,9 +130,9 @@ def describe_clip(v: Video) -> str by llm();
 
 - Inline `by llm` expressions DO NOT exist: `x = "prompt" by llm;` even passes `jac check`, then raises `NotImplementedError` at runtime. Always declare a function and call it.
 - `method="ReAct"` is deprecated and was never functional - the ReAct loop turns on automatically when you pass `tools=[...]`.
-- `llm` is an **ambient builtin** - the model powering it is configured project-wide in `jac.toml` under `[plugins.byllm.model]` (e.g. `default_model = "gpt-4o-mini"`). A module-level `glob llm: Model = Model(...)` is an *optional* per-file override, not a requirement: `by llm()` type-checks and runs with no `glob llm` declared at all.
+- `llm` is an **ambient builtin** - the model powering it is configured project-wide in `jac.toml` under `[byllm.model]` (e.g. `default_model = "gpt-4o-mini"`). A module-level `glob llm: Model = Model(...)` is an *optional* per-file override, not a requirement: `by llm()` type-checks and runs with no `glob llm` declared at all.
 - `by llm(...)` REPLACES the body - never write both `{ body }` and `by llm(...)` on the same signature.
 - Use `sem`, NOT docstrings, for every LLM-visible description. Triple-quoted strings inside a body fail with W0060.
 - Tools are **function references**, NOT strings: `tools=[word_count]`, never `tools=["word_count"]`. Each tool needs its own `sem` and per-arg `sem` so the LLM knows when to call it.
 - Common `by llm(...)` options: `tools`, `temperature`, `max_tokens`, `max_react_iterations`, `conversation`, `system_prompt`, `stream`, `incl_info` (extra context dict), `on_iteration` (ReAct loop control), `max_output_retries`. `jac check` does **not** validate `by llm` keyword names - a misspelled option surfaces at runtime, not at check time.
-- For fallback/load-balancing across several providers, see `ModelPool` in the byLLM reference; project-wide `temperature`/`max_tokens` defaults live in `jac.toml` under `[plugins.byllm.call_params]`.
+- For fallback/load-balancing across several providers, see `ModelPool` in the byLLM reference; project-wide `temperature`/`max_tokens` defaults live in `jac.toml` under `[byllm.call_params]`.

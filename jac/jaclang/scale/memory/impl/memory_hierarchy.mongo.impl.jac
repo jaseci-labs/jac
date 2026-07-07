@@ -1,3 +1,4 @@
+import os;
 import from jaclang.scale.runtime.context.tracing { start_memory_span, end_memory_span }
 import from jaclang.runtimelib.exceptions { WriteConflict }
 
@@ -338,6 +339,17 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
                 else None
         );
         if cls_resolved is None {
+            # A sibling service pod is EXPECTED to lack peer services'
+            # archetype classes in a shared store -- skip without mutating the
+            # shared collection; quarantining would poison it for the owner.
+            if os.environ.get("JAC_SV_SIBLING") == "1" {
+                logger.debug(
+                    f"MongoBackend: class {arch_module}.{arch_type} not "
+                    f"loaded in this sibling service; skipping anchor {id} "
+                    "(owned by a peer service)."
+                );
+                return None;
+            }
             reason = f"class {arch_module}.{arch_type} unresolvable";
             code = 'CLASS_MISSING';
             logger.warning(
@@ -531,33 +543,6 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
     } except Exception as e {
         logger.debug(f"MongoDB execute_plan failed ({filt}): {e}");
     }
-}
-
-impl MongoBackend.find(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> Generator[Anchor, None, None] {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                yield anchor;
-            }
-        }
-    }
-}
-
-impl MongoBackend.find_one(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> (Anchor | None) {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                return anchor;
-            }
-        }
-    }
-    return None;
 }
 
 impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None { }

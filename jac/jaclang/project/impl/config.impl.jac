@@ -122,6 +122,20 @@ def _deep_merge(base: dict, `override: dict) -> dict {
     return result;
 }
 
+impl JacConfig._section_map -> dict {
+    return {
+        "run": self.run,
+        "build": self.build,
+        "test": self.test,
+        "serve": self.serve,
+        "format": self.format,
+        "dot": self.dot,
+        "cache": self.cache,
+        "environment": self.environment,
+        "client": self.client
+    };
+}
+
 impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> None {
     if profile_name not in self.environments {
         return;
@@ -143,17 +157,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         }
     }
 
-    section_map: dict = {
-        "run": self.run,
-        "build": self.build,
-        "test": self.test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in profile {
             for (key, value) in profile[section].items() {
@@ -251,17 +255,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
     data = read_toml_with_encoding(str(toml_path));
     data = _interpolate_recursive(data);
-    section_map: dict = {
-        "run": self.run,
-        "build": self.build,
-        "test": self.test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in data {
             for (key, value) in data[section].items() {
@@ -385,7 +379,7 @@ impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, any] {
     return {
         k: v
         for (k, v) in deps.items()
-        if k != "dev"
+        if k != "dev" and not isinstance(v, dict)
     };
 }
 
@@ -684,9 +678,20 @@ impl _parse_toml_data(
     }
     if "project" in data {
         proj = data["project"];
+
+        client_kind = str(proj.get("client_kind", "web")).strip().lower();
+        if client_kind not in VALID_CLIENT_KINDS {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[project] client_kind='{proj.get('client_kind')}' is not "
+                f"one of {VALID_CLIENT_KINDS}; defaulting to 'web'."
+            );
+            client_kind = "web";
+        }
         config.project = ProjectConfig(
             name=proj.get("name", ""),
             version=proj.get("version", "0.1.0"),
+            client_kind=client_kind,
             description=proj.get("description", ""),
             authors=_parse_persons(proj.get("authors", [])),
             maintainers=_parse_persons(proj.get("maintainers", [])),
@@ -784,9 +789,11 @@ impl _parse_toml_data(
     }
     if "format" in data {
         fmt = data["format"];
-        config.format = FormatConfig(
-            outfile=fmt.get("outfile", ""), fix=fmt.get("fix", False)
-        );
+        config.format = FormatConfig(outfile=fmt.get("outfile", ""));
+    }
+    if "precommit" in data {
+        pc_data = data["precommit"];
+        config.precommit = PrecommitConfig(typecheck=pc_data.get("typecheck", True));
     }
     if "check" in data {
         check_data = data["check"];

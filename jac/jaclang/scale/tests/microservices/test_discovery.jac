@@ -4,17 +4,28 @@ import tomllib;
 import from pathlib { Path }
 import from jaclang.scale.runtime.discovery.discovery {
     discover_sv_services,
+    discover_sv_service_files,
     resolve_routes,
+    resolve_service_files,
     should_enter_local_ms,
     scan_markers
 }
 
 glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent.parent / "fixtures" / "k8s_e2e";
 
-test "discover on the k8s_e2e fixture matches its hand-written toml routes" {
+test "discover on the k8s_e2e fixture derives public prefixes with no toml routes" {
+    # The fixture declares no [scale.microservices.routes] table -
+    # services and their public prefixes are auto-discovered from `sv import`.
     main = _K8S_E2E_FIXTURE / "main.jac";
     discovered = discover_sv_services(str(main));
 
+    assert discovered == {
+        "products_app": "/products",
+        "orders_app": "/orders",
+        "cart_app": "/cart"
+    } , f"unexpected auto-discovered routes: {discovered}";
+
+    # Belt-and-suspenders: the fixture really has no routes table to fall back on.
     toml_path = _K8S_E2E_FIXTURE / "jac.toml";
     with open(str(toml_path), "rb") as f {
         doc = tomllib.load(f);
@@ -24,12 +35,7 @@ test "discover on the k8s_e2e fixture matches its hand-written toml routes" {
             "routes", {}
         )
     );
-
-    assert discovered == dict(declared) , (
-        f"auto-detect {discovered} != declared routes {dict(declared)}"
-    );
-
-    assert set(discovered.keys()) == {"products_app", "cart_app", "orders_app"};
+    assert declared == {} , f"fixture should carry no explicit routes, got {declared}";
 }
 
 test "gate: explicit enabled=True always enters (config wins)" {
@@ -245,6 +251,70 @@ test "discover prunes build/vendor dirs" {
         routes = discover_sv_services(str(tmp / "main.jac"));
         assert "ghost_app" not in routes , (
             f"vendored service leaked into discovery: {routes}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "discover_sv_service_files maps a subdir service to its real relative path" {
+    import os;
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    (tmp / "analytics.jac").write_text("to sv:\ndef:pub stats -> int { return 1; }\n");
+    sub = tmp / "littlex";
+    sub.mkdir();
+    (sub / "social_graph.jac").write_text(
+        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+    );
+    try {
+        files = discover_sv_service_files(str(tmp / "main.jac"));
+        assert files.get("analytics") == "analytics.jac" , (
+            f"root-level service path wrong: {files}"
+        );
+        assert files.get("social_graph") == os.path.join(
+            "littlex", "social_graph.jac"
+        ) , (f"subdir service must keep its relative path, got: {files}");
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "a subdir service discovered only via sv import resolves to its file" {
+    import os;
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    sub = tmp / "littlex";
+    sub.mkdir();
+    (sub / "social_graph.jac").write_text(
+        "def:pub setup_profile -> int { return 1; }\n"
+    );
+    (sub / "frontend.cl.jac").write_text(
+        "sv import from .social_graph { setup_profile }\n"
+    );
+    try {
+        files = discover_sv_service_files(str(tmp / "main.jac"));
+        assert files.get("social_graph") == os.path.join(
+            "littlex", "social_graph.jac"
+        ) , (
+            f"an sv-import target with no `to sv:` marker of its own must "
+            f"still resolve to its real file, got: {files}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "resolve_service_files falls back to <name>.jac for import-only routes" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("sv import from remote_app { f }\n");
+    try {
+        files = resolve_service_files(str(tmp / "main.jac"), {"remote_app": "/remote"});
+        assert files == {"remote_app": "remote_app.jac"} , (
+            f"import-only service must fall back to <name>.jac, got: {files}"
         );
     } finally {
         shutil.rmtree(str(tmp), ignore_errors=True);

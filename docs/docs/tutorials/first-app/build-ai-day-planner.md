@@ -1100,10 +1100,10 @@ jac model pull gemma-4-e4b
 
 **Configure the LLM**
 
-The model is chosen in `jac.toml` -- the project file that `jac create` generated for you. Add a `[plugins.byllm.model]` section:
+The model is chosen in `jac.toml` -- the project file that `jac create` generated for you. Add a `[byllm.model]` section:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 default_model = "local:gemma-4-e4b"
 ```
 
@@ -1114,7 +1114,7 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
 
     | Provider | `default_model` value | Notes |
     |----------|-----------------------|-------|
-    | Anthropic Claude | `"claude-sonnet-4-20250514"` | Set `ANTHROPIC_API_KEY`; get credits at [console.anthropic.com](https://console.anthropic.com) |
+    | Anthropic Claude | `"anthropic/claude-sonnet-4-6"` | Set `ANTHROPIC_API_KEY`; get credits at [console.anthropic.com](https://console.anthropic.com) |
     | Google Gemini | `"gemini/gemini-2.5-flash"` | Set `GEMINI_API_KEY`; free tier at [ai.google.dev](https://ai.google.dev/) |
     | Ollama (local daemon) | `"ollama/llama3.2:1b"` | Requires [Ollama](https://ollama.ai/) running locally |
 
@@ -1992,7 +1992,7 @@ The AI can only pick from the enum values you defined -- `Category` for tasks, `
 
 **What You Learned**
 
-- **`[plugins.byllm.model]` in `jac.toml`** -- configure which LLM `by llm()` calls use
+- **`[byllm.model]` in `jac.toml`** -- configure which LLM `by llm()` calls use
 - **`glob`** -- module-level variables, accessible throughout the file (used here for `glob llm = Model(...)` as an alternative to `jac.toml` configuration)
 - **`enum`** -- fixed set of named values, used here to constrain AI output
 - **`def func(...) -> Type by llm()`** -- let the LLM implement a function from its signature
