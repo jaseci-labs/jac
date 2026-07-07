@@ -774,6 +774,17 @@ impl JacCompiler.compile(
     }
 
     if (
+        not had_parse_errors and not had_blocking_errors and not options.symtab_ir_only
+    ) {
+        self.run_schedule(
+            mod=mod_targ,
+            target_program=actual_program,
+            passes=get_boundary_analysis_sched(),
+            cancel_token=options.cancel_token
+        );
+    }
+
+    if (
         options.no_cgen
         and options.type_check
         and not options.symtab_ir_only
@@ -784,9 +795,12 @@ impl JacCompiler.compile(
         # Check/run parity: NaIRGenPass is the sole authority on what the
         # native pathway supports, so a check-style compile (no_cgen) must
         # run it for native content -- otherwise `jac check` passes files
-        # that `jac run` rejects. The AST-level capability blacklist is
-        # only a fallback for environments without the native backend or
-        # without type inference available.
+        # that `jac run` rejects. It must run after BoundaryAnalysisPass,
+        # matching the codegen schedule, so cross-context calls (native ->
+        # python bridging) are classified before native lowering judges
+        # them. The AST-level capability blacklist is only a fallback for
+        # environments without the native backend or without type
+        # inference available.
         _parity_passes: list[type[Transform[uni.Module, uni.Module]]] = [];
         if getattr(mod_targ, '_inference_started', False) {
             try {
@@ -806,17 +820,6 @@ impl JacCompiler.compile(
             mod=mod_targ,
             target_program=actual_program,
             passes=_parity_passes,
-            cancel_token=options.cancel_token
-        );
-    }
-
-    if (
-        not had_parse_errors and not had_blocking_errors and not options.symtab_ir_only
-    ) {
-        self.run_schedule(
-            mod=mod_targ,
-            target_program=actual_program,
-            passes=get_boundary_analysis_sched(),
             cancel_token=options.cancel_token
         );
     }
