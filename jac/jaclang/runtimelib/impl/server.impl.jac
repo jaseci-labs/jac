@@ -365,7 +365,12 @@ impl ExecutionManager._finalize_call_response(
 }
 
 async def _run_function_with_occ(
-    mgr: ExecutionManager, args: dict[(str, Any)], username: str, run_attempt: Callable
+    mgr: ExecutionManager,
+    args: dict[(str, Any)],
+    username: str,
+    run_attempt: Callable,
+    deserialize_args: bool = True,
+    include_traceback: bool = False
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     resolved = await _abegin_user_request_context(mgr.user_manager, username);
     if isinstance(resolved, dict) {
@@ -373,7 +378,9 @@ async def _run_function_with_occ(
     }
     (ctx, req_token, root_id) = resolved;
     try {
-        _deserialize_wire_args(args);
+        if deserialize_args {
+            _deserialize_wire_args(args);
+        }
         (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
         max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
         attempt = 0;
@@ -382,7 +389,7 @@ async def _run_function_with_occ(
             call_token = ctx.call_state.set(CallState());
             call_state = ctx.call_state.get();
             try {
-                return await run_attempt(call_state);
+                return await run_attempt(call_state, ctx);
             } except WriteConflict as wc {
                 ctx.mem.abort();
                 ctx.pending_effects.clear();
@@ -402,6 +409,11 @@ async def _run_function_with_occ(
                 await ctx.aset_user_root(root_id);
             } except Exception as e {
                 ctx.mem.abort();
+                if include_traceback {
+                    import traceback;
+
+                    return {'error': str(e), 'traceback': traceback.format_exc()};
+                }
                 return {'error': str(e)};
             } finally {
                 ctx.call_state.reset(call_token);
@@ -431,7 +443,7 @@ impl ExecutionManager.execute_function(
 impl ExecutionManager.execute_function_sync(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    async def run_attempt(call_state: CallState) {
+    async def run_attempt(call_state: CallState, _ctx: ExecutionContext) {
         result = await asyncio.to_thread(func, **args);
 
         if iscoroutine(result) {
@@ -445,7 +457,7 @@ impl ExecutionManager.execute_function_sync(
 impl ExecutionManager.execute_function_async(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    async def run_attempt(call_state: CallState) {
+    async def run_attempt(call_state: CallState, _ctx: ExecutionContext) {
         result = await func(**args);
         return await self._finalize_call_response(call_state, result);
     }
@@ -467,71 +479,32 @@ impl ExecutionManager.spawn_walker_sync(
     import from jaclang.jac0core.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
-    resolved = await _abegin_user_request_context(self.user_manager, username);
-    if isinstance(resolved, dict) {
-        return resolved;
-    }
-    (ctx, req_token, root_id) = resolved;
 
-    try {
-        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
-        attempt = 0;
-        while attempt < max_attempts {
-            attempt += 1;
-            call_token = ctx.call_state.set(CallState());
-            call_state = ctx.call_state.get();
-            try {
-                `walker = walker_cls(**fields);
-                if target_node_id {
-                    target_node = await Jac.aget_object(target_node_id);
-                    if not isinstance(target_node, NodeArchetype) {
-                        return {'error': f"Invalid target node: {target_node_id}"};
-                    }
-                } else {
-                    target_node = ctx.get_root();
-                }
-                result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
-
-                if iscoroutine(result) {
-                    result = await result;
-                }
-                return await self._finalize_call_response(call_state, result);
-            } except WriteConflict as wc {
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-
-                ctx.diagnostics.clear();
-                if attempt >= max_attempts {
-                    return {
-                        'error': wc.message(),
-                        'error_code': 'write_conflict',
-                        'http_status': 409
-                    };
-                }
-                if occ_backoff_ms > 0 {
-                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
-                }
-                await ctx.aset_user_root(root_id);
-            } except Exception as e {
-                import traceback;
-
-                ctx.mem.abort();
-                return {'error': str(e), 'traceback': traceback.format_exc()};
-            } finally {
-                ctx.call_state.reset(call_token);
+    async def run_attempt(call_state: CallState, ctx: ExecutionContext) {
+        `walker = walker_cls(**fields);
+        if target_node_id {
+            target_node = await Jac.aget_object(target_node_id);
+            if not isinstance(target_node, NodeArchetype) {
+                return {'error': f"Invalid target node: {target_node_id}"};
             }
+        } else {
+            target_node = ctx.get_root();
         }
+        result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
 
-        return {
-            'error': 'write_conflict: retries exhausted',
-            'error_code': 'write_conflict',
-            'http_status': 409
-        };
-    } finally {
-        Jac.reset_request_context(req_token);
+        if iscoroutine(result) {
+            result = await result;
+        }
+        return await self._finalize_call_response(call_state, result);
     }
+    return await _run_function_with_occ(
+        self,
+        fields,
+        username,
+        run_attempt,
+        deserialize_args=False,
+        include_traceback=True
+    );
 }
 
 impl ExecutionManager.spawn_walker_async(
@@ -540,71 +513,33 @@ impl ExecutionManager.spawn_walker_async(
     import from jaclang.jac0core.constructs { NodeArchetype }
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
-    resolved = await _abegin_user_request_context(self.user_manager, username);
-    if isinstance(resolved, dict) {
-        return resolved;
-    }
-    (ctx, req_token, root_id) = resolved;
 
-    try {
-        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
-        attempt = 0;
-        while attempt < max_attempts {
-            attempt += 1;
-            call_token = ctx.call_state.set(CallState());
-            call_state = ctx.call_state.get();
-            try {
-                `walker = walker_cls(**fields);
-                if target_node_id {
-                    target_node = await Jac.aget_object(target_node_id);
-                    if not isinstance(target_node, NodeArchetype) {
-                        return {'error': f"Invalid target node: {target_node_id}"};
-                    }
-                } else {
-                    target_node = ctx.get_root();
-                }
-                spawn_result = Jac.spawn(`walker, target_node);
-                if iscoroutine(spawn_result) {
-                    result = await spawn_result;
-                } else {
-                    result = spawn_result;
-                }
-                return await self._finalize_call_response(call_state, result);
-            } except WriteConflict as wc {
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-
-                ctx.diagnostics.clear();
-                if attempt >= max_attempts {
-                    return {
-                        'error': wc.message(),
-                        'error_code': 'write_conflict',
-                        'http_status': 409
-                    };
-                }
-                if occ_backoff_ms > 0 {
-                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
-                }
-                await ctx.aset_user_root(root_id);
-            } except Exception as e {
-                import traceback;
-
-                ctx.mem.abort();
-                return {'error': str(e), 'traceback': traceback.format_exc()};
-            } finally {
-                ctx.call_state.reset(call_token);
+    async def run_attempt(call_state: CallState, ctx: ExecutionContext) {
+        `walker = walker_cls(**fields);
+        if target_node_id {
+            target_node = await Jac.aget_object(target_node_id);
+            if not isinstance(target_node, NodeArchetype) {
+                return {'error': f"Invalid target node: {target_node_id}"};
             }
+        } else {
+            target_node = ctx.get_root();
         }
-        return {
-            'error': 'write_conflict: retries exhausted',
-            'error_code': 'write_conflict',
-            'http_status': 409
-        };
-    } finally {
-        Jac.reset_request_context(req_token);
+        spawn_result = Jac.spawn(`walker, target_node);
+        if iscoroutine(spawn_result) {
+            result = await spawn_result;
+        } else {
+            result = spawn_result;
+        }
+        return await self._finalize_call_response(call_state, result);
     }
+    return await _run_function_with_occ(
+        self,
+        fields,
+        username,
+        run_attempt,
+        deserialize_args=False,
+        include_traceback=True
+    );
 }
 
 impl ModuleIntrospector.postinit -> None {

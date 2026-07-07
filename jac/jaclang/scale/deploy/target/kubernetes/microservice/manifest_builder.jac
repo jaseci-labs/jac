@@ -579,14 +579,10 @@ obj MicroserviceManifestBuilder {
         return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
     }
 
-    def _k8s_safe_name(svc_name: str) -> str {
-        return k8s_safe_name(svc_name);
-    }
-
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, any]
     ) -> dict[str, any] {
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
         labels: dict[str, str] = {
             "app": k8s_name,
@@ -616,7 +612,7 @@ obj MicroserviceManifestBuilder {
     }
 
     def _build_service_manifest(svc_name: str) -> dict[str, any] {
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
         spec: dict[str, any] = {
             "type": "ClusterIP",
@@ -746,7 +742,7 @@ obj MicroserviceManifestBuilder {
         if not cfg.get("enabled", True) {
             return None;
         }
-        k8s_name = self._k8s_safe_name(svc_name);
+        k8s_name = k8s_safe_name(svc_name);
         max_u: int = int(cfg.get("max_unavailable", 1));
         return {
             "apiVersion": "policy/v1",

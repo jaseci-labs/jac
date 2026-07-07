@@ -6,9 +6,8 @@ import os;
 import sys;
 import types;
 import from collections { OrderedDict }
-import from collections.abc { Callable, Coroutine, Iterator, Mapping, Sequence }
+import from collections.abc { Callable, Coroutine, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
-import from contextlib { contextmanager, suppress }
 import from contextvars { ContextVar }
 import dataclasses;
 import from dataclasses { dataclass, field }
@@ -197,7 +196,6 @@ class JacContext {
     ) -> ExecutionContext;
 
     static def attach_program(jac_program: JacProgram) -> None;
-    static def attach_compiler(jac_compiler: JacCompiler) -> None;
     static def thread_run(func: Callable, *args: object) -> Future;
     static def thread_wait(future: any) -> None;
 }
@@ -386,6 +384,7 @@ class JacModule {
 
 class JacIntrospection {
     static def list_modules -> list[str];
+    static def _list_members_of(module_name: str, archetype_cls: type) -> list[str];
     static def list_walkers(module_name: str) -> list[str];
     static def list_nodes(module_name: str) -> list[str];
     static def list_edges(module_name: str) -> list[str];
@@ -421,10 +420,6 @@ class JacLLM {
 
     @hookable
     static def `by(model: LLMModel) -> Callable;
-
-    static def filter_visitable_by(
-        connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
-    ) -> list[NodeArchetype];
 
     @hookable
     static def by_operator(lhs: any, rhs: any) -> any;
@@ -673,25 +668,4 @@ class JacRuntime(JacRuntimeInterface) {
     static def set_context(context: ExecutionContext) -> None;
     static def push_request_context(context: ExecutionContext) -> any;
     static def reset_request_context(token: any) -> None;
-}
-
-@contextmanager
-def without_plugins -> Iterator[None] {
-    external_plugins: list[tuple[(str, Any)]] = [];
-    for (name, plugin) in `list(plugin_manager.list_name_plugin()) {
-        if ((plugin is JacRuntimeImpl) or (name == 'JacRuntimeImpl')) {
-            continue;
-        }
-        external_plugins.append((name, plugin));
-        plugin_manager.unregister(plugin=plugin, name=name);
-    }
-    try {
-        yield ;
-    } finally {
-        for (name, plugin) in external_plugins {
-            with suppress(ValueError) {
-                plugin_manager.register(plugin, name=name);
-            }
-        }
-    }
 }

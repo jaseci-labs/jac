@@ -27,8 +27,3 @@ def get_state_backend(scale_enabled: bool = False) -> StateBackend {
     }
     return backend;
 }
-
-
-def reset_state_backend {
-    _backend_holder.clear();
-}

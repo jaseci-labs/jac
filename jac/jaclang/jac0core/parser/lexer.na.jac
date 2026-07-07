@@ -4,8 +4,7 @@ import from .tokens {
     SourceLoc,
     LexDiag,
     CommentData,
-    lookup_keyword,
-    KEYWORDS
+    lookup_keyword
 }
 
 enum LexerMode {
