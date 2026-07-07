@@ -1,7 +1,7 @@
-# Rust bridges — remaining work
+# Rust bridges - remaining work
 
 Living checklist for what is **not done** after the M2–M6 branch (na-first product
-policy — see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
+policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 **Ship bar:** `nacompile` / `jac bundle`. CPython (`jac run`) is secondary.
 
@@ -17,7 +17,7 @@ policy — see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 ---
 
-## M6 — close the milestone
+## M6 - close the milestone
 
 | Item | Status | Notes |
 |------|--------|-------|
@@ -29,7 +29,7 @@ policy — see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 ---
 
-## Production v1 (na) — ~1–2 months after merge
+## Production v1 (na) - ~1–2 months after merge
 
 ### Packaging & distribution
 
@@ -39,25 +39,25 @@ policy — see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 ### Binder / crates
 
-- [ ] **2–4 seed crates with overlays** (chrono `monomorphize`, base64, …) — prove not regex-only
-- [ ] **Use-site instantiation manifests** — na compiler emits concrete generic instantiations seen at call sites; local-build binder consumes them (today: hand `monomorphize` overlays only)
+- [ ] **2–4 seed crates with overlays** (chrono `monomorphize`, base64, …) - prove not regex-only
+- [ ] **Use-site instantiation manifests** - na compiler emits concrete generic instantiations seen at call sites; local-build binder consumes them (today: hand `monomorphize` overlays only)
 - [ ] ABI stability / semver policy for `abi_version` and blob format
 
 ### na platform gaps
 
-- [ ] **Windows na** — immature; prioritize if Windows native ship matters (ctypes is not the path)
-- [ ] **Static-musl binaries** — bridges require dynamic link today; document or implement staticlib path (D1.1 v2)
-- [ ] Local dev ergonomics — LLVM shim (`zig build jacllvm`) is heavy; document or automate
+- [ ] **Windows na** - immature; prioritize if Windows native ship matters (ctypes is not the path)
+- [ ] **Static-musl binaries** - bridges require dynamic link today; document or implement staticlib path (D1.1 v2)
+- [ ] Local dev ergonomics - LLVM shim (`zig build jacllvm`) is heavy; document or automate
 
 ---
 
 ## ABI v1 ceiling (honest skips until v2)
 
-These are **not** “finish M6” items — they need TYPE-MODEL-V2 or accepted v1 limits:
+These are **not** “finish M6” items - they need TYPE-MODEL-V2 or accepted v1 limits:
 
 | Gap | Example |
 |-----|---------|
-| Floats | `f32` / `f64` — macro rejects |
+| Floats | `f32` / `f64` - macro rejects |
 | Bytes | `Vec<u8>`, `&[u8]` |
 | Collection **params** | pass `Vec` / `HashMap` **into** Rust |
 | Nested containers | `list[list]`, `dict[str, list]` |
@@ -72,11 +72,11 @@ Reference: `bridges/reference/TYPE-MODEL-V2-PLAN.md`
 
 ---
 
-## TYPE-MODEL-V2 (broad interop) — ~3–6 months
+## TYPE-MODEL-V2 (broad interop) - ~3–6 months
 
 Clean cutover; delete v1 tag bitfield. Phases 0–7 in TYPE-MODEL-V2-PLAN.md:
 
-0. Foundation — `jac-bridge-typemodel`, postcard metadata, shared `_marshal.jac`, re-encode existing shapes
+0. Foundation - `jac-bridge-typemodel`, postcard metadata, shared `_marshal.jac`, re-encode existing shapes
 1. Floats
 2. Bytes
 3. Nullable scalars / general `Option` / `Result`
@@ -91,7 +91,7 @@ Clean cutover; delete v1 tag bitfield. Phases 0–7 in TYPE-MODEL-V2-PLAN.md:
 
 - **cl / wasm** third consumer (dropped 2026-07-03)
 - **Dual-runtime parity** as a product requirement (CPython catches up when cheap)
-- **Hand-authored per-crate bridges** (principle zero — binder + overlays only)
+- **Hand-authored per-crate bridges** (principle zero - binder + overlays only)
 
 ---
 
@@ -112,7 +112,7 @@ Ratchet floors in `bridges/jac-bridge-binder/tests/corpus/coverage-baseline.toml
 ## Suggested order
 
 1. Merge branch (housekeeping)
-2. Ship **experimental** — regex + registry + native-only docs
+2. Ship **experimental** - regex + registry + native-only docs
 3. Seed crates + overlays + use-site monomorphization
 4. na polish (`Option<String>`, Windows na if needed)
 5. TYPE-MODEL-V2 Phase 0 when v1 ceiling blocks real users
