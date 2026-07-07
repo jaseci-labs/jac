@@ -14,6 +14,7 @@ cl import from "lucide-react" { Boxes, RefreshCw, Activity }
 cl {
     import from react { useEffect }
     import from ....components.common.Button { Button }
+    import from ....components.common.PageHeader { PageHeader }
     import from ....context.AuthContext { useAuth }
     import from ....services.workloadsService {
         getWorkloadsSummary,
@@ -269,35 +270,30 @@ cl {
         inactiveChipCls = "bg-surface-2 text-muted border-line hover:text-fg";
         chipBase = "px-3 py-1 rounded-full text-xs font-medium cursor-pointer border transition-colors ";
 
+        headerRight = <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-muted">
+                <input
+                    type="checkbox"
+                    checked={autoRefresh}
+                    onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                    className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
+                />
+                Auto-refresh
+            </label>
+            <Button variant="secondary" onClick={lambda { loadAll(); }}>
+                <RefreshCw className="w-3.5 h-3.5"/>
+                Refresh
+            </Button>
+        </div>;
+
         return
             <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                        <Boxes className="w-5 h-5 text-accent"/>
-                        <h1 className="text-lg font-semibold text-fg">Workloads</h1>
-                        <span
-                            className="ml-1 inline-flex items-center gap-1.5 text-xs text-success"
-                        >
-                            <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
-                            Live
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 text-xs text-muted">
-                            <input
-                                type="checkbox"
-                                checked={autoRefresh}
-                                onChange={lambda e: any { autoRefresh = e.target.checked; }}
-                                className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
-                            />
-                            Auto-refresh
-                        </label>
-                        <Button variant="secondary" onClick={lambda { loadAll(); }}>
-                            <RefreshCw className="w-3.5 h-3.5"/>
-                            Refresh
-                        </Button>
-                    </div>
-                </div>
+                <PageHeader
+                    icon={Boxes}
+                    title="Workloads"
+                    live={True}
+                    right={headerRight}
+                />
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
                         <div

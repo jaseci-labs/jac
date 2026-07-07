@@ -169,9 +169,6 @@ pub fn build(b: *std.Build) void {
         pyembed.getEmittedBin(),
         b.fmt("jaclang/runtimelib/client/targets/desktop/native/{s}", .{pyembed_basename}),
     );
-    const pyembed_step = b.step("pyembed", "Build the libjacpyembed shim (na desktop host -> fused runtime)");
-    pyembed_step.dependOn(&b.addInstallArtifact(pyembed, .{}).step);
-    pyembed_step.dependOn(&pyembed_place.step);
 
     // --- unit tests (pure Zig, no libpython) -------------------------------
     addTests(b, target, optimize);

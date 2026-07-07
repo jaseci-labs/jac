@@ -1,19 +1,3 @@
-impl returns_fake(func: any) -> any {
-    try {
-        type_hints = get_type_hints(
-            func, globalns=func.__globals__, localns=None, include_extras=True
-        );
-    } except Exception {
-        type_hints = getattr(func, '__annotations__', {});
-    }
-    ret_t = type_hints.get('return', Any);
-    @wraps(func)
-    def wrapper(*args: any, **kwargs: any) -> any {
-        return random_value_for_type(ret_t);
-    }
-    return wrapper;
-}
-
 impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) -> any {
     random.seed(42);
     if _depth > _max_depth {
@@ -322,14 +306,6 @@ impl _unwrap_annotated(tp: any) -> any {
         return get_args(tp)[0];
     }
     return tp;
-}
-
-impl _safe_subclasses(tp: any) -> list[type] {
-    try {
-        return list(tp.__subclasses__());
-    } except Exception {
-        return [];
-    }
 }
 
 impl _is_enum(tp: any) -> bool {

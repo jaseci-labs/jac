@@ -449,22 +449,6 @@ class IRBuilder(object) {
     def bitcast(self: IRBuilder, value: Any, typ: Any, name: Any = '') -> object { }
 
     """
-        Pointer cast to a different address space:
-            name = (typ) value
-        """
-    @_castop('addrspacecast')
-    def addrspacecast(
-        self: IRBuilder, value: Any, typ: Any, name: Any = ''
-    ) -> object { }
-
-    """
-        Convert floating-point to unsigned integer:
-            name = (typ) value
-        """
-    @_castop('fptoui')
-    def fptoui(self: IRBuilder, value: Any, typ: Any, name: Any = '') -> object { }
-
-    """
         Convert unsigned integer to floating-point:
             name = (typ) value
         """
@@ -573,15 +557,6 @@ class IRBuilder(object) {
     }
 
     """
-        Indirect branch to target *addr*.
-        """
-    def branch_indirect(self: IRBuilder, addr: Any) -> object {
-        br = instructions.IndirectBranch(self.block, "indirectbr", addr);
-        self._set_terminator(br);
-        return br;
-    }
-
-    """
         Return from function without a value.
         """
     def ret_void(self: IRBuilder) -> object {
@@ -666,18 +641,6 @@ class IRBuilder(object) {
         return instr;
     }
 
-
-    """
-        Returns vector with vector[idx] replaced by value.
-        The result is undefined if the idx is larger or equal the vector length.
-        """
-    def insert_element(
-        self: IRBuilder, vector: Any, value: Any, idx: Any, name: Any = ''
-    ) -> object {
-        instr = instructions.InsertElement(self.block, vector, value, idx, name=name);
-        self._insert(instr);
-        return instr;
-    }
 
 
     """

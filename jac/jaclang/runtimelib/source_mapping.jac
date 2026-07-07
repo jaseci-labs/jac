@@ -115,9 +115,7 @@ def read_source_snippet(file_path: str, line: int, context_lines: int = 2) -> st
     }
 }
 
-def _parse_mappings(
-    mappings_str: str, sources_count: int
-) -> list[list[tuple[int, int, int, int]]] {
+def _parse_mappings(mappings_str: str) -> list[list[tuple[int, int, int, int]]] {
     lines: list[list[tuple[int, int, int, int]]] = [];
     src_idx = 0;
     src_line = 0;
@@ -347,7 +345,7 @@ obj SourceMapper {
                     }
                     sources: list[str] = list(raw.get("sources", []));
                     mappings: str = str(raw.get("mappings", ""));
-                    index = _parse_mappings(mappings, len(sources));
+                    index = _parse_mappings(mappings);
                     js_name: str = str(map_file.name)[:-(len(".map"))];
                     rel_path: str = str(map_file.relative_to(compiled_dir))[:-(
                         len(".map")
@@ -371,7 +369,7 @@ obj SourceMapper {
                     }
                     sources: list[str] = list(raw.get("sources", []));
                     mappings: str = str(raw.get("mappings", ""));
-                    index = _parse_mappings(mappings, len(sources));
+                    index = _parse_mappings(mappings);
                     source_map = SourceMap(
                         sources=sources, source_comments=source_comments, _index=index
                     );

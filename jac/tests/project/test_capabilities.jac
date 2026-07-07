@@ -507,6 +507,36 @@ test "capability_dependencies --scale adds the deploy closure" {
     }
 }
 
+test "scale app inferred as kind=cli still installs the serve closure (#7206)" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_capinst_");
+    project_dir = Path(tmp) / "svc";
+    project_dir.mkdir();
+    # No [project] kind + plain main.jac -> resolve_project_kind infers "cli"
+    # (action="execute"), yet [plugins.scale] means the app is served.
+    (project_dir / "jac.toml").write_text(
+        '[project]\nname = "svc"\nversion = "0.1.0"\nentry-point = "main.jac"\n\n'
+        '[plugins.scale.database]\nbackend = "mongo"\n'
+    );
+    (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        # plain install: serve deps land despite kind=cli
+        runtime = _capability_specs(config, scale=False);
+        assert "fastapi>=0.121.3,<0.122.0" in runtime;
+        assert "uvicorn[standard]>=0.38.0,<0.39.0" in runtime;
+        assert "pymongo>=4.15.4,<5.0.0" in runtime;
+        assert "kubernetes" not in " ".join(runtime);
+        # --scale additionally pulls the deploy clients
+        deploy = _capability_specs(config, scale=True);
+        assert "kubernetes>=34.1.0,<35.0.0" in deploy;
+        assert "docker>=7.1.0,<8.0.0" in deploy;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
 test "capability_dependencies is empty for a plain cli project" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_capinst_");

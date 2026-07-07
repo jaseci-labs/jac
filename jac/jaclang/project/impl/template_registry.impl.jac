@@ -104,10 +104,6 @@ impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
     return result;
 }
 
-impl TemplateRegistry.has_template(name: str) -> bool {
-    return name in self._templates;
-}
-
 impl TemplateRegistry.is_empty -> bool {
     return not self._templates;
 }

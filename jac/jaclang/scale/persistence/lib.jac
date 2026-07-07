@@ -6,7 +6,6 @@ import from jaclang.scale.persistence.db {
 }
 import from jaclang.scale.persistence.mongo_db { MongoDb }
 import from jaclang.scale.persistence.redis_db { RedisDb }
-import from jaclang.scale.persistence.firestore_db { FirestoreDb }
 import from jaclang.scale.deploy.database.factory { DatabaseType }
 
 def kvstore(

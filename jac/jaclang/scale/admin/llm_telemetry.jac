@@ -6,10 +6,8 @@ per-call metrics (tokens, cost, latency) and agent-level traces
 
 Integrates with byllm's callback system and litellm's CustomLogger.
 """
-import from collections.abc { Callable }
 import from fastapi { Request }
 import from fastapi.responses { JSONResponse }
-import from jaclang.runtimelib.transport { TransportResponse }
 import from jaclang.scale.jserver.jserver {
     HTTPMethod,
     JEndPoint,

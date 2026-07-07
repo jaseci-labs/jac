@@ -1757,36 +1757,6 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
     return _decorator;
 }
 
-impl JacLLM.filter_visitable_by(
-    connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
-) -> list[NodeArchetype] {
-    import from jaclang.jac0core.helpers { _describe_nodes_list }
-    visitable_list: list = [];
-    """
-        Determine which connected nodes are visitable using an LLM.
-
-        The input represents structurally reachable nodes. This function
-applies
-        semantic reasoning to decide which of those nodes a walker is
-allowed
-        or intended to visit, returning their indexes in priority order.
-
-        Returns an empty list if no nodes are deemed visitable.
-        """;
-    @JacLLM.by (model=model)
-    def _filter_visitable_by(
-        connected_nodes: list[NodeArchetype], descriptions: str = ''
-    ) -> list[int] {
-        return [];
-    }
-    descriptions = _describe_nodes_list(connected_nodes);
-    indexes = _filter_visitable_by(connected_nodes, descriptions);
-    for idx in indexes {
-        visitable_list.append(connected_nodes[idx]);
-    }
-    return visitable_list;
-}
-
 impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
     raise NotImplementedError(
         "The 'by' operator is not yet implemented. This feature is reserved for future use."
@@ -1845,10 +1815,6 @@ impl JacContext.attach_program(jac_program: JacProgram) -> None {
     JacRuntime.program = jac_program;
 }
 
-impl JacContext.attach_compiler(jac_compiler: JacCompiler) -> None {
-    JacRuntime.compiler = jac_compiler;
-}
-
 impl JacModule.load_module(
     module_name: str, module: types.ModuleType, force: bool = False
 ) -> None {
@@ -1862,58 +1828,36 @@ impl JacIntrospection.list_modules -> list[str] {
     return `list(JacRuntime.loaded_modules.keys());
 }
 
-impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+impl JacIntrospection._list_members_of(
+    module_name: str, archetype_cls: type
+) -> list[str] {
     module = JacRuntime.loaded_modules.get(module_name);
     if module {
-        walkers = [];
+        members = [];
         for (name, `obj) in inspect.getmembers(module) {
             if (
                 isinstance(`obj, `type)
-                and issubclass(`obj, WalkerArchetype)
+                and issubclass(`obj, archetype_cls)
                 and (`obj.__module__ == module_name)
             ) {
-                walkers.append(name);
+                members.append(name);
             }
         }
-        return walkers;
+        return members;
     }
     return [];
+}
+
+impl JacIntrospection.list_walkers(module_name: str) -> list[str] {
+    return JacIntrospection._list_members_of(module_name, WalkerArchetype);
 }
 
 impl JacIntrospection.list_nodes(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        nodes = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, NodeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                nodes.append(name);
-            }
-        }
-        return nodes;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, NodeArchetype);
 }
 
 impl JacIntrospection.list_edges(module_name: str) -> list[str] {
-    module = JacRuntime.loaded_modules.get(module_name);
-    if module {
-        edges = [];
-        for (name, `obj) in inspect.getmembers(module) {
-            if (
-                isinstance(`obj, `type)
-                and issubclass(`obj, EdgeArchetype)
-                and (`obj.__module__ == module_name)
-            ) {
-                edges.append(name);
-            }
-        }
-        return edges;
-    }
-    return [];
+    return JacIntrospection._list_members_of(module_name, EdgeArchetype);
 }
 
 impl JacModule.create_archetype_from_source(

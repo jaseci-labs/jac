@@ -134,14 +134,6 @@ class Module(object) {
     }
 
     """
-        Return the metadata node with the given *name*.  KeyError is raised
-        if no such node exists (contrast with add_named_metadata()).
-        """
-    def get_named_metadata(self: Module, name: Any) -> object {
-        return self.namedmetadata[name];
-    }
-
-    """
         A list of functions declared or defined in this module.
         """
     @property
@@ -174,13 +166,6 @@ class Module(object) {
     def add_global(self: Module, globalvalue: Any) -> object {
         assert (globalvalue.name not in self.globals);
         self.globals[globalvalue.name] = globalvalue;
-    }
-
-    """
-        Get a unique global name with the following *name* hint.
-        """
-    def get_unique_name(self: Module, name: Any = '') -> object {
-        return self.scope.deduplicate(name);
     }
 
     def get_identified_types(self: Module) -> object {
