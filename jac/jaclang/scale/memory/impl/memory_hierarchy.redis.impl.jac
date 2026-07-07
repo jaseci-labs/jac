@@ -135,33 +135,6 @@ impl RedisBackend.get_roots -> Generator[Root, None, None] {
     yield ;
 }
 
-impl RedisBackend.find(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> Generator[Anchor, None, None] {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                yield anchor;
-            }
-        }
-    }
-}
-
-impl RedisBackend.find_one(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> (Anchor | None) {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                return anchor;
-            }
-        }
-    }
-    return None;
-}
-
 impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None { }
 
 impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
@@ -201,12 +174,6 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         end_memory_span(span);
     }
     return result;
-}
-
-impl RedisBackend.batch_put(anchors: list[Anchor]) -> None {
-    for anchor in anchors {
-        self.put(anchor);
-    }
 }
 
 impl RedisBackend.exists(id: UUID) -> bool {

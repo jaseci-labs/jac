@@ -10,10 +10,6 @@ impl SourceLoc.span_to(other: SourceLoc) -> SourceLoc {
     );
 }
 
-impl Token.is_keyword -> bool {
-    return self.kind.value.startswith("KW_") or self.kind.value.startswith("TYP_");
-}
-
 impl Token.__str__ -> str {
     return f"Token({self.kind}, '{self.value}', line={self.loc.line})";
 }

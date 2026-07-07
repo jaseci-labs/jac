@@ -19,7 +19,7 @@ import from jaclang.byllm._optdeps.pillow { PILImageCls, open_image }
 import from jaclang.byllm._optdeps.litellm { LiteLLMMessage }
 import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
 import from .schema { tool_to_schema }
-import from jaclang.byllm.exceptions { ByLLMError, FinishToolError, UnknownToolError }
+import from jaclang.byllm.exceptions { ByLLMError, FinishToolError }
 
 import from jaclang.jac0core.mtp { Info }
 import from jaclang.byllm.mcp { McpTool }

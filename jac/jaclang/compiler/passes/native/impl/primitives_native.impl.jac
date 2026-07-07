@@ -4121,39 +4121,6 @@ impl NativeSetEmitter.emit_clear(
     return ir.Constant(i64, 0);
 }
 
-impl NativeSetEmitter._emit_set_iterate(
-    self, ctx: NativeEmitCtx, source: ir.Value, prefix: str
-) -> tuple {
-    p = ctx.pass_ref;
-    helpers = p.set_helpers.get(ctx.type_key);
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    len_ptr = b.gep(
-        source, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"{prefix}.len.ptr"
-    );
-    elems_ptr = b.gep(
-        source, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{prefix}.elems.ptr"
-    );
-    set_len = b.load(len_ptr, name=f"{prefix}.len");
-    elems_arr = b.load(elems_ptr, name=f"{prefix}.elems");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name=f"{prefix}.loop");
-    body_bb = func.append_basic_block(name=f"{prefix}.body");
-    done_bb = func.append_basic_block(name=f"{prefix}.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name=f"{prefix}.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, set_len, name=f"{prefix}.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name=f"{prefix}.ep");
-    ev = b.load(ep, name=f"{prefix}.ev");
-    return (helpers, b, i64, idx, ev, entry_bb, loop_bb, body_bb, done_bb);
-}
-
 impl NativeSetEmitter.emit_union(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
@@ -4666,12 +4633,15 @@ impl NativeSetEmitter.emit_symmetric_difference_update(
     return ir.Constant(i64, 0);
 }
 
-impl NativeSetEmitter.emit_issubset(
-    self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+impl NativeSetEmitter._emit_set_relation(
+    self,
+    ctx: NativeEmitCtx,
+    iter_set: ir.Value,
+    probe_set: ir.Value,
+    prefix: str,
+    chk: str,
+    exit_on_hit: bool
 ) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
     p = ctx.pass_ref;
     helpers = p.set_helpers.get(ctx.type_key);
     if helpers is None {
@@ -4680,41 +4650,55 @@ impl NativeSetEmitter.emit_issubset(
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    other = args[0];
     len_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssub.len.ptr"
+        iter_set, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name=f"{prefix}.len.ptr"
     );
     elems_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ssub.elems.ptr"
+        iter_set, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name=f"{prefix}.elems.ptr"
     );
-    set_len = b.load(len_ptr, name="ssub.len");
-    elems_arr = b.load(elems_ptr, name="ssub.elems");
+    set_len = b.load(len_ptr, name=f"{prefix}.len");
+    elems_arr = b.load(elems_ptr, name=f"{prefix}.elems");
     func = b.basic_block.function;
     entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="ssub.loop");
-    body_bb = func.append_basic_block(name="ssub.body");
-    false_bb = func.append_basic_block(name="ssub.false");
-    done_bb = func.append_basic_block(name="ssub.done");
+    loop_bb = func.append_basic_block(name=f"{prefix}.loop");
+    body_bb = func.append_basic_block(name=f"{prefix}.body");
+    exit_bb = func.append_basic_block(
+        name=f"{prefix}.found" if exit_on_hit else f"{prefix}.false"
+    );
+    done_bb = func.append_basic_block(name=f"{prefix}.done");
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="ssub.idx");
+    idx = b.phi(i64, name=f"{prefix}.idx");
     idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, set_len, name="ssub.atend");
+    at_end = b.icmp_unsigned(">=", idx, set_len, name=f"{prefix}.atend");
     b.cbranch(at_end, done_bb, body_bb);
     b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name="ssub.ep");
-    ev = b.load(ep, name="ssub.ev");
-    in_other = b.call(helpers["contains"], [other, ev], name="ssub.inother");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="ssub.next");
+    ep = b.gep(elems_arr, [idx], name=f"{prefix}.ep");
+    ev = b.load(ep, name=f"{prefix}.ev");
+    hit = b.call(helpers["contains"], [probe_set, ev], name=f"{prefix}.{chk}");
+    next_idx = b.add(idx, ir.Constant(i64, 1), name=f"{prefix}.next");
     idx.add_incoming(next_idx, body_bb);
-    b.cbranch(in_other, loop_bb, false_bb);
-    b.position_at_start(false_bb);
+    if exit_on_hit {
+        b.cbranch(hit, exit_bb, loop_bb);
+    } else {
+        b.cbranch(hit, loop_bb, exit_bb);
+    }
+    b.position_at_start(exit_bb);
     b.branch(done_bb);
     b.position_at_start(done_bb);
-    result = b.phi(i64, name="ssub.result");
+    result = b.phi(i64, name=f"{prefix}.result");
     result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), false_bb);
+    result.add_incoming(ir.Constant(i64, 0), exit_bb);
     return result;
+}
+
+impl NativeSetEmitter.emit_issubset(
+    self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
+) -> (ir.Value | None) {
+    if not args {
+        return None;
+    }
+    return self._emit_set_relation(ctx, target, args[0], "ssub", "inother", False);
 }
 
 impl NativeSetEmitter.emit_issuperset(
@@ -4723,50 +4707,7 @@ impl NativeSetEmitter.emit_issuperset(
     if not args {
         return None;
     }
-    p = ctx.pass_ref;
-    helpers = p.set_helpers.get(ctx.type_key);
-    if helpers is None {
-        return None;
-    }
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    other = args[0];
-
-    len_ptr = b.gep(
-        other, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ssup.len.ptr"
-    );
-    elems_ptr = b.gep(
-        other, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="ssup.elems.ptr"
-    );
-    other_len = b.load(len_ptr, name="ssup.len");
-    elems_arr = b.load(elems_ptr, name="ssup.elems");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="ssup.loop");
-    body_bb = func.append_basic_block(name="ssup.body");
-    false_bb = func.append_basic_block(name="ssup.false");
-    done_bb = func.append_basic_block(name="ssup.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="ssup.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, other_len, name="ssup.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name="ssup.ep");
-    ev = b.load(ep, name="ssup.ev");
-    in_self = b.call(helpers["contains"], [target, ev], name="ssup.inself");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="ssup.next");
-    idx.add_incoming(next_idx, body_bb);
-    b.cbranch(in_self, loop_bb, false_bb);
-    b.position_at_start(false_bb);
-    b.branch(done_bb);
-    b.position_at_start(done_bb);
-    result = b.phi(i64, name="ssup.result");
-    result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), false_bb);
-    return result;
+    return self._emit_set_relation(ctx, args[0], target, "ssup", "inself", False);
 }
 
 impl NativeSetEmitter.emit_isdisjoint(
@@ -4775,50 +4716,7 @@ impl NativeSetEmitter.emit_isdisjoint(
     if not args {
         return None;
     }
-    p = ctx.pass_ref;
-    helpers = p.set_helpers.get(ctx.type_key);
-    if helpers is None {
-        return None;
-    }
-    b = get_builder(p);
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    other = args[0];
-    len_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sdisj.len.ptr"
-    );
-    elems_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sdisj.elems.ptr"
-    );
-    set_len = b.load(len_ptr, name="sdisj.len");
-    elems_arr = b.load(elems_ptr, name="sdisj.elems");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="sdisj.loop");
-    body_bb = func.append_basic_block(name="sdisj.body");
-    found_bb = func.append_basic_block(name="sdisj.found");
-    done_bb = func.append_basic_block(name="sdisj.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="sdisj.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, set_len, name="sdisj.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ep = b.gep(elems_arr, [idx], name="sdisj.ep");
-    ev = b.load(ep, name="sdisj.ev");
-    in_other = b.call(helpers["contains"], [other, ev], name="sdisj.inother");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="sdisj.next");
-    idx.add_incoming(next_idx, body_bb);
-
-    b.cbranch(in_other, found_bb, loop_bb);
-    b.position_at_start(found_bb);
-    b.branch(done_bb);
-    b.position_at_start(done_bb);
-    result = b.phi(i64, name="sdisj.result");
-    result.add_incoming(ir.Constant(i64, 1), loop_bb);
-    result.add_incoming(ir.Constant(i64, 0), found_bb);
-    return result;
+    return self._emit_set_relation(ctx, target, args[0], "sdisj", "inother", True);
 }
 
 impl NativeSetEmitter.emit_copy(

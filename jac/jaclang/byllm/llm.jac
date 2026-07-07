@@ -22,7 +22,6 @@ import from jaclang.byllm.exceptions {
     FinishToolError,
     RateLimitError,
     ModelNotFoundError,
-    UnknownToolError,
     ConfigurationError,
     CompactionNotEffectiveError
 }
@@ -94,6 +93,10 @@ obj BaseLLM {
     async def ainvoke(mt_run: MTRuntime) -> object;
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _resolve_stream_retries(mt_run: MTRuntime) -> int;
+    def _should_retry_stream(
+        mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
+    ) -> bool;
+
     def _invoke_typed_retry(mt_run: MTRuntime) -> object;
     async def _ainvoke_typed_retry(mt_run: MTRuntime) -> object;
     def _typed_retry_reset(
@@ -149,6 +152,14 @@ obj BaseLLM {
     def _invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> object;
     def _get_ctx_window(call_params: dict) -> int;
     def _resolve_compaction_params(mt_run: MTRuntime) -> dict;
+    def _maybe_compact(
+        mt_run: MTRuntime, usage: object, just_compacted: bool, cp: dict
+    ) -> bool;
+
+    def _emergency_compact_retry(
+        mt_run: MTRuntime, just_compacted: bool, cp: dict
+    ) -> CompletionResult;
+
     def _compact_messages(
         mt_run: MTRuntime, keep_recent: int, comp_model: str | None
     ) -> None;
@@ -227,6 +238,7 @@ obj Model(BaseLLM) {
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> object;
+    def _raise_mapped_provider_error(e: Exception) -> None;
     def model_call_no_stream(params: dict) -> dict;
     async def model_call_no_stream_async(params: dict) -> dict;
     def model_call_with_stream(params: dict);

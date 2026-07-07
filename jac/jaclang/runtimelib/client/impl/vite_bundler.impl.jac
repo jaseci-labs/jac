@@ -303,27 +303,6 @@ impl ViteBundler._format_config_object(
     return '\n'.join(items);
 }
 
-impl ViteBundler._format_plugin_options(self: ViteBundler, options: dict) -> str {
-    if not options {
-        return '';
-    }
-    items = [];
-    for (key, value) in options.items() {
-        if isinstance(value, str) {
-            items.append(f"{key}: '{value}'");
-        } elif isinstance(value, bool) {
-            items.append(f"{key}: {str(value).lower()}");
-        } elif isinstance(value, (int, float)) {
-            items.append(f"{key}: {value}");
-        } elif isinstance(value, list) {
-            items.append(f"{key}: [{', '.join(repr(v) for v in value)}]");
-        } else {
-            items.append(f"{key}: {repr(value)}");
-        }
-    }
-    return '{ ' + ', '.join(items) + ' }';
-}
-
 impl ViteBundler._resolve_api_base_url(
     self: ViteBundler, api_base_url_override: str = ""
 ) -> str {
@@ -333,13 +312,6 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
-
-impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
-    name = plugin_name.split('/')[-1];
-    name = name.replace('-', '_').replace('.', '_');
-    name = name.lstrip('@');
-    return name;
-}
 
 def _to_js_expr(value: any) -> str {
     if value is None {
@@ -1004,10 +976,6 @@ impl ViteBundler.create_vite_config(
     );
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;
-}
-
-impl ViteBundler._has_typescript_support(self: ViteBundler) -> bool {
-    return True;
 }
 
 impl ViteBundler.read_bundle(self: ViteBundler) -> tuple[str, str] {

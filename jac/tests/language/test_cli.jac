@@ -554,6 +554,10 @@ test "run test native codespace file" {
 test "run test native broken import surfaces error" {
     # A test file that was explicitly collected but fails to import must be a
     # collection error, not an empty (silently passing) result (issue #7150).
+    # Since the native error gate (issue #7239) the failure surfaces at
+    # compile time: the unresolvable imported symbol makes native codegen
+    # error, the module publishes no artifact, and the collection error
+    # carries the compiler diagnostics naming that symbol and the file.
     captured = io.StringIO();
     old_stdout = sys.stdout;
     sys.stdout = captured;
@@ -566,7 +570,9 @@ test "run test native broken import surfaces error" {
 
     # Non-zero exit and a visible error -- never a silent green pass.
     assert rc != 0;
-    assert "this_module_does_not_exist_7150" in out;
+    assert "native_broken_import_test" in out;
+    assert "E5090" in out;
+    assert "nope" in out;
     assert "passed" not in out;
 }
 

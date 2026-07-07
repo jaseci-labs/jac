@@ -18,7 +18,6 @@ import from jaclang.byllm.mtir { MTRuntime }
 import from jaclang.byllm.exceptions {
     OutputConversionError,
     ConfigurationError,
-    UnknownToolError,
     FinishToolError,
     McpError
 }
