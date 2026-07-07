@@ -3991,7 +3991,9 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
         left_key = self.create_key_for_reference(condition.left);
         right_expr = condition.rights[0];
         if left_key is not None
-        and isinstance(right_expr, (uni.String, uni.Int, uni.Float, uni.Bool)) {
+        and isinstance(
+            right_expr, (uni.String, uni.Int, uni.Float, uni.Bool, uni.MultiString)
+        ) {
             literal_type = self.get_type_of_expression(right_expr);
             op_name = condition.ops[0].name;
             if op_name == Tok.EE {
