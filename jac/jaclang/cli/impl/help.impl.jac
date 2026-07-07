@@ -1,3 +1,21 @@
+glob _HELP_RESET: str = "\033[0m",
+     _HELP_HEADER: str = "\033[1;34m",
+     _HELP_CMD: str = "\033[32m",
+     _HELP_PROG: str = "\033[1;35m",
+     _HELP_TITLE: str = "\033[1m";
+
+def _help_color(text: str, code: str) -> str {
+    import from jaclang.cli.console { console }
+    try {
+        if not console.use_color {
+            return text;
+        }
+    } except Exception {
+        return text;
+    }
+    return f"{code}{text}{_HELP_RESET}";
+}
+
 impl CommandGroups.get_display_name(group: str) -> str {
     return self.groups.get(group, group.title());
 }
@@ -20,16 +38,21 @@ impl HelpFormatter.format_main_help(
 
     lines: list[str] = [];
 
-    lines.append("Jac Programming Language CLI");
+    lines.append(_help_color("Jac Programming Language CLI", _HELP_TITLE));
     if version {
         lines.append(f"Version: {version}");
     }
     lines.append("");
-    lines.append(f"Usage: {prog} [OPTIONS] COMMAND [ARGS]...");
+    lines.append(
+        f"{_help_color('Usage:', _HELP_HEADER)} "
+        f"{_help_color(prog, _HELP_PROG)} [OPTIONS] COMMAND [ARGS]..."
+    );
     lines.append("");
-    lines.append("Options:");
-    lines.append("  -V, --version  Show version and exit");
-    lines.append("  -h, --help     Show this message and exit");
+    lines.append(_help_color("Options:", _HELP_HEADER));
+    lines.append(f"  {_help_color('-V, --version', _HELP_CMD)}  Show version and exit");
+    lines.append(
+        f"  {_help_color('-h, --help', _HELP_CMD)}     Show this message and exit"
+    );
     lines.append("");
 
     grouped: dict[str, list[CommandSpec]] = {};
@@ -59,12 +82,12 @@ impl HelpFormatter.format_main_help(
             display_name += f"  [{list(sources)[0]}]";
         }
 
-        lines.append(f"{display_name}:");
+        lines.append(_help_color(f"{display_name}:", _HELP_HEADER));
 
         cmds.sort(key=lambda c: str : c.name);
         for cmd in cmds {
             padding = " " * (12 - len(cmd.name));
-            lines.append(f"  {cmd.name}{padding}{cmd.help}");
+            lines.append(f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
         }
 
         lines.append("");
@@ -74,10 +97,12 @@ impl HelpFormatter.format_main_help(
         if group not in ordered_groups {
             cmds = grouped[group];
             display_name = self.groups.get_display_name(group);
-            lines.append(f"{display_name}:");
+            lines.append(_help_color(f"{display_name}:", _HELP_HEADER));
             for cmd in cmds {
                 padding = " " * (12 - len(cmd.name));
-                lines.append(f"  {cmd.name}{padding}{cmd.help}");
+                lines.append(
+                    f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}"
+                );
             }
             lines.append("");
         }
@@ -93,7 +118,10 @@ impl HelpFormatter.format_curated_help(
     import from jaclang.cli.command { CommandSpec }
     lines: list[str] = [];
 
-    lines.append(f"Usage: {prog} COMMAND [ARGS]...");
+    lines.append(
+        f"{_help_color('Usage:', _HELP_HEADER)} "
+        f"{_help_color(prog, _HELP_PROG)} COMMAND [ARGS]..."
+    );
     lines.append("");
 
     by_tier: dict[str, list[CommandSpec]] = {};
@@ -111,11 +139,13 @@ impl HelpFormatter.format_curated_help(
         if not cmds {
             continue;
         }
-        lines.append(f"{self.groups.tier_sections.get(tier, tier)}:");
+        lines.append(
+            _help_color(f"{self.groups.tier_sections.get(tier, tier)}:", _HELP_HEADER)
+        );
         cmds.sort(key=lambda c: str : c.name);
         for cmd in cmds {
             padding = " " * (12 - len(cmd.name));
-            lines.append(f"  {cmd.name}{padding}{cmd.help}");
+            lines.append(f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
         }
         lines.append("");
     }

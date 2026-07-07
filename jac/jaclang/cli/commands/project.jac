@@ -297,6 +297,37 @@ def remove(packages: list = [], dev: bool = False) -> int;
 def update(packages: list = [], dev: bool = False, verbose: bool = False) -> int;
 
 @registry.command(
+    name="deps",
+    help="Show the fully resolved dependency plan (every ecosystem, with origins)",
+    args=[
+        Arg.create(
+            "scale",
+            typ=bool,
+            default=False,
+            help="Resolve the deploy-time capability closure (adds deploy-only clients like kubernetes/docker)",
+            short=""
+        ),
+        Arg.create(
+            "json",
+            typ=bool,
+            default=False,
+            help="Emit the plan as JSON",
+            short="",
+            dest="as_json"
+        ),
+
+    ],
+    examples=[
+        ("jac deps", "Show every resolved dependency and where it comes from"),
+        ("jac deps --scale", "Include deploy-time capability dependencies"),
+        ("jac deps --json", "Machine-readable resolved plan"),
+
+    ],
+    group="project"
+)
+def deps(scale: bool = False, as_json: bool = False) -> int;
+
+@registry.command(
     name="script",
     help="Run project scripts",
     args=[

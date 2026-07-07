@@ -1024,3 +1024,81 @@ test "deleted client module drops its stale compiled output" {
         assert reloader.build_status()["status"] == "ok";
     }
 }
+
+def _routed_project(tmpdir: str, extra_pages: dict[str, str] = {}) -> tuple {
+    unique_dir = Path(tmpdir) / f"project_{uuid.uuid4().hex[:8]}";
+    unique_dir.mkdir(parents=True, exist_ok=True);
+    (reloader, compiler, compiled_dir) = _make_unified_reloader(unique_dir);
+    (unique_dir / "main.jac").write_text(
+        "cl {\n    def app() {\n        return <div>App</div>;\n    }\n}\n"
+    );
+    pages_dir = unique_dir / "pages";
+    pages_dir.mkdir();
+    pages = {"index.jac": "Home"};
+    pages.update(extra_pages);
+    for (rel, label) in pages.items() {
+        page_file = pages_dir / rel;
+        page_file.parent.mkdir(parents=True, exist_ok=True);
+        page_file.write_text(
+            f"cl {{\n    def page() {{\n        return <div>{label}</div>;\n    }}\n}}\n"
+        );
+        reloader._recompile_client_code(str(page_file));
+    }
+    reloader._refresh_routing(str(pages_dir / "index.jac"));
+    return (reloader, compiled_dir, pages_dir);
+}
+
+test "directory moves drive the routing lifecycle" {
+    with TemporaryDirectory() as tmpdir {
+        (reloader, compiled_dir, pages_dir) = _routed_project(
+            tmpdir, {"blog/post.jac": "Post"}
+        );
+        entry_file = compiled_dir / "_entry.js";
+        routes_file = compiled_dir / "_routes.js";
+        assert "PagesBlogPost" in routes_file.read_text();
+        import shutil as sh;
+        # 1. Only a subdirectory moves out: its routes and compiled output go,
+        # everything else survives
+        sh.move(str(pages_dir / "blog"), str(Path(tmpdir) / "blog-outside"));
+        reloader._dispatch_change(str(pages_dir / "blog"), is_directory=True);
+        routes = routes_file.read_text();
+        assert "PagesBlogPost" not in routes and "PagesIndex" in routes , "only the moved-out subdirectory's routes may be dropped";
+        assert not (compiled_dir / "pages" / "blog").exists() , "moved-out subdirectory's compiled output must be removed";
+        assert (compiled_dir / "pages" / "index.js").exists();
+        assert "BrowserRouter" in entry_file.read_text() , "router entry must survive a partial pages removal";
+        # 2. The whole pages/ moves out: routing deactivates, artifacts cleaned
+        outside = Path(tmpdir) / "outside-pages";
+        sh.move(str(pages_dir), str(outside));
+        reloader._dispatch_change(str(pages_dir), is_directory=True);
+        assert "BrowserRouter" not in entry_file.read_text() , "entry must downgrade when pages/ disappears";
+        assert not routes_file.exists() and not (compiled_dir / "pages").exists() , "orphaned routing artifacts must be removed";
+        # 3. pages/ returns: routing reactivates with a fresh compile
+        sh.move(str(outside), str(pages_dir));
+        reloader._dispatch_change(str(pages_dir), is_directory=True);
+        assert "BrowserRouter" in entry_file.read_text() , "entry must upgrade when pages/ returns";
+        assert "PagesIndex" in routes_file.read_text();
+        assert (compiled_dir / "pages" / "index.js").exists() , "returning pages must be recompiled";
+    }
+}
+
+test "renaming a page moves its route" {
+    with TemporaryDirectory() as tmpdir {
+        (reloader, compiled_dir, pages_dir) = _routed_project(tmpdir);
+        routes_file = compiled_dir / "_routes.js";
+        assert "PagesIndex" in routes_file.read_text();
+        # Rename: the watcher synthesizes DELETED(old) + CREATED(new); replay
+        # the same sequence against the reloader's handling
+        import os;
+        old_page = pages_dir / "index.jac";
+        new_page = pages_dir / "home.jac";
+        os.rename(str(old_page), str(new_page));
+        reloader._remove_compiled_output(str(old_page));
+        reloader._refresh_routing(str(old_page));
+        reloader._recompile_client_code(str(new_page));
+        reloader._refresh_routing(str(new_page));
+        routes = routes_file.read_text();
+        assert "PagesHome" in routes and "PagesIndex" not in routes , "the route must move to the new name";
+        assert (compiled_dir / "pages" / "home.js").exists();
+        assert not (compiled_dir / "pages" / "index.js").exists() , "stale compiled JS of the old name must be gone";
+    }
+}
