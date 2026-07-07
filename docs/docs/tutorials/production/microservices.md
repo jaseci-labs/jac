@@ -410,6 +410,8 @@ Totals
 To see the raw YAML manifests, re-run with --show-yaml
 ```
 
+Note the `__gateway__` entry above has `replicas: 1` and no HPA line -- that's the framework default, and it is a single point of failure for all external traffic. See [Gateway defaults to a single replica](../../reference/plugins/jac-scale-kubernetes.md#gateway-defaults-to-a-single-replica) for why, and the `min = 2` override to fix it.
+
 The summary line at the top tells you whether the plan is deployable:
 
 - `check: no errors or warnings` - safe to apply
