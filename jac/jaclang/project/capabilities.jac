@@ -22,6 +22,12 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
          },
          "data.mongo": {"context": "runtime", "deps": {"pymongo": ">=4.15.4,<5.0.0"}},
          "data.redis": {"context": "runtime", "deps": {"redis": ">=7.1.0,<8.0.0"}},
+         "data.sql": {"context": "runtime", "deps": {"sqlalchemy": ">=2.0.0,<3.0.0"}},
+         "env": {"context": "runtime", "deps": {"python-dotenv": ">=1.2.1,<2.0.0"}},
+         "upload": {
+             "context": "runtime",
+             "deps": {"python-multipart": ">=0.0.21,<1.0.0"}
+         },
          "monitoring": {
              "context": "runtime",
              "deps": {"prometheus-client": ">=0.21.0,<1.0.0"}
@@ -215,7 +221,11 @@ def derive_capabilities(
         }
     }
 
-    if intent and ("serve" in caps) and not ({"data.mongo", "data.redis"} & caps) {
+    if (
+        ("serve" in caps)
+        and (intent or "deploy.k8s" in caps)
+        and not ({"data.mongo", "data.redis"} & caps)
+    ) {
         caps.add("data.mongo");
     }
     return caps;
@@ -369,6 +379,57 @@ def package_missing_error(package: str) -> str {
         );
     }
     return f"'{package}' is missing. {missing_capability_error(cap)}";
+}
+
+def missing_capability_dists(capability: str) -> list[str] {
+    import from importlib.metadata { distribution, PackageNotFoundError }
+    registry = get_capability_registry();
+    if capability not in registry {
+        return [];
+    }
+    missing: list[str] = [];
+    for name in sorted(_expand_requires({capability})) {
+        for (pkg, ver) in registry[name].deps.items() {
+            base = pkg[:pkg.index("[")] if "[" in pkg else pkg;
+            try {
+                distribution(base.strip());
+            } except PackageNotFoundError {
+                if not ver or ver in ("*", "latest") {
+                    missing.append(pkg);
+                } elif ver.startswith(("=", ">", "<", "~", "!")) {
+                    missing.append(f"{pkg}{ver}");
+                } else {
+                    missing.append(f"{pkg}=={ver}");
+                }
+            }
+        }
+    }
+    return sorted(missing);
+}
+
+def ensure_global_capability(capability: str) -> bool {
+    import importlib;
+    import subprocess;
+    import sys;
+    missing = missing_capability_dists(capability);
+    if not missing {
+        return get_capability(capability) is not None;
+    }
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--quiet"] + missing,
+        capture_output=True,
+        text=True
+    );
+    importlib.invalidate_caches();
+    if result.returncode != 0 {
+        import logging;
+        detail = (result.stderr or result.stdout or "").strip();
+        logging.getLogger(__name__).warning(
+            f"pip install into the jac global site failed for capability "
+            f"'{capability}' ({' '.join(missing)}): {detail}"
+        );
+    }
+    return result.returncode == 0 and not missing_capability_dists(capability);
 }
 
 def require_optional(package: str, capability: str) {
