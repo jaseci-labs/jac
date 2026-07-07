@@ -66,6 +66,8 @@ obj UnknownType(TypeBase) {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Unknown;
     }
 
+    has is_diagnosed: bool = False;
+
     def __str__ -> str;
 }
 
@@ -81,6 +83,8 @@ obj AnyType(TypeBase) {
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Any;
     }
+
+    has is_foreign: bool = False;
 
     def __str__ -> str;
 }
@@ -144,9 +148,12 @@ obj ClassType(TypeBase) {
             is_root_class: bool = False,
             is_enum_class: bool = False,
             enum_value_type: (TypeBase | None) = None,
-            enum_members: (dict[str, EnumMemberInfo] | None) = None;
+            enum_members: (dict[str, EnumMemberInfo] | None) = None,
+            _identity_key: (tuple[str, int, int, str] | None) = None;
 
         def postinit -> None;
+        def canonical_key -> (tuple[str, int, int, str] | None);
+        def same_class(other: ClassType.ClassDetailsShared) -> bool;
     }
 
     obj ClassDetailsPrivate {
@@ -205,9 +212,12 @@ obj Parameter {
         default_value: (Expr | None) = None,
         is_self: bool = False,
         is_cls: bool = False,
-        param_kind: ParamKind = ParamKind.NORMAL;
+        param_kind: ParamKind = ParamKind.NORMAL,
+        has_default: bool = False;
 
     def clone -> Parameter;
+
+    has is_optional: bool { getter; }
 }
 
 obj FunctionType(TypeBase) {

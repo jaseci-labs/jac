@@ -102,6 +102,14 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
     } else {
         entry_content = backend.build_entry_script(module_path.stem);
     }
+    entry_file.parent.mkdir(parents=True, exist_ok=True);
+
+    try {
+        if entry_file.exists()
+        and entry_file.read_text(encoding='utf-8') == entry_content {
+            return;
+        }
+    } except OSError { }
     entry_file.write_text(entry_content, encoding='utf-8');
 }
 

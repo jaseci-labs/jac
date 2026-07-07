@@ -426,6 +426,8 @@ class _ConstOpMixin(object) {
     The base class for all values.
     """
 class Value(object) {
+    has type: types.Type;
+
     def __repr__(self: Value) -> object {
         return ("<ir.%s type='%s' ...>" % (self.__class__.__name__, self.type));
     }
