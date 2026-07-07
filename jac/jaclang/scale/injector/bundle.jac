@@ -198,16 +198,22 @@ def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
         jac_path.write_bytes(pod_binary);
         jac_path.chmod(0o755);
         script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
-        # Run from the staging dir with dev sourcing forced off: inheriting the
-        # driver's CWD lets the pod binary pick up a [dev] jaclang_source from
-        # the driver's jac.toml and recompile all of jaclang (~minutes wasted).
+        # Isolate the pod binary from the driver's dev loop, which otherwise
+        # makes it recompile all of jaclang (~minutes wasted): the staging cwd
+        # keeps a [dev] jaclang_source in the driver's jac.toml out of scope,
+        # and the env drops the markers the driver's own dev override exports
+        # (JAC_DEV_SOURCE, and JAC_NO_PRECOMPILE which disables the binary's
+        # shipped precompiled jaclang, see jir.jac).
+        env = {** os.environ, "JAC_NO_DEV_SOURCE": "1"};
+        env.pop("JAC_DEV_SOURCE", None);
+        env.pop("JAC_NO_PRECOMPILE", None);
         result = subprocess.run(
             [str(jac_path), "run", str(script), str(stage_root)],
             capture_output=True,
             text=True,
             timeout=600,
             cwd=str(stage_root),
-            env={** os.environ, "JAC_NO_DEV_SOURCE": "1"}
+            env=env
         );
         jac_path.unlink();
         # Guarded: py3.11's rglob raises on a missing dir, which would mask the returncode diagnostics below.

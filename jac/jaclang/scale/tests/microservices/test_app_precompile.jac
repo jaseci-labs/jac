@@ -50,12 +50,19 @@ test "precompile runs from the staging dir with dev sourcing off" {
         done.stderr = "stub";
         return done;
     }
-    with mock.patch("jaclang.scale.injector.bundle.subprocess.run", fake_run) {
+    # The driver's own dev override exports these (see _jac_finder); they must
+    # not leak into the pod binary or it recompiles jaclang from source.
+    dev_markers = {"JAC_DEV_SOURCE": "/driver/checkout/jac", "JAC_NO_PRECOMPILE": "1"};
+    with mock.patch("jaclang.scale.injector.bundle.subprocess.run", fake_run), mock.patch.dict(
+        os.environ, dev_markers
+    ) {
         assert _precompile_app(Path(_mini_app()), b"fake-binary") is None;
     }
     stage_root = seen["cmd"][3];
     assert seen["cwd"] == stage_root , seen;
     assert seen["env"]["JAC_NO_DEV_SOURCE"] == "1" , seen;
+    assert "JAC_DEV_SOURCE" not in seen["env"] , seen;
+    assert "JAC_NO_PRECOMPILE" not in seen["env"] , seen;
     # The rest of the driver's environment still flows through.
     assert "PATH" in seen["env"];
 }
