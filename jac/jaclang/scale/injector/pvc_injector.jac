@@ -1,3 +1,4 @@
+import os;
 import logging;
 import from jaclang.scale.injector.injector { Injector }
 import from jaclang.scale.injector.bundle {
@@ -236,6 +237,12 @@ obj PvcInjector(Injector) {
                     tmp.write(raw);
                     tmp_path = Path(tmp.name);
                 }
+                # Copy to a unique staging path first, then atomically `mv` it
+                # into the content-addressed slot. `kubectl cp` is not atomic, so
+                # an interruption mid-transfer would otherwise leave a truncated
+                # file that `test -f` accepts forever (poisoning the cache); the
+                # mv only names the object once its bytes are complete.
+                staging_path = f"{bundle_path}.{os.getpid()}.part";
                 try {
                     run_kubectl_command(
                         [
@@ -255,9 +262,21 @@ obj PvcInjector(Injector) {
                             "-n",
                             namespace,
                             tmp_path.name,
-                            f"{loader_pod}:{bundle_path}"
+                            f"{loader_pod}:{staging_path}"
                         ],
                         cwd=tmp_path.parent
+                    );
+                    run_kubectl_command(
+                        [
+                            "exec",
+                            "-n",
+                            namespace,
+                            loader_pod,
+                            "--",
+                            "sh",
+                            "-c",
+                            f"mv -f '{staging_path}' '{bundle_path}'"
+                        ]
                     );
                     logger.info(
                         f"pvc-injector: seeded {len(raw)} bytes to "
