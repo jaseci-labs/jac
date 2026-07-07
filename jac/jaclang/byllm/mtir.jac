@@ -63,7 +63,10 @@ obj MTRuntime {
         _has_final_output: bool = False,
         # Bumped when a transient-error retry resets partial stream output;
         # consumers watch it to emit `stream_reset` and discard shown tokens.
-        _stream_reset_count: int = 0;
+        _stream_reset_count: int = 0,
+        # True when the caller designated a mandatory terminal tool via
+        # `by llm(finish_tool=fn)`. Drives BaseLLM._attempt_recovery enforcement.
+        terminal_designated: bool = False;
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def add_message(message: MessageType) -> None;

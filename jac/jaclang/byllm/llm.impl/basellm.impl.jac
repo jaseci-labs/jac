@@ -1867,10 +1867,11 @@ impl BaseLLM._attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None {
     if not finish_tool_obj {
         return None;
     }
-    # A terminal tool not named the reserved "finish_tool" was designated by the caller.
-    caller_designated = finish_tool_obj.get_name() != "finish_tool";
+    # Enforce the terminal when the caller designated one (mt_run.terminal_designated,
+    # set by the factory -- robust even if their function is named "finish_tool"), or when
+    # a structured return must be delivered via the injected finish_tool.
     structured = mt_run.resp_type is not None and mt_run.resp_type is not str;
-    if not caller_designated and not structured {
+    if not mt_run.terminal_designated and not structured {
         return None;
     }
     term_name = finish_tool_obj.get_name();

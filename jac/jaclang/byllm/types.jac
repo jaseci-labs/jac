@@ -67,8 +67,9 @@ obj Tool {
         info: Info = None,
         serialize: bool = False,
         timeout_sec: float | None = None,
-        is_terminal:
-            bool = False;  #is a user defined finish tool (not the auto-injected finish_tool)
+        # True when this tool ends the ReAct loop: set on the auto-injected finish_tool
+        # and on any caller-designated terminal (`by llm(finish_tool=fn)`).
+        is_terminal: bool = False;
 
     def postinit -> None;
     def __call__(*args: list, **kwargs: dict) -> object;

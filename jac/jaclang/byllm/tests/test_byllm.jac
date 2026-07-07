@@ -926,6 +926,15 @@ test "plain str agent answers in text without forced recovery" {
     assert mod.run_plain("go") == "plain answer" , "a str agent may answer in text when no terminal is designated";
 }
 
+test "finish_tool= handles a function already in tools without mutating it" {
+    mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
+    # finish is in both tools=[...] and finish_tool=: the factory re-wraps it as terminal.
+    assert mod.run_agent_dup("go") == "dup" , "re-wrapped terminal should still end the loop with its output";
+    # The designation is call-scoped: it must NOT globally mark the function terminal, so a
+    # fresh Tool wrapping the same function elsewhere is not treated as a loop terminator.
+    assert not Tool(mod.finish).is_finish_tool() , "finish_tool= must not leak is_terminal onto the function";
+}
+
 test "output conversion error not raised for str return type" {
     # parse_response should pass through raw strings without attempting conversion
     mt_run = MTRuntime(

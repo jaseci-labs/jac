@@ -26,6 +26,17 @@ glob term_llm = MockLLM(
 );
 def run_agent(task: str) -> str by term_llm(tools=[lookup], finish_tool=finish);
 
+# finish appears in BOTH tools=[...] and finish_tool=: the factory re-wraps the existing
+# entry as terminal (rather than mutating it), and the loop still ends on it.
+glob dup_llm = MockLLM(
+    model_name="mockllm",
+    config={"outputs": [
+        MockToolCall(tool=lookup, args={"q": "x"}),
+        MockToolCall(tool=finish, args={"answer": "dup"})
+    ]}
+);
+def run_agent_dup(task: str) -> str by dup_llm(tools=[lookup, finish], finish_tool=finish);
+
 # Natural exit (plain text, no terminal call). Because a terminal tool is designated,
 # recovery forces it: the next (recovery) turn calls finish -> "forced".
 glob recover_llm = MockLLM(

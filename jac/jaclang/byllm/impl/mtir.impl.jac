@@ -31,8 +31,8 @@ impl _warn_terminal_tools(
             if name == "finish" {
                 logger.warning(
                     "byllm: tool 'finish' looks like a terminal tool, but the agent loop "
-                    "won't guarantee it is called. If it should end the agent, pass "
-                    "`by llm(finish_tool=finish)` or mark it with `mark_terminal(finish)`."
+                    "won't guarantee it is called. If it should end the agent, pass it as "
+                    "`by llm(finish_tool=finish)`."
                 );
             }
         }
@@ -236,30 +236,35 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             "stream_handler=fn)`)."
         );
     }
-    # `by llm(finish_tool=fn)`: flag the tool instance terminal (call-scoped, no mutation
-    # of fn). Flag it in place if already among tools=[...], else wrap and append it.
+    # `by llm(finish_tool=fn)`: designate fn as terminal. If fn is already among
+    # tools=[...], REPLACE that entry with a fresh terminal wrapper rather than mutating
+    # it in place -- the caller may pass and reuse a pre-created Tool across calls, and an
+    # in-place flag would leak `is_terminal` into later calls that did not designate it.
     finish_fn = call_params.get("finish_tool");
-    if finish_fn is not None and callable(finish_fn) {
-        existing = None;
-        for t in tools {
+    caller_designated = finish_fn is not None and callable(finish_fn);
+    if caller_designated {
+        existing_idx = None;
+        for (i, t) in enumerate(tools) {
             if t?.func is finish_fn {
-                existing = t;
+                existing_idx = i;
                 break;
             }
         }
-        if existing is not None {
-            existing.is_terminal = True;
+        if existing_idx is not None {
+            prior = tools[existing_idx];
+            tools[existing_idx] = Tool(
+                finish_fn, info=prior?.info, is_terminal=True
+            );  # type: ignore
         } else {
             tools.append(Tool(finish_fn, is_terminal=True));  # type: ignore
         }
     }
-    terminal_designated = bool(
-        any(t?.is_finish_tool and t.is_finish_tool() for t in tools)
-    );
+    # A terminal exists if the caller designated one or any tool is already flagged.
+    has_terminal = bool(any(t?.is_finish_tool and t.is_finish_tool() for t in tools));
     # Non-blocking footgun warnings about terminal tools (once per call).
-    _warn_terminal_tools(tools, finish_fn is not None, terminal_designated);
+    _warn_terminal_tools(tools, finish_fn is not None, has_terminal);
     # Inject the generic finish_tool only when tools exist and none is terminal yet.
-    if len(tools) > 0 and not terminal_designated {
+    if len(tools) > 0 and not has_terminal {
         tools.append(Tool.make_finish_tool(return_type or str));
     }
     mt_run = MTRuntime(
@@ -270,6 +275,10 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         call_params=call_params,
         mtir=mtir
     );
+    # Whether the CALLER designated a mandatory terminal (via finish_tool=), distinct from
+    # byllm's auto-injected finish_tool. Drives recovery in BaseLLM._attempt_recovery, so a
+    # designated terminal named "finish_tool" is still enforced (no name-based heuristic).
+    mt_run.terminal_designated = caller_designated;
 
     # In conversational mode, the auto-SYSTEM is regenerated from sem each
     # turn — exclude it from persistence and bind the caller's list for
