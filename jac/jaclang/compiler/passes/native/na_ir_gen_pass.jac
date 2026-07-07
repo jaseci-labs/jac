@@ -326,7 +326,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_vars: bool,
         coll_release_op: str,
         range_start: (ir.Value | None) = None,
-        elem_cast: (ir.Type | None) = None
+        elem_cast: (ir.Type | None) = None,
+        unpack_target: (uni.TupleVal | None) = None
     ) -> None;
 
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;

@@ -1429,6 +1429,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return td_result;
                     }
                 }
+                if tuple_elem := self._tuple_literal_index_type(
+                    base_type, subscript_arg
+                ) {
+                    return tuple_elem;
+                }
                 result = self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
                 );
@@ -2067,14 +2072,24 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     }
                     if idx >= 0 {
                         rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                        if elem := self._extract_tuple_element_type(rhs_type, idx) {
-                            return elem;
+                        extracted = self._extract_tuple_element_type(rhs_type, idx);
+                        if (
+                            extracted is not None
+                            and not isinstance(extracted, types.UnknownType)
+                        ) {
+                            return extracted;
                         }
 
+                        # A variadic `tuple[T, ...]` carries an Unknown for the
+                        # `...` in its trailing positions; fall back to the
+                        # iterated element type so every target still types as T.
                         if elem := self._get_iterable_element_type(
                             rhs_type, unpack_assignment.value
                         ) {
                             return elem;
+                        }
+                        if extracted is not None {
+                            return extracted;
                         }
                     }
                 } elif isinstance(unpack_assignment, (uni.InForStmt, uni.InnerCompr)) {

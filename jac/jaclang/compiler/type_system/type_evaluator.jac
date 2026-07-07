@@ -388,6 +388,9 @@ obj TypeEvaluator {
     def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
+    def _tuple_literal_index_type(
+        base_type: TypeBase, subscript_arg: uni.Expr
+    ) -> TypeBase | None;
     def _extract_tuple_element_type_path(
         tuple_type: TypeBase, path: list[int]
     ) -> TypeBase | None;
