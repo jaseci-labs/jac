@@ -970,3 +970,23 @@ test "a user import named jac_test is not stripped (only jaclib imports are)" {
         assert "from userlib import jac_test" in helper_py;
     }
 }
+
+
+test "no impl_patch_filename decorators survive anywhere in the ejected backend" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "vend";
+        _write_project(src, "vend");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        # The app modules and the vendored jaclang runtime alike must ship no
+        # @impl_patch_filename decorators (they name .jac sources the ejected
+        # Python app does not contain).
+        offenders: list = [];
+        for py in (src / "ejected" / "backend").rglob("*.py") {
+            if "@impl_patch_filename(" in py.read_text() {
+                offenders.append(str(py.name));
+            }
+        }
+        assert offenders == [] , f"impl_patch_filename left in: {offenders}";
+    }
+}
