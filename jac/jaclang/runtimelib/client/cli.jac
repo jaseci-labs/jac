@@ -20,55 +20,6 @@ import from jaclang.runtimelib.client.targets.registry { ClientTarget }
 import from pathlib { Path }
 
 @registry.command(
-    name="build",
-    help="Build a Jac application for a specific target",
-    args=[
-        Arg.create(
-            "filename",
-            kind=ArgKind.POSITIONAL,
-            default="main.jac",
-            help="Path to .jac file (default: main.jac)"
-        ),
-        Arg.create(
-            "client",
-            typ=str,
-            default="web",
-            help=(
-                "Build client target (web, pwa, mobile, desktop). "
-                "Choices reflect installed targets (desktop builds a native webview app)."
-            ),
-            choices=["web", "pwa", "mobile"],
-            short=""
-        ),
-        Arg.create(
-            "platform",
-            typ=str,
-            default=None,
-            help="Platform for desktop/mobile builds (windows, macos, linux, all, android, ios)",
-            choices=["windows", "macos", "linux", "all", "android", "ios"],
-            short="p"
-        ),
-
-    ],
-    examples=[
-        ("jac build", "Build web target (default)"),
-        ("jac build main.jac", "Build specific file"),
-        ("jac build --client pwa", "Build PWA (Progressive Web App)"),
-        ("jac build --client desktop", "Build desktop app (native webview, no Rust)"),
-        ("jac build --client mobile --platform android", "Build Android mobile app"),
-        ("jac build --client mobile --platform ios", "Build iOS mobile app"),
-
-    ],
-    group="build",
-    source="jac-client"
-)
-def build(
-    filename: str = "main.jac", target: str = "web", platform: str | None = None
-) -> int {
-    return 0;
-}
-
-@registry.command(
     name="setup",
     help="Setup a build target (one-time initialization)",
     args=[
@@ -141,7 +92,32 @@ class JacClientCmd {
         );
 
         registry.extend_command(
-            command_name="build", pre_hook=_handle_build_target, source="jac-client"
+            command_name="build",
+            args=[
+                Arg.create(
+                    "client",
+                    typ=str,
+                    default="",
+                    help=(
+                        "Build a client shell instead of the artifact: web, "
+                        "pwa, mobile, desktop (desktop builds a native "
+                        "webview app)."
+                    ),
+                    choices=["web", "pwa", "mobile"],
+                    short=""
+                ),
+                Arg.create(
+                    "platform",
+                    typ=str,
+                    default=None,
+                    help="Platform for desktop/mobile shells (windows, macos, linux, all, android, ios)",
+                    choices=["windows", "macos", "linux", "all", "android", "ios"],
+                    short="p"
+                ),
+
+            ],
+            pre_hook=_handle_build_target,
+            source="jac-client"
         );
 
         registry.extend_command(
@@ -335,7 +311,11 @@ def _handle_build_target(ctx: HookContext) -> None {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
 
-    target_name = ctx.get_arg("client", "web");
+    target_name = ctx.get_arg("client", "");
+    if not target_name {
+        # No shell requested; the core build (jab/projections) handles it.
+        return;
+    }
     platform = ctx.get_arg("platform", None);
 
     config = get_config();
@@ -376,7 +356,7 @@ def _handle_build_target(ctx: HookContext) -> None {
     try {
         entry_file = ctx.get_arg("filename", None);
         if not entry_file {
-            entry_file = config.entry_point;
+            entry_file = config.project.entry_point;
         }
         if not entry_file {
             console.error("No entry file specified. Use: jac build <file>");

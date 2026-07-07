@@ -1597,7 +1597,9 @@ def _bake_serve_payloads(config: any, pkg_copy: Path) -> bool {
     return True;
 }
 
-def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
+def _make_sealed_image(
+    config: any, parent: Path, name: str, out_dir: (Path | None) = None
+) -> (Path | None) {
     import shutil;
     import tempfile;
     import from jaclang.jac0core { ext_registry }
@@ -1608,10 +1610,32 @@ def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
         return None;
     }
 
+    out_names: set = set();
+    if out_dir is not None {
+        try {
+            rel0 = Path(out_dir).resolve().relative_to(Path(proj_root).resolve());
+            out_names.add(rel0.parts[0]);
+        } except ValueError { }
+    }
+
+    def copy_ignore(d: str, items: list) -> list {
+        skipped = _seal_copy_ignore(d, items);
+        if out_names and Path(d).resolve() == Path(proj_root).resolve() {
+            skipped = list(
+                set(skipped) | {
+                    it
+                    for it in items
+                    if it in out_names
+                }
+            );
+        }
+        return skipped;
+    }
+
     stage = Path(tempfile.mkdtemp(prefix=f"{name}-seal-"));
     try {
         pkg_copy = stage / name;
-        shutil.copytree(proj_root, pkg_copy, ignore=_seal_copy_ignore);
+        shutil.copytree(proj_root, pkg_copy, ignore=copy_ignore);
 
         has_init = any((pkg_copy / f).exists() for f in ext_registry.INIT_FILES);
         if not has_init and not (pkg_copy / "__init__.py").exists() {
@@ -1644,7 +1668,9 @@ def _bundle_sealed(config: any, output: str) -> int {
     name = config.project.name;
     Path(output).mkdir(parents=True, exist_ok=True);
     console.print(f"\n  Sealing {name}...", style="muted");
-    dest = _make_sealed_image(config, Path(output), f"{name}-sealed");
+    dest = _make_sealed_image(
+        config, Path(output), f"{name}-sealed", out_dir=Path(output)
+    );
     if dest is None {
         return 1;
     }
@@ -1669,7 +1695,7 @@ def _bundle_jab(config: any, output: str) -> int {
     work = Path(tempfile.mkdtemp(prefix="jab-", dir=output));
     try {
         console.print(f"\n  Sealing {name}...", style="muted");
-        img = _make_sealed_image(config, work, name);
+        img = _make_sealed_image(config, work, name, out_dir=Path(output));
         if img is None {
             return 1;
         }
@@ -1716,7 +1742,7 @@ def _bundle_binary(config: any, output: str) -> int {
     work = Path(tempfile.mkdtemp(prefix="jacbin-", dir=output));
     try {
         console.print(f"\n  Sealing {name} for binary...", style="muted");
-        img = _make_sealed_image(config, work, name);
+        img = _make_sealed_image(config, work, name, out_dir=Path(output));
         if img is None {
             return 1;
         }
