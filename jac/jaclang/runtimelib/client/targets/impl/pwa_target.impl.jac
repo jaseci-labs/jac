@@ -633,9 +633,7 @@ install_dismiss_text = "Not now"
         with open(toml_path, 'a', encoding='utf-8') as f {
             f.write(pwa_section);
         }
-        console.print(
-            "  ✔ Added [client.pwa] section to jac.toml", style="success"
-        );
+        console.print("  ✔ Added [client.pwa] section to jac.toml", style="success");
     } except Exception as e {
         console.warning(f"  Failed to update jac.toml: {e}");
     }

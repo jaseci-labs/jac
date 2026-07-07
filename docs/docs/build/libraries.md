@@ -51,4 +51,3 @@ Scalars pass by value; Jac objects and strings cross as opaque handles with `jac
 
 - Use a library in an app → [Backend APIs & services](backend-apis.md) · [Full-stack web apps](fullstack-web.md)
 - Ship an executable instead of a library → [CLI tools & native binaries](cli-and-native.md#native-binary)
-- Extend the `jac` CLI itself → [Build a Jac Plugin](../tutorials/extend/build-a-plugin.md)

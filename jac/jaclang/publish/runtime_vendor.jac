@@ -209,9 +209,6 @@ def build_runtime_closure(
         seeds.extend([str(s) for s in extra_seeds]);
     }
 
-    # byLLM is folded into core, so jac0core.runtime lazily imports jaclang.byllm.*.
-    # Those imports must not pull byLLM into the closure of a project that does not
-    # use it; byLLM is vendored only when the caller opts in via include_byllm.
     def _deny(mod: str) -> bool {
         if _denied(mod) {
             return True;

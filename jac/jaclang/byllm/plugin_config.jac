@@ -6,7 +6,6 @@ configuration system, registering:
 - Config schema for [byllm] section
 """
 
-
 """Plugin configuration hooks for jac-byllm."""
 class JacByllmPluginConfig {
     """Return plugin metadata."""

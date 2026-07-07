@@ -6,7 +6,6 @@ glob registry = get_registry(),
 
 class JacShadcnPlugin {
     static def create_cmd -> None;
-
     static def register_project_template -> dict[str, any] | None;
 }
 

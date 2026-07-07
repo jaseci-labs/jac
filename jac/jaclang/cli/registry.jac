@@ -52,10 +52,4 @@ glob _registry: CommandRegistry | None = None;
 
 def get_registry -> CommandRegistry;
 
-"""Apply all built-in feature command extensions to the shared registry.
-
-Formerly the ``create_cmd`` plugin hook. Each feature (client, shadcn, scale,
-byllm) extends the registry with its flags/subcommands; features whose runtime
-closure is not provisioned into the project venv are skipped.
-"""
 def extend_builtin_commands -> None;

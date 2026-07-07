@@ -983,9 +983,7 @@ test "merge feature config" {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text(
-            "[byllm]\ndefault_model = \"gpt-4\"\n"
-        );
+        overlay.write_text("[byllm]\ndefault_model = \"gpt-4\"\n");
         cfg.merge_from_toml_file(overlay);
         assert "byllm" in cfg.plugins;
         assert cfg.plugins["byllm"]["default_model"] == "gpt-4";
@@ -1151,9 +1149,7 @@ test "merge env interpolation" {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text(
-            "[byllm]\napi_key = \"${TEST_API_KEY:-default_key}\"\n"
-        );
+        overlay.write_text("[byllm]\napi_key = \"${TEST_API_KEY:-default_key}\"\n");
         os.environ.pop("TEST_API_KEY", None);
         cfg.merge_from_toml_file(overlay);
         assert cfg.plugins["byllm"]["api_key"] == "default_key";

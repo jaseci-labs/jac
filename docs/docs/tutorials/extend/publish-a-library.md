@@ -140,4 +140,3 @@ npm publish dist/jsgreet-0.1.0.tgz --access public
 
 - [Publishing reference](../../reference/publishing.md) -- metadata fields, `[entrypoints.scripts]` console commands, editable installs
 - [Shared library (C ABI)](../../quick-guide/project-kinds.md#shared-library-c-abi) -- the third packaging target: `jac nacompile --shared` builds a `.so`/`.dylib`/`.dll` any language can link
-- [Build a Jac Plugin](build-a-plugin.md) -- packages that extend the `jac` CLI itself

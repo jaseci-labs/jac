@@ -110,12 +110,6 @@ def type_to_str(t: object) -> str {
     return str(t);
 }
 
-"""Resolve the MTIR Info for a callable from the program's mtir_map.
-
-Maps the caller's module + qualname to the scope key registered at compile
-time. Handles `__main__` and the `.impl`/`.cl`/`.sv` annex-file stems so the
-scope matches the base module. Returns None when no MTIR is registered.
-"""
 def fetch_mtir(func: Callable) -> Info | None {
     import sys;
     import from pathlib { Path }

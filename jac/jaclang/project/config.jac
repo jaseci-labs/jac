@@ -5,11 +5,6 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
-# Built-in feature config sections are the top-level jac.toml tables byllm,
-# scale, client, mcp, and desktop. These were formerly nested under
-# [plugins.<name>]; they are now first-class top-level sections collected into
-# JacConfig.plugins for feature config access via get_plugin_config(<name>).
-
 glob VALID_CLIENT_KINDS: list[str] = ["web", "mobui"];
 
 obj PersonConfig {

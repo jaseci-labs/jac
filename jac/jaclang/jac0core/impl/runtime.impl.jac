@@ -1738,10 +1738,7 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
                 invoke_args[key] = value;
             }
             mt_run = MTIR(
-                caller,
-                invoke_args,
-                model.call_params,
-                fetch_mtir(caller)
+                caller, invoke_args, model.call_params, fetch_mtir(caller)
             ).runtime;
             return model.invoke(mt_run=mt_run);
         }
@@ -1755,9 +1752,7 @@ impl JacLLM.by_operator(lhs: any, rhs: any) -> any {
     import from jaclang.jac0core.archetype { NodeArchetype, EdgeArchetype }
 
     lhs_list = lhs if isinstance(lhs, list) else [lhs];
-    if all(
-        isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list
-    )
+    if all(isinstance(element, (NodeArchetype, EdgeArchetype)) for element in lhs_list)
     and isinstance(rhs, BaseLLM) {
         import from jaclang.byllm.visit_routing { route_visit }
         return route_visit(lhs_list, rhs);

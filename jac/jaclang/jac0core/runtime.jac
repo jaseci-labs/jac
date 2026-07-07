@@ -81,19 +81,9 @@ glob logger = getLogger(__name__),
 
 glob _scale_provider_cache: list = [];
 
-# Optional persistent-memory provider. A single-element holder set via
-# JacPersistence.set_persistent_memory_provider; when populated its callable is
-# consulted by get_persistent_memory to supply a custom L3 backend (e.g. a SQL
-# store injected by an ejected standalone backend). None means core's default
-# (SqliteMemory) is used.
 glob _persistent_memory_provider: list = [None];
 
-def _scale_provider() -> any {
-    # Return the built-in scale provider class, or None when scale is not
-    # provisioned into the project venv. Scale ships with jaclang but its runtime
-    # closure (fastapi / uvicorn / mongo / ...) is installed on demand; when absent
-    # core's own zero-dependency defaults are used. Memoized so the failed-import
-    # probe (scale absent) is paid at most once per process.
+def _scale_provider -> any {
     if _scale_provider_cache {
         return _scale_provider_cache[0];
     }
@@ -231,9 +221,7 @@ class JacPersistence {
     static def save(`obj: (Archetype | Anchor)) -> None;
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None;
     static def get_user_manager(base_path: str) -> UserManager;
-
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
-
     static def get_persistent_memory(config: dict) -> any;
     static def set_persistent_memory_provider(provider: Callable | None) -> None;
 }
@@ -432,15 +420,10 @@ class JacLLM {
 
     static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
     static def call_llm(model: LLMModel, mt_run: MTRuntime) -> any;
-
     static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> any;
-
     static def `by(model: LLMModel) -> Callable;
-
     static def by_operator(lhs: any, rhs: any) -> any;
-
     static def default_llm -> LLMModel;
-
     static def add_mtir_to_map(scope: str, mtir: Info) -> None;
     static def get_mtir_from_map(scope: str) -> (Info | None);
 }
@@ -456,17 +439,13 @@ class JacServe {
     ) -> str;
 
     static def get_api_server_class -> type;
-
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
-
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
-
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any;
 
     static def get_sv_registry -> dict[str, str];
-
     static def create_server(
         jac_server: JacServer, host: str, port: int, max_retries: int = 10
     ) -> HTTPServer;

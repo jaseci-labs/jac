@@ -1,4 +1,3 @@
-
 class JacScalePluginConfig {
     static def get_plugin_metadata -> dict[str, any] {
         return {

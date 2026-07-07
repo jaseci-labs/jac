@@ -21,7 +21,6 @@ impl start_cli -> None {
 
     _load_project_config();
 
-    # Built-in command extensions (formerly the create_cmd plugin hook).
     extend_builtin_commands();
 
     registry = get_registry();

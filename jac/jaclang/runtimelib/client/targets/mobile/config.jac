@@ -50,9 +50,7 @@ def _add_mobile_config(project_dir: Path, app_name: str, app_id: str) -> None {
     }
 
     mobile_section = (
-        "\n[client.mobile]\n"
-        f'app_name = "{app_name}"\n'
-        f'app_id = "{app_id}"\n'
+        "\n[client.mobile]\n" f'app_name = "{app_name}"\n' f'app_id = "{app_id}"\n'
     );
     content += mobile_section;
     toml_path.write_text(content, encoding="utf-8");

@@ -572,9 +572,6 @@ def reset_provider_registry {
 def initialize_provider_registry -> None {
     registry = get_provider_registry();
 
-    # Formerly the register_ecosystem_providers plugin hook; only the built-in
-    # client framework contributes an ecosystem provider (npm). Import lazily so
-    # projects without the client feature installed still resolve dependencies.
     try {
         import from jaclang.runtimelib.client.plugin_config { JacClientPluginConfig }
     } except Exception {

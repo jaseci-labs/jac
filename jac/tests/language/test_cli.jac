@@ -1042,36 +1042,6 @@ test "cli error exit codes" {
     assert "Hello World!" in stdout;
 }
 
-test "positional args with defaults" {
-    captured = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured;
-    try {
-        result = config_cmd.plugins();
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout = captured.getvalue();
-    assert result == 0 , "jac plugins should work without action argument";
-    assert "installed jac plugin" in stdout.lower() , (
-        "Output should show installed plugins list"
-    );
-
-    # Verify explicit list action produces the same result
-    captured_explicit = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured_explicit;
-    try {
-        config_cmd.plugins(action="list");
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout_explicit = captured_explicit.getvalue();
-    assert stdout == stdout_explicit , (
-        "jac plugins and jac plugins list should produce identical output"
-    );
-}
-
 test "format tracks changed files" {
     with tempfile.TemporaryDirectory() as tmpdir {
         # Create a file that needs formatting (bad indentation/spacing)

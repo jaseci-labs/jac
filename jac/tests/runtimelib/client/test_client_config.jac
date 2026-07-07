@@ -53,9 +53,7 @@ test "configurable api base url in bundle" {
     with TemporaryDirectory() as temp_dir {
         project_path = copy_fixture("fullstack", temp_dir);
         base_url = "http://my-custom-backend:9000";
-        _append_toml(
-            project_path, f'\n[client.api]\nbase_url = "{base_url}"\n'
-        );
+        _append_toml(project_path, f'\n[client.api]\nbase_url = "{base_url}"\n');
         server: Popen | None = None;
         try {
             (server, port) = start_app_server(project_path);
