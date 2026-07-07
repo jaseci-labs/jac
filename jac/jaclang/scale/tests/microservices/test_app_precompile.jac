@@ -2,8 +2,9 @@ import io;
 import os;
 import tarfile;
 import tempfile;
+import unittest.mock as mock;
 import from pathlib { Path }
-import from jaclang.scale.injector.bundle { pack_source }
+import from jaclang.scale.injector.bundle { pack_source, _precompile_app }
 
 
 def _mini_app -> str {
@@ -32,6 +33,31 @@ test "an unrunnable pod binary degrades gracefully to a source-only bundle" {
     names = _names(pack_source(_mini_app(), "", b"not-an-elf"));
     assert "svc.jac" in names;
     assert not any(["_precompiled" in n for n in names]);
+}
+
+
+test "precompile runs from the staging dir with dev sourcing off" {
+    # Inheriting the driver's CWD lets the pod binary pick up a [dev]
+    # jaclang_source from the driver's jac.toml and recompile all of jaclang.
+    seen = {};
+
+    def fake_run(cmd: list, **kwargs: dict) -> object {
+        seen.update(kwargs);
+        seen["cmd"] = cmd;
+        done = mock.MagicMock();
+        done.returncode = 1;
+        done.stdout = "";
+        done.stderr = "stub";
+        return done;
+    }
+    with mock.patch("jaclang.scale.injector.bundle.subprocess.run", fake_run) {
+        assert _precompile_app(Path(_mini_app()), b"fake-binary") is None;
+    }
+    stage_root = seen["cmd"][3];
+    assert seen["cwd"] == stage_root , seen;
+    assert seen["env"]["JAC_NO_DEV_SOURCE"] == "1" , seen;
+    # The rest of the driver's environment still flows through.
+    assert "PATH" in seen["env"];
 }
 
 
