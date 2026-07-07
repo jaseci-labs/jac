@@ -3785,6 +3785,17 @@ impl TypeEvaluator._get_type_from_flow_node(
                         and not self.assign_type(declared_type, assigned_type)
                     ) {
                         narrowed_from_assignment = assigned_type;
+                    } elif (
+                        flat_target_matched
+                        and self.is_explicit_any(assigned_type)
+                        and self._union_contains_none(declared_type)
+                    ) {
+                        none_cls = self.prefetch.none_type_class;
+                        if none_cls is not None {
+                            narrowed_from_assignment = self.exclude_type_from_union(
+                                declared_type, self._convert_to_instance(none_cls)
+                            );
+                        }
                     }
                 }
                 if narrowed_from_assignment is not None {

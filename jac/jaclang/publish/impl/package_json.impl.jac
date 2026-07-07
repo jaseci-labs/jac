@@ -30,17 +30,8 @@ impl npm_tarball_filename(config: JacConfig) -> str {
 }
 
 impl npm_dependencies(config: JacConfig) -> dict[str, str] {
-    result: dict[str, str] = {};
-
-    raw = config.plugin_dependencies.get("npm", {});
-    for (key, value) in raw.items() {
-        if key == "dev" {
-            continue;
-        }
-        if isinstance(value, str) {
-            result[key] = value;
-        }
-    }
+    import from jaclang.project.providers { manifest_plugin_deps }
+    (result, _dev) = manifest_plugin_deps(config, "npm");
 
     npm = npm_settings(config);
     override = npm.get("dependencies", {});

@@ -115,10 +115,24 @@ def _first_boot_install -> str {
 
 
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig, base_image: str, overlay_source: bool = False
+    k8s_config: KubernetesConfig,
+    base_image: str,
+    overlay_source: bool = False,
+    is_gateway: bool = True
 ) -> dict[str, any] {
     commands = build_runtime_install_commands(k8s_config, overlay_source);
     commands.append(f'cd {APP_MOUNT_PATH}');
+    if not is_gateway {
+        # npm deps exist only to build the client, which only the gateway
+        # serves - service pods were installing 500+ packages for nothing
+        # (~1 min/pod, #7179). Strip the npm tables from this pod's own copy
+        # of jac.toml so `jac install` skips them.
+        commands.append(
+            "awk 'BEGIN{skip=0} /^\\[dependencies\\.npm(\\]|\\.)/{skip=1;next} "
+            "/^\\[/{skip=0} !skip' jac.toml > /tmp/jac.toml.nonpm "
+            "&& cat /tmp/jac.toml.nonpm > jac.toml"
+        );
+    }
     commands.append(_first_boot_install());
     script = ' && '.join(commands);
     return {

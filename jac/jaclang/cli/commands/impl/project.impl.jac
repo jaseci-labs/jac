@@ -492,12 +492,13 @@ impl install(
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies {
-        DependencyInstaller,
-        get_venv_site_packages,
-        capability_specs_for_install
+    import from jaclang.project.pyvenv { ensure_venv, get_venv_site_packages }
+    import from jaclang.project.providers {
+        InstallContext,
+        get_provider_registry,
+        get_python_provider,
+        resolve_plan
     }
-    import from jaclang.project.dep_registry { get_dependency_registry }
 
     flag_defs: list = [
         (force_reinstall, "--force-reinstall"),
@@ -514,6 +515,11 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
+    python = get_python_provider();
+    ctx = InstallContext(verbose=verbose, install_flags=install_flags);
+    global_ctx = InstallContext(
+        verbose=verbose, install_flags=install_flags, target="global"
+    );
 
     if packages {
         if editable {
@@ -534,29 +540,10 @@ impl install(
                 f"\n📦 Installing {len(packages)} package(s) into the global site",
                 style="bold"
             );
-            cmd: list[str] = [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade"
-            ] + install_flags + packages;
-            if verbose {
-                console.print(f"  Running: {' '.join(cmd)}", style="muted");
-            }
-            result = subprocess.run(cmd, capture_output=not verbose, text=True);
-            if result.returncode != 0 {
-                console.error(
-                    f"Install failed:\n{result.stderr
-                    or result.stdout
-                    or '(see output above)'}"
-                );
+            if not python.install_specs(None, packages, global_ctx) {
                 return 1;
             }
             if dry_run {
-                if result.stdout {
-                    console.print(result.stdout, style="dim");
-                }
                 console.success("Dry run complete (nothing installed).");
                 return 0;
             }
@@ -571,14 +558,11 @@ impl install(
             );
             return 1;
         }
-        installer = DependencyInstaller(
-            config=config, verbose=verbose, install_flags=install_flags
-        );
         console.print(
             f"\n📦 Installing {len(packages)} package(s) into {config.get_venv_dir()}",
             style="bold"
         );
-        return 0 if installer.install_package(packages) else 1;
+        return 0 if python.install_specs(config, packages, ctx) else 1;
     }
 
     editable = [p for group in (editable or []) for p in group];
@@ -604,16 +588,17 @@ impl install(
                 );
                 return 1;
             }
-            specs_installer = DependencyInstaller(
-                config=config, verbose=verbose, install_flags=install_flags
+            dep_specs = python.specs_for(
+                [
+                    d
+                    for d in python.resolve(config, include_dev=dev)
+                    if d.source == "pypi"
+                ]
             );
-            dep_specs = specs_installer.get_pip_package_specs(include_dev=dev);
             if extras {
                 try {
-                    extra_specs = specs_installer.get_extra_package_specs(extras);
-                    if extra_specs {
-                        dep_specs.extend(extra_specs);
-                    }
+                    extra_deps = python.resolve_extras(config, extras);
+                    dep_specs.extend(python.specs_for(extra_deps));
                 } except ValueError as e {
                     console.warning(
                         f"  Skipping extras for {config.project.name}: {e}"
@@ -635,21 +620,7 @@ impl install(
                     )} dependencies into the global site...",
                     style="muted"
                 );
-                result = subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "pip",
-                        "install",
-                        "--upgrade"
-                    ] + install_flags + all_dep_specs,
-                    capture_output=not verbose,
-                    text=True,
-                );
-                if result.returncode != 0 {
-                    console.error(
-                        f"Dependency install failed:\n{result.stderr or result.stdout}"
-                    );
+                if not python.install_specs(None, all_dep_specs, global_ctx) {
                     return 1;
                 }
             }
@@ -670,15 +641,12 @@ impl install(
                 );
                 return 1;
             }
-            host_installer = DependencyInstaller(
-                config=host_config, verbose=verbose, install_flags=install_flags
-            );
             if all_dep_specs {
                 console.print(
                     f"\n  Installing {len(all_dep_specs)} dependencies into {host_config.get_venv_dir()}...",
                     style="muted"
                 );
-                if not host_installer.install_package(all_dep_specs) {
+                if not python.install_specs(host_config, all_dep_specs, ctx) {
                     return 1;
                 }
             }
@@ -688,7 +656,7 @@ impl install(
                 );
                 return 0;
             }
-            host_installer.ensure_venv();
+            ensure_venv(host_config.get_venv_dir(), verbose);
             site_pkgs = get_venv_site_packages(host_config.get_venv_dir());
         }
 
@@ -707,55 +675,32 @@ impl install(
         );
         return 1;
     }
-    installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags
-    );
     console.print(
         f"\n📦 Installing dependencies for {config.project.name}", style="bold"
     );
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
-    pip_packages = installer.get_pip_package_specs(include_dev=dev);
-    git_packages = installer.get_git_package_specs();
+    try {
+        plan = resolve_plan(config, include_dev=dev, extras=extras, scale=scale);
+    } except ValueError as e {
+        console.error(str(e));
+        return 1;
+    }
     if extras {
-        try {
-            extra_specs = installer.get_extra_package_specs(extras);
-        } except ValueError as e {
-            console.error(str(e));
-            return 1;
-        }
-        if extra_specs {
-            console.print(f"  Extras: {', '.join(extras)}", style="muted");
-        }
-        pip_packages.extend(extra_specs);
+        console.print(f"  Extras: {', '.join(extras)}", style="muted");
     }
-
-    cap_specs = capability_specs_for_install(config, installer, scale);
-    if cap_specs {
-        pip_packages.extend(cap_specs);
-    }
-
-    dep_registry = get_dependency_registry();
-    plugin_types = dep_registry.get_all();
-    has_plugin_deps = False;
-    for type_name in plugin_types.keys() {
-        if config.get_plugin_deps(type_name) {
-            has_plugin_deps = True;
-            break;
-        }
-    }
-    if not pip_packages and not git_packages and not has_plugin_deps {
+    if plan.is_empty() {
         console.info("No dependencies to install.");
         return 0;
     }
 
     install_success = True;
-    all_packages = pip_packages + git_packages;
-    if all_packages {
+    python_deps = plan.for_ecosystem("python");
+    if python_deps {
         with console.status(
-            f"Installing {len(all_packages)} package(s)...", spinner="dots"
+            f"Installing {len(python_deps)} package(s)...", spinner="dots"
         ) as status {
-            install_success = installer.install_package(all_packages);
+            install_success = python.install_all(config, python_deps, ctx);
         }
     }
 
@@ -763,32 +708,23 @@ impl install(
         return 0 if install_success else 1;
     }
     plugin_failed = False;
-    for (type_name, dep_type) in plugin_types.items() {
-        plugin_deps = config.get_plugin_deps(type_name);
-        if not plugin_deps {
+    for provider in get_provider_registry().all() {
+        if provider.name == "python" {
             continue;
         }
-        console.print(f"\n  Installing {type_name} dependencies...", style="muted");
-        if dep_type.install_all_handler is not None {
-            try {
-                dep_type.install_all_handler(config);
-                console.print(
-                    f"  ✔ {type_name} dependencies installed", style="success"
-                );
-            } except Exception as e {
-                console.error(f"  ✗ {type_name} dependencies failed: {e}");
-                plugin_failed = True;
-            }
-        } else {
-            for (dep_name, dep_version) in plugin_deps.items() {
-                try {
-                    dep_type.install_handler(config, dep_name, dep_version, False);
-                    console.print(f"  ✔ {dep_name}", style="success");
-                } except Exception as e {
-                    console.error(f"  ✗ {dep_name}: {e}");
-                    plugin_failed = True;
-                }
-            }
+        provider_deps = plan.for_ecosystem(provider.name);
+        if not provider_deps {
+            continue;
+        }
+        console.print(f"\n  Installing {provider.name} dependencies...", style="muted");
+        try {
+            provider.install_all(config, provider_deps, ctx);
+            console.print(
+                f"  ✔ {provider.name} dependencies installed", style="success"
+            );
+        } except Exception as e {
+            console.error(f"  ✗ {provider.name} dependencies failed: {e}");
+            plugin_failed = True;
         }
     }
     if install_success and not plugin_failed {
@@ -804,7 +740,8 @@ impl add(
     packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
 ) -> int {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
+    import from jaclang.project.pyvenv { make_git_spec }
+    import from jaclang.project.providers { InstallContext, get_python_provider }
     config = get_config();
     if config is None {
         console.error(
@@ -819,8 +756,8 @@ impl add(
         );
         return 1;
     }
-    installer = DependencyInstaller(config=config, verbose=verbose);
-    resolver = DependencyResolver(config=config);
+    python = get_python_provider();
+    ctx = InstallContext(verbose=verbose);
     if git {
         if packages {
             pkg_name = packages[0];
@@ -833,8 +770,7 @@ impl add(
         console.print(f"\n📦 Adding {pkg_name} from git", style="bold");
         console.print(f"  Repository: {git}", style="muted");
         with console.status(f"Installing {pkg_name}...", spinner="dots") as status {
-            specs = installer._make_git_spec(pkg_name, git);
-            git_success = installer.install_package([specs]);
+            git_success = python.install_specs(config, [make_git_spec(git)], ctx);
         }
         if git_success {
             config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
@@ -849,42 +785,15 @@ impl add(
     }
     console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
     for pkg_spec in packages {
-        (name, version) = resolver.parse_spec(pkg_spec);
-        if version {
-            install_spec = installer._make_pip_spec(name, version);
-        } else {
-            install_spec = name;
-        }
+        (name, version) = python.parse_spec(pkg_spec);
         with console.status(f"Installing {name}...", spinner="dots") as status {
-            pkg_success = installer.install_package([install_spec]);
+            recorded = python.add_package(config, name, version, dev, ctx);
         }
-        if pkg_success {
-            if not version {
-                installed_version = installer.get_installed_version(name);
-                if installed_version {
-                    version_str = f"~={_major_minor(installed_version)}";
-                    if verbose {
-                        console.print(
-                            f"Detected version: {installed_version}", style="muted"
-                        );
-                    }
-                } else {
-                    version_str = ">=0.0.0";
-                    if verbose {
-                        console.warning(
-                            f"Could not detect version for {name}, using >=0.0.0"
-                        );
-                    }
-                }
-            } else {
-                version_str = version;
-            }
-            config.add_dependency(name, version_str, dev=dev, dep_type="python");
-            console.print(f"  ✔ {name} ({version_str})", style="success");
-        } else {
+        if recorded is None {
             console.error(f"Failed to install {name}");
             return 1;
         }
+        console.print(f"  ✔ {name} ({recorded})", style="success");
     }
     try {
         config.save();
@@ -899,7 +808,7 @@ impl add(
 
 impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller }
+    import from jaclang.project.providers { InstallContext, get_python_provider }
     config = get_config();
     if config is None {
         console.error(
@@ -911,20 +820,11 @@ impl remove(packages: list = [], dev: bool = False) -> int {
         console.error("No packages specified.");
         return 1;
     }
-    installer = DependencyInstaller(config=config);
+    python = get_python_provider();
+    ctx = InstallContext();
     for name in packages {
-        dep_type = "python";
-        is_dev = dev;
-        if name in config.git_dependencies {
-            dep_type = "git";
-        } elif not dev
-        and name not in config.dependencies
-        and name in config.dev_dependencies {
-            is_dev = True;
-        }
-        if config.remove_dependency(name, dev=is_dev, dep_type=dep_type) {
+        if python.remove_package(config, name, dev, ctx) {
             console.success(f"Removed {name} from jac.toml");
-            installer.uninstall_package(name);
         } else {
             console.error(f"Package {name} not found in dependencies");
         }
@@ -949,7 +849,8 @@ def _major_minor(version: str) -> str {
 
 impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller, DependencyResolver }
+    import from jaclang.project.pyvenv { make_git_spec }
+    import from jaclang.project.providers { InstallContext, get_python_provider }
     config = get_config();
     if config is None {
         console.error(
@@ -957,14 +858,14 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         );
         return 1;
     }
-    installer = DependencyInstaller(config=config, verbose=verbose);
-    resolver = DependencyResolver(config=config);
+    python = get_python_provider();
+    ctx = InstallContext(verbose=verbose);
 
     specs_to_update: list[str] = [];
     names_to_update: list[str] = [];
     if packages {
         for pkg_spec in packages {
-            (name, version) = resolver.parse_spec(pkg_spec);
+            (name, version) = python.parse_spec(pkg_spec);
             if name in config.dependencies {
                 specs_to_update.append(name);
                 names_to_update.append(name);
@@ -975,9 +876,7 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
                 git_info = config.git_dependencies[name];
                 if isinstance(git_info, dict) and "git" in git_info {
                     specs_to_update.append(
-                        installer._make_git_spec(
-                            name, git_info["git"], git_info.get("branch", "")
-                        )
+                        make_git_spec(git_info["git"], git_info.get("branch", ""))
                     );
                     names_to_update.append(name);
                 }
@@ -997,11 +896,12 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
                 names_to_update.append(name);
             }
         }
-        git_specs = installer.get_git_package_specs();
-        for spec in git_specs {
-            specs_to_update.append(spec);
-        }
-        for name in config.git_dependencies.keys() {
+        for (name, git_info) in config.git_dependencies.items() {
+            if isinstance(git_info, dict) and "git" in git_info {
+                specs_to_update.append(
+                    make_git_spec(git_info.get("git", ""), git_info.get("branch", ""))
+                );
+            }
             names_to_update.append(name);
         }
     }
@@ -1016,7 +916,7 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
     with console.status(
         f"Updating {len(specs_to_update)} package(s)...", spinner="dots"
     ) as status {
-        update_success = installer.install_package(specs_to_update);
+        update_success = python.install_specs(config, specs_to_update, ctx);
     }
     if not update_success {
         console.error("Some packages failed to update.");
@@ -1028,7 +928,7 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         if name in config.git_dependencies {
             continue;
         }
-        installed_version = installer.get_installed_version(name);
+        installed_version = python.get_installed_version(config, name);
         if installed_version {
             new_spec = f"~={_major_minor(installed_version)}";
 
@@ -1066,6 +966,65 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         }
     }
     console.success("Dependencies updated");
+    return 0;
+}
+
+impl deps(scale: bool = False, as_json: bool = False) -> int {
+    import json;
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.providers { resolve_plan }
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project first."
+        );
+        return 1;
+    }
+    try {
+        plan = resolve_plan(config, include_dev=True, scale=scale);
+    } except ValueError as e {
+        console.error(str(e));
+        return 1;
+    }
+    if as_json {
+        payload = [
+            {
+                "name": d.name,
+                "version": d.version,
+                "ecosystem": d.ecosystem,
+                "source": d.source,
+                "origin": d.origin,
+                "dev": d.dev
+            } for d in plan.deps
+        ];
+        console.print(json.dumps(payload, indent=2));
+        return 0;
+    }
+    if plan.is_empty() {
+        console.info("No dependencies resolved for this project.");
+        return 0;
+    }
+    console.print(
+        f"\n📦 Resolved dependency plan for {config.project.name}", style="bold"
+    );
+    for ecosystem in plan.ecosystems() {
+        eco_deps = plan.for_ecosystem(ecosystem);
+        console.print(f"\n  [{ecosystem}] ({len(eco_deps)})", style="info");
+        width = max([len(d.name) for d in eco_deps]);
+        for d in sorted(eco_deps, key=lambda d : (d.origin, d.name)) {
+            dev_marker = "  (dev)" if d.dev else "";
+            version = d.version or "*";
+            console.print(
+                f"    {d.name.ljust(width)}  {version}{dev_marker}  -- {d.origin}",
+                style="muted"
+            );
+        }
+    }
+    console.print(
+        f"\n  {len(plan.deps)} dependencies across "
+        f"{len(plan.ecosystems())} ecosystem(s)",
+        style="success"
+    );
     return 0;
 }
 
