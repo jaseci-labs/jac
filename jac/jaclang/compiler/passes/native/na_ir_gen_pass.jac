@@ -62,6 +62,7 @@ glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_PURPLE: int = 3,
      RC_BUFFERED_BIT: int = 4,
      RC_DEAD_BIT: int = 8,
+     RC_TORNDOWN_BIT: int = 16,
      RC_CYCLE_THRESHOLD: int = 1000;
 
 glob LIVE_NODE_ID_OFF: int = 0,
@@ -813,6 +814,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_rc_scan_black_phase -> ir.Function;
     def _emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function;
     def _emit_rc_collect_white_phase -> ir.Function;
+    def _emit_rc_mark_roots_pass(
+        prefix: str, count: ir.Value, next_bb: ir.Block, mark_gray_fn: ir.Function
+    ) -> ir.Block;
+
     def _emit_rc_root_pass(
         prefix: str,
         count: ir.Value,

@@ -269,6 +269,7 @@ impl NaIRGenPass._emit_rc_scan_black_phase -> ir.Function {
     sb_vis_fn.args[0].name = "child";
     sbv_null = sb_vis_fn.append_basic_block("null");
     sbv_work = sb_vis_fn.append_basic_block("work");
+    sbv_incr = sb_vis_fn.append_basic_block("incr");
     sbv_done = sb_vis_fn.append_basic_block("done");
 
     b = ir.IRBuilder(sbv_null);
@@ -280,6 +281,19 @@ impl NaIRGenPass._emit_rc_scan_black_phase -> ir.Function {
         sbv_work
     );
     b = ir.IRBuilder(sbv_work);
+    _sbv_rp = b.bitcast(
+        b.gep(sb_vis_fn.args[0], [ir.Constant(i64, HDR_RC_OFF)], name="rslot"),
+        i64_ptr,
+        name="rptr"
+    );
+    _sbv_rc = b.load(_sbv_rp, name="rc");
+    b.cbranch(
+        b.icmp_unsigned("==", _sbv_rc, ir.Constant(i64, RC_SENTINEL), name="sent"),
+        sbv_done,
+        sbv_incr
+    );
+    b = ir.IRBuilder(sbv_incr);
+    b.store(b.add(_sbv_rc, ir.Constant(i64, 1), name="nrc"), _sbv_rp);
     b.call(scan_black_fn, [sb_vis_fn.args[0]]);
     b.branch(sbv_done);
     b = ir.IRBuilder(sbv_done);
@@ -289,8 +303,6 @@ impl NaIRGenPass._emit_rc_scan_black_phase -> ir.Function {
     sb_null = scan_black_fn.append_basic_block("null");
     sb_check = scan_black_fn.append_basic_block("check");
     sb_set = scan_black_fn.append_basic_block("set");
-    sb_incr = scan_black_fn.append_basic_block("incr");
-    sb_trace = scan_black_fn.append_basic_block("trace");
     sb_done = scan_black_fn.append_basic_block("done");
 
     b = ir.IRBuilder(sb_null);
@@ -315,21 +327,6 @@ impl NaIRGenPass._emit_rc_scan_black_phase -> ir.Function {
     );
     b = ir.IRBuilder(sb_set);
     self._emit_rc_color_store(b, _sb_csp, _sb_cb, RC_COLOR_BLACK);
-    _sb_rp = b.bitcast(
-        b.gep(scan_black_fn.args[0], [ir.Constant(i64, HDR_RC_OFF)], name="rsp"),
-        i64_ptr,
-        name="rptr"
-    );
-    _sb_rc = b.load(_sb_rp, name="rc");
-    b.cbranch(
-        b.icmp_unsigned("==", _sb_rc, ir.Constant(i64, RC_SENTINEL), name="sent"),
-        sb_trace,
-        sb_incr
-    );
-    b = ir.IRBuilder(sb_incr);
-    b.store(b.add(_sb_rc, ir.Constant(i64, 1), name="nrc"), _sb_rp);
-    b.branch(sb_trace);
-    b = ir.IRBuilder(sb_trace);
     self._emit_rc_trace_dispatch(
         scan_black_fn, b, scan_black_fn.args[0], sb_vis_fn, sb_done
     );
@@ -457,7 +454,6 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     cw_fn.args[0].name = "obj";
     cw_null = cw_fn.append_basic_block("null");
     cw_check = cw_fn.append_basic_block("check");
-    cw_dead_free = cw_fn.append_basic_block("dead_free");
     cw_white_check = cw_fn.append_basic_block("white_check");
     cw_set = cw_fn.append_basic_block("set");
     cw_free = cw_fn.append_basic_block("free_raw");
@@ -471,17 +467,12 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     );
     b = ir.IRBuilder(cw_check);
     (_cw_csp, _cw_cb) = self._emit_rc_color_load(b, cw_fn.args[0]);
+
     _cw_dead_bit = b.and_(_cw_cb, ir.Constant(i8, RC_DEAD_BIT), name="cw.dead.bit");
     _cw_is_dead = b.icmp_unsigned(
         "!=", _cw_dead_bit, ir.Constant(i8, 0), name="cw.is.dead"
     );
-    b.cbranch(_cw_is_dead, cw_dead_free, cw_white_check);
-    b = ir.IRBuilder(cw_dead_free);
-    b.call(
-        self.free_fn,
-        [b.gep(cw_fn.args[0], [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="dead.raw")]
-    );
-    b.branch(cw_done);
+    b.cbranch(_cw_is_dead, cw_done, cw_white_check);
     b = ir.IRBuilder(cw_white_check);
     b.cbranch(
         b.icmp_unsigned(
@@ -508,6 +499,68 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     b.ret_void();
 
     return cw_fn;
+}
+
+impl NaIRGenPass._emit_rc_mark_roots_pass(
+    prefix: str, count: ir.Value, next_bb: ir.Block, mark_gray_fn: ir.Function
+) -> ir.Block {
+    i8 = ir.IntType(8);
+    i8_ptr = i8.as_pointer();
+    i8_ptr_ptr = i8_ptr.as_pointer();
+    i64 = ir.IntType(64);
+    collect_fn = self.rc_collect_cycles_fn;
+
+    pre = collect_fn.append_basic_block(f"{prefix}pre");
+    hdr = collect_fn.append_basic_block(f"{prefix}hdr");
+    body = collect_fn.append_basic_block(f"{prefix}body");
+    free_dead = collect_fn.append_basic_block(f"{prefix}free_dead");
+    keep = collect_fn.append_basic_block(f"{prefix}keep");
+    cont = collect_fn.append_basic_block(f"{prefix}cont");
+
+    b = ir.IRBuilder(pre);
+    buf = b.load(self.rc_roots_buf_gv, name=f"{prefix}buf");
+    b.branch(hdr);
+
+    b = ir.IRBuilder(hdr);
+    idx = b.phi(i64, name=f"{prefix}i");
+    idx.add_incoming(ir.Constant(i64, 0), pre);
+    b.cbranch(b.icmp_unsigned(">=", idx, count, name=f"{prefix}done"), next_bb, body);
+
+    b = ir.IRBuilder(body);
+    slot = b.gep(
+        buf,
+        [b.mul(idx, ir.Constant(i64, 8), name=f"{prefix}off")],
+        name=f"{prefix}slot"
+    );
+    _slot_pp = b.bitcast(slot, i8_ptr_ptr, name=f"{prefix}pp");
+    optr = b.load(_slot_pp, name=f"{prefix}obj");
+    (csp, cb) = self._emit_rc_color_load(b, optr);
+    _dead = b.and_(cb, ir.Constant(i8, RC_DEAD_BIT), name=f"{prefix}dead.bit");
+    b.cbranch(
+        b.icmp_unsigned("!=", _dead, ir.Constant(i8, 0), name=f"{prefix}is.dead"),
+        free_dead,
+        keep
+    );
+
+    b = ir.IRBuilder(free_dead);
+    b.call(
+        self.free_fn,
+        [b.gep(optr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name=f"{prefix}raw")]
+    );
+    b.store(ir.Constant(i8_ptr, None), _slot_pp);
+    b.branch(cont);
+
+    b = ir.IRBuilder(keep);
+    b.store(b.and_(cb, ir.Constant(i8, 0xFB), name=f"{prefix}clr"), csp);
+    b.call(mark_gray_fn, [optr]);
+    b.branch(cont);
+
+    b = ir.IRBuilder(cont);
+    nxt = b.add(idx, ir.Constant(i64, 1), name=f"{prefix}next");
+    idx.add_incoming(nxt, cont);
+    b.branch(hdr);
+
+    return pre;
 }
 
 impl NaIRGenPass._emit_rc_root_pass(
@@ -585,10 +638,10 @@ impl NaIRGenPass._emit_rc_collect_loop(
     _cc_count = b.load(self.rc_roots_count_gv, name="count");
 
     p3pre = self._emit_rc_root_pass(
-        "cc_p3", _cc_count, cc_finish, collect_white_fn, True
+        "cc_p3", _cc_count, cc_finish, collect_white_fn, False
     );
     p2pre = self._emit_rc_root_pass("cc_p2", _cc_count, p3pre, scan_fn, False);
-    p1pre = self._emit_rc_root_pass("cc_p1", _cc_count, p2pre, mark_gray_fn, False);
+    p1pre = self._emit_rc_mark_roots_pass("cc_p1", _cc_count, p2pre, mark_gray_fn);
     b.cbranch(
         b.icmp_unsigned("==", _cc_count, ir.Constant(i64, 0), name="empty"),
         cc_finish,

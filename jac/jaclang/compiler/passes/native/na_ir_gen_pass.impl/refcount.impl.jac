@@ -265,6 +265,21 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 
     b.atomic_rmw("add", rc_ptr, ir.Constant(i64, 1), ordering="monotonic");
     new_rc = b.add(old_rc, ir.Constant(i64, 1), name="new.rc");
+
+    resurrect_bb = retain_fn.append_basic_block("resurrect");
+    resurrect_done_bb = retain_fn.append_basic_block("resurrect_done");
+    b.cbranch(
+        b.icmp_unsigned("==", old_rc, ir.Constant(i64, 0), name="was.zero"),
+        resurrect_bb,
+        resurrect_done_bb
+    );
+    b = ir.IRBuilder(resurrect_bb);
+    (_res_csp, _res_cb) = self._emit_rc_color_load(b, retain_fn.args[0]);
+    b.store(
+        b.and_(_res_cb, ir.Constant(ir.IntType(8), 0xF7), name="res.clr.dead"), _res_csp
+    );
+    b.branch(resurrect_done_bb);
+    b = ir.IRBuilder(resurrect_done_bb);
     log_retain_bb = self._emit_retain_log_bb(
         retain_fn, done_bb, retain_fn.args[0], old_rc, new_rc
     );
@@ -367,13 +382,23 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b.cbranch(_cy_is_purple, dbg_rel_bb, set_root_bb);
 
     b = ir.IRBuilder(set_root_bb);
+
     _cy_new_byte = b.or_(
-        b.and_(_cy_color_byte, ir.Constant(i8, 0xF8), name="cy.clear.bits"),
+        b.and_(_cy_color_byte, ir.Constant(i8, 0xF0), name="cy.clear.bits"),
         ir.Constant(i8, RC_COLOR_PURPLE | RC_BUFFERED_BIT),
         name="cy.new.byte"
     );
     b.store(_cy_new_byte, _cy_color_slot);
     if self.rc_push_root_fn is not None {
+        _cy_was_buffered = b.icmp_unsigned(
+            "!=",
+            b.and_(_cy_color_byte, ir.Constant(i8, RC_BUFFERED_BIT), name="cy.wbuf"),
+            ir.Constant(i8, 0),
+            name="cy.was.buffered"
+        );
+        do_push_bb = release_fn.append_basic_block("do_push_root");
+        b.cbranch(_cy_was_buffered, dbg_rel_bb, do_push_bb);
+        b = ir.IRBuilder(do_push_bb);
         b.call(self.rc_push_root_fn, [release_fn.args[0]]);
     }
     b.branch(dbg_rel_bb);
@@ -393,12 +418,23 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b.cbranch(_cdb_is_buffered, mark_dead_bb, actual_dtor_check_bb);
 
     b = ir.IRBuilder(mark_dead_bb);
+
+    _md_torndown_bit = b.and_(
+        _cdb_cb, ir.Constant(ir.IntType(8), RC_TORNDOWN_BIT), name="md.td.bit"
+    );
+    _md_already_torndown = b.icmp_unsigned(
+        "!=", _md_torndown_bit, ir.Constant(ir.IntType(8), 0), name="md.td"
+    );
     _md_new_byte = b.or_(
         b.and_(_cdb_cb, ir.Constant(ir.IntType(8), 0xFC), name="md.clr"),
-        ir.Constant(ir.IntType(8), RC_DEAD_BIT),
+        ir.Constant(ir.IntType(8), RC_DEAD_BIT | RC_TORNDOWN_BIT),
         name="md.dead"
     );
     b.store(_md_new_byte, _cdb_cs);
+    md_run_dtor_bb = release_fn.append_basic_block("md_run_dtor");
+    b.cbranch(_md_already_torndown, done_bb, md_run_dtor_bb);
+
+    b = ir.IRBuilder(md_run_dtor_bb);
     _md_dtor_raw = b.gep(
         release_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="md.dtor.raw"
     );
