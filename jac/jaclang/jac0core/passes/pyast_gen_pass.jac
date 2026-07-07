@@ -125,16 +125,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
     def needs_enum_kind(kind: str) -> None;
     def _next_temp_name(prefix: str) -> str;
-
-    """Convert Jac identifiers to Python runtime identifiers."""
     def _py_name(nd: uni.AstSymbolNode | None) -> str;
-
-    """Convert a synthesized function definition into an executable expression.
-
-        Instead of using make_block_lambda at runtime, we hoist the function
-        definition to be emitted before the current statement, then return
-        a reference to the function name.
-        """
     def _function_expr_from_def(
         func_def: (ast3.FunctionDef | ast3.AsyncFunctionDef),
         jac_node: uni.UniNode,
