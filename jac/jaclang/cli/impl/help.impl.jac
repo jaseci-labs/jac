@@ -159,15 +159,6 @@ impl HelpFormatter.format_curated_help(
     return "\n".join(lines);
 }
 
-impl get_command_groups -> CommandGroups {
-    import from jaclang.cli.help { CommandGroups }
-    global _groups;
-    if _groups is None {
-        _groups = CommandGroups();
-    }
-    return _groups;
-}
-
 impl get_help_formatter -> HelpFormatter {
     import from jaclang.cli.help { HelpFormatter }
     global _formatter;

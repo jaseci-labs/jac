@@ -122,6 +122,20 @@ def _deep_merge(base: dict, `override: dict) -> dict {
     return result;
 }
 
+impl JacConfig._section_map -> dict {
+    return {
+        "run": self.run,
+        "build": self.build,
+        "test": self.test,
+        "serve": self.serve,
+        "format": self.format,
+        "dot": self.dot,
+        "cache": self.cache,
+        "environment": self.environment,
+        "client": self.client
+    };
+}
+
 impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> None {
     if profile_name not in self.environments {
         return;
@@ -143,17 +157,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         }
     }
 
-    section_map: dict = {
-        "run": self.run,
-        "build": self.build,
-        "test": self.test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in profile {
             for (key, value) in profile[section].items() {
@@ -245,17 +249,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     }
     data = read_toml_with_encoding(str(toml_path));
     data = _interpolate_recursive(data);
-    section_map: dict = {
-        "run": self.run,
-        "build": self.build,
-        "test": self.test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+    section_map = self._section_map();
     for (section, obj) in section_map.items() {
         if section in data {
             for (key, value) in data[section].items() {

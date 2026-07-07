@@ -100,6 +100,27 @@ def _bootstrap_compile(
     return code
 
 
+def _module_scoped_alerts(program: object, file_path: str) -> list:
+    """Collect compile alerts recorded against file_path (or its annexes).
+
+    `foo.na.jac` -> prefix `foo.na.` also matches annex paths such as
+    `foo.na.impl.jac` and `foo.na.impl/bar.jac`, so errors reported against
+    an impl file count as the module's own.
+    """
+    norm = os.path.normpath(file_path)
+    stem = norm[:-4] if norm.endswith(".jac") else norm
+    prefix = stem + "."
+    alerts = []
+    for alert in getattr(program, "errors_had", []):
+        try:
+            alert_path = os.path.normpath(alert.loc.mod_path)
+        except Exception:
+            continue
+        if alert_path == norm or alert_path.startswith(prefix):
+            alerts.append(alert)
+    return alerts
+
+
 # Bootstrap modresolver.jac before JacMetaImporter is registered. This module
 # must be available for find_spec()/get_code(), but normal .jac imports are not
 # yet operational at this point. In a sealed image its code object is served
@@ -185,15 +206,16 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                             loader=self,
                             submodule_search_locations=[candidate_path],
                         )
-                # No __init__.jac found — treat as Jac namespace package if
-                # the directory contains .jac files but no __init__.py
-                # (which would make it a regular Python package).  Without
-                # this, Python's PathFinder must create the namespace
-                # package, which only works when the parent directory
-                # happens to be on sys.path at that moment.
-                if not os.path.isfile(
-                    os.path.join(candidate_path, "__init__.py")
-                ) and any(ext_registry.is_jac(f) for f in os.listdir(candidate_path)):
+                # No __init__.jac found — treat as an implicit Jac namespace
+                # package when a .jac source lives anywhere in its subtree (and
+                # it is not a regular Python package). Without this, Python's
+                # PathFinder must create the namespace package, which only works
+                # when the parent directory happens to be on sys.path at that
+                # moment. The subtree check (not just direct .jac files) is what
+                # lets per-component import descend through an *intermediate*
+                # namespace package like ``engine/`` in ``engine.math.vec3``
+                # (issue #7211).
+                if ext_registry.is_jac_namespace_package(candidate_path):
                     spec = importlib.machinery.ModuleSpec(
                         fullname, loader=None, is_package=True
                     )
@@ -300,6 +322,17 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             if is_pkg:
                 # Empty package is OK - just register it
                 return
+            alerts = _module_scoped_alerts(program, file_path)
+            if not alerts:
+                # Files under the jaclang tree compile into the compiler's
+                # internal program, so their diagnostics live there rather
+                # than in the runtime program handed to us.
+                internal = getattr(compiler, "internal_program", None)
+                if internal is not None:
+                    alerts = _module_scoped_alerts(internal, file_path)
+            if alerts:
+                details = "\n".join(a.pretty_print() for a in alerts)
+                raise ImportError(f"{file_path} failed to compile:\n{details}")
             raise ImportError(f"No bytecode found for {file_path}")
 
         # MTIR is written keyed by file stem but byllm looks up by func.__module__;

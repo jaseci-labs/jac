@@ -10,7 +10,7 @@ import from ctypes {
 import from jaclang.compiler.passes.native.llvm.binding { ffi }
 import from jaclang.compiler.passes.native.llvm.binding.linker { link_modules }
 import from jaclang.compiler.passes.native.llvm.binding.common { _decode_string, _encode_string }
-import from jaclang.compiler.passes.native.llvm.binding.value { ValueRef, TypeRef }
+import from jaclang.compiler.passes.native.llvm.binding.value { ValueRef }
 import from jaclang.compiler.passes.native.llvm.binding.context { get_global_context }
 """
     Create Module from a LLVM IR string
@@ -112,18 +112,6 @@ class ModuleRef(ffi.ObjectRef) {
     }
 
     """
-        Get a TypeRef pointing to a structure type named *name*.
-        NameError is raised if the struct type isn't found.
-        """
-    def get_struct_type(self: ModuleRef, name: Any) -> object {
-        p = ffi.lib.LLVMPY_GetNamedStructType(self, _encode_string(name));
-        if not p {
-            raise NameError(name);
-        }
-        return TypeRef(p);
-    }
-
-    """
         Verify the module IR's correctness.  RuntimeError is raised on error.
         """
     def verify(self: ModuleRef) -> object {
@@ -219,16 +207,6 @@ class ModuleRef(ffi.ObjectRef) {
         return _FunctionsIterator(it, `dict(module=self));
     }
 
-    """
-        Return an iterator over the struct types defined in
-        the module. The iterator will yield a TypeRef.
-        """
-    @property
-    def struct_types(self: ModuleRef) -> object {
-        it = ffi.lib.LLVMPY_ModuleTypesIter(self);
-        return _TypesIterator(it, `dict(module=self));
-    }
-
     def clone(self: ModuleRef) -> object {
         return ModuleRef(ffi.lib.LLVMPY_CloneModule(self), self._context);
     }
@@ -285,30 +263,6 @@ class _FunctionsIterator(_Iterator) {
         return ffi.lib.LLVMPY_FunctionsIterNext(self);
     }
 }
-class _TypesIterator(_Iterator) {
-    with entry {
-        kind = 'type';
-    }
-
-    def _dispose(self: _TypesIterator) -> object {
-        self._capi.LLVMPY_DisposeTypesIter(self);
-    }
-    def __next__(self: _TypesIterator) -> object {
-        vp = self._next();
-        if vp {
-            return TypeRef(vp);
-        } else {
-            raise StopIteration;
-        }
-    }
-    def _next(self: _TypesIterator) -> object {
-        return ffi.lib.LLVMPY_TypesIterNext(self);
-    }
-
-    with entry {
-        next = __next__;
-    }
-}
 with entry {
     ffi.lib.LLVMPY_ParseAssembly.argtypes = [
         ffi.LLVMContextRef,
@@ -343,8 +297,6 @@ with entry {
     ffi.lib.LLVMPY_SetTarget.argtypes = [ffi.LLVMModuleRef, c_char_p];
     ffi.lib.LLVMPY_GetNamedGlobalVariable.argtypes = [ffi.LLVMModuleRef, c_char_p];
     ffi.lib.LLVMPY_GetNamedGlobalVariable.restype = ffi.LLVMValueRef;
-    ffi.lib.LLVMPY_GetNamedStructType.argtypes = [ffi.LLVMModuleRef, c_char_p];
-    ffi.lib.LLVMPY_GetNamedStructType.restype = ffi.LLVMTypeRef;
     ffi.lib.LLVMPY_ModuleGlobalsIter.argtypes = [ffi.LLVMModuleRef];
     ffi.lib.LLVMPY_ModuleGlobalsIter.restype = ffi.LLVMGlobalsIterator;
     ffi.lib.LLVMPY_DisposeGlobalsIter.argtypes = [ffi.LLVMGlobalsIterator];
@@ -352,14 +304,9 @@ with entry {
     ffi.lib.LLVMPY_GlobalsIterNext.restype = ffi.LLVMValueRef;
     ffi.lib.LLVMPY_ModuleFunctionsIter.argtypes = [ffi.LLVMModuleRef];
     ffi.lib.LLVMPY_ModuleFunctionsIter.restype = ffi.LLVMFunctionsIterator;
-    ffi.lib.LLVMPY_ModuleTypesIter.argtypes = [ffi.LLVMModuleRef];
-    ffi.lib.LLVMPY_ModuleTypesIter.restype = ffi.LLVMTypesIterator;
     ffi.lib.LLVMPY_DisposeFunctionsIter.argtypes = [ffi.LLVMFunctionsIterator];
-    ffi.lib.LLVMPY_DisposeTypesIter.argtypes = [ffi.LLVMTypesIterator];
     ffi.lib.LLVMPY_FunctionsIterNext.argtypes = [ffi.LLVMFunctionsIterator];
     ffi.lib.LLVMPY_FunctionsIterNext.restype = ffi.LLVMValueRef;
-    ffi.lib.LLVMPY_TypesIterNext.argtypes = [ffi.LLVMTypesIterator];
-    ffi.lib.LLVMPY_TypesIterNext.restype = ffi.LLVMTypeRef;
     ffi.lib.LLVMPY_CloneModule.argtypes = [ffi.LLVMModuleRef];
     ffi.lib.LLVMPY_CloneModule.restype = ffi.LLVMModuleRef;
     ffi.lib.LLVMPY_GetModuleName.argtypes = [ffi.LLVMModuleRef];

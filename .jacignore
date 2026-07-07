@@ -25,7 +25,6 @@ es_unparse.jac
 execution.impl.jac
 execution.jac
 executor.jac
-fantasy_trading_game.jac
 grammar_extract_pass.jac
 helpers.jac
 help.jac
@@ -115,7 +114,6 @@ api.cl.jac
 compiler_bridge.impl.jac
 jac/jaclang/cli/impl/console.impl.jac
 doc_ir_gen_pass.impl.jac
-level_genarator.jac
 MetricsPage.cl.jac
 na_compile_pass.impl.jac
 scheduler.impl.jac
@@ -154,7 +152,6 @@ kubernetes_target.jac
 layout_pass.impl.jac
 layout_pass.jac
 local.impl.jac
-math_solver.jac
 memory.impl.jac
 model.impl.jac
 monitoring.jac
@@ -167,7 +164,6 @@ normalize_pass.impl.jac
 plugin.impl.jac
 primitives_native.jac
 pyjac_ast_link_pass.impl.jac
-receipt_analyzer.jac
 resources.impl.jac
 resources.jac
 semantic_analysis_pass.jac
@@ -229,7 +225,6 @@ comprehensions.impl.jac
 construct_types.impl.jac
 container_helpers.impl.jac
 context_mgr.impl.jac
-debate_agent.jac
 dep_registry.impl.jac
 dependencies.impl.jac
 evaluator_util_methods.impl.jac
@@ -258,7 +253,6 @@ toolcall.impl.jac
 transport.impl.jac
 tuples.impl.jac
 types.impl.jac
-wikipedia_react.jac
 # Built-in shadcn handler (jac/jaclang/cli/shadcn) — dynamic `config: any` +
 # Path/file-IO false positives (sibling plugin.jac / plugin.impl.jac ignored above)
 shadcn_handler.jac
@@ -273,10 +267,6 @@ theme_handler.jac
 docs/docs/assets/examples/object_spatial/finding_common_interests.jac
 docs/docs/assets/examples/object_spatial/object_spatial_references.jac
 docs/docs/examples/chapter_10_school.jac
-jac/examples/mcp-dashboard-studio/backend/service.jac
-jac/examples/mcp-dashboard-studio/backend/utils.jac
-jac/examples/mcp-dashboard-studio/frontend/Dashboard.cl.jac
-jac/examples/mcp-dashboard-studio/frontend/Dashboard.impl.jac
 jac/examples/mobui/hello/main.jac
 jac/examples/mobui/littlex/main.jac
 jac/examples/mobui/littlex/theme.cl.jac
@@ -288,9 +278,6 @@ jac/jaclang/byllm/cli.jac
 jac/jaclang/byllm/config_loader.jac
 jac/jaclang/byllm/examples/agentic_ai/friendzone-lite/friendzone_lite.jac
 jac/jaclang/byllm/examples/agentic_ai/task-manager-lite/task_manager.jac
-jac/jaclang/byllm/examples/microbenchmarks/text_to_type.jac
-jac/jaclang/byllm/examples/prompt_caching/react_with_caching.jac
-jac/jaclang/byllm/examples/vision/personality_finder.jac
 jac/jaclang/byllm/impl/config_loader.impl.jac
 jac/jaclang/byllm/impl/mcp.impl.jac
 jac/jaclang/byllm/llm.impl/modelpool.impl.jac

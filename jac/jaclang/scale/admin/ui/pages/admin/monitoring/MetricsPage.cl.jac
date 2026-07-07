@@ -15,6 +15,7 @@ import from "lucide-react" {
 
 import from react { useEffect }
 import from ....components.common.Button { Button }
+import from ....components.common.PageHeader { PageHeader }
 import from ....context.AuthContext { useAuth }
 import from ....services.metricsService { getMetrics }
 
@@ -290,35 +291,30 @@ def:pub MetricsPage -> JsxElement {
         memUsagePercent = int((residentMem / virtualMem) * 100);
     }
 
+    headerRight = <div className="flex items-center gap-3">
+        <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
+            />
+            Auto-refresh
+        </label>
+        <Button variant="secondary" onClick={lambda { loadMetrics(); }}>
+            <RefreshCw className="w-3.5 h-3.5"/>
+            Refresh
+        </Button>
+    </div>;
+
     return
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <Activity className="w-5 h-5 text-accent"/>
-                    <h1 className="text-lg font-semibold text-fg">Metrics</h1>
-                    <span
-                        className="ml-1 inline-flex items-center gap-1.5 text-xs text-success"
-                    >
-                        <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
-                        Live
-                    </span>
-                </div>
-                <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-xs text-muted">
-                        <input
-                            type="checkbox"
-                            checked={autoRefresh}
-                            onChange={lambda e: any { autoRefresh = e.target.checked; }}
-                            className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
-                        />
-                        Auto-refresh
-                    </label>
-                    <Button variant="secondary" onClick={lambda { loadMetrics(); }}>
-                        <RefreshCw className="w-3.5 h-3.5"/>
-                        Refresh
-                    </Button>
-                </div>
-            </div>
+            <PageHeader
+                icon={Activity}
+                title="Metrics"
+                live={True}
+                right={headerRight}
+            />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-surface border border-line rounded-lg p-4 shadow-sm">
                     <div className="flex items-center justify-between">

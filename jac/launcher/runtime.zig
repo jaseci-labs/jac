@@ -365,6 +365,25 @@ test "cacheRoot prefers XDG_CACHE_HOME and falls back when unwritable" {
 // [stub][payload.tar.gz][trailer] binary from the committed fixture, run
 // materialize, and assert the tree extracted with correct contents -- then
 // re-run to prove the `.ok` warm-path short-circuits.
+// Test helper: assemble a fake jac binary (4-byte stub + payload + trailer).
+const FakeBinary = struct { bin: std.array_list.Managed(u8), hex: [64]u8 };
+fn buildFakeBinary(payload: []const u8) !FakeBinary {
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
+    const hex = hexDigest(&digest);
+
+    var bin = std.array_list.Managed(u8).init(testing.allocator);
+    errdefer bin.deinit();
+    try bin.appendSlice("STUB");
+    try bin.appendSlice(payload);
+    try bin.appendSlice(MAGIC);
+    var lenle: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lenle, payload.len, .little);
+    try bin.appendSlice(&lenle);
+    try bin.appendSlice(&hex);
+    return .{ .bin = bin, .hex = hex };
+}
+
 test "materialize extracts the fixture payload and is idempotent" {
     const io = testing.io;
     const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
@@ -376,21 +395,11 @@ test "materialize extracts the fixture payload and is idempotent" {
     const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
 
     // Build the fake binary: 4-byte stub + payload + trailer.
-    var digest: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
-    const hex = hexDigest(&digest);
+    var fake = try buildFakeBinary(payload);
+    defer fake.bin.deinit();
+    const hex = fake.hex;
 
-    var bin = std.array_list.Managed(u8).init(testing.allocator);
-    defer bin.deinit();
-    try bin.appendSlice("STUB");
-    try bin.appendSlice(payload);
-    try bin.appendSlice(MAGIC);
-    var lenle: [8]u8 = undefined;
-    std.mem.writeInt(u64, &lenle, payload.len, .little);
-    try bin.appendSlice(&lenle);
-    try bin.appendSlice(&hex);
-
-    try tmp.dir.writeFile(io, .{ .sub_path = "jacbin", .data = bin.items });
+    try tmp.dir.writeFile(io, .{ .sub_path = "jacbin", .data = fake.bin.items });
     var ebuf: [MAX_PATH]u8 = undefined;
     const exe = ebuf[0..try tmp.dir.realPathFile(io, "jacbin", &ebuf)];
 
@@ -432,24 +441,14 @@ test "materialize isolates co-located binaries with identical payloads" {
     const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
 
     // One binary image; the two checkouts differ only by where the file lives.
-    var digest: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
-    const hex = hexDigest(&digest);
-
-    var bin = std.array_list.Managed(u8).init(testing.allocator);
-    defer bin.deinit();
-    try bin.appendSlice("STUB");
-    try bin.appendSlice(payload);
-    try bin.appendSlice(MAGIC);
-    var lenle: [8]u8 = undefined;
-    std.mem.writeInt(u64, &lenle, payload.len, .little);
-    try bin.appendSlice(&lenle);
-    try bin.appendSlice(&hex);
+    var fake = try buildFakeBinary(payload);
+    defer fake.bin.deinit();
+    const hex = fake.hex;
 
     try tmp.dir.createDirPath(io, "a");
     try tmp.dir.createDirPath(io, "b");
-    try tmp.dir.writeFile(io, .{ .sub_path = "a/jacbin", .data = bin.items });
-    try tmp.dir.writeFile(io, .{ .sub_path = "b/jacbin", .data = bin.items });
+    try tmp.dir.writeFile(io, .{ .sub_path = "a/jacbin", .data = fake.bin.items });
+    try tmp.dir.writeFile(io, .{ .sub_path = "b/jacbin", .data = fake.bin.items });
     var abuf: [MAX_PATH]u8 = undefined;
     var bbuf: [MAX_PATH]u8 = undefined;
     const exe_a = abuf[0..try tmp.dir.realPathFile(io, "a/jacbin", &abuf)];
@@ -490,20 +489,10 @@ test "materialize gc reclaims pre-fix bare-hash16 cache dirs" {
     var pbuf: [MAX_PATH]u8 = undefined;
     const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
 
-    var digest: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
-    const hex = hexDigest(&digest);
-
-    var bin = std.array_list.Managed(u8).init(testing.allocator);
-    defer bin.deinit();
-    try bin.appendSlice("STUB");
-    try bin.appendSlice(payload);
-    try bin.appendSlice(MAGIC);
-    var lenle: [8]u8 = undefined;
-    std.mem.writeInt(u64, &lenle, payload.len, .little);
-    try bin.appendSlice(&lenle);
-    try bin.appendSlice(&hex);
-    try tmp.dir.writeFile(io, .{ .sub_path = "jacbin", .data = bin.items });
+    var fake = try buildFakeBinary(payload);
+    defer fake.bin.deinit();
+    const hex = fake.hex;
+    try tmp.dir.writeFile(io, .{ .sub_path = "jacbin", .data = fake.bin.items });
     var ebuf: [MAX_PATH]u8 = undefined;
     const exe = ebuf[0..try tmp.dir.realPathFile(io, "jacbin", &ebuf)];
 

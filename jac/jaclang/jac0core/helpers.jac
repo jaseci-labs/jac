@@ -1,14 +1,10 @@
 import dis;
-import inspect;
 import marshal;
 import os;
 import pdb;
 import re;
-import from collections.abc { Callable, Sequence }
-import from dataclasses { fields, is_dataclass }
 import from functools { lru_cache }
 import from traceback { TracebackException }
-import from typing { get_args, get_origin }
 import type from jaclang { plugin as pluggy }
 
 @lru_cache(maxsize=256)
@@ -311,81 +307,6 @@ def read_toml_with_encoding(file_path: str) -> dict {
     } except tomllib.TOMLDecodeError as exc {
         raise MalformedJacTomlError(file_path, exc);
     }
-}
-
-def _short_type_name(t: object) -> str {
-    if (t is inspect._empty) {
-        return 'Any';
-    }
-    origin = get_origin(t);
-    if (origin is not None) {
-        name = getattr(origin, '__name__', str(origin).replace('typing.', ''));
-        args = get_args(t);
-        if not args {
-            return name;
-        }
-        return f"{name}[{','.join(_short_type_name(a) for a in args)}]";
-    }
-    return getattr(t, '__name__', str(t).replace('typing.', ''));
-}
-
-def _signature_summary(func: Callable) -> str {
-    try {
-        sig = inspect.signature(func);
-    } except (TypeError, ValueError) {
-        return '';
-    }
-    params: list = [];
-    for p in sig.parameters.values() {
-        if (p.name == 'self') {
-            continue;
-        }
-        params.append(_short_type_name(p.annotation));
-    }
-    ret = _short_type_name(sig.return_annotation);
-    return f"({','.join(params)})->{ret}";
-}
-
-def _safe_repr(v: object, limit: int = 120) -> str {
-    s = repr(v);
-    return s if (len(s) <= limit) else (s[:(limit - 1)] + '…');
-}
-
-def _describe_node(`obj: object) -> str {
-    cls = `obj.__class__;
-    attrs: list = [];
-    if is_dataclass(`obj) {
-        for f in fields(`obj) {
-            attrs.append(f"{f.name}={_safe_repr(getattr(obj, f.name))}");
-        }
-    } else {
-        for (k, v) in vars(`obj).items() {
-            if k.startswith('_') {
-                continue;
-            }
-            attrs.append(f"{k}={_safe_repr(v)}");
-        }
-    }
-    methods: list = [];
-    for (m_name, func) in inspect.getmembers(cls, predicate=inspect.isfunction) {
-        if m_name.startswith('__') {
-            continue;
-        }
-        sig = _signature_summary(func);
-        methods.append(f"{m_name}{sig}" if sig else m_name);
-    }
-    parts = [cls.__name__];
-    if attrs {
-        parts.append(('attrs:' + ','.join(attrs)));
-    }
-    if methods {
-        parts.append(('methods:' + ','.join(methods)));
-    }
-    return ' — '.join(parts);
-}
-
-def _describe_nodes_list(objects: Sequence) -> str {
-    return '\n'.join(f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects));
 }
 
 obj DistFacade {
