@@ -1166,6 +1166,89 @@ Look for `byllm.parallel` log lines: `dispatch=parallel` confirms concurrent exe
 
 ---
 
+## MCP Tools
+
+byLLM can call tools hosted on any [Model Context Protocol](https://modelcontextprotocol.io/) server. `McpClient` connects to the server, `get_tools()` returns its tools as byLLM tool objects, and you spread them into `by llm(tools=[...])` right alongside your local tools -- the ReAct loop treats both identically.
+
+```jac
+import from jaclang.byllm.lib { McpClient }
+
+glob jac_mcp = McpClient(command="jac", args=["mcp"]);
+
+def cite(source: str) -> str {
+    return f"[source: {source}]";
+}
+sem cite = "Append a citation marker to the answer.";
+
+def ask_about_jac(question: str) -> str by llm(
+    tools=[cite, *jac_mcp.get_tools()]
+);
+sem ask_about_jac = "Answer Jac questions using MCP tools, then cite the source.";
+
+with entry {
+    print(ask_about_jac("How do I declare an async function in Jac?"));
+    jac_mcp.close();
+}
+```
+
+### Selecting specific tools
+
+Pass `names=[...]` to `get_tools()` to expose only the tools you need instead of the server's full inventory:
+
+```jac
+def validate_snippet(code: str) -> str by llm(
+    tools=[*jac_mcp.get_tools(names=["validate_jac"])]
+);
+```
+
+### Remote servers
+
+Point `url` at an HTTP MCP endpoint. With the default `transport="auto"`, a `url` connects over streamable-HTTP:
+
+```jac
+glob msdocs = McpClient(url="https://learn.microsoft.com/api/mcp");
+
+def ask_msdocs(question: str) -> str by llm(tools=[*msdocs.get_tools()]);
+sem ask_msdocs = "Answer Microsoft technology questions via the Microsoft Learn MCP server.";
+
+with entry {
+    print(ask_msdocs("How do I create a Function App in Azure?"));
+    msdocs.close();
+}
+```
+
+Set `transport` and `headers` explicitly for authenticated or non-default endpoints:
+
+```jac
+glob jac_mcp = McpClient(
+    url="https://jac-mcp.jaseci.org/mcp/",
+    transport="streamable-http",
+    headers={"Authorization": "Bearer YOUR_TOKEN"}
+);
+
+def ask_jac_docs(question: str) -> str by llm(tools=[*jac_mcp.get_tools()]);
+```
+
+### `McpClient` Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `command` | str | `""` | Executable to launch for a **stdio** server (e.g. `"jac"`) |
+| `args` | list[str] | `[]` | Arguments passed to `command` (e.g. `["mcp"]`) |
+| `env` | dict[str, str] | `{}` | Extra environment variables for the stdio subprocess |
+| `url` | str | `""` | Endpoint URL for an **HTTP** server |
+| `headers` | dict[str, str] | `{}` | HTTP headers sent with each request (e.g. auth tokens) |
+| `transport` | str | `"auto"` | `"stdio"`, `"sse"`, `"streamable-http"`, or `"auto"` |
+| `timeout` | int | `30` | Connection timeout in seconds |
+
+With `transport="auto"` (the default) byLLM picks the transport from what you set: `command` selects `stdio`, `url` selects `streamable-http`. For an SSE endpoint pass `transport="sse"` explicitly. A client with neither `command` nor `url` raises `McpError`.
+
+### Lifecycle
+
+An `McpClient` holds a live connection -- a stdio subprocess or an HTTP session. `get_tools()` connects lazily on first use; call `close()` when you're done (typically at the end of the `with entry` block) to shut the connection down cleanly.
+
+---
+
 ## Auto-Compaction
 
 When a ReAct loop runs many tool-calling iterations the message history grows until it hits the model's context window limit. Auto-compaction monitors token usage after each iteration and automatically summarises old tool-call rounds before the limit is reached, letting agents run indefinitely long tasks without interruption.
@@ -1405,6 +1488,35 @@ with entry {
     }
 }
 ```
+
+#### Cache tokens
+
+When [prompt caching](#project-configuration) is active (automatic for Claude models), each `per_call` dict also carries the provider's cache counters. Read them to measure your cache hit rate:
+
+```jac
+with entry {
+    for event in my_agent("...") {
+        if event.event_type == "usage" {
+            input_tokens = int(event.data["total"].get("prompt_tokens", 0));
+            cached = 0;
+            for call in event.data["per_call"] {
+                # Anthropic reports `cache_read_input_tokens`; OpenAI nests the
+                # count under `prompt_tokens_details.cached_tokens`.
+                cached += int(
+                    call.get("cache_read_input_tokens", 0)
+                    or (call.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+                    or 0
+                );
+            }
+            if input_tokens > 0 {
+                print(f"Cache hit rate: {round(cached / input_tokens * 100, 1)}%");
+            }
+        }
+    }
+}
+```
+
+Cached input tokens are billed at a fraction of the normal rate, so a high hit rate on a long, static system prompt or tool schema is a direct cost saving. See [`[plugins.byllm.prompt_caching]`](#project-configuration) to toggle caching.
 
 ### Streaming Limitations
 
