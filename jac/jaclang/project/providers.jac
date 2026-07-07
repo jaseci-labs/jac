@@ -616,6 +616,10 @@ def capability_dependencies(
         action = plan.action if plan else "execute";
     }
     intent = scale_intent_from_config(config);
+    # A jac-scale project is served, so resolve serve deps even when the entry infers kind=cli.
+    if intent and action != "serve" {
+        action = "serve";
+    }
     caps = derive_capabilities(intent, command_capabilities(action, scale));
     caps |= byllm_intent_capabilities(config);
     caps |= set(detected_intents);
