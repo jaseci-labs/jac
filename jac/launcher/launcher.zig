@@ -273,6 +273,14 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
             _ = it.next(); // argv[0]
             _ = it.next(); // "ninja"
             while (it.next()) |arg| {
+                // Easy mode was removed; swallow its retired flags (consumed
+                // here, nvim never sees them) so an old `jac ninja --easy`
+                // alias still launches with a notice instead of aborting on
+                // an unknown nvim option.
+                if (std.mem.eql(u8, arg, "--easy") or std.mem.eql(u8, arg, "--no-easy")) {
+                    std.debug.print("jac ninja: easy mode has been removed; ignoring {s}\n", .{arg});
+                    continue;
+                }
                 if (argc >= argv_storage.len - 1) die("too many arguments");
                 argv_storage[argc] = arg.ptr;
                 argc += 1;

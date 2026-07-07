@@ -7,7 +7,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 ### Breaking Changes
 
 - **Breaking: Remove legacy user-schema migration**: Dropped the one-time MongoDB migration that converted old `username`/`password_hash` user documents into the identity-based schema, along with the coupled progressive SHA256-to-bcrypt password rehash. Deployments still holding pre-identity-schema user records must migrate them before upgrading. As a safety net, `verify_password` now returns `False` for any residual non-bcrypt hash instead of raising, so stale credentials fail authentication gracefully rather than causing a 500.
-- **Breaking: Remove `jac ninja` easy mode**: The VSCode-style easy input layer is removed -- the `jac ninja --easy` / `--no-easy` flags, the `:NinjaEasy` toggle, the `JAC_NINJA_EASY` env var, and the persisted state marker all go away, along with the mode's VSCode Dark+ colorscheme, winbar breadcrumbs, auto-opening file-tree sidebar, bottom terminal panel, and CUA (ctrl-s/z/c/v, shift-arrow) keymaps. `jac ninja` now always launches with the stock modal look and keymaps; the editor is otherwise unchanged.
 
 ### New Features
 
