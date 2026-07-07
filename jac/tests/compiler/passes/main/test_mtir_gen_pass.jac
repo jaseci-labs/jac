@@ -45,6 +45,10 @@ test "mtir gen standalone function" {
     assert "person" in param_names;
     assert "detail_level" in param_names;
     assert func_info.return_type == "str";
+    # has_default is captured statically from the AST: detail_level has a default, person does not.
+    by_name = {p.name: p for p in func_info.params};
+    assert by_name["detail_level"].has_default , "detail_level has a default -> has_default True";
+    assert not by_name["person"].has_default , "person has no default -> has_default False";
 }
 
 test "mtir gen method" {

@@ -99,6 +99,26 @@ test "function info for tool schema" {
     assert func_info.params[0].semstr == "Year of birth.";
 }
 
+test "tool schema omits MTIR-defaulted params from required" {
+    import jaclang.byllm.schema as schema;
+    def calc(birth_year: int, current_year: int) -> int {
+        return current_year - birth_year;
+    }
+    # ParamInfo.has_default drives `required` in the MTIR path (no runtime introspection).
+    info = FunctionInfo(
+        name="calc",
+        semstr="Calc.",
+        params=[
+            ParamInfo(name="birth_year", semstr="", type_info="int"),
+            ParamInfo(name="current_year", semstr="", type_info="int", has_default=True)
+        ],
+    );
+    sch = schema.tool_to_schema(calc, "Calc.", {}, info);
+    required = sch["function"]["parameters"]["required"];
+    assert "birth_year" in required , "a param without a default stays required";
+    assert "current_year" not in required , f"an MTIR-defaulted param must be omittable, got {required}";
+}
+
 test "nested class info" {
     person_class = ClassInfo(
         name="Person",

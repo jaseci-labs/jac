@@ -1,6 +1,7 @@
 """MTRuntime (Meaning Typed Intermediate Representation) module for JacLang runtime library."""
 import inspect;
 import json;
+import from jaclang.byllm._optdeps.loguru { logger }
 import from jaclang.jac0core.mtp { Info, MethodInfo, FunctionInfo }
 import from types { MethodType }
 import from typing { Callable, get_type_hints }
@@ -18,6 +19,11 @@ import from jaclang.byllm.types {
     ToolCallResultMsg
 }
 import from jaclang.byllm.mcp { McpTool }
+
+"""Emit non-blocking warnings for terminal-tool footguns during factory assembly."""
+def _warn_terminal_tools(
+    tools: list, designated_via_param: bool, terminal_designated: bool
+) -> None;
 
 """Intermediate representation for LLM function calls.
 
@@ -67,6 +73,7 @@ obj MTRuntime {
     def write_back_conversation -> None;
     def parse_response(response: str) -> object;
     def get_tool(tool_name: str) -> Tool | McpTool | None;
+    def get_terminal_tool -> Tool | McpTool | None;
     def get_tool_list -> list[dict];
     def get_output_schema -> dict | None;
     def get_typed_output_schema -> dict | None;

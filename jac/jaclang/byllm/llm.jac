@@ -19,6 +19,7 @@ import from jaclang.project.capabilities { require_optional }
 import from jaclang.byllm.exceptions {
     AuthenticationError,
     OutputConversionError,
+    FinishToolError,
     RateLimitError,
     ModelNotFoundError,
     UnknownToolError,

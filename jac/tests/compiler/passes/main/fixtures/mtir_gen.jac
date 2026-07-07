@@ -42,8 +42,8 @@ obj Project {
     def summarize(query: str) -> Project by llm();
 }
 
-# Standalone GenAI function
-def analyze_person(person: Person, detail_level: int) -> str by llm();
+# Standalone GenAI function (detail_level has a default: exercises ParamInfo.has_default)
+def analyze_person(person: Person, detail_level: int = 3) -> str by llm();
 
 # GenAI function with complex return type
 def create_team(name: str, size: int) -> Team by llm();

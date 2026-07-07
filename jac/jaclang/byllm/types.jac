@@ -66,7 +66,9 @@ obj Tool {
         params_desc: dict[(str, str)] = None,
         info: Info = None,
         serialize: bool = False,
-        timeout_sec: float | None = None;
+        timeout_sec: float | None = None,
+        is_terminal:
+            bool = False;  #is a user defined finish tool (not the auto-injected finish_tool)
 
     def postinit -> None;
     def __call__(*args: list, **kwargs: dict) -> object;

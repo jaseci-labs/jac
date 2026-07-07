@@ -9,6 +9,36 @@ glob SYSTEM_PERSONA = """\
     output. Only use tools.
     """;
 
+impl _warn_terminal_tools(
+    tools: list, designated_via_param: bool, terminal_designated: bool
+) -> None {
+    names = [
+        t.get_name()
+        for t in tools
+        if t?.get_name
+    ];
+    for name in names {
+        if name == "finish_tool" and not designated_via_param {
+            logger.warning(
+                "byllm: a tool named 'finish_tool' is reserved and will act as the "
+                "terminal tool WITHOUT byllm's output validation. Rename it, or pass it "
+                "explicitly via `by llm(finish_tool=<fn>)`."
+            );
+        }
+    }
+    if not terminal_designated {
+        for name in names {
+            if name == "finish" {
+                logger.warning(
+                    "byllm: tool 'finish' looks like a terminal tool, but the agent loop "
+                    "won't guarantee it is called. If it should end the agent, pass "
+                    "`by llm(finish_tool=finish)` or mark it with `mark_terminal(finish)`."
+                );
+            }
+        }
+    }
+}
+
 """Create an MTRuntime instance from a callable and its arguments.
 
 Builds the message history with system persona, user input, and any media.
@@ -206,9 +236,31 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             "stream_handler=fn)`)."
         );
     }
-    if len(tools) > 0 {
-        finish_tool = Tool.make_finish_tool(return_type or str);
-        tools.append(finish_tool);
+    # `by llm(finish_tool=fn)`: flag the tool instance terminal (call-scoped, no mutation
+    # of fn). Flag it in place if already among tools=[...], else wrap and append it.
+    finish_fn = call_params.get("finish_tool");
+    if finish_fn is not None and callable(finish_fn) {
+        existing = None;
+        for t in tools {
+            if t?.func is finish_fn {
+                existing = t;
+                break;
+            }
+        }
+        if existing is not None {
+            existing.is_terminal = True;
+        } else {
+            tools.append(Tool(finish_fn, is_terminal=True));  # type: ignore
+        }
+    }
+    terminal_designated = bool(
+        any(t?.is_finish_tool and t.is_finish_tool() for t in tools)
+    );
+    # Non-blocking footgun warnings about terminal tools (once per call).
+    _warn_terminal_tools(tools, finish_fn is not None, terminal_designated);
+    # Inject the generic finish_tool only when tools exist and none is terminal yet.
+    if len(tools) > 0 and not terminal_designated {
+        tools.append(Tool.make_finish_tool(return_type or str));
     }
     mt_run = MTRuntime(
         messages=messages,
@@ -272,13 +324,13 @@ impl MTRuntime.write_back_conversation -> None {
 }
 
 
-# Test against finish_tool both at object level and dict level.
-def _is_finish_tool_call(tc: any) -> bool {
+# True if a tool call targets the terminal tool (by its actual name, object or dict).
+def _is_finish_tool_call(tc: any, terminal_name: str = "finish_tool") -> bool {
     if tc?.function and hasattr(tc.function, "name") {
-        return tc.function.name == "finish_tool";
+        return tc.function.name == terminal_name;
     }
     if isinstance(tc, dict) {
-        return (tc.get("function") or {}).get("name", "") == "finish_tool";
+        return (tc.get("function") or {}).get("name", "") == terminal_name;
     }
     return False;
 }
@@ -286,6 +338,9 @@ def _is_finish_tool_call(tc: any) -> bool {
 
 impl MTRuntime.get_history_for_persist -> list[MessageType] {
     scaff_ids = set(self._scaffolding_ids);
+    # Exclude the terminal tool's own call/result from persisted history.
+    terminal = self.get_terminal_tool();
+    terminal_name = terminal.get_name() if terminal else "finish_tool";
     out: list = [];
     for msg in self.messages {
         if id(msg) in scaff_ids {
@@ -300,14 +355,15 @@ impl MTRuntime.get_history_for_persist -> list[MessageType] {
         ) {
             continue;
         }
-        if isinstance(msg, ToolCallResultMsg) and msg.name == "finish_tool" {
+        if isinstance(msg, ToolCallResultMsg) and msg.name == terminal_name {
             continue;
         }
         tool_calls = msg?.tool_calls;
         if tool_calls is None and isinstance(msg, dict) {
             tool_calls = msg.get("tool_calls");
         }
-        if tool_calls and all(_is_finish_tool_call(tc) for tc in tool_calls) {
+        if tool_calls
+        and all(_is_finish_tool_call(tc, terminal_name) for tc in tool_calls) {
             continue;
         }
         out.append(msg);
@@ -351,6 +407,16 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | McpTool | None {
     return None;
 }
 
+"""Return the tool that ends the ReAct loop (injected or caller-designated), or None."""
+impl MTRuntime.get_terminal_tool -> Tool | McpTool | None {
+    for tool in self.tools {
+        if tool.is_finish_tool() {
+            return tool;
+        }
+    }
+    return None;
+}
+
 """Return the tools as JSON schemas for the LLM API."""
 impl MTRuntime.get_tool_list -> list[dict] {
     return [tool.get_json_schema() for tool in self.tools];
@@ -359,13 +425,13 @@ impl MTRuntime.get_tool_list -> list[dict] {
 """Return the JSON schema for the response type, if applicable."""
 impl MTRuntime.get_output_schema -> dict | None {
     assert (
-        len(self.tools) == 0 or self.get_tool("finish_tool") is not None
-    );  #Finish tool should be present in the tools list.
+        len(self.tools) == 0 or self.get_terminal_tool() is not None
+    );  # A terminal tool must be present whenever tools are.
     if len(self.tools) == 0 {
         return self.get_typed_output_schema();
     }
-    # If the are tools, the final output will be sent to the finish_tool
-    # thus there is no output schema.
+    # With tools, the final output arrives via the terminal tool, so there is no
+    # response-format output schema.
     return None;
 }
 

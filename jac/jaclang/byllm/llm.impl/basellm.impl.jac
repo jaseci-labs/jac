@@ -496,7 +496,7 @@ impl BaseLLM._invoke_typed_retry(mt_run: MTRuntime) -> object {
             }
             try {
                 result = self._invoke_react_loop(mt_run);
-            } except OutputConversionError as e {
+            } except (OutputConversionError, FinishToolError) as e {
                 (last_reason, last_output) = self._parse_failure_feedback(
                     attempt, max_attempts, e
                 );
@@ -548,7 +548,7 @@ impl BaseLLM._ainvoke_typed_retry(mt_run: MTRuntime) -> object {
             }
             try {
                 result = (await self.adispatch_no_streaming(mt_run)).output;
-            } except OutputConversionError as e {
+            } except (OutputConversionError, FinishToolError) as e {
                 (last_reason, last_output) = self._parse_failure_feedback(
                     attempt, max_attempts, e
                 );
@@ -1749,7 +1749,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
     );
     mt_run.add_scaffolding_message(final_instruction);
     original_tools = mt_run.tools;
-    finish_tool_obj = mt_run.get_tool("finish_tool");
+    finish_tool_obj = mt_run.get_terminal_tool();
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
     try {
         final_resp = self.dispatch_no_streaming(mt_run);
@@ -1761,7 +1761,11 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
                 }
             }
         }
-        return str(final_resp.output) if final_resp.output else "";
+        raw = str(final_resp.output) if final_resp.output else "";
+        if mt_run.resp_type is not None and mt_run.resp_type is not str {
+            return mt_run.parse_response(raw);
+        }
+        return raw;
     } finally {
         mt_run.tools = original_tools;
     }
@@ -1787,7 +1791,7 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
     # Keep only finish_tool so Anthropic sees a valid tools= param
     # (conversation history may already contain tool_use blocks)
     original_tools = mt_run.tools;
-    finish_tool_obj = mt_run.get_tool("finish_tool");
+    finish_tool_obj = mt_run.get_terminal_tool();
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
     # Force text generation - tool_choice="none" tells the LLM
     # "tools are defined but do NOT call any, just produce text"
@@ -1818,24 +1822,28 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
     }
 }
 
-"""Attempt finish_tool recovery when the LLM skips the expected workflow.
+"""Re-prompt with only the terminal tool when the LLM skips the expected workflow.
 
-Called when the LLM either raises OutputConversionError (non-JSON output
-from parse_response) or returns no tool calls when finish_tool was expected.
-Re-prompts the LLM with only finish_tool available.
-
-Returns CompletionResult from the recovery dispatch if preconditions are met,
-or None if recovery is not applicable (no finish_tool, or resp_type is str/None).
-Callers should check the returned CompletionResult's tool_calls for finish_tool.
+Fires when either the caller designated a terminal tool (it must be called, any return
+type) or a structured return needs its value delivered via the injected finish_tool. It
+does not fire for a plain str return on the auto finish_tool, where a text answer is a
+valid ending. Returns the recovery CompletionResult, or None when recovery does not apply.
 """
 impl BaseLLM._attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None {
-    finish_tool_obj = mt_run.get_tool("finish_tool");
-    if not finish_tool_obj or mt_run.resp_type is None or mt_run.resp_type is str {
+    finish_tool_obj = mt_run.get_terminal_tool();
+    if not finish_tool_obj {
         return None;
     }
+    # A terminal tool not named the reserved "finish_tool" was designated by the caller.
+    caller_designated = finish_tool_obj.get_name() != "finish_tool";
+    structured = mt_run.resp_type is not None and mt_run.resp_type is not str;
+    if not caller_designated and not structured {
+        return None;
+    }
+    term_name = finish_tool_obj.get_name();
     recovery_msg = Message(
         role=MessageRole.USER,
-        content="You must use finish_tool to return your response. Call finish_tool now.",
+        content=f"You must call {term_name} to complete this task. Call {term_name} now.",
     );
     mt_run.add_scaffolding_message(recovery_msg);
     original_tools = mt_run.tools;

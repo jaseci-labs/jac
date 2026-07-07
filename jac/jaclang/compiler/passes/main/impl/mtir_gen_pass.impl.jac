@@ -282,7 +282,10 @@ impl MTIRGenPass._extract_function_info(nd: uni.Ability) -> FunctionInfo {
             }
 
             param_info = ParamInfo(
-                name=param.name.value, semstr=semstr_val, type_info=parsed_type
+                name=param.name.value,
+                semstr=semstr_val,
+                type_info=parsed_type,
+                has_default=param.value is not None
             );
             parameters.append(param_info);
         }

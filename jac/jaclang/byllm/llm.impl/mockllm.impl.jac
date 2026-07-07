@@ -1,3 +1,15 @@
+# Re-point a mock ToolCall's tool to the one registered on mt_run (same name), so it
+# carries the runtime's flags (e.g. is_terminal from finish_tool=). Real dispatch resolves
+# tools via mt_run.get_tool in _parse_tool_calls; MockToolCall wraps a fresh Tool, so
+# without this its calls would miss those flags.
+def _bind_registered_tool(tc: ToolCall, mt_run: MTRuntime) -> ToolCall {
+    reg = mt_run.get_tool(tc.tool.get_name());
+    if reg is not None {
+        tc.tool = reg;
+    }
+    return tc;
+}
+
 """Post-initialization hook for MockLLM.
 
 Configures logging to stdout.
@@ -72,19 +84,16 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     if isinstance(output, list)
     and len(output) > 0
     and isinstance(output[0], MockToolCall) {
-        tool_calls = [o.to_tool_call() for o in output];
+        tool_calls = [_bind_registered_tool(o.to_tool_call(), mt_run) for o in output];
         self.log_info(
             f"Mock LLM call completed with {len(tool_calls)} batch tool calls"
         );
         return CompletionResult(output=None, tool_calls=tool_calls, usage=usage);
     }
     if isinstance(output, MockToolCall) {
-        self.log_info(
-            f"Mock LLM call completed with tool call:\n{output.to_tool_call()}"
-        );
-        return CompletionResult(
-            output=None, tool_calls=[output.to_tool_call()], usage=usage
-        );
+        tc = _bind_registered_tool(output.to_tool_call(), mt_run);
+        self.log_info(f"Mock LLM call completed with tool call:\n{tc}");
+        return CompletionResult(output=None, tool_calls=[tc], usage=usage);
     }
     log_params = self.format_prompt(params);
     params.pop("api_key", None);
