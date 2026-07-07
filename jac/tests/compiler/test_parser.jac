@@ -68,8 +68,6 @@ test "all ast has normalize" {
         "UniScopeNode",
         "UniCFGNode",
         "ConditionalNode",
-        # Synthetic CFG-only join node created in CFGBuildPass, after
-        # NormalizePass; the formatter never encounters it.
         "LoopExitNode",
         "ContextAwareNode",
         "ProgramModule",
