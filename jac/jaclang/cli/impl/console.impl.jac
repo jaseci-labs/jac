@@ -196,6 +196,15 @@ impl ConsoleRenderer.configure(use_emoji: bool, use_color: bool) -> None {
     self.use_color = use_color;
 }
 
+"""Erase the live status line, if one is active, so following output starts
+fresh. A no-op when nothing is running (non-TTY, or outside a status block).
+"""
+impl ConsoleRenderer.clear_status -> None {
+    if self._active_status is not None {
+        self._active_status.clear();
+    }
+}
+
 """Write one composed line; colored spans wrap raw ANSI, data spans pass through.
 
 A span with `style is None` (caller data) is emitted verbatim — no styling, no
@@ -470,9 +479,11 @@ impl ConsoleRenderer.status_ctx(args: list, kwargs: dict) -> object {
         yield _NullStatus();
     } else {
         sp.start();
+        self._active_status = sp;
         try {
             yield sp;
         } finally {
+            self._active_status = None;
             sp.stop();
         }
     }
@@ -587,6 +598,9 @@ impl JacConsole.success(message: str, emoji: bool = True) -> None {
 impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
+    # An error may fire mid-spinner (stdout) while it prints to stderr; clear the
+    # live status line first so the two don't collide on the terminal.
+    self._renderer.clear_status();
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
     self._renderer.emit(
         [Span(f"{prefix} Error:", 'error'), Span(f" {message}", None)], sys.stderr

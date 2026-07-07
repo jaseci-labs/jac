@@ -185,15 +185,16 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                             loader=self,
                             submodule_search_locations=[candidate_path],
                         )
-                # No __init__.jac found — treat as Jac namespace package if
-                # the directory contains .jac files but no __init__.py
-                # (which would make it a regular Python package).  Without
-                # this, Python's PathFinder must create the namespace
-                # package, which only works when the parent directory
-                # happens to be on sys.path at that moment.
-                if not os.path.isfile(
-                    os.path.join(candidate_path, "__init__.py")
-                ) and any(ext_registry.is_jac(f) for f in os.listdir(candidate_path)):
+                # No __init__.jac found — treat as an implicit Jac namespace
+                # package when a .jac source lives anywhere in its subtree (and
+                # it is not a regular Python package). Without this, Python's
+                # PathFinder must create the namespace package, which only works
+                # when the parent directory happens to be on sys.path at that
+                # moment. The subtree check (not just direct .jac files) is what
+                # lets per-component import descend through an *intermediate*
+                # namespace package like ``engine/`` in ``engine.math.vec3``
+                # (issue #7211).
+                if ext_registry.is_jac_namespace_package(candidate_path):
                     spec = importlib.machinery.ModuleSpec(
                         fullname, loader=None, is_package=True
                     )

@@ -35,6 +35,10 @@ Bug index:
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
   #LITWIDEN - literal initializers not widened for mutable vars/attrs/container elements
+  #INCLUDE-MEMBER-1 - member access on `include`d (absorb) symbols resolved to
+                      Unknown when the included submodule imported back from its
+                      own package (circular self-import); poisoned the vendored
+                      llvm ir/binding surface and every native pass (#7163)
 """
 
 import os;
@@ -998,5 +1002,31 @@ test "bug_literal_widening_for_mutable_declarations" {
         "elements must widen to their base type (['.'] * 3 -> list[str]) so "
         "later stores of a different value are allowed. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #INCLUDE-MEMBER-1 / #7163: a class re-exported into a package only via
+# `include` (absorb) was Unknown when reached through the package namespace
+# (`ir.Value`) if the included submodule imported back from its own package
+# (circular self-import, as the vendored llvm ir/binding submodules do). The
+# module-item path (`from pkg import X`) already fell back to walking the absorb
+# imports via _resolve_star_import_symbol; the member-access path did not, and
+# returned UnknownType on the lookup miss. This poisoned the whole llvm surface
+# -- the native passes do `import from ...llvm { ir }` then `ir.Value` /
+# `ir.Module` / ... -- cascading ~1,700 E1030/E1032 errors across every native
+# pass. The base Value class also did not declare its `type` attribute. With the
+# absorb-aware fallback in place and Value.type declared, the issue's repro must
+# type-check clean.
+#
+# The reproduction rides the vendored llvm package on purpose: the bug only
+# surfaces when the absorbing package is resolved through the type evaluator's
+# cross-module import path (external / JIR-cached), which a fixture compiled as
+# the main target does not exercise.
+test "bug_7163_llvm_ir_boundary_resolves" {
+    program = compile_and_check("checker_llvm_ir_boundary.jac");
+    assert program.errors_had == [] , (
+        "Bug #7163: `import from ...llvm { ir }` then `ir.Value` with `.type` "
+        "must resolve. `ir.Value` was Unknown (member access on an absorbed "
+        f"symbol). Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

@@ -6,6 +6,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
     if isinstance(node_.name, uni.Name) { } else {
         return types.UnknownType();
     }
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
     import_node = node_.parent_of_type(uni.Import);
     assert import_node.from_loc is not None;
 
@@ -41,7 +42,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     }
                     path_str = str(path);
 
-                    if not path_str.endswith((".jac", ".py", ".pyi")) {
+                    if (not path_str.endswith((".jac", ".py", ".pyi")))
+                    or is_untyped_third_party_module(path_str) {
                         mod_type = types.ModuleType(
                             mod_name=node_.name.sym_name,
                             file_uri=path,
@@ -216,6 +218,7 @@ impl TypeEvaluator._resolve_star_import_symbol(
 }
 
 impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
     if node_.path {
         if node_.path[-1].type {
             return node_.path[-1].type;
@@ -265,7 +268,8 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 continue;
             }
 
-            if not mod_path.endswith((".jac", ".py", ".pyi")) {
+            if (not mod_path.endswith((".jac", ".py", ".pyi")))
+            or is_untyped_third_party_module(mod_path) {
                 mod_type = types.ModuleType(
                     mod_name=npath.value,
                     file_uri=Path(mod_path).resolve(),

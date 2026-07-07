@@ -321,6 +321,8 @@ install_binary() {
     if has_cmd jac; then
         info ""
         info "Jac installed successfully!"
+        info ""
+        info "Performing initial setup, this may take a moment..."
         jac --version 2>/dev/null || true
         info ""
         info "Get started:"

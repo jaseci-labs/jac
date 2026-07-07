@@ -59,6 +59,32 @@ def make_project(with_fixture_trap: bool = False) -> str {
 }
 
 
+"""Create a temp project whose suite reaches a module via a project-root-absolute
+import that descends through an *intermediate namespace package*: `engine/` holds
+only the `math/` subpackage, so `engine` itself has no direct `.jac` file (and no
+`__init__`). Returns the project root."""
+def make_namespace_import_project -> str {
+    proj = tempfile.mkdtemp(prefix="jac7211-");
+    (Path(proj) / "jac.toml").write_text(
+        '[project]\nname = "r"\n\n[test]\ndirectory = "tests"\n'
+    );
+    math_dir = Path(proj) / "engine" / "math";
+    math_dir.mkdir(parents=True);
+    (math_dir / "vec3.jac").write_text(
+        'obj Vec3 {\n    has x: float = 0.0;\n    has z: float = 0.0;\n}\n\n'
+        'def forward(v: Vec3) -> Vec3 {\n    return Vec3(v.x, v.z + 1.0);\n}\n'
+    );
+    tests_dir = Path(proj) / "tests";
+    tests_dir.mkdir();
+    (tests_dir / "phase1_tests.jac").write_text(
+        'import from engine.math.vec3 { Vec3, forward }\n\n'
+        'test "vec3_default" {\n    assert Vec3().x == 0.0;\n}\n'
+        'test "vec3_forward" {\n    assert forward(Vec3(1.0, 3.0)).z == 4.0;\n}\n'
+    );
+    return proj;
+}
+
+
 """Run the `jac test` command inside *proj* with xdist disabled; return its
 exit code. `test` is a keyword, so it is reached as a module attribute. With
 both *paths* and *directory* empty, config drives discovery from jac.toml."""
@@ -108,4 +134,25 @@ test "`-d` test root collects all .jac and skips fixtures/" {
     # fixtures/ input is excluded (so not exit 1) -- both hold iff exit 0.
     assert rc == 0 , "`jac test -d tests` must collect phase1_tests.jac and skip the "
     f"fixtures/ input; got exit {rc}";
+}
+
+
+test "project-root-absolute import through a namespace package is collected" {
+    # Regression guard for issue #7211: a suite whose project-root-absolute
+    # import descends through an intermediate namespace package (`engine/`,
+    # which holds only `math/` and no direct `.jac`) must import during pytest
+    # collection, exactly as the native runner resolves it. Before the fix
+    # `JacMetaImporter.find_spec` only treated a directory as a Jac namespace
+    # package when it held `.jac` files *directly*, so `import engine.math.vec3`
+    # raised `ModuleNotFoundError("No module named 'engine'")`, the suite
+    # collected 0 items, and `jac test` exited 5 (a silent green in directory
+    # mode where the import error is swallowed during collection).
+    proj = make_namespace_import_project();
+    try {
+        rc = run_in(proj, []);
+    } finally {
+        shutil.rmtree(proj, ignore_errors=True);
+    }
+    assert rc == 0 , "suite importing engine.math.vec3 through a namespace "
+    f"package must be collected and pass (exit 0); got exit {rc}";
 }
