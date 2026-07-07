@@ -70,13 +70,18 @@ def _collect_tu_names(file_ast: object) -> set[str] {
         if isinstance(entry, c_ast.FuncDef) {
             decl = getattr(entry, "decl");
             nm = getattr(decl, "name") if decl is not None else None;
-            if nm {
-                names.add(nm);
+            if isinstance(nm, str) {
+                names.add(str(nm));
             }
-        } elif isinstance(entry, c_ast.Decl) or isinstance(entry, c_ast.Typedef) {
-            nm = getattr(entry, "name");
-            if nm {
-                names.add(nm);
+        } elif isinstance(entry, c_ast.Decl) {
+            nm = entry.name;
+            if isinstance(nm, str) {
+                names.add(str(nm));
+            }
+        } elif isinstance(entry, c_ast.Typedef) {
+            nm = entry.name;
+            if isinstance(nm, str) {
+                names.add(str(nm));
             }
         }
     }
@@ -87,20 +92,27 @@ def _collect_int_use_names(nd: object, names: set[str]) {
     # Walk the whole TU collecting identifier names used as operands of an
     # arithmetic/bitwise binary op, or of a bitwise-not. An ENUM_AS_ENUM candidate
     # whose enumerator appears here is being used as an integer and is demoted.
-    if isinstance(nd, c_ast.BinaryOp) and nd.op in _INT_USE_BINOPS {
-        for operand in (nd.left, nd.right) {
-            if isinstance(operand, c_ast.ID) {
-                names.add(operand.name);
+    if isinstance(nd, c_ast.BinaryOp) {
+        if nd.op in _INT_USE_BINOPS {
+            for operand in (nd.left, nd.right) {
+                if isinstance(operand, c_ast.ID) {
+                    names.add(operand.name);
+                }
             }
         }
     }
-    if isinstance(nd, c_ast.UnaryOp) and nd.op == "~" {
-        if isinstance(nd.expr, c_ast.ID) {
-            names.add(nd.expr.name);
+    if isinstance(nd, c_ast.UnaryOp) {
+        if nd.op == "~" {
+            if isinstance(nd.expr, c_ast.ID) {
+                names.add(nd.expr.name);
+            }
         }
     }
-    for (_, child) in nd.children() {
-        _collect_int_use_names(child, names);
+    kids = nd?.children;
+    if kids is not None {
+        for (_, child) in kids() {
+            _collect_int_use_names(child, names);
+        }
     }
 }
 
@@ -111,20 +123,24 @@ def _enumerator_value(en: object, counter: int) -> tuple[int, bool] {
     # identifiers, unparseable suffixed literals) is_simple is False and the
     # returned value is a 0 placeholder. Single source for both the strict
     # ENUM_AS_ENUM check and the best-effort ENUM_AS_CONSTS fallback.
-    if en.value is None {
+    if not isinstance(en, c_ast.Enumerator) {
+        return (0, False);
+    }
+    ev = getattr(en, "value");
+    if ev is None {
         return (counter, True);
     }
-    if isinstance(en.value, c_ast.Constant) and en.value.type == "int" {
-        v = parse_c_int(en.value.value);
+    if isinstance(ev, c_ast.Constant) and ev.type == "int" {
+        v = parse_c_int(ev.value);
         return (v, True) if v is not None else (0, False);
     }
     if (
-        isinstance(en.value, c_ast.UnaryOp)
-        and en.value.op == "-"
-        and isinstance(en.value.expr, c_ast.Constant)
-        and en.value.expr.type == "int"
+        isinstance(ev, c_ast.UnaryOp)
+        and ev.op == "-"
+        and isinstance(ev.expr, c_ast.Constant)
+        and ev.expr.type == "int"
     ) {
-        v = parse_c_int(en.value.expr.value);
+        v = parse_c_int(ev.expr.value);
         return (-v, True) if v is not None else (0, False);
     }
     return (0, False);
@@ -133,7 +149,17 @@ def _enumerator_value(en: object, counter: int) -> tuple[int, bool] {
 def _enum_sequential_values(enumerator_list: object) -> dict[str, int] | None {
     result: dict[str, int] = {};
     counter: int = 0;
-    for en in enumerator_list.enumerators {
+    if not isinstance(enumerator_list, c_ast.EnumeratorList) {
+        return None;
+    }
+    els = getattr(enumerator_list, "enumerators");
+    if els is None {
+        return None;
+    }
+    for en in els {
+        if not isinstance(en, c_ast.Enumerator) {
+            return None;
+        }
         (v, simple) = _enumerator_value(en, counter);
         if not simple {
             return None;
@@ -159,8 +185,11 @@ def _collect_enums(nd: object, results: list[object]) {
     if isinstance(nd, c_ast.Enum) {
         results.append(nd);
     }
-    for (_, child) in nd.children() {
-        _collect_enums(child, results);
+    kids = nd?.children;
+    if kids is not None {
+        for (_, child) in kids() {
+            _collect_enums(child, results);
+        }
     }
 }
 
@@ -177,14 +206,19 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
     int_use_names: set[str] = set();
     _collect_int_use_names(file_ast, int_use_names);
     for en in enums {
-        if en.values is None {
+        if not isinstance(en, c_ast.Enum) {
+            continue;
+        }
+        en_values = getattr(en, "values");
+        if en_values is None {
             # Forward declaration — skip.
             continue;
         }
-        name_map = _enum_sequential_values(en.values);
+        name_map = _enum_sequential_values(en_values);
+        en_name = getattr(en, "name");
         used_as_int = name_map is not None
         and any(nm in int_use_names for nm in name_map);
-        if en.name is not None and name_map is not None and not used_as_int {
+        if en_name is not None and name_map is not None and not used_as_int {
             # Candidate for ENUM_AS_ENUM.
             ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM.value;
             ev.name_map[id(en)] = name_map;
@@ -216,15 +250,33 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             best_map: dict[str, int] = {};
             counter = 0;
             ok = True;
-            for enr in en.values.enumerators {
-                (v, simple) = _enumerator_value(enr, counter);
-                best_map[enr.name] = v;
-                counter = v + 1;
-                if not simple {
-                    ok = False;
+            if isinstance(en_values, c_ast.EnumeratorList) {
+                enrs = getattr(en_values, "enumerators");
+                if enrs is not None {
+                    for enr in enrs {
+                        if not isinstance(enr, c_ast.Enumerator) {
+                            ok = False;
+                            continue;
+                        }
+                        (v, simple) = _enumerator_value(enr, counter);
+                        best_map[enr.name] = v;
+                        counter = v + 1;
+                        if not simple {
+                            ok = False;
+                        }
+                    }
+                }
+            } else {
+                ok = False;
+            }
+            # Evaluate collision manually to avoid Any-typed any() builtin.
+            collision = False;
+            for nm in best_map {
+                if nm in seen_glob_names {
+                    collision = True;
+                    break;
                 }
             }
-            collision = any(nm in seen_glob_names for nm in best_map);
             if not ok or collision {
                 ev.verdicts[id(en)] = "tier_b";
                 ev.reasons[id(en)] = "enumerator name collides with an existing module global"
@@ -245,12 +297,16 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
     # enum silently vanishes (uni_builder emits nothing) with an empty report.
     if tags is not None {
         for en in enums {
+            if not isinstance(en, c_ast.Enum) {
+                continue;
+            }
             verdict = ev.verdicts.get(id(en));
             if verdict is None {
                 continue;
             }
-            coord = en?.coord;
-            line = coord.line if coord and coord.line else 0;
+            coord = getattr(en, "coord");
+            coord_line = getattr(coord, "line") if coord is not None else None;
+            line: int = coord_line if isinstance(coord_line, int) else 0;
             if verdict == "tier_b" {
                 reason = ev.reasons.get(
                     id(en), "enum not expressible as a Jac enum or consts"

@@ -98,9 +98,11 @@ def coord_of(c_node: object, default_line: int) -> tuple[int, int] {
     # no coord or no line. Backends wrap this: the mapper threads its running
     # last-seen line as the default; the direct-IR builder passes 1.
     coord = c_node?.coord;
-    if coord {
-        line = coord.line or default_line;
-        col = (coord.column - 1) if coord.column else 0;
+    if coord is not None {
+        coord_line = getattr(coord, "line");
+        coord_col = getattr(coord, "column");
+        line = coord_line if isinstance(coord_line, int) else default_line;
+        col = (coord_col - 1) if isinstance(coord_col, int) else 0;
         return (line, col);
     }
     return (default_line, 0);

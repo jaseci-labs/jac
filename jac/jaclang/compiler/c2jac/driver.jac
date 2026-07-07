@@ -102,7 +102,9 @@ def _transpile_ast(
 
     # --- Step 3: map C-AST → CPython ast (with DIRECT_IR placeholders) ---
     mapper = CMapper(tags=tags);
-    py_mod = mapper.conv(file_ast);
+    py_mod: object = mapper.conv(file_ast);
+    # py_mod is always an ast.Module at runtime (c_FileAST handler).
+    assert isinstance(py_mod, ast3.Module);
     ast3.fix_missing_locations(py_mod);
 
     # --- Step 4: PyastBuildPass → uni IR ---
@@ -148,13 +150,20 @@ def _populate_default_tags(nd: object, tags: TagTable) {
     tier = default_tier(nd);
     mech = default_mechanism(nd);
     coord = nd?.coord;
-    line = coord.line if coord and coord.line else 0;
+    line: int = 0;
+    if coord is not None {
+        coord_line = getattr(coord, "line");
+        line = coord_line if isinstance(coord_line, int) else 0;
+    }
     nt = NodeTag(
         tier=tier, mechanism=mech, idiom=Idiom.NONE, reason="", c_line=line, snippet=""
     );
     tags.tag(nd, nt);
-    for (_, child) in nd.children() {
-        _populate_default_tags(child, tags);
+    kids_fn = nd?.children;
+    if kids_fn is not None {
+        for (_, child) in kids_fn() {
+            _populate_default_tags(child, tags);
+        }
     }
 }
 
@@ -174,12 +183,16 @@ def _is_sentinel_expr_stmt(nd: uni.UniNode) -> bool {
 }
 
 def _get_slot_id(sentinel: uni.ExprStmt) -> int | None {
-    params = sentinel.expr.params;
-    if params and len(params) == 1 and isinstance(params[0], uni.Int) {
+    expr = sentinel.expr;
+    if not isinstance(expr, uni.FuncCall) {
+        return None;
+    }
+    params = expr.params;
+    if params is not None and len(params) == 1 and isinstance(params[0], uni.Int) {
         try {
             return int(params[0].value);
         } except ValueError {
-        # skip
+        # skip — ignore unparseable slot id
         }
     }
     return None;
@@ -253,9 +266,9 @@ def _collect_non_zero_lines(nd: object, result: list) -> None {
         }
         return;
     }
-    kids = nd?.kid;
-    if kids {
-        for kid in kids {
+    kids_raw = nd?.kid;
+    if kids_raw is not None {
+        for kid in kids_raw {
             _collect_non_zero_lines(kid, result);
         }
     }
@@ -269,7 +282,11 @@ def _fix_zero_toks_in_subtree(nd: object) -> None {
     if isinstance(nd, uni.Token) {
         return;
     }
-    kids = nd?.kid;
+    kids_raw = nd?.kid;
+    if kids_raw is None {
+        return;
+    }
+    kids = kids_raw;
     if not kids {
         return;
     }
@@ -358,9 +375,11 @@ def _hoist_to_module_body(
     # Remove them from there so they only appear at module level.
     for r in replacements {
         try {
-            immediate_parent.kid.remove(r);
+            kid_list = list(immediate_parent.kid);
+            kid_list.remove(r);
+            immediate_parent.set_kids(kid_list);
         } except ValueError {
-            pass;
+            continue;
         }
     }
     local_body = immediate_parent?.body;
@@ -369,7 +388,7 @@ def _hoist_to_module_body(
             try {
                 local_body.remove(r);
             } except ValueError {
-                pass;
+                continue;
             }
         }
     }
@@ -382,11 +401,20 @@ def _hoist_to_module_body(
         } except ValueError {
             kid_idx = mc_idx;
         }
+        # Rebuild body and kid with insertions (Sequence has no .insert).
+        body_list = list(mod.body);
         for (i, r) in enumerate(replacements) {
-            mod.body.insert(mc_idx + i, r);
-            mod.kid.insert(kid_idx + i, r);
+            body_list.insert(mc_idx + i, r);
+        }
+        mod.body = body_list;
+        # body_list contains module-level UniNodes; Module.body expects
+        # Sequence[ElementStmt | String | EmptyToken] but runtime types match.
+        kid_list = list(mod.kid);
+        for (i, r) in enumerate(replacements) {
+            kid_list.insert(kid_idx + i, r);
             r.parent = mod;
         }
+        mod.set_kids(kid_list);
         mod._invalidate_sub_node_tab();
     } except ValueError {
     # skip

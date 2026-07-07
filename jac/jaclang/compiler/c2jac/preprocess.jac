@@ -33,6 +33,14 @@ class _C2JacPreprocessor(Preprocessor) {
     construction rather than in an override `__init__`: Jac `class` does not give
     a callable `super()` for chaining to Preprocessor.__init__ (which does real
     setup), so we let the base ctor run untouched and stamp our fields after."""
+    has c2jac_errors: list[str],
+        line_directive: object,
+        add_path: object,
+        define: object,
+        undef: object,
+        parse: object,
+        write: object;
+
     def on_error(self: _C2JacPreprocessor, file: str, line: int, msg: str) {
         self.c2jac_errors.append(f"{file}:{line}: {msg}");
     }
@@ -115,7 +123,8 @@ def preprocess_c(
         pp.parse(prefix + c_src, filename);
         pp.write(out);
     } except OutputDirective {
-        pass;
+    # Suppress the exception — the directive handler already removed
+    # the directive from the output stream.
     }
     if pp.c2jac_errors {
         joined = "\n  ".join(pp.c2jac_errors);
