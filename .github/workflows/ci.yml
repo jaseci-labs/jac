@@ -74,7 +74,10 @@ jobs:
 
       - name: Materialize typeshed stdlib stubs into the checkout
         working-directory: jac
-        run: zig build fetch-typeshed --summary all
+        # -Dno-ninja: typeshed is editor-independent. setup-jac above may have
+        # hit the binary cache (no build), so a bare fetch-typeshed would pull
+        # the neovim + Lua closure just to materialize stubs.
+        run: zig build -Dno-ninja fetch-typeshed --summary all
 
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
@@ -169,7 +172,10 @@ jobs:
           use-cache: false
       - name: Vendor static-musl runtime
         working-directory: jac
-        run: zig build vendor-musl --summary all
+        # -Dno-ninja: harvesting musl from the Zig toolchain is editor-independent;
+        # without it, configuring the build fetches the neovim + Lua closure (incl.
+        # the flaky lua.org tarball) for nothing. This job never bundles the editor.
+        run: zig build -Dno-ninja vendor-musl --summary all
       - name: Compiler suite via the binary
         working-directory: jac
         run: |
@@ -235,7 +241,10 @@ jobs:
           use-cache: false
       - name: Vendor static-musl runtime
         working-directory: jac
-        run: zig build vendor-musl --summary all
+        # -Dno-ninja: harvesting musl from the Zig toolchain is editor-independent;
+        # without it, configuring the build fetches the neovim + Lua closure (incl.
+        # the flaky lua.org tarball) for nothing. This job never bundles the editor.
+        run: zig build -Dno-ninja vendor-musl --summary all
       - name: Runtime suite via the binary (everything except compiler)
         working-directory: jac
         run: |
