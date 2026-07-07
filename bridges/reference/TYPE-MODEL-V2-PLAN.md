@@ -4,6 +4,7 @@ Status: PLAN (pre-implementation). Supersedes the ad hoc per-shape additions tha
 produced TAG_INT / TAG_MAP_BIT / TAG_LIST_BIT in ABI v1.
 
 Decisions locked:
+
 - Type vocabulary follows the WIT / Component Model value types (record, variant,
   option, result, list, tuple, own/borrow handle). We borrow the semantics, not
   the wasm canonical lowering.

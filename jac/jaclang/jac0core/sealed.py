@@ -338,7 +338,6 @@ def is_sealed() -> bool:
     return _jaclang_image() is not None
 
 
-
 def find_module(fullname: str) -> tuple[SealedImage, dict, str] | None:
     """Resolve ``fullname`` across all sealed images.
 
