@@ -218,6 +218,49 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
     return (source_rel, fullname, is_pkg);
 }
 
+"""Derive the app metadata (kind / capabilities / entry) baked into a
+format-3 sealed manifest, from the staged tree's own jac.toml + contents.
+Returns {} for non-project images (e.g. the jaclang runtime itself)."""
+def app_metadata(pkg_path: Path, pkg_name: str) -> dict {
+    if not (pkg_path / "jac.toml").is_file() {
+        return {};
+    }
+    import from jaclang.project.config { get_config_for_path }
+    import from jaclang.project.kinds { resolve_project_kind, resolve_entry }
+    import from jaclang.runtimelib.sealed_serve { CLIENT_DIST_REL }
+
+    config = get_config_for_path(pkg_path);
+    if config is None {
+        return {};
+    }
+    entry_path = resolve_entry(config, str(pkg_path));
+    kind = resolve_project_kind(config, entry_path);
+
+    entry: dict[str, str] = {};
+    if entry_path and Path(entry_path).is_file() {
+        rel = Path(entry_path).resolve().relative_to(pkg_path.resolve()).as_posix();
+        stem = ext_registry.base_stem(os.path.basename(entry_path));
+        entry = {"module": f"{pkg_name}.{stem}", "path": rel};
+    }
+
+    caps: list[str] = ["has-server"];
+    if entry {
+        caps.append("has-entry");
+    }
+    if (pkg_path / CLIENT_DIST_REL).is_dir()
+    or any(ext_registry.is_client_module(p) for p in find_jac_files(str(pkg_path))) {
+        caps.append("has-client");
+    }
+    if any(ext_registry.is_native_module(p) for p in find_jac_files(str(pkg_path))) {
+        caps.append("has-native");
+    }
+    if kind in ["py-package", "js-package"] or not entry {
+        caps.append("attachable");
+    }
+
+    return {"kind": kind, "capabilities": caps, "entry": entry};
+}
+
 """Hash the non-module payloads baked into the image (serve manifest,
 prebuilt client dist) so the sealed manifest can verify them."""
 def collect_payloads(pkg_path: Path) -> dict[str, str] {
@@ -321,7 +364,15 @@ def seal_finalize(
     if payloads {
         console.print(f"  Payload files: {len(payloads)}");
     }
-    write_manifest(precompiled_dir, pkg_name, pyver, manifest_modules, payloads);
+    app_meta = app_metadata(pkg_path, pkg_name);
+    if app_meta {
+        console.print(
+            f"  App: kind={app_meta.get('kind')} caps={app_meta.get('capabilities')}"
+        );
+    }
+    write_manifest(
+        precompiled_dir, pkg_name, pyver, manifest_modules, payloads, app_meta
+    );
     console.print(f"  Manifest: {precompiled_dir / MANIFEST_NAME}");
     return 0;
 }
@@ -331,7 +382,8 @@ def write_manifest(
     pkg_name: str,
     pyver: str,
     modules: dict[str, dict],
-    payloads: (dict[str, str] | None) = None
+    payloads: (dict[str, str] | None) = None,
+    app_meta: (dict | None) = None
 ) {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -349,6 +401,9 @@ def write_manifest(
     };
     if payloads {
         manifest["payloads"] = payloads;
+    }
+    if app_meta {
+        manifest.update(app_meta);
     }
     (precompiled_dir / MANIFEST_NAME).write_text(
         json.dumps(manifest, sort_keys=True, indent=1) + "\n", encoding="utf-8"

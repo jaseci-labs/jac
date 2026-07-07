@@ -1,0 +1,79 @@
+"""Jac App Bundle (.jab) loading.
+
+A ``.jab`` is a sealed image (see jaclang.jac0core.sealed) packed as one
+deterministic tar.gz -- the single-file form of ``jac bundle --target
+sealed``. Materializing extracts it into a content-addressed cache dir and
+registers the image (hash-verifying every module JIR and payload), after
+which the app runs with zero live compilation. The manifest's app metadata
+(kind / capabilities / entry) makes a downloaded jab self-describing: the
+runner dispatches on it with no project config present.
+"""
+
+import hashlib;
+import json;
+import os;
+import shutil;
+import tarfile;
+
+import from pathlib { Path }
+import from jaclang.jac0core.cache_paths { get_app_cache_dir }
+import from jaclang.jac0core.sealed {
+    MANIFEST_NAME,
+    register_image,
+    image_for_bundle_dir
+}
+
+glob JAB_SUFFIX: str = ".jab";
+
+def is_jab(path: str) -> bool {
+    return path.lower().endswith(JAB_SUFFIX);
+}
+
+"""Extract `jab_path` into the content-addressed app cache (skipped when
+already materialized), register the sealed image fail-closed, and return
+the image root."""
+def materialize_jab(jab_path: str) -> Path {
+    data = Path(jab_path).read_bytes();
+    digest = hashlib.sha256(data).hexdigest();
+    dest = get_app_cache_dir() / digest[:20];
+    manifest_path = dest / "_precompiled" / MANIFEST_NAME;
+    if not manifest_path.is_file() {
+        tmp = dest.with_suffix(f".{os.getpid()}.tmp");
+        shutil.rmtree(tmp, ignore_errors=True);
+        tmp.mkdir(parents=True, exist_ok=True);
+        try {
+            with tarfile.open(jab_path, mode="r:*") as tf {
+                tf.extractall(tmp, filter="data");
+            }
+            if not (tmp / "_precompiled" / MANIFEST_NAME).is_file() {
+                raise RuntimeError(
+                    f"{jab_path} is not a jab: no sealed manifest inside"
+                );
+            }
+            shutil.rmtree(dest, ignore_errors=True);
+            tmp.rename(dest);
+        } finally {
+            shutil.rmtree(tmp, ignore_errors=True);
+        }
+    }
+    bundle_dir = str(dest / "_precompiled");
+    if image_for_bundle_dir(bundle_dir) is None
+    and register_image(bundle_dir) is None {
+        raise RuntimeError(f"{jab_path}: sealed manifest failed to load");
+    }
+    return dest;
+}
+
+"""The app metadata (kind / capabilities / entry) of a materialized jab."""
+def jab_app_meta(img_root: Path) -> dict[str, any] {
+    raw = json.loads(
+        (img_root / "_precompiled" / MANIFEST_NAME).read_text(encoding="utf-8")
+    );
+    meta = raw if isinstance(raw, dict) else {};
+    return {
+        "kind": meta.get("kind", ""),
+        "capabilities": meta.get("capabilities") or [],
+        "entry": meta.get("entry") or {},
+        "package": meta.get("package", "")
+    };
+}

@@ -29,7 +29,7 @@ impl start_cli -> None {
 
     raw_argv = sys.argv[1:];
     has_jac_file = any(
-        not tok.startswith('-') and tok.lower().endswith(('.jac', '.py'))
+        not tok.startswith('-') and tok.lower().endswith(('.jac', '.py', '.jab'))
         for tok in raw_argv
     );
     if has_jac_file and (not raw_argv or raw_argv[0] not in registry.commands) {

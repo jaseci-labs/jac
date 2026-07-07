@@ -22,10 +22,14 @@ can load. jac0 stays the compiler for that tier; only the container is unified.
 This module is therefore **plain Python with no jaclang dependencies** (like the
 sibling ``cache_paths.py`` / ``ext_registry.py``).
 
-Manifest layout (``_precompiled/MANIFEST.json``, format 2)::
+Manifest layout (``_precompiled/MANIFEST.json``, format 3; format 2 = the
+same without kind/capabilities/entry/payloads and remains loadable)::
 
     {
-      "format": 2,
+      "format": 3,
+      "kind": "web-app",                # optional: project kind (app images)
+      "capabilities": ["has-entry", "has-server", "has-client"],  # optional
+      "entry": {"module": "app.main", "path": "main.jac"},        # optional
       "package": "jaclang",
       "python_tag": "cpython-314",
       "jir_format_version": 13,
@@ -72,7 +76,10 @@ from pathlib import Path
 from jaclang.jac0core import ext_registry
 
 MANIFEST_NAME = "MANIFEST.json"
-MANIFEST_FORMAT = 2
+MANIFEST_FORMAT = 3
+# Format 3 adds optional app metadata (kind / capabilities / entry) and
+# payloads on top of format 2's module map; format-2 images stay loadable.
+MANIFEST_FORMATS_ACCEPTED = (2, MANIFEST_FORMAT)
 # Marker file a bundled-app binary carries next to its site dir; written by
 # `jac bundle --target binary` and read by cli_boot at startup.
 APP_MARKER = "jac_app.json"
@@ -147,6 +154,11 @@ class SealedImage:
         # Optional non-module payloads baked into the image (prebuilt client
         # dist, serve manifest, ...): pkg-relative posix path -> sha256.
         self.payloads: dict[str, str] = manifest.get("payloads") or {}
+        # Optional app metadata (format 3): what this artifact IS, so a
+        # downloaded bundle dispatches with no project config present.
+        self.kind: str = manifest.get("kind", "")
+        self.capabilities: list[str] = manifest.get("capabilities") or []
+        self.entry: dict = manifest.get("entry") or {}
         # fullname -> (entry, src_relpath). One tree: full-compiler modules and
         # jac0-compiled bootstrap modules share the JIR container + manifest;
         # ``entry["bootstrap"]`` flags the jac0 tier (loaded via bootstrap_code).
@@ -272,10 +284,11 @@ def load_image(precompiled_dir: str | Path) -> SealedImage | None:
     except OSError:
         return None
     manifest = json.loads(raw)
-    if manifest.get("format") != MANIFEST_FORMAT:
+    if manifest.get("format") not in MANIFEST_FORMATS_ACCEPTED:
         raise RuntimeError(
             f"sealed image {manifest_path}: unsupported manifest format "
-            f"{manifest.get('format')!r} (runtime supports {MANIFEST_FORMAT})"
+            f"{manifest.get('format')!r} (runtime supports "
+            f"{MANIFEST_FORMATS_ACCEPTED})"
         )
     tag = manifest.get("python_tag")
     if tag != python_tag():

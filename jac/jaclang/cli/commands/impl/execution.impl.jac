@@ -151,6 +151,53 @@ def _execute_plan(
     return 1;
 }
 
+"""Materialize a .jab and dispatch on its baked kind: execute cli kinds,
+serve servable kinds (production mode; a sealed artifact never dev-serves),
+reject attachable packages. The artifact is self-describing -- no project
+config in the invoking directory is consulted."""
+def _run_jab(filename: str, port: int, args: list, serve_only: bool) -> int {
+    import from jaclang.runtimelib.jab { materialize_jab, jab_app_meta }
+
+    try {
+        img_root = materialize_jab(filename);
+    } except Exception as e {
+        console.error(f"Cannot load {filename}: {e}");
+        return 1;
+    }
+    meta = jab_app_meta(img_root);
+    kind = str(meta.get("kind") or "cli");
+    entry_meta: dict = meta.get("entry") or {};
+    caps: list = meta.get("capabilities") or [];
+    entry_rel = str(entry_meta.get("path") or "");
+    if not entry_rel {
+        attach_note = ", attachable package" if "attachable" in caps else "";
+        console.error(
+            f"{filename} has no entry (kind '{kind}'{attach_note}); "
+            "it cannot be run directly."
+        );
+        return 1;
+    }
+    entry_abs = str(img_root / entry_rel);
+    if not os.path.isfile(entry_abs) {
+        console.error(f"{filename}: sealed entry '{entry_rel}' missing from image.");
+        return 1;
+    }
+    servable = kind in ["service", "service-mesh", "web-app", "web-static"];
+    if serve_only or servable {
+        return start(
+            filename=entry_abs, port=port, no_client=(kind == "service"), dev=False
+        );
+    }
+    if kind in ["cli", "cli-native"] {
+        return run(filename=entry_abs, args=args);
+    }
+    console.error(
+        f"{filename}: kind '{kind}' is not directly runnable from a jab "
+        "(build its platform projection instead)."
+    );
+    return 1;
+}
+
 def _run_project(
     show: bool, main: bool, cache: bool, autonative: bool, diagnostics: str, args: list
 ) -> int {
@@ -222,6 +269,15 @@ impl run(
             diagnostics=diagnostics,
             args=args
         );
+    }
+    if filename.endswith(".jab") {
+        if show {
+            console.print(
+                f"jac run {filename}  ->  kind-aware dispatch (sealed app bundle)"
+            );
+            return 0;
+        }
+        return _run_jab(filename, 8000, args, serve_only=False);
     }
     if show {
         console.print(f"jac run {filename}  ->  execute (explicit file)");
@@ -413,6 +469,16 @@ impl start(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
+    if filename.endswith(".jab") {
+        if dev {
+            console.error(
+                "A sealed .jab never serves in dev mode; run the project "
+                "source with --dev instead."
+            );
+            return 1;
+        }
+        return _run_jab(filename, port, [], serve_only=True);
+    }
     if not Path(filename).exists() {
         if filename == "main.jac" {
             console.error(

@@ -1659,6 +1659,34 @@ def _bundle_sealed(config: any, output: str) -> int {
     return 0;
 }
 
+def _bundle_jab(config: any, output: str) -> int {
+    import shutil;
+    import tempfile;
+
+    name = config.project.name;
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    work = Path(tempfile.mkdtemp(prefix="jab-", dir=output));
+    try {
+        console.print(f"\n  Sealing {name}...", style="muted");
+        img = _make_sealed_image(config, work, name);
+        if img is None {
+            return 1;
+        }
+        payload = _tar_gz_dir(img);
+        out_jab = out_dir / f"{name}.jab";
+        out_jab.write_bytes(payload);
+    } finally {
+        shutil.rmtree(work, ignore_errors=True);
+    }
+    console.print(
+        f"  ✔ Built [cyan]{out_jab}[/cyan] ({out_jab.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(f"  Run it anywhere: jac run {out_jab.name}", style="muted");
+    return 0;
+}
+
 def _bundle_binary(config: any, output: str) -> int {
     import sys;
     import os;
@@ -1763,13 +1791,23 @@ def _tar_gz_dir(top: Path) -> bytes {
     import gzip;
     import tarfile;
     import os;
+
+    def normalize(ti: any) -> any {
+        ti.mtime = 0;
+        ti.uid = 0;
+        ti.gid = 0;
+        ti.uname = "";
+        ti.gname = "";
+        return ti;
+    }
+
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w") as tf {
         for (dirpath, dirnames, filenames) in os.walk(str(top)) {
             dirnames.sort();
             for fn in sorted(filenames) {
                 full = Path(dirpath) / fn;
-                tf.add(str(full), arcname=str(full.relative_to(top)));
+                tf.add(str(full), arcname=str(full.relative_to(top)), filter=normalize);
             }
         }
     }
@@ -1890,6 +1928,9 @@ impl bundle(output: str = "dist", target: str = "wheel") -> int {
     }
     if target == "sealed" {
         return _bundle_sealed(config, output);
+    }
+    if target == "jab" {
+        return _bundle_jab(config, output);
     }
     if target == "binary" {
         return _bundle_binary(config, output);

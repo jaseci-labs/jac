@@ -456,7 +456,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
         Arg.create(
             "target",
             default="wheel",
-            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'sealed' (precompiled JIR image, runtime never compiles source, #7135), 'binary' (self-contained executable), 'all', or 'npm-runtime'",
+            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'sealed' (precompiled JIR image, runtime never compiles source, #7135), 'jab' (single-file app bundle: the sealed image packed as one relocatable .jab, #7255), 'binary' (self-contained executable), 'all', or 'npm-runtime'",
             short="t"
         ),
 
@@ -468,6 +468,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
             "jac bundle --target sealed",
             "Build a sealed (precompiled JIR) image into dist/"
         ),
+        ("jac bundle --target jab", "Build a single-file .jab app bundle into dist/"),
         ("jac bundle --target binary", "Build a self-contained executable into dist/"),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
