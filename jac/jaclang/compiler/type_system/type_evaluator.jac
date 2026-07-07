@@ -343,12 +343,9 @@ obj TypeEvaluator {
     def _get_enum_member_type_for_decl(
         node_: uni.Name
     ) -> (types.EnumMemberType | None);
-    # gets member type and specializes it with class type_args
     def get_type_of_member(
         member: type_utils.ClassMember, class_type: types.ClassType
     ) -> TypeBase;
-    # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
-    # Now uses type_utils.apply_solved_type_vars
     def specialize_member_type(
         member_type: TypeBase, class_type: types.ClassType
     ) -> TypeBase;
