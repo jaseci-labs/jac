@@ -834,6 +834,70 @@ jobs:
         # Serial: byllm tests share a SQLite mock-LLM cache.
         JAC_TEST_JOBS=0 jac test jac/jaclang/byllm/tests/test_byllm.jac
 
+    # ========== this_is_jac fullstack smoke ==========
+    - name: Clone this_is_jac
+      run: |
+        git clone --depth 1 https://github.com/jaseci-labs/this_is_jac this_is_jac
+        cd this_is_jac && jac install
+
+    - name: Type check this_is_jac
+      working-directory: this_is_jac
+      run: jac check main.jac
+
+    - name: Start this_is_jac server in background
+      working-directory: this_is_jac
+      run: |
+        timeout 600 jac start main.jac > /tmp/this-is-jac-server.log 2>&1 &
+        SERVER_PID=$!
+        echo "THIS_IS_JAC_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "this_is_jac server starting with PID $SERVER_PID..."
+        sleep 10
+        if ! kill -0 $SERVER_PID 2>/dev/null; then
+          echo "Server process died during startup"
+          cat /tmp/this-is-jac-server.log
+          exit 1
+        fi
+
+    - name: Wait for this_is_jac server to be ready
+      run: |
+        echo "Waiting for this_is_jac server on port 8000..."
+        for i in $(seq 1 24); do
+          if ! kill -0 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null; then
+            echo "Server process exited unexpectedly"
+            cat /tmp/this-is-jac-server.log
+            exit 1
+          fi
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "this_is_jac server is ready (attempt $i)"
+            exit 0
+          fi
+          echo "Attempt $i/24: not ready, waiting 15s..."
+          sleep 15
+        done
+        echo "Server failed to respond after 24 attempts"
+        tail -100 /tmp/this-is-jac-server.log
+        exit 1
+
+    - name: Verify this_is_jac HTTP response
+      run: |
+        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
+        echo "this_is_jac root endpoint: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          echo "this_is_jac server responding correctly"
+        else
+          echo "Unexpected HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+    - name: Stop this_is_jac server
+      if: always()
+      run: |
+        if [ -n "${{ env.THIS_IS_JAC_PID }}" ]; then
+          kill ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
+        fi
+
     # ========== fullstack eject smoke ==========
     - name: Create fullstack project and eject it
       run: |
@@ -881,6 +945,14 @@ jobs:
           kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
         fi
 
+    - name: Upload this_is_jac server logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: this-is-jac-test-logs
+        path: /tmp/this-is-jac-server.log
+        retention-days: 7
+
     - name: Upload fullstack ejected backend logs
       if: always()
       uses: actions/upload-artifact@v4
@@ -896,6 +968,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| this_is_jac | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
