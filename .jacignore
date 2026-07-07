@@ -305,6 +305,7 @@ jac/jaclang/cli/commands/eject.jac
 jac/jaclang/cli/commands/eject_targets/backend.jac
 jac/jaclang/cli/commands/guide.jac
 jac/jaclang/cli/commands/impl/browse.impl.jac
+jac/jaclang/cli/commands/impl/build.impl.jac
 jac/jaclang/cli/commands/impl/code.impl.jac
 jac/jaclang/cli/commands/impl/db.impl.jac
 jac/jaclang/cli/commands/impl/eject.impl.jac
