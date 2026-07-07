@@ -44,6 +44,10 @@ Manifest layout (``_precompiled/MANIFEST.json``, format 2)::
           "sha256": "...",
           "bootstrap": true                # jac0 tier; load via bootstrap_code
         }, ...
+      },
+      "payloads": {                     # optional non-module payloads, baked at
+        ".jac/serve_manifest.json": "...",   # bundle time; key: pkg-relative
+        ".jac/client/dist/client.abc.js": "..."  # posix path, value: sha256
       }
     }
 
@@ -140,6 +144,9 @@ class SealedImage:
         self.manifest = manifest
         self.package: str = manifest.get("package", "")
         self.jir_dir = precompiled_dir / manifest.get("python_tag", python_tag())
+        # Optional non-module payloads baked into the image (prebuilt client
+        # dist, serve manifest, ...): pkg-relative posix path -> sha256.
+        self.payloads: dict[str, str] = manifest.get("payloads") or {}
         # fullname -> (entry, src_relpath). One tree: full-compiler modules and
         # jac0-compiled bootstrap modules share the JIR container + manifest;
         # ``entry["bootstrap"]`` flags the jac0 tier (loaded via bootstrap_code).
@@ -220,6 +227,18 @@ class SealedImage:
             if digest != entry.get("sha256"):
                 raise RuntimeError(
                     f"sealed image: {path} does not match its manifest sha256"
+                )
+        for rel, want in self.payloads.items():
+            if os.path.isabs(rel) or ".." in Path(rel).parts:
+                raise RuntimeError(f"sealed image: illegal payload path {rel!r}")
+            path = self.pkg_dir / rel
+            try:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError as exc:
+                raise RuntimeError(f"sealed image: cannot read {path}: {exc}") from exc
+            if digest != want:
+                raise RuntimeError(
+                    f"sealed image: payload {path} does not match its manifest sha256"
                 )
 
     def bootstrap_code(self, fullname: str) -> types.CodeType | None:

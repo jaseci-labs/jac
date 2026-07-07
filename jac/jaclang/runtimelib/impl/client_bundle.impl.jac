@@ -24,6 +24,30 @@ impl ClientBundleBuilder.postinit -> None {
     }
 }
 
+impl _prebuilt_bundle(module: ModuleType, source_path: Path) -> (ClientBundle | None) {
+    import from jaclang.runtimelib.sealed_serve { client_dist_for, serve_manifest_for }
+    dist = client_dist_for(str(source_path));
+    if dist is None {
+        return None;
+    }
+    candidates = sorted(dist.glob('client.*.js'));
+    if not candidates {
+        return None;
+    }
+    bundle_js = candidates[-1];
+    parts = bundle_js.name.split('.');
+    bundle_hash = parts[1] if len(parts) >= 3 else '';
+    sm = serve_manifest_for(str(source_path)) or {};
+    client_meta = sm.get('client', {}) or {};
+    return ClientBundle(
+        module_name=module.__name__,
+        code=bundle_js.read_text(encoding='utf-8'),
+        client_functions=list(client_meta.get('exports', []) or []),
+        client_globals=list(client_meta.get('globals', []) or []),
+        hash=bundle_hash
+    );
+}
+
 impl ClientBundleBuilder.build(
     module: ModuleType, force: bool = False
 ) -> ClientBundle {
@@ -34,6 +58,13 @@ impl ClientBundleBuilder.build(
     }
     module_path = module.__file__.replace('.py', '.jac');
     source_path = Path(module_path).resolve();
+    prebuilt = _prebuilt_bundle(module, source_path);
+    if prebuilt is not None {
+        self._cache[module.__name__] = _CachedBundle(
+            signature='sealed', bundle=prebuilt
+        );
+        return prebuilt;
+    }
     import from jaclang { JacRuntime as Jac }
     mod = _lookup_module_in_hub(str(source_path), Jac.program.mod.hub);
     if not mod {

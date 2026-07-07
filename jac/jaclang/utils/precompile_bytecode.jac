@@ -218,6 +218,30 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
     return (source_rel, fullname, is_pkg);
 }
 
+"""Hash the non-module payloads baked into the image (serve manifest,
+prebuilt client dist) so the sealed manifest can verify them."""
+def collect_payloads(pkg_path: Path) -> dict[str, str] {
+    import from jaclang.runtimelib.sealed_serve { SERVE_MANIFEST_REL, CLIENT_DIST_REL }
+    payloads: dict[str, str] = {};
+    sm = pkg_path / SERVE_MANIFEST_REL;
+    if sm.is_file() {
+        payloads[Path(SERVE_MANIFEST_REL).as_posix()] = hashlib.sha256(
+            sm.read_bytes()
+        ).hexdigest();
+    }
+    dist = pkg_path / CLIENT_DIST_REL;
+    if dist.is_dir() {
+        for f in sorted(dist.rglob("*")) {
+            if f.is_file() {
+                payloads[f.relative_to(pkg_path).as_posix()] = hashlib.sha256(
+                    f.read_bytes()
+                ).hexdigest();
+            }
+        }
+    }
+    return payloads;
+}
+
 def seal_finalize(
     pkg_path: Path, precompiled_dir: Path, pkg_name: str, pyver: str, embed_src: bool
 ) -> int {
@@ -293,13 +317,21 @@ def seal_finalize(
     }
     console.print(f"  Manifest modules: {len(manifest_modules)} ({n_boot} bootstrap)");
 
-    write_manifest(precompiled_dir, pkg_name, pyver, manifest_modules);
+    payloads = collect_payloads(pkg_path);
+    if payloads {
+        console.print(f"  Payload files: {len(payloads)}");
+    }
+    write_manifest(precompiled_dir, pkg_name, pyver, manifest_modules, payloads);
     console.print(f"  Manifest: {precompiled_dir / MANIFEST_NAME}");
     return 0;
 }
 
 def write_manifest(
-    precompiled_dir: Path, pkg_name: str, pyver: str, modules: dict[str, dict]
+    precompiled_dir: Path,
+    pkg_name: str,
+    pyver: str,
+    modules: dict[str, dict],
+    payloads: (dict[str, str] | None) = None
 ) {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -315,6 +347,9 @@ def write_manifest(
         "jaclang_version": jac_ver,
         "modules": modules
     };
+    if payloads {
+        manifest["payloads"] = payloads;
+    }
     (precompiled_dir / MANIFEST_NAME).write_text(
         json.dumps(manifest, sort_keys=True, indent=1) + "\n", encoding="utf-8"
     );
