@@ -297,6 +297,37 @@ def remove(packages: list = [], dev: bool = False) -> int;
 def update(packages: list = [], dev: bool = False, verbose: bool = False) -> int;
 
 @registry.command(
+    name="deps",
+    help="Show the fully resolved dependency plan (every ecosystem, with origins)",
+    args=[
+        Arg.create(
+            "scale",
+            typ=bool,
+            default=False,
+            help="Resolve the deploy-time capability closure (adds deploy-only clients like kubernetes/docker)",
+            short=""
+        ),
+        Arg.create(
+            "json",
+            typ=bool,
+            default=False,
+            help="Emit the plan as JSON",
+            short="",
+            dest="as_json"
+        ),
+
+    ],
+    examples=[
+        ("jac deps", "Show every resolved dependency and where it comes from"),
+        ("jac deps --scale", "Include deploy-time capability dependencies"),
+        ("jac deps --json", "Machine-readable resolved plan"),
+
+    ],
+    group="project"
+)
+def deps(scale: bool = False, as_json: bool = False) -> int;
+
+@registry.command(
     name="script",
     help="Run project scripts",
     args=[
@@ -425,7 +456,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
         Arg.create(
             "target",
             default="wheel",
-            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'all', or 'npm-runtime'",
+            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'sealed' (precompiled JIR image, runtime never compiles source, #7135), 'binary' (self-contained executable), 'all', or 'npm-runtime'",
             short="t"
         ),
 
@@ -433,6 +464,11 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
     examples=[
         ("jac bundle", "Build a pure-Python wheel into dist/ (.jac transpiled to .py)"),
         ("jac bundle --target npm", "Build an npm .tgz into dist/"),
+        (
+            "jac bundle --target sealed",
+            "Build a sealed (precompiled JIR) image into dist/"
+        ),
+        ("jac bundle --target binary", "Build a self-contained executable into dist/"),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],

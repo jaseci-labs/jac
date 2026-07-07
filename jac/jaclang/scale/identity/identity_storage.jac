@@ -1,7 +1,5 @@
 import bcrypt;
-import hashlib;
 import uuid;
-import logging;
 import from datetime { datetime, UTC }
 import from sqlalchemy {
     create_engine,
@@ -24,8 +22,7 @@ import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.scale.config.config_loader { get_scale_config }
 
-glob logger = logging.getLogger(__name__);
-
+"""Raised by storage backends when an identity uniqueness constraint fires."""
 obj IdentityTakenError(Exception) {}
 
 obj IdentityStorage {
@@ -92,7 +89,6 @@ obj MongoIdentityStorage(IdentityStorage) {
     def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
-    def migrate_legacy_users -> None;
 }
 
 obj SqliteIdentityStorage(IdentityStorage) {

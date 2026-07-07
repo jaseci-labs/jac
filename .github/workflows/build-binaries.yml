@@ -1,16 +1,25 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release. Primary path: called by release.yml after it cuts the release
-# (a GITHUB_TOKEN-created release emits no release.published event). The
-# release event is the safety net for releases published by a real user.
+# GitHub Release. One parameterized workflow serves both channels:
+#   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
+#     versioned release. Called by release.yml after it cuts the release (a
+#     GITHUB_TOKEN-created release emits no release.published event); the
+#     release event is the safety net for releases published by a real user.
+#   - channel=dev: cache-accelerated host-native builds re-published under the
+#     rolling `dev` prerelease. Called by release-dev.yml on pushes to main.
 
 on:
   workflow_call:
     inputs:
       tag:
-        description: "Canonical release tag v<version> to upload assets to."
+        description: "Release tag to upload assets to: canonical v<version>, or `dev` for the rolling prerelease."
         required: true
+        type: string
+      channel:
+        description: "release: cold + glibc-pinned; dev: cached + host-native."
+        required: false
+        default: release
         type: string
   release:
     types: [published]
@@ -32,9 +41,12 @@ jobs:
       fail-fast: false
       matrix:
         # One native runner per target so the smoke test runs on real hardware.
-        # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014);
-        # macOS builds host-native. No Intel-Mac leg: LLVM ships no macOS-x64
-        # prebuilt for the pinned release.
+        # zig_target pins each Linux binary's glibc floor (2.17, manylinux2014)
+        # on the release channel; the dev channel builds host-native so it can
+        # reuse the native-ABI LLVMPY shim cache (the shim cache key does not
+        # encode a target triple). macOS builds host-native on both channels.
+        # No Intel-Mac leg: LLVM ships no macOS-x64 prebuilt for the pinned
+        # release.
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
@@ -45,14 +57,55 @@ jobs:
           - os: macos-14
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
+    env:
+      # -Dtarget flag for zig build: set on release-channel Linux legs, empty
+      # (host-native) on the dev channel and macOS.
+      DTARGET: ${{ inputs.channel != 'dev' && matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) || '' }}
     steps:
-      # Check out the release tag, not the caller's ref, so a recovery run
-      # after main advanced still builds the release's own source.
-      # SHA-pinned: this job holds contents:write and ships user-downloaded
-      # binaries, so a re-pointed tag on the action must not reach it.
+      # Check out the release tag (release channel) or the pushed commit (dev
+      # channel), so a recovery run after main advanced still builds the
+      # release's own source. SHA-pinned: this job holds contents:write and
+      # ships user-downloaded binaries, so a re-pointed tag on the action must
+      # not reach it.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.tag || github.event.release.tag_name }}
+
+      # Dev channel only: reuse the read-mostly caches main seeds. The release
+      # channel builds cold on purpose (a cached payload could ship stale
+      # bits). The LLVMPY_* shim is the most expensive artifact and depends
+      # only on native/**, build.zig, and the pinned LLVM slice; same cache key
+      # as setup-jac, so main usually has it warm (the arm64 leg self-seeds:
+      # no other workflow runs on Linux-ARM64).
+      - name: Restore cached LLVMPY shim (dev channel)
+        if: inputs.channel == 'dev'
+        id: shim-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/jaclang/compiler/passes/native/llvm/libjacllvm.*
+          key: jac-shim-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/launcher/llvm_release.zig') }}
+
+      # Keyed on llvm_release.zig to match the entries setup-jac seeds (the
+      # old release-dev key hashed payload.zig, so it never matched them and
+      # duplicated the ~0.5 GB tree into the cache pool).
+      - name: Restore cached LLVM (dev channel)
+        if: inputs.channel == 'dev' && steps.shim-cache.outputs.cache-hit != 'true'
+        id: llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/llvm_release.zig') }}
+
+      # mkpayload re-validates every seeded .jir per module, so a stale tree
+      # from the previous push is safe and exactly what restore-keys is for.
+      - name: Restore cached JIR precompile tree (dev channel)
+        if: inputs.channel == 'dev'
+        uses: actions/cache@v4
+        with:
+          path: jac/.precompiled-build
+          key: jac-precompiled-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**') }}
+          restore-keys: |
+            jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install host tools (zstd)
         run: |
@@ -63,7 +116,8 @@ jobs:
           fi
 
       - name: Set up Zig 0.16.0
-        uses: mlugg/setup-zig@v2
+        # SHA-pinned: same shipping-binaries rationale as the checkout.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.16.0
           # Fresh cache each run: a cached payload could ship stale bits.
@@ -75,14 +129,28 @@ jobs:
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # The native backend statically links a pinned LLVM; fetch it per target
-      # before `zig build`.
+      # before `zig build`. Skipped on a dev-channel shim-cache hit (-Dshim-bin
+      # needs no LLVM at all) or LLVM-cache hit (tree already restored). Both
+      # gates are vacuous on the release channel: the restore steps are
+      # skipped there, so their cache-hit outputs are empty and the fetch runs.
       - name: Fetch LLVM for the jacllvm shim
+        if: steps.shim-cache.outputs.cache-hit != 'true' && steps.llvm-cache.outputs.cache-hit != 'true'
         working-directory: jac
-        run: zig build fetch-llvm ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
+        run: zig build fetch-llvm $DTARGET --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
-        run: zig build ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
+        # On a dev-channel shim-cache hit, stage the shim outside its in-tree
+        # place path: the build copies -Dshim-bin back there, and a self-copy
+        # would read the file it is truncating. Mirrors setup-jac.
+        run: |
+          SHIM_ARG=()
+          if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
+            mkdir -p .shim-build
+            cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
+            SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
+          fi
+          zig build $DTARGET "${SHIM_ARG[@]}" --summary all
 
       - name: Smoke test (no system Python)
         working-directory: jac
@@ -94,10 +162,40 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
+      # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
+      # interpreter config) into subprocesses -- a python-based child spawned
+      # by a jac program must run with its OWN stdlib, and the user's ambient
+      # PYTHONHOME/PYTHONPATH must pass through to children untouched.
+      - name: Smoke test (no env leak into subprocesses)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          cat > "$WORK/leak.jac" <<'EOF'
+          import os;
+          import subprocess;
+          with entry {
+              assert "PYTHONHOME" not in os.environ;
+              assert "PYTHONPATH" not in os.environ or os.environ["PYTHONPATH"] == "/user/own";
+              r = subprocess.run(
+                  ["python3", "-c", "import os, encodings; print('child', os.environ.get('PYTHONPATH'))"],
+                  capture_output=True, text=True
+              );
+              assert r.returncode == 0, r.stderr[:200];
+              print(r.stdout.strip());
+          }
+          EOF
+          # Clean env: nothing leaks in.
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/leak.jac" | grep -qx 'child None'
+          # User-supplied PYTHONPATH: passes through to children untouched.
+          env -i HOME="$WORK" PATH=/usr/bin:/bin PYTHONPATH=/user/own "$BIN" run "$WORK/leak.jac" | grep -qx 'child /user/own'
+
       # Guards #7082: neither the launcher nor the LLVMPY_* shim may reference
-      # a glibc symbol newer than the zig_target floor.
+      # a glibc symbol newer than the zig_target floor. Release channel only:
+      # dev binaries are host-native with no pinned floor.
       - name: Verify glibc floor (from zig_target)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && inputs.channel != 'dev'
         working-directory: jac
         env:
           ZIG_TARGET: ${{ matrix.zig_target }}
@@ -125,7 +223,11 @@ jobs:
         working-directory: jac
         run: |
           set -euxo pipefail
-          ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            ASSET="jac-dev-${{ matrix.platform }}"
+          else
+            ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
+          fi
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"
           # No codesign on macOS: the payload tarball appended past the Mach-O
@@ -150,9 +252,10 @@ jobs:
 
       # With this platform's asset attached, `scripts/install.sh` must resolve,
       # download, checksum-verify, and run it -- catches release-tag/installer
-      # drift at release time on the target hardware.
+      # drift at release time on the target hardware. Release channel only:
+      # install.sh resolves versioned assets, not the rolling dev tag.
       - name: Verify install.sh can fetch + run this release
-        if: github.event_name == 'release' || inputs.tag != ''
+        if: inputs.channel != 'dev' && (github.event_name == 'release' || inputs.tag != '')
         env:
           JAC_VER: ${{ steps.ver.outputs.version }}
           ASSET: ${{ steps.pkg.outputs.asset }}
@@ -186,7 +289,11 @@ jobs:
           bash scripts/install.sh --uninstall
           ! test -e "$BIN"
 
+      # Release channel only: dev binaries are already published on the `dev`
+      # prerelease, and a per-push 3x ~130 MB artifact would be pure storage
+      # churn.
       - name: Upload as workflow artifact
+        if: inputs.channel != 'dev'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.pkg.outputs.asset }}

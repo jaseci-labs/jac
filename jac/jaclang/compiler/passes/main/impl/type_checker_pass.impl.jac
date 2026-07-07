@@ -367,6 +367,7 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 and not self.evaluator.assign_type(
                     right_type, left_type, strict=self.evaluator._is_strict_site(nd)
                 )
+                and not self.evaluator.slice_assignment_is_valid(target, nd.value)
             ) {
                 if self.evaluator._is_awaitable_type(right_type) {
                     self.emit(E1042, actual=str(right_type), expected=str(left_type));

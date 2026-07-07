@@ -162,6 +162,12 @@ obj ScaleTestClient {
         raise RuntimeError(f"User login failed: {data}");
     }
 
+    """Register a user then log in, returning a usable auth token."""
+    def register_and_login(username: str, password: str) -> str {
+        self.register_user(username, password);
+        return self.login_user(username, password);
+    }
+
     def admin_login(username: str = "admin", password: str = "changeme") -> str {
         response = self.post(
             "/admin/login", json={"username": username, "password": password}

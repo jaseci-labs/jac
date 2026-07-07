@@ -70,13 +70,77 @@ pub fn build(b: *std.Build) void {
     const jacllvm = addLlvmShim(b, target, optimize);
 
     // --- launcher stub (links libc only; Python is dlopened at runtime) ----
+    // With the ninja editor fused in (the default), the stub additionally
+    // links the pinned neovim fork as a static library and dispatches
+    // `jac ninja` to nvim_main() before any Python bring-up.
+    const ninja = !(b.option(bool, "no-ninja", "Build without the fused ninja editor (smaller/faster stub builds)") orelse false);
+    const launcher_opts = b.addOptions();
+    launcher_opts.addOption(bool, "ninja", ninja);
+
     const launcher_mod = b.createModule(.{
         .root_source_file = b.path("launcher/launcher.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
+    launcher_mod.addOptions("build_options", launcher_opts);
     const stub = b.addExecutable(.{ .name = "jac", .root_module = launcher_mod });
+
+    // The assembled ninja tree staged into the payload as nvim/ (runtime/ +
+    // ninja/): the neovim dependency exports its full runtime (static files,
+    // generated files, tree-sitter parsers incl. jac) via named write-files;
+    // the config layer is jac/editor/ninja plus the pinned mini.nvim as a
+    // start-package. Null when -Dno-ninja.
+    const nvim_tree: ?std.Build.LazyPath = if (ninja) nvim_tree: {
+        const nvim_dep = b.lazyDependency("neovim", .{
+            .target = target,
+            .optimize = std.builtin.OptimizeMode.ReleaseSafe,
+            .lib = true,
+            // Always take the fork's cross path so nlua0 (its build-time Lua
+            // codegen tool) is built for the host with PUC Lua 5.1 instead of
+            // LuaJIT. nlua0 creates its state through zlua's Lua.init, i.e.
+            // lua_newstate with a malloc-backed allocator, and LuaJIT GC64
+            // only addresses 47-bit GC pointers: on 48-bit-VA hosts (GitHub's
+            // ubuntu-24.04-arm runners) malloc returns >=2^47 addresses that
+            // silently truncate and segfault in the first lpeg-heavy gen step.
+            // The runtime nvim library is unaffected (its C init uses
+            // luaL_newstate, LuaJIT's own sub-2^47 allocator) and keeps LuaJIT.
+            .host = @as([]const u8, "native"),
+        }) orelse break :nvim_tree null;
+        // The fork's build() returns early while ITS lazy deps (ziglua,
+        // libuv, ...) are still being fetched -- upstream's lazyArtifact
+        // pattern -- so on a cold cache the intermediate configure passes see
+        // the dependency but no registered artifacts. Look both up
+        // gracefully: null here just means "not this pass"; the build runner
+        // fetches the queued deps and reconfigures until they resolve. The
+        // panicking dep.artifact()/namedWriteFiles() would abort the whole
+        // build on the first cold pass (as it did in CI).
+        const nvim_lib = lazyArtifact(nvim_dep, "nvim") orelse break :nvim_tree null;
+        const nvim_runtime = nvim_dep.builder.named_writefiles.get("nvim_runtime") orelse break :nvim_tree null;
+        launcher_mod.linkLibrary(nvim_lib);
+        // LuaJIT FFI + nvim's own -E convention need the host's exported
+        // symbols visible (mirrors nvim_exe.rdynamic upstream).
+        stub.rdynamic = true;
+
+        const tree = b.addWriteFiles();
+        _ = tree.addCopyDirectory(nvim_runtime.getDirectory(), "runtime", .{});
+        _ = tree.addCopyDirectory(b.path("editor/ninja"), "ninja", .{});
+        // The grammar repo (pinned in build.zig.zon; the neovim fork compiles
+        // its parser in) is the single source of truth for jac queries and
+        // filetype conventions; fold them into the ninja rtp layer.
+        if (b.lazyDependency("treesitter_jac", .{})) |tsjac| {
+            _ = tree.addCopyDirectory(tsjac.path("queries"), "ninja/queries", .{});
+            _ = tree.addCopyDirectory(tsjac.path("ftplugin"), "ninja/ftplugin", .{});
+            _ = tree.addCopyDirectory(tsjac.path("ftdetect"), "ninja/ftdetect", .{});
+        }
+        if (b.lazyDependency("mini_nvim", .{})) |mini| {
+            // Only the modules + :help docs ride along (not mini's test suite).
+            _ = tree.addCopyDirectory(mini.path("lua"), "ninja/pack/ninja/start/mini.nvim/lua", .{});
+            _ = tree.addCopyDirectory(mini.path("doc"), "ninja/pack/ninja/start/mini.nvim/doc", .{});
+        }
+        break :nvim_tree tree.getDirectory();
+    } else null;
+
     b.step("stub", "Build just the launcher stub (no payload)")
         .dependOn(&b.addInstallArtifact(stub, .{}).step);
 
@@ -182,6 +246,27 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // Standalone: compile the in-repo wasm_rt libc (vendored musl/wasi-libc
+    // subset + jac allocator/io/abi adapters) to wasm32 LLVM bitcode under
+    // .pbs-build/wasm32/libc, so na->wasm builds link libc INTO the module
+    // (in-module libc + jac_host1 import contract, #7048) instead of leaking
+    // env imports. Unlike vendor-musl this is target-independent — bitcode
+    // for wasm32 is identical on every build host — so it runs everywhere.
+    // Editable/source checkouts and the test suite resolve it straight from
+    // .pbs-build via wasm_build.jac's _wasm_libc_dir.
+    {
+        const vendor_wasm_libc = b.addRunArtifact(tool);
+        vendor_wasm_libc.addArgs(&.{
+            "build-wasm-libc",
+            b.pathFromRoot("jaclang/compiler/passes/native/wasm_rt"),
+            b.pathFromRoot(".pbs-build/wasm32/libc"),
+            b.graph.zig_exe,
+        });
+        vendor_wasm_libc.has_side_effects = true;
+        b.step("vendor-wasm-libc", "Compile the wasm_rt libc to bitcode into .pbs-build/wasm32/libc")
+            .dependOn(&vendor_wasm_libc.step);
+    }
+
     const osarch = osArchString(target.result) orelse {
         // Unsupported target for a full binary; stub + test steps still work.
         return;
@@ -234,7 +319,8 @@ pub fn build(b: *std.Build) void {
         // finds a platform-matched shim for THIS fused runtime.
         mk.addPrefixedFileArg("--pyembed=", pyembed.getEmittedBin());
         b.getInstallStep().dependOn(&pyembed_place.step);
-        if (b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false) {
+        const skip_precompile = b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false;
+        if (skip_precompile) {
             mk.addArg("--skip-precompile");
         }
         // Editable dev binary: ship a payload WITHOUT the bundled compiler and
@@ -279,6 +365,35 @@ pub fn build(b: *std.Build) void {
             mk.addArg(b.fmt("--precompiled-cache={s}", .{b.pathFromRoot(".precompiled-build")}));
         }
 
+        // Fused ninja editor: stage the assembled nvim tree (runtime + config)
+        // into the payload. A directory arg normally defeats caching (the path
+        // alone is hashed -- see the NOTE below), but this path is a WriteFiles
+        // output in the content-addressed zig cache, so any content change
+        // moves the path and correctly invalidates the packed payload.
+        if (nvim_tree) |nt| {
+            mk.addPrefixedDirectoryArg("--nvim=", nt);
+            // Editable dev loop: like the compiler's --link-source, a linked
+            // binary serves the ninja config layer (init.lua + lua/) live
+            // from the source tree -- mkpayload bakes the marker the
+            // launcher's runNinja resolves at boot.
+            if (link_dir) |d| {
+                mk.addArg(b.fmt("--ninja-link={s}/editor/ninja", .{d}));
+            }
+        }
+
+        // Seal the runtime (issue #7135): a bundled release payload is fully
+        // source-free -- it boots from the JIR image + frozen jac0core bootstrap,
+        // with the stdlib + jaclang .py compiled to sourceless .pyc. This is the
+        // ONLY bundled shape (no source-shipping mode); it just needs a real
+        // bundled precompile, so it is inert under -Ddev/-Djaclang-dir
+        // (link-source, which serves the compiler from a live tree) and under
+        // -Dskip-precompile (link-validation builds).
+        const debug_src = b.option(bool, "debug-src", "Sealed build: embed source text in JIR so tracebacks show source lines (larger payload)") orelse false;
+        if (link_dir == null and !skip_precompile) {
+            mk.addArg("--seal");
+            if (debug_src) mk.addArg("--debug-src");
+        }
+
         // Contained bun runtime: fetch the pinned bun for the target and bundle
         // it inside the client package via --bun. Mirrors the fetch-pbs pattern
         // (download + sha256-verify, all in the payload tool). A BUN_VERSION
@@ -315,6 +430,24 @@ pub fn build(b: *std.Build) void {
             vendor_musl.has_side_effects = true;
             mk.step.dependOn(&vendor_musl.step);
             mk.addArg(b.fmt("--musl={s}", .{musl_lib}));
+        }
+
+        // Wasm32 libc bitcode: compile the in-repo wasm_rt sources (payload
+        // tool's `build-wasm-libc`, mirrors the musl block above) and bundle
+        // them so a shipped binary links libc into na->wasm modules at build
+        // time (#7048). Target-independent, so every platform bundles it.
+        if (link_dir == null) {
+            const wasm_libc = b.pathFromRoot(".pbs-build/wasm32/libc");
+            const vendor_wasm = b.addRunArtifact(tool);
+            vendor_wasm.addArgs(&.{
+                "build-wasm-libc",
+                b.pathFromRoot("jaclang/compiler/passes/native/wasm_rt"),
+                wasm_libc,
+                b.graph.zig_exe,
+            });
+            vendor_wasm.has_side_effects = true;
+            mk.step.dependOn(&vendor_wasm.step);
+            mk.addArg(b.fmt("--wasm-libc={s}", .{wasm_libc}));
         }
 
         // Track the payload's real inputs so it repacks when any source changes.
@@ -676,6 +809,21 @@ fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     });
     const payload_tests = b.addTest(.{ .name = "payload-tests", .root_module = payload_mod });
     test_step.dependOn(&b.addRunArtifact(payload_tests).step);
+}
+
+/// Non-panicking Dependency.artifact(): null while the dependency's own lazy
+/// deps are still being fetched (its build() registered nothing yet). Same
+/// helper the neovim fork's build.zig carries for the identical upstream gap.
+fn lazyArtifact(d: *std.Build.Dependency, name: []const u8) ?*std.Build.Step.Compile {
+    var found: ?*std.Build.Step.Compile = null;
+    for (d.builder.install_tls.step.dependencies.items) |dep_step| {
+        const inst = dep_step.cast(std.Build.Step.InstallArtifact) orelse continue;
+        if (std.mem.eql(u8, inst.artifact.name, name)) {
+            if (found != null) std.debug.panic("artifact name '{s}' is ambiguous", .{name});
+            found = inst.artifact;
+        }
+    }
+    return found;
 }
 
 /// Map a target to the pbs platform token the fetch-pbs subcommand understands,

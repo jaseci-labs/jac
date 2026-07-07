@@ -53,7 +53,11 @@ test "dev vite config registers the port reporter; build config does not" {
         # the jac CLI reads it instead of parsing Vite's stdout.
         assert "jac-port-reporter" in dev_content;
         assert ".dev-port" in dev_content;
-        build_config = bundler.create_vite_config(entry, is_dev=False);
-        assert "jac-port-reporter" not in build_config.read_text();
+        # Build errors surface through Vite's native overlay in dev mode
+        assert "jac-build-error-overlay" in dev_content;
+        assert ".jac-build-error.json" in dev_content;
+        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        assert "jac-port-reporter" not in build_content;
+        assert "jac-build-error-overlay" not in build_content;
     }
 }
