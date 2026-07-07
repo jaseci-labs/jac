@@ -22,6 +22,12 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
          },
          "data.mongo": {"context": "runtime", "deps": {"pymongo": ">=4.15.4,<5.0.0"}},
          "data.redis": {"context": "runtime", "deps": {"redis": ">=7.1.0,<8.0.0"}},
+         "data.sql": {"context": "runtime", "deps": {"sqlalchemy": ">=2.0.0,<3.0.0"}},
+         "env": {"context": "runtime", "deps": {"python-dotenv": ">=1.2.1,<2.0.0"}},
+         "upload": {
+             "context": "runtime",
+             "deps": {"python-multipart": ">=0.0.21,<1.0.0"}
+         },
          "monitoring": {
              "context": "runtime",
              "deps": {"prometheus-client": ">=0.21.0,<1.0.0"}

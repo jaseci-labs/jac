@@ -1501,7 +1501,7 @@ test "jac install -e links all packages for space-separated and repeated flag fo
 
 test "jac install <pkg> routes package names to the project venv installer" {
     # Verifies CLI wiring: positional args map into `packages` and are installed
-    # into the current project's venv. install_package is patched so the test
+    # into the current project's venv. install_specs is patched so the test
     # touches neither the network nor a real venv.
     import from unittest.mock { patch }
 
@@ -1513,13 +1513,14 @@ test "jac install <pkg> routes package names to the project venv installer" {
         );
         os.chdir(_tmpdir);
         captured: list = [];
-        def fake_install_package(self: object, specs: object) -> bool {
+        def fake_install_specs(
+            self: object, config: object, specs: object, ctx: object
+        ) -> bool {
             captured.append(specs);
             return True;
         }
         with patch(
-            "jaclang.project.dependencies.DependencyInstaller.install_package",
-            fake_install_package
+            "jaclang.project.providers.PythonProvider.install_specs", fake_install_specs
         ) {
             result = project.install(packages=["numpy", "pandas"]);
         }
