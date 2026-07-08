@@ -82,7 +82,7 @@ obj MicroserviceManifestBuilder {
         console.print(f"Building the client bundle on the host ({client_entry}).");
         try {
             subprocess.run(
-                [jac_executable(), "build", client_entry],
+                [jac_executable(), "build", client_entry, "--client", "web"],
                 cwd=project_dir,
                 check=True,
                 timeout=900
@@ -175,7 +175,7 @@ obj MicroserviceManifestBuilder {
         } elif getattr(self.k8s_config, "ops_console_mutations", False) {
             if self.logger {
                 self.logger.warning(
-                    "[plugins.scale.kubernetes].ops_console_mutations is set but "
+                    "[scale.kubernetes].ops_console_mutations is set but "
                     "ops_console is false; no Ops Console RBAC will be provisioned. "
                     "Set ops_console = true to enable it."
                 );
@@ -190,7 +190,7 @@ obj MicroserviceManifestBuilder {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
         # Auto-discover services from `sv import` so a microservice app deploys
-        # with no [plugins.scale.microservices.routes] section (explicit routes
+        # with no [scale.microservices.routes] section (explicit routes
         # still win). Mirrors the local-serve path; cache the result so the
         # gateway's JAC_SV_ROUTES env and the ingress rules see the same routes.
         import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
@@ -203,7 +203,7 @@ obj MicroserviceManifestBuilder {
         if not routes {
             raise ValueError(
                 "No microservices found to deploy: declare "
-                "[plugins.scale.microservices.routes] in jac.toml, or add "
+                "[scale.microservices.routes] in jac.toml, or add "
                 "`sv import` / `to sv:` services under the project root so they "
                 "can be auto-discovered."
             );

@@ -109,3 +109,44 @@ def type_to_str(t: object) -> str {
     }
     return str(t);
 }
+
+def fetch_mtir(func: Callable) -> Info | None {
+    import sys;
+    import from pathlib { Path }
+    import from jaclang.jac0core.runtime { JacRuntime }
+    module_name = None;
+    try {
+        module_name = getattr(func, "__module__");
+    } except AttributeError {
+        module_name = None;
+    }
+
+    if module_name and module_name == "__main__" {
+        main_mod = sys.modules.get("__main__");
+        main_file = main_mod?.__file__ if main_mod else None;
+        if main_file {
+            stem = Path(main_file).stem;
+
+            if stem.endswith(".impl") {
+                stem = stem[:-5];
+            } elif stem.endswith(".cl") or stem.endswith(".sv") {
+                stem = stem[:-3];
+            }
+            module = stem;
+        } else {
+            module = Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__";
+        }
+    } elif module_name {
+        module = module_name;
+    } else {
+        module = "__main__";
+    }
+
+    try {
+        qualname = func.__qualname__;
+        current_scope = ".".join([module, qualname]);
+        return JacRuntime.get_mtir_from_map(current_scope);
+    } except (KeyError, AttributeError) {
+        return None;
+    }
+}

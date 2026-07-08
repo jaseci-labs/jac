@@ -107,6 +107,22 @@ jobs:
           restore-keys: |
             jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
 
+      # The Zig package store (.zig-cache/p): the neovim fork + its transitive
+      # PUC Lua source off lua.org's FTP (the build's flakiest fetch), mini.nvim,
+      # tree-sitter-jac, etc. Content-addressed source packages -- immutable, so
+      # (unlike the payload-artifact caches above, kept dev-only to avoid
+      # shipping stale bits) this is safe on BOTH channels, and a release is
+      # exactly when a lua.org blip must not fail the build. Same key as
+      # setup-jac so the Linux-x86_64 leg reuses the entry main seeds; a cross
+      # -Dtarget build fetches the same source, so os/arch is the right axis.
+      - name: Cache the Zig package store (avoids re-fetching Lua/neovim deps)
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache/p
+          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+          restore-keys: |
+            zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Install host tools (zstd)
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then

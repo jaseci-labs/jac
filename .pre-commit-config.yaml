@@ -93,7 +93,7 @@ repos:
       - id: jac-format
         name: jac-format
         description: Format and lint-fix Jac files
-        entry: jac format
+        entry: jac fmt
         language: system
         types: [file]
         args: [--lintfix]

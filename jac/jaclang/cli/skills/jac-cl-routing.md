@@ -90,7 +90,7 @@ pages/
 The default redirect for unauthenticated users is `/login`. To change it, set `auth_redirect` in `jac.toml`:
 
 ```toml
-[plugins.client.routing]
+[client.routing]
 auth_redirect = "/signin"
 ```
 

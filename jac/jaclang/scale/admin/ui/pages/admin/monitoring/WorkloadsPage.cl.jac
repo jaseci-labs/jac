@@ -159,7 +159,7 @@ cl {
                     <p className="text-sm text-muted">
                         Enable in jac.toml:
                         <span className="font-mono text-fg ml-1">
-                            [plugins.scale.monitoring] enabled = true
+                            [scale.monitoring] enabled = true
                         </span>
                     </p>
                 </div>;

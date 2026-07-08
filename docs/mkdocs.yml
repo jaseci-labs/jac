@@ -59,7 +59,6 @@ nav:
           - WebAssembly in the Browser: "tutorials/native/wasm.md"
       - Package & Extend:
           - Publish a Library: "tutorials/extend/publish-a-library.md"
-          - Build a Jac Plugin: "tutorials/extend/build-a-plugin.md"
       - Ship It — Deploy & Scale:
           - Local API Server: "tutorials/production/local.md"
           - Microservices with sv import: "tutorials/production/microservices.md"
@@ -96,7 +95,7 @@ nav:
           - CLI Commands: "reference/cli/index.md"
           - MCP Server: "reference/mcp.md"
           - Agent Skills & MCP: "quick-guide/agent-skills-and-mcp.md"
-          - Plugin Authoring: "reference/plugin-authoring.md"
+          - Plugins (Removed): "reference/plugin-authoring.md"
           - Configuration: "reference/config/index.md"
           - Publishing Packages: "reference/publishing.md"
           - Persistence & Schema Migration: "reference/persistence.md"

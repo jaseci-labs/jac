@@ -78,11 +78,11 @@ The built-in roles gate *platform* surfaces (admin portal, `/metrics`). For **ap
 The default signing secret is `supersecretkey_for_testing_only!` - anyone who knows it can forge tokens for any user. Always set a real secret in production:
 
 ```toml
-[plugins.scale.jwt]
+[scale.jwt]
 secret = "long-random-string"     # or env JWT_SECRET; algorithm HS256, exp_delta_days 7
 ```
 
-No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/GitHub): configure `[plugins.scale.sso.<platform>]` and send users to `/sso/<platform>/login`.
+No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/GitHub): configure `[scale.sso.<platform>]` and send users to `/sso/<platform>/login`.
 
 ## Sharing data with specific users
 

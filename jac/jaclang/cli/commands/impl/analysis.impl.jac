@@ -14,11 +14,16 @@ impl check(
     ignore: (list | None) = None,
     disable_error_code: (list | None) = None,
     parse_only: bool = False,
-    nowarn: bool = False
+    nowarn: bool = False,
+    lint_only: bool = False,
+    fix: bool = False
 ) -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
     import from time { time }
+    if lint_only {
+        return lint(paths=paths, fix=fix, ignore=ignore);
+    }
     if isinstance(paths, str) {
         paths = [paths];
     }
@@ -555,7 +560,7 @@ impl format(
         if len(unformatted_files) > 0 {
             console.error("The following files are not properly formatted:");
             for file in unformatted_files {
-                console.error(f"  jac format --lintfix {file}");
+                console.error(f"  jac fmt --lintfix {file}");
             }
             has_errors = True;
         }
@@ -968,7 +973,7 @@ impl gen_parser -> int {
     return 0;
 }
 
-impl grammar(lark: bool = False, output: str = "") -> int {
+impl grammar(output: str = "") -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
     import jaclang;
@@ -989,16 +994,13 @@ impl grammar(lark: bool = False, output: str = "") -> int {
         console.error("No grammar rules extracted.");
         return 1;
     }
-    text = pass_.emit_lark() if lark else pass_.emit_ebnf();
+    text = pass_.emit_ebnf();
     if output {
         with open(output, "w", encoding="utf-8") as f {
             f.write(text);
             f.write("\n");
         }
-        fmt_name = "Lark" if lark else "EBNF";
-        console.success(
-            f"{fmt_name} grammar ({len(pass_.rules)} rules) written to {output}"
-        );
+        console.success(f"EBNF grammar ({len(pass_.rules)} rules) written to {output}");
     } else {
         console.print(text);
     }
