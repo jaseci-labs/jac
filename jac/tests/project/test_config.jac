@@ -24,7 +24,7 @@ glob FIXTURE_BASE = str(Path(__file__).parent / "fixtures"),
      JAC_TOML_CONTENT = "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\ndescription = \"A test project\"\nentry-point = \"main.jac\"\n\n[dependencies]\nrequests = \">=2.28.0\"\n\n[dev-dependencies]\npytest = \">=8.0.0\"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = \"jac test\"\n",
      MAIN_JAC_CONTENT = "\"\"\"Test main file.\"\"\"\n\nwith entry {\n    print(\"Hello, World!\");\n}\n",
      BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\nbase_route_app = \"app\"\n\n[client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies]\nwatchdog = \">=3.0\"\n",
-     PROD_TOML = "[serve]\nport = 80\n\n[client]\nminify = true\n\n[byllm]\ndefault_model = \"gpt-4\"\n",
+     PROD_TOML = "[serve]\nport = 80\n\n[plugins.client]\nminify = true\n\n[byllm]\ndefault_model = \"gpt-4\"\n",
      LOCAL_TOML = "[serve]\nport = 9000\n\n[run]\ncache = false\n";
 
 """Create a temporary project directory with jac.toml."""
@@ -1380,6 +1380,121 @@ test "client plugins client deep merge" {
     assert cfg.client.framework == "preact";
     assert cfg.plugins["client"]["framework"] == "preact";
     assert cfg.plugins["client"]["minify"] is True;
+}
+
+test "load plugins client section from jac.toml file" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            "[project]\nname = \"p\"\n\n[plugins.client]\nminify = true\n"
+        );
+        cfg = JacConfig.load(toml_path);
+        assert cfg.get_plugin_config("client")["minify"] is True;
+    }
+}
+
+test "profile overlay file applies plugins client section" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = Path(tmpdir) / "proj";
+        temp_project.mkdir();
+        (temp_project / "jac.toml").write_text(
+            "[project]\nname = \"p\"\n\n[plugins.client]\nminify = false\n"
+        );
+        (temp_project / "jac.prod.toml").write_text(
+            "[plugins.client]\nminify = true\n"
+        );
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        cfg.apply_profile_overlay("prod");
+        assert cfg.plugins["client"]["minify"] is True;
+        assert cfg.active_profile == "prod";
+    }
+}
+
+test "plugins client deep merge on overlay" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = Path(tmpdir) / "proj";
+        temp_project.mkdir();
+        (temp_project / "jac.toml").write_text(
+            "[project]\nname = \"p\"\n\n[plugins.client.vite]\nport = 3000\n"
+        );
+        overlay = temp_project / "overlay.toml";
+        overlay.write_text(
+            "[plugins.client]\nminify = true\n\n[plugins.client.vite]\nhmr = true\n"
+        );
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        cfg.merge_from_toml_file(overlay);
+        assert cfg.plugins["client"]["minify"] is True;
+        assert cfg.plugins["client"]["vite"]["port"] == 3000;
+        assert cfg.plugins["client"]["vite"]["hmr"] is True;
+    }
+}
+
+test "client plus plugins client coexist on merge" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = Path(tmpdir) / "proj";
+        temp_project.mkdir();
+        (temp_project / "jac.toml").write_text(
+            "[project]\nname = \"p\"\n\n[client]\nframework = \"react\"\n"
+        );
+        overlay = temp_project / "overlay.toml";
+        overlay.write_text("[plugins.client]\nminify = true\n");
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        cfg.merge_from_toml_file(overlay);
+        assert cfg.client.framework == "react";
+        assert cfg.plugins["client"]["minify"] is True;
+    }
+}
+
+test "create custom template without client stamps section" {
+    import os;
+    import shutil;
+    import from jaclang.cli.commands { project }
+    import from jaclang.project.template_registry {
+        get_template_registry,
+        initialize_template_registry
+    }
+    config_mod._config = None;
+    os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
+    initialize_template_registry();
+    registry = get_template_registry();
+    registry.register(
+        {
+            "name": "client-no-section-test",
+            "description": "web-app jacpack without [client]",
+            "kind": "web-app",
+            "is_default_for_kind": False,
+            "config": {
+                "project": {"name": "{{name}}", "version": "0.1.0", "kind": "web-app"},
+                "dependencies": {"npm": {"jac-client-node": "1.0.7", "zod": "^3.0.0"}}
+            },
+            "files": {"main.jac": 'with entry { print("hi"); }\n'},
+            "directories": []
+        }
+    );
+    d = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(d);
+        rc = project.create(name="app", use="client-no-section-test", force=True);
+        assert rc == 0;
+        proj = Path(d) / "app";
+        toml = (proj / "jac.toml").read_text();
+        assert "[client]" in toml , (
+            "custom web-app template must stamp [client] when omitted"
+        );
+        assert "jac-client-node" in toml , "npm deps from template must survive";
+        assert "zod" in toml , "npm deps from template must survive";
+        cfg = JacConfig.load(proj / "jac.toml");
+        assert cfg.project.kind == "web-app";
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(d, ignore_errors=True);
+        os.environ.pop("JAC_CLIENT_SKIP_NPM_INSTALL", None);
+    }
 }
 
 test "stamp kind adds client section when template omits it" {

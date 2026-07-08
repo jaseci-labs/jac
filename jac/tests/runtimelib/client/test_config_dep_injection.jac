@@ -1,9 +1,9 @@
 """Tests for client npm dependency injection gating in JacClientConfig.load().
 
-Reading client config must NEVER mutate a project's jac.toml. For projects
-that opted into the client via [client], the core runtime/dev deps
-are injected into the *effective* dependency set at resolve time (visible to
-the bundler and the npm provider plan) without being written back; jac.toml
+Reading client config must NEVER mutate a project's jac.toml. Client npm deps
+are injected into the effective dependency set when the project needs the client
+stack: explicit [client] config, legacy jac-client dep, or a client project kind
+(web-app, web-static, desktop, mobile). Injection is in-memory only; jac.toml
 only records what the user asked for.
 """
 
@@ -96,6 +96,59 @@ test "client project gets dependencies injected on load" {
         } finally {
             os.chdir(original_cwd);
         }
+    }
+}
+
+# =============================================================================
+# Client kind without [client]: kind alone triggers injection (no sentinel)
+# =============================================================================
+"""A web-app kind without [client] still gets core deps at resolve time."""
+test "client kind without client section gets deps injected on load" {
+    import from jaclang.runtimelib.client.config_loader { JacClientConfig }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            (config_path, original_bytes) = _write_toml(
+                temp_dir,
+                '[project]\nname = "client-app"\nversion = "1.0.0"\n'
+                'entry-point = "main.jac"\nkind = "web-app"\n'
+            );
+            Path(temp_dir, "main.jac").write_text('with entry { print("hi"); }\n');
+
+            config = JacClientConfig(Path(temp_dir));
+            pkg = config.get_package_config();
+
+            deps = pkg.get("dependencies", {});
+            dev_deps = pkg.get("devDependencies", {});
+            assert "react" in deps;
+            assert "zod" in deps;
+            assert "vite" in dev_deps;
+            assert config_path.read_bytes() == original_bytes;
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+test "client kind without client section gets npm provider self heal" {
+    import from jaclang.project.config { JacConfig }
+    import from jaclang.runtimelib.client.npm_provider { NpmProvider }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        (config_path, _) = _write_toml(
+            temp_dir,
+            '[project]\nname = "client-app"\nversion = "1.0.0"\n'
+            'entry-point = "main.jac"\nkind = "web-app"\n'
+        );
+        Path(temp_dir, "main.jac").write_text('with entry { print("hi"); }\n');
+        config = JacConfig.load(config_path);
+        resolved = NpmProvider().resolve(config);
+        by_name = {d.name: d for d in resolved};
+        assert by_name["react"].origin == "self-heal:client-core";
+        assert by_name["zod"].origin == "self-heal:client-core";
+        assert by_name["vite"].origin == "self-heal:client-core";
     }
 }
 

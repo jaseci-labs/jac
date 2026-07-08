@@ -2,25 +2,24 @@ import os;
 import from jaclang.project.config { JacConfig }
 import from jaclang.jac0core.ext_registry { base_stem, codespace_of, MODULE_SUFFIXES }
 
-glob KIND_SPECS: dict[str, dict[str, str]] = {
-         "cli": {"entry": "main.jac", "plugin": ""},
-         "cli-native": {"entry": "main.na.jac", "plugin": ""},
-         "native-binary": {"entry": "main.na.jac", "plugin": ""},
-         "native-lib": {"entry": "main.na.jac", "plugin": ""},
-         "service": {"entry": "main.sv.jac", "plugin": ""},
-         "service-mesh": {"entry": "main.sv.jac", "plugin": ""},
-         "py-package": {"entry": "lib.jac", "plugin": ""},
-         "js-package": {"entry": "lib.jac", "plugin": ""},
-         "web-app": {"entry": "main.jac", "plugin": ""},
-         "web-static": {"entry": "main.jac", "plugin": ""},
-         "desktop": {"entry": "main.jac", "plugin": ""},
-         "mobile": {"entry": "main.jac", "plugin": ""}
+glob KIND_SPECS: dict[str, dict] = {
+         "cli": {"entry": "main.jac", "plugin": "", "client": False},
+         "cli-native": {"entry": "main.na.jac", "plugin": "", "client": False},
+         "native-binary": {"entry": "main.na.jac", "plugin": "", "client": False},
+         "native-lib": {"entry": "main.na.jac", "plugin": "", "client": False},
+         "service": {"entry": "main.sv.jac", "plugin": "", "client": False},
+         "service-mesh": {"entry": "main.sv.jac", "plugin": "", "client": False},
+         "py-package": {"entry": "lib.jac", "plugin": "", "client": False},
+         "js-package": {"entry": "lib.jac", "plugin": "", "client": False},
+         "web-app": {"entry": "main.jac", "plugin": "", "client": True},
+         "web-static": {"entry": "main.jac", "plugin": "", "client": True},
+         "desktop": {"entry": "main.jac", "plugin": "", "client": True},
+         "mobile": {"entry": "main.jac", "plugin": "", "client": True}
      },
-     VALID_KINDS: list[str] = list(KIND_SPECS.keys()),
-     CLIENT_KINDS: list[str] = ["web-app", "web-static", "desktop", "mobile"];
+     VALID_KINDS: list[str] = list(KIND_SPECS.keys());
 
 def kind_has_client(kind: str) -> bool {
-    return kind in CLIENT_KINDS;
+    return KIND_SPECS.get(kind, {}).get("client", False);
 }
 
 def ensure_client_config_section(config: dict, kind: str) {
@@ -74,7 +73,7 @@ def _entry_stem(path: str) -> str {
     return base_stem(path);
 }
 
-def _has_client(config: JacConfig) -> bool {
+def _config_signals_client(config: JacConfig) -> bool {
     if "jac-client" in config.dependencies {
         return True;
     }
@@ -84,6 +83,20 @@ def _has_client(config: JacConfig) -> bool {
     }
 
     return False;
+}
+
+def project_needs_client_stack(config: JacConfig) -> bool {
+    if _config_signals_client(config) {
+        return True;
+    }
+    kind = config.project.kind.strip() if config.project.kind else "";
+    if not kind and config.project_root is not None {
+        entry_path = resolve_entry(config, str(config.project_root));
+        if entry_path {
+            kind = resolve_project_kind(config, entry_path);
+        }
+    }
+    return kind_has_client(kind);
 }
 
 def resolve_entry(config: JacConfig, project_root: str) -> str {
@@ -119,7 +132,7 @@ def resolve_project_kind(config: JacConfig, entry_path: str) -> str {
     if (entry_codespace == 'client') {
         return "web-app";
     }
-    if _has_client(config) {
+    if _config_signals_client(config) {
         return "web-app";
     }
     return "cli";
