@@ -23,12 +23,14 @@ import from jaclang.jac0core.diagnostics {
 obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
-        cancel_token: any = None;
+        cancel_token: any = None,
+        _ambient_typing_names: frozenset | None = None;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _check_unused_symbols(scope: uni.UniScopeNode) -> None;
     def _check_undefined_names(mod: uni.Module) -> None;
+    def _get_ambient_typing_names -> frozenset;
     def _literal_case_suggestion(name: str) -> (str | None);
     def _osp_shape_position(name_nd: uni.Name) -> (str | None);
     def _native_type_position(name_nd: uni.Name) -> (str | None);

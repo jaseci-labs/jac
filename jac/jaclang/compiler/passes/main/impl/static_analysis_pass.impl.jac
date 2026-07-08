@@ -89,6 +89,13 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
             continue;
         }
 
+        if (
+            (mod.parent_scope and name_nd.value in mod.parent_scope.names_in_scope)
+            or name_nd.value in self._get_ambient_typing_names()
+        ) {
+            continue;
+        }
+
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
         }
@@ -140,6 +147,39 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         }
         self.emit(W2001, node_override=name_nd, name=name_nd.value, help_text=hint);
     }
+}
+
+
+impl StaticAnalysisPass._get_ambient_typing_names -> frozenset {
+    if self._ambient_typing_names is not None {
+        return self._ambient_typing_names;
+    }
+    import os;
+    pyi_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "type_system", "typing_ambient.pyi"
+    );
+    names: set = set();
+    try {
+        tree = ast3.parse(open(pyi_path).read());
+        for node in tree.body {
+            if (
+                isinstance(node, ast3.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast3.Name)
+                and node.targets[0].id == "__all__"
+                and isinstance(node.value, (ast3.List, ast3.Tuple))
+            ) {
+                for elt in node.value.elts {
+                    if isinstance(elt, ast3.Constant) and isinstance(elt.value, str) {
+                        names.add(elt.value);
+                    }
+                }
+                break;
+            }
+        }
+    } except Exception { }
+    self._ambient_typing_names = frozenset(names);
+    return self._ambient_typing_names;
 }
 
 
