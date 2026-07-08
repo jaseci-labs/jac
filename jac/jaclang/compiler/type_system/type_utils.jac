@@ -83,6 +83,8 @@ enum CompletionItemKind {
 
 def doc_of_sym(sym: Symbol) -> (str | None);
 
+def completion_item_from_sym(name: str, sym: Symbol) -> CompletionItem;
+
 def completion_kind_from_sym(sym: Symbol) -> int;
 
 def get_completion_items(
