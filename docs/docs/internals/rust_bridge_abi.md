@@ -138,6 +138,24 @@ void jac_<mod>_<Type>_drop(u64 handle);
 Idempotent on `0`.  The M3 codegen synthesises a call to this from the Jac
 object's RC destructor.
 
+### Callback parameters (`TAG_FN`)
+
+Callback parameters are declared in the D2 blob with param tag `TAG_FN` (5).
+On the wire they cross as a single `u64` that is the address of a two-word
+`{call, ctx}` record (`JacCallbackRaw`): `call` is a C-ABI thunk
+`(ctx, *const u8, u32, *mut JacBuf, *mut u64) -> i32`, and `ctx` is an opaque
+context threaded into every invocation (non-null for na closures with captures).
+The thunk hands replacement text back through `jac_<mod>_make_buf`, which is
+emitted only on bridges that declare a callback parameter.
+
+**ABI v1 known limitation (na codegen):** the native compiler does not read
+`TAG_FN` at the call site. `_lambda_arg_is_callback` promotes a `lambda`
+argument to the trampoline path when (1) a bridge `make_buf` sink is registered,
+and (2) the LLVM argument slot is `i64`. That is a shape heuristic, not
+metadata-driven dispatch. It is sufficient for v1 because callbacks are the only
+bridged `i64` parameters that accept lambdas; TYPE-MODEL-V2 should pass
+`FnDesc` param tags through to na IR generation.
+
 ---
 
 ## 4. D2 metadata section

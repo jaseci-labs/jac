@@ -172,6 +172,17 @@ The bridge boundary marshals a fixed set of shapes between Rust and Jac:
 The exact wire encoding, status codes, and shim naming are documented in the
 [Rust Bridge ABI](../../internals/rust_bridge_abi.md) internals reference.
 
+### Known limitations (ABI v1)
+
+!!! warning "Callback detection on na"
+    On the native (`nacompile`) path, a `lambda` argument is lowered to a
+    callback trampoline when it lands in an `i64` parameter slot and the loaded
+    bridge exposes a `make_buf` sink, not by consulting the callee's declared
+    `TAG_FN` parameter tag in the bridge metadata. This shape-based gate is
+    narrow enough for ABI v1 (callbacks are the only bridged `i64` params that
+    accept lambdas today), but a future ABI should thread `FnDesc` param tags
+    into na codegen so detection follows the blob, not the LLVM slot type.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |

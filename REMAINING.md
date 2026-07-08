@@ -63,6 +63,7 @@ These are **not** “finish M6” items - they need TYPE-MODEL-V2 or accepted v1
 | Nested containers | `list[list]`, `dict[str, list]` |
 | Nullable scalars | `Option<bool>`, `Option<int>` |
 | General callbacks | only `str→str` replacer; `replacen` still skipped |
+| na callback detection | `_lambda_arg_is_callback` keys off lambda + i64 slot + `make_buf` sink, not callee `TAG_FN` (ABI v1 heuristic) |
 | Tuples | non-empty |
 | Struct / enum by value | opaque handles only |
 | Unpinned generics | `Date<Tz>` dropped without overlay |
