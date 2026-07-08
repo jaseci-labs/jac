@@ -172,3 +172,49 @@ test "jac call function sends params directly" {
     assert "'args': args" not in content , "client_runtime should NOT wrap params in 'args' object";
     assert "JSON.stringify(args)" in content , "client_runtime should send params directly with JSON.stringify(args)";
 }
+
+test "lowercase client components get PascalCase runtime names with export contract intact" {
+    mod = compile_inline(
+        "cl {\n"
+        "    def:pub page() -> JsxElement {\n"
+        "        return <div>home</div>;\n"
+        "    }\n"
+        "    def:pub Counter() -> JsxElement {\n"
+        "        return <p>c</p>;\n"
+        "    }\n"
+        "    def:pub helper() -> str {\n"
+        "        return \"x\";\n"
+        "    }\n"
+        "}\n"
+    );
+    js = mod.gen.js;
+    # React Fast Refresh/DevTools detect components by PascalCase function.name;
+    # the lowercase alias keeps the export name and in-module references working.
+    assert "function Page()" in js;
+    assert "const page = Page;" in js;
+    assert "page" in mod.gen.client_manifest.exports;
+    assert "Page" not in mod.gen.client_manifest.exports;
+    # Already-PascalCase components and non-component functions are untouched
+    assert "function Counter()" in js;
+    assert "const Counter" not in js;
+    assert "function helper()" in js;
+    assert "function Helper" not in js;
+}
+
+test "component rename is skipped when the PascalCase name is already taken" {
+    mod = compile_inline(
+        "cl {\n"
+        "    def:pub Page() -> JsxElement {\n"
+        "        return <p>explicit</p>;\n"
+        "    }\n"
+        "    def:pub page() -> JsxElement {\n"
+        "        return <div>home</div>;\n"
+        "    }\n"
+        "}\n"
+    );
+    js = mod.gen.js;
+    # Renaming would emit two `function Page` declarations -- must fall back
+    assert js.count("function Page()") == 1;
+    assert "function page()" in js;
+    assert "const page" not in js;
+}

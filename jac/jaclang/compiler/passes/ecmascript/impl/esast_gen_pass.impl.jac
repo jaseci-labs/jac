@@ -974,6 +974,29 @@ impl EsastGenPass._return_type_includes_jsx_element(rt: uni.Expr) -> bool {
     return isinstance(rt, uni.Name) and rt.value == 'JsxElement';
 }
 
+impl EsastGenPass._component_pascal_name(nd: uni.Ability) -> (str | None) {
+    if nd.code_context != CodeContext.CLIENT or nd.is_method {
+        return None;
+    }
+    if not isinstance(nd.signature, uni.FuncSignature) {
+        return None;
+    }
+    rt = nd.signature.return_type;
+    if rt is None or not self._return_type_includes_jsx_element(rt) {
+        return None;
+    }
+    name = nd.name_ref.sym_name;
+    if not name or not ('a' <= name[0] and name[0] <= 'z') {
+        return None;
+    }
+    pascal = name[0].upper() + name[1:];
+    mod = nd.find_parent_of_type(uni.Module);
+    if mod is not None and mod.lookup(pascal, deep=False) is not None {
+        return None;
+    }
+    return pascal;
+}
+
 impl EsastGenPass._component_call_abi(ability_node: uni.Ability) -> str {
     cached_abi = ability_node.gen?.component_call_abi;
     if isinstance(cached_abi, str) and cached_abi {
@@ -3842,13 +3865,47 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
             es.VariableDeclaration(declarations=[declarator], kind='const'), jac_node=nd
         );
     } else {
-        func_decl = self.sync_loc(
-            es.FunctionDeclaration(
-                id=func_id, params=params, body=block, async_=nd.is_async
-            ),
-            jac_node=nd
-        );
-        nd.gen.es_ast = func_decl;
+        pascal = self._component_pascal_name(nd);
+        if pascal is not None {
+            func_decl = self.sync_loc(
+                es.FunctionDeclaration(
+                    id=self.sync_loc(es.Identifier(name=pascal), jac_node=nd.name_ref),
+                    params=params,
+                    body=block,
+                    async_=nd.is_async
+                ),
+                jac_node=nd
+            );
+            alias_decl = self.sync_loc(
+                es.VariableDeclaration(
+                    declarations=[
+                        self.sync_loc(
+                            es.VariableDeclarator(
+                                id=self.sync_loc(
+                                    es.Identifier(name=nd.name_ref.sym_name),
+                                    jac_node=nd.name_ref
+                                ),
+                                `init=self.sync_loc(
+                                    es.Identifier(name=pascal), jac_node=nd.name_ref
+                                ),
+                            ),
+                            jac_node=nd
+                        )
+                    ],
+                    kind='const'
+                ),
+                jac_node=nd
+            );
+            nd.gen.es_ast = [func_decl, alias_decl];
+        } else {
+            func_decl = self.sync_loc(
+                es.FunctionDeclaration(
+                    id=func_id, params=params, body=block, async_=nd.is_async
+                ),
+                jac_node=nd
+            );
+            nd.gen.es_ast = func_decl;
+        }
     }
 }
 
