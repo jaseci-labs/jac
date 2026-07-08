@@ -63,15 +63,3 @@ def c2jac(
     force_include: list | None = None,
     nostdinc: bool = False
 ) -> int;
-
-@registry.command(
-    name="js",
-    help="[Deprecated] Alias for 'jac2js'. Convert Jac code to JavaScript",
-    args=[Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"), ],
-    examples=[
-        ("jac js myprogram.jac", "Deprecated; prefer 'jac jac2js myprogram.jac'"),
-
-    ],
-    group="transform"
-)
-def js(filename: str) -> int;
