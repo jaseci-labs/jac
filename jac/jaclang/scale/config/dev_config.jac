@@ -13,33 +13,17 @@ is already built from main HEAD, so cloning main to overlay the same code would
 be redundant, and stable runs the published release as-is.
 """
 
-import tomllib;
 import from pathlib { Path }
 
-glob CHANNEL_STABLE: str = "stable",
-     CHANNEL_DEV: str = "dev";
+
+enum Channel { STABLE = "stable", DEV = "dev" }
 
 
-obj DevDeploy {
-    has channel: str = CHANNEL_STABLE;
-}
-
-
-def resolve_dev_deploy(project_dir: str) -> DevDeploy {
-    import from jaclang.jac0core.modresolver { find_project_root }
-    found = find_project_root(Path(project_dir));
-    if found is None {
-        return DevDeploy();
+def resolve_dev_channel(project_dir: str) -> Channel {
+    import from jaclang.project.config { get_config_for_path }
+    config = get_config_for_path(Path(project_dir));
+    if config is None or config.get_section("dev") is None {
+        return Channel.STABLE;
     }
-    (_, toml) = found;
-    raw = toml.read_bytes();
-    if b"dev" not in raw {
-        return DevDeploy();
-    }
-    data = tomllib.loads(raw.decode("utf-8"));
-    section = data.get("dev");
-    if not isinstance(section, dict) {
-        return DevDeploy();
-    }
-    return DevDeploy(channel=CHANNEL_DEV);
+    return Channel.DEV;
 }

@@ -3,12 +3,7 @@ import io;
 import tarfile;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.config.dev_config {
-    resolve_dev_deploy,
-    DevDeploy,
-    CHANNEL_STABLE,
-    CHANNEL_DEV
-}
+import from jaclang.scale.config.dev_config { resolve_dev_channel, Channel }
 import from jaclang.scale.injector.binary { pack_binary_bytes, node_arch }
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
@@ -35,22 +30,19 @@ def _write_toml(body: str) -> str {
 
 test "no [dev] stanza resolves to the stable channel" {
     d = _write_toml("[project]\nname = \"app\"\n");
-    dev = resolve_dev_deploy(d);
-    assert dev.channel == CHANNEL_STABLE;
+    assert resolve_dev_channel(d) == Channel.STABLE;
 }
 
 
 test "bare [dev] is the dev channel, shipped bare (it IS main HEAD)" {
     d = _write_toml("[project]\nname = \"app\"\n\n[dev]\ntest_jobs = \"auto\"\n");
-    dev = resolve_dev_deploy(d);
-    assert dev.channel == CHANNEL_DEV;
+    assert resolve_dev_channel(d) == Channel.DEV;
 }
 
 
 test "whitespace [ dev ] table still resolves to the dev channel" {
     d = _write_toml("[ dev ]\ntest_jobs = \"auto\"\n");
-    dev = resolve_dev_deploy(d);
-    assert dev.channel == CHANNEL_DEV;
+    assert resolve_dev_channel(d) == Channel.DEV;
 }
 
 
