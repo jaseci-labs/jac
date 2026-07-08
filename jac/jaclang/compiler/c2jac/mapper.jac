@@ -14,6 +14,7 @@ import from pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
 import from jaclang.compiler.c2jac.c_common {
+    BinKind,
     C_BINOPS,
     C_AUGOPS,
     parse_c_int,
@@ -592,13 +593,16 @@ obj CMapper {
         right = self.conv_expr(nd.right);
         op_obj = getattr(ast3, ast_cls)();
         expr_node: object;
-        if kind == "arith" {
-            expr_node = ast3.BinOp(left=left, op=op_obj, right=right);
-        } elif kind == "compare" {
-            expr_node = ast3.Compare(left=left, ops=[op_obj], comparators=[right]);
-        } else {
-            # bool — && / ||
-            expr_node = ast3.BoolOp(op=op_obj, values=[left, right]);
+        match kind {
+            case BinKind.ARITH:
+                expr_node = ast3.BinOp(left=left, op=op_obj, right=right);
+
+            case BinKind.COMPARE:
+                expr_node = ast3.Compare(left=left, ops=[op_obj], comparators=[right]);
+
+            case BinKind.BOOL:
+                expr_node = ast3.BoolOp(op=op_obj, values=[left, right]);
+
         }
         return self._stamp(expr_node, nd, text=nd.op);
     }

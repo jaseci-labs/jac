@@ -9,31 +9,33 @@ encodings (its `ast` class name AND its Jac token), and the literal/coordinate
 helpers are shared functions. A new operator or literal form is added here once.
 """
 
+enum BinKind { ARITH, COMPARE, BOOL }
+
 # --- C binary operators -------------------------------------------------- #
 # c_op → (kind, ast3_class, jac_tok_name, jac_tok_val)
-#   kind        — "arith" | "compare" | "bool"; picks the CPython-ast wrapper
-#                 (BinOp / Compare / BoolOp) on the Python-AST path.
+#   kind        — BinKind; picks the CPython-ast wrapper (BinOp / Compare /
+#                 BoolOp) on the Python-AST path.
 #   ast3_class  — the operator class under the `ast` module (getattr(ast3, …)).
 #   jac_tok_*   — the uni.Token name/value for the direct-IR path.
-glob C_BINOPS: dict[str, tuple[str, str, str, str]] = {
-         "+": ("arith", "Add", "PLUS", "+"),
-         "-": ("arith", "Sub", "MINUS", "-"),
-         "*": ("arith", "Mult", "STAR_MUL", "*"),
-         "/": ("arith", "Div", "DIV", "/"),
-         "%": ("arith", "Mod", "MOD", "%"),
-         "&": ("arith", "BitAnd", "BW_AND", "&"),
-         "|": ("arith", "BitOr", "BW_OR", "|"),
-         "^": ("arith", "BitXor", "BW_XOR", "^"),
-         "<<": ("arith", "LShift", "LSHIFT", "<<"),
-         ">>": ("arith", "RShift", "RSHIFT", ">>"),
-         "==": ("compare", "Eq", "EE", "=="),
-         "!=": ("compare", "NotEq", "NE", "!="),
-         "<": ("compare", "Lt", "LT", "<"),
-         "<=": ("compare", "LtE", "LTE", "<="),
-         ">": ("compare", "Gt", "GT", ">"),
-         ">=": ("compare", "GtE", "GTE", ">="),
-         "&&": ("bool", "And", "KW_AND", "and"),
-         "||": ("bool", "Or", "KW_OR", "or"),
+glob C_BINOPS: dict[str, tuple[BinKind, str, str, str]] = {
+         "+": (BinKind.ARITH, "Add", "PLUS", "+"),
+         "-": (BinKind.ARITH, "Sub", "MINUS", "-"),
+         "*": (BinKind.ARITH, "Mult", "STAR_MUL", "*"),
+         "/": (BinKind.ARITH, "Div", "DIV", "/"),
+         "%": (BinKind.ARITH, "Mod", "MOD", "%"),
+         "&": (BinKind.ARITH, "BitAnd", "BW_AND", "&"),
+         "|": (BinKind.ARITH, "BitOr", "BW_OR", "|"),
+         "^": (BinKind.ARITH, "BitXor", "BW_XOR", "^"),
+         "<<": (BinKind.ARITH, "LShift", "LSHIFT", "<<"),
+         ">>": (BinKind.ARITH, "RShift", "RSHIFT", ">>"),
+         "==": (BinKind.COMPARE, "Eq", "EE", "=="),
+         "!=": (BinKind.COMPARE, "NotEq", "NE", "!="),
+         "<": (BinKind.COMPARE, "Lt", "LT", "<"),
+         "<=": (BinKind.COMPARE, "LtE", "LTE", "<="),
+         ">": (BinKind.COMPARE, "Gt", "GT", ">"),
+         ">=": (BinKind.COMPARE, "GtE", "GTE", ">="),
+         "&&": (BinKind.BOOL, "And", "KW_AND", "and"),
+         "||": (BinKind.BOOL, "Or", "KW_OR", "or"),
 
      },
      # --- C augmented-assignment operators ------------------------------------ #

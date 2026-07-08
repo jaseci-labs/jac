@@ -1,7 +1,7 @@
 """Enum pre-pass: Q6 verdict (ENUM_AS_ENUM vs ENUM_AS_CONSTS) for all enums.
 
 Single AST walk over file_ast produces:
-  EnumVerdicts.verdicts: dict[int, str]  — id(c_enum) → "enum_as_enum" | "enum_as_consts" | "tier_b"
+  EnumVerdicts.verdicts: dict[int, Idiom]  — id(c_enum) → ENUM_AS_ENUM | ENUM_AS_CONSTS | TIER_B
   EnumVerdicts.name_map: dict[int, dict[str, int]]  — id(c_enum) → {enumerator_name: value}
 
 v1 heuristic for ENUM_AS_ENUM:
@@ -44,8 +44,13 @@ glob _INT_USE_BINOPS: set[str] = {
          "%"
      };
 
+obj EnumVal {
+    has value: int,
+        simple: bool;
+}
+
 obj EnumVerdicts {
-    has verdicts: dict[int, str],  # id(c_enum) → verdict string
+    has verdicts: dict[int, Idiom],  # id(c_enum) → lowering verdict
         name_map: dict[int, dict[str, int]],  # id(c_enum) → {name: value}
         reasons: dict[int, str];  # id(c_enum) → Tier-B reason (for the Tier-B comments)
 
@@ -116,23 +121,26 @@ def _collect_int_use_names(nd: object, names: set[str]) {
     }
 }
 
-def _enumerator_value(en: object, counter: int) -> tuple[int, bool] {
-    # Resolve one enumerator to (value, is_simple_constant). "Simple" means an
-    # implicit sequential value, a plain int literal, or a negated int literal —
-    # the forms both enum walks below understand. For anything else (arithmetic,
-    # identifiers, unparseable suffixed literals) is_simple is False and the
-    # returned value is a 0 placeholder. Single source for both the strict
-    # ENUM_AS_ENUM check and the best-effort ENUM_AS_CONSTS fallback.
+def _enumerator_value(en: object, counter: int) -> EnumVal {
+    # Resolve one enumerator to its value and whether that value is a simple
+    # constant. "Simple" means an implicit sequential value, a plain int
+    # literal, or a negated int literal — the forms both enum walks below
+    # understand. For anything else (arithmetic, identifiers, unparseable
+    # suffixed literals) simple is False and value is a 0 placeholder. Single
+    # source for both the strict ENUM_AS_ENUM check and the best-effort
+    # ENUM_AS_CONSTS fallback.
     if not isinstance(en, c_ast.Enumerator) {
-        return (0, False);
+        return EnumVal(value=0, simple=False);
     }
     ev = getattr(en, "value");
     if ev is None {
-        return (counter, True);
+        return EnumVal(value=counter, simple=True);
     }
     if isinstance(ev, c_ast.Constant) and ev.type == "int" {
         v = parse_c_int(ev.value);
-        return (v, True) if v is not None else (0, False);
+        return EnumVal(value=v, simple=True)
+            if v is not None
+            else EnumVal(value=0, simple=False);
     }
     if (
         isinstance(ev, c_ast.UnaryOp)
@@ -141,9 +149,11 @@ def _enumerator_value(en: object, counter: int) -> tuple[int, bool] {
         and ev.expr.type == "int"
     ) {
         v = parse_c_int(ev.expr.value);
-        return (-v, True) if v is not None else (0, False);
+        return EnumVal(value=-v, simple=True)
+            if v is not None
+            else EnumVal(value=0, simple=False);
     }
-    return (0, False);
+    return EnumVal(value=0, simple=False);
 }
 
 def _enum_sequential_values(enumerator_list: object) -> dict[str, int] | None {
@@ -160,12 +170,12 @@ def _enum_sequential_values(enumerator_list: object) -> dict[str, int] | None {
         if not isinstance(en, c_ast.Enumerator) {
             return None;
         }
-        (v, simple) = _enumerator_value(en, counter);
-        if not simple {
+        ev = _enumerator_value(en, counter);
+        if not ev.simple {
             return None;
         }
-        result[en.name] = v;
-        counter = v + 1;
+        result[en.name] = ev.value;
+        counter = ev.value + 1;
     }
     # Check no duplicate values.
     vals = list(result.values());
@@ -220,7 +230,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
         and any(nm in int_use_names for nm in name_map);
         if en_name is not None and name_map is not None and not used_as_int {
             # Candidate for ENUM_AS_ENUM.
-            ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM.value;
+            ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM;
             ev.name_map[id(en)] = name_map;
         } elif name_map is not None {
             # Anonymous, or a named enum whose members are used as integers
@@ -233,10 +243,10 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                 }
             }
             if collision {
-                ev.verdicts[id(en)] = "tier_b";
+                ev.verdicts[id(en)] = Idiom.TIER_B;
                 ev.reasons[id(en)] = "enumerator name collides with an existing module global";
             } else {
-                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS.value;
+                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS;
                 for nm in name_map {
                     seen_glob_names.add(nm);
                 }
@@ -258,10 +268,10 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                             ok = False;
                             continue;
                         }
-                        (v, simple) = _enumerator_value(enr, counter);
-                        best_map[enr.name] = v;
-                        counter = v + 1;
-                        if not simple {
+                        enum_val = _enumerator_value(enr, counter);
+                        best_map[enr.name] = enum_val.value;
+                        counter = enum_val.value + 1;
+                        if not enum_val.simple {
                             ok = False;
                         }
                     }
@@ -278,12 +288,12 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                 }
             }
             if not ok or collision {
-                ev.verdicts[id(en)] = "tier_b";
+                ev.verdicts[id(en)] = Idiom.TIER_B;
                 ev.reasons[id(en)] = "enumerator name collides with an existing module global"
                     if collision
                     else "enum has non-constant enumerator values";
             } else {
-                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS.value;
+                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS;
                 for nm in best_map {
                     seen_glob_names.add(nm);
                 }
@@ -307,7 +317,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             coord = getattr(en, "coord");
             coord_line = getattr(coord, "line") if coord is not None else None;
             line: int = coord_line if isinstance(coord_line, int) else 0;
-            if verdict == "tier_b" {
+            if verdict == Idiom.TIER_B {
                 reason = ev.reasons.get(
                     id(en), "enum not expressible as a Jac enum or consts"
                 );
@@ -328,7 +338,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                     NodeTag(
                         tier=Tier.TIER_A,
                         mechanism=Mechanism.DIRECT_IR,
-                        idiom=Idiom(verdict),
+                        idiom=verdict,
                         reason="",
                         c_line=line,
                         snippet=""
