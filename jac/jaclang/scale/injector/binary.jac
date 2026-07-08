@@ -24,14 +24,60 @@ glob BINARY_ARCNAME: str = "bin/jac",
      _SKIP_DIRS: set[str] = {"__pycache__", ".git", "node_modules", ".jac"};
 
 
+def release_arch(raw: str) -> str {
+    # Normalize machine/GOARCH spellings to the release-asset arch names.
+    m = raw.strip().lower();
+    if m in ("arm64", "aarch64") {
+        return "aarch64";
+    }
+    if m in ("amd64", "x86_64") {
+        return "x86_64";
+    }
+    return m;
+}
+
+
 def host_arch -> str {
-    m = platform.machine();
-    return "aarch64" if m in ("arm64", "aarch64") else m;
+    return release_arch(platform.machine());
+}
+
+
+def cluster_node_archs -> list[str] {
+    # Best-effort: with no reachable cluster the caller falls back to the host arch.
+    try {
+        import from kubernetes { client }
+        nodes = client.CoreV1Api().list_node().items;
+    } except Exception {
+        return [];
+    }
+    archs = set();
+    for node in nodes {
+        info = node?.status?.node_info;
+        raw = getattr(info, "architecture", "") or "";
+        if raw {
+            archs.add(release_arch(raw));
+        }
+    }
+    return sorted(archs);
 }
 
 
 def node_arch -> str {
-    return os.environ.get("JAC_NODE_ARCH", "") or host_arch();
+    override = os.environ.get("JAC_NODE_ARCH", "");
+    if override {
+        return release_arch(override);
+    }
+    archs = cluster_node_archs();
+    if len(archs) == 1 {
+        return archs[0];
+    }
+    if archs {
+        logger.warning(
+            f"Cluster nodes report multiple architectures ({', '.join(archs)}); "
+            f"defaulting to the host arch. Set JAC_NODE_ARCH to pick one."
+        );
+    }
+    return host_arch();
 }
 
 
