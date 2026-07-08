@@ -41,21 +41,29 @@ def host_arch -> str {
 }
 
 
+def _node_architecture(k8s_node: object) -> str {
+    status = k8s_node?.status;
+    info = status?.node_info;
+    return str(getattr(info, "architecture", "") or "");
+}
+
+
 def cluster_node_archs -> list[str] {
     try {
         import from kubernetes { client }
     } except ImportError {
         return [];
     }
+    nodes: list = [];
     try {
-        nodes = client.CoreV1Api().list_node(_request_timeout=10).items;
+        nodes = list(client.CoreV1Api().list_node(_request_timeout=10).items);
     } except Exception as e {
         logger.warning(f"Could not read the cluster's node architectures ({e}).");
         return [];
     }
-    archs = set();
+    archs: set[str] = set();
     for node in nodes {
-        arch = release_arch(getattr(node?.status?.node_info, "architecture", "") or "");
+        arch = release_arch(_node_architecture(node));
         if arch {
             archs.add(arch);
         }
