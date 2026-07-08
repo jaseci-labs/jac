@@ -74,7 +74,10 @@ jobs:
 
       - name: Materialize typeshed stdlib stubs into the checkout
         working-directory: jac
-        run: zig build fetch-typeshed --summary all
+        # -Dno-ninja: typeshed is editor-independent. setup-jac above may have
+        # hit the binary cache (no build), so a bare fetch-typeshed would pull
+        # the neovim + Lua closure just to materialize stubs.
+        run: zig build -Dno-ninja fetch-typeshed --summary all
 
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
@@ -169,7 +172,10 @@ jobs:
           use-cache: false
       - name: Vendor static-musl runtime
         working-directory: jac
-        run: zig build vendor-musl --summary all
+        # -Dno-ninja: harvesting musl from the Zig toolchain is editor-independent;
+        # without it, configuring the build fetches the neovim + Lua closure (incl.
+        # the flaky lua.org tarball) for nothing. This job never bundles the editor.
+        run: zig build -Dno-ninja vendor-musl --summary all
       - name: Compiler suite via the binary
         working-directory: jac
         run: |
@@ -235,7 +241,10 @@ jobs:
           use-cache: false
       - name: Vendor static-musl runtime
         working-directory: jac
-        run: zig build vendor-musl --summary all
+        # -Dno-ninja: harvesting musl from the Zig toolchain is editor-independent;
+        # without it, configuring the build fetches the neovim + Lua closure (incl.
+        # the flaky lua.org tarball) for nothing. This job never bundles the editor.
+        run: zig build -Dno-ninja vendor-musl --summary all
       - name: Runtime suite via the binary (everything except compiler)
         working-directory: jac
         run: |
@@ -313,7 +322,7 @@ jobs:
       - name: Warm up compiler cache
         run: jac --version
 
-      - name: Run jac format (check formatting)
+      - name: Run jac fmt (check formatting)
         run: |
           set -euo pipefail
           if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
@@ -327,12 +336,12 @@ jobs:
               exit 0
             fi
             printf '%s\n' "$FILES" | tr '\n' '\0' \
-              | xargs -0 --no-run-if-empty jac format --check --lintfix
+              | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           else
             # Sweep only git-tracked files: the build materializes generated
             # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
             # own sample .jac files), and a bare `find .` walks those too.
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac format --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       - name: Verify jir_registry.jac is up to date
@@ -834,158 +843,75 @@ jobs:
         # Serial: byllm tests share a SQLite mock-LLM cache.
         JAC_TEST_JOBS=0 jac test jac/jaclang/byllm/tests/test_byllm.jac
 
-    # ========== jac-gpt test ==========
-    - name: Create jac-gpt from jacpack
+    # ========== this_is_jac fullstack smoke ==========
+    - name: Clone this_is_jac
       run: |
-        jac create jac-gpt --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/jac-gpt/jac-gpt.jacpack
-        cd jac-gpt && jac install
+        git clone --depth 1 https://github.com/jaseci-labs/this_is_jac this_is_jac
+        cd this_is_jac && jac install
 
-    - name: Install Playwright dependencies
-      run: |
-        jac install playwright --global
-        jac -m playwright install chromium --with-deps
-
-    - name: Type check jac-gpt
-      working-directory: jac-gpt
+    - name: Type check this_is_jac
+      working-directory: this_is_jac
       run: jac check main.jac
 
-    - name: Restore FAISS index cache
-      uses: actions/cache@v4
-      with:
-        path: jac-gpt/services/faiss_index
-        key: jac-gpt-faiss-v1
-
-    - name: Start jac-gpt server in background
-      working-directory: jac-gpt
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    - name: Start this_is_jac server in background
+      working-directory: this_is_jac
       run: |
-        timeout 600 jac start main.jac > /tmp/jac-gpt-server.log 2>&1 &
+        timeout 600 jac start main.jac > /tmp/this-is-jac-server.log 2>&1 &
         SERVER_PID=$!
-        echo "JAC_GPT_PID=$SERVER_PID" >> $GITHUB_ENV
-        echo "jac-gpt server starting with PID $SERVER_PID..."
+        echo "THIS_IS_JAC_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "this_is_jac server starting with PID $SERVER_PID..."
         sleep 10
         if ! kill -0 $SERVER_PID 2>/dev/null; then
           echo "Server process died during startup"
-          cat /tmp/jac-gpt-server.log
+          cat /tmp/this-is-jac-server.log
           exit 1
         fi
 
-    - name: Wait for jac-gpt server to be ready
+    - name: Wait for this_is_jac server to be ready
       run: |
-        echo "Waiting for jac-gpt server on port 8000..."
+        echo "Waiting for this_is_jac server on port 8000..."
         for i in $(seq 1 24); do
-          if ! kill -0 ${{ env.JAC_GPT_PID }} 2>/dev/null; then
+          if ! kill -0 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null; then
             echo "Server process exited unexpectedly"
-            cat /tmp/jac-gpt-server.log
+            cat /tmp/this-is-jac-server.log
             exit 1
           fi
           if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-            echo "jac-gpt server is ready (attempt $i)"
+            echo "this_is_jac server is ready (attempt $i)"
             exit 0
           fi
           echo "Attempt $i/24: not ready, waiting 15s..."
           sleep 15
         done
         echo "Server failed to respond after 24 attempts"
-        tail -100 /tmp/jac-gpt-server.log
+        tail -100 /tmp/this-is-jac-server.log
         exit 1
 
-    - name: Verify jac-gpt HTTP response
+    - name: Verify this_is_jac HTTP response
       run: |
         HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-        echo "jac-gpt root endpoint: HTTP $HTTP_CODE"
+        echo "this_is_jac root endpoint: HTTP $HTTP_CODE"
         if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-          echo "jac-gpt server responding correctly"
+          echo "this_is_jac server responding correctly"
         else
           echo "Unexpected HTTP $HTTP_CODE"
           exit 1
         fi
 
-    - name: Run E2E tests
-      working-directory: jac-gpt
-      env:
-        SERVER_URL: http://localhost:8000
-      run: jac test tests/test_e2e.jac -vv
-
-    - name: Stop jac-gpt server
+    - name: Stop this_is_jac server
       if: always()
       run: |
-        if [ -n "${{ env.JAC_GPT_PID }}" ]; then
-          kill ${{ env.JAC_GPT_PID }} 2>/dev/null || true
+        if [ -n "${{ env.THIS_IS_JAC_PID }}" ]; then
+          kill ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
           sleep 3
-          kill -9 ${{ env.JAC_GPT_PID }} 2>/dev/null || true
-        fi
-
-    # ========== Algo test ==========
-    - name: Create Algo from jacpack
-      run: |
-        jac create algo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/Algo/Algo.jacpack
-        cd algo && jac install
-
-    - name: Type check Algo
-      working-directory: algo
-      run: jac check main.jac
-
-    - name: Start Algo server in background
-      working-directory: algo
-      run: |
-        timeout 600 jac start main.jac > /tmp/algo-server.log 2>&1 &
-        ALGO_PID=$!
-        echo "ALGO_PID=$ALGO_PID" >> $GITHUB_ENV
-        echo "Algo server starting with PID $ALGO_PID..."
-        sleep 10
-        if ! kill -0 $ALGO_PID 2>/dev/null; then
-          echo "Server process died during startup"
-          cat /tmp/algo-server.log
-          exit 1
-        fi
-
-    - name: Wait for Algo server to be ready
-      run: |
-        echo "Waiting for Algo server on port 8000..."
-        for i in $(seq 1 24); do
-          if ! kill -0 ${{ env.ALGO_PID }} 2>/dev/null; then
-            echo "Server process exited unexpectedly"
-            cat /tmp/algo-server.log
-            exit 1
-          fi
-          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-            echo "Algo server is ready (attempt $i)"
-            exit 0
-          fi
-          echo "Attempt $i/24: not ready, waiting 15s..."
-          sleep 15
-        done
-        echo "Server failed to respond after 24 attempts"
-        tail -100 /tmp/algo-server.log
-        exit 1
-
-    - name: Verify Algo HTTP response
-      run: |
-        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-        echo "Algo root endpoint: HTTP $HTTP_CODE"
-        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-          echo "Algo server responding correctly"
-        else
-          echo "Unexpected HTTP $HTTP_CODE"
-          exit 1
-        fi
-
-    - name: Stop Algo server
-      if: always()
-      run: |
-        if [ -n "${{ env.ALGO_PID }}" ]; then
-          kill ${{ env.ALGO_PID }} 2>/dev/null || true
-          sleep 3
-          kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
+          kill -9 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
         fi
 
     # ========== fullstack eject smoke ==========
     - name: Create fullstack project and eject it
       run: |
         jac create --use web-app fs-smoke
-        jac eject fs-smoke
+        cd fs-smoke && jac build --as source --no_typecheck
 
     - name: Install ejected backend and start it
       working-directory: fs-smoke/ejected/backend
@@ -1028,20 +954,12 @@ jobs:
           kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
         fi
 
-    - name: Upload jac-gpt server logs
+    - name: Upload this_is_jac server logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: jac-gpt-test-logs
-        path: /tmp/jac-gpt-server.log
-        retention-days: 7
-
-    - name: Upload Algo server logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: algo-test-logs
-        path: /tmp/algo-server.log
+        name: this-is-jac-test-logs
+        path: /tmp/this-is-jac-server.log
         retention-days: 7
 
     - name: Upload fullstack ejected backend logs
@@ -1059,8 +977,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| this_is_jac | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY

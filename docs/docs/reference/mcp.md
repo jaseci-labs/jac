@@ -246,7 +246,7 @@ jac mcp --inspect
 Add to your project's `jac.toml` to customize the server:
 
 ```toml
-[plugins.mcp]
+[mcp]
 # Transport settings
 transport = "stdio"          # "stdio", "sse", or "streamable-http"
 port = 3001                  # Port for SSE/HTTP transports

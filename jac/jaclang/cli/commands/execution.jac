@@ -47,6 +47,35 @@ glob registry = get_registry();
             short="e"
         ),
         Arg.create(
+            "entry",
+            dest="entry_name",
+            default="",
+            short="",
+            help="Invoke a specific function/walker entrypoint (absorbs 'jac enter')"
+        ),
+        Arg.create(
+            "node",
+            dest="nd",
+            default="",
+            help="Starting node ID for --entry (OSP node binding)",
+            short="n"
+        ),
+        Arg.create(
+            "root",
+            dest="root_id",
+            default="",
+            help="Root executor ID for --entry",
+            short="r"
+        ),
+        Arg.create(
+            "debug",
+            dest="debug_mode",
+            typ=bool,
+            default=False,
+            short="",
+            help="Run under the Python debugger (absorbs 'jac debug')"
+        ),
+        Arg.create(
             "args", kind=ArgKind.REMAINDER, help="Arguments passed to the script"
         ),
 
@@ -54,6 +83,12 @@ glob registry = get_registry();
     examples=[
         ("jac run hello.jac", "Run a simple program"),
         ("jac run", "Run the current project per its jac.toml kind"),
+        (
+            "jac run app.jab",
+            "Run a sealed app bundle (kind-aware; servable kinds use the app's configured port -- override with jac start app.jab --port N)"
+        ),
+        ("jac run --entry my_walker app.jac arg1", "Invoke a specific entrypoint"),
+        ("jac run --debug app.jac", "Run under the Python debugger"),
         ("jac run --show", "Print what the project would run/build, without doing it"),
         ("jac run --no-cache app.jac", "Run without caching"),
         ("jac run --autonative app.jac", "Run with native auto-promotion"),
@@ -72,36 +107,43 @@ def run(
     cache: bool = True,
     autonative: bool = False,
     diagnostics: str = "",
+    entry_name: str = "",
+    nd: str = "",
+    root_id: str = "",
+    debug_mode: bool = False,
     args: list = []
 ) -> int;
 
 @registry.command(
-    name="enter",
-    help="Run a specific entrypoint in a Jac program",
+    name="dev",
+    help="Run the live dev loop: serve with hot reload and live compilation (never reads sealed artifacts)",
+    tier="core",
     args=[
-        Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
         Arg.create(
-            "entrypoint", kind=ArgKind.POSITIONAL, help="Function/walker to invoke"
-        ),
-        Arg.create("args", kind=ArgKind.REMAINDER, help="Arguments for entrypoint"),
-        Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
-        Arg.create("root", default="", help="Root executor ID", short="r"),
-        Arg.create("node", default="", help="Starting node ID", short="n"),
-        Arg.create(
-            "profile",
+            "filename",
+            kind=ArgKind.POSITIONAL,
             default="",
+            help="Entry .jac file (default: [project] entry-point from jac.toml)"
+        ),
+        Arg.create("port", typ=int, default=8000, help="Port to serve on", short="p"),
+        Arg.create(
+            "api_port",
+            typ=int,
+            default=0,
             short="",
-            help="Configuration profile to load (e.g. prod, staging)"
+            help="Backend API port for client dev servers (0 = auto)"
         ),
 
     ],
     examples=[
-        ("jac enter app.jac my_walker arg1 arg2", "Run walker with args"),
-        ("jac enter --node data_node app.jac process", "Run with specific node"),
+        ("jac dev", "Dev-serve the current project with hot reload"),
+        ("jac dev main.jac --port 3000", "Dev-serve a specific entry on port 3000"),
 
     ],
     group="execution"
 )
+def dev(filename: str = "", port: int = 8000, api_port: int = 0) -> int;
+
 def enter(
     filename: str,
     entrypoint: str,
@@ -180,26 +222,6 @@ def start(
     no_client: bool = False
 ) -> int;
 
-@registry.command(
-    name="debug",
-    help="Debug a Jac program with Python debugger",
-    args=[
-        Arg.create("filename", kind=ArgKind.POSITIONAL, help="Path to .jac file"),
-        Arg.create("main", typ=bool, default=True, help="Treat as __main__", short="m"),
-        Arg.create(
-            "cache", typ=bool, default=False, help="Use cached compilation", short="c"
-        ),
-        Arg.create(
-            "profile",
-            default="",
-            short="",
-            help="Configuration profile to load (e.g. prod, staging)"
-        ),
-
-    ],
-    examples=[("jac debug myprogram.jac", "Debug a program"), ],
-    group="execution"
-)
 def debug(filename: str, main: bool = True, cache: bool = False) -> int;
 
 @registry.command(

@@ -604,14 +604,14 @@ def _ensure_pwa_config(project_dir: Path) -> None {
         content = toml_path.read_text(encoding='utf-8');
         config = tomllib.loads(content);
 
-        client_cfg = config.get('plugins', {}).get('client', {});
+        client_cfg = config.get('client', {});
         if 'pwa' in client_cfg {
             console.print("  ✔ PWA config already exists in jac.toml", style="muted");
             return;
         }
 
         pwa_section = '''
-[plugins.client.pwa]
+[client.pwa]
 theme_color = "#000000"
 background_color = "#ffffff"
 # cache_name = "jac-pwa-cache-v1"
@@ -625,7 +625,7 @@ install_description = "Add to home screen for the best experience"
 install_button_text = "Install"
 install_dismiss_text = "Not now"
 
-# [plugins.client.pwa.manifest]
+# [client.pwa.manifest]
 # name = "My App"
 # short_name = "App"
 ''';
@@ -633,9 +633,7 @@ install_dismiss_text = "Not now"
         with open(toml_path, 'a', encoding='utf-8') as f {
             f.write(pwa_section);
         }
-        console.print(
-            "  ✔ Added [plugins.client.pwa] section to jac.toml", style="success"
-        );
+        console.print("  ✔ Added [client.pwa] section to jac.toml", style="success");
     } except Exception as e {
         console.warning(f"  Failed to update jac.toml: {e}");
     }

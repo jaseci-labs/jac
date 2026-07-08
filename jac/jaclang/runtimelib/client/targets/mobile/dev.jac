@@ -28,7 +28,7 @@ def _assert_mobile_port_available(port: int, role: str) {
         "capacitor.config.json match what the server actually binds. Stop "
         "the conflicting process, choose a different port "
         f"(e.g. --port {port + 100}), or set "
-        "[plugins.client].vite.server.port in jac.toml."
+        "[client].vite.server.port in jac.toml."
     );
 }
 
@@ -38,7 +38,7 @@ def _warn_mobile_dev_api_url(project_dir: Path) {
         if ("localhost" in base.lower()) or ("127.0.0.1" in base) {
             console.warning(
                 "  Physical devices cannot reach localhost on your PC. "
-                "Clear [plugins.client.api] base_url for same-origin dev proxy, "
+                "Clear [client.api] base_url for same-origin dev proxy, "
                 "or set base_url to your machine's LAN URL."
             );
         }

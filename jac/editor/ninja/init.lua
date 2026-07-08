@@ -134,7 +134,7 @@ vim.filetype.add({ extension = { jac = "jac" } })
 -- ---------------------------------------------------------------- mini.nvim
 local ascii = vim.env.JAC_NINJA_ASCII == "1"
 require("mini.icons").setup(ascii and { style = "ascii" } or {})
--- Stock look; easy mode swaps in the VSCode Dark+ theme (ninja/theme.lua).
+-- Stock look (ninja/theme.lua).
 require("ninja.theme").default()
 
 require("mini.statusline").setup()
@@ -311,11 +311,6 @@ map("n", "<Leader>jd", jac_file_cmd("dot"), { desc = "jac dot graph" })
 -- The binary's own coding agent (`jac ai`), orchestrated in managed splits:
 -- space-a-a session, space-a-q ask, space-a-d fix diagnostics, ...
 require("ninja.agent").setup()
-
--- ---------------------------------------------------------------- easy mode
--- VSCode-style input layer (`jac ninja --easy` or :NinjaEasy on): CUA keys,
--- shift-arrow selection, insert-first buffers. Persists via a state marker.
-require("ninja.easy").setup()
 
 -- ------------------------------------------------------------- autocommands
 vim.api.nvim_create_autocmd("TextYankPost", {

@@ -41,7 +41,8 @@ impl CommandRegistry.command(
     group: str = "general",
     tier: str = "",
     priority: CommandPriority = CommandPriority.CORE,
-    source: str = "jaclang"
+    source: str = "jaclang",
+    hidden: bool = False
 ) -> Callable[[Callable], Callable] {
     import from jaclang.cli.command { Arg, CommandSpec, CommandPriority }
     def decorator(func: Callable) -> Callable {
@@ -55,6 +56,7 @@ impl CommandRegistry.command(
             tier=tier,
             priority=priority,
             source=source,
+            hidden=hidden,
             handler=func
         );
 
@@ -119,15 +121,15 @@ impl CommandRegistry.has_command(name: str) -> bool {
     return name in self.commands;
 }
 
-impl CommandRegistry.get_all(group: str | None = None) -> list[CommandSpec] {
+impl CommandRegistry.get_all(
+    group: str | None = None, include_hidden: bool = False
+) -> list[CommandSpec] {
     import from jaclang.cli.command { CommandSpec }
-    if group is None {
-        return list(self.commands.values());
-    }
     return [
         spec
         for spec in self.commands.values()
-        if spec.group == group
+        if (include_hidden or not spec.hidden)
+        and (group is None or spec.group == group)
     ];
 }
 
@@ -309,4 +311,23 @@ impl get_registry -> CommandRegistry {
         _registry = CommandRegistry();
     }
     return _registry;
+}
+
+impl extend_builtin_commands -> None {
+    try {
+        import from jaclang.runtimelib.client.cli { JacClientCmd }
+        JacClientCmd.create_cmd();
+    } except ImportError { }
+    try {
+        import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
+        JacShadcnPlugin.create_cmd();
+    } except ImportError { }
+    try {
+        import from jaclang.scale.plugin { JacCmd as _ScaleCmd }
+        _ScaleCmd.create_cmd();
+    } except ImportError { }
+    try {
+        import from jaclang.byllm.cli { JacCmd as _ByllmCmd }
+        _ByllmCmd.create_cmd();
+    } except ImportError { }
 }

@@ -112,12 +112,6 @@ obj CacheConfig {
         dir: str = "cache";
 }
 
-obj PluginsConfig {
-    has discovery: str = "auto",
-        enabled: list[str] = [],
-        disabled: list[str] = [];
-}
-
 obj StorageConfig {
     has storage_type: str = "local",
         base_path: str = "./storage",
@@ -169,7 +163,6 @@ obj JacConfig {
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
         storage: StorageConfig = StorageConfig(),
-        plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),
