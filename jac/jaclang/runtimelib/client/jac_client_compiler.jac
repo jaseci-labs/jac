@@ -7,7 +7,7 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.client.asset_processor { AssetProcessor }
 import from jaclang.runtimelib.client.import_processor { ImportProcessor }
 import from jaclang.runtimelib.client.jac_to_js { JacToJSCompiler }
-import from jaclang.runtimelib.client.route_scanner { RouteScanner, RouteEntry }
+import from jaclang.runtimelib.client.route_scanner { RouteScanner }
 import from jaclang.jac0core.ext_registry { CLIENT_SUFFIX, ANNEX_SUFFIXES }
 
 with entry {

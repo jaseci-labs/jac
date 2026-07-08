@@ -10,7 +10,6 @@ import glob;
 import shutil;
 import socket;
 import subprocess;
-import sys;
 import time;
 import requests;
 import from pathlib { Path }
@@ -52,13 +51,13 @@ def _unique_user(prefix: str) -> str {
 def _start_server(port: int) -> subprocess.Popen {
     import os;
     base_url = f"http://localhost:{port}";
-    jac_exe = Path(sys.executable).parent / "jac";
+    import from jaclang.scale.runtime.context.util { jac_executable }
     # Make the fake-emailer Python module discoverable by the dotted-path
     # provider in jac.toml ('test_emailer_fake:FakeEmailer').
     env = dict(os.environ);
     env['PYTHONPATH'] = str(FIXTURES_DIR) + os.pathsep + env.get('PYTHONPATH', '');
     proc = subprocess.Popen(
-        [str(jac_exe), "start", "test_api.jac", "--port", str(port)],
+        [jac_executable(), "start", "test_api.jac", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

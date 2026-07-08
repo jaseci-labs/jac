@@ -183,7 +183,7 @@ cl {
     import from .components.Button { default as Button }
     import from ..lib.helpers { formatDate }
 
-    # Path aliases -- prefixes defined in jac.toml under [plugins.client.paths]
+    # Path aliases -- prefixes defined in jac.toml under [client.paths]
     import from "@components/Button" { default as Button }
     import from "@shared" { constants }
 }
@@ -192,7 +192,7 @@ cl {
 A path alias is declared once in `jac.toml`:
 
 ```toml
-[plugins.client.paths]
+[client.paths]
 "@components/*" = "./components/*"
 "@shared" = "./shared/index"
 ```

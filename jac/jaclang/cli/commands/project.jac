@@ -40,12 +40,83 @@ glob registry = get_registry();
             help="List available project kinds and templates",
             short="l"
         ),
+        Arg.create(
+            "pack",
+            default="",
+            short="",
+            help="Bundle a template directory into a .jacpack instead of creating (absorbs 'jac jacpack pack')"
+        ),
+        Arg.create(
+            "pack_output",
+            default="",
+            short="",
+            help="With --pack: output .jacpack file path"
+        ),
+        Arg.create(
+            "skip",
+            typ=bool,
+            default=False,
+            help="Skip npm package installation (when creating client kinds: web-app/web-static/mobile)"
+        ),
+        Arg.create(
+            "style",
+            typ=str,
+            default=None,
+            help="shadcn style preset (nova|vega|maia|lyra|mira)",
+            short=""
+        ),
+        Arg.create(
+            "baseColor",
+            typ=str,
+            default=None,
+            help="shadcn base palette (neutral|stone|zinc|gray)",
+            short=""
+        ),
+        Arg.create(
+            "theme",
+            typ=str,
+            default=None,
+            help="shadcn accent theme (e.g. rose, emerald)",
+            short=""
+        ),
+        Arg.create(
+            "font",
+            typ=str,
+            default=None,
+            help="shadcn font family (e.g. inter, outfit)",
+            short=""
+        ),
+        Arg.create(
+            "radius",
+            typ=str,
+            default=None,
+            help="shadcn border radius (none|small|medium|large)",
+            short=""
+        ),
+        Arg.create(
+            "menuAccent",
+            typ=str,
+            default=None,
+            help="shadcn menu accent (subtle|bold)",
+            short=""
+        ),
+        Arg.create(
+            "menuColor",
+            typ=str,
+            default=None,
+            help="shadcn menu color scheme",
+            short=""
+        ),
 
     ],
     examples=[
         (
             "jac create",
             "Initialize a cli project in the current directory (name from cwd)"
+        ),
+        (
+            "jac create --pack ./my-template --pack_output my.jacpack",
+            "Bundle a template directory into a .jacpack"
         ),
         ("jac create myapp", "Create new myapp/ directory (cli kind)"),
         ("jac create myapp --kind service", "Scaffold a headless API service"),
@@ -67,7 +138,17 @@ def create(
     force: bool = False,
     kind: str = "",
     use: str = "default",
-    list_jacpacks: bool = False
+    list_jacpacks: bool = False,
+    pack: str = "",
+    pack_output: str = "",
+    `skip: bool = False,
+    style: str | None = None,
+    baseColor: str | None = None,
+    theme: str | None = None,
+    font: str | None = None,
+    radius: str | None = None,
+    menuAccent: str | None = None,
+    menuColor: str | None = None
 ) -> int;
 
 @registry.command(
@@ -161,10 +242,26 @@ def create(
             help="Materialize the deploy-time capability closure (adds deploy-only clients like kubernetes/docker) instead of just the runtime closure",
             short=""
         ),
+        Arg.create(
+            "plan",
+            typ=bool,
+            default=False,
+            short="",
+            help="Show the fully resolved dependency plan instead of installing (absorbs 'jac deps')"
+        ),
+        Arg.create(
+            "json",
+            typ=bool,
+            default=False,
+            short="",
+            dest="as_json",
+            help="With --plan: emit the plan as JSON"
+        ),
 
     ],
     examples=[
         ("jac install", "Install all dependencies from jac.toml"),
+        ("jac install --plan", "Show the fully resolved dependency plan"),
         (
             "jac install --scale",
             "Also install deploy-time capabilities (kubernetes/docker) for the operator machine"
@@ -211,7 +308,9 @@ def install(
     quiet: bool = False,
     prefer_binary: bool = False,
     install_global: bool = False,
-    scale: bool = False
+    scale: bool = False,
+    plan: bool = False,
+    as_json: bool = False
 ) -> int;
 
 @registry.command(
@@ -228,6 +327,15 @@ def install(
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
+        Arg.create(
+            "npm", typ=bool, default=False, help="Add as npm (client-side) dependency"
+        ),
+        Arg.create(
+            "shadcn",
+            typ=bool,
+            default=False,
+            help="Add shadcn UI component(s) from registry"
+        ),
 
     ],
     examples=[
@@ -235,12 +343,19 @@ def install(
         ('jac add "numpy>=1.24" pandas', "Add multiple packages with version"),
         ("jac add pytest --dev", "Add dev dependency"),
         ("jac add --git https://github.com/user/plugin.git", "Add from git"),
+        ("jac add --npm left-pad", "Add a client-side npm dependency"),
+        ("jac add --shadcn button card", "Add shadcn UI components"),
 
     ],
     group="project"
 )
 def add(
-    packages: list = [], dev: bool = False, git: str = "", verbose: bool = False
+    packages: list = [],
+    dev: bool = False,
+    git: str = "",
+    verbose: bool = False,
+    npm: bool = False,
+    shadcn: bool = False
 ) -> int;
 
 @registry.command(
@@ -257,16 +372,26 @@ def add(
             help="Remove from dev dependencies",
             short="d"
         ),
+        Arg.create(
+            "npm", typ=bool, default=False, help="Remove npm (client-side) dependency"
+        ),
+        Arg.create(
+            "shadcn", typ=bool, default=False, help="Remove shadcn UI component(s)"
+        ),
 
     ],
     examples=[
         ("jac remove requests", "Remove a package"),
         ("jac remove pytest --dev", "Remove dev dependency"),
+        ("jac remove --npm left-pad", "Remove a client-side npm dependency"),
+        ("jac remove --shadcn button", "Remove shadcn UI components"),
 
     ],
     group="project"
 )
-def remove(packages: list = [], dev: bool = False) -> int;
+def remove(
+    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+) -> int;
 
 @registry.command(
     name="update",
@@ -296,60 +421,8 @@ def remove(packages: list = [], dev: bool = False) -> int;
 )
 def update(packages: list = [], dev: bool = False, verbose: bool = False) -> int;
 
-@registry.command(
-    name="deps",
-    help="Show the fully resolved dependency plan (every ecosystem, with origins)",
-    args=[
-        Arg.create(
-            "scale",
-            typ=bool,
-            default=False,
-            help="Resolve the deploy-time capability closure (adds deploy-only clients like kubernetes/docker)",
-            short=""
-        ),
-        Arg.create(
-            "json",
-            typ=bool,
-            default=False,
-            help="Emit the plan as JSON",
-            short="",
-            dest="as_json"
-        ),
-
-    ],
-    examples=[
-        ("jac deps", "Show every resolved dependency and where it comes from"),
-        ("jac deps --scale", "Include deploy-time capability dependencies"),
-        ("jac deps --json", "Machine-readable resolved plan"),
-
-    ],
-    group="project"
-)
 def deps(scale: bool = False, as_json: bool = False) -> int;
 
-@registry.command(
-    name="script",
-    help="Run project scripts",
-    args=[
-        Arg.create(
-            "name", kind=ArgKind.POSITIONAL, default="", help="Script name to run"
-        ),
-        Arg.create(
-            "list_scripts",
-            typ=bool,
-            default=False,
-            help="List available scripts",
-            short="l"
-        ),
-
-    ],
-    examples=[
-        ("jac script --list", "List available scripts"),
-        ("jac script build", "Run the 'build' script"),
-
-    ],
-    group="project"
-)
 def script(name: str = "", list_scripts: bool = False) -> int;
 
 @registry.command(
@@ -410,68 +483,6 @@ def clean(
     force: bool = False
 ) -> int;
 
-@registry.command(
-    name="jacpack",
-    help="Manage project templates (.jacpack files)",
-    args=[
-        Arg.create(
-            "action", kind=ArgKind.POSITIONAL, default="", help="Action: pack, list"
-        ),
-        Arg.create(
-            "path",
-            kind=ArgKind.POSITIONAL,
-            default="",
-            help="Template directory path (for pack) or .jacpack path (for info)"
-        ),
-        Arg.create(
-            "output",
-            default="",
-            help="Output file path for bundled template",
-            short="o"
-        ),
-
-    ],
-    examples=[
-        (
-            "jac jacpack pack ./my-template -o my-template.jacpack",
-            "Bundle a template directory"
-        ),
-        ("jac jacpack list", "List available templates"),
-
-    ],
-    group="project"
-)
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-@registry.command(
-    name="bundle",
-    help="Build a pure-Python .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
-    args=[
-        Arg.create(
-            "output",
-            default="dist",
-            help="Output directory for the built artifact",
-            short="o"
-        ),
-        Arg.create(
-            "target",
-            default="wheel",
-            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'sealed' (precompiled JIR image, runtime never compiles source, #7135), 'binary' (self-contained executable), 'all', or 'npm-runtime'",
-            short="t"
-        ),
-
-    ],
-    examples=[
-        ("jac bundle", "Build a pure-Python wheel into dist/ (.jac transpiled to .py)"),
-        ("jac bundle --target npm", "Build an npm .tgz into dist/"),
-        (
-            "jac bundle --target sealed",
-            "Build a sealed (precompiled JIR) image into dist/"
-        ),
-        ("jac bundle --target binary", "Build a self-contained executable into dist/"),
-        ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
-
-    ],
-    group="project"
-)
 def bundle(output: str = "dist", target: str = "wheel") -> int;

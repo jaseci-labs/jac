@@ -18,7 +18,7 @@ obj FirebaseSSOProvider(SSOProvider) {
         if not self.project_id {
             raise ValueError(
                 "Firebase SSO requires a project_id. "
-                "Set [plugins.scale.sso.firebase] project_id in jac.toml "
+                "Set [scale.sso.firebase] project_id in jac.toml "
                 f"or {firebase_project_id_env_hint()}"
             );
         }

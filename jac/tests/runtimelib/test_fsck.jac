@@ -52,7 +52,7 @@ test "fsck detects a dangling ref read-only, then repairs it" {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
         app.write_text(APP);
-        (rc, _, err) = _jac(tmpdir, ["enter", str(app), "create"]);
+        (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         assert rc == 0 , f"create failed: {err}";
         db = _db_path(tmpdir);
         # Delete one edge row, leaving both endpoints citing it: a dangling

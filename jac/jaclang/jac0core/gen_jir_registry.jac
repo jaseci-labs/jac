@@ -1,5 +1,4 @@
 import inspect;
-import from pathlib { Path }
 
 glob MANUAL_FIELDS: dict[str, list] = {
          "SpecialVarRef": [

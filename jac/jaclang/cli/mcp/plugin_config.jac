@@ -1,7 +1,4 @@
-import from jaclang.jac0core.runtime { hookimpl }
-
 class JacMcpPluginConfig {
-    @hookimpl
     static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "mcp",
@@ -10,7 +7,6 @@ class JacMcpPluginConfig {
         };
     }
 
-    @hookimpl
     static def get_config_schema -> dict[str, any] {
         return {
             "section": "mcp",

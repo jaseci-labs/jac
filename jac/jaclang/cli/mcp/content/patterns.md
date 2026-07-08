@@ -289,23 +289,7 @@ with entry {
 }
 ```
 
-## 11. Plugin Hook Pattern
-
-```jac
-"""Example of a Jac plugin with hookimpl."""
-
-import from jaclang.jac0core.runtime { hookimpl }
-import from typing { Any }
-
-class MyPlugin {
-    @hookimpl
-    static def my_hook(arg: str) -> Any {
-        return f"Processed: {arg}";
-    }
-}
-```
-
-## 12. Async/Await Pattern
+## 11. Async/Await Pattern
 
 ```jac
 """Async operations in Jac."""

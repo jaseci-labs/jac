@@ -40,13 +40,14 @@ test "register.jac registers built-in targets without a plugin group" {
     assert "with entry" not in content;
 }
 
-test "cli create_cmd registers targets before syncing choices" {
+test "cli registers targets before syncing choices at import" {
     content = _cli_jac.read_text().replace("\r\n", "\n");
     assert "register_targets();" in content;
     assert "sync_client_target_choices();" in content;
     reg_idx = content.index("register_targets();");
     sync_idx = content.index("sync_client_target_choices();");
     assert reg_idx < sync_idx , "register_targets must run before sync_client_target_choices";
-    # Registration happens inside the create_cmd hook, not at module import.
-    assert "with entry {\n    register_targets();" not in content;
+    # Registration now happens at module import (with entry), since the CLI
+    # imports this module at startup; there is no create_cmd hook anymore.
+    assert "with entry {" in content;
 }

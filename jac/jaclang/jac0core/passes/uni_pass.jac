@@ -1,8 +1,6 @@
-import from threading { Event }
 import from typing { TypeVar }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
-import type from jaclang.jac0core.program { JacProgram }
 
 glob T = TypeVar('T', bound=uni.UniNode);
 

@@ -5,7 +5,6 @@ import gc;
 import io;
 import socket;
 import subprocess;
-import sys;
 import time;
 import requests;
 import from pathlib { Path }
@@ -61,10 +60,9 @@ obj JacScaleTestRunner {
             print("Example directory setup complete");
         }
 
-        jac_executable = Path(sys.executable).parent / "jac";
-
+        import from jaclang.scale.runtime.context.util { jac_executable }
         cmd = [
-            str(jac_executable),
+            jac_executable(),
             "start",
             str(self.example_file),
             "--port",

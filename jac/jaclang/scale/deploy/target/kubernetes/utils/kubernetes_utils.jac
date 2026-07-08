@@ -30,8 +30,6 @@ glob COMPANION_DEFS: list = [
 
 def check_pods_restarted(namespace: str, app_name: str) -> bool;
 
-def debug_print(statement: str, debug_only: bool = False) -> None;
-
 def parse_cpu_quantity(quantity: str) -> float;
 
 def parse_memory_quantity(quantity: str) -> float;

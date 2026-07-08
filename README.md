@@ -135,11 +135,11 @@ typescript = "^5.3.3"
 [serve]
 base_route_app = "app"
 
-[plugins.scale]
+[scale]
 
-[plugins.client]
+[client]
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "claude-sonnet-4-20250514"
 ```
 

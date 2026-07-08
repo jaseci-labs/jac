@@ -2,12 +2,11 @@ import time;
 import logging;
 import mimetypes;
 import from collections.abc { Callable }
-import from datetime { UTC, datetime, timedelta }
+import from datetime { datetime }
 import from pathlib { Path }
-import from pydantic { BaseModel, Field, ValidationError }
+import from pydantic { Field }
 import jwt;
 import json;
-import from os { getenv }
 import from fastapi { Request }
 import from fastapi.middleware.cors { CORSMiddleware }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response, RedirectResponse }
@@ -21,12 +20,8 @@ import from jaclang.scale.jserver.jserver {
 import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
-import from jaclang.runtimelib.transport { TransportResponse, Meta, MessageType }
-import from fastapi_sso.sso.google { GoogleSSO }
-import from jaclang.scale.shared.utils {
-    generate_random_password,
-    _extract_path_param_names
-}
+import from jaclang.runtimelib.transport { TransportResponse, Meta }
+import from jaclang.scale.shared.utils { _extract_path_param_names }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.webhook.webhook { ApiKeyManager, WebhookUtils }
 import from jaclang.scale.observability.metrics { MetricsCollector }
@@ -47,7 +42,6 @@ import from jaclang.scale.admin.ops { JacAPIServerOps }
 import from jaclang.scale.admin.deploy_health { JacAPIServerDeployHealth }
 import from jaclang.scale.admin.network { JacAPIServerNetwork }
 import from jaclang.scale.admin.podenv { JacAPIServerPodEnv }
-import from jaclang.scale.shared.enums { Platforms, Operations }
 import from jaclang.scale.scheduler.scheduler { JacScaleScheduler, TriggerSpec }
 import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
