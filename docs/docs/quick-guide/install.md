@@ -41,6 +41,30 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ---
 
+## Other installation options
+
+### AUR (Arch Linux)
+
+Jac is available in the Arch User Repository:
+
+```bash
+# Using yay
+yay -S jaclang
+
+# Or using paru
+paru -S jaclang
+```
+
+### Docker
+
+Pull the official Docker image:
+
+```bash
+docker pull jaseci/jaclang
+```
+
+---
+
 ## Installing Plugins
 
 The `jac` binary is the language core, and bundles the AI (byLLM), MCP, and deployment & scaling subsystems built in. "Enabling" one of these just resolves its optional dependencies into your project; genuine third-party plugins install the same way, by name:
