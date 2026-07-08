@@ -89,11 +89,10 @@ obj CUniBuilder {
     # Main dispatch                                                         #
     # ------------------------------------------------------------------ #
     def build(c_node: object) -> list[uni.UniNode] {
-        tp = type(c_node).__name__;
-        if tp == "For" {
+        if isinstance(c_node, c_ast.For) {
             return self._build_for(c_node);
         }
-        if tp == "Enum" {
+        if isinstance(c_node, c_ast.Enum) {
             return self._build_enum(c_node);
         }
         # Fallthrough — shouldn't happen; return empty.
@@ -117,7 +116,7 @@ obj CUniBuilder {
     # ------------------------------------------------------------------ #
     # C-for → IterForStmt                                                  #
     # ------------------------------------------------------------------ #
-    def _build_for(nd: object) -> list[uni.UniNode] {
+    def _build_for(nd: c_ast.For) -> list[uni.CodeBlockStmt] {
         (line, col) = self._coord(nd);
         # Parse the init, cond, and step from the C-for node.
         init_nodes = self._for_init(getattr(nd, "init"), line, col);
@@ -192,7 +191,9 @@ obj CUniBuilder {
         return None;
     }
 
-    def _decl_to_assign(decl: object, line: int, col: int) -> uni.Assignment | None {
+    def _decl_to_assign(
+        decl: c_ast.Decl, line: int, col: int
+    ) -> uni.Assignment | None {
         decl_init = getattr(decl, "init");
         if decl.name is None or decl_init is None {
             return None;
@@ -215,7 +216,7 @@ obj CUniBuilder {
     }
 
     def _assign_to_uni_assign(
-        nd: object, line: int, col: int
+        nd: c_ast.Assignment, line: int, col: int
     ) -> uni.Assignment | None {
         (aline, acol) = self._coord(nd);
         lhs = self._lvalue_to_uni(nd.lvalue, aline, acol);
@@ -279,14 +280,14 @@ obj CUniBuilder {
         return None;
     }
 
-    def _c_stmt_to_uni(stmt: object, line: int, col: int) -> list[uni.UniNode] {
+    def _c_stmt_to_uni(stmt: object, line: int, col: int) -> list[uni.CodeBlockStmt] {
         if stmt is None {
             return [];
         }
         (sline, scol) = self._coord(stmt);
 
         if isinstance(stmt, c_ast.Compound) {
-            items: list[uni.UniNode] = [];
+            items: list[uni.CodeBlockStmt] = [];
             if stmt.block_items {
                 for item in stmt.block_items {
                     items.extend(self._c_stmt_to_uni(item, sline, scol));
@@ -390,7 +391,9 @@ obj CUniBuilder {
         return [];
     }
 
-    def _c_else_to_uni(else_node: object, line: int, col: int) -> uni.UniNode | None {
+    def _c_else_to_uni(
+        else_node: object, line: int, col: int
+    ) -> uni.ElseStmt | uni.ElseIf | None {
         # Lower a C `else` arm. A bare `else if` reaches here as a nested c_ast.If;
         # mirror PyastBuildPass.proc_if by collapsing the single-If case into an
         # ElseIf chain, otherwise wrap the statements in an ElseStmt.
@@ -414,7 +417,7 @@ obj CUniBuilder {
         return uni.ElseStmt(body=else_stmts, kid=[*else_stmts]);
     }
 
-    def _return_to_uni(stmt: object, line: int, col: int) -> list[uni.UniNode] {
+    def _return_to_uni(stmt: object, line: int, col: int) -> list[uni.CodeBlockStmt] {
         expr_node = getattr(stmt, "expr");
         if expr_node is None {
             ret_tok = self._tok(Tok.KW_RETURN, "return", line, col);
@@ -431,15 +434,15 @@ obj CUniBuilder {
         return [uni.ReturnStmt(expr=ret_expr, kid=[ret_expr])];
     }
 
-    def _for_body(stmt: object, line: int, col: int) -> list[uni.UniNode] {
+    def _for_body(stmt: object, line: int, col: int) -> list[uni.CodeBlockStmt] {
         return self._c_stmt_to_uni(stmt, line, col);
     }
 
-    def _for_as_while(nd: object, line: int, col: int) -> list[uni.UniNode] {
+    def _for_as_while(nd: c_ast.For, line: int, col: int) -> list[uni.CodeBlockStmt] {
         # Fallback: can't build IterForStmt. Desugar to `init; while (cond) {
         # body; step }` — faithful except that C `continue` jumps to the step
         # whereas here it skips it, so the loop is marked Tier-B (§5.3).
-        result: list[uni.UniNode] = [];
+        result: list[uni.CodeBlockStmt] = [];
         # init statement before the loop (skip the IterForStmt dummy for for(;;)).
         # NB: read the field via getattr — bare `nd.init` resolves to a bound
         # method on the c_ast node (Jac treats `.init` as the constructor slot),
@@ -467,7 +470,7 @@ obj CUniBuilder {
             );
         }
         self._mark_tier_b(nd, line, reason);
-        full_body: list[uni.UniNode] = [*body_stmts];
+        full_body: list[uni.CodeBlockStmt] = [*body_stmts];
         if step_stmt is not None {
             full_body.append(step_stmt);
         }
@@ -501,7 +504,7 @@ obj CUniBuilder {
         );
     }
 
-    def _step_as_stmt(step_node: object, line: int, col: int) -> uni.UniNode | None {
+    def _step_as_stmt(step_node: object, line: int, col: int) -> uni.Assignment | None {
         # The step as a full statement appended to the loop body (i++ → i += 1).
         if step_node is None {
             return None;
@@ -515,6 +518,9 @@ obj CUniBuilder {
             }
             op_str = "+=" if step_node.op in ("p++", "++") else "-=";
             aug = self._c_op_to_aug_tok(op_str, sline, scol);
+            if aug is None {
+                return None;
+            }
             one = self._int_node(1, sline, scol);
             return uni.Assignment(
                 kid=[target, aug, one],
@@ -535,7 +541,7 @@ obj CUniBuilder {
     # ------------------------------------------------------------------ #
     # Enum → uni.Enum or GlobalVars                                         #
     # ------------------------------------------------------------------ #
-    def _build_enum(nd: object) -> list[uni.UniNode] {
+    def _build_enum(nd: c_ast.Enum) -> list[uni.UniNode] {
         verdict = self.enum_verdicts.verdicts.get(id(nd), "tier_b");
         name_map = self.enum_verdicts.name_map.get(id(nd), {});
         (line, col) = self._coord(nd);
@@ -550,7 +556,7 @@ obj CUniBuilder {
     }
 
     def _enum_as_enum(
-        nd: object, name_map: dict[str, int], line: int, col: int
+        nd: c_ast.Enum, name_map: dict[str, int], line: int, col: int
     ) -> uni.Enum {
         enum_name_str = nd.name or "_AnonEnum";
         enum_name = self._name_node(enum_name_str, line, col);
@@ -615,7 +621,7 @@ obj CUniBuilder {
     # ------------------------------------------------------------------ #
     # Expression helpers                                                   #
     # ------------------------------------------------------------------ #
-    def _expr_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
+    def _expr_to_uni(nd: object, line: int, col: int) -> uni.Expr | None {
         if nd is None {
             return None;
         }
@@ -695,12 +701,12 @@ obj CUniBuilder {
         return None;
     }
 
-    def _funccall_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
+    def _funccall_to_uni(nd: c_ast.FuncCall, line: int, col: int) -> uni.Expr | None {
         target = self._expr_to_uni(nd.name, line, col);
         if target is None {
             return None;
         }
-        params: list[uni.UniNode] = [];
+        params: list[uni.Expr] = [];
         if nd.args {
             for e in nd.args.exprs {
                 pe = self._expr_to_uni(e, line, col);
@@ -715,7 +721,7 @@ obj CUniBuilder {
         return uni.FuncCall(target=target, params=params, genai_call=None, kid=kids);
     }
 
-    def _lvalue_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
+    def _lvalue_to_uni(nd: object, line: int, col: int) -> uni.Expr | None {
         if isinstance(nd, c_ast.ID) {
             (nline, ncol) = self._coord(nd);
             return self._name_node(nd.name, nline, ncol);

@@ -259,7 +259,7 @@ def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None 
     }
 }
 
-def _collect_non_zero_lines(nd: object, result: list) -> None {
+def _collect_non_zero_lines(nd: uni.UniNode, result: list[int]) -> None {
     if isinstance(nd, uni.Token) {
         if nd.line_no > 0 {
             result.append(nd.line_no);
@@ -278,7 +278,7 @@ def _propagate_source_lines(mod: uni.Module) {
     _fix_zero_toks_in_subtree(mod);
 }
 
-def _fix_zero_toks_in_subtree(nd: object) -> None {
+def _fix_zero_toks_in_subtree(nd: uni.UniNode) -> None {
     if isinstance(nd, uni.Token) {
         return;
     }
@@ -404,7 +404,7 @@ def _hoist_to_module_body(
         # Rebuild body and kid with insertions (Sequence has no .insert).
         body_list = list(mod.body);
         for (i, r) in enumerate(replacements) {
-            body_list.insert(mc_idx + i, r);
+            body_list.insert(mc_idx + i, r as uni.ElementStmt);
         }
         mod.body = body_list;
         # body_list contains module-level UniNodes; Module.body expects
