@@ -580,69 +580,6 @@ impl JacAPIServerEndpoints.register_webhook_endpoints -> None {
     }
 }
 
-"""Advance a synchronous generator one step off the event-loop thread, returning
-the `_WS_STREAM_STOP` sentinel on exhaustion (StopIteration cannot cross an
-executor boundary, so it is converted to a sentinel)."""
-def _ws_stream_next(gen: any) -> any {
-    try {
-        return next(gen);
-    } except StopIteration {
-        return _WS_STREAM_STOP;
-    }
-}
-
-"""Stream a generator target result over the socket as `chunk` frames followed by
-a terminating `done` frame. Mirrors the HTTP SSE frame semantics: synchronous
-generators are advanced in a worker thread so a slow step does not block the
-event loop, and the `done` frame is always sent (carrying the error on failure)
-so a client that reads until `done` never hangs."""
-async def _ws_stream_result(
-    websocket: WebSocket,
-    ws_manager: WebSocketConnectionManager,
-    target_name: str,
-    is_broadcast: bool,
-    result: any
-) {
-    async def emit(frame: dict) {
-        if is_broadcast {
-            await ws_manager.broadcast(target_name, frame);
-        } else {
-            await websocket.send_json(frame);
-        }
-    }
-    stream_error: (str | None) = None;
-    try {
-        if isgenerator(result) {
-            loop = asyncio.get_running_loop();
-            while True {
-                item = await loop.run_in_executor(None, _ws_stream_next, result);
-                if item is _WS_STREAM_STOP {
-                    break;
-                }
-                await emit({'ok': True, 'type': 'chunk', 'data': item});
-            }
-        } else {
-            async for item in result {
-                await emit({'ok': True, 'type': 'chunk', 'data': item});
-            }
-        }
-    } except Exception as e {
-        logger.error(f"WS stream error for '{target_name}': {e}");
-        stream_error = str(e);
-    }
-    if stream_error is None {
-        await emit({'ok': True, 'type': 'done'});
-    } else {
-        await emit(
-            {
-                'ok': False,
-                'type': 'done',
-                'error': {'code': 'STREAM_ERROR', 'message': stream_error}
-            }
-        );
-    }
-}
-
 impl JacAPIServerEndpoints.get_ws_manager -> WebSocketConnectionManager {
     if not self._ws_manager {
         self._ws_manager = WebSocketConnectionManager();
