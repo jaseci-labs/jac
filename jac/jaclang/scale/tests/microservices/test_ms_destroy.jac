@@ -1,3 +1,4 @@
+import contextlib;
 import unittest.mock;
 import from types { SimpleNamespace }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
@@ -11,45 +12,49 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 }
 
 
+def _mocked_cluster(mgr: unittest.mock.MagicMock) -> contextlib.ExitStack {
+    stack = contextlib.ExitStack();
+    stack.enter_context(
+        unittest.mock.patch.object(
+            KubernetesMicroserviceTarget, "_load_kube_config", unittest.mock.MagicMock()
+        )
+    );
+    stack.enter_context(
+        unittest.mock.patch.object(KubernetesTarget, "destroy", mgr.base)
+    );
+    stack.enter_context(
+        unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.microservice.target.AutoscalerFactory"
+        )
+    );
+    stack.enter_context(
+        unittest.mock.patch("kubernetes.client.AppsV1Api", return_value=mgr.apps)
+    );
+    stack.enter_context(
+        unittest.mock.patch("kubernetes.client.CoreV1Api", return_value=mgr.core)
+    );
+    stack.enter_context(
+        unittest.mock.patch("kubernetes.client.PolicyV1Api", return_value=mgr.policy)
+    );
+    stack.enter_context(
+        unittest.mock.patch("kubernetes.client.NetworkingV1Api", return_value=mgr.net)
+    );
+    return stack;
+}
+
+
 def _destroy(mgr: unittest.mock.MagicMock, component: str = "") {
     mgr.core.list_namespaced_service.return_value = SimpleNamespace(items=[]);
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(namespace="jac-test")
     );
-    with unittest.mock.patch.object(
-        KubernetesMicroserviceTarget, "_load_kube_config", unittest.mock.MagicMock()
-    ) {
-        with unittest.mock.patch.object(KubernetesTarget, "destroy", mgr.base) {
-            with unittest.mock.patch(
-                "jaclang.scale.deploy.target.kubernetes.microservice.target.AutoscalerFactory"
-            ) {
-                with unittest.mock.patch(
-                    "kubernetes.client.AppsV1Api", return_value=mgr.apps
-                ) {
-                    with unittest.mock.patch(
-                        "kubernetes.client.CoreV1Api", return_value=mgr.core
-                    ) {
-                        with unittest.mock.patch(
-                            "kubernetes.client.PolicyV1Api", return_value=mgr.policy
-                        ) {
-                            with unittest.mock.patch(
-                                "kubernetes.client.NetworkingV1Api",
-                                return_value=mgr.net
-                            ) {
-                                target.destroy("shop", component);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    with _mocked_cluster(mgr) {
+        target.destroy("shop", component);
     }
 }
 
 
 test "microservice destroy hands shared teardown to the base target" {
-    # Without the base pass the bundle PVC and the namespace leak: nothing in
-    # the label-based cleanup deletes them.
     mgr = unittest.mock.MagicMock();
     _destroy(mgr);
     mgr.base.assert_called_once_with("shop");

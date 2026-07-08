@@ -798,10 +798,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Shared teardown (monitoring, ingress controller, databases, PVCs,
-        # deletion wait, namespace): without it a direct microservice destroy
-        # leaked the bundle PVC and the namespace. The fleet is already gone,
-        # so the bundle PVC releases without waiting on pod finalizers.
         super.destroy(app_name);
     }
 }
