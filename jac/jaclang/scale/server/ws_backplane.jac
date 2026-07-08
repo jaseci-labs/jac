@@ -84,11 +84,11 @@ obj MemoryBackplane(BaseBackplane) {
 """Redis pub/sub backplane; broadcasts reach every subscribed worker."""
 obj RedisBackplane(BaseBackplane) {
     has url: str,
-        _client: (Any | None) = None,
-        _pubsub: (Any | None) = None,
-        _reader_task: (Any | None) = None,
+        _client: any = None,
+        _pubsub: any = None,
+        _reader_task: any = None,
         _handlers: dict[str, list[Any]] = {},
-        _lock: (Any | None) = None,
+        _lock: any = None,
         _closed: bool = False;
 
     def _get_lock -> Any {
@@ -138,12 +138,12 @@ obj RedisBackplane(BaseBackplane) {
                     continue;
                 }
                 try {
-                    payload = json.loads(raw);
+                    payload = json.loads(str(raw));
                 } except Exception as e {
                     logger.warning(f"WS Redis payload decode failed: {e}");
                     continue;
                 }
-                handlers = list(self._handlers.get(channel, []));
+                handlers = list(self._handlers.get(str(channel), []));
                 if handlers {
                     tasks = [h(channel, payload) for h in handlers];
                     await asyncio.gather(*tasks, return_exceptions=True);
@@ -266,7 +266,7 @@ def build_backplane(cfg: dict) -> BaseBackplane {
                 "[plugins.scale.database])."
             );
         }
-        return RedisBackplane(url=url);
+        return RedisBackplane(url=str(url));
     }
     if backplane is not None {
         raise ValueError(
@@ -275,7 +275,7 @@ def build_backplane(cfg: dict) -> BaseBackplane {
         );
     }
     if url {
-        return RedisBackplane(url=url);
+        return RedisBackplane(url=str(url));
     }
     return MemoryBackplane();
 }

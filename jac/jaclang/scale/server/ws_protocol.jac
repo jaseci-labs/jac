@@ -24,8 +24,8 @@ glob logger = logging.getLogger(__name__),
      AUTH_HANDSHAKE_TIMEOUT_SECONDS: float = 10.0;
 
 """Build the standard {ok:false, error:{...}} frame used over WS."""
-def ws_error_frame(code: str, message: str, reason: (str | None) = None) -> dict {
-    err = {'code': code, 'message': message};
+def ws_error_frame(code: str, message: any, reason: any = None) -> dict {
+    err: dict = {'code': code, 'message': message};
     if reason {
         err['reason'] = reason;
     }
@@ -38,7 +38,7 @@ Returns auth detail if the query param is present, else None. A non-'ok'
 status should be rejected before accept so the client sees a clean handshake
 rejection.
 """
-def ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> (dict | None) {
+def ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> any {
     query_token = websocket.query_params.get('token');
     if not query_token {
         return None;
@@ -50,7 +50,7 @@ def ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> (dict | None)
 async def ws_reject_pre_accept(websocket: WebSocket, auth_detail: dict) {
     status = auth_detail.get('status', 'invalid');
     try {
-        await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason=status);
+        await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason=str(status));
     } except Exception as e {
         logger.debug(f"WS pre-accept close failed: {e}");
     }
@@ -151,7 +151,7 @@ async def ws_reject_auth(websocket: WebSocket, auth_detail: dict) {
         'invalid': 'Invalid or missing token',
         'unknown_user': 'User associated with token no longer exists'
     };
-    msg = message_map.get(status, 'Invalid or missing token');
+    msg = message_map.get(str(status), 'Invalid or missing token');
     reason = auth_detail.get('reason') or msg;
     try {
         await websocket.send_json(ws_error_frame('UNAUTHORIZED', msg, reason));
@@ -159,7 +159,7 @@ async def ws_reject_auth(websocket: WebSocket, auth_detail: dict) {
         logger.debug(f"WS auth-fail send ignored: {e}");
     }
     try {
-        await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason=status);
+        await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason=str(status));
     } except Exception as e {
         logger.debug(f"WS close after auth failure failed: {e}");
     }
@@ -240,7 +240,9 @@ async def ws_handle_control(
                     'UNAUTHORIZED', 'Token refresh failed', detail.get('reason')
                 )
             );
-            await websocket.close(code=WS_CLOSE_UNAUTHORIZED, reason=detail['status']);
+            await websocket.close(
+                code=WS_CLOSE_UNAUTHORIZED, reason=str(detail['status'])
+            );
             return 'break';
         }
         if detail.get('user_id') != ctx.user_id {
@@ -254,8 +256,12 @@ async def ws_handle_control(
             );
             return 'break';
         }
-        ctx.user_id = detail.get('user_id');
-        ctx.exp = detail.get('exp');
+        refreshed_uid = detail.get('user_id');
+        refreshed_exp = detail.get('exp');
+        ctx.user_id = str(refreshed_uid) if refreshed_uid is not None else None;
+        ctx.exp = (
+            float(refreshed_exp) if isinstance(refreshed_exp, (int, float)) else None
+        );
         await websocket.send_json({'type': 'refreshed', 'ok': True});
         return 'continue';
     }
