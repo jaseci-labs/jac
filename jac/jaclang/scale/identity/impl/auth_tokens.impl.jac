@@ -27,7 +27,7 @@ impl AuthTokenStore.postinit -> None {
             "MongoDB URI is configured. This will cause intermittent "
             "INVALID_TOKEN failures under multiple workers because tokens "
             "issued by one worker are not visible to the others. Set "
-            "[plugins.scale.database] mongodb_uri in jac.toml to fix."
+            "[scale.database] mongodb_uri in jac.toml to fix."
         );
     }
 }

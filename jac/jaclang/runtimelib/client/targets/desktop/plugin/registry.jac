@@ -1,4 +1,4 @@
-import from manifest { PluginManifest, PluginContext }
+import from manifest { PluginContext }
 import from desktop_plugin { DesktopPlugin }
 import from plugin_host { PluginHost }
 import from built_in.path_plugin { PathPlugin }

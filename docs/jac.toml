@@ -22,7 +22,6 @@ uvicorn = "*"
 watchdog = "*"
 mkdocs-graphviz = "*"
 mkdocs-material-extensions = "*"
-pluggy = "*"
 
 [entrypoints."pygments.lexers"]
 jaclexer = "jac_syntax_highlighter:JacLexer"

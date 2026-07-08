@@ -253,10 +253,13 @@ toolcall.impl.jac
 transport.impl.jac
 tuples.impl.jac
 types.impl.jac
-# Built-in shadcn handler (jac/jaclang/cli/shadcn) — dynamic `config: any` +
-# Path/file-IO false positives (sibling plugin.jac / plugin.impl.jac ignored above)
+# Built-in shadcn handler + CLI (jac/jaclang/cli/shadcn) — dynamic `config: any` +
+# Path/file-IO false positives (e.g. Path(__file__) in template discovery). The
+# CLI was renamed from plugin.jac/plugin.impl.jac to cli.jac/cli.impl.jac.
 shadcn_handler.jac
 shadcn_handler.impl.jac
+jac/jaclang/cli/shadcn/cli.jac
+jac/jaclang/cli/shadcn/impl/cli.impl.jac
 theme_handler.jac
 
 # Files failing the full-repo jac check as of the #7166 merge. The check
@@ -305,6 +308,7 @@ jac/jaclang/cli/commands/eject.jac
 jac/jaclang/cli/commands/eject_targets/backend.jac
 jac/jaclang/cli/commands/guide.jac
 jac/jaclang/cli/commands/impl/browse.impl.jac
+jac/jaclang/cli/commands/impl/build.impl.jac
 jac/jaclang/cli/commands/impl/code.impl.jac
 jac/jaclang/cli/commands/impl/db.impl.jac
 jac/jaclang/cli/commands/impl/eject.impl.jac

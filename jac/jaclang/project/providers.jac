@@ -570,10 +570,14 @@ def reset_provider_registry {
 }
 
 def initialize_provider_registry -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_provider_registry();
 
-    results = JacRuntime.register_ecosystem_providers();
+    try {
+        import from jaclang.runtimelib.client.plugin_config { JacClientPluginConfig }
+    } except Exception {
+        return;
+    }
+    results = JacClientPluginConfig.register_ecosystem_providers();
     if results is None {
         return;
     }

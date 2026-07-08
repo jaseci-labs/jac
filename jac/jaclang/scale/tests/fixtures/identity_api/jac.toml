@@ -6,6 +6,6 @@ entry-point = "test_api.jac"
 
 # Custom in-process fake emailer so verification/reset flows have a working
 # sender during tests. Loaded from test_emailer_fake.jac (on PYTHONPATH).
-[plugins.scale.emailer]
+[scale.emailer]
 provider = "test_emailer_fake:FakeEmailer"
 from_address = "no-reply@test.local"

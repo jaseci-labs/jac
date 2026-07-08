@@ -1,7 +1,7 @@
 """Tests for client npm dependency injection gating in JacClientConfig.load().
 
 Reading client config must NEVER mutate a project's jac.toml. For projects
-that opted into the client via [plugins.client], the core runtime/dev deps
+that opted into the client via [client], the core runtime/dev deps
 are injected into the *effective* dependency set at resolve time (visible to
 the bundler and the npm provider plan) without being written back; jac.toml
 only records what the user asked for.
@@ -21,7 +21,7 @@ def _write_toml(temp_dir: str, content: str) -> tuple[Path, bytes] {
 # =============================================================================
 # Non-client project: reading config must not mutate jac.toml or inject deps
 # =============================================================================
-"""A project without [plugins.client] is left untouched when config is read."""
+"""A project without [client] is left untouched when config is read."""
 test "non client project config read does not mutate jac toml" {
     import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
@@ -29,7 +29,7 @@ test "non client project config read does not mutate jac toml" {
         original_cwd = os.getcwd();
         try {
             os.chdir(temp_dir);
-            # Backend-only project: no [plugins.client] section.
+            # Backend-only project: no [client] section.
             (config_path, original_bytes) = _write_toml(
                 temp_dir,
                 '[project]\nname = "backend-app"\nversion = "1.0.0"\n'
@@ -64,7 +64,7 @@ test "non client project config read does not mutate jac toml" {
 # =============================================================================
 # Client project: core deps are injected in-memory, never persisted
 # =============================================================================
-"""A [plugins.client] project sees core deps in its effective package config."""
+"""A [client] project sees core deps in its effective package config."""
 test "client project gets dependencies injected on load" {
     import from jaclang.runtimelib.client.config_loader { JacClientConfig }
 
@@ -76,7 +76,7 @@ test "client project gets dependencies injected on load" {
             (config_path, original_bytes) = _write_toml(
                 temp_dir,
                 '[project]\nname = "client-app"\nversion = "1.0.0"\n'
-                'entry-point = "main.jac"\n\n[plugins.client]\n'
+                'entry-point = "main.jac"\n\n[client]\n'
             );
 
             config = JacClientConfig(Path(temp_dir));
@@ -112,7 +112,7 @@ test "npm provider plan carries self-heal origins for client projects" {
             temp_dir,
             '[project]\nname = "client-app"\nversion = "1.0.0"\n'
             'entry-point = "main.jac"\n\n[dependencies.npm]\nlodash = "^4.17.0"\n\n'
-            '[plugins.client]\n'
+            '[client]\n'
         );
         config = JacConfig.load(config_path);
         resolved = NpmProvider().resolve(config);

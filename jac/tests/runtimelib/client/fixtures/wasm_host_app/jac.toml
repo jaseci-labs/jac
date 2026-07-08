@@ -15,7 +15,7 @@ vite = "^6.4.1"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 
-[plugins.client.app_meta_data]
+[client.app_meta_data]
 title = "Wasm Host Import"

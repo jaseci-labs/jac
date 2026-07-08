@@ -16,7 +16,7 @@ glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent / "fixtures" / "k8s_e2e";
 
 test "generate_service_pod_specs auto-discovers services when no routes declared" {
     # The #7137 companion: a microservice app with no
-    # [plugins.scale.microservices.routes] section still deploys - services are
+    # [scale.microservices.routes] section still deploys - services are
     # discovered from `sv import` under the project root.
     cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
     builder = MicroserviceManifestBuilder(

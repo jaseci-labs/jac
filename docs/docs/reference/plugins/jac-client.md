@@ -1008,7 +1008,7 @@ walker:pub GetMyData {
 Configure in `jac.toml`:
 
 ```toml
-[plugins.scale.sso.google]
+[scale.sso.google]
 client_id = "your-google-client-id"
 client_secret = "your-google-client-secret"
 ```
@@ -1253,7 +1253,7 @@ Because a JS error boundary catches every error regardless of declared type, per
 
 ### Comments inside JSX
 
-Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac format`:
+Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac fmt`:
 
 ```jac
 cl {
@@ -1318,33 +1318,33 @@ version = "0.1.0"
 base_route_app = "app"        # Serve at /
 cl_route_prefix = "/cl"       # Client route prefix
 
-[plugins.client]
+[client]
 enabled = true
 
 # Import path aliases
-[plugins.client.paths]
+[client.paths]
 "@components/*" = "./components/*"
 "@utils/*" = "./utils/*"
 
-[plugins.client.configs.tailwind]
+[client.configs.tailwind]
 # Generates tailwind.config.js
 content = ["./src/**/*.{jac,tsx,jsx}"]
 
 # Private/scoped npm registries
-[plugins.client.npm.scoped_registries]
+[client.npm.scoped_registries]
 "@mycompany" = "https://npm.pkg.github.com"
 
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${NODE_AUTH_TOKEN}"
 
 # Global npm settings
-[plugins.client.npm.settings]
+[client.npm.settings]
 always-auth = true
 ```
 
 ### NPM Registry Configuration
 
-The `[plugins.client.npm]` section configures custom npm registries and authentication for private or scoped packages. This generates an `.npmrc` file automatically during dependency installation, eliminating the need to manage `.npmrc` files manually.
+The `[client.npm]` section configures custom npm registries and authentication for private or scoped packages. This generates an `.npmrc` file automatically during dependency installation, eliminating the need to manage `.npmrc` files manually.
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -1355,7 +1355,7 @@ The `[plugins.client.npm]` section configures custom npm registries and authenti
 **Global settings** emit arbitrary `.npmrc` key-value pairs:
 
 ```toml
-[plugins.client.npm.settings]
+[client.npm.settings]
 registry = "https://registry.internal.example.com"
 always-auth = true
 strict-ssl = false
@@ -1365,7 +1365,7 @@ proxy = "http://proxy.company.com:8080"
 **Scoped registries** map `@scope` prefixes to custom registry URLs:
 
 ```toml
-[plugins.client.npm.scoped_registries]
+[client.npm.scoped_registries]
 "@mycompany" = "https://npm.pkg.github.com"
 "@internal" = "https://registry.internal.example.com"
 ```
@@ -1373,7 +1373,7 @@ proxy = "http://proxy.company.com:8080"
 **Auth tokens** configure authentication for each registry. Use environment variables to avoid committing secrets:
 
 ```toml
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${NODE_AUTH_TOKEN}"
 ```
 
@@ -1383,10 +1383,10 @@ The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically 
 
 ### Import Path Aliases
 
-The `[plugins.client.paths]` section lets you define custom import path aliases. Aliases are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths`, so both bundling and IDE autocompletion work out of the box.
+The `[client.paths]` section lets you define custom import path aliases. Aliases are automatically applied to the generated Vite `resolve.alias` and TypeScript `compilerOptions.paths`, so both bundling and IDE autocompletion work out of the box.
 
 ```toml
-[plugins.client.paths]
+[client.paths]
 "@components/*" = "./components/*"
 "@utils/*" = "./utils/*"
 "@shared" = "./shared/index"
@@ -1412,10 +1412,10 @@ cl {
 
 ### Vite Plugin Integration
 
-The `[plugins.client.vite]` section lets you extend the Vite build with any npm-based Vite plugin. All external tool integration follows the same two-step pattern:
+The `[client.vite]` section lets you extend the Vite build with any npm-based Vite plugin. All external tool integration follows the same two-step pattern:
 
 1. Declare the npm package in `[dependencies.npm]`
-2. Wire the plugin in `[plugins.client.vite]`
+2. Wire the plugin in `[client.vite]`
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -1431,7 +1431,7 @@ jac add --npm --dev tailwindcss @tailwindcss/vite
 ```
 
 ```toml
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 
@@ -1457,7 +1457,7 @@ cl {
 **Example: Multiple plugins**
 
 ```toml
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()", "myPlugin({ option: 'value' })"]
 lib_imports = [
     "import tailwindcss from '@tailwindcss/vite'",
@@ -1467,10 +1467,10 @@ lib_imports = [
 
 #### Build Options
 
-Override Vite build options via `[plugins.client.vite.build]`:
+Override Vite build options via `[client.vite.build]`:
 
 ```toml
-[plugins.client.vite.build]
+[client.vite.build]
 sourcemap = true
 minify = "esbuild"
 outDir = "dist"
@@ -1478,10 +1478,10 @@ outDir = "dist"
 
 #### Dev Server Options
 
-Configure the Vite dev server via `[plugins.client.vite.server]`:
+Configure the Vite dev server via `[client.vite.server]`:
 
 ```toml
-[plugins.client.vite.server]
+[client.vite.server]
 port = 3000
 open = true
 host = "0.0.0.0"
@@ -1490,7 +1490,7 @@ cors = true
 
 ### Generic Config File Generation
 
-`[plugins.client.configs]` generates `<name>.config.js` files in `.jac/client/configs/` from TOML. Use this for tools that expect a `*.config.js` file - PostCSS, Tailwind v3, ESLint, Prettier, etc. No standalone config files needed in your project root.
+`[client.configs]` generates `<name>.config.js` files in `.jac/client/configs/` from TOML. Use this for tools that expect a `*.config.js` file - PostCSS, Tailwind v3, ESLint, Prettier, etc. No standalone config files needed in your project root.
 
 **Example: Tailwind CSS v3 + PostCSS**
 
@@ -1499,14 +1499,14 @@ jac add --npm --dev tailwindcss autoprefixer postcss
 ```
 
 ```toml
-[plugins.client.configs.postcss]
+[client.configs.postcss]
 plugins = ["tailwindcss", "autoprefixer"]
 
-[plugins.client.configs.tailwind]
+[client.configs.tailwind]
 content = ["./**/*.jac", "./**/*.cl.jac", "./.jac/client/**/*.{js,jsx,ts,tsx}"]
 plugins = []
 
-[plugins.client.configs.tailwind.theme.extend.colors]
+[client.configs.tailwind.theme.extend.colors]
 primary = "#3490dc"
 
 [dependencies.npm.dev]
@@ -1519,8 +1519,8 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 | Use case | Config section |
 |---|---|
-| Vite plugins (Tailwind v4, custom plugins) | `[plugins.client.vite]` |
-| PostCSS / Tailwind v3 / ESLint / Prettier | `[plugins.client.configs]` |
+| Vite plugins (Tailwind v4, custom plugins) | `[client.vite]` |
+| PostCSS / Tailwind v3 / ESLint / Prettier | `[client.configs]` |
 
 ### shadcn/ui Configuration
 
@@ -1553,16 +1553,16 @@ shadcn components use semantic color tokens (`bg-primary`, `text-foreground`, `b
 
 ### TypeScript Configuration
 
-Override the generated `tsconfig.json` via `[plugins.client.ts]`:
+Override the generated `tsconfig.json` via `[client.ts]`:
 
 ```toml
-[plugins.client.ts.compilerOptions]
+[client.ts.compilerOptions]
 strict = false
 target = "ES2022"
 noUnusedLocals = false
 noUnusedParameters = false
 
-[plugins.client.ts]
+[client.ts]
 include = ["components/**/*", "lib/**/*", "types/**/*"]
 ```
 
@@ -1570,10 +1570,10 @@ include = ["components/**/*", "lib/**/*", "types/**/*"]
 
 ### App Metadata
 
-Set HTML `<head>` tags for the client app via `[plugins.client.app_meta_data]`:
+Set HTML `<head>` tags for the client app via `[client.app_meta_data]`:
 
 ```toml
-[plugins.client.app_meta_data]
+[client.app_meta_data]
 title = "My App"
 description = "App description"
 keywords = "jac, fullstack"
@@ -1590,7 +1590,7 @@ og_image = "/assets/og-image.png"
 Set the backend API base URL used by client-side requests:
 
 ```toml
-[plugins.client.api]
+[client.api]
 base_url = "https://api.example.com"
 ```
 
@@ -1601,7 +1601,7 @@ Useful for production deployments where the API lives on a different domain than
 Control minification in production builds:
 
 ```toml
-[plugins.client]
+[client]
 minify = true
 ```
 
@@ -1612,7 +1612,7 @@ Defaults to `true` for `jac build` and `false` for `jac start --dev`.
 Control the base path for asset resolution (JS/CSS) in the generated `index.html`. Useful for deploying the app on a subpath (e.g., `https://example.com/myapp/`).
 
 ```toml
-[plugins.client]
+[client]
 base_path = "/myapp/"
 ```
 
@@ -1715,7 +1715,7 @@ name = "browser-app"
 entry-point = "main.jac"
 kind = "web-static"
 
-[plugins.client]
+[client]
 ```
 
 With `kind = "web-static"` set, `jac build` and `jac start` auto-detect the
@@ -1846,12 +1846,12 @@ Use `desktop` for the OS-native webview. Use `cef` for a bundled
 Chromium Embedded Framework renderer:
 
 ```toml
-[plugins.desktop]
+[desktop]
 engine = "cef"
 ```
 
 See the **[jac-desktop Reference](jac-desktop.md)** for architecture,
-`[plugins.desktop]` configuration, and CEF runtime flags.
+`[desktop]` configuration, and CEF runtime flags.
 
 Tutorial: [Building a Desktop App](../../tutorials/fullstack/desktop.md).
 
@@ -1892,10 +1892,10 @@ jac build --client mobile --platform ios
 - Android: APK in `android/app/build/outputs/apk/`
 - iOS: Xcode build products in `ios/App/build/`
 
-**Configuration** via `[plugins.client.mobile]` in `jac.toml`:
+**Configuration** via `[client.mobile]` in `jac.toml`:
 
 ```toml
-[plugins.client.mobile]
+[client.mobile]
 app_name = "My App"
 app_id = "com.example.myapp"
 release = false          # true for release builds
@@ -1907,7 +1907,7 @@ ios_destination = "platform=iOS Simulator,name=iPhone 16,OS=latest"
 
 **Notes:**
 
-- `jac setup mobile` uses `--platform` when provided, otherwise `[plugins.client.mobile].default_platform`, otherwise host default (`ios` on macOS, `android` elsewhere).
+- `jac setup mobile` uses `--platform` when provided, otherwise `[client.mobile].default_platform`, otherwise host default (`ios` on macOS, `android` elsewhere).
 - Mobile dev networking is auto-resolved by default; use `--host <ip>` only when you need to force a specific host.
 - Android mobile dev auto-attempts `adb reverse` for Vite/API ports before launching Capacitor.
 - iOS device builds and App Store archives require Xcode provisioning profiles. Use `npx cap open ios` to open the project in Xcode for signing configuration.
@@ -1956,10 +1956,10 @@ jac build --client react-native --platform ios
   builds, installs, and launches it for you; a distributable `.ipa` comes from the
   EAS Build path (`ios_builder = "eas"`)
 
-**Configuration** via `[plugins.client.react_native]` in `jac.toml`:
+**Configuration** via `[client.react_native]` in `jac.toml`:
 
 ```toml
-[plugins.client.react_native]
+[client.react_native]
 project_dir = ".jac/mobile-rn"   # Expo project location (under the .jac build root; override to relocate)
 release = false                  # true for release variants
 default_platform = "android"     # platform used by plain `jac start --client react-native`
@@ -1983,10 +1983,10 @@ client_kind = "mobui"
 
 **Notes:**
 
-- `jac setup react-native` scaffolds an Expo project at `.jac/mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). Capacitor keeps `android/` + `ios/` -- both targets can coexist in one repo.
+- `jac setup react-native` scaffolds an Expo project at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; under the centralized `.jac` build root, so it stays out of the source tree). Capacitor keeps `android/` + `ios/` -- both targets can coexist in one repo.
 - Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit.
 - iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.
-- Release/debug variants via `[plugins.client.react_native].release = true`.
+- Release/debug variants via `[client.react_native].release = true`.
 - EAS Update integration for OTA updates is opt-in via config -- see [EAS Update (OTA)](#eas-update-ota) below.
 
 #### EAS Update (OTA)
@@ -2016,7 +2016,7 @@ eas update:configure
 **Then opt in via `jac.toml`:**
 
 ```toml
-[plugins.client.react_native]
+[client.react_native]
 eas_update = true
 eas_update_branch = "production"   # or leave "" for the release/debug default
 ```
@@ -2145,12 +2145,12 @@ jac start --client pwa
 **Configuration in jac.toml:**
 
 ```toml
-[plugins.client.pwa]
+[client.pwa]
 theme_color = "#000000"
 background_color = "#ffffff"
 cache_name = "my-app-cache-v1"
 
-[plugins.client.pwa.manifest]
+[client.pwa.manifest]
 name = "My App"
 short_name = "App"
 description = "My awesome Jac app"
@@ -2172,7 +2172,7 @@ After running `jac setup pwa`, your app automatically shows a native-style insta
 **Banner Configuration in jac.toml:**
 
 ```toml
-[plugins.client.pwa]
+[client.pwa]
 theme_color = "#000000"
 background_color = "#ffffff"
 
@@ -2253,7 +2253,7 @@ When client builds fail, jac-client displays structured error diagnostics instea
 | `JAC_CLIENT_003` | Syntax error in client code | Check source snippet |
 | `JAC_CLIENT_004` | Unresolved import | Verify import path |
 
-To see raw error output alongside formatted diagnostics, set `debug = true` under `[plugins.client]` in `jac.toml` or set the `JAC_DEBUG=1` environment variable.
+To see raw error output alongside formatted diagnostics, set `debug = true` under `[client]` in `jac.toml` or set the `JAC_DEBUG=1` environment variable.
 
 > **Note:** Debug mode is enabled by default for a better development experience. For production deployments, set `debug = false` in `jac.toml`.
 
@@ -2261,10 +2261,10 @@ To see raw error output alongside formatted diagnostics, set `debug = true` unde
 
 ## Build-Time Constants
 
-Define global variables that are replaced at compile time using the `[plugins.client.vite.define]` section in `jac.toml`:
+Define global variables that are replaced at compile time using the `[client.vite.define]` section in `jac.toml`:
 
 ```toml
-[plugins.client.vite.define]
+[client.vite.define]
 "globalThis.API_URL" = "\"https://api.example.com\""
 "globalThis.FEATURE_ENABLED" = true
 "globalThis.BUILD_VERSION" = "\"1.2.3\""
@@ -2644,7 +2644,7 @@ Changes to `.jac` files automatically reload without restart.
 ### Debug Mode
 
 ```bash
-jac debug main.jac
+jac run --debug main.jac
 ```
 
 Provides:

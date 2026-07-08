@@ -218,6 +218,92 @@ def jir_to_module(pkg_name: str, rel_jir: str) -> tuple[str, str, bool] {
     return (source_rel, fullname, is_pkg);
 }
 
+def app_metadata(pkg_path: Path, pkg_name: str) -> dict {
+    if not (pkg_path / "jac.toml").is_file() {
+        return {};
+    }
+    import from jaclang.project.config { get_config_for_path }
+    import from jaclang.project.kinds { resolve_project_kind, resolve_entry }
+    import from jaclang.runtimelib.sealed_serve { CLIENT_DIST_REL, NATIVE_DIR_REL }
+
+    config = get_config_for_path(pkg_path);
+    if config is None {
+        return {};
+    }
+    entry_path = resolve_entry(config, str(pkg_path));
+    kind = resolve_project_kind(config, entry_path);
+
+    entry: dict[str, str] = {};
+    if entry_path and Path(entry_path).is_file() {
+        rel = Path(entry_path).resolve().relative_to(pkg_path.resolve()).as_posix();
+        stem = ext_registry.base_stem(os.path.basename(entry_path));
+        entry = {"module": f"{pkg_name}.{stem}", "path": rel};
+    }
+
+    caps: list[str] = [];
+    if kind in ["service", "service-mesh", "web-app", "desktop", "mobile"] {
+        caps.append("has-server");
+    }
+    if entry {
+        caps.append("has-entry");
+    }
+    if (pkg_path / CLIENT_DIST_REL).is_dir()
+    or any(ext_registry.is_client_module(p) for p in find_jac_files(str(pkg_path))) {
+        caps.append("has-client");
+    }
+    if any(ext_registry.is_native_module(p) for p in find_jac_files(str(pkg_path))) {
+        caps.append("has-native");
+    }
+    if kind in ["py-package", "js-package"] or not entry {
+        caps.append("attachable");
+    }
+
+    meta = {"kind": kind, "capabilities": caps, "entry": entry};
+    native_dir = pkg_path / NATIVE_DIR_REL;
+    if native_dir.is_dir() {
+        triples = sorted(
+            [
+                d.name
+                for d in native_dir.iterdir()
+                if d.is_dir()
+            ]
+        );
+        if triples {
+            caps.append("platform-locked");
+            meta["triples"] = triples;
+        }
+    }
+    return meta;
+}
+
+def collect_payloads(pkg_path: Path) -> dict[str, str] {
+    import from jaclang.runtimelib.sealed_serve {
+        SERVE_MANIFEST_REL,
+        CLIENT_DIST_REL,
+        NATIVE_DIR_REL
+    }
+    payloads: dict[str, str] = {};
+    sm = pkg_path / SERVE_MANIFEST_REL;
+    if sm.is_file() {
+        payloads[Path(SERVE_MANIFEST_REL).as_posix()] = hashlib.sha256(
+            sm.read_bytes()
+        ).hexdigest();
+    }
+    for payload_dir in [pkg_path / CLIENT_DIST_REL, pkg_path / NATIVE_DIR_REL] {
+        if not payload_dir.is_dir() {
+            continue;
+        }
+        for f in sorted(payload_dir.rglob("*")) {
+            if f.is_file() {
+                payloads[f.relative_to(pkg_path).as_posix()] = hashlib.sha256(
+                    f.read_bytes()
+                ).hexdigest();
+            }
+        }
+    }
+    return payloads;
+}
+
 def seal_finalize(
     pkg_path: Path, precompiled_dir: Path, pkg_name: str, pyver: str, embed_src: bool
 ) -> int {
@@ -293,13 +379,30 @@ def seal_finalize(
     }
     console.print(f"  Manifest modules: {len(manifest_modules)} ({n_boot} bootstrap)");
 
-    write_manifest(precompiled_dir, pkg_name, pyver, manifest_modules);
+    payloads = collect_payloads(pkg_path);
+    if payloads {
+        console.print(f"  Payload files: {len(payloads)}");
+    }
+    app_meta = app_metadata(pkg_path, pkg_name);
+    if app_meta {
+        console.print(
+            f"  App: kind={app_meta.get('kind')} caps={app_meta.get('capabilities')}"
+        );
+    }
+    write_manifest(
+        precompiled_dir, pkg_name, pyver, manifest_modules, payloads, app_meta
+    );
     console.print(f"  Manifest: {precompiled_dir / MANIFEST_NAME}");
     return 0;
 }
 
 def write_manifest(
-    precompiled_dir: Path, pkg_name: str, pyver: str, modules: dict[str, dict]
+    precompiled_dir: Path,
+    pkg_name: str,
+    pyver: str,
+    modules: dict[str, dict],
+    payloads: (dict[str, str] | None) = None,
+    app_meta: (dict | None) = None
 ) {
     import from importlib.metadata { version as pkg_version }
     try {
@@ -315,6 +418,12 @@ def write_manifest(
         "jaclang_version": jac_ver,
         "modules": modules
     };
+    if payloads {
+        manifest["payloads"] = payloads;
+    }
+    if app_meta {
+        manifest.update(app_meta);
+    }
     (precompiled_dir / MANIFEST_NAME).write_text(
         json.dumps(manifest, sort_keys=True, indent=1) + "\n", encoding="utf-8"
     );

@@ -1,7 +1,6 @@
 import threading;
 import from enum { StrEnum }
 import from pathlib { Path }
-import from typing { Callable }
 import type from jaclang.runtimelib.watcher {
     JacFileWatcher,
     FileChangeEvent,

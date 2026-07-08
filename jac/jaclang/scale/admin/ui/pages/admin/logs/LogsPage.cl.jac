@@ -349,7 +349,7 @@ def:pub LogsPage -> JsxElement {
                 <span>
                     Log backend unreachable. Make sure
                     <code className="mx-1 font-mono text-fg">
-                        [plugins.scale.microservices.logs].enabled
+                        [scale.microservices.logs].enabled
                     </code>
                     is true and the Loki + Alloy stack is running in the deployment namespace.
                 </span>

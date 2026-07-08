@@ -327,7 +327,6 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
 
             case uni.ParamKind.KWARG:
                 return types.ParamKind.KWARG;
-                return types.ParamKind.NORMAL;
 
         }
     }

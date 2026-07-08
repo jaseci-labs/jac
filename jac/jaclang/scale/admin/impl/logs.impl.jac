@@ -243,7 +243,7 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             tags=["Logs"],
             summary="Service dropdown options",
             description=(
-                "Microservices declared in [plugins.scale.microservices.routes] "
+                "Microservices declared in [scale.microservices.routes] "
                 "+ 'gateway'. Used by the admin LogsPage service filter."
             )
         )

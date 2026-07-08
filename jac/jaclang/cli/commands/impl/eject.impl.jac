@@ -576,7 +576,7 @@ def _emit_frontend_package_json(src: Path, frontend_dir: Path, project_name: str
 
 
 def _emit_vite_config(frontend_dir: Path, runtime_copied: bool, toml_data: dict) {
-    vite_cfg = dict(toml_data.get("plugins", {}).get("client", {}).get("vite", {}));
+    vite_cfg = dict(toml_data.get("client", {}).get("vite", {}));
     lib_imports = [str(i) for i in vite_cfg.get("lib_imports", [])];
     plugins = [str(p) for p in vite_cfg.get("plugins", [])];
 
@@ -983,7 +983,7 @@ def _resolve_project_python_deps(src: Path, project_name: str) -> list[str] {
 
 
 def _emit_backend_jac_toml(backend_dir: Path, project_name: str, toml_data: dict) {
-    byllm_cfg = toml_data.get("plugins", {}).get("byllm", {});
+    byllm_cfg = toml_data.get("byllm", {});
     if (not isinstance(byllm_cfg, dict)) or (not byllm_cfg) {
         return;
     }
@@ -991,7 +991,7 @@ def _emit_backend_jac_toml(backend_dir: Path, project_name: str, toml_data: dict
     version = str(project_cfg.get("version", "0.1.0"));
     lines: list[str] = [];
     _emit_toml_table(lines, "project", {"name": project_name, "version": version});
-    _emit_toml_table(lines, "plugins.byllm", dict(byllm_cfg));
+    _emit_toml_table(lines, "byllm", dict(byllm_cfg));
     (backend_dir / "jac.toml").write_text("\n".join(lines), encoding="utf-8");
     console.print("  ✔ byLLM config (jac.toml)", style="success");
 }
