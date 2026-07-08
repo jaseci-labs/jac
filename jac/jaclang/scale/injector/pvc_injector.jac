@@ -232,9 +232,11 @@ obj PvcInjector(Injector) {
                     # real infra problem resurfaces loudly on the upload below.
                     logger.debug(f"pvc-injector: presence probe: {probe_err}");
                 }
-                with tempfile.NamedTemporaryFile(
-                    suffix=".bundle", delete=False
-                ) as tmp {
+                # Local scratch file only: kubectl cp needs a path to copy FROM.
+                # The suffix is irrelevant (nothing reads it); the real PVC
+                # filename comes from object_key (.jab app bundle / .tar.gz
+                # toolchain). Deleted right after the copy.
+                with tempfile.NamedTemporaryFile(delete=False) as tmp {
                     tmp.write(raw);
                     tmp_path = Path(tmp.name);
                 }
