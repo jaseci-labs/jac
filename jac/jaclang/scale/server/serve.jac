@@ -1,5 +1,4 @@
 import time;
-import asyncio;
 import logging;
 import mimetypes;
 import from collections.abc { Callable }
@@ -177,6 +176,10 @@ obj JacAPIServerEndpoints {
     def create_webhook_callback(walker_name: str) -> Callable[..., TransportResponse];
     def create_webhook_parameters(walker_name: str) -> list[APIParameter];
     def get_ws_manager -> WebSocketConnectionManager;
+    def _create_websocket_target_handler(
+        target_name: str, target: any, requires_auth: bool, execute: Callable, kind: str
+    ) -> Callable;
+
     def create_websocket_handler(walker_name: str) -> Callable;
     def create_websocket_function_handler(func_name: str) -> Callable;
     def register_websocket_endpoints -> None;

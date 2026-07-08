@@ -1,6 +1,6 @@
 import logging;
 import asyncio;
-import from fastapi { WebSocket }
+import from fastapi { WebSocket, WebSocketDisconnect }
 import from inspect { isgenerator }
 
 glob logger = logging.getLogger(__name__),
@@ -99,6 +99,8 @@ async def _ws_stream_result(
                 await emit({'ok': True, 'type': 'chunk', 'data': item});
             }
         }
+    } except WebSocketDisconnect {
+        raise;
     } except Exception as e {
         logger.error(f"WS stream error for '{target_name}': {e}");
         stream_error = str(e);
