@@ -40,6 +40,43 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 glob logger = logging.getLogger(__name__);
 
 
+def deployment_rolled_out(dep: any) -> bool {
+    # Judge readiness for THIS generation: during a rolling update the old
+    # ReplicaSet's pods keep ready_replicas > 0, which made a redeploy report
+    # "Fleet ready" while every new pod was still crash-looping.
+    if (dep.status.observed_generation or 0) < (dep.metadata.generation or 0) {
+        return False;
+    }
+    want = dep.spec.replicas or 1;
+    updated = dep.status.updated_replicas or 0;
+    return (
+        updated >= want
+        and (dep.status.replicas or 0) <= updated
+        and (dep.status.available_replicas or 0) >= want
+    );
+}
+
+
+def crashloop_reason(pod: any) -> str {
+    # Init containers crash-loop too (e.g. a bootstrap that cannot exec the
+    # shipped binary) and never appear in container_statuses.
+    statuses = (
+        list(pod.status.container_statuses or []) + list(
+            pod.status.init_container_statuses or []
+        )
+    );
+    for cs in statuses {
+        if (cs.restart_count or 0) >= 3 {
+            return (
+                f"pod '{pod.metadata.name}' crash-looping "
+                f"({cs.restart_count} restarts)"
+            );
+        }
+    }
+    return "";
+}
+
+
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
     has _deploy_context: DeployContext = DeployContext(),
         no_image: bool = True,
@@ -164,7 +201,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 for name in names {
                     try {
                         d = apps_v1.read_namespaced_deployment(name=name, namespace=ns);
-                        if (d.status.ready_replicas or 0) >= 1 {
+                        if deployment_rolled_out(d) {
                             ready += 1;
                         }
                     } except Exception {
@@ -184,13 +221,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 phases: list[str] = [];
                 try {
                     for p in core_v1.list_namespaced_pod(namespace=ns).items {
-                        for cs in (p.status.container_statuses or []) {
-                            if (cs.restart_count or 0) >= 3 {
-                                crash = (
-                                    f"pod '{p.metadata.name}' crash-looping "
-                                    f"({cs.restart_count} restarts)"
-                                );
-                            }
+                        reason = crashloop_reason(p);
+                        if reason {
+                            crash = reason;
                         }
                         labels = p.metadata.labels or {};
                         app = str(labels.get("app", ""));
