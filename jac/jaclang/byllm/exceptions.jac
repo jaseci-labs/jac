@@ -35,9 +35,6 @@ set on the instance at the raise site.
 """
 obj OutputConversionError(ByLLMError) {}
 
-"""Raised when the LLM calls a tool name that was not registered."""
-obj UnknownToolError(ByLLMError) {}
-
 """Raised when finish_tool output fails validation against the declared return type."""
 obj FinishToolError(ByLLMError) {}
 

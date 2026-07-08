@@ -1,5 +1,3 @@
-import from pathlib { Path }
-
 glob _RN_BUILDERS_ANDROID = {"gradle", "eas"},
      _RN_BUILDERS_IOS = {"xcodebuild", "eas"};
 

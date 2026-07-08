@@ -15,102 +15,6 @@ impl add_unique_text_edit(
     }
 }
 
-impl get_line_of_code(
-    line_number: int, lines: list[str]
-) -> Optional[tuple[(str, int)]] {
-    if 0 <= line_number < len(lines) {
-        line = lines[line_number].rstrip('\n');
-        first_non_space = len(line) - len(line.lstrip());
-        return (
-            line,
-            (first_non_space + 4)
-                if line.strip().endswith(('(', '{', '['))
-                else first_non_space
-        );
-    }
-    return None;
-}
-
-impl find_surrounding_tokens(
-    change_start_line: int,
-    change_start_char: int,
-    change_end_line: int,
-    change_end_char: int,
-    sem_tokens: list[int]
-) -> tuple[(int | None), (int | None), bool] {
-    prev_token_index = None;
-    next_token_index = None;
-    inside_tok = False;
-    for (i, tok) in enumerate(
-        [get_token_start(i, sem_tokens) for i in range(0, len(sem_tokens), 5)][0:]
-    ) {
-        if (not (prev_token_index is None or next_token_index is None))
-        and (
-            tok[0] > change_end_line
-            or (tok[0] == change_end_line and tok[1] > change_end_char)
-        ) {
-            prev_token_index = i * 5;
-            break;
-        } elif change_start_line == tok[0] == change_end_line
-        and tok[1] <= change_start_char
-        and tok[2] >= change_end_char {
-            prev_token_index = i * 5;
-            inside_tok = True;
-            break;
-        } elif tok[0] < change_start_line
-        or tok[0] == change_start_line
-        and tok[1] < change_start_char {
-            prev_token_index = i * 5;
-        } elif tok[0] > change_end_line
-        or tok[0] == change_end_line
-        and tok[1] > change_end_char {
-            next_token_index = i * 5;
-            break;
-        }
-    }
-    return (prev_token_index, next_token_index, inside_tok);
-}
-
-impl get_token_start(
-    token_index: (int | None), sem_tokens: list[int]
-) -> tuple[int, int, int] {
-    if token_index is None or token_index >= len(sem_tokens) {
-        return (0, 0, 0);
-    }
-    current_line = 0;
-    current_char = 0;
-    current_tok_index = 0;
-    while current_tok_index < len(sem_tokens) {
-        token_line_delta = sem_tokens[current_tok_index];
-        token_start_char = sem_tokens[(current_tok_index + 1)];
-        if token_line_delta > 0 {
-            current_line += token_line_delta;
-            current_char = 0;
-        }
-        if current_tok_index == token_index {
-            if token_line_delta > 0 {
-                return (
-                    current_line,
-                    token_start_char,
-                    (token_start_char + sem_tokens[(current_tok_index + 2)])
-                );
-            }
-            return (
-                current_line,
-                (current_char + token_start_char),
-                (
-                    (current_char + token_start_char) + sem_tokens[
-                        (current_tok_index + 2)
-                    ]
-                )
-            );
-        }
-        current_char += token_start_char;
-        current_tok_index += 5;
-    }
-    return (current_line, current_char, 0);
-}
-
 impl kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind {
     return lspt.SymbolKind.Function
         if isinstance(sub_tab, uni.Ability)
@@ -227,31 +131,6 @@ impl position_within_node(n: uni.UniNode, line: int, character: int) -> bool {
         return False;
     }
     return True;
-}
-
-impl debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
-    def decorator(fn: T) -> Callable[P, Awaitable[None]] {
-        @wraps(fn)
-        async def debounced(*args: P.args, **kwargs: P.kwargs) {
-            async def call_it {
-                await fn(*args, _=kwargs);
-            }
-            if debounced?._task {
-                debounced._task.cancel();
-            }
-            async def debounced_coro {
-                try {
-                    await asyncio.sleep(`wait);
-                    await call_it();
-                } except asyncio.CancelledError {
-                    ;
-                }
-            }
-            setattr(debounced, '_task', asyncio.create_task(debounced_coro()));
-        }
-        return debounced;
-    }
-    return decorator;
 }
 
 impl gen_diagnostics(

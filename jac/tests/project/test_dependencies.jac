@@ -1,4 +1,9 @@
-"""Tests for jaclang.project.dependencies module."""
+"""Tests for the ecosystem dependency provider engine.
+
+Covers jaclang.project.pyvenv (venv/pip mechanics), jaclang.project.providers
+(PythonProvider, ProviderRegistry, resolve_plan), and the jac
+install/add/remove/update CLI commands that dispatch through them.
+"""
 
 import os;
 import sys;
@@ -9,16 +14,25 @@ import from unittest.mock { MagicMock, patch }
 
 import from jaclang.cli.commands { project as proj_cmds }
 import from jaclang.project.config { JacConfig }
-import from jaclang.project.dependencies {
-    DependencyInstaller,
-    DependencyResolver,
-    ResolvedDependency,
+import from jaclang.project.pyvenv {
     add_venv_to_path,
-    summarize_pip_failure,
+    ensure_venv,
     get_venv_site_packages,
     is_venv_in_path,
+    make_git_spec,
+    make_pip_spec,
+    pip_command,
     remove_venv_from_path,
-    pip_command
+    summarize_pip_failure
+}
+import from jaclang.project.providers {
+    InstallContext,
+    PythonProvider,
+    ResolvedDependency,
+    get_provider_registry,
+    get_python_provider,
+    reset_provider_registry,
+    resolve_plan
 }
 
 """Reset global config singleton."""
@@ -77,55 +91,19 @@ def setup_mock_venv(project_dir: Path) -> tuple[JacConfig, str, str] {
     return (config, str(bin_dir), str(site_packages));
 }
 
-# ===== TestDependencyInstaller =====
-test "DependencyInstaller init with config" {
+# ===== venv mechanics =====
+test "ensure_venv creates" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-        assert installer.config == config;
-        assert installer.venv_dir == project_dir / ".jac" / "venv";
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller init without config fails" {
-    reset_config();
-    tmp = tempfile.mkdtemp(prefix="jac_test_");
-    old_cwd = os.getcwd();
-    os.chdir(tmp);
-    try {
-        raised = False;
-        try {
-            DependencyInstaller();
-        } except ValueError as e {
-            raised = True;
-            assert "No jac.toml found" in str(e);
-        }
-        assert raised , "Expected ValueError";
-    } finally {
-        os.chdir(old_cwd);
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller ensure_venv creates" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
         venv_dir = project_dir / ".jac" / "venv";
         assert not venv_dir.exists();
 
         with patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder_class.return_value = mock_builder;
-            installer.ensure_venv();
+            ensure_venv(config.get_venv_dir());
             mock_builder_class.assert_called_once();
             mock_builder.create.assert_called_once_with(str(venv_dir));
         }
@@ -135,7 +113,7 @@ test "DependencyInstaller ensure_venv creates" {
     }
 }
 
-test "DependencyInstaller ensure_venv seeds the build backend" {
+test "ensure_venv seeds the build backend" {
     # ensurepip on Python 3.12+ gives a fresh venv pip but NOT setuptools, so
     # source-only (sdist) deps that build via setuptools.build_meta failed in
     # pods. ensure_venv must seed the backend itself so `jac install` is
@@ -147,10 +125,9 @@ test "DependencyInstaller ensure_venv seeds the build backend" {
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
         with patch("subprocess.run") as run {
             run.return_value = MagicMock(returncode=0, stderr="");
-            installer.ensure_venv();
+            ensure_venv(config.get_venv_dir());
         }
         seed_calls = [
             call
@@ -169,12 +146,11 @@ test "DependencyInstaller ensure_venv seeds the build backend" {
     }
 }
 
-test "DependencyInstaller ensure_venv skips existing valid" {
+test "ensure_venv skips existing valid" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
 
         venv_dir = project_dir / ".jac" / "venv";
         venv_dir.mkdir(parents=True, exist_ok=True);
@@ -184,7 +160,7 @@ test "DependencyInstaller ensure_venv skips existing valid" {
         (bin_dir / "python").write_text("#!/usr/bin/env python");
 
         with patch("venv.EnvBuilder") as mock_builder_class {
-            installer.ensure_venv();
+            ensure_venv(config.get_venv_dir());
             mock_builder_class.return_value.create.assert_not_called();
         }
     } finally {
@@ -193,12 +169,11 @@ test "DependencyInstaller ensure_venv skips existing valid" {
     }
 }
 
-test "DependencyInstaller ensure_venv recreates corrupted" {
+test "ensure_venv recreates corrupted" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config, verbose=True);
 
         venv_dir = project_dir / ".jac" / "venv";
         venv_dir.mkdir(parents=True, exist_ok=True);
@@ -207,7 +182,7 @@ test "DependencyInstaller ensure_venv recreates corrupted" {
         with patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
             mock_builder_class.return_value = mock_builder;
-            installer.ensure_venv();
+            ensure_venv(config.get_venv_dir(), verbose=True);
             mock_builder.create.assert_called_once_with(str(venv_dir));
         }
     } finally {
@@ -216,12 +191,11 @@ test "DependencyInstaller ensure_venv recreates corrupted" {
     }
 }
 
-test "DependencyInstaller ensure_venv ensurepip missing" {
+test "ensure_venv ensurepip missing" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
 
         with patch("venv.EnvBuilder") as mock_builder_class {
             mock_builder = MagicMock();
@@ -229,7 +203,7 @@ test "DependencyInstaller ensure_venv ensurepip missing" {
             mock_builder_class.return_value = mock_builder;
             raised = False;
             try {
-                installer.ensure_venv();
+                ensure_venv(config.get_venv_dir());
             } except RuntimeError as e {
                 raised = True;
                 assert "sudo apt install python3-venv" in str(e);
@@ -242,21 +216,24 @@ test "DependencyInstaller ensure_venv ensurepip missing" {
     }
 }
 
-test "DependencyInstaller install_package success" {
+# ===== PythonProvider install/uninstall =====
+test "PythonProvider install_specs success" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config, verbose=False);
+        python = PythonProvider();
 
-        with patch.object(installer, "ensure_venv") as _ev, patch.object(
-            installer, "_run_pip"
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
         ) as mock_pip {
             mock_pip.return_value = (0, "Successfully installed", "");
-            result = installer.install_package(["requests>=2.28.0"]);
+            result = python.install_specs(
+                config, ["requests>=2.28.0"], InstallContext()
+            );
             assert result is True;
             assert mock_pip.call_count == 3;
-            call_args = mock_pip.call_args_list[1][0][0];
+            call_args = mock_pip.call_args_list[1].args[1];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "requests>=2.28.0" in call_args;
@@ -268,19 +245,95 @@ test "DependencyInstaller install_package success" {
     }
 }
 
-test "DependencyInstaller install_package failure" {
+test "PythonProvider install_specs failure" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
+        python = PythonProvider();
 
-        with patch.object(installer, "ensure_venv") as _ev, patch.object(
-            installer, "_run_pip"
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
         ) as mock_pip {
             mock_pip.return_value = (1, "", "Package not found");
-            result = installer.install_package(["nonexistent-package"]);
+            result = python.install_specs(
+                config, ["nonexistent-package"], InstallContext()
+            );
             assert result is False;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "PythonProvider install without version" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        python = PythonProvider();
+
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
+        ) as mock_pip {
+            mock_pip.return_value = (0, "", "");
+            python.install_specs(config, ["requests"], InstallContext());
+            call_args = mock_pip.call_args_list[1].args[1];
+            assert "requests" in call_args;
+            has_version = False;
+            for arg in call_args {
+                if "requests==" in str(arg) {
+                    has_version = True;
+                }
+            }
+            assert not has_version;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "PythonProvider installs git specs" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        python = PythonProvider();
+
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
+        ) as mock_pip {
+            mock_pip.return_value = (0, "", "");
+            spec = make_git_spec("https://github.com/user/plugin.git", branch="main");
+            result = python.install_specs(config, [spec], InstallContext());
+            assert result is True;
+            call_args = mock_pip.call_args_list[1].args[1];
+            assert "git+https://github.com/user/plugin.git@main" in call_args;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "PythonProvider install_flags passed to pip" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        python = PythonProvider();
+        ctx = InstallContext(install_flags=["--no-cache-dir"]);
+        with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+            PythonProvider, "_run_project_pip"
+        ) as mock_pip {
+            mock_pip.return_value = (0, "Successfully installed requests-2.31.0", "");
+            python.install_specs(config, ["requests>=2.28.0"], ctx);
+            call_args = mock_pip.call_args_list[1].args[1];
+            assert "install" in call_args;
+            assert "--upgrade" in call_args;
+            assert "--no-cache-dir" in call_args;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -332,125 +385,26 @@ test "summarize_pip_failure does not match VCS/URL specs by name" {
     assert detail == "git clone of https://github.com/acme/coollib.git failed";
 }
 
-test "DependencyInstaller install_package without version" {
+test "PythonProvider is_installed" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-
-        with patch.object(installer, "ensure_venv") as _ev, patch.object(
-            installer, "_run_pip"
-        ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
-            installer.install_package(["requests"]);
-            call_args = mock_pip.call_args_list[1][0][0];
-            assert "requests" in call_args;
-            has_version = False;
-            for arg in call_args {
-                if "requests==" in str(arg) {
-                    has_version = True;
-                }
-            }
-            assert not has_version;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller install_git_package" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-
-        with patch.object(installer, "ensure_venv") as _ev, patch.object(
-            installer, "_run_pip"
-        ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
-            specs = installer._make_git_spec(
-                "my-plugin", "https://github.com/user/plugin.git", branch="main"
-            );
-            result = installer.install_package([specs]);
-            assert result is True;
-            call_args = mock_pip.call_args_list[1][0][0];
-            assert "git+https://github.com/user/plugin.git@main" in call_args;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller install_all" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-
-        with patch.object(installer, "ensure_venv") as _ev, patch.object(
-            installer, "_run_pip"
-        ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
-            pip_packages = installer.get_pip_package_specs(include_dev=False);
-            git_packages = installer.get_git_package_specs();
-            result = installer.install_package(pip_packages + git_packages);
-            assert result is True;
-            assert mock_pip.call_count == 3;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller install_all with dev" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-
-        with patch.object(installer, "ensure_venv") as _ev, patch.object(
-            installer, "_run_pip"
-        ) as mock_pip {
-            mock_pip.return_value = (0, "", "");
-            pip_packages = installer.get_pip_package_specs(include_dev=True);
-            git_packages = installer.get_git_package_specs();
-            result = installer.install_package(pip_packages + git_packages);
-            assert result is True;
-            assert mock_pip.call_count == 3;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller is_installed" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
+        python = PythonProvider();
 
         venv_dir = project_dir / ".jac" / "venv";
         venv_dir.mkdir(parents=True, exist_ok=True);
 
-        with patch.object(installer, "_run_pip") as mock_pip {
+        with patch.object(PythonProvider, "_run_project_pip") as mock_pip {
             mock_pip.return_value = (0, "Name: requests\nVersion: 2.28.0", "");
-            assert installer.is_installed("requests") is True;
-            mock_pip.assert_called_with(["show", "requests"]);
+            assert python.is_installed(config, "requests") is True;
+            assert mock_pip.call_args.args[1] == ["show", "requests"];
             mock_pip.return_value = (
                 1,
                 "",
                 "WARNING: Package(s) not found: nonexistent"
             );
-            assert installer.is_installed("nonexistent") is False;
+            assert python.is_installed(config, "nonexistent") is False;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -458,23 +412,38 @@ test "DependencyInstaller is_installed" {
     }
 }
 
-test "DependencyInstaller get_installed_version not found" {
+test "PythonProvider get_installed_version" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
+        python = PythonProvider();
 
         venv_dir = project_dir / ".jac" / "venv";
         venv_dir.mkdir(parents=True, exist_ok=True);
 
-        with patch.object(installer, "_run_pip") as mock_pip {
+        with patch.object(PythonProvider, "_run_project_pip") as mock_pip {
+            mock_pip.return_value = (
+                0,
+                "Name: numpy\nVersion: 2.4.1\nSummary: Fundamental package\n",
+                ""
+            );
+            version = python.get_installed_version(config, "numpy");
+            assert version == "2.4.1";
+            assert mock_pip.call_args.args[1] == ["show", "numpy"];
             mock_pip.return_value = (
                 1,
                 "",
                 "WARNING: Package(s) not found: nonexistent"
             );
-            version = installer.get_installed_version("nonexistent");
+            version = python.get_installed_version(config, "nonexistent");
+            assert version is None;
+            mock_pip.return_value = (
+                0,
+                "Name: strange-pkg\nSummary: Missing version field\n",
+                ""
+            );
+            version = python.get_installed_version(config, "strange-pkg");
             assert version is None;
         }
     } finally {
@@ -483,13 +452,13 @@ test "DependencyInstaller get_installed_version not found" {
     }
 }
 
-test "DependencyInstaller get_installed_version no venv" {
+test "PythonProvider get_installed_version no venv" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-        version = installer.get_installed_version("requests");
+        python = PythonProvider();
+        version = python.get_installed_version(config, "requests");
         assert version is None;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -497,28 +466,28 @@ test "DependencyInstaller get_installed_version no venv" {
     }
 }
 
-test "DependencyInstaller list_installed" {
+test "PythonProvider list_installed" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
+        python = PythonProvider();
 
         venv_dir = project_dir / ".jac" / "venv";
         venv_dir.mkdir(parents=True, exist_ok=True);
 
-        with patch.object(installer, "_run_pip") as mock_pip {
+        with patch.object(PythonProvider, "_run_project_pip") as mock_pip {
             mock_pip.return_value = (
                 0,
                 '[{"name":"requests","version":"2.28.0"},{"name":"numpy","version":"1.24.0"},{"name":"pip","version":"23.0"},{"name":"setuptools","version":"67.0"}]',
                 ""
             );
-            installed = installer.list_installed();
+            installed = python.list_installed(config);
             assert "requests" in installed;
             assert "numpy" in installed;
             assert "pip" not in installed;
             assert "setuptools" not in installed;
-            mock_pip.assert_called_with(["list", "--format=json"]);
+            assert mock_pip.call_args.args[1] == ["list", "--format=json"];
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -526,66 +495,26 @@ test "DependencyInstaller list_installed" {
     }
 }
 
-test "DependencyInstaller get_installed_version" {
+test "PythonProvider uninstall" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
+        python = PythonProvider();
 
         venv_dir = project_dir / ".jac" / "venv";
         venv_dir.mkdir(parents=True, exist_ok=True);
 
-        with patch.object(installer, "_run_pip") as mock_pip {
-            mock_pip.return_value = (
-                0,
-                "Name: numpy\nVersion: 2.4.1\nSummary: Fundamental package\n",
-                ""
-            );
-            version = installer.get_installed_version("numpy");
-            assert version == "2.4.1";
-            mock_pip.assert_called_with(["show", "numpy"]);
-            mock_pip.return_value = (
-                1,
-                "",
-                "WARNING: Package(s) not found: nonexistent"
-            );
-            version = installer.get_installed_version("nonexistent");
-            assert version is None;
-            mock_pip.return_value = (
-                0,
-                "Name: strange-pkg\nSummary: Missing version field\n",
-                ""
-            );
-            version = installer.get_installed_version("strange-pkg");
-            assert version is None;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller uninstall_package" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config, verbose=True);
-
-        venv_dir = project_dir / ".jac" / "venv";
-        venv_dir.mkdir(parents=True, exist_ok=True);
-
-        with patch.object(installer, "_run_pip") as mock_pip {
+        with patch.object(PythonProvider, "_run_project_pip") as mock_pip {
             mock_pip.side_effect = [
                 (0, "Name: testpkg\nVersion: 1.0.0", ""),
                 (0, "Successfully uninstalled testpkg-1.0.0", "")
             ];
-            result = installer.uninstall_package("testpkg");
+            result = python.uninstall(config, "testpkg", InstallContext(verbose=True));
             assert result is True;
             assert mock_pip.call_count == 2;
-            mock_pip.assert_any_call(["show", "testpkg"]);
-            mock_pip.assert_called_with(["uninstall", "-y", "testpkg"]);
+            assert mock_pip.call_args_list[0].args[1] == ["show", "testpkg"];
+            assert mock_pip.call_args.args[1] == ["uninstall", "-y", "testpkg"];
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -593,23 +522,23 @@ test "DependencyInstaller uninstall_package" {
     }
 }
 
-test "DependencyInstaller uninstall_package not installed" {
+test "PythonProvider uninstall not installed" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
+        python = PythonProvider();
 
         venv_dir = project_dir / ".jac" / "venv";
         venv_dir.mkdir(parents=True, exist_ok=True);
 
-        with patch.object(installer, "_run_pip") as mock_pip {
+        with patch.object(PythonProvider, "_run_project_pip") as mock_pip {
             mock_pip.return_value = (
                 1,
                 "",
                 "WARNING: Skipping testpkg as it is not installed."
             );
-            result = installer.uninstall_package("testpkg");
+            result = python.uninstall(config, "testpkg", InstallContext());
             assert result is False;
         }
     } finally {
@@ -618,13 +547,13 @@ test "DependencyInstaller uninstall_package not installed" {
     }
 }
 
-test "DependencyInstaller uninstall_package no venv" {
+test "PythonProvider uninstall no venv" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-        result = installer.uninstall_package("testpkg");
+        python = PythonProvider();
+        result = python.uninstall(config, "testpkg", InstallContext());
         assert result is False;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
@@ -632,107 +561,188 @@ test "DependencyInstaller uninstall_package no venv" {
     }
 }
 
-# ===== TestDependencyResolver =====
-test "DependencyResolver parse_spec with version" {
-    reset_config();
-    config = JacConfig();
-    config.project_root = Path("/tmp");
-    resolver = DependencyResolver(config=config);
-    (name, version) = resolver.parse_spec("requests>=2.28.0");
+# ===== PythonProvider spec parsing / resolution =====
+test "python parse_spec with version" {
+    python = PythonProvider();
+    (name, version) = python.parse_spec("requests>=2.28.0");
     assert name == "requests";
     assert version == ">=2.28.0";
-    reset_config();
 }
 
-test "DependencyResolver parse_spec without version" {
-    reset_config();
-    config = JacConfig();
-    config.project_root = Path("/tmp");
-    resolver = DependencyResolver(config=config);
-    (name, version) = resolver.parse_spec("requests");
+test "python parse_spec without version" {
+    python = PythonProvider();
+    (name, version) = python.parse_spec("requests");
     assert name == "requests";
     assert version == "";
-    reset_config();
 }
 
-test "DependencyResolver parse_spec with equals" {
-    reset_config();
-    config = JacConfig();
-    config.project_root = Path("/tmp");
-    resolver = DependencyResolver(config=config);
-    (name, version) = resolver.parse_spec("numpy==1.24.0");
+test "python parse_spec with equals" {
+    python = PythonProvider();
+    (name, version) = python.parse_spec("numpy==1.24.0");
     assert name == "numpy";
     assert version == "==1.24.0";
-    reset_config();
 }
 
-test "DependencyResolver parse_spec with tilde" {
-    reset_config();
-    config = JacConfig();
-    config.project_root = Path("/tmp");
-    resolver = DependencyResolver(config=config);
-    (name, version) = resolver.parse_spec("django~=4.0");
+test "python parse_spec with tilde" {
+    python = PythonProvider();
+    (name, version) = python.parse_spec("django~=4.0");
     assert name == "django";
     assert version == "~=4.0";
-    reset_config();
 }
 
-test "DependencyResolver resolve dependencies" {
+test "python resolve manifest dependencies" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        resolver = DependencyResolver(config=config);
-        resolved = resolver.resolve(include_dev=False);
+        python = PythonProvider();
+        resolved = python.resolve(config, include_dev=False);
         assert len(resolved) >= 1;
         names = [r.name for r in resolved];
         assert "requests" in names;
+        assert "pytest" not in names;
+        origins = {r.origin for r in resolved};
+        assert origins == {"manifest"};
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
 }
 
-test "DependencyResolver resolve with dev" {
+test "python resolve with dev" {
     reset_config();
     (tmp, project_dir) = make_temp_project();
     try {
         config = JacConfig.load(project_dir / "jac.toml");
-        resolver = DependencyResolver(config=config);
-        resolved = resolver.resolve(include_dev=True);
+        python = PythonProvider();
+        resolved = python.resolve(config, include_dev=True);
         names = [r.name for r in resolved];
         assert "requests" in names;
         assert "pytest" in names;
+        dev_flags = {r.name: r.dev for r in resolved};
+        assert dev_flags["pytest"] is True;
+        assert dev_flags["requests"] is False;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }
 }
 
-# ===== TestResolvedDependency =====
-test "ResolvedDependency create" {
+test "python resolve git dependencies" {
     reset_config();
-    dep = ResolvedDependency(name="requests", version=">=2.28.0", source="pypi");
-    assert dep.name == "requests";
-    assert dep.version == ">=2.28.0";
-    assert dep.source == "pypi";
-    assert dep.extras == [];
-    assert dep.dependencies == [];
-    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\nrequests = ">=2.28.0"\n\n[dependencies.git]\nmy-lib = {git = "https://github.com/user/my-lib.git", branch = "main"}\n';
+        project_path = create_test_project(tmp, toml);
+        config = JacConfig.load(Path(project_path) / "jac.toml");
+        python = PythonProvider();
+        resolved = python.resolve(config);
+        git_deps = [
+            r
+            for r in resolved
+            if r.source == "git"
+        ];
+        assert len(git_deps) == 1;
+        assert git_deps[0].name == "my-lib";
+        assert git_deps[0].data["git"] == "https://github.com/user/my-lib.git";
+        assert (
+            python.pip_spec(git_deps[0]) == "git+https://github.com/user/my-lib.git@main"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
 }
 
-test "ResolvedDependency with extras" {
-    reset_config();
+# ===== ResolvedDependency =====
+test "ResolvedDependency create" {
+    dep = ResolvedDependency(name="requests", version=">=2.28.0");
+    assert dep.name == "requests";
+    assert dep.version == ">=2.28.0";
+    assert dep.ecosystem == "python";
+    assert dep.source == "pypi";
+    assert dep.origin == "manifest";
+    assert dep.dev is False;
+    assert dep.data == {};
+}
+
+test "ResolvedDependency carries ecosystem and origin" {
     dep = ResolvedDependency(
-        name="requests",
-        version="2.28.0",
-        source="pypi",
-        extras=["security"],
-        dependencies=["urllib3", "certifi"]
+        name="react",
+        version="^18.2.0",
+        ecosystem="npm",
+        source="npm",
+        origin="self-heal:client-core",
+        dev=True
     );
-    assert dep.extras == ["security"];
-    assert dep.dependencies == ["urllib3", "certifi"];
+    assert dep.ecosystem == "npm";
+    assert dep.origin == "self-heal:client-core";
+    assert dep.dev is True;
+}
+
+# ===== Provider registry / resolve_plan =====
+test "provider registry always carries the python provider" {
+    reset_provider_registry();
+    try {
+        registry = get_provider_registry();
+        assert registry.has("python");
+        assert get_python_provider() is not None;
+        assert registry.get_by_flag("--nope") is None;
+    } finally {
+        reset_provider_registry();
+    }
+}
+
+test "resolve_plan folds capability deps with manifest priority" {
     reset_config();
+    reset_provider_registry();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        # Manifest pins its own fastapi; the serve capability must not
+        # override or duplicate it.
+        toml = '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\nentry-point = "main.sv.jac"\n\n[dependencies]\nfastapi = ">=0.100.0"\n';
+        project_path = create_test_project(tmp, toml);
+        (Path(project_path) / "main.sv.jac").write_text(
+            "with entry {\n    print(\"hi\");\n}\n"
+        );
+        config = JacConfig.load(Path(project_path) / "jac.toml");
+        plan = resolve_plan(config, action="serve");
+        py = plan.for_ecosystem("python");
+        fastapi_entries = [
+            d
+            for d in py
+            if d.name == "fastapi"
+        ];
+        assert len(fastapi_entries) == 1;
+        assert fastapi_entries[0].origin == "manifest";
+        assert fastapi_entries[0].version == ">=0.100.0";
+        cap_origins = {
+            d.origin
+            for d in py
+            if d.origin.startswith("capability:")
+        };
+        assert "capability:serve" in cap_origins;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_provider_registry();
+        reset_config();
+    }
+}
+
+test "resolve_plan skips capabilities when disabled" {
+    reset_config();
+    reset_provider_registry();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        plan = resolve_plan(config, action="serve", include_capabilities=False);
+        origins = {d.origin for d in plan.deps};
+        assert not any([o.startswith("capability:") for o in origins]);
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_provider_registry();
+        reset_config();
+    }
 }
 
 # ===== TestGetVenvSitePackages =====
@@ -934,10 +944,8 @@ test "install with pip and git deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
                     0,
@@ -948,9 +956,10 @@ test "install with pip and git deps" {
             }
             assert result == 0;
             mock_pip.assert_called();
-            call_args = mock_pip.call_args_list[1][0][0];
+            call_args = mock_pip.call_args_list[1].args[1];
             assert "install" in call_args;
             assert "--upgrade" in call_args;
+            assert "git+https://github.com/user/my-lib.git@main" in call_args;
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -962,7 +971,9 @@ test "install with pip and git deps" {
 
 test "install pip and npm deps" {
     reset_config();
+    reset_provider_registry();
     import from jaclang.cli.commands { project as proj_cmds }
+    import from jaclang.runtimelib.client.npm_provider { NpmProvider }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
         toml = '[project]\nname = "fullstack"\nversion = "0.1.0"\n\n[dependencies]\nrequests = "~=2.31"\nflask = "~=3.0"\n\n[dependencies.npm]\nreact = "^18.0.0"\ntypescript = "^5.0.0"\n\n[dev-dependencies]\npytest = ">=8.0.0"\n';
@@ -972,37 +983,33 @@ test "install pip and npm deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            mock_install_all = MagicMock();
-            mock_dep_type = MagicMock();
-            mock_dep_type.install_all_handler = mock_install_all;
-            mock_dep_type.install_handler = MagicMock();
-
-            mock_registry = MagicMock();
-            mock_registry.get_all.return_value = {"npm": mock_dep_type};
-
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dep_registry.get_dependency_registry",
-                return_value=mock_registry
-            ) as _reg {
+            get_provider_registry().register(NpmProvider());
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                NpmProvider, "install_all"
+            ) as mock_npm_install {
                 mock_pip.return_value = (
                     0,
                     "Successfully installed requests-2.31.0 flask-3.0.0",
                     ""
                 );
+                mock_npm_install.return_value = True;
                 result = proj_cmds.install();
             }
             assert result == 0;
             mock_pip.assert_called();
-            pip_call_args = mock_pip.call_args_list[1][0][0];
+            pip_call_args = mock_pip.call_args_list[1].args[1];
             assert "install" in pip_call_args;
             assert "--upgrade" in pip_call_args;
-            mock_install_all.assert_called_once();
+            mock_npm_install.assert_called_once();
+            npm_deps = mock_npm_install.call_args.args[1];
+            npm_names = [d.name for d in npm_deps];
+            assert "react" in npm_names;
+            assert "typescript" in npm_names;
         } finally {
             os.chdir(original_cwd);
+            reset_provider_registry();
             reset_config();
         }
     } finally {
@@ -1010,9 +1017,11 @@ test "install pip and npm deps" {
     }
 }
 
-test "install with plugin deps" {
+test "install npm-only project dispatches the npm provider" {
     reset_config();
+    reset_provider_registry();
     import from jaclang.cli.commands { project as proj_cmds }
+    import from jaclang.runtimelib.client.npm_provider { NpmProvider }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
         toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n\n[dependencies.npm]\nreact = "18.0"\n';
@@ -1021,70 +1030,21 @@ test "install with plugin deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            mock_install_all = MagicMock();
-            mock_dep_type = MagicMock();
-            mock_dep_type.install_all_handler = mock_install_all;
-            mock_dep_type.install_handler = MagicMock();
-
-            mock_registry = MagicMock();
-            mock_registry.get_all.return_value = {"npm": mock_dep_type};
-
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dep_registry.get_dependency_registry",
-                return_value=mock_registry
-            ) as _reg {
+            get_provider_registry().register(NpmProvider());
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                NpmProvider, "install_all"
+            ) as mock_npm_install {
                 mock_pip.return_value = (0, "", "");
+                mock_npm_install.return_value = True;
                 result = proj_cmds.install();
             }
             assert result == 0;
-            mock_install_all.assert_called_once();
+            mock_npm_install.assert_called_once();
         } finally {
             os.chdir(original_cwd);
-            reset_config();
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
-}
-
-test "install plugin deps individual fallback" {
-    reset_config();
-    import from jaclang.cli.commands { project as proj_cmds }
-    tmp = tempfile.mkdtemp(prefix="jac_test_");
-    try {
-        toml = '[project]\nname = "testproj"\nversion = "0.1.0"\n\n[dependencies]\n\n[dependencies.npm]\nreact = "18.0"\nvue = "3.0"\n';
-        project_path = create_test_project(tmp, toml);
-        original_cwd = os.getcwd();
-        os.chdir(project_path);
-        reset_config();
-        try {
-            mock_install_handler = MagicMock();
-            mock_dep_type = MagicMock();
-            mock_dep_type.install_all_handler = None;
-            mock_dep_type.install_handler = mock_install_handler;
-
-            mock_registry = MagicMock();
-            mock_registry.get_all.return_value = {"npm": mock_dep_type};
-
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dep_registry.get_dependency_registry",
-                return_value=mock_registry
-            ) as _reg {
-                mock_pip.return_value = (0, "", "");
-                result = proj_cmds.install();
-            }
-            assert result == 0;
-            assert mock_install_handler.call_count == 2;
-        } finally {
-            os.chdir(original_cwd);
+            reset_provider_registry();
             reset_config();
         }
     } finally {
@@ -1159,12 +1119,10 @@ test "add resolves version" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
@@ -1196,10 +1154,8 @@ test "add with explicit version" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed numpy-1.24.0", "");
                 result = proj_cmds.add(packages=["numpy>=1.24"]);
@@ -1228,12 +1184,10 @@ test "update all deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
@@ -1268,12 +1222,10 @@ test "update specific package" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
@@ -1344,12 +1296,10 @@ test "add dev dependency" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
@@ -1383,12 +1333,10 @@ test "add multiple packages" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
@@ -1426,10 +1374,8 @@ test "add pip failure no toml update" {
         original_toml = f.read();
         f.close();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
                     1,
@@ -1462,10 +1408,8 @@ test "add git dependency" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed my-lib", "");
                 result = proj_cmds.add(git="https://github.com/user/my-lib.git");
@@ -1495,12 +1439,10 @@ test "update with dev deps" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
@@ -1558,10 +1500,8 @@ test "remove package" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
                     0,
@@ -1574,7 +1514,7 @@ test "remove package" {
             config = JacConfig.load(Path(project_path) / "jac.toml");
             assert "requests" not in config.dependencies;
             assert "flask" in config.dependencies;
-            mock_pip.assert_called_with(["uninstall", "-y", "requests"]);
+            assert mock_pip.call_args.args[1] == ["uninstall", "-y", "requests"];
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -1595,10 +1535,8 @@ test "remove dev dep without flag" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (
                     0,
@@ -1678,21 +1616,21 @@ test "remove nonexistent package" {
     }
 }
 
-# ===== TestGetExtraPackageSpecs =====
+# ===== Extras resolution =====
 glob EXTRAS_TOML = '[project]\nname = "mypkg"\nversion = "0.1.0"\n\n[dependencies]\n\n[optional-dependencies.data]\npymongo = ">=4.0,<5.0"\nredis = ">=7.0,<8.0"\n\n[optional-dependencies.monitoring]\nprometheus-client = ">=0.21.0,<1.0.0"\n\n[optional-dependencies.all]\n"mypkg[data,monitoring]" = "*"\n\n[optional-dependencies.test]\n"mypkg[all]" = "*"\n"testcontainers[mongodb,redis]" = "*"\nrequests = "*"\n';
 
-test "get_extra_package_specs basic group" {
+test "resolve_extras basic group" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
         project_path = create_test_project(tmp, EXTRAS_TOML);
         config = JacConfig.load(Path(project_path) / "jac.toml");
-        installer = DependencyInstaller(config=config);
-        specs = installer.get_extra_package_specs(["data"]);
+        python = PythonProvider();
+        specs = python.specs_for(python.resolve_extras(config, ["data"]));
         assert "pymongo>=4.0,<5.0" in specs;
         assert "redis>=7.0,<8.0" in specs;
         assert len(specs) == 2;
-        specs = installer.get_extra_package_specs(["test"]);
+        specs = python.specs_for(python.resolve_extras(config, ["test"]));
         assert "pymongo>=4.0,<5.0" in specs;
         assert "redis>=7.0,<8.0" in specs;
         assert "prometheus-client>=0.21.0,<1.0.0" in specs;
@@ -1705,14 +1643,14 @@ test "get_extra_package_specs basic group" {
     }
 }
 
-test "get_extra_package_specs multiple groups no duplicates" {
+test "resolve_extras multiple groups no duplicates" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
         project_path = create_test_project(tmp, EXTRAS_TOML);
         config = JacConfig.load(Path(project_path) / "jac.toml");
-        installer = DependencyInstaller(config=config);
-        specs = installer.get_extra_package_specs(["data", "all"]);
+        python = PythonProvider();
+        specs = python.specs_for(python.resolve_extras(config, ["data", "all"]));
         pkg_names = [s.split(">=")[0].split("~=")[0].split("==")[0] for s in specs];
         assert pkg_names.count("pymongo") == 1;
         assert pkg_names.count("redis") == 1;
@@ -1722,16 +1660,16 @@ test "get_extra_package_specs multiple groups no duplicates" {
     }
 }
 
-test "get_extra_package_specs unknown group raises ValueError" {
+test "resolve_extras unknown group raises ValueError" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     try {
         project_path = create_test_project(tmp, EXTRAS_TOML);
         config = JacConfig.load(Path(project_path) / "jac.toml");
-        installer = DependencyInstaller(config=config);
+        python = PythonProvider();
         raised = False;
         try {
-            installer.get_extra_package_specs(["typo"]);
+            python.resolve_extras(config, ["typo"]);
         } except ValueError as e {
             raised = True;
             assert "typo" in str(e);
@@ -1745,54 +1683,20 @@ test "get_extra_package_specs unknown group raises ValueError" {
 }
 
 # ===== TestMakePipSpec =====
-test "DependencyInstaller _make_pip_spec special version values" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(config=config);
-        # Empty version returns bare name (no version constraint)
-        assert installer._make_pip_spec("requests", "") == "requests";
-        # "*" is treated as unconstrained — must not produce ==*
-        assert installer._make_pip_spec("requests", "*") == "requests";
-        # "latest" is treated as unconstrained — must not produce ==latest
-        assert installer._make_pip_spec("requests", "latest") == "requests";
-        # Specifier-prefixed versions are passed through unchanged
-        assert installer._make_pip_spec("numpy", ">=1.24.0") == "numpy>=1.24.0";
-        assert installer._make_pip_spec("django", "~=4.0") == "django~=4.0";
-        assert installer._make_pip_spec("flask", "==3.0") == "flask==3.0";
-        assert installer._make_pip_spec("celery", "!=4.0") == "celery!=4.0";
-        # Bare version gets an == prefix
-        assert installer._make_pip_spec("mylib", "1.2.3") == "mylib==1.2.3";
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-# ===== TestInstallFlags =====
-test "DependencyInstaller install_flags passed to pip" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        installer = DependencyInstaller(
-            config=config, install_flags=["--no-cache-dir"]
-        );
-        with patch.object(installer, "ensure_venv") as _ev, patch.object(
-            installer, "_run_pip"
-        ) as mock_pip {
-            mock_pip.return_value = (0, "Successfully installed requests-2.31.0", "");
-            installer.install_package(["requests>=2.28.0"]);
-            call_args = mock_pip.call_args_list[1][0][0];
-            assert "install" in call_args;
-            assert "--upgrade" in call_args;
-            assert "--no-cache-dir" in call_args;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
+test "make_pip_spec special version values" {
+    # Empty version returns bare name (no version constraint)
+    assert make_pip_spec("requests", "") == "requests";
+    # "*" is treated as unconstrained — must not produce ==*
+    assert make_pip_spec("requests", "*") == "requests";
+    # "latest" is treated as unconstrained — must not produce ==latest
+    assert make_pip_spec("requests", "latest") == "requests";
+    # Specifier-prefixed versions are passed through unchanged
+    assert make_pip_spec("numpy", ">=1.24.0") == "numpy>=1.24.0";
+    assert make_pip_spec("django", "~=4.0") == "django~=4.0";
+    assert make_pip_spec("flask", "==3.0") == "flask==3.0";
+    assert make_pip_spec("celery", "!=4.0") == "celery!=4.0";
+    # Bare version gets an == prefix
+    assert make_pip_spec("mylib", "1.2.3") == "mylib==1.2.3";
 }
 
 # ===== pip_command (bundled pip only) =====
@@ -1833,12 +1737,10 @@ test "update always uses upgrade flag" {
         os.chdir(project_path);
         reset_config();
         try {
-            with patch(
-                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
-            ) as _ev, patch(
-                "jaclang.project.dependencies.DependencyInstaller._run_pip"
-            ) as mock_pip, patch(
-                "jaclang.project.dependencies.DependencyInstaller._snapshot_installed"
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
                 mock_pip.side_effect = [
@@ -1849,7 +1751,7 @@ test "update always uses upgrade flag" {
                 result = proj_cmds.update();
             }
             assert result == 0;
-            first_call_args = mock_pip.call_args_list[0][0][0];
+            first_call_args = mock_pip.call_args_list[0].args[1];
             assert "--upgrade" in first_call_args;
         } finally {
             os.chdir(original_cwd);
@@ -1862,8 +1764,8 @@ test "update always uses upgrade flag" {
 
 # ===== TestInstallPackageIntoActivatedEnv =====
 test "jac install <pkg> outside a project errors" {
-    # New contract: `jac install <pkg>` installs into the project venv, so it
-    # requires a project. Outside one it errors instead of installing globally.
+    # `jac install <pkg>` installs into the project venv, so it requires a
+    # project. Outside one it errors instead of installing globally.
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1889,12 +1791,8 @@ test "install package failure returns error code" {
     try {
         os.chdir(project_dir);
         reset_config();
-        def fail_install(self: object, specs: object) -> bool {
-            return False;
-        }
-        with patch(
-            "jaclang.project.dependencies.DependencyInstaller.install_package",
-            fail_install
+        with patch.object(
+            PythonProvider, "install_specs", MagicMock(return_value=False)
         ) {
             result = proj_cmds.install(packages=["badpkg"]);
         }

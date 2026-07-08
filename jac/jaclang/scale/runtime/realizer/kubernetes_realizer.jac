@@ -43,7 +43,7 @@ obj KubernetesRealizer {
                     console.print(
                         f"Microservice mode ({label}): {len(merged_routes)} "
                         f"services [{names}], routes /<name>. Deploying to "
-                        f"kubernetes; set [plugins.scale.microservices] to customize.",
+                        f"kubernetes; set [scale.microservices] to customize.",
                         style="cyan"
                     );
                 }
@@ -71,12 +71,12 @@ obj KubernetesRealizer {
         if enable_tls {
             if not target_config.get('domain', '') {
                 raise ValueError(
-                    "No domain configured. Set 'domain' under [plugins.scale.kubernetes] in jac.toml before running --enable-tls."
+                    "No domain configured. Set 'domain' under [scale.kubernetes] in jac.toml before running --enable-tls."
                 );
             }
             if not target_config.get('cert_manager_email', '') {
                 raise ValueError(
-                    "No cert_manager_email configured. Set 'cert_manager_email' under [plugins.scale.kubernetes] in jac.toml before running --enable-tls."
+                    "No cert_manager_email configured. Set 'cert_manager_email' under [scale.kubernetes] in jac.toml before running --enable-tls."
                 );
             }
             app_name = target_config.get('app_name', 'jaseci');
@@ -103,11 +103,11 @@ obj KubernetesRealizer {
             deployment_target.no_image = True;
             console.warning(
                 "Copying local source into the cluster via PVC and installing "
-                "jac at pod startup. Keep secrets in [plugins.scale.secrets] "
+                "jac at pod startup. Keep secrets in [scale.secrets] "
                 "(synced as a K8s Secret) or in .env, never inline in source."
             );
             console.warning(
-                "Set [plugins.scale.microservices] in jac.toml to configure "
+                "Set [scale.microservices] in jac.toml to configure "
                 "resources, scaling, ingress, and secrets before going to production."
             );
         }

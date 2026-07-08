@@ -121,6 +121,54 @@ impl TypeEvaluator._extract_tuple_element_type(
     return None;
 }
 
+impl TypeEvaluator._tuple_has_variadic_arg(cls: types.ClassType) -> bool {
+    for ta in cls.private.type_args or [] {
+        if isinstance(ta, types.UnknownType) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl TypeEvaluator._tuple_literal_index_type(
+    base_type: TypeBase, subscript_arg: uni.Expr
+) -> TypeBase | None {
+    if not isinstance(base_type, types.ClassType)
+    or not base_type.is_class_instance() {
+        return None;
+    }
+    cls: types.ClassType = base_type;
+    if not (
+        cls.is_builtin("tuple")
+        and cls.private.type_args
+        and not self._tuple_has_variadic_arg(cls)
+    ) {
+        return None;
+    }
+
+    idx_val: int | None = None;
+    if isinstance(subscript_arg, uni.Int) {
+        idx_val = subscript_arg.lit_value;
+    } elif (
+        isinstance(subscript_arg, uni.UnaryExpr)
+        and isinstance(subscript_arg.op, uni.Token)
+        and subscript_arg.op.name == Tok.MINUS
+        and isinstance(subscript_arg.operand, uni.Int)
+    ) {
+        idx_val = -subscript_arg.operand.lit_value;
+    }
+    if idx_val is None {
+        return None;
+    }
+
+    length = len(cls.private.type_args);
+    real_idx = idx_val if idx_val >= 0 else length + idx_val;
+    if real_idx < 0 or real_idx >= length {
+        return None;
+    }
+    return self._extract_tuple_element_type(cls, real_idx);
+}
+
 impl TypeEvaluator._get_iterable_element_type(
     iterable_type: TypeBase, node_for_error: uni.Expr | None = None
 ) -> TypeBase | None {
@@ -279,7 +327,6 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
 
             case uni.ParamKind.KWARG:
                 return types.ParamKind.KWARG;
-                return types.ParamKind.NORMAL;
 
         }
     }

@@ -6,9 +6,8 @@ import os;
 import sys;
 import types;
 import from collections { OrderedDict }
-import from collections.abc { Callable, Coroutine, Iterator, Mapping, Sequence }
+import from collections.abc { Callable, Coroutine, Mapping, Sequence }
 import from concurrent.futures { Future, ThreadPoolExecutor }
-import from contextlib { contextmanager, suppress }
 import from contextvars { ContextVar }
 import dataclasses;
 import from dataclasses { dataclass, field }
@@ -57,7 +56,6 @@ import from jaclang.jac0core.modresolver {
     pop_import_base
 }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
-import from jaclang.jac0core { plugin }
 import type from http.server { BaseHTTPRequestHandler }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
 import type from jaclang.jac0core.compiler { JacCompiler }
@@ -67,11 +65,7 @@ import type from jaclang.runtimelib.context { ExecutionContext }
 import type from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import type from jaclang.runtimelib.server { ModuleIntrospector, UserManager }
 
-glob plugin_manager = plugin.PluginManager('jac'),
-     hookspec = plugin.HookspecMarker('jac'),
-     hookimpl = plugin.HookimplMarker('jac'),
-     hookable = plugin.HookableMarker(),
-     logger = getLogger(__name__),
+glob logger = getLogger(__name__),
      T = TypeVar('T'),
      P = ParamSpec('P'),
      JsonValue: TypeAlias = None | str | int | float | bool | `list['JsonValue'] | `dict[
@@ -84,6 +78,23 @@ glob plugin_manager = plugin.PluginManager('jac'),
      _default_base_path_dir: list = [os.getcwd()],
      _default_full_target_path: list = [None],
      _shared_root_resolver: list = [None, None];
+
+glob _scale_provider_cache: list = [];
+
+glob _persistent_memory_provider: list = [None];
+
+def _scale_provider -> any {
+    if _scale_provider_cache {
+        return _scale_provider_cache[0];
+    }
+    result: any = None;
+    try {
+        import from jaclang.scale.plugin { JacScalePlugin }
+        result = JacScalePlugin;
+    } except ImportError { }
+    _scale_provider_cache.append(result);
+    return result;
+}
 
 def _prefetch_edges(origin: list[NodeArchetype]) -> None {
     ctx = JacRuntimeInterface.get_context();
@@ -189,7 +200,6 @@ obj LLMModel(Protocol) {
 class JacContext {
     static def get_context -> ExecutionContext;
     static def reset_graph(root_node: (Root | None) = None) -> int;
-    @hookable
     static def create_j_context(
         user_root: (str | None),
         base_path_dir: (str | None) = None,
@@ -197,7 +207,6 @@ class JacContext {
     ) -> ExecutionContext;
 
     static def attach_program(jac_program: JacProgram) -> None;
-    static def attach_compiler(jac_compiler: JacCompiler) -> None;
     static def thread_run(func: Callable, *args: object) -> Future;
     static def thread_wait(future: any) -> None;
 }
@@ -211,13 +220,10 @@ class JacPersistence {
     static def object_ref(`obj: Archetype) -> str;
     static def save(`obj: (Archetype | Anchor)) -> None;
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None;
-    @hookable
     static def get_user_manager(base_path: str) -> UserManager;
-
-    @hookable
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
-
     static def get_persistent_memory(config: dict) -> any;
+    static def set_persistent_memory_provider(provider: Callable | None) -> None;
 }
 
 class JacAccessValidation {
@@ -386,6 +392,7 @@ class JacModule {
 
 class JacIntrospection {
     static def list_modules -> list[str];
+    static def _list_members_of(module_name: str, archetype_cls: type) -> list[str];
     static def list_walkers(module_name: str) -> list[str];
     static def list_nodes(module_name: str) -> list[str];
     static def list_edges(module_name: str) -> list[str];
@@ -405,7 +412,6 @@ class JacIntrospection {
 }
 
 class JacLLM {
-    @hookable
     static def get_mtir(
         caller: Callable,
         args: dict[((int | str), object)],
@@ -413,25 +419,11 @@ class JacLLM {
     ) -> MTRuntime;
 
     static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
-    @hookable
     static def call_llm(model: LLMModel, mt_run: MTRuntime) -> any;
-
-    @hookable
     static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> any;
-
-    @hookable
     static def `by(model: LLMModel) -> Callable;
-
-    static def filter_visitable_by(
-        connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
-    ) -> list[NodeArchetype];
-
-    @hookable
     static def by_operator(lhs: any, rhs: any) -> any;
-
-    @hookable
     static def default_llm -> LLMModel;
-
     static def add_mtir_to_map(scope: str, mtir: Info) -> None;
     static def get_mtir_from_map(scope: str) -> (Info | None);
 }
@@ -446,24 +438,14 @@ class JacServe {
         error_output: str, project_dir: Path, config: object = None
     ) -> str;
 
-    @hookable
     static def get_api_server_class -> type;
-
-    @hookable
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
-
-    @hookable
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
-
-    @hookable
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any;
 
-    @hookable
     static def get_sv_registry -> dict[str, str];
-
-    @hookable
     static def create_server(
         jac_server: JacServer, host: str, port: int, max_retries: int = 10
     ) -> HTTPServer;
@@ -533,115 +515,15 @@ class JacBuiltin {
 }
 
 class JacCmd {
-    @hookable
-    static def create_cmd -> None;
-
-    @hookable
     static def run_ai_agent(req: object) -> int;
 }
 
 class JacConfig {
-    @hookable
-    static def get_plugin_metadata -> (dict[(str, Any)] | None);
-
-    @hookable
-    static def get_config_schema -> (dict[(str, Any)] | None);
-
     static def on_config_loaded(config: dict[(str, Any)]) -> None;
     static def validate_config(config: dict[(str, Any)]) -> list[str];
-    @hookable
-    static def register_dependency_type -> (dict[(str, Any)] | None);
-
-    @hookable(firstresult=False)
-    static def register_project_template -> (dict[(str, Any)] | None);
 }
 
 class JacRuntimeInterface(JacClassReferences, JacContext, JacPersistence, JacAccessValidation, JacGraph, JacWalker, JacArchetype, JacModule, JacIntrospection, JacLLM, JacServe, JacTest, JacBuiltin, JacCmd, JacConfig) {}
-
-def build_plugin_hook_layer(iface: type[any]) -> tuple[(type[any], type[any])] {
-    spec_methods = {};
-    impl_methods = {};
-    proxy_methods = {};
-    for (name, method) in inspect.getmembers(iface, predicate=inspect.isfunction) {
-        if name.startswith('_') {
-            continue;
-        }
-        raw = inspect.getattr_static(iface, name, None);
-        hook_opts = raw?._jac_hookable;
-        if hook_opts is None {
-            continue;
-        }
-        sig = inspect.signature(method);
-        sig_nodef = sig.replace(
-            parameters=[
-                p.replace(`default=inspect.Parameter.empty)
-                for p in sig.parameters.values()
-            ]
-        );
-        doc = method.__doc__ or '';
-        """Create a placeholder method for the spec class.""";
-        def make_spec(
-            name: str, sig_nodef: inspect.Signature, doc: str, method: Callable
-        ) -> Callable {
-            @wraps(method)
-            def placeholder(*args: object, **kwargs: object) {
-                ;
-            }
-            placeholder.__name__ = name;
-            placeholder.__doc__ = doc;
-            placeholder.__signature__ = sig_nodef;
-            return placeholder;
-        }
-        spec_methods[name] = hookspec(firstresult=hook_opts.get('firstresult', True))(
-            make_spec(name, sig_nodef, doc, method)
-        );
-        wrapped_impl = wraps(method)(method);
-        wrapped_impl.__signature__ = sig_nodef;
-        impl_methods[name] = hookimpl(wrapped_impl);
-        """Create a proxy method that dispatches through plugin_manager.""";
-        def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
-            if is_coro {
-                async def async_proxy(*args: object, **kwargs: object) -> object {
-                    bound = sig.bind_partial(*args, **kwargs);
-                    bound.apply_defaults();
-                    hookcaller = getattr(plugin_manager.hook, name);
-                    result = hookcaller(**bound.arguments);
-                    if inspect.iscoroutine(result) {
-                        return await result;
-                    }
-                    return result;
-                }
-                async_proxy.__name__ = name;
-                async_proxy.__signature__ = sig;
-                return async_proxy;
-            }
-            def proxy(*args: object, **kwargs: object) -> object {
-                bound = sig.bind_partial(*args, **kwargs);
-                bound.apply_defaults();
-                hookcaller = getattr(plugin_manager.hook, name);
-                return hookcaller(**bound.arguments);
-            }
-            proxy.__name__ = name;
-            proxy.__signature__ = sig;
-            return proxy;
-        }
-        proxy_methods[name] = make_proxy(
-            name, sig, inspect.iscoroutinefunction(method)
-        );
-    }
-    spec_cls = `type(f"{iface.__name__}Spec", (object, ), spec_methods);
-    impl_cls = `type(f"{iface.__name__}Impl", (object, ), impl_methods);
-
-    for (hname, proxy_fn) in proxy_methods.items() {
-        setattr(iface, hname, staticmethod(proxy_fn));
-    }
-    return (spec_cls, impl_cls);
-}
-
-with entry {
-    (JacRuntimeSpec, JacRuntimeImpl) = build_plugin_hook_layer(JacRuntimeInterface);
-    plugin_manager.add_hookspecs(JacRuntimeSpec);
-}
 
 class JacRuntime(JacRuntimeInterface) {
     with entry {
@@ -674,25 +556,4 @@ class JacRuntime(JacRuntimeInterface) {
     static def set_context(context: ExecutionContext) -> None;
     static def push_request_context(context: ExecutionContext) -> any;
     static def reset_request_context(token: any) -> None;
-}
-
-@contextmanager
-def without_plugins -> Iterator[None] {
-    external_plugins: list[tuple[(str, Any)]] = [];
-    for (name, plugin) in `list(plugin_manager.list_name_plugin()) {
-        if ((plugin is JacRuntimeImpl) or (name == 'JacRuntimeImpl')) {
-            continue;
-        }
-        external_plugins.append((name, plugin));
-        plugin_manager.unregister(plugin=plugin, name=name);
-    }
-    try {
-        yield ;
-    } finally {
-        for (name, plugin) in external_plugins {
-            with suppress(ValueError) {
-                plugin_manager.register(plugin, name=name);
-            }
-        }
-    }
 }

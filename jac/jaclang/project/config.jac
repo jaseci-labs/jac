@@ -112,12 +112,6 @@ obj CacheConfig {
         dir: str = "cache";
 }
 
-obj PluginsConfig {
-    has discovery: str = "auto",
-        enabled: list[str] = [],
-        disabled: list[str] = [];
-}
-
 obj StorageConfig {
     has storage_type: str = "local",
         base_path: str = "./storage",
@@ -169,7 +163,6 @@ obj JacConfig {
         dot: DotConfig = DotConfig(),
         cache: CacheConfig = CacheConfig(),
         storage: StorageConfig = StorageConfig(),
-        plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),
@@ -200,6 +193,7 @@ obj JacConfig {
     ) -> JacConfig;
 
     def apply_env_interpolation -> None;
+    def _section_map -> dict;
     def apply_profile(profile_name: str, _visited: set | None = None) -> None;
     def apply_profile_overlay(profile_name: str | None = None) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, any];

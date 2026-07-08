@@ -20,12 +20,7 @@ probe results.
 """
 import from fastapi { Request }
 import from fastapi.responses { JSONResponse }
-import from jaclang.scale.jserver.jserver {
-    HTTPMethod,
-    JEndPoint,
-    APIParameter,
-    ParameterType
-}
+import from jaclang.scale.jserver.jserver { HTTPMethod, JEndPoint }
 
 """Mixin providing the in-admin signal self-check endpoint."""
 obj JacAPIServerOps {

@@ -104,10 +104,6 @@ impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
     return result;
 }
 
-impl TemplateRegistry.has_template(name: str) -> bool {
-    return name in self._templates;
-}
-
 impl TemplateRegistry.is_empty -> bool {
     return not self._templates;
 }
@@ -126,14 +122,22 @@ impl get_template_registry -> TemplateRegistry {
 }
 
 impl initialize_template_registry -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_template_registry();
 
     _register_core_templates(registry);
 
     _register_builtin_client_templates(registry);
 
-    results = JacRuntime.register_project_template();
+    _register_builtin_shadcn_template(registry);
+}
+
+def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
+    try {
+        import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
+    } except Exception {
+        return;
+    }
+    results = JacShadcnPlugin.register_project_template();
     for entry in _iter_template_dicts(results) {
         try {
             registry.register(entry);

@@ -4,7 +4,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, Root }
-import from jaclang.runtimelib.changeset { ApplyReport, ChangeSet, WriteIntent }
+import from jaclang.runtimelib.changeset { ApplyReport, ChangeSet }
 import from jaclang.runtimelib.memory { PersistentMemory }
 
 glob __all__ = ["SqlAlchemyMemory"];

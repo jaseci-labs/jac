@@ -232,11 +232,9 @@ test "byLLM projects vendor jaclang.byllm and pin the llm capability deps" {
         assert rc == 0;
         vend = src / "ejected" / "backend" / "jaclang";
         assert (vend / "byllm" / "lib.py").exists();
-        assert (vend / "byllm" / "plugin.py").exists();
-        # The vendored init registers the byllm provider.
-        assert "_register_vendored_byllm_provider" in (
-            vend / "__init__.py"
-        ).read_text();
+        # byLLM is folded into core, so its closure (e.g. the MTIR the runtime
+        # calls into) is vendored directly -- no separate plugin registration.
+        assert (vend / "byllm" / "mtir.py").exists();
         reqs = _backend(src, "requirements.txt").read_text();
         assert "litellm" in reqs;
         for line in reqs.splitlines() {
@@ -467,7 +465,7 @@ test "request model includes fields inherited from a base walker" {
 
 
 # ==================== [eject.db] SQLAlchemy persistence ====================
-test "[eject.db] sqlalchemy vendors the backend, hook, and SQLAlchemy dep" {
+test "[eject.db] sqlalchemy vendors the backend, provider wiring, and SQLAlchemy dep" {
     with TemporaryDirectory() as td {
         src = Path(td) / "dbapp";
         _write_project(src, "dbapp");
@@ -485,10 +483,12 @@ test "[eject.db] sqlalchemy vendors the backend, hook, and SQLAlchemy dep" {
             "from jaclang.runtimelib.storage.sqlalchemy_memory "
             "import SqlAlchemyMemory"
         ) in main_py;
-        assert "def get_persistent_memory" in main_py;
+        assert "set_persistent_memory_provider" in main_py;
         assert "JAC_DB_URL" in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
-        assert "SQLAlchemy" in reqs;
+        # pinned via the central data.sql capability (canonical lowercase spec)
+        assert "sqlalchemy" in reqs.lower();
+        assert "capability:data.sql" in reqs;
     }
 }
 
@@ -505,7 +505,7 @@ test "default eject does not vendor the SQLAlchemy backend" {
         main_py = _backend(src, "main.py").read_text();
         assert "get_persistent_memory" not in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
-        assert "SQLAlchemy" not in reqs;
+        assert "sqlalchemy" not in reqs.lower();
     }
 }
 
@@ -881,7 +881,7 @@ test "byLLM plugin config is emitted into backend/jac.toml" {
         src = Path(td) / "llmcfg";
         src.mkdir(parents=True, exist_ok=True);
         (src / "jac.toml").write_text(
-            '[project]\nname = "llmcfg"\nversion = "0.2.0"\nentry-point = "main.jac"\n' + '\n[plugins.byllm.model]\n' + 'default_model = "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}"\n' + 'api_key = "${BYLLM_API_KEY:-EMPTY}"\n' + '\n[plugins.byllm.call_params]\ntemperature = 0.0\nmax_tokens = 1024\n'
+            '[project]\nname = "llmcfg"\nversion = "0.2.0"\nentry-point = "main.jac"\n' + '\n[byllm.model]\n' + 'default_model = "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}"\n' + 'api_key = "${BYLLM_API_KEY:-EMPTY}"\n' + '\n[byllm.call_params]\ntemperature = 0.0\nmax_tokens = 1024\n'
         );
         (src / "main.jac").write_text(
             'import from jaclang.byllm.lib { Model }\n\n' + 'def:pub ask(q: str) -> str by Model()(query=q);\n'
@@ -893,9 +893,9 @@ test "byLLM plugin config is emitted into backend/jac.toml" {
         text = toml_out.read_text();
         # The byLLM model section is carried over, interpolation preserved so
         # the runtime resolves it from .env (not baked at eject time).
-        assert "[plugins.byllm.model]" in text;
+        assert "[byllm.model]" in text;
         assert "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}" in text;
-        assert "[plugins.byllm.call_params]" in text;
+        assert "[byllm.call_params]" in text;
         assert "max_tokens = 1024" in text;
         # The project section is present so the config loader finds the root.
         assert 'name = "llmcfg"' in text;

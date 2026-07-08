@@ -3,9 +3,27 @@ import sys;
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
 
+glob TOMBSTONED_VERBS: dict[str, str] = {
+         "format": "jac fmt",
+         "lint": "jac check --lint",
+         "deps": "jac install --plan",
+         "script": "jac x <name>",
+         "jacpack": "jac create --pack <dir>",
+         "enter": "jac run --entry <name> <file>",
+         "debug": "jac run --debug <file>",
+         "bundle": "jac build [--as jab|sealed|binary|wheel|npm]",
+         "eject": "jac build --as source",
+         "js": "jac tool jac2js <file>",
+         "jac2py": "jac tool jac2py <file>",
+         "py2jac": "jac tool py2jac <file>",
+         "jac2js": "jac tool jac2js <file>",
+         "grammar": "jac tool grammar",
+         "destroy": "jac scale destroy <file.jac>",
+         "status": "jac scale status <file.jac>"
+     };
+
 impl start_cli -> None {
-    import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    import from jaclang.cli.registry { get_registry }
+    import from jaclang.cli.registry { get_registry, extend_builtin_commands }
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.help { get_help_formatter }
     import from jaclang.cli.console { console }
@@ -22,14 +40,23 @@ impl start_cli -> None {
 
     _load_project_config();
 
-    Jac.create_cmd();
+    extend_builtin_commands();
 
     registry = get_registry();
     parser = registry.finalize();
 
     raw_argv = sys.argv[1:];
+    if raw_argv
+    and raw_argv[0] in TOMBSTONED_VERBS
+    and raw_argv[0] not in registry.commands {
+        console.error(
+            f"'jac {raw_argv[0]}' was removed in the CLI cleanup (#7255); "
+            f"use: {TOMBSTONED_VERBS[raw_argv[0]]}"
+        );
+        sys.exit(2);
+    }
     has_jac_file = any(
-        not tok.startswith('-') and tok.lower().endswith(('.jac', '.py'))
+        not tok.startswith('-') and tok.lower().endswith(('.jac', '.py', '.jab'))
         for tok in raw_argv
     );
     if has_jac_file and (not raw_argv or raw_argv[0] not in registry.commands) {
@@ -204,14 +231,14 @@ def _load_project_config {
     import from jaclang.jac0core.helpers { MalformedJacTomlError }
     try {
         import from jaclang.project.config { get_config, set_config }
-        import from jaclang.project.dependencies { add_venv_to_path }
+        import from jaclang.project.pyvenv { add_venv_to_path }
 
         config = get_config();
         if config is not None {
             add_venv_to_path(config);
         }
 
-        _initialize_dependency_registry();
+        _initialize_provider_registry();
 
         _initialize_template_registry();
     } except MalformedJacTomlError as exc {
@@ -232,10 +259,10 @@ def _exit_on_malformed_jac_toml(exc: 'Any') {
     sys.exit(2);
 }
 
-def _initialize_dependency_registry {
+def _initialize_provider_registry {
     try {
-        import from jaclang.project.dep_registry { initialize_dependency_registry }
-        initialize_dependency_registry();
+        import from jaclang.project.providers { initialize_provider_registry }
+        initialize_provider_registry();
     } except Exception { }
 }
 

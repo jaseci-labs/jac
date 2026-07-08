@@ -1,4 +1,3 @@
-import ast as ast3;
 import hashlib;
 import re;
 import from collections.abc { Sequence }

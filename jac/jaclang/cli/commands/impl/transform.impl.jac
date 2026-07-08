@@ -81,11 +81,3 @@ impl jac2js(filename: str) -> int {
         return 1;
     }
 }
-
-impl js(filename: str) -> int {
-    console.warning(
-        "'jac js' is deprecated and will be removed in a future release. "
-        "Use 'jac jac2js' instead."
-    );
-    return jac2js(filename);
-}

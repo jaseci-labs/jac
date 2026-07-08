@@ -349,10 +349,10 @@ def _ensure_vite_tailwind(toml_path: any) -> None {
         return;
     }
     content = path.read_text();
-    if "[plugins.client.vite]" in content {
+    if "[client.vite]" in content {
         return;
     }
-    block = '[plugins.client.vite]\nplugins = ["tailwindcss()"]\n' + 'lib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n';
+    block = '[client.vite]\nplugins = ["tailwindcss()"]\n' + 'lib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n';
     path.write_text(content.rstrip() + "\n\n" + block);
 }
 

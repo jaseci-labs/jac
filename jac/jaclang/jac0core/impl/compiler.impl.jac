@@ -154,11 +154,31 @@ impl JacCompiler.get_bytecode(
             if bc is not None {
                 magic_bytes: any = SECTIONS_MAGIC;
                 sec_pos = jir_data.find(magic_bytes, HEADER_SIZE);
+                _had_native_secs = False;
                 if sec_pos >= 0 {
                     secs = read_sections(jir_data, sec_pos + len(magic_bytes));
                     self._restore_sections(full_target, actual_program, secs);
+                    _had_native_secs = SEC_NATIVE_OBJ in secs or SEC_LLVM_IR in secs;
                 }
-                return marshal.loads(bc);
+                import from jaclang.jac0core.ext_registry {
+                    is_native_module as _bc_is_na
+                }
+                if (
+                    _had_native_secs
+                    and full_target not in actual_program._native_cache
+                    and actual_program is not self._internal_program
+                    and _bc_is_na(full_target)
+                ) {
+                    import logging as _bc_logging;
+                    _bc_logging.getLogger(__name__).warning(
+                        f"Cached native sections for {full_target} could "
+                        f"not be restored; recompiling."
+                    );
+
+                    cache_path.unlink(missing_ok=True);
+                } else {
+                    return marshal.loads(bc);
+                }
             }
         } except Exception {
             ;
@@ -665,32 +685,31 @@ impl JacCompiler.compile(
     );
     had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
 
-    run_inference = options.type_check;
-    if not run_inference {
-        import from jaclang.jac0core.ext_registry { is_native_module, is_client_module }
-        mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
-        is_native_mod = (bool(mp) and is_native_module(mp))
-        or (
-            actual_program._auto_promote_native
-            and mod_targ?.gen
-            and mod_targ.gen.native_compat
-        );
-        is_client_mod = bool(mp) and is_client_module(mp);
-
-        if (not is_native_mod or not is_client_mod) and mod_targ?.body {
-            for _stmt in mod_targ.body {
-                if isinstance(_stmt, uni.NativeBlock) {
-                    is_native_mod = True;
-                }
-                if isinstance(_stmt, uni.ClientBlock) {
-                    is_client_mod = True;
-                }
+    import from jaclang.jac0core.ext_registry { is_native_module, is_client_module }
+    mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
+    is_na_file = bool(mp) and is_native_module(mp);
+    is_explicit_native = is_na_file;
+    is_client_mod = bool(mp) and is_client_module(mp);
+    if (not is_explicit_native or not is_client_mod) and mod_targ?.body {
+        for _stmt in mod_targ.body {
+            if isinstance(_stmt, uni.NativeBlock) {
+                is_explicit_native = True;
+            }
+            if isinstance(_stmt, uni.ClientBlock) {
+                is_client_mod = True;
             }
         }
-
-        run_inference = is_native_mod
-        or (is_client_mod and not options.no_cgen and not options.symtab_ir_only);
     }
+    is_native_mod = is_explicit_native
+    or (
+        actual_program._auto_promote_native
+        and mod_targ?.gen
+        and mod_targ.gen.native_compat
+    );
+
+    run_inference = options.type_check
+    or is_native_mod
+    or (is_client_mod and not options.no_cgen and not options.symtab_ir_only);
     if run_inference {
         mod_targ._inference_started = True;
 
@@ -758,6 +777,37 @@ impl JacCompiler.compile(
             mod=mod_targ,
             target_program=actual_program,
             passes=get_boundary_analysis_sched(),
+            cancel_token=options.cancel_token
+        );
+    }
+
+    if (
+        options.no_cgen
+        and options.type_check
+        and not options.symtab_ir_only
+        and not had_parse_errors
+        and not had_blocking_errors
+        and is_explicit_native
+    ) {
+        _parity_passes: list[type[Transform[uni.Module, uni.Module]]] = [];
+        if getattr(mod_targ, '_inference_started', False) {
+            try {
+                import from jaclang.compiler.passes.native { NaIRGenPass }
+                _parity_passes = [NaIRGenPass];
+            } except ImportError {
+                _parity_passes = [];
+            }
+        }
+        if not _parity_passes {
+            import from jaclang.compiler.passes.main.capability_check_pass {
+                NativeCapabilityCheckPass
+            }
+            _parity_passes = [NativeCapabilityCheckPass];
+        }
+        self.run_schedule(
+            mod=mod_targ,
+            target_program=actual_program,
+            passes=_parity_passes,
             cancel_token=options.cancel_token
         );
     }
@@ -839,6 +889,9 @@ impl JacCompiler.compile(
             passes=get_py_code_gen(),
             cancel_token=options.cancel_token
         );
+        if is_na_file {
+            JacCompiler._scrub_native_artifacts_on_error(actual_program, mod_targ);
+        }
     }
     return mod_targ;
 }
@@ -888,6 +941,48 @@ impl JacCompiler._count_module_blocking_errors(
         }
     }
     return count;
+}
+
+impl JacCompiler._module_scoped_errors(
+    target_program: JacProgram, mod_path: str
+) -> bool {
+    import from jaclang.jac0core.diagnostics { Category }
+    norm = os.path.normpath(mod_path);
+
+    prefix = (norm[:-4] if norm.endswith('.jac') else norm) + '.';
+    for e in target_program.errors_had {
+        if e.code is None or e.code.category not in (Category.CODEGEN, Category.ICE) {
+            continue;
+        }
+        try {
+            e_path = os.path.normpath(e.loc.mod_path);
+        } except Exception {
+            continue;
+        }
+        if e_path == norm or e_path.startswith(prefix) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl JacCompiler._scrub_native_artifacts_on_error(
+    target_program: JacProgram, mod: uni.Module
+) -> bool {
+    mod_path = mod.loc.mod_path if mod?.loc else '';
+    if not mod_path {
+        return False;
+    }
+    if not JacCompiler._module_scoped_errors(target_program, mod_path) {
+        return False;
+    }
+    gen = mod.gen;
+    gen.py_bytecode = None;
+    gen.llvm_ir = None;
+    gen.native_engine = None;
+    gen.native_bitcode = None;
+    gen.native_layout = None;
+    return True;
 }
 
 impl JacCompiler._prepare_tool_program(

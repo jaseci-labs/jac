@@ -40,12 +40,28 @@ glob registry = get_registry();
             help="List available project kinds and templates",
             short="l"
         ),
+        Arg.create(
+            "pack",
+            default="",
+            short="",
+            help="Bundle a template directory into a .jacpack instead of creating (absorbs 'jac jacpack pack')"
+        ),
+        Arg.create(
+            "pack_output",
+            default="",
+            short="",
+            help="With --pack: output .jacpack file path"
+        ),
 
     ],
     examples=[
         (
             "jac create",
             "Initialize a cli project in the current directory (name from cwd)"
+        ),
+        (
+            "jac create --pack ./my-template --pack_output my.jacpack",
+            "Bundle a template directory into a .jacpack"
         ),
         ("jac create myapp", "Create new myapp/ directory (cli kind)"),
         ("jac create myapp --kind service", "Scaffold a headless API service"),
@@ -67,7 +83,9 @@ def create(
     force: bool = False,
     kind: str = "",
     use: str = "default",
-    list_jacpacks: bool = False
+    list_jacpacks: bool = False,
+    pack: str = "",
+    pack_output: str = ""
 ) -> int;
 
 @registry.command(
@@ -161,10 +179,26 @@ def create(
             help="Materialize the deploy-time capability closure (adds deploy-only clients like kubernetes/docker) instead of just the runtime closure",
             short=""
         ),
+        Arg.create(
+            "plan",
+            typ=bool,
+            default=False,
+            short="",
+            help="Show the fully resolved dependency plan instead of installing (absorbs 'jac deps')"
+        ),
+        Arg.create(
+            "json",
+            typ=bool,
+            default=False,
+            short="",
+            dest="as_json",
+            help="With --plan: emit the plan as JSON"
+        ),
 
     ],
     examples=[
         ("jac install", "Install all dependencies from jac.toml"),
+        ("jac install --plan", "Show the fully resolved dependency plan"),
         (
             "jac install --scale",
             "Also install deploy-time capabilities (kubernetes/docker) for the operator machine"
@@ -211,7 +245,9 @@ def install(
     quiet: bool = False,
     prefer_binary: bool = False,
     install_global: bool = False,
-    scale: bool = False
+    scale: bool = False,
+    plan: bool = False,
+    as_json: bool = False
 ) -> int;
 
 @registry.command(
@@ -296,29 +332,8 @@ def remove(packages: list = [], dev: bool = False) -> int;
 )
 def update(packages: list = [], dev: bool = False, verbose: bool = False) -> int;
 
-@registry.command(
-    name="script",
-    help="Run project scripts",
-    args=[
-        Arg.create(
-            "name", kind=ArgKind.POSITIONAL, default="", help="Script name to run"
-        ),
-        Arg.create(
-            "list_scripts",
-            typ=bool,
-            default=False,
-            help="List available scripts",
-            short="l"
-        ),
+def deps(scale: bool = False, as_json: bool = False) -> int;
 
-    ],
-    examples=[
-        ("jac script --list", "List available scripts"),
-        ("jac script build", "Run the 'build' script"),
-
-    ],
-    group="project"
-)
 def script(name: str = "", list_scripts: bool = False) -> int;
 
 @registry.command(
@@ -379,68 +394,6 @@ def clean(
     force: bool = False
 ) -> int;
 
-@registry.command(
-    name="jacpack",
-    help="Manage project templates (.jacpack files)",
-    args=[
-        Arg.create(
-            "action", kind=ArgKind.POSITIONAL, default="", help="Action: pack, list"
-        ),
-        Arg.create(
-            "path",
-            kind=ArgKind.POSITIONAL,
-            default="",
-            help="Template directory path (for pack) or .jacpack path (for info)"
-        ),
-        Arg.create(
-            "output",
-            default="",
-            help="Output file path for bundled template",
-            short="o"
-        ),
-
-    ],
-    examples=[
-        (
-            "jac jacpack pack ./my-template -o my-template.jacpack",
-            "Bundle a template directory"
-        ),
-        ("jac jacpack list", "List available templates"),
-
-    ],
-    group="project"
-)
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-@registry.command(
-    name="bundle",
-    help="Build a pure-Python .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",
-    args=[
-        Arg.create(
-            "output",
-            default="dist",
-            help="Output directory for the built artifact",
-            short="o"
-        ),
-        Arg.create(
-            "target",
-            default="wheel",
-            help="Build target: 'wheel' (pure-Python PyPI wheel, .jac transpiled to .py), 'npm' (npmjs), 'sealed' (precompiled JIR image, runtime never compiles source, #7135), 'binary' (self-contained executable), 'all', or 'npm-runtime'",
-            short="t"
-        ),
-
-    ],
-    examples=[
-        ("jac bundle", "Build a pure-Python wheel into dist/ (.jac transpiled to .py)"),
-        ("jac bundle --target npm", "Build an npm .tgz into dist/"),
-        (
-            "jac bundle --target sealed",
-            "Build a sealed (precompiled JIR) image into dist/"
-        ),
-        ("jac bundle --target binary", "Build a self-contained executable into dist/"),
-        ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
-
-    ],
-    group="project"
-)
 def bundle(output: str = "dist", target: str = "wheel") -> int;

@@ -15,7 +15,6 @@ glob _SEEDS: list[str] = [
      _BYLLM_SEEDS: list[str] = [
          "jaclang.byllm",
          "jaclang.byllm.lib",
-         "jaclang.byllm.plugin",
          "jaclang.byllm.plugin_config"
      ],
      _DENY_PREFIXES: list[str] = [
@@ -66,36 +65,14 @@ import jaclang.jac0core.runtime as _runtime_mod
 
 from jaclang.jac0core.runtime import (
     JacRuntime,
-    JacRuntimeImpl,
     JacRuntimeInterface,
-    plugin_manager,
 )
 
 sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
-plugin_manager.register(JacRuntimeImpl)
-
-__all__ = ["JacRuntime", "JacRuntimeImpl", "JacRuntimeInterface", "plugin_manager"]
+__all__ = ["JacRuntime", "JacRuntimeInterface"]
 ''',
-     _BYLLM_INIT_EXTRA: str = '''
-
-def _register_vendored_byllm_provider():
-    """Register the vendored byLLM provider (the `by llm()` feature)."""
-    try:
-        from jaclang.byllm.plugin import JacRuntime as JacByllmRuntime
-        from jaclang.byllm.plugin_config import JacByllmPluginConfig
-    except Exception as exc:
-        import warnings
-
-        warnings.warn(f"Vendored byLLM provider unavailable: {exc}", stacklevel=2)
-        return
-    for _provider in (JacByllmRuntime, JacByllmPluginConfig):
-        if not plugin_manager.is_registered(_provider):
-            plugin_manager.register(_provider)
-
-
-_register_vendored_byllm_provider()
-''',
+     _BYLLM_INIT_EXTRA: str = '',
      _CLOSURE_CACHE: dict[tuple, dict[str, str]] = {};
 
 
@@ -231,9 +208,20 @@ def build_runtime_closure(
     if extra_seeds {
         seeds.extend([str(s) for s in extra_seeds]);
     }
+
+    def _deny(mod: str) -> bool {
+        if _denied(mod) {
+            return True;
+        }
+        if (not include_byllm)
+        and ((mod == "jaclang.byllm") or mod.startswith("jaclang.byllm.")) {
+            return True;
+        }
+        return False;
+    }
     for code in user_codes {
         for imp in scan_jaclang_imports(str(code)) {
-            if not _denied(imp) {
+            if not _deny(imp) {
                 seeds.append(imp);
             }
         }
@@ -249,7 +237,7 @@ def build_runtime_closure(
     queue: list[str] = [str(s) for s in seeds];
     while queue {
         mod = str(queue.pop(0));
-        if (mod in sources) or (mod == "jaclang") or _denied(mod) {
+        if (mod in sources) or (mod == "jaclang") or _deny(mod) {
             continue;
         }
         src_file = _module_to_file(pkg_root, mod);
@@ -268,7 +256,7 @@ def build_runtime_closure(
         dests[mod] = src_file;
         for imp in scan_jaclang_imports(sources[mod]) {
             dep = str(imp);
-            if (not _denied(dep)) and (dep not in sources) and (dep not in queue) {
+            if (not _deny(dep)) and (dep not in sources) and (dep not in queue) {
                 queue.append(dep);
             }
         }
@@ -335,12 +323,4 @@ def vendor_runtime(
             if src and (p != "__init__.py")
         ]
     );
-}
-
-
-def llm_requirements -> list[str] {
-    import from jaclang.project.capabilities { CAPABILITY_SPECS }
-    spec = CAPABILITY_SPECS.get("llm", {});
-    deps: dict = dict(spec.get("deps", {})) if isinstance(spec, dict) else {};
-    return sorted([f"{name}{rng}" for (name, rng) in deps.items()]);
 }
