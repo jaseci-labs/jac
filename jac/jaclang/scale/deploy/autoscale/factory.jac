@@ -1,5 +1,12 @@
 import from typing { Callable }
 import from jaclang.scale.deploy.autoscale.autoscaler { Autoscaler }
+# HPA (the default engine) is imported eagerly, not lazily inside create().
+# The prebuilt-binary runtime cache extracts lazily-imported modules on first
+# access, so importing this at deploy time can race that extraction
+# (jaseci#7243) and fail with "[Errno 2] No such file ... hpa_autoscaler.jac",
+# aborting the manifest apply. Importing at module load extracts it before any
+# deploy runs. KEDA stays lazy below (optional engine, rarely used).
+import from jaclang.scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
 import from jaclang.scale.observability.logger { Logger }
 
 type AutoscalerFactoryFn = Callable[[dict[str, any], Logger | None], Autoscaler];
@@ -20,7 +27,6 @@ class AutoscalerFactory {
         }
 
         if engine is None or engine == "hpa" {
-            import from jaclang.scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
             return HPAAutoscaler(logger=logger);
         }
         if engine == "keda" {
