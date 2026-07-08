@@ -60,6 +60,11 @@ def is_excluded(rel: Path) -> bool {
     ) {
         return False;
     }
+    # Prebuilt admin console: the gateway serves /app/.jac/admin and skips its
+    # ~148s on-pod source build when index.html is already there (#7291).
+    if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
+        return False;
+    }
     for part in parts {
         if part in _EXCLUDE_DIRS {
             return True;

@@ -92,12 +92,12 @@ obj KubernetesRealizer {
         deployment_target.secrets = scale_config.get_secrets_config();
 
         no_image = target == "kubernetes-microservice";
-        import from jaclang.scale.config.dev_config { resolve_dev_channel }
+        import from jaclang.scale.config.dev_config { resolve_dev_deploy }
         app_config = AppConfig(
             code_folder=code_folder,
             file_name=base_file_path,
             no_image=no_image,
-            channel=resolve_dev_channel(str(code_folder))
+            dev=resolve_dev_deploy(str(code_folder))
         );
         if no_image {
             deployment_target.no_image = True;

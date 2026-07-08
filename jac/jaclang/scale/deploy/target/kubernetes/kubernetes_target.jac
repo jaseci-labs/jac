@@ -1013,7 +1013,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
             import from jaclang.scale.injector.binary_injector { select_injector }
             (injector, _tc_key) = select_injector(
-                app_config.channel,
+                app_config.dev,
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
@@ -1087,7 +1087,9 @@ obj KubernetesTarget(DeploymentTarget) {
 
             template_spec['initContainers'].append(
                 build_bootstrap_init_container(
-                    self.k8s_config, self.k8s_config.python_image
+                    self.k8s_config,
+                    self.k8s_config.python_image,
+                    app_config.dev.overlays_source()
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

@@ -4,14 +4,18 @@ import tarfile;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.scale.config.dev_config {
-    resolve_dev_channel,
-    Channel,
-    BINARY_PATH_ENV
+    resolve_dev_deploy,
+    DevDeploy,
+    CHANNEL_STABLE,
+    CHANNEL_DEV
 }
 import from jaclang.scale.injector.binary {
     pack_binary_bytes,
+    pack_overlay,
     node_arch,
-    download_release_binary
+    resolve_overlay_source,
+    overlay_pod_path,
+    OVERLAY_SUBDIR
 }
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
@@ -19,7 +23,7 @@ import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_runtime_install_commands,
     runtime_container_env,
     build_service_apt_prefix,
-    build_bootstrap_init_container
+    _first_boot_install
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -36,76 +40,61 @@ def _write_toml(body: str) -> str {
 }
 
 
-test "no [dev] stanza resolves to the stable channel" {
+test "no [dev] stanza resolves to the stable channel, no overlay" {
     d = _write_toml("[project]\nname = \"app\"\n");
-    assert resolve_dev_channel(d) == Channel.STABLE;
+    dev = resolve_dev_deploy(d);
+    assert dev.channel == CHANNEL_STABLE;
+    assert not dev.overlays_source();
 }
 
 
-test "bare [dev] is the dev channel, shipped bare (it IS main HEAD)" {
+test "bare [dev] is the dev channel but ships bare (no redundant main overlay)" {
     d = _write_toml("[project]\nname = \"app\"\n\n[dev]\ntest_jobs = \"auto\"\n");
-    assert resolve_dev_channel(d) == Channel.DEV;
+    dev = resolve_dev_deploy(d);
+    assert dev.channel == CHANNEL_DEV;
+    assert dev.repo == "";
+    assert dev.jaclang_source == "";
+    assert not dev.overlays_source();
 }
 
 
 test "whitespace [ dev ] table still resolves to the dev channel" {
     d = _write_toml("[ dev ]\ntest_jobs = \"auto\"\n");
-    assert resolve_dev_channel(d) == Channel.DEV;
+    dev = resolve_dev_deploy(d);
+    assert dev.channel == CHANNEL_DEV;
 }
 
 
-test "JAC_SCALE_BINARY_PATH forces the LOCAL channel over any [dev] stanza" {
-    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
-    saved = os.environ.get(BINARY_PATH_ENV);
-    try {
-        os.environ[BINARY_PATH_ENV] = "/some/jac";
-        assert resolve_dev_channel(d) == Channel.LOCAL;
-    } finally {
-        os.environ.pop(BINARY_PATH_ENV, None);
-        if saved is not None {
-            os.environ[BINARY_PATH_ENV] = saved;
-        }
-    }
+test "[dev] repo/branch overlays that source" {
+    d = _write_toml(
+        "[dev]\nrepo = \"https://github.com/jaseci-labs/jaseci\"\nbranch = \"wip\"\n"
+    );
+    dev = resolve_dev_deploy(d);
+    assert dev.channel == CHANNEL_DEV;
+    assert dev.overlays_source();
+    assert dev.repo == "https://github.com/jaseci-labs/jaseci";
+    assert dev.branch == "wip";
 }
 
 
-test "LOCAL channel ships the binary at JAC_SCALE_BINARY_PATH, no download" {
-    with tempfile.NamedTemporaryFile(suffix="-jac", delete=False) as tmp {
-        tmp.write(b"ELF-local-binary");
-        tmp_path = tmp.name;
-    }
-    saved = os.environ.get(BINARY_PATH_ENV);
-    try {
-        os.environ[BINARY_PATH_ENV] = tmp_path;
-        assert download_release_binary("local", node_arch()) == b"ELF-local-binary";
-    } finally {
-        os.environ.pop(BINARY_PATH_ENV, None);
-        if saved is not None {
-            os.environ[BINARY_PATH_ENV] = saved;
-        }
-        os.unlink(tmp_path);
-    }
+test "[dev] repo without branch defaults the branch to main" {
+    d = _write_toml("[dev]\nrepo = \"https://github.com/x/y\"\n");
+    dev = resolve_dev_deploy(d);
+    assert dev.branch == "main";
 }
 
 
-test "LOCAL channel without JAC_SCALE_BINARY_PATH is a loud error" {
-    saved = os.environ.pop(BINARY_PATH_ENV, None);
-    caught = False;
-    try {
-        download_release_binary("local", node_arch());
-    } except RuntimeError {
-        caught = True;
-    } finally {
-        if saved is not None {
-            os.environ[BINARY_PATH_ENV] = saved;
-        }
-    }
-    assert caught;
+test "[dev] jaclang_source overlays the local checkout" {
+    d = _write_toml("[dev]\njaclang_source = \"jac\"\n");
+    dev = resolve_dev_deploy(d);
+    assert dev.channel == CHANNEL_DEV;
+    assert dev.overlays_source();
+    assert dev.jaclang_source == "jac";
 }
 
 
-test "bootstrap installs the shipped binary; no [dev], no source build" {
-    cmds = build_runtime_install_commands(KubernetesConfig());
+test "no-overlay bootstrap installs the shipped binary; no [dev], no build" {
+    cmds = build_runtime_install_commands(KubernetesConfig(), False);
     joined = " && ".join(cmds);
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
     assert "[dev]" not in joined;
@@ -115,15 +104,14 @@ test "bootstrap installs the shipped binary; no [dev], no source build" {
 }
 
 
-test "first-boot install only runs jac install (no jir-seed adoption)" {
-    script = str(
-        build_bootstrap_init_container(KubernetesConfig(), "python:3.12-slim")["args"][
-            0
-        ]
-    );
-    assert "jac install" in script;
-    assert "jir-seed" not in script;
-    assert "_adopt.py" not in script;
+test "overlay bootstrap injects [dev] jaclang_source; pod compiles on boot" {
+    cmds = build_runtime_install_commands(KubernetesConfig(), True);
+    joined = " && ".join(cmds);
+    assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
+    assert "[dev]" in joined;
+    assert overlay_pod_path() in joined;
+    assert "grep -q" in joined and r"[dev\]" in joined;
+    assert "JAC_NO_PRECOMPILE" not in joined;
 }
 
 
@@ -193,12 +181,86 @@ test "node_arch defaults to the host arch and honors JAC_NODE_ARCH" {
 }
 
 
-test "pack_binary_bytes tars only the binary" {
+test "pack_binary_bytes tars only the binary (no-overlay channel)" {
     raw = pack_binary_bytes(b"ELF-binary");
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
         names = tar.getnames();
     }
     assert names == [f"{TOOLCHAIN_SUBDIR}/bin/jac"];
+}
+
+
+test "pack_overlay tars the binary plus the jaclang source tree" {
+    src_root = Path(tempfile.mkdtemp());
+    (src_root / "jaclang").mkdir();
+    (src_root / "jaclang" / "x.jac").write_text("x = 1;");
+    (src_root / "jaclang" / "__pycache__").mkdir();
+    (src_root / "jaclang" / "__pycache__" / "junk.pyc").write_text("junk");
+
+    raw = pack_overlay(b"ELF", src_root);
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
+        names = tar.getnames();
+    }
+    assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in names;
+    assert f"{TOOLCHAIN_SUBDIR}/{OVERLAY_SUBDIR}/jaclang/x.jac" in names;
+    assert not any(["__pycache__" in n for n in names]);
+}
+
+
+test "pack_overlay ships the host's compiled .jir as a re-homeable seed (#7138)" {
+    import from jaclang.jac0core.jir { get_module_cache_path }
+    import from jaclang.scale.injector.binary { JIR_SEED_SUBDIR }
+
+    src_root = Path(tempfile.mkdtemp());
+    (src_root / "jaclang").mkdir();
+    src = src_root / "jaclang" / "x.jac";
+    src.write_text("x = 1;");
+    # Plant a fake host-side compiled cache exactly where the compiler would.
+    cache = get_module_cache_path(str(src));
+    cache.parent.mkdir(parents=True, exist_ok=True);
+    cache.write_bytes(b"JIRC-fake");
+
+    raw = pack_overlay(b"ELF", src_root);
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
+        names = tar.getnames();
+        manifest = tar.extractfile(
+            f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/_manifest.tsv"
+        ).read().decode(
+            "utf-8"
+        );
+    }
+    assert f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/jaclang/x.jac.jir" in names;
+    # The pure-stdlib adoption script + its baked destination manifest ship
+    # with the seeds (pods must not invoke jac before adoption - that compiles
+    # the overlay eagerly, defeating the seeds).
+    assert f"{TOOLCHAIN_SUBDIR}/{JIR_SEED_SUBDIR}/_adopt.py" in names;
+    (seed_rel, dest_name) = manifest.strip().split("\t");
+    assert seed_rel == "jaclang/x.jac.jir";
+    # dest is the pod-side cache filename: stem.<8-hex path hash>.cpython-XY.jir
+    import re;
+    assert re.fullmatch(r"x\.[0-9a-f]{8}\.cpython-\d+\.jir", dest_name) , dest_name;
+}
+
+
+test "bootstrap adopts jir seeds before jac install (pods validate, not compile)" {
+    cmds = build_runtime_install_commands(KubernetesConfig(), True);
+    cmds.append(_first_boot_install());
+    joined = " && ".join(cmds);
+    assert "jir-seed/_adopt.py" in joined;
+    # System python3 runs the adoption: any jac invocation before `jac install`
+    # would itself eagerly compile the overlay, defeating the seeds.
+    assert 'python3 "' in joined;
+    # Adoption strictly precedes the install so its caches are seen.
+    assert joined.index("_adopt.py") < joined.index("jac install");
+}
+
+
+test "resolve_overlay_source prefers a local jaclang_source dir, no cleanup" {
+    proj = Path(tempfile.mkdtemp());
+    (proj / "jac" / "jaclang").mkdir(parents=True);
+    (resolved, cleanup) = resolve_overlay_source("", "", "jac", str(proj));
+    assert resolved == (proj / "jac").resolve();
+    assert cleanup is None;
 }
 
 

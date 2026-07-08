@@ -24,9 +24,8 @@ to the gateway.
 ## Dev setup
 
 Microservice mode is built into jaclang core (`jaclang.scale`) -- there is no
-separate package to install. Deploys ship a prebuilt `jac` binary: a `[dev]`
-stanza in `jac.toml` selects the rolling `dev` (main HEAD) binary, and its
-absence selects the latest published release. Then run below.
+separate package to install. Point `jac` at your checkout via the `[dev]`
+`jaclang_source` stanza in `jac.toml` (see `CONTRIBUTING.md`), then run below.
 
 ## Run
 
