@@ -29,6 +29,7 @@
 //! dir iteration).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
@@ -350,6 +351,11 @@ pub fn materialize(
 
     // Warm path: a complete extract is marked by `<rt>/.ok`.
     if (pathExists(io, rt, ".ok")) return rt;
+    if (!builtin.is_test)
+        std.debug.print(
+            "jac: first run, performing one-time setup...\n",
+            .{},
+        );
 
     // Cold path: read the compressed payload region into memory.
     const poff = std.math.sub(u64, total, TRAILER_LEN + trailer.payload_len) catch
@@ -371,6 +377,8 @@ pub fn materialize(
 
     try extractPayload(io, gpa, zbuf, rt, pid);
     gcStale(io, root, &trailer.hash16);
+    if (!builtin.is_test)
+        std.debug.print("jac: one-time setup complete.\n", .{});
     return rt;
 }
 
@@ -493,10 +501,15 @@ test "cacheRoot prefers XDG_CACHE_HOME and falls back when unwritable" {
     try testing.expect(std.mem.endsWith(u8, root, "/jac"));
     try testing.expect(std.mem.startsWith(u8, root, base));
 
-    // Unwritable preferred root -> temp fallback keyed by uid.
+    // Unwritable preferred root -> temp fallback keyed by uid. The probe path
+    // must FAIL cleanly: a component that is a file (/dev/null) yields ENOTDIR
+    // on both Linux and macOS. Do NOT use a /proc path here -- createDirPath
+    // livelocks under the read-only /proc pseudo-fs on Linux (mkdir returns
+    // EROFS, never ENOENT, so make-parents neither progresses nor backs off),
+    // which hung this whole `zig build test` step on the Linux CI legs.
     var tmp_buf: [MAX_PATH]u8 = undefined;
     const tmpdir = tmp_buf[0..try tmp.dir.realPath(io, &tmp_buf)];
-    const fb = try cacheRoot(io, "/proc/nonexistent/ro", null, tmpdir, 4242, &out);
+    const fb = try cacheRoot(io, "/dev/null/ro", null, tmpdir, 4242, &out);
     try testing.expect(std.mem.indexOf(u8, fb, "jac-cache-4242") != null);
 }
 
