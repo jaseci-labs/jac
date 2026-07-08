@@ -271,6 +271,26 @@ test "cluster_node_archs dedupes and maps GOARCH to release arch names" {
 }
 
 
+test "blank node architectures are ignored" {
+    with unittest.mock.patch(
+        "kubernetes.client.CoreV1Api",
+        return_value=_core_api_with_nodes(["  ", "", "amd64"])
+    ) {
+        assert cluster_node_archs() == ["x86_64"];
+    }
+}
+
+
+test "node listing is bounded by a request timeout" {
+    api = _core_api_with_nodes(["amd64"]);
+    with unittest.mock.patch("kubernetes.client.CoreV1Api", return_value=api) {
+        cluster_node_archs();
+    }
+    kwargs = api.list_node.call_args.kwargs;
+    assert kwargs["_request_timeout"] == 10;
+}
+
+
 test "pack_binary_bytes tars only the binary (no-overlay channel)" {
     raw = pack_binary_bytes(b"ELF-binary");
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {

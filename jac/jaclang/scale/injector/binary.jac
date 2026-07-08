@@ -25,7 +25,6 @@ glob BINARY_ARCNAME: str = "bin/jac",
 
 
 def release_arch(raw: str) -> str {
-    # Normalize machine/GOARCH spellings to the release-asset arch names.
     m = raw.strip().lower();
     if m in ("arm64", "aarch64") {
         return "aarch64";
@@ -43,19 +42,22 @@ def host_arch -> str {
 
 
 def cluster_node_archs -> list[str] {
-    # Best-effort: with no reachable cluster the caller falls back to the host arch.
     try {
         import from kubernetes { client }
-        nodes = client.CoreV1Api().list_node().items;
-    } except Exception {
+    } except ImportError {
+        return [];
+    }
+    try {
+        nodes = client.CoreV1Api().list_node(_request_timeout=10).items;
+    } except Exception as e {
+        logger.warning(f"Could not read the cluster's node architectures ({e}).");
         return [];
     }
     archs = set();
     for node in nodes {
-        info = node?.status?.node_info;
-        raw = getattr(info, "architecture", "") or "";
-        if raw {
-            archs.add(release_arch(raw));
+        arch = release_arch(getattr(node?.status?.node_info, "architecture", "") or "");
+        if arch {
+            archs.add(arch);
         }
     }
     return sorted(archs);
