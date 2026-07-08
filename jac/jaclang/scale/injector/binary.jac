@@ -73,21 +73,10 @@ def cluster_node_archs -> list[str] {
 
 
 def node_arch -> str {
-    # Raising here surfaces the mismatch at deploy time, host-side; shipping
-    # anyway leaves every pod in Init:CrashLoopBackOff with a bare
-    # 'Exec format error' that only appears in init-container logs.
     archs = cluster_node_archs();
     override = os.environ.get("JAC_NODE_ARCH", "");
     if override {
-        arch = release_arch(override);
-        if archs and arch not in archs {
-            raise RuntimeError(
-                f"JAC_NODE_ARCH={override} does not match the cluster's node "
-                f"architecture(s) ({', '.join(archs)}); the nodes cannot run "
-                f"that binary. Unset it or use one of: {', '.join(archs)}."
-            );
-        }
-        return arch;
+        return _validated_override(override, archs);
     }
     if len(archs) == 1 {
         return archs[0];
@@ -99,6 +88,20 @@ def node_arch -> str {
         );
     }
     return host_arch();
+}
+
+
+def _validated_override(requested: str, archs: list[str]) -> str {
+    arch = release_arch(requested);
+    if archs and arch not in archs {
+        shown = requested if arch == requested else f"{requested} (= {arch})";
+        raise RuntimeError(
+            f"JAC_NODE_ARCH={shown} does not match the cluster's node "
+            f"architecture(s) ({', '.join(archs)}); the nodes cannot run "
+            f"that binary. Unset it or use one of: {', '.join(archs)}."
+        );
+    }
+    return arch;
 }
 
 

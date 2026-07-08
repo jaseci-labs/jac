@@ -292,6 +292,24 @@ test "JAC_NODE_ARCH mismatching the cluster fails at deploy time" {
 }
 
 
+test "a mismatching GOARCH-spelled override shows its normalized form" {
+    def check {
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(["amd64"])
+        ) {
+            caught = "";
+            try {
+                node_arch();
+            } except RuntimeError as e {
+                caught = str(e);
+            }
+            assert "JAC_NODE_ARCH=arm64 (= aarch64)" in caught;
+        }
+    }
+    _with_node_arch_env("arm64", check);
+}
+
+
 test "JAC_NODE_ARCH with an unreachable cluster is trusted as-is" {
     def check {
         with unittest.mock.patch(
