@@ -157,3 +157,61 @@ test "ready fleet returns without raising" {
 
     assert err is None , f"ready fleet should not raise: {err}";
 }
+
+test "multiple image-pull containers do not fail on the first poll" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    c1 = _cs("init-a", restarts=0, waiting_reason="ImagePullBackOff");
+    c2 = _cs("app", restarts=0, waiting_reason="ImagePullBackOff");
+    pod = _pod("gateway-xyz", "gateway", "Pending", [c1], [c2]);
+    (apps, core) = _apis(0, [pod]);
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 5);
+
+    assert err is not None , "deployment never became ready, expected timeout";
+    assert "timed out" in str(err) , f"expected timeout on a single poll: {err}";
+    assert "cannot pull image" not in str(err) , (
+        f"two image-pull containers must not fast-fail on the first poll: {err}"
+    );
+}
+
+test "multiple image-pull containers still fail once it persists" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    c1 = _cs("init-a", restarts=0, waiting_reason="ImagePullBackOff");
+    c2 = _cs("app", restarts=0, waiting_reason="ImagePullBackOff");
+    pod = _pod("gateway-xyz", "gateway", "Pending", [c1], [c2]);
+    (apps, core) = _apis(0, [pod]);
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60);
+
+    assert err is not None , "expected an image-pull failure";
+    assert "cannot pull image" in str(err) , f"image pull reason missing: {err}";
+}
+
+test "crashloop is reported before image-pull in the same poll" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="jac-shop", namespace="ns")
+    );
+    boot = _cs(
+        "jac-bootstrap",
+        restarts=3,
+        waiting_reason="CrashLoopBackOff",
+        last_term_reason="StartError",
+        last_term_message="exec format error",
+        last_term_exit=1
+    );
+    puller = _cs("app", restarts=0, waiting_reason="ImagePullBackOff");
+    pod = _pod("gateway-xyz", "gateway", "Pending", [boot], [puller]);
+    (apps, core) = _apis(0, [pod]);
+
+    err = _run(target, _bundle("gateway-deployment", "gateway"), apps, core, 60);
+
+    assert err is not None , "expected a crashloop failure";
+    assert "crash-looping" in str(err) , f"crashloop should take priority: {err}";
+    assert "cannot pull image" not in str(err) , (
+        f"crashloop must not be masked by image-pull: {err}"
+    );
+}

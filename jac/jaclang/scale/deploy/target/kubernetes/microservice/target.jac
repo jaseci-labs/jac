@@ -213,8 +213,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
                 phase_tokens: list[str] = [];
                 state_tokens: list[str] = [];
-                failure = "";
-                failed_pod = None;
+                crash_failure = "";
+                crash_pod = None;
+                pull_failure = "";
+                pull_pod = None;
                 active_imagepull: set = set();
 
                 for p in pods {
@@ -227,6 +229,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                         p.status.container_statuses or []
                     );
                     pod_reason = "";
+                    pod_crash = "";
+                    pod_crash_restarts = 0;
+                    pod_pull = "";
+                    pod_pull_reason = "";
                     for cs in statuses {
                         waiting = cs.state.waiting if cs.state else None;
                         reason = (waiting.reason if waiting else "") or "";
@@ -240,24 +246,33 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                         if not in_fleet {
                             continue;
                         }
-                        if reason == "CrashLoopBackOff" and restarts >= 3 {
-                            failure = (
-                                f"pod '{pod_name}' container '{cs.name}' "
-                                f"crash-looping ({restarts} restarts)"
-                            );
-                            failed_pod = p;
-                        } elif reason in imagepull_reasons {
-                            active_imagepull.add(pod_name);
-                            streak = imagepull_streak.get(pod_name, 0) + 1;
-                            imagepull_streak[pod_name] = streak;
-                            if streak >= 2 {
-                                failure = (
-                                    f"pod '{pod_name}' container '{cs.name}' "
-                                    f"cannot pull image ({reason})"
-                                );
-                                failed_pod = p;
-                            }
+                        crashing = reason == "CrashLoopBackOff" and restarts >= 3;
+                        if crashing and not pod_crash {
+                            pod_crash = str(cs.name);
+                            pod_crash_restarts = restarts;
+                        } elif reason in imagepull_reasons and not pod_pull {
+                            pod_pull = str(cs.name);
+                            pod_pull_reason = reason;
                         }
+                    }
+                    if pod_pull {
+                        active_imagepull.add(pod_name);
+                        streak = imagepull_streak.get(pod_name, 0) + 1;
+                        imagepull_streak[pod_name] = streak;
+                        if streak >= 2 and not pull_failure {
+                            pull_failure = (
+                                f"pod '{pod_name}' container '{pod_pull}' "
+                                f"cannot pull image ({pod_pull_reason})"
+                            );
+                            pull_pod = p;
+                        }
+                    }
+                    if pod_crash and not crash_failure {
+                        crash_failure = (
+                            f"pod '{pod_name}' container '{pod_crash}' "
+                            f"crash-looping ({pod_crash_restarts} restarts)"
+                        );
+                        crash_pod = p;
                     }
                     if app {
                         token = f"{app}={phase}";
@@ -273,6 +288,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     if k in active_imagepull
                 };
 
+                failure = crash_failure or pull_failure;
+                failed_pod = crash_pod if crash_failure else pull_pod;
                 if failure and failed_pod is not None {
                     detail = self._pod_failure_detail(
                         core_v1, ns, str(failed_pod.metadata.name), failed_pod
