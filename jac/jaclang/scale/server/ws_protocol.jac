@@ -37,6 +37,12 @@ def ws_error_frame(code: str, message: any, reason: any = None) -> dict {
 Returns auth detail if the query param is present, else None. A non-'ok'
 status should be rejected before accept so the client sees a clean handshake
 rejection.
+
+The query-token path is a convenience for browser clients that cannot set
+custom headers on a WebSocket upgrade. It has a tradeoff: the token appears in
+server and proxy access logs. Deployments that treat access logs as sensitive
+should prefer the first-frame auth path (send the token in the first message
+body, not the URL) and suppress WS upgrade lines from access logs.
 """
 def ws_pre_accept_auth(websocket: WebSocket, user_manager: Any) -> any {
     query_token = websocket.query_params.get('token');
