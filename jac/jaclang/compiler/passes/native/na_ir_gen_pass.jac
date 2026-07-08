@@ -220,6 +220,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
     def _codegen_while(nd: uni.WhileStmt) -> None;
     def _codegen_assignment(nd: uni.Assignment) -> None;
+    def _emit_empty_container_for_type(
+        cont_t: (ir.Type | None), nd: uni.UniNode
+    ) -> (ir.Value | None);
+
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
@@ -267,9 +271,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _resolve_container_annotation(ann: (uni.UniNode | None)) -> (ir.Type | None);
-    def _resolve_container_str(s: str) -> (ir.Type | None);
-    def _elem_llvm_by_str(s: str) -> (ir.Type | None);
-    def _split_top_commas(s: str) -> list;
+    def _resolve_container_ast(ann: (uni.UniNode | None)) -> (ir.Type | None);
     def _spec_for_val_llvm(elem: ir.Type) -> str;
     def _prim_ir_types -> dict;
     def _try_resolve_field_type(var: uni.UniNode) -> tuple;
@@ -280,6 +282,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _lower_type(t: any) -> (ir.Type | None);
     def _lower_class_type(t: any) -> (ir.Type | None);
     def _lower_function_type(t: any) -> ir.Type;
+    def _lower_type_arg_ast(ann: (uni.UniNode | None)) -> (ir.Type | None);
+    def _lower_list_from_elem(elem: ir.Type) -> ir.Type;
+    def _lower_dict_from_kv(k: ir.Type, v: ir.Type) -> ir.Type;
+    def _lower_set_from_elem(elem: ir.Type) -> ir.Type;
     def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);

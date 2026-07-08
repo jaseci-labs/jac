@@ -179,16 +179,3 @@ def find_bridge_lib(
     }
     return None;
 }
-
-
-def find_lib_in_dirs(crate: str, dirs: list) -> object {
-    for d in dirs {
-        for stem in _lib_stems(crate) {
-            p = d / stem;
-            if p.is_file() {
-                return p;
-            }
-        }
-    }
-    return None;
-}

@@ -390,14 +390,7 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             }
             elem_llvm = _e;
         }
-        spec = "i64";
-        if isinstance(elem_llvm, ir.DoubleType) {
-            spec = "f64";
-        } elif isinstance(elem_llvm, ir.PointerType) {
-            spec = "ptr";
-        }
-        self._emit_list_helpers(spec, elem_llvm);
-        return self.list_types[spec].as_pointer();
+        return self._lower_list_from_elem(elem_llvm);
     }
 
     if cname == "dict" {
@@ -412,19 +405,7 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             k_llvm = _k;
             v_llvm = _v;
         }
-
-        (k_spec, k_size) = self._dict_key_spec(k_llvm);
-
-        v_spec = "i64";
-        if isinstance(v_llvm, ir.DoubleType) {
-            v_spec = "f64";
-        } elif isinstance(v_llvm, ir.PointerType) {
-            v_spec = "ptr";
-        } elif self?.jacval_type and v_llvm == self.jacval_type {
-            v_spec = "jacval";
-        }
-        self._emit_dict_helpers(k_spec, v_spec, k_llvm, v_llvm, k_size);
-        return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
+        return self._lower_dict_from_kv(k_llvm, v_llvm);
     }
 
     if cname in ("set", "frozenset") {
@@ -436,19 +417,7 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             }
             elem_llvm = _e;
         }
-        spec = "i64";
-        esize = 0;
-        if isinstance(elem_llvm, ir.DoubleType) {
-            spec = "f64";
-        } elif isinstance(elem_llvm, ir.PointerType) {
-            spec = "ptr";
-            if isinstance(elem_llvm.pointee, ir.LiteralStructType) {
-                esize = self._get_struct_size(elem_llvm.pointee);
-                spec = f"tuple{esize}";
-            }
-        }
-        self._emit_set_helpers(spec, elem_llvm, esize);
-        return self.set_types[spec].as_pointer();
+        return self._lower_set_from_elem(elem_llvm);
     }
 
     if cname == "tuple" {
@@ -471,6 +440,35 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
         return self.tuple_types[tuple_key].as_pointer();
     }
     return None;
+}
+
+impl NaIRGenPass._lower_list_from_elem(elem: ir.Type) -> ir.Type {
+    spec = self._spec_for_val_llvm(elem);
+    self._emit_list_helpers(spec, elem);
+    return self.list_types[spec].as_pointer();
+}
+
+impl NaIRGenPass._lower_dict_from_kv(k: ir.Type, v: ir.Type) -> ir.Type {
+    (k_spec, k_size) = self._dict_key_spec(k);
+    v_spec = self._spec_for_val_llvm(v);
+    self._emit_dict_helpers(k_spec, v_spec, k, v, k_size);
+    return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
+}
+
+impl NaIRGenPass._lower_set_from_elem(elem: ir.Type) -> ir.Type {
+    spec = "i64";
+    esize = 0;
+    if isinstance(elem, ir.DoubleType) {
+        spec = "f64";
+    } elif isinstance(elem, ir.PointerType) {
+        spec = "ptr";
+        if isinstance(elem.pointee, ir.LiteralStructType) {
+            esize = self._get_struct_size(elem.pointee);
+            spec = f"tuple{esize}";
+        }
+    }
+    self._emit_set_helpers(spec, elem, esize);
+    return self.set_types[spec].as_pointer();
 }
 
 impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
@@ -576,156 +574,19 @@ impl NaIRGenPass._spec_for_val_llvm(elem: ir.Type) -> str {
 }
 
 
-impl NaIRGenPass._split_top_commas(s: str) -> list {
-    out = [];
-    depth = 0;
-    start = 0;
-    for i in range(len(s)) {
-        c = s[i];
-        if c == "[" {
-            depth += 1;
-        } elif c == "]" {
-            depth -= 1;
-        } elif c == "," and depth == 0 {
-            out.append(s[start:i]);
-            start = i + 1;
-        }
-    }
-    out.append(s[start:]);
-    return out;
-}
-
-
-# Split a type-element string on top-level `|` (union members), bracket-aware so
-# nested containers like `list[int | None]` keep their inner pipe intact.
-impl NaIRGenPass._split_top_pipes(s: str) -> list {
-    out = [];
-    depth = 0;
-    start = 0;
-    for i in range(len(s)) {
-        c = s[i];
-        if c == "[" {
-            depth += 1;
-        } elif c == "]" {
-            depth -= 1;
-        } elif c == "|" and depth == 0 {
-            out.append(s[start:i]);
-            start = i + 1;
-        }
-    }
-    out.append(s[start:]);
-    return out;
-}
-
-
-impl NaIRGenPass._elem_llvm_by_str(s: str) -> (ir.Type | None) {
-    s = s.strip();
-
-    # Optional/union elements written as `int | None`: lower to the first
-    # non-None member so `list[int | None]` keeps its element shape instead of
-    # silently falling back to the default i64 container.
-    if "|" in s {
-        for part in self._split_top_pipes(s) {
-            part = part.strip();
-            if part in ("None", "NoneType") {
-                continue;
-            }
-            _u = self._elem_llvm_by_str(part);
-            if _u is not None {
-                return _u;
-            }
-        }
+impl NaIRGenPass._lower_type_arg_ast(ann: (uni.UniNode | None)) -> (ir.Type | None) {
+    if ann is None {
         return None;
     }
-
-    _c = self._resolve_container_str(s);
-    if _c is not None {
-        return _c;
-    }
-    _prims = self._prim_ir_types();
-    if s in _prims {
-        _t = _prims[s];
-        if isinstance(_t, ir.VoidType) {
-            return None;
-        }
-        return _t;
-    }
-    if s in self.struct_types {
-        return self.struct_types[s].as_pointer();
-    }
-    return None;
-}
-
-
-impl NaIRGenPass._resolve_container_str(s: str) -> (ir.Type | None) {
-    s = s.replace(" ", "");
-    if s.startswith("list[") and s.endswith("]") {
-        elem = self._elem_llvm_by_str(s[5:-1]);
-        if elem is None {
-            return None;
-        }
-        spec = self._spec_for_val_llvm(elem);
-        self._emit_list_helpers(spec, elem);
-        return self.list_types[spec].as_pointer();
-    }
-    if s.startswith("dict[") and s.endswith("]") {
-        parts = self._split_top_commas(s[5:-1]);
-        if len(parts) != 2 {
-            return None;
-        }
-        k = self._elem_llvm_by_str(parts[0]);
-        v = self._elem_llvm_by_str(parts[1]);
-        if k is None or v is None {
-            return None;
-        }
-        (k_spec, k_size) = self._dict_key_spec(k);
-        v_spec = self._spec_for_val_llvm(v);
-        self._emit_dict_helpers(k_spec, v_spec, k, v, k_size);
-        return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
-    }
-    if s.startswith(("set[", "frozenset[")) and s.endswith("]") {
-        _pre = "set" if s.startswith("set[") else "frozenset";
-        elem = self._elem_llvm_by_str(s[len(_pre) + 1:-1]);
-        if elem is None {
-            return None;
-        }
-        spec = "i64";
-        esize = 0;
-        if isinstance(elem, ir.DoubleType) {
-            spec = "f64";
-        } elif isinstance(elem, ir.PointerType) {
-            spec = "ptr";
-            if isinstance(elem.pointee, ir.LiteralStructType) {
-                esize = self._get_struct_size(elem.pointee);
-                spec = f"tuple{esize}";
-            }
-        }
-        self._emit_set_helpers(spec, elem, esize);
-        return self.set_types[spec].as_pointer();
-    }
-    return None;
-}
-
-
-# Resolve a single annotation type-argument AST node to an LLVM type. Handles
-# nested container subscripts, `int | None` unions (picks the non-None member),
-# and plain primitive/struct names. Prefers semantic type info when present.
-impl NaIRGenPass._lower_type_arg_ast(
-    node: (uni.UniNode | None)
-) -> (ir.Type | None) {
-    if node is None {
-        return None;
-    }
-    _ptb = node?.type;
+    _ptb = ann?.type;
     if _ptb is not None {
         _l = self._lower_type(_ptb);
         if _l is not None {
             return _l;
         }
     }
-    if isinstance(node, uni.BinaryExpr)
-    and getattr(getattr(node, "op", None), "value", "") == "|" {
-        for _operand in (node.left, node.right) {
+    if isinstance(ann, uni.BinaryExpr) and getattr(ann?.op, "value", "") == "|" {
+        for _operand in (ann.left, ann.right) {
             if isinstance(_operand, uni.Null) {
                 continue;
             }
@@ -740,14 +601,14 @@ impl NaIRGenPass._lower_type_arg_ast(
         }
         return None;
     }
-    if isinstance(node, uni.AtomTrailer) {
-        _c = self._resolve_container_ast(node);
+    if isinstance(ann, uni.AtomTrailer) {
+        _c = self._resolve_container_ast(ann);
         if _c is not None {
             return _c;
         }
     }
-    if isinstance(node, uni.Name) {
-        _nm = node.value;
+    if isinstance(ann, uni.Name) {
+        _nm = ann.value;
         _prims = self._prim_ir_types();
         if _nm in _prims {
             _t = _prims[_nm];
@@ -763,13 +624,7 @@ impl NaIRGenPass._lower_type_arg_ast(
 }
 
 
-# Structural inspection of a subscript annotation (`Name[args]`) straight from
-# the AST, without depending on ann.unparse() formatting. This is preferred
-# over the string fallback because the unparse output (e.g. `list [ str ]`) is
-# a presentation detail, while the AST is the source of truth.
-impl NaIRGenPass._resolve_container_ast(
-    ann: (uni.UniNode | None)
-) -> (ir.Type | None) {
+impl NaIRGenPass._resolve_container_ast(ann: (uni.UniNode | None)) -> (ir.Type | None) {
     if not isinstance(ann, uni.AtomTrailer)
     or not isinstance(ann.right, uni.IndexSlice) {
         return None;
@@ -802,9 +657,7 @@ impl NaIRGenPass._resolve_container_ast(
         if elem is None {
             return None;
         }
-        spec = self._spec_for_val_llvm(elem);
-        self._emit_list_helpers(spec, elem);
-        return self.list_types[spec].as_pointer();
+        return self._lower_list_from_elem(elem);
     }
     if cname == "dict" {
         if len(arg_nodes) < 2 {
@@ -815,10 +668,7 @@ impl NaIRGenPass._resolve_container_ast(
         if k is None or v is None {
             return None;
         }
-        (k_spec, k_size) = self._dict_key_spec(k);
-        v_spec = self._spec_for_val_llvm(v);
-        self._emit_dict_helpers(k_spec, v_spec, k, v, k_size);
-        return self.dict_types[f"{k_spec}:{v_spec}"].as_pointer();
+        return self._lower_dict_from_kv(k, v);
     }
     if cname in ("set", "frozenset") {
         if not arg_nodes {
@@ -828,32 +678,12 @@ impl NaIRGenPass._resolve_container_ast(
         if elem is None {
             return None;
         }
-        spec = "i64";
-        esize = 0;
-        if isinstance(elem, ir.DoubleType) {
-            spec = "f64";
-        } elif isinstance(elem, ir.PointerType) {
-            spec = "ptr";
-            if isinstance(elem.pointee, ir.LiteralStructType) {
-                esize = self._get_struct_size(elem.pointee);
-                spec = f"tuple{esize}";
-            }
-        }
-        self._emit_set_helpers(spec, elem, esize);
-        return self.set_types[spec].as_pointer();
+        return self._lower_set_from_elem(elem);
     }
     return None;
 }
 
 
-# Resolve a container type from an annotation node. Preference order:
-#   1. semantic type info (ann.type) — most reliable when the type checker
-#      attached it;
-#   2. annotation AST (Name[args] subscript) — source of truth, formatting-free;
-#   3. ann.unparse() string parsing — robust fallback (balanced [], top-level
-#      comma split, whitespace tolerant, union aware).
-# This keeps empty annotated literals (x: list[str] = []) on the same native
-# helper/spec as their non-empty counterparts.
 impl NaIRGenPass._resolve_container_annotation(
     ann: (uni.UniNode | None)
 ) -> (ir.Type | None) {
@@ -867,19 +697,7 @@ impl NaIRGenPass._resolve_container_annotation(
             return _sem;
         }
     }
-    _ast = self._resolve_container_ast(ann);
-    if _ast is not None {
-        return _ast;
-    }
-    if not ann?.unparse {
-        return None;
-    }
-    try {
-        s = ann.unparse();
-    } except Exception {
-        return None;
-    }
-    return self._resolve_container_str(s);
+    return self._resolve_container_ast(ann);
 }
 
 

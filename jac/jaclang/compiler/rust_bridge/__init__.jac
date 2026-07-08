@@ -32,23 +32,14 @@ glob __all__ = [
 
 
 def __getattr__(name: str) -> object {
-    if name in (
-        "RustBridgeFinder",
-        "install_rust_namespace",
-        "JacBridgeFinder",
-        "install_finder"
-    ) {
+    if name in ("RustBridgeFinder", "install_rust_namespace") {
         import from jaclang.compiler.rust_bridge._importer {
             RustBridgeFinder,
-            install_rust_namespace,
-            JacBridgeFinder,
-            install_finder
+            install_rust_namespace
         }
         table = {
             "RustBridgeFinder": RustBridgeFinder,
-            "install_rust_namespace": install_rust_namespace,
-            "JacBridgeFinder": JacBridgeFinder,
-            "install_finder": install_finder
+            "install_rust_namespace": install_rust_namespace
         };
         return table[name];
     }

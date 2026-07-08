@@ -33,12 +33,9 @@ class Skip {
 
 
 class NaModule {
-    def init(
-        self: NaModule, source: str, skips: list[Skip] | None = None, bridged: int = 0
-    ) {
+    def init(self: NaModule, source: str, skips: list[Skip] | None = None) {
         self.source = source;
         self.skips = skips if skips is not None else [];
-        self.bridged = bridged;
     }
 }
 
@@ -561,8 +558,7 @@ class _Synth {
             out.append("");
         }
 
-        bridged = len(ctor_of) + sum([len(v) for v in methods_of.values()]);
-        return NaModule(source="\n".join(out), skips=self.skips, bridged=bridged);
+        return NaModule(source="\n".join(out), skips=self.skips);
     }
 
     def _jac_param(self: _Synth, p: ParamDesc) -> str {

@@ -5,11 +5,7 @@ import from importlib.machinery { ModuleSpec }
 import from jaclang.compiler.rust_bridge._blob { abi_mismatch_error, parse }
 import from jaclang.compiler.rust_bridge._ctypes_codegen { build_module }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
-import from jaclang.compiler.rust_bridge._finder {
-    find_bridge_lib,
-    find_lib_in_dirs,
-    _crate_of
-}
+import from jaclang.compiler.rust_bridge._finder { find_bridge_lib, _crate_of }
 
 
 class RustBridgeFinder(MetaPathFinder) {
@@ -79,51 +75,6 @@ def install_rust_namespace(search_dirs: object = None) -> RustBridgeFinder {
         }
     }
     finder = RustBridgeFinder(search_dirs);
-    sys.meta_path.append(finder);
-    return finder;
-}
-
-
-glob _JAC_BRIDGE_PREFIX = "jac_bridge_";
-
-
-class JacBridgeFinder(MetaPathFinder) {
-    def init(self: JacBridgeFinder, extra_dirs: object = None) {
-        cwd = Path.cwd();
-        defaults = [
-            cwd / "target" / "release",
-            cwd / "target" / "debug",
-            cwd.parent / "target" / "release",
-            cwd.parent / "target" / "debug"
-        ];
-        self._dirs = [Path(d) for d in (extra_dirs or [])] + defaults;
-    }
-
-    def find_spec(
-        self: JacBridgeFinder, fullname: str, path: object = None, target: object = None
-    ) -> object {
-        if not fullname.startswith(_JAC_BRIDGE_PREFIX) {
-            return None;
-        }
-        crate = fullname[len(_JAC_BRIDGE_PREFIX):];
-        so = find_lib_in_dirs(crate, self._dirs);
-        if so is None {
-            return None;
-        }
-        return ModuleSpec(
-            fullname, _RustBridgeLoader(str(so), fullname), origin=str(so)
-        );
-    }
-}
-
-
-def install_finder(search_dirs: object = None) -> JacBridgeFinder {
-    for f in sys.meta_path {
-        if isinstance(f, JacBridgeFinder) {
-            return f;
-        }
-    }
-    finder = JacBridgeFinder(search_dirs);
     sys.meta_path.append(finder);
     return finder;
 }
