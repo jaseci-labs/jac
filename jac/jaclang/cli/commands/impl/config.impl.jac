@@ -15,12 +15,64 @@ glob CONFIG_GROUPS = [
          "environment"
      ];
 
-impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> int {
+def _disabled_plugins_ref(config: object) -> list[str] {
+    if not config._raw_data {
+        config._raw_data = {};
+    }
+    if "plugins" not in config._raw_data
+    or not isinstance(config._raw_data["plugins"], dict) {
+        config._raw_data["plugins"] = {};
+    }
+    plugins_section = config._raw_data["plugins"];
+    if "disabled" not in plugins_section
+    or not isinstance(plugins_section["disabled"], list) {
+        plugins_section["disabled"] = [];
+    }
+    return plugins_section["disabled"];
+}
+
+def _persist_disabled_plugins(config: object) -> None {
+    if config.toml_path is None {
+        console.error("No toml_path set, cannot save configuration.");
+        return;
+    }
+
+    disabled = _disabled_plugins_ref(config);
+
+    if config.toml_path.exists() {
+        doc = read_toml_with_encoding(str(config.toml_path));
+    } else {
+        doc = {};
+    }
+
+    if disabled {
+        if "plugins" not in doc {
+            doc["plugins"] = {};
+        }
+        doc["plugins"]["disabled"] = list(disabled);
+    } elif "plugins" in doc
+    and isinstance(doc["plugins"], dict)
+    and "disabled" in doc["plugins"] {
+        del doc["plugins"]["disabled"];
+        if not doc["plugins"] {
+            del doc["plugins"];
+        }
+    }
+    config.persist_doc(doc);
+}
+
+impl plugins(
+    action: str = 'list', names: list | None = None, verbose: bool = False
+) -> int {
+    if names is None {
+        names = [];
+    }
     import from jaclang.bootstrap { bootstrap_product }
     bootstrap_product();
     import from jaclang.jac0core.runtime { plugin_manager }
     import from jaclang.cli.registry { get_registry }
     import from jaclang.project.config { get_config, JacConfig, find_project_root }
+    import from jaclang.jac0core.helpers { get_disabled_plugins }
     import from pathlib { Path }
 
     plugin_to_dist: dict[int, tuple[str, str]] = {};
@@ -77,10 +129,7 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
     }
 
     config = get_config();
-    disabled_plugins: list[str] = [];
-    if config {
-        disabled_plugins = config.plugins_config.disabled;
-    }
+    disabled_plugins: list[str] = get_disabled_plugins();
 
     def is_external_plugin(plugin: object) -> bool {
         return id(plugin) in plugin_to_dist;
@@ -113,10 +162,11 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
                 console.info(f"Creating {toml_path}...");
             }
         }
+        disabled_list = _disabled_plugins_ref(config);
         for target in names {
             if target == '*' {
-                if '*' not in config.plugins_config.disabled {
-                    config.plugins_config.disabled = ['*'];
+                if '*' not in disabled_list {
+                    disabled_list[:] = ['*'];
                     console.success("Disabled: * (all external plugins)", emoji=False);
                 } else {
                     console.warning(
@@ -133,8 +183,8 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
                         console.error(f"Cannot disable core plugin '{target}'.");
                         continue;
                     }
-                    if target not in config.plugins_config.disabled {
-                        config.plugins_config.disabled.append(target);
+                    if target not in disabled_list {
+                        disabled_list.append(target);
                         console.success(f"Disabled: {target}", emoji=False);
                     } else {
                         console.warning(f"Already disabled: {target}", emoji=False);
@@ -145,8 +195,8 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             } elif target in package_to_qualified {
                 qualified_names = package_to_qualified[target];
                 for qname in qualified_names {
-                    if qname not in config.plugins_config.disabled {
-                        config.plugins_config.disabled.append(qname);
+                    if qname not in disabled_list {
+                        disabled_list.append(qname);
                         console.success(f"Disabled: {qname}", emoji=False);
                     } else {
                         console.warning(f"Already disabled: {qname}", emoji=False);
@@ -160,8 +210,8 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
                         console.error(f"Cannot disable core plugin '{target}'.");
                         continue;
                     }
-                    if qname not in config.plugins_config.disabled {
-                        config.plugins_config.disabled.append(qname);
+                    if qname not in disabled_list {
+                        disabled_list.append(qname);
                         console.success(f"Disabled: {qname}", emoji=False);
                     } else {
                         console.warning(f"Already disabled: {qname}", emoji=False);
@@ -178,7 +228,7 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
                 console.warning(f"'{target}' not found as a plugin or package name.");
             }
         }
-        config.save();
+        _persist_disabled_plugins(config);
         console.success(f"Saved to {config.toml_path}");
         return 0;
     }
@@ -197,10 +247,11 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             return 1;
         }
         enabled_any = False;
+        disabled_list = _disabled_plugins_ref(config);
         for target in names {
             if target == '*' {
-                if '*' in config.plugins_config.disabled {
-                    config.plugins_config.disabled.remove('*');
+                if '*' in disabled_list {
+                    disabled_list.remove('*');
                     console.success(
                         "Enabled: * (all external plugins will now load)", emoji=False
                     );
@@ -213,14 +264,14 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
                 continue;
             }
 
-            if target in config.plugins_config.disabled {
-                config.plugins_config.disabled.remove(target);
+            if target in disabled_list {
+                disabled_list.remove(target);
                 console.success(f"Enabled: {target}", emoji=False);
                 enabled_any = True;
             } elif target in package_to_qualified {
                 for qname in package_to_qualified[target] {
-                    if qname in config.plugins_config.disabled {
-                        config.plugins_config.disabled.remove(qname);
+                    if qname in disabled_list {
+                        disabled_list.remove(qname);
                         console.success(f"Enabled: {qname}", emoji=False);
                         enabled_any = True;
                     }
@@ -228,12 +279,12 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             } else {
                 matching = [
                     m
-                    for m in config.plugins_config.disabled
+                    for m in disabled_list
                     if m.startswith(f"{target}:")
                 ];
                 if matching {
                     for qname in matching {
-                        config.plugins_config.disabled.remove(qname);
+                        disabled_list.remove(qname);
                         console.success(f"Enabled: {qname}", emoji=False);
                         enabled_any = True;
                     }
@@ -248,7 +299,7 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             console.info("No plugins were enabled.");
             return 0;
         }
-        config.save();
+        _persist_disabled_plugins(config);
         console.success(f"Saved to {config.toml_path}");
         return 0;
     }
@@ -315,8 +366,9 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
     commands_by_package: dict[str, list[str]] = {};
     registry = get_registry();
     for command in registry.get_all() {
-        if command.source and command.source != 'jaclang' {
-            pkg = command.source;
+        source = command?.source;
+        if source and source != 'jaclang' {
+            pkg = source;
             if pkg not in commands_by_package {
                 commands_by_package[pkg] = [];
             }
@@ -928,6 +980,9 @@ def _config_set(config: object, key: str, value: str) -> int {
 
     default_val = default_values[setting_name];
     typed_value = _parse_value(value, type(default_val));
+    if typed_value is None {
+        return 1;
+    }
 
     group_obj = getattr(config, _get_group_attr(group_name), None);
     if group_obj is None {
@@ -1023,7 +1078,7 @@ def _parse_value(value: str, target_type: type) -> object {
             return False;
         } else {
             console.error(f"Invalid boolean value '{value}'. Use true/false.");
-            return False;
+            return None;
         }
     }
 
@@ -1032,7 +1087,7 @@ def _parse_value(value: str, target_type: type) -> object {
             return int(value);
         } except ValueError {
             console.error(f"Invalid integer value '{value}'.");
-            return 0;
+            return None;
         }
     }
 
@@ -1041,7 +1096,7 @@ def _parse_value(value: str, target_type: type) -> object {
             return float(value);
         } except ValueError {
             console.error(f"Invalid float value '{value}'.");
-            return 0.0;
+            return None;
         }
     }
 

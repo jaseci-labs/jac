@@ -258,15 +258,13 @@ def _register_builtin_byllm_provider(plugin_manager: object) -> None:
     declared.
     """
     try:
-        from jaclang.byllm.cli import JacCmd
-        from jaclang.byllm.plugin import JacRuntime as JacByllmRuntime
+        import jaclang.byllm.cli  # noqa: F401 — registers model command
         from jaclang.byllm.plugin_config import JacByllmPluginConfig
     except Exception as exc:  # keep core usable if byllm fails to import
         warnings.warn(f"Built-in byLLM provider unavailable: {exc}", stacklevel=2)
         return
-    for _provider in (JacByllmRuntime, JacCmd, JacByllmPluginConfig):
-        if not plugin_manager.is_registered(_provider):
-            plugin_manager.register(_provider)
+    if not plugin_manager.is_registered(JacByllmPluginConfig):
+        plugin_manager.register(JacByllmPluginConfig)
 
 
 def _maybe_schedule_native_accel() -> None:

@@ -486,6 +486,7 @@ class JacScalePlugin {
     # None -> core default) unless the process is actually a scale runtime. Only
     # then does graph state live in the scale tiered-memory context; otherwise a
     # plain `jac run` / `jac test` keeps core's local SQLite store.
+    @hookimpl
     static def create_j_context(
         user_root: (str | None),
         base_path_dir: (str | None) = None,
@@ -507,6 +508,7 @@ class JacScalePlugin {
     # back to core's zero-dependency stdlib server. This keeps non-scale serving
     # (e.g. a client app, or `jac start` in an env without the scale deps) working
     # now that scale is a built-in that is always registered.
+    @hookimpl
     static def create_server(jac_server: JacServer, host: str, port: int) {
         try {
             import from .jserver.jfast_api { JFastApiServer }
@@ -516,6 +518,7 @@ class JacScalePlugin {
         return JFastApiServer([]);
     }
 
+    @hookimpl
     static def get_api_server_class -> type | None {
         try {
             import from .server.serve { JacAPIServer }
@@ -530,6 +533,7 @@ class JacScalePlugin {
         return JacAPIServer;
     }
 
+    @hookimpl
     static def get_user_manager(base_path: str) -> UserManager | None {
         try {
             import from .identity.user_manager { JacScaleUserManager }
@@ -539,6 +543,7 @@ class JacScalePlugin {
         return JacScaleUserManager(base_path=base_path);
     }
 
+    @hookimpl
     static def store(
         base_path: str = "./storage", create_dirs: bool = True
     ) -> Storage {
@@ -546,6 +551,7 @@ class JacScalePlugin {
         return StorageFactory.get_default(base_path, create_dirs);
     }
 
+    @hookimpl
     static def ensure_sv_service(module_name: str, base_path: str) -> None {
         import os;
         import atexit;
@@ -646,6 +652,7 @@ class JacScalePlugin {
         atexit.register(_cleanup);
     }
 
+    @hookimpl
     static def get_sv_registry -> dict[str, str] {
         import os;
         import from jaclang.runtimelib { sv_client }
@@ -676,6 +683,7 @@ class JacScalePlugin {
     # scale's transport closure (httpx) is not installed, so core falls back to
     # its stdlib http.client RPC and sv-to-sv keeps working with zero
     # third-party deps.
+    @hookimpl
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
         try {
             import httpx;
@@ -686,6 +694,7 @@ class JacScalePlugin {
         return http_transport().call_function(module_name, func_name, args);
     }
 
+    @hookimpl
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any {

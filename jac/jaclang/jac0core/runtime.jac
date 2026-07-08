@@ -111,7 +111,6 @@ def _ensure_product_for_hook(name: str) {
         logger.warning(f"product bootstrap failed before hook '{name}': {exc}");
     }
 }
-}
 
 def _prefetch_edges(origin: list[NodeArchetype]) -> None {
     ctx = JacRuntimeInterface.get_context();
@@ -217,6 +216,7 @@ obj LLMModel(Protocol) {
 class JacContext {
     static def get_context -> ExecutionContext;
     static def reset_graph(root_node: (Root | None) = None) -> int;
+    @hookable
     static def create_j_context(
         user_root: (str | None),
         base_path_dir: (str | None) = None,
@@ -237,8 +237,12 @@ class JacPersistence {
     static def object_ref(`obj: Archetype) -> str;
     static def save(`obj: (Archetype | Anchor)) -> None;
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None;
+    @hookable
     static def get_user_manager(base_path: str) -> UserManager;
+
+    @hookable
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
+
     static def get_persistent_memory(config: dict) -> any;
     static def set_persistent_memory_provider(provider: Callable | None) -> None;
 }
@@ -455,14 +459,24 @@ class JacServe {
         error_output: str, project_dir: Path, config: object = None
     ) -> str;
 
+    @hookable
     static def get_api_server_class -> type;
+
+    @hookable
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
+
+    @hookable
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
+
+    @hookable
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any;
 
+    @hookable
     static def get_sv_registry -> dict[str, str];
+
+    @hookable
     static def create_server(
         jac_server: JacServer, host: str, port: int, max_retries: int = 10
     ) -> HTTPServer;

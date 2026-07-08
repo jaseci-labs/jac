@@ -75,25 +75,6 @@ if not plugin_manager.is_registered(JacRuntimeImpl):
 
 __all__ = ["JacRuntime", "JacRuntimeImpl", "JacRuntimeInterface", "plugin_manager"]
 ''',
-     _BYLLM_INIT_EXTRA: str = '''
-
-def _register_vendored_byllm_provider():
-    """Register the vendored byLLM provider (the `by llm()` feature)."""
-    try:
-        from jaclang.byllm.plugin import JacRuntime as JacByllmRuntime
-        from jaclang.byllm.plugin_config import JacByllmPluginConfig
-    except Exception as exc:
-        import warnings
-
-        warnings.warn(f"Vendored byLLM provider unavailable: {exc}", stacklevel=2)
-        return
-    for _provider in (JacByllmRuntime, JacByllmPluginConfig):
-        if not plugin_manager.is_registered(_provider):
-            plugin_manager.register(_provider)
-
-
-_register_vendored_byllm_provider()
-''',
      _BYLLM_INIT_EXTRA: str = '',
      _CLOSURE_CACHE: dict[tuple, dict[str, str]] = {};
 
