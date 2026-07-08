@@ -2,6 +2,7 @@ import marshal;
 import os;
 import sys;
 import types;
+import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.jac0core.ext_registry { is_native_module }
@@ -152,7 +153,7 @@ def _execute_plan(
 }
 
 def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) -> int {
-    import from jaclang.runtimelib.jab { materialize_jab, jab_app_meta }
+    import from jaclang.runtimelib.jab { materialize_jab }
 
     try {
         img_root = materialize_jab(filename);
@@ -160,6 +161,14 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
         console.error(f"Cannot load {filename}: {e}");
         return 1;
     }
+    return run_jab_image(img_root, port, args, serve_only, filename);
+}
+
+impl run_jab_image(
+    img_root: Path, port: (int | None), args: list, serve_only: bool, label: str
+) -> int {
+    import from jaclang.runtimelib.jab { jab_app_meta }
+
     meta = jab_app_meta(img_root);
     kind = str(meta.get("kind") or "cli");
     entry_meta: dict = meta.get("entry") or {};
@@ -168,14 +177,14 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
     if not entry_rel {
         attach_note = ", attachable package" if "attachable" in caps else "";
         console.error(
-            f"{filename} has no entry (kind '{kind}'{attach_note}); "
+            f"{label} has no entry (kind '{kind}'{attach_note}); "
             "it cannot be run directly."
         );
         return 1;
     }
     entry_abs = str(img_root / entry_rel);
     if not os.path.isfile(entry_abs) {
-        console.error(f"{filename}: sealed entry '{entry_rel}' missing from image.");
+        console.error(f"{label}: sealed entry '{entry_rel}' missing from image.");
         return 1;
     }
     servable = kind in ["service", "service-mesh", "web-app", "web-static"];
@@ -203,7 +212,7 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
         return run(filename=entry_abs, args=args);
     }
     console.error(
-        f"{filename}: kind '{kind}' is not directly runnable from a jab "
+        f"{label}: kind '{kind}' is not directly runnable from a jab "
         "(build its platform projection instead)."
     );
     return 1;

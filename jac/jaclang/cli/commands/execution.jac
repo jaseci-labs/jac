@@ -1,3 +1,4 @@
+import from pathlib { Path }
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
@@ -223,6 +224,14 @@ def start(
 ) -> int;
 
 def debug(filename: str, main: bool = True, cache: bool = False) -> int;
+
+"""Kind-aware run of an already-materialized sealed image (a `.jab`'s contents).
+Shared by `jac run app.jab` and a `--as binary` app boot so both dispatch the
+same way (cli -> run entry, service/web -> serve, native -> exec baked binary).
+`label` names the source in diagnostics."""
+def run_jab_image(
+    img_root: Path, port: (int | None), args: list, serve_only: bool, label: str
+) -> int;
 
 @registry.command(
     name="x",

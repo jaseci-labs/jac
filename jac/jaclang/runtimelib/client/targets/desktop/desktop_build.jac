@@ -155,21 +155,19 @@ def _stage_pyembed_shim(out_dir: Path) {
 
 
 def _bundle_runtime(host_binary: Path) {
-    jac_bin = Path(os.path.realpath(os.sys.executable));
-    data = jac_bin.read_bytes();
-    magic = b"JACBIN01";
-    trailer_len = 8 + 8 + 64;
-    if len(data) < trailer_len or data[-trailer_len:-trailer_len + 8] != magic {
+    import subprocess;
+    jac_bin = os.path.realpath(os.sys.executable);
+    # The running jac appends its own [ payload ][ trailer ] runtime suffix onto
+    # the host binary (jac __graftrt). Zig owns the trailer format -- no Python
+    # copy of it here. A source/pip jac has no runtime to graft, so the tool
+    # exits non-zero and we surface the same guidance as before.
+    rc = subprocess.run([jac_bin, "__graftrt", str(host_binary)]).returncode;
+    if rc != 0 {
         raise RuntimeError(
-            "jac-desktop: the running jac binary carries no fused-runtime trailer "
+            "jac-desktop: the running jac binary carries no fused-runtime "
             f"({jac_bin}); a desktop app needs a fused `jac` built via `zig build`. "
             "(A bare pip/source jaclang install has no embeddable runtime.)"
         );
-    }
-    payload_len = int.from_bytes(data[-trailer_len + 8:-trailer_len + 16], "little");
-    suffix = data[-(trailer_len + payload_len):];
-    with open(str(host_binary), "ab") as f {
-        f.write(suffix);
     }
 }
 
