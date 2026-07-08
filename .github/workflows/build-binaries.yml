@@ -203,6 +203,12 @@ jobs:
           printf 'with entry { print("overlay-ok"); }\n' > "$WORK/app/main.jac"
           ( cd "$WORK/app" && env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" build --as binary )
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$WORK/app/dist/smoke" | grep -qx 'overlay-ok'
+          # Overlay coords must not hijack via env inheritance: a stale/leaked
+          # JAC_APP_OVERLAY_* must be CLEARED by a plain jac (runs its CLI) and
+          # OVERWRITTEN by an app binary (runs its own app), never mis-slice.
+          printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_APP_OVERLAY_OFF=999999999 JAC_APP_OVERLAY_LEN=16 "$BIN" run "$WORK/h.jac" | grep -qx 'ok'
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_APP_OVERLAY_OFF=999999999 JAC_APP_OVERLAY_LEN=16 "$WORK/app/dist/smoke" | grep -qx 'overlay-ok'
 
       # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
       # interpreter config) into subprocesses -- a python-based child spawned

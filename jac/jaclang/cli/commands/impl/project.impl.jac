@@ -1757,8 +1757,24 @@ def _bundle_binary(config: any, output: str) -> int {
     import subprocess;
     import tempfile;
     import from jaclang.jac0core.sealed { MANIFEST_NAME }
+    import from jaclang.runtimelib.jab { jab_app_meta }
 
     name = config.project.name;
+    jac_bin = os.path.realpath(sys.executable);
+
+    # Fast-fail BEFORE the (expensive) seal: only a bundled single-file jac can
+    # carry the runtime. `jac __hasruntime` is a pure-Zig launcher verb that
+    # exits 0 iff this interpreter is such a binary; a source/pip jac (python)
+    # has no such verb and exits non-zero.
+    if subprocess.run([jac_bin, "__hasruntime"]).returncode != 0 {
+        console.error(
+            "jac build --as binary needs a bundled single-file jac to carry the "
+            "runtime; the current interpreter is not one (source / pip install).",
+            hint="Run it with an installed single-file jac binary."
+        );
+        return 1;
+    }
+
     Path(output).mkdir(parents=True, exist_ok=True);
     work = Path(tempfile.mkdtemp(prefix="jacbin-", dir=output));
     out_bin = Path(output) / name;
@@ -1772,6 +1788,17 @@ def _bundle_binary(config: any, output: str) -> int {
             console.error("Seal produced no manifest; aborting binary.");
             return 1;
         }
+        # A runnable binary needs a runnable entry. Fail at BUILD time (not at
+        # first run) when the seal resolved none -- e.g. an attachable package,
+        # or no main.jac and no [project] entry-point.
+        if not (jab_app_meta(img).get("entry") or {}).get("path") {
+            console.error(
+                f"No runnable entry for '{name}'; a --as binary app needs an entry "
+                "(main.jac at the package root, or [project] entry-point in jac.toml).",
+                hint="Package-only projects have nothing to run as a binary."
+            );
+            return 1;
+        }
 
         # One canonical payload: the same sealed `.jab` `--as jab` emits. The
         # binary is that `.jab` appended as an overlay onto the running jac --
@@ -1781,17 +1808,12 @@ def _bundle_binary(config: any, output: str) -> int {
 
         console.print("  Appending app image onto the jac runtime...", style="muted");
         # The running jac copies itself and appends the `.jab` overlay; Zig owns
-        # the trailer (jac __appjab). Exits non-zero if this jac is not a bundled
-        # single-file binary, so a source/pip install is rejected cleanly.
+        # the trailer (jac __appjab).
         rc = subprocess.run(
-            [os.path.realpath(sys.executable), "__appjab", str(jab_path), str(out_bin)]
+            [jac_bin, "__appjab", str(jab_path), str(out_bin)]
         ).returncode;
-        if rc != 0 {
-            console.error(
-                "jac build --as binary needs a bundled single-file jac to carry the "
-                "runtime; the current interpreter is not one (source / pip install).",
-                hint="Run it with an installed single-file jac binary."
-            );
+        if rc != 0 or not out_bin.is_file() {
+            console.error("Failed to append the app image onto the jac runtime.");
             return 1;
         }
     } finally {

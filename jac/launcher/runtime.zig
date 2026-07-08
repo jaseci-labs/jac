@@ -240,12 +240,15 @@ pub fn graftRuntime(
         return Error.PayloadOffsetUnderflow;
     const suffix = self_bytes[suffix_start..base_total];
 
-    const host = try Io.Dir.cwd().readFileAlloc(io, host_path, gpa, .unlimited);
-    defer gpa.free(host);
-    var out = try Io.Dir.cwd().createFile(io, host_path, .{ .truncate = true });
-    defer out.close(io);
-    try out.writeStreamingAll(io, host);
-    try out.writeStreamingAll(io, suffix);
+    // Append the suffix at EOF WITHOUT truncating the host: a failed or
+    // interrupted write can only leave a partial suffix (an invalid trailer --
+    // harmless, the host is a regenerable build intermediate), never a zeroed
+    // host, and the host's existing mode is preserved. Mirrors the old
+    // `open(host, "ab")` the Python desktop builder used.
+    var host_file = try Io.Dir.cwd().openFile(io, host_path, .{ .mode = .read_write });
+    defer host_file.close(io);
+    const end = try host_file.length(io);
+    try host_file.writePositionalAll(io, suffix, end);
 }
 
 /// Resolve the global cache root, mirroring jaclang's `cache_paths.py`:

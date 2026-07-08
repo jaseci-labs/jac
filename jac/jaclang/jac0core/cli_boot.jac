@@ -76,7 +76,7 @@ def _handle_purge {
     sys.exit(0);
 }
 
-"""Run a bundled app if this binary was built with `jac bundle --target binary`.
+"""Run a bundled app if this binary was built with `jac build --as binary`.
 
 A `jac build --as binary` artifact carries the app's `.jab` appended after the
 runtime payload; the launcher exports its byte range as JAC_APP_OVERLAY_OFF/_LEN.
@@ -91,13 +91,24 @@ def _run_bundled_app -> (int | None) {
     if not off or not length {
         return None;
     }
-    with open(sys.executable, "rb") as f {
-        f.seek(int(off));
-        data = f.read(int(length));
-    }
     import from jaclang.runtimelib.jab { materialize_jab_bytes }
     import from jaclang.cli.commands.execution { run_jab_image }
-    img_root = materialize_jab_bytes(data);
+    # The launcher sets these only for THIS binary and clears them for a plain
+    # jac, so reaching here means a real app binary; a failed slice/extract is a
+    # genuinely corrupt image -> clean error, never an uncaught traceback.
+    try {
+        with open(sys.executable, "rb") as f {
+            f.seek(int(off));
+            data = f.read(int(length));
+        }
+        img_root = materialize_jab_bytes(data);
+    } except Exception as e {
+        print(
+            f"jac: this binary's embedded app image is unreadable ({e})",
+            file=sys.stderr
+        );
+        return 1;
+    }
     return run_jab_image(img_root, None, sys.argv[1:], False, "<app binary>");
 }
 
