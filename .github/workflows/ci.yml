@@ -985,7 +985,7 @@ jobs:
   # Real-app microservice e2e on kind (not microk8s) so it runs on the fast blacksmith runner, whose minimal kernel lacks the ipset modules microk8s' calico needs. PR-only on core changes; not a required check.
   k8s-real-e2e:
     name: microservice e2e (k8s)
-    needs: changes
+    needs: [changes, build-jac]
     if: >-
       github.event_name != 'push' &&
       (github.event_name != 'pull_request' || needs.changes.outputs.core == 'true') &&
@@ -993,32 +993,30 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     env:
-      # This job overlays the checkout's jaclang onto the downloaded dev binary
-      # via `[dev] jaclang_source`, so the workflow-level opt-out must be unset.
-      JAC_NO_DEV_SOURCE: ""
+      # Ship the jac binary built from THIS PR (the build-jac artifact) to the
+      # pods via channel LOCAL, so the e2e validates the code under test rather
+      # than a published release. JAC_SCALE_BINARY_PATH is set once the artifact
+      # is on disk (below); the deploy driver reads it as the pod binary.
+      JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           submodules: true
 
-      - name: Download the prebuilt dev jac binary (host deploy driver)
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Download the jac binary built from this PR (build-jac artifact)
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-binary
+          path: jac/zig-out/bin
+
+      - name: Install the PR jac binary as the deploy driver
         run: |
-          arch="$(uname -m)"
+          chmod +x "$JAC_SCALE_BINARY_PATH"
           mkdir -p "$HOME/.local/bin"
-          gh release download dev --repo jaseci-labs/jaseci \
-            --pattern "jac-dev-linux-${arch}" \
-            --output "$HOME/.local/bin/jac" --clobber
-          chmod +x "$HOME/.local/bin/jac"
+          cp "$JAC_SCALE_BINARY_PATH" "$HOME/.local/bin/jac"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/jac" --version
-
-      - name: Overlay this checkout's jaclang onto the downloaded binary
-        run: |
-          printf '\n[dev]\njaclang_source = "%s/jac"\n' "$GITHUB_WORKSPACE" \
-            >> jac/jaclang/scale/tests/fixtures/k8s_e2e/jac.toml
 
       - name: Install scale deploy deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
@@ -1032,13 +1030,6 @@ jobs:
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
             "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
             --global
-
-      - name: Cache the built admin console (largest host-prep cost, ~2 min)
-        # ensure_admin_dist_built no-ops when _dist exists, so a hit skips the on-host admin build.
-        uses: actions/cache@v4
-        with:
-          path: jac/jaclang/scale/admin/_dist
-          key: admin-dist-${{ hashFiles('jac/jaclang/scale/admin/ui/**', 'jac/jaclang/runtimelib/client/**') }}
 
       - name: Set up kind cluster
         # Single node labelled ingress-ready + host 80/443 mapped so ingress-nginx's kind provider can bind them.

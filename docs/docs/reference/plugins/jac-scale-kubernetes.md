@@ -21,6 +21,29 @@ DOCKER_PASSWORD=your-dockerhub-password-or-token
 
 ---
 
+### Runtime Binary
+
+Pods run a prebuilt `jac` binary that carries the jaclang runtime (including the `scale` subsystem). It is never built from source in the pod - the deploy driver selects and ships it. Which binary is shipped depends on the channel:
+
+| Channel | Selected by | Binary shipped |
+|---------|-------------|----------------|
+| **stable** | no `[dev]` stanza in `jac.toml` (default) | Latest published release |
+| **dev** | a `[dev]` stanza in `jac.toml` | Rolling `dev` prerelease (main HEAD) |
+| **local** | `JAC_SCALE_BINARY_PATH` set | The exact binary at that path |
+
+Both `stable` and `dev` download the binary from [GitHub Releases](https://github.com/jaseci-labs/jaseci/releases) and run it as-is - there is no source overlay.
+
+**Local binary (`JAC_SCALE_BINARY_PATH`).** Point this environment variable at a `jac` binary you built (or an air-gapped mirror) and the deploy ships that exact file to pods instead of downloading a release. It takes precedence over the `[dev]` stanza:
+
+```bash
+export JAC_SCALE_BINARY_PATH=/path/to/jac
+jac start app.jac --scale
+```
+
+Use this for air-gapped clusters, to pin an exact build, or to deploy a binary you compiled locally. The driver checksum-caches downloaded release binaries per channel, so an unchanged `stable`/`dev` deploy does not re-download on every run.
+
+---
+
 ### Naming & Namespace
 
 Controls the application name used for all Kubernetes resource names and the namespace resources are created in.

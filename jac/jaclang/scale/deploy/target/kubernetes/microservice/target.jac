@@ -350,7 +350,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             deploy_context=self._deploy_context,
             logger=self.logger,
             no_image=True,
-            dev=app_config.dev,
+            channel=app_config.channel,
             project_dir=app_config.code_folder,
             microservices_config=self.microservices_config
         );

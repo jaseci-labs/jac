@@ -197,6 +197,21 @@ def _compile_runtime_module(pkg_root: Path, path: Path) -> str {
 }
 
 
+def _strip_impl_patch_lines(src: str) -> str {
+    if "impl_patch_filename" not in src {
+        return src;
+    }
+    out_lines: list[str] = [];
+    for line in src.splitlines() {
+        if line.lstrip().startswith("@impl_patch_filename(") {
+            continue;
+        }
+        out_lines.append(line);
+    }
+    return "\n".join(out_lines);
+}
+
+
 def build_runtime_closure(
     user_codes: list, include_byllm: bool = False, extra_seeds: (list | None) = None
 ) -> dict[str, str] {
@@ -252,7 +267,9 @@ def build_runtime_closure(
             }
         }
         compiled = _compile_runtime_module(pkg_root, src_file);
-        sources[mod] = compiled.replace(str(pkg_root), "jaclang");
+        sources[mod] = _strip_impl_patch_lines(
+            compiled.replace(str(pkg_root), "jaclang")
+        );
         dests[mod] = src_file;
         for imp in scan_jaclang_imports(sources[mod]) {
             dep = str(imp);

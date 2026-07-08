@@ -1,5 +1,5 @@
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.config.dev_config { DevDeploy }
+import from jaclang.scale.config.dev_config { Channel }
 import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -25,7 +25,7 @@ obj MicroserviceManifestBuilder {
         deploy_context: DeployContext = DeployContext(),
         logger: any = None,
         no_image: bool = True,
-        dev: DevDeploy = DevDeploy(),
+        channel: Channel = Channel.STABLE,
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
@@ -53,7 +53,7 @@ obj MicroserviceManifestBuilder {
         proj = self.project_dir or app_config.code_folder;
         self._build_client_bundle(proj);
         selection = select_injector(
-            self.dev,
+            self.channel,
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
@@ -69,7 +69,7 @@ obj MicroserviceManifestBuilder {
         import os;
         import subprocess;
         import from jaclang.cli.console { console }
-        import from jaclang.scale.injector.binary { jac_executable }
+        import from jaclang.scale.runtime.context.util { jac_executable }
         client_entry = self._client_entry();
         if not client_entry {
             return;
@@ -864,7 +864,6 @@ obj MicroserviceManifestBuilder {
             build_bootstrap_init_container(
                 self.k8s_config,
                 self.k8s_config.python_image,
-                self.dev.overlays_source(),
                 is_gateway=(svc_name == GATEWAY_NAME)
             )
         );
