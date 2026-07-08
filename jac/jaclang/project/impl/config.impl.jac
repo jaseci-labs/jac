@@ -894,7 +894,13 @@ impl _parse_toml_data(
     if "plugins" in data and isinstance(data["plugins"], dict) {
         for (plugin_name, plugin_config) in data["plugins"].items() {
             if isinstance(plugin_config, dict) {
-                config.plugins[plugin_name] = plugin_config;
+                if plugin_name in config.plugins {
+                    config.plugins[plugin_name] = _deep_merge(
+                        config.plugins[plugin_name], plugin_config
+                    );
+                } else {
+                    config.plugins[plugin_name] = plugin_config;
+                }
             }
         }
     }
