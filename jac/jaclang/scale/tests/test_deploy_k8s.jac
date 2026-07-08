@@ -16,7 +16,12 @@ import from types { SimpleNamespace }
 
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.config.config_loader { JacScaleConfig, get_scale_config }
+import from jaclang.scale.config.config_loader {
+    JacScaleConfig,
+    get_scale_config,
+    reset_scale_config
+}
+import from tempfile { mkdtemp }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.observability.factory { UtilityFactory }
@@ -889,5 +894,69 @@ test "shared ingress merges caller-supplied annotations for non-nginx controller
     assert created_body["spec"]["ingressClassName"] == "alb" , "ingressClassName must be the shared class";
     for key in annos.keys() {
         assert not str(key).startswith("nginx.ingress.kubernetes.io/") , f"nginx annotation leaked onto non-nginx ingress: {key}";
+    }
+}
+
+test "k8s safe slug normalizes names into valid k8s identifiers" {
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        k8s_safe_slug
+    }
+
+    cases = [
+        ("this-is-jac", "this-is-jac"),
+        ("My App", "my-app"),
+        ("My_Cool_App!!", "my-cool-app"),
+        ("-lead-and-trail-", "lead-and-trail"),
+        ("UPPER", "upper"),
+        ("a" * 100, "a" * 63),
+        ("", "jaseci")
+    ];
+    for (raw, expected) in cases {
+        result = k8s_safe_slug(raw);
+        assert result == expected , f"k8s_safe_slug({raw!r}) = {result!r}, expected {expected!r}";
+    }
+}
+
+test "from_dict derives app_name and namespace from project_name when unset" {
+    k8s_config = KubernetesConfig.from_dict(
+        KubernetesConfig, {}, project_name="My App"
+    );
+    assert k8s_config.app_name == "my-app" , f"expected app_name derived from project_name, got {k8s_config.app_name!r}";
+    assert k8s_config.namespace == "my-app" , f"expected namespace derived from project_name, got {k8s_config.namespace!r}";
+}
+
+test "from_dict explicit app_name and namespace override project_name default" {
+    k8s_config = KubernetesConfig.from_dict(
+        KubernetesConfig, {"app_name": "custom-app"}, project_name="My App"
+    );
+    assert k8s_config.app_name == "custom-app" , "explicit app_name in config must not be overridden by project_name";
+    assert k8s_config.namespace == "my-app" , "namespace with no explicit config must still derive from project_name";
+}
+
+test "from_dict falls back safely with no config and no project_name" {
+    k8s_config = KubernetesConfig.from_dict(KubernetesConfig, {});
+    assert k8s_config.app_name == "jaseci" , "with zero context, app_name must fall back to the legacy default, not crash";
+    assert k8s_config.namespace == "default" , "with zero context, namespace must fall back to the legacy default, not crash";
+}
+
+test "get_kubernetes_config resolves app_name and namespace from project name with zero scale config" {
+    tmp_dir = Path(mkdtemp());
+    toml_path = tmp_dir / "jac.toml";
+    toml_path.write_text("[project]\nname = \"My App\"\nentry-point = \"main.jac\"\n");
+
+    # get_scale_config() caches a process-wide singleton on first call, so it
+    # must be reset before and after pointing it at this temp project.
+    reset_scale_config();
+    try {
+        scale_config = get_scale_config(tmp_dir);
+        target_config = scale_config.get_kubernetes_config();
+        assert target_config["app_name"] == "my-app" , f"expected app_name derived from [project].name, got {target_config[
+            'app_name'
+        ]!r}";
+        assert target_config["namespace"] == "my-app" , f"expected namespace derived from [project].name, got {target_config[
+            'namespace'
+        ]!r}";
+    } finally {
+        reset_scale_config();
     }
 }

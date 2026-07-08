@@ -33,8 +33,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_l1_invalidation_channel': 'jac:anchor:invalidate'
         },
         'kubernetes': {
-            'app_name': 'jaseci',
-            'namespace': 'default',
+            # app_name/namespace are intentionally absent here: leaving them
+            # unset lets KubernetesConfig.from_dict derive a project-specific
+            # default instead of always resolving to the literal 'jaseci'/
+            # 'default' baked into this dict.
             'container_port': 8000,
             'mongodb_enabled': True,
             'redis_enabled': True,
@@ -240,7 +242,10 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
         KubernetesConfig
     }
-    k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
+    project_name = self.get_jac_config().project.name;
+    k8s_config_obj = KubernetesConfig.from_dict(
+        KubernetesConfig, k8s_config, project_name=project_name
+    );
     return k8s_config_obj.to_dict();
 }
 

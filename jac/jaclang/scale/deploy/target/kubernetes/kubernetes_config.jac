@@ -1,5 +1,14 @@
 import from jaclang.scale.config.base_config { BaseConfig }
 
+def k8s_safe_slug(name: str, fallback: str = 'jaseci') -> str {
+    import re;
+    lowered = (name or '').strip().lower();
+    slug = re.sub(r'[^a-z0-9-]+', '-', lowered);
+    slug = re.sub(r'-+', '-', slug).strip('-');
+    slug = slug[:63].strip('-');
+    return slug or fallback;
+}
+
 obj KubernetesConfig(BaseConfig) {
     has container_port: int = 8000,
         mongodb_enabled: bool = True,
@@ -153,10 +162,22 @@ obj KubernetesConfig(BaseConfig) {
         return base;
     }
 
-    static def from_dict(cls: type, config: dict[str, any]) -> KubernetesConfig {
+    static def from_dict(
+        cls: type, config: dict[str, any], project_name: (str | None) = None
+    ) -> KubernetesConfig {
+        # No explicit app_name/namespace in jac.toml: default to a k8s-safe
+        # slug of the project name instead of the shared 'jaseci'/'default',
+        # so an unconfigured deploy doesn't land in a namespace other
+        # projects also use.
+        default_app_name = 'jaseci';
+        default_namespace = 'default';
+        if project_name {
+            default_app_name = k8s_safe_slug(project_name);
+            default_namespace = default_app_name;
+        }
         return cls(
-            app_name=config.get('app_name', 'jaseci'),
-            namespace=config.get('namespace', 'default'),
+            app_name=config.get('app_name', default_app_name),
+            namespace=config.get('namespace', default_namespace),
             container_port=config.get('container_port', 8000),
             mongodb_enabled=config.get('mongodb_enabled', True),
             redis_enabled=config.get('redis_enabled', True),
