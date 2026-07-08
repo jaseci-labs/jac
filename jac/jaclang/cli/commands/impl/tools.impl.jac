@@ -4,6 +4,38 @@ import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 impl tool(tool: str, args: list = []) -> int {
     import from jaclang.utils.lang_tools { AstTool }
+    if tool in ("jac2py", "py2jac", "jac2js") {
+        import from jaclang.cli.commands.transform { jac2py, py2jac, jac2js }
+        if not args {
+            console.error(f"Usage: jac tool {tool} <file>");
+            return 1;
+        }
+        fwd = {"jac2py": jac2py, "py2jac": py2jac, "jac2js": jac2js};
+        return fwd[tool](args[0]);
+    }
+    if tool == "grammar" {
+        import from jaclang.cli.commands.analysis { grammar }
+        output = "";
+        i = 0;
+        while i < len(args) {
+            a = args[i];
+            if a in ("-o", "--output") {
+                if i + 1 >= len(args) {
+                    console.error("Usage: jac tool grammar [-o <file>]");
+                    return 1;
+                }
+                i += 1;
+                output = args[i];
+            } elif a.startswith("--output=") {
+                output = a.split("=", 1)[1];
+            } else {
+                console.error(f"jac tool grammar: unknown argument '{a}'");
+                return 1;
+            }
+            i += 1;
+        }
+        return grammar(output=output);
+    }
     if hasattr(AstTool, tool) {
         try {
             console.print(
@@ -269,7 +301,7 @@ impl gen_jir_registry(verify: bool = False) -> int {
                 cfg.write("[check.lint]\nselect = [\"all\"]\n");
             }
             subprocess.run(
-                [sys.executable, '-m', 'jaclang', 'format', '--lintfix', tmp_path],
+                [sys.executable, '-m', 'jaclang', 'fmt', '--lintfix', tmp_path],
                 capture_output=True,
                 cwd=fmt_dir
             );

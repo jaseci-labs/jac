@@ -47,7 +47,7 @@ jac-client-node = "1.0.7"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 ```
 
 You typically don't need to modify this file until you add dependencies or customize settings.
@@ -58,7 +58,7 @@ You typically don't need to modify this file until you add dependencies or custo
 
 ### [project]
 
-Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac bundle` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
+Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac build --as wheel` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
 
 ```toml
 [project]
@@ -69,7 +69,7 @@ entry-point = "main.jac"
 kind = "service"   # drives `jac run` (omit to infer from the entry-point)
 jac-version = ">=0.15.0"
 
-# Publishing metadata -- only needed to run `jac bundle`
+# Publishing metadata -- only needed to run `jac build --as wheel`
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -288,7 +288,7 @@ whose top-level `with entry` runs on import are not pulled into test collection.
 
 ### [format]
 
-Defaults for `jac format`:
+Defaults for `jac fmt`:
 
 ```toml
 [format]
@@ -308,7 +308,7 @@ print_errs = true   # Print errors to console
 
 #### [check.lint]
 
-Configure which auto-lint rules are active during `jac lint` and `jac lint --fix`. Rules use a select/ignore model with two group keywords:
+Configure which auto-lint rules are active during `jac check --lint` and `jac check --lint --fix`. Rules use a select/ignore model with two group keywords:
 
 - `"default"` - code-transforming rules only (safe, auto-fixable)
 - `"all"` - every rule, including unfixable rules like `no-print`
@@ -371,7 +371,7 @@ Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. Se
 select = ["default", "strip-comments", "strip-docstrings"]
 ```
 
-The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac format --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
+The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac fmt --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
 
 **Excluding files from lint:**
 
@@ -466,21 +466,21 @@ enabled = ["byllm"] # Explicitly enabled
 disabled = []           # Explicitly disabled
 
 # Plugin-specific settings (byllm splits model identity from call params)
-[plugins.byllm.model]
+[byllm.model]
 default_model = "gpt-4o"
 api_key = "${OPENAI_API_KEY}"
 
-[plugins.byllm.call_params]
+[byllm.call_params]
 temperature = 0.7
 
 # Server settings (scale)
-[plugins.scale.server]
+[scale.server]
 port = 8000
 host = "0.0.0.0"
 docs_enabled = true              # Set to false to disable /docs, /redoc, /openapi.json
 
 # Webhook settings (scale)
-[plugins.scale.webhook]
+[scale.webhook]
 secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
@@ -489,14 +489,14 @@ api_key_expiry_days = 365
 # Kubernetes version pinning (scale) -- scale, byLLM, the MCP server, and the
 # client/desktop framework all ship inside the `jac` binary, so they need no
 # pinning. Use this only to pin a genuine third-party PyPI plugin for the pod image.
-[plugins.scale.kubernetes.plugin_versions]
+[scale.kubernetes.plugin_versions]
 my_plugin = "1.2.3"          # pin a version, or "none" to skip, "latest" to track
 ```
 
 **Prometheus Metrics (scale):**
 
 ```toml
-[plugins.scale.monitoring]
+[scale.monitoring]
 enabled = true
 endpoint = "/metrics"
 namespace = "myapp"
@@ -508,7 +508,7 @@ See [Prometheus Metrics](../plugins/jac-scale-kubernetes.md#prometheus-metrics) 
 **Kubernetes Secrets (scale):**
 
 ```toml
-[plugins.scale.secrets]
+[scale.secrets]
 OPENAI_API_KEY = "${OPENAI_API_KEY}"
 DATABASE_PASSWORD = "${DB_PASS}"
 ```
@@ -520,10 +520,10 @@ See also [Scale Webhooks](../plugins/jac-scale-http.md#webhooks) and [Kubernetes
 **Built-in Local Models (byllm):**
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 default_model = "local:gemma-4-e4b"   # in-process llama.cpp; no API key, no daemon
 
-[plugins.byllm.local]
+[byllm.local]
 default_alias  = "gemma-4-e4b"        # used when default_model is unset
 n_gpu_layers   = -1                   # -1 = offload all layers to GPU; 0 = CPU only
 n_ctx          = 0                    # 0 = use the alias's bundled default
@@ -535,7 +535,7 @@ Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>
 **Frontend Framework (jac-client):**
 
 ```toml
-[plugins.client]
+[client]
 framework = "react"   # "react" (default), "solid" (experimental), or "preact"
 ```
 
@@ -555,7 +555,7 @@ Switching frameworks automatically adjusts the installed npm packages and the ge
 **Import Path Aliases (jac-client):**
 
 ```toml
-[plugins.client.paths]
+[client.paths]
 "@components/*" = "./components/*"
 "@utils/*" = "./utils/*"
 "@shared" = "./shared/index"
@@ -566,10 +566,10 @@ Defines custom import aliases applied to Vite `resolve.alias`, TypeScript `compi
 **NPM Registry Configuration (jac-client):**
 
 ```toml
-[plugins.client.npm.scoped_registries]
+[client.npm.scoped_registries]
 "@mycompany" = "https://npm.pkg.github.com"
 
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${NODE_AUTH_TOKEN}"
 ```
 
@@ -577,10 +577,10 @@ This generates an `.npmrc` file during dependency installation for private/scope
 
 **Build-Time Constants (jac-client):**
 
-Define global variables that are replaced at compile time in client code via the `[plugins.client.vite.define]` section:
+Define global variables that are replaced at compile time in client code via the `[client.vite.define]` section:
 
 ```toml
-[plugins.client.vite.define]
+[client.vite.define]
 "globalThis.API_URL" = "\"https://api.example.com\""
 "globalThis.FEATURE_ENABLED" = true
 "globalThis.BUILD_VERSION" = "\"1.2.3\""
@@ -607,15 +607,15 @@ Custom command shortcuts:
 dev = "jac run main.jac"
 test = "jac test -v"
 build = "jac build main.jac -t"
-lint = "jac lint . --fix"
-format = "jac format ."
+lint = "jac check . --lint --fix"
+format = "jac fmt ."
 ```
 
 Run with:
 
 ```bash
-jac script dev
-jac script test
+jac x dev
+jac x test
 ```
 
 ---
@@ -631,14 +631,14 @@ default_profile = "development"
 [environments.development]
 [environments.development.run]
 cache = false
-[environments.development.plugins.byllm]
+[environments.development.byllm]
 model = "gpt-3.5-turbo"
 
 [environments.production]
 inherits = "development"
 [environments.production.run]
 cache = true
-[environments.production.plugins.byllm]
+[environments.production.byllm]
 model = "gpt-4"
 ```
 
@@ -655,7 +655,7 @@ JAC_PROFILE=production jac run main.jac
 Use environment variable interpolation inside `jac.toml` values:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 api_key = "${OPENAI_API_KEY}"                       # Required
 default_model = "${MODEL:-gpt-4o-mini}"             # With default
 base_url = "${BASE_URL:?Base URL is required}"      # Required with error
@@ -671,7 +671,7 @@ base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 
 ### [project.include]
 
-Controls which files and directories `jac bundle` collects into the wheel.
+Controls which files and directories `jac build --as wheel` collects into the wheel.
 
 > **Note:** Earlier releases used a separate `[package]` / `[package.include]` section for publishing metadata. As of jaclang 0.15, `[package]` has been merged into `[project]` -- all publishing fields now live under `[project]` (see above), and file-inclusion rules live under `[project.include]`. Plain `[package]` tables are no longer read.
 
@@ -705,7 +705,7 @@ Simple patterns without a path separator (e.g. `"*.jac"`) are matched recursivel
 | `**/*.pyi` | Type stub files |
 | `**/*.lark` | Lark grammar files |
 | `**/py.typed` | PEP 561 type marker |
-| `**/*.jir` | Pre-compiled JIR bytecode (collected if already present -- see [`jac bundle`](../cli/index.md#jac-bundle)) |
+| `**/*.jir` | Pre-compiled JIR bytecode (collected if already present -- see [`jac build`](../cli/index.md#jac-build)) |
 | `_precompiled/manifest.json` | JIR precompile manifest |
 
 **Always excluded** (regardless of patterns):
@@ -793,14 +793,14 @@ exclude = []
 [plugins]
 discovery = "auto"
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "${LLM_MODEL:-gpt-4o-mini}"
 api_key = "${OPENAI_API_KEY}"
 
 [scripts]
 dev = "jac run main.jac"
 test = "jac test"
-lint = "jac lint . --fix"
+lint = "jac check . --lint --fix"
 ```
 
 ---
@@ -896,7 +896,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 
 ### Scale: Kubernetes
 
-Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[plugins.scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
 
 | Variable | Description |
 |----------|-------------|

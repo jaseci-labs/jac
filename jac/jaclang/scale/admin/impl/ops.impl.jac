@@ -67,7 +67,7 @@ def _traces_chain(p: dict) -> dict {
                 "name": "config tracing.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[plugins.scale.microservices.tracing].enabled" + (
+                "detail": "[scale.microservices.tracing].enabled" + (
                     " = true"
                         if p.get("cfg_enabled", False)
                         else " = false (tracing off)"
@@ -110,7 +110,7 @@ def _logs_chain(p: dict) -> dict {
                 "name": "config logs.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[plugins.scale.microservices.logs].enabled" + (
+                "detail": "[scale.microservices.logs].enabled" + (
                     " = true" if p.get("cfg_enabled", False) else " = false (logs off)"
                 )
             },

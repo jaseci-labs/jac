@@ -99,7 +99,7 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 ```
 
 ---
@@ -276,10 +276,10 @@ name = "myapp"
 version = "0.1.0"
 entry-point = "main.jac"
 
-[plugins.client]
+[client]
 # Client-specific config
 
-[plugins.client.configs.postcss]
+[client.configs.postcss]
 plugins = ["tailwindcss", "autoprefixer"]
 
 [dependencies]

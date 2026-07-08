@@ -116,81 +116,6 @@ def check_environment -> bool {
     return True;
 }
 
-"""Test the jac plugins command and plugin system."""
-def run_plugin_tests(runner: IntegrationTestRunner) {
-    runner.run(
-        ["jac", "plugins", "list"],
-        check_contains=[
-            "Installed Jac plugins",
-            "jaclang (built-in)",
-            "jaclang:JacRuntimeInterfaceImpl",
-
-        ],
-        description="jac plugins list shows installed plugins with qualified names",
-    );
-
-    runner.run(
-        ["jac", "plugins", "list"],
-        check_contains=["jaclang:JacClientPluginConfig", "jaclang:JacClientCmd"],
-        description="client framework is registered as a built-in jaclang plugin",
-    );
-
-    result = subprocess.run(["jac", "plugins", "list"], capture_output=True, text=True);
-    if "jac-scale" in result.stdout {
-        runner.run(
-            ["jac", "plugins", "list"],
-            check_contains=["jac-scale", "jac-scale:scale"],
-            description="jac-scale plugins use qualified name format",
-        );
-    } else {
-        print("\n" + "=" * 60);
-        print("SKIP: jac-scale plugins test (plugin not installed)");
-        print("=" * 60);
-    }
-
-    if "byllm" in result.stdout {
-        runner.run(
-            ["jac", "plugins", "list"],
-            check_contains=["byllm", "byllm:byllm"],
-            description="byllm plugins use qualified name format",
-        );
-    } else {
-        print("\n" + "=" * 60);
-        print("SKIP: byllm plugins test (plugin not installed)");
-        print("=" * 60);
-    }
-
-    if "Commands:" in result.stdout or "\U0001f4bb" in result.stdout {
-        runner.run(
-            ["jac", "plugins", "list"],
-            check_contains=["Commands:"],
-            description="Plugin commands are shown in plugins list",
-        );
-    } else {
-        print("\n" + "=" * 60);
-        print("SKIP: Plugin commands test (no plugins with commands installed)");
-        print("=" * 60);
-    }
-
-    runner.run(
-        ["jac", "--help"],
-        check_contains=["create"],
-        description="jac --help shows plugin commands (create)",
-    );
-
-    runner.run(
-        ["jac", "plugins", "list", "--verbose"],
-        check_contains=["Class:", "Module:"],
-        description="jac plugins list --verbose shows detailed info",
-    );
-
-    runner.run(
-        ["jac", "plugins", "disabled"],
-        check_contains=["No plugins are currently disabled"],
-        description="jac plugins disabled shows no disabled by default",
-    );
-}
-
 """Test that .jac modules can be imported without explicit 'import jaclang'."""
 def run_pth_tests(runner: IntegrationTestRunner) {
     # Write a temporary .jac module
@@ -443,7 +368,6 @@ with entry {
 glob runner = IntegrationTestRunner();
 
 with entry {
-    run_plugin_tests(runner);
     run_pth_tests(runner);
     run_cli_tests(runner);
     run_admin_prebuild_tests(runner);

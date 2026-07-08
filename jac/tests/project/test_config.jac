@@ -23,8 +23,8 @@ import jaclang.project.config as config_mod;
 glob FIXTURE_BASE = str(Path(__file__).parent / "fixtures"),
      JAC_TOML_CONTENT = "[project]\nname = \"test-project\"\nversion = \"0.1.0\"\ndescription = \"A test project\"\nentry-point = \"main.jac\"\n\n[dependencies]\nrequests = \">=2.28.0\"\n\n[dev-dependencies]\npytest = \">=8.0.0\"\n\n[run]\nmain = true\ncache = true\n\n[scripts]\ntest = \"jac test\"\n",
      MAIN_JAC_CONTENT = "\"\"\"Test main file.\"\"\"\n\nwith entry {\n    print(\"Hello, World!\");\n}\n",
-     BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\nbase_route_app = \"app\"\n\n[plugins.client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies]\nwatchdog = \">=3.0\"\n",
-     PROD_TOML = "[serve]\nport = 80\n\n[plugins.client]\nminify = true\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\n",
+     BASE_TOML = "[project]\nname = \"jactastic\"\n\n[serve]\nport = 8090\nbase_route_app = \"app\"\n\n[client]\n\n[dependencies.npm]\njac-client-node = \"1.0.4\"\n\n[dev-dependencies]\nwatchdog = \">=3.0\"\n",
+     PROD_TOML = "[serve]\nport = 80\n\n[client]\nminify = true\n\n[byllm]\ndefault_model = \"gpt-4\"\n",
      LOCAL_TOML = "[serve]\nport = 9000\n\n[run]\ncache = false\n";
 
 """Create a temporary project directory with jac.toml."""
@@ -465,7 +465,7 @@ test "dev section parsing" {
 
 test "parse full config" {
     config_mod._config = None;
-    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
+    toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";
     cfg = JacConfig.from_toml_str(toml_str);
 
     # Project
@@ -672,7 +672,7 @@ test "is valid" {
 
 test "get plugin config" {
     config_mod._config = None;
-    toml_str = "\n[project]\nname = \"plugin-test\"\n\n[plugins.byllm]\nmodel = \"gpt-4\"\ntemperature = 0.5\n";
+    toml_str = "\n[project]\nname = \"plugin-test\"\n\n[byllm]\nmodel = \"gpt-4\"\ntemperature = 0.5\n";
     cfg = JacConfig.from_toml_str(toml_str);
     byllm_config = cfg.get_plugin_config("byllm");
     assert byllm_config["model"] == "gpt-4";
@@ -977,17 +977,14 @@ test "merge check with nested lint" {
     }
 }
 
-test "merge plugins config" {
+test "merge feature config" {
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text(
-            "[plugins]\ndiscovery = \"manual\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\n"
-        );
+        overlay.write_text("[byllm]\ndefault_model = \"gpt-4\"\n");
         cfg.merge_from_toml_file(overlay);
-        assert cfg.plugins_config.discovery == "manual";
         assert "byllm" in cfg.plugins;
         assert cfg.plugins["byllm"]["default_model"] == "gpt-4";
     }
@@ -1152,9 +1149,7 @@ test "merge env interpolation" {
         temp_project = make_temp_project(Path(tmpdir));
         cfg = JacConfig.load(temp_project / "jac.toml");
         overlay = temp_project / "overlay.toml";
-        overlay.write_text(
-            "[plugins.byllm]\napi_key = \"${TEST_API_KEY:-default_key}\"\n"
-        );
+        overlay.write_text("[byllm]\napi_key = \"${TEST_API_KEY:-default_key}\"\n");
         os.environ.pop("TEST_API_KEY", None);
         cfg.merge_from_toml_file(overlay);
         assert cfg.plugins["byllm"]["api_key"] == "default_key";
@@ -1327,13 +1322,13 @@ test "merge plugins deep nested" {
         temp_project = make_temp_project(Path(tmpdir));
         jac_toml = temp_project / "jac.toml";
         jac_toml.write_text(
-            "[project]\nname = \"test\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\n\n[plugins.byllm.options]\ntemperature = 0.7\nmax_tokens = 1000\n"
+            "[project]\nname = \"test\"\n\n[byllm]\ndefault_model = \"gpt-4\"\n\n[byllm.options]\ntemperature = 0.7\nmax_tokens = 1000\n"
         );
         cfg = JacConfig.load(jac_toml);
         assert cfg.plugins["byllm"]["options"]["temperature"] == 0.7;
         assert cfg.plugins["byllm"]["options"]["max_tokens"] == 1000;
         overlay = temp_project / "overlay.toml";
-        overlay.write_text("[plugins.byllm.options]\ntemperature = 0.9\n");
+        overlay.write_text("[byllm.options]\ntemperature = 0.9\n");
         cfg.merge_from_toml_file(overlay);
         assert cfg.plugins["byllm"]["options"]["temperature"] == 0.9;
         assert cfg.plugins["byllm"]["options"]["max_tokens"] == 1000;
@@ -1701,7 +1696,7 @@ test "save preserves special chars and env vars in plugins" {
 name = "test-special"
 version = "1.0.0"
 
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${TEST_AUTH_TOKEN}"
 
 [dependencies.npm]

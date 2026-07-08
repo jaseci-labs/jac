@@ -8,7 +8,7 @@ Jac provides a built-in storage abstraction for file and blob operations. The co
 
 ### The `store()` Builtin
 
-The recommended way to get a storage instance is the `store()` builtin. It requires no imports and is automatically hookable by plugins:
+The recommended way to get a storage instance is the `store()` builtin. It requires no imports and is automatically backed by the active persistence provider (jac-scale when installed, otherwise core's local storage):
 
 ```jac
 # Get a storage instance (no imports needed)
@@ -99,7 +99,7 @@ walker :pub list_files {
 
 #### Configuration
 
-Storage is configured in `jac.toml` under the `[plugins.scale.storage]` section or via environment variables.
+Storage is configured in `jac.toml` under the `[scale.storage]` section or via environment variables.
 
 | `jac.toml` key | Env Variable | Description | Default |
 |----------------|--------------|-------------|---------|
@@ -113,7 +113,7 @@ Storage is configured in `jac.toml` under the `[plugins.scale.storage]` section 
 **Example `jac.toml`:**
 
 ```toml
-[plugins.scale.storage]
+[scale.storage]
 type = "s3"
 bucket = "my-app-uploads"
 region = "us-east-1"
@@ -266,7 +266,7 @@ with entry {
 ### Firestore Configuration
 
 ```toml
-[plugins.scale.database]
+[scale.database]
 type = "firestore"
 project_id = "my-firebase-project"
 ```
@@ -488,15 +488,15 @@ You don't pick the broker; selection happens at startup based on what's availabl
 Add the section to `jac.toml`. Master switch is `enabled`; everything else has working defaults.
 
 ```toml
-[plugins.scale.events]
+[scale.events]
 enabled = true
-# Optional. If unset, falls back to [plugins.scale.database].redis_url; if neither
+# Optional. If unset, falls back to [scale.database].redis_url; if neither
 # resolves, the in-memory LocalEventStream is used.
 url = "redis://localhost:6379/0"
 consumer_group = "jac-scale"
 serializer = "json"
 
-[plugins.scale.events.retry]
+[scale.events.retry]
 max_attempts = 3
 backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
@@ -572,7 +572,7 @@ def drain(broker: EventStreamBroker) -> int {
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Master switch. When `false`, all event-streaming calls are no-ops. |
-| `url` | `null` | Redis URL. If unset, falls back to `[plugins.scale.database].redis_url`. If neither is set or the `redis` extra is missing, `LocalEventStream` (in-memory) is used. |
+| `url` | `null` | Redis URL. If unset, falls back to `[scale.database].redis_url`. If neither is set or the `redis` extra is missing, `LocalEventStream` (in-memory) is used. |
 | `consumer_group` | `jac-scale` | Default consumer group name when `@subscribe` does not specify one. |
 | `serializer` | `json` | Wire format. JSON only. |
 | `retry.max_attempts` | `3` | Number of delivery attempts before sending to the DLQ topic. |
@@ -624,11 +624,11 @@ Credentials are never hardcoded in pod specs. They are stored as Kubernetes `Sec
 **To disable (use an external database instead):**
 
 ```toml
-[plugins.scale.kubernetes]
+[scale.kubernetes]
 mongodb_enabled = false   # Don't deploy MongoDB - use MONGODB_URI instead
 redis_enabled = false     # Don't deploy Redis - use REDIS_URL instead
 
-[plugins.scale.database]
+[scale.database]
 mongodb_uri = "mongodb://user:pass@external-host:27017"
 redis_url = "redis://external-redis:6379"
 ```
@@ -655,7 +655,7 @@ REDIS_URL=redis://host:6379/0
 **Option 2 - `jac.toml`:**
 
 ```toml
-[plugins.scale.database]
+[scale.database]
 mongodb_uri = "mongodb://localhost:27017"   # External MongoDB URI (skip auto-provisioning)
 redis_url = "redis://localhost:6379"        # External Redis URL (skip auto-provisioning)
 shelf_db_path = ".jac/data/anchor_store.db"  # SQLite/shelf path for local dev
@@ -678,7 +678,7 @@ shelf_db_path = ".jac/data/anchor_store.db"  # SQLite/shelf path for local dev
 Dashboards are **off by default** and must be explicitly enabled in `jac.toml`:
 
 ```toml
-[plugins.scale.kubernetes]
+[scale.kubernetes]
 redis_dashboard  = true   # Deploy RedisInsight UI (default: false)
 mongodb_dashboard = true  # Deploy Mongo Express UI (default: false)
 ```
@@ -713,7 +713,7 @@ When dashboards are enabled, they are served through the NGINX Ingress at fixed 
 
 ```toml
 # jac.toml
-[plugins.scale.kubernetes]
+[scale.kubernetes]
 redis_dashboard          = true
 redis_insight_username   = "admin"
 redis_insight_password   = "strongpassword"
@@ -766,7 +766,7 @@ and if Redis or the `redis` extra is unavailable the feature simply stays off:
 the system degrades to plain per-request L1s with no cross-pod coherence.
 
 This is on by default whenever a Redis URL resolves. Tune it under
-`[plugins.scale.database]`:
+`[scale.database]`:
 
 | `jac.toml` key | Default | Description |
 |----------------|---------|-------------|

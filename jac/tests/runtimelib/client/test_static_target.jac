@@ -114,7 +114,7 @@ version = "1.0.0"
 entry-point = "main.jac"
 kind = "web-static"
 
-[plugins.client]
+[client]
 ''';
         toml_path = os.path.join(temp_dir, "jac.toml");
         with open(toml_path, "w") as f {

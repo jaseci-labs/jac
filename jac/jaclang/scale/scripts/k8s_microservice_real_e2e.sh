@@ -20,15 +20,15 @@ if ! grep -q "e2e-harness overlay" "${PROJECT_DIR}/jac.toml"; then
     cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
 
 # --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
-[plugins.scale.microservices.logs]
+[scale.microservices.logs]
 enabled = true
 
-[plugins.scale.microservices.ingress]
+[scale.microservices.ingress]
 enabled = true
 host = "jac-shop.local"
 ingress_class_name = "nginx"
 
-[plugins.scale.microservices.cors]
+[scale.microservices.cors]
 allow_origins = ["http://app.example.com"]
 allow_methods = ["GET", "POST", "OPTIONS"]
 allow_headers = ["Authorization", "Content-Type"]
@@ -329,7 +329,7 @@ done
 
 _t "routing OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
-# When [plugins.scale.microservices.logs].enabled = true (the fixture
+# When [scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which
 # adds Prometheus + Grafana + Loki + Alloy + kube-state-metrics +
 # node-exporter to the namespace. Verify each Deployment + the Alloy

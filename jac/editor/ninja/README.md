@@ -53,29 +53,6 @@ Neovim setup is never read and can never break the jac experience.
 `JAC_NINJA_ASCII=1` switches icons/signs to plain ASCII for glyph-less
 terminals.
 
-## Easy mode (for people who don't speak vim)
-
-`jac ninja --easy` (or `:NinjaEasy on`) enables a VSCode-style input layer,
-and the choice persists across sessions (`--no-easy` / `:NinjaEasy off` to
-leave). Modal vim stays underneath -- Esc still works and the clue hints keep
-teaching -- but the CUA muscle memory just works:
-
-| keys | action |
-|---|---|
-| `ctrl+s / ctrl+z / ctrl+y` | save / undo / redo (any mode) |
-| `ctrl+c / ctrl+x / ctrl+v / ctrl+a` | system-clipboard copy / cut / paste, select all |
-| `shift+arrows` | select text; typing replaces the selection |
-| `ctrl+p`, `ctrl+shift+p` or `F1` | go to file, command palette |
-| `ctrl+f / ctrl+h` | find / replace in file |
-| `ctrl+/`, `alt+up/down` | toggle comment, move line or selection |
-| `F2 / F12` | rename symbol / go to definition |
-| `` ctrl+` `` or `ctrl+j` | toggle the bottom terminal panel (persistent shell) |
-| `ctrl+\` | split the editor |
-| `ctrl+w`, `ctrl+pgup/pgdn`, `ctrl+q` | close file, switch file, quit |
-
-File buffers open in insert mode, ready to type. Tradeoff: `ctrl+v` shadows
-visual-block mode while easy mode is on.
-
 ## Layout of this directory
 
 - `init.lua` -- the entire editor configuration (core nvim + mini.nvim only).

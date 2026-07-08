@@ -677,11 +677,10 @@ impl graph_visualize(
 
 impl list_commands -> dict[str, any] {
     try {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        import from jaclang.cli.registry { get_registry }
+        import from jaclang.cli.registry { get_registry, extend_builtin_commands }
         import jaclang.cli.commands;
 
-        Jac.create_cmd();
+        extend_builtin_commands();
 
         registry = get_registry();
         if not registry._finalized {
@@ -725,11 +724,10 @@ impl list_commands -> dict[str, any] {
 
 impl get_command(name: str) -> dict[str, any] {
     try {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        import from jaclang.cli.registry { get_registry }
+        import from jaclang.cli.registry { get_registry, extend_builtin_commands }
         import jaclang.cli.commands;
 
-        Jac.create_cmd();
+        extend_builtin_commands();
         registry = get_registry();
         if not registry._finalized {
             registry.finalize();

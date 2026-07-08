@@ -14,18 +14,18 @@ test "mongodb user operations" {
 name = "test-mongo-user-manager"
 version = "1.0.0"
 
-[plugins.scale.database]
+[scale.database]
 # MongoDB URI will be set via environment variable
 
-[plugins.scale.jwt]
+[scale.jwt]
 secret = "test_secret"
 algorithm = "HS256"
 exp_delta_days = 1
 
-[plugins.scale.sso]
+[scale.sso]
 host = "http://localhost:8000/sso"
 
-[plugins.scale.admin]
+[scale.admin]
 username = "admin"
 default_password = "admin123"
 require_password_reset = true

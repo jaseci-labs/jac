@@ -19,7 +19,7 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 
 [jacpack]
 name = "web-app"
