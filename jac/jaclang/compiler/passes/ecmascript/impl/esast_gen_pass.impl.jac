@@ -5607,10 +5607,6 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
                 )
             );
         }
-        comprehensive_export = es.ExportNamedDeclaration(
-            declaration=None, specifiers=export_specifiers, source=None
-        );
-        body.append(comprehensive_export);
 
         if (
             not self.client_manifest.globals
@@ -5625,6 +5621,10 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
                 )
             );
         }
+        comprehensive_export = es.ExportNamedDeclaration(
+            declaration=None, specifiers=export_specifiers, source=None
+        );
+        body.append(comprehensive_export);
     }
 
     if self.client_manifest.endpoint_effects {
