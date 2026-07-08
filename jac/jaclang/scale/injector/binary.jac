@@ -225,18 +225,17 @@ def stage_admin_dist(project_dir: str) -> bool {
                 );
                 return False;
             }
-            dist.mkdir(parents=True, exist_ok=True);
-            for item in built.iterdir() {
-                target = dist / item.name;
-                if item.is_dir() {
-                    if target.exists() {
-                        shutil.rmtree(str(target));
-                    }
-                    shutil.copytree(str(item), str(target));
-                } else {
-                    shutil.copy2(str(item), str(target));
-                }
+            # Stage into a temp sibling and rename so a killed process cannot
+            # leave a partial _dist whose index.html passes the cache sentinel.
+            tmp = admin_pkg / "_dist.tmp";
+            if tmp.exists() {
+                shutil.rmtree(str(tmp));
             }
+            shutil.copytree(str(built), str(tmp));
+            if dist.exists() {
+                shutil.rmtree(str(dist));
+            }
+            tmp.rename(dist);
         }
         dest = Path(project_dir) / ".jac" / "admin";
         dest.mkdir(parents=True, exist_ok=True);
