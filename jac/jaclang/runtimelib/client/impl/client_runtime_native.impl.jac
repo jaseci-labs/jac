@@ -218,9 +218,9 @@ impl _adaptImageProps(props: dict) -> dict {
     return out;
 }
 
-impl _makeNativeLink(props: dict, children: list) -> JsxElement {
-    href = props["href"] if props["href"] else None;
-    rest = {** props};
+impl _makeNativeLink(link_props: dict, children: list) -> JsxElement {
+    href = link_props["href"] if link_props["href"] else None;
+    rest = {** link_props};
     if rest["href"] {
         rest.pop("href", None);
     }

@@ -1,0 +1,35 @@
+[project]
+name = "mobui-jachammer"
+version = "1.0.0"
+client_kind = "mobui"
+description = "jachammer — a pocket Jac studio: browse projects, deploy fleets, watch rollouts, clone from the community. Cross-platform (web + native) from one main.jac built on @jac/mobui primitives."
+entry-point = "main.jac"
+
+# jachammer is a pure client of the hosted jacBuilder backend
+# (JB_API in main.jac). There is no local backend and no byLLM here — the AI
+# build assistant runs server-side on jacBuilder, reached via the `ai_chat`
+# walker, so no provider key or model plugin is needed in this directory.
+[plugins.client]
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-native-web = "^0.19.13"
+lucide-react = "^0.469.0"
+lucide-react-native = "^0.469.0"
+react-native-svg = "^15.13.0"
+react-native-webview = "^13.15.0"
+"@react-native-cookies/cookies" = "^6.2.1"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+react-hook-form = "^7.71.0"
+zod = "^4.3.6"
+"@hookform/resolvers" = "^5.2.2"
+"@tanstack/react-form" = "^1.33.0"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
