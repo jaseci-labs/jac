@@ -25,26 +25,13 @@ obj DevDeploy {
 }
 
 
-def _nearest_jac_toml(start: Path) -> (Path | None) {
-    cur: Path = start.resolve();
-    while True {
-        toml = cur / "jac.toml";
-        if toml.is_file() {
-            return toml;
-        }
-        if cur.parent == cur {
-            return None;
-        }
-        cur = cur.parent;
-    }
-}
-
-
 def resolve_dev_deploy(project_dir: str) -> DevDeploy {
-    toml = _nearest_jac_toml(Path(project_dir));
-    if toml is None {
+    import from jaclang.jac0core.modresolver { find_project_root }
+    found = find_project_root(Path(project_dir));
+    if found is None {
         return DevDeploy();
     }
+    (_, toml) = found;
     raw = toml.read_bytes();
     if b"dev" not in raw {
         return DevDeploy();
