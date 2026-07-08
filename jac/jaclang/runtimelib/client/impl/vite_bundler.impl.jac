@@ -593,6 +593,7 @@ import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
+import jacFastRefresh from "./jac-fast-refresh.js";
 
 // Vite plugin: forward client-side runtime errors to the terminal and browser overlay
 function jacErrorReporter() {{
@@ -741,7 +742,8 @@ export default defineConfig({{
   plugins: [
     jacErrorReporter(),
     jacPortReporter(),
-    jacBuildErrorOverlay(),{compiled_reload_plug_in}{(
+    jacBuildErrorOverlay(),
+    jacFastRefresh(),{compiled_reload_plug_in}{(
             newline + plugins_str + newline + '  '
         )
             if plugins_str
@@ -975,6 +977,9 @@ impl ViteBundler.create_vite_config(
         desktop_broker_port=desktop_broker_port
     );
     config_path.write_text(config_content, encoding='utf-8');
+    if is_dev {
+        self._write_fast_refresh_plugin(configs_dir);
+    }
     return config_path;
 }
 
@@ -1287,7 +1292,14 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
           source: null, line: null, column: null
         });
       });
-      import("/compiled/_entry.js").catch(function(err) {
+      // react-refresh's global hook must install before React loads
+      import("/@react-refresh").then(function(RefreshRuntime) {
+        RefreshRuntime.injectIntoGlobalHook(window);
+        window.$RefreshReg$ = function() {};
+        window.$RefreshSig$ = function() { return function(type) { return type; }; };
+        window.__jac_refresh_installed__ = true;
+        return import("/compiled/_entry.js");
+      }).catch(function(err) {
         report({
           type: err instanceof Error ? err.constructor.name : "Error",
           message: err instanceof Error ? err.message : String(err),
@@ -1304,6 +1316,55 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
 </html>
 ''';
     index_html.write_text(index_content, encoding='utf-8');
+}
+
+impl ViteBundler._write_fast_refresh_plugin(
+    self: ViteBundler, configs_dir: Path
+) -> None {
+    plugin_js = r'''// jac-fast-refresh.js (generated) - React Fast Refresh for Jac's compiled modules.
+export default function jacFastRefresh() {
+  return {
+    name: "jac-fast-refresh",
+    apply: "serve",
+    transform(code, id) {
+      const clean = id.split("?")[0];
+      if (!clean.includes("/compiled/")) return null;
+      if (!clean.endsWith(".js")) return null;
+      if (code.indexOf("/*jac-fr*/") !== -1) return null;
+      // The compiler stamps modules whose every export is a component; anything
+      // unstamped (globs, helpers, router wiring) keeps full-reload semantics.
+      if (code.indexOf("/*jac:refresh-boundary*/") === -1) return null;
+
+      const modId = JSON.stringify(clean);
+      // same self-accepting boundary @vitejs/plugin-react appends to JSX modules
+      const header = '/*jac-fr*/import * as RefreshRuntime from "/@react-refresh";\n';
+
+      const footer =
+        "\nif (import.meta.hot) {" +
+        "RefreshRuntime.__hmr_import(import.meta.url).then(function (currentExports) {" +
+        "RefreshRuntime.registerExportsForReactRefresh(" + modId + ", currentExports);" +
+        "import.meta.hot.accept(function (nextExports) {" +
+        "if (!nextExports) return;" +
+        "const inv = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate(" + modId + ", currentExports, nextExports);" +
+        "if (inv) import.meta.hot.invalidate(inv);" +
+        "});" +
+        "});" +
+        "}\n";
+
+      // header is exactly one line, so one empty mapping row keeps the sourcemap chain
+      let map = null;
+      try {
+        map = this.getCombinedSourcemap();
+        map.mappings = ";" + map.mappings;
+      } catch (e) {
+        map = null;
+      }
+      return { code: header + code + footer, map: map };
+    }
+  };
+}
+''';
+    (configs_dir / 'jac-fast-refresh.js').write_text(plugin_js, encoding='utf-8');
 }
 
 impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {
