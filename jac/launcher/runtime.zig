@@ -29,6 +29,7 @@
 //! dir iteration).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
@@ -350,6 +351,11 @@ pub fn materialize(
 
     // Warm path: a complete extract is marked by `<rt>/.ok`.
     if (pathExists(io, rt, ".ok")) return rt;
+    if (!builtin.is_test)
+        std.debug.print(
+            "jac: first run, performing one-time setup...\n",
+            .{},
+        );
 
     // Cold path: read the compressed payload region into memory.
     const poff = std.math.sub(u64, total, TRAILER_LEN + trailer.payload_len) catch
@@ -371,6 +377,8 @@ pub fn materialize(
 
     try extractPayload(io, gpa, zbuf, rt, pid);
     gcStale(io, root, &trailer.hash16);
+    if (!builtin.is_test)
+        std.debug.print("jac: one-time setup complete.\n", .{});
     return rt;
 }
 

@@ -163,7 +163,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             continue;
         }
 
-        py_code = ir.gen.py or "";
+        py_code = _strip_test_and_impl_meta(ir.gen.py or "");
         js_code = ir.gen.js or "";
 
         if js_code.strip() {
@@ -444,6 +444,91 @@ def _js_exports_app(js_code: str) -> bool {
         }
     }
     return False;
+}
+
+
+def _dec_name(dec: any) -> str {
+    inner = dec;
+    if isinstance(dec, ast.Call) {
+        inner = dec.func;
+    }
+    if isinstance(inner, ast.Name) {
+        return str(inner.id);
+    }
+    if isinstance(inner, ast.Attribute) {
+        return str(inner.attr);
+    }
+    return "";
+}
+
+
+def _filtered_body(body: list) -> list {
+    kept: list = [];
+    for node in body {
+        if isinstance(node, ast.ImportFrom) {
+            mod = str(node?.module or "");
+            if not mod.startswith("jaclang") {
+                kept.append(node);
+                continue;
+            }
+            aliases = getattr(node, "names", []);
+            new_names: list = [];
+            for alias in aliases {
+                aname = getattr(alias, "name", "");
+                if (aname != "jac_test") and (aname != "impl_patch_filename") {
+                    new_names.append(alias);
+                }
+            }
+            if not new_names {
+                continue;
+            }
+            setattr(node, "names", new_names);
+            kept.append(node);
+            continue;
+        }
+        decs = getattr(node, "decorator_list", []);
+        drop = False;
+        keep_decs: list = [];
+        for dec in decs {
+            dname = _dec_name(dec);
+            if dname == "jac_test" {
+                drop = True;
+            }
+            if dname != "impl_patch_filename" {
+                keep_decs.append(dec);
+            }
+        }
+        if drop {
+            continue;
+        }
+        if decs {
+            setattr(node, "decorator_list", keep_decs);
+        }
+        inner_body = node?.body;
+        if isinstance(node, ast.ClassDef) and isinstance(inner_body, list) {
+            setattr(node, "body", _filtered_body(inner_body));
+        }
+        kept.append(node);
+    }
+    return kept;
+}
+
+
+def _strip_test_and_impl_meta(py_code: str) -> str {
+    if ("jac_test" not in py_code) and ("impl_patch_filename" not in py_code) {
+        return py_code;
+    }
+    try {
+        tree = ast.parse(py_code);
+    } except Exception {
+        return py_code;
+    }
+    tree.body = _filtered_body(tree.body);
+    try {
+        return ast.unparse(tree);
+    } except Exception {
+        return py_code;
+    }
 }
 
 
