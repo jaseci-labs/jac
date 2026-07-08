@@ -31,8 +31,6 @@ def _run_destroy_application(mgr: unittest.mock.MagicMock) {
 
 
 test "label-managed workloads are deleted before the bundle PVC" {
-    # Microservice deployments are label-managed, not app_name-named; deleting
-    # the PVC first leaves it Terminating on pvc-protection until the pods die.
     mgr = unittest.mock.MagicMock();
     _run_destroy_application(mgr);
 

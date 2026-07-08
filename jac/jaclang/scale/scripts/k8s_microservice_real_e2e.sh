@@ -592,9 +592,6 @@ fi
 
 _t "destroy start"
 echo "=== destroy: teardown must complete without manual pod deletion ==="
-# Same dispatch as `jac destroy` (default target): the base KubernetesTarget
-# must delete the label-managed fleet before the bundle PVC, or pvc-protection
-# wedges the teardown until someone deletes the pods by hand.
 if [ -n "${PORT_FORWARD_PID:-}" ]; then
     kill "${PORT_FORWARD_PID}" 2>/dev/null || true
     PORT_FORWARD_PID=""

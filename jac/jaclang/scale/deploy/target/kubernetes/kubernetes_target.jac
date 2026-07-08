@@ -1425,10 +1425,6 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def _destroy_managed_workloads(namespace: str, apps_v1: any) {
-        # Microservice-mode deployments are label-managed, not app_name-named.
-        # They must go before the bundle PVC they mount, or the pvc-protection
-        # finalizer holds the PVC (and the whole teardown) until the namespace
-        # cascade finally kills the pods.
         try {
             apps_v1.delete_collection_namespaced_deployment(
                 namespace=namespace,
