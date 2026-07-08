@@ -60,7 +60,11 @@ def setup(target: str, platform: str | None = None) -> int {
         return 1;
     }
     if target not in available_targets {
-        return 0;
+        console.error(f"Unknown setup target: '{target}'");
+        console.print(
+            f"Available targets: {', '.join(available_targets)}", style="muted"
+        );
+        return 1;
     }
 
     config = get_config();
