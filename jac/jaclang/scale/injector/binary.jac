@@ -1,5 +1,7 @@
 import io;
 import os;
+import shutil;
+import subprocess;
 import json;
 import hashlib;
 import logging;
@@ -190,6 +192,73 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
         gz.close();
     }
     return buf.getvalue();
+}
+
+
+def stage_admin_dist(project_dir: str) -> bool {
+    # Put the prebuilt admin console at <app>/.jac/admin so the STABLE-channel
+    # gateway skips its ~148s on-pod source build (#7291). Source: the driver's
+    # own jaclang package _dist; if absent, one cached host build via jac build.
+    import jaclang;
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    try {
+        admin_pkg = Path(str(jaclang.__file__)).parent / "scale" / "admin";
+        dist = admin_pkg / "_dist";
+        if not (dist / "index.html").is_file() {
+            ui = admin_pkg / "ui";
+            if not (ui / "main.jac").is_file() {
+                return False;
+            }
+            logger.info("Building the admin console on the host (one-time, cached).");
+            result = subprocess.run(
+                [jac_executable(), "build", "main.jac"],
+                cwd=str(ui),
+                capture_output=True,
+                text=True,
+                timeout=300
+            );
+            built = ui / ".jac" / "client" / "dist";
+            if result.returncode != 0 or not (built / "index.html").is_file() {
+                logger.warning(
+                    f"Host admin build failed ({result.stderr.strip()[-200:]}); "
+                    f"the gateway builds it on boot."
+                );
+                return False;
+            }
+            dist.mkdir(parents=True, exist_ok=True);
+            for item in built.iterdir() {
+                target = dist / item.name;
+                if item.is_dir() {
+                    if target.exists() {
+                        shutil.rmtree(str(target));
+                    }
+                    shutil.copytree(str(item), str(target));
+                } else {
+                    shutil.copy2(str(item), str(target));
+                }
+            }
+        }
+        dest = Path(project_dir) / ".jac" / "admin";
+        dest.mkdir(parents=True, exist_ok=True);
+        for item in dist.iterdir() {
+            target = dest / item.name;
+            if item.is_dir() {
+                if target.exists() {
+                    shutil.rmtree(str(target));
+                }
+                shutil.copytree(str(item), str(target));
+            } else {
+                shutil.copy2(str(item), str(target));
+            }
+        }
+        logger.info("Staged the prebuilt admin console into the app bundle.");
+        return True;
+    } except Exception as e {
+        logger.warning(
+            f"Could not stage the admin console ({e}); the gateway builds it on boot."
+        );
+        return False;
+    }
 }
 
 
