@@ -603,10 +603,6 @@ impl NaIRGenPass._bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> N
     }
 }
 
-# Build an empty dict/list value matching a resolved container pointer type
-# `cont_t`. Returns None if `cont_t` is not one of the registered container
-# specs. Used so an empty annotated literal (`x: list[str] = []`) allocates the
-# exact native helper its annotation implies, not the default i64 spec.
 impl NaIRGenPass._emit_empty_container_for_type(
     cont_t: (ir.Type | None), nd: uni.UniNode
 ) -> (ir.Value | None) {
@@ -621,11 +617,7 @@ impl NaIRGenPass._emit_empty_container_for_type(
             _h = self.dict_helpers.get(_spec);
             if _h is not None {
                 return self._rc_call_with_ctx(
-                    _h["new"],
-                    [],
-                    op="new",
-                    loc=_loc,
-                    name="dict.empty"
+                    _h["new"], [], op="new", loc=_loc, name="dict.empty"
                 );
             }
             return None;
@@ -636,11 +628,7 @@ impl NaIRGenPass._emit_empty_container_for_type(
             _h = self.list_helpers.get(_spec);
             if _h is not None {
                 return self._rc_call_with_ctx(
-                    _h["new"],
-                    [],
-                    op="new",
-                    loc=_loc,
-                    name="list.empty"
+                    _h["new"], [], op="new", loc=_loc, name="list.empty"
                 );
             }
             return None;
@@ -652,11 +640,6 @@ impl NaIRGenPass._emit_empty_container_for_type(
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.errors_had);
 
-    # Empty container literal with an explicit type annotation: the annotation
-    # is authoritative for the native shape. Resolve it BEFORE codegenning the
-    # (element-less) literal — otherwise the empty literal defaults to the i64
-    # spec and loses its annotation (regression: `x: list[str] = []` lowered to
-    # List.i64 while a later `.append("a")` used List.ptr, a type mismatch).
     value: (ir.Value | None) = None;
     _empty_lit = (
         nd.type_tag is not None
