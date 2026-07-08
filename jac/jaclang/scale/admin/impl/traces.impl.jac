@@ -189,7 +189,7 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             tags=["Traces"],
             summary="Service dropdown options",
             description=(
-                "Microservices declared in [plugins.scale.microservices.routes] "
+                "Microservices declared in [scale.microservices.routes] "
                 "+ 'gateway'. Used by the admin TracesPage service filter."
             )
         )

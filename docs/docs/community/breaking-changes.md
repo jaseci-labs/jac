@@ -393,7 +393,7 @@ connect(left=root(), right=Item())
 
 #### 1. Filter Comprehension Syntax Changed from `(?:...)` to `[?:...]`
 
-The parenthesized filter comprehension syntax `(?:Type)` and `(?:Type, condition)` is now deprecated in favor of bracket syntax `[?:Type]` and `[?:Type, condition]`. The old syntax still parses but emits deprecation warning **W0061**. The formatter (`jac format`) automatically converts old syntax to new.
+The parenthesized filter comprehension syntax `(?:Type)` and `(?:Type, condition)` is now deprecated in favor of bracket syntax `[?:Type]` and `[?:Type, condition]`. The old syntax still parses but emits deprecation warning **W0061**. The formatter (`jac fmt`) automatically converts old syntax to new.
 
 **Before:**
 
@@ -423,7 +423,7 @@ visit [-->[?:MyNode]];
 
 **Why:** The `[?` token sequence is unambiguous in all contexts, including nested inside edge ref chain brackets. Bracket syntax is consistent with how edge references already use `[...]`.
 
-**Migration:** Run `jac format` on your `.jac` files to auto-convert, or manually replace `(?:` with `[?:` and `(?` with `[?` (adjusting closing `)` to `]`).
+**Migration:** Run `jac fmt` on your `.jac` files to auto-convert, or manually replace `(?:` with `[?:` and `(?` with `[?` (adjusting closing `)` to `]`).
 
 ---
 
@@ -908,7 +908,7 @@ jac start main.jac --scale --build  # with build
 - `jac serve` → `jac start`
 - `jac scale` → `jac start --scale`
 - `jac scale -b` → `jac start --scale --build` (or `jac start --scale -b`)
-- The `jac destroy` command remains unchanged for removing Kubernetes deployments
+- The `jac scale destroy` command is used for removing Kubernetes deployments
 
 #### 2. Build Artifacts Consolidated to `.jac/` Directory
 

@@ -342,7 +342,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ## Lint Rules (W3xxx / E3xxx)
 
-Emitted by `jac lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
+Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 
 | Code | Rule Name | Message | Group |
 |------|-----------|---------|-------|

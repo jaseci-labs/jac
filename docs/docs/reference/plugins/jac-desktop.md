@@ -68,16 +68,16 @@ and support files beside the app binary.
 
 ## Configuration
 
-App identity and window geometry come from `[plugins.desktop]` in `jac.toml`:
+App identity and window geometry come from `[desktop]` in `jac.toml`:
 
 ```toml
-[plugins.desktop]
+[desktop]
 name = "my-app"
 identifier = "com.example.myapp"
 version = "1.0.0"
 engine = "native"  # "native" or "cef"
 
-[plugins.desktop.window]
+[desktop.window]
 title = "My App"
 width = 1000
 height = 700
@@ -90,7 +90,7 @@ resizable = true
 Chromium Embedded Framework:
 
 ```toml
-[plugins.desktop]
+[desktop]
 engine = "cef"
 ```
 
@@ -174,14 +174,14 @@ shadows the ambient browser `window` global.
 
 ### Security gating
 
-Each capability is gated under `[plugins.desktop.plugins]` in `jac.toml`. A key is
+Each capability is gated under `[desktop.plugins]` in `jac.toml`. A key is
 a plugin name; its value is either `true` (enabled with defaults) or a table of
 per-plugin config. `window`, `path`, `notification`, and `dialog` are enabled by
 default; `shell` is **deny-all** by default. An unknown plugin key is reported as
 an error rather than silently ignored.
 
 ```toml
-[plugins.desktop.plugins]
+[desktop.plugins]
 fs = { allow_read = ["$HOME"], allow_write = ["$APP_DATA"] }   # glob allow-lists (defaults shown)
 clipboard = { allow_read = true, allow_write = true }
 shell = { allow = ["git *"] }                                  # patterns must be explicitly allowed

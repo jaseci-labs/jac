@@ -24,7 +24,8 @@ obj CommandRegistry {
         group: str = "general",
         tier: str = "",
         priority: CommandPriority = CommandPriority.CORE,
-        source: str = "jaclang"
+        source: str = "jaclang",
+        hidden: bool = False
     ) -> Callable[[Callable], Callable];
 
     def extend_command(
@@ -37,7 +38,10 @@ obj CommandRegistry {
 
     def get(name: str) -> CommandSpec | None;
     def has_command(name: str) -> bool;
-    def get_all(group: str | None = None) -> list[CommandSpec];
+    def get_all(
+        group: str | None = None, include_hidden: bool = False
+    ) -> list[CommandSpec];
+
     def get_groups -> list[str];
     def finalize -> argparse.ArgumentParser;
     def _apply_pending_extensions(name: str) -> None;
@@ -51,3 +55,5 @@ obj CommandRegistry {
 glob _registry: CommandRegistry | None = None;
 
 def get_registry -> CommandRegistry;
+
+def extend_builtin_commands -> None;

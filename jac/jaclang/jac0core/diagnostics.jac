@@ -1007,7 +1007,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "Comment can be removed [strip-comments]",
          help="Opt-in 'deslop' rule. Enable by adding \"strip-comments\" to "
-         "[check.lint] select in jac.toml. `jac format --lintfix` then removes "
+         "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
          "all comments; it never fires under select = [\"all\"] or [\"default\"]."
      ),
      W3051 = _warn(
@@ -1015,7 +1015,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "Docstring can be removed [strip-docstrings]",
          help="Opt-in 'deslop' rule. Enable by adding \"strip-docstrings\" to "
-         "[check.lint] select in jac.toml. `jac format --lintfix` then removes "
+         "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
          "all docstrings; it never fires under select = [\"all\"] or [\"default\"]."
      ),
      LINT_ALIASES: dict[str, str] = {

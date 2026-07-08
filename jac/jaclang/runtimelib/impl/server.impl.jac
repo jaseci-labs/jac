@@ -579,6 +579,16 @@ impl ModuleIntrospector._load_manifest -> None {
     base: dict = {};
     mod_path = self._module?.__file__;
     if mod_path {
+        import from jaclang.runtimelib.sealed_serve { serve_manifest_for }
+        sm = serve_manifest_for(mod_path);
+        if sm is not None {
+            base = dict(sm.get('client', {}) or {});
+            base['endpoint_effects'] = sm.get('endpoint_effects', {}) or {};
+            self._client_manifest = base;
+            return;
+        }
+    }
+    if mod_path {
         mod = Jac.program.find_module(os.path.abspath(mod_path));
         if not mod {
             mod = Jac.program.compile(mod_path);
@@ -621,6 +631,15 @@ impl ModuleIntrospector._extract_access_levels -> None {
     self._function_access = {};
     self._walker_access = {};
     mod_path = self._module?.__file__;
+    if mod_path {
+        import from jaclang.runtimelib.sealed_serve { serve_manifest_for }
+        sm = serve_manifest_for(mod_path);
+        if sm is not None {
+            self._function_access = dict(sm.get('func_access', {}) or {});
+            self._walker_access = dict(sm.get('walker_access', {}) or {});
+            return;
+        }
+    }
     main_mod = Jac.program.find_module(os.path.abspath(mod_path)) if mod_path else None;
 
     if not main_mod and mod_path {
@@ -700,12 +719,98 @@ impl ModuleIntrospector._extract_access_levels -> None {
 }
 
 
+impl ModuleIntrospector._register_sealed_bindings(
+    sm: dict[str, any], img_root: str
+) -> None {
+    import from jaclang.jac0core.constructs { WalkerArchetype }
+
+    def resolve_sealed(src_path: str, name: str) -> any {
+        for loaded in list(Jac.loaded_modules.values()) {
+            f = loaded?.__file__;
+            if f and os.path.abspath(f) == os.path.abspath(src_path) {
+                sym = getattr(loaded, name, None);
+                if sym is not None {
+                    return sym;
+                }
+            }
+        }
+        target = os.path.basename(src_path);
+        if target.endswith('.jac') {
+            target = target.removesuffix('.jac');
+        }
+        try {
+            imported = Jac.jac_import(
+                target=target, base_path=os.path.dirname(src_path), lng='jac'
+            );
+            if imported {
+                return getattr(imported[0], name, None);
+            }
+        } except Exception as e {
+            import logging;
+            logging.getLogger("jaclang.serve").warning(
+                "sealed cross-boundary endpoint '%s' unavailable: server module "
+                "%r failed to import (%s: %s)",
+                name,
+                src_path,
+                type(e).__name__,
+                e
+            );
+            return None;
+        }
+        return None;
+    }
+
+    for b in sm.get('cross_bindings', []) or [] {
+        name = b.get('name');
+        rel = b.get('src');
+        if not name or not rel {
+            continue;
+        }
+        auth = bool(b.get('auth', True));
+        src_path = os.path.join(img_root, rel);
+        if b.get('kind') == 'walker' {
+            if name in self._walkers {
+                continue;
+            }
+            wcls = resolve_sealed(src_path, name);
+            if isinstance(wcls, type) and issubclass(wcls, WalkerArchetype) {
+                self._walkers[name] = wcls;
+                self._walker_access[name] = auth;
+            }
+        } else {
+            if name in self._functions {
+                continue;
+            }
+            fn = resolve_sealed(src_path, name);
+            if fn is not None and callable(fn) {
+                self._functions[name] = fn;
+                self._function_access[name] = auth;
+            }
+        }
+    }
+}
+
 impl ModuleIntrospector._collect_cross_boundary_endpoints -> None {
     if not (self._module and Jac.program and Jac.program.mod) {
         return;
     }
     import from jaclang.jac0core.constant { Tokens as Tok }
     import from jaclang.jac0core.constructs { WalkerArchetype }
+
+    sealed_mod_path = self._module?.__file__;
+    if sealed_mod_path {
+        import from jaclang.runtimelib.sealed_serve {
+            serve_manifest_for,
+            sealed_root_for
+        }
+        sm_sealed = serve_manifest_for(sealed_mod_path);
+        if sm_sealed is not None {
+            self._register_sealed_bindings(
+                sm_sealed, sealed_root_for(sealed_mod_path) or ""
+            );
+            return;
+        }
+    }
 
     fn_bindings: dict[str, any] = {};
     walker_bindings: dict[str, any] = {};
