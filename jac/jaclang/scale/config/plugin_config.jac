@@ -101,13 +101,13 @@ class JacScalePluginConfig {
                     "nested": {
                         "app_name": {
                             "type": "string",
-                            "default": "jaseci",
-                            "description": "Application name for Kubernetes resources. Defaults to a k8s-safe slug of [project].name when unset"
+                            "default": None,
+                            "description": "Application name for Kubernetes resources. Defaults to a k8s-safe slug of [project].name when unset, or 'jaseci' if no project name is usable"
                         },
                         "namespace": {
                             "type": "string",
-                            "default": "default",
-                            "description": "Kubernetes namespace for deployment. Defaults to a k8s-safe slug of [project].name when unset, so unconfigured deploys don't share the cluster's default namespace"
+                            "default": None,
+                            "description": "Kubernetes namespace for deployment. Defaults to a k8s-safe slug of [project].name when unset, or 'default' if no project name is usable, so unconfigured deploys don't share the cluster's default namespace"
                         },
                         "container_port": {
                             "type": "int",

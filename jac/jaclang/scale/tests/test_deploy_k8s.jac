@@ -22,6 +22,7 @@ import from jaclang.scale.config.config_loader {
     reset_scale_config
 }
 import from tempfile { mkdtemp }
+import shutil;
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.observability.factory { UtilityFactory }
@@ -968,5 +969,6 @@ test "get_kubernetes_config resolves app_name and namespace from project name wi
         ]!r}";
     } finally {
         reset_scale_config();
+        shutil.rmtree(tmp_dir, ignore_errors=True);
     }
 }
