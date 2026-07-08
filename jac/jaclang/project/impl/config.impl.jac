@@ -108,18 +108,37 @@ impl JacConfig.apply_env_interpolation -> None {
     self.environments = _interpolate_recursive(self.environments);
 }
 
-def _deep_merge(base: dict, `override: dict) -> dict {
-    result = base.copy();
-    for (key, value) in `override.items() {
-        if key in result
-        and isinstance(result[key], dict)
-        and isinstance(value, dict) {
-            result[key] = _deep_merge(result[key], value);
-        } else {
-            result[key] = value;
+def _merge_plugin_configs(target: dict, plugin_section: dict) {
+    import from jaclang.project.merge { deep_merge }
+    for (plugin_name, plugin_config) in plugin_section.items() {
+        if isinstance(plugin_config, dict) {
+            if plugin_name in target {
+                target[plugin_name] = deep_merge(target[plugin_name], plugin_config);
+            } else {
+                target[plugin_name] = plugin_config;
+            }
         }
     }
-    return result;
+}
+
+def _merge_plugin_feature_tables(target: dict, data: dict, merge: bool = True) {
+    import from jaclang.project.merge { deep_merge }
+    for feat in PLUGIN_FEATURE_KEYS {
+        if feat in data and isinstance(data[feat], dict) {
+            if merge and feat in target {
+                target[feat] = deep_merge(target[feat], data[feat]);
+            } else {
+                target[feat] = data[feat];
+            }
+        }
+    }
+}
+
+def _merge_plugins_from_data(target: dict, data: dict, merge_features: bool = True) {
+    _merge_plugin_feature_tables(target, data, merge=merge_features);
+    if "plugins" in data and isinstance(data["plugins"], dict) {
+        _merge_plugin_configs(target, data["plugins"]);
+    }
 }
 
 impl JacConfig._section_map -> dict {
@@ -203,28 +222,7 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         }
     }
 
-    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
-        if _feat in profile and isinstance(profile[_feat], dict) {
-            if _feat in self.plugins {
-                self.plugins[_feat] = _deep_merge(self.plugins[_feat], profile[_feat]);
-            } else {
-                self.plugins[_feat] = profile[_feat];
-            }
-        }
-    }
-    if "plugins" in profile and isinstance(profile["plugins"], dict) {
-        for (plugin_name, plugin_config) in profile["plugins"].items() {
-            if isinstance(plugin_config, dict) {
-                if plugin_name in self.plugins {
-                    self.plugins[plugin_name] = _deep_merge(
-                        self.plugins[plugin_name], plugin_config
-                    );
-                } else {
-                    self.plugins[plugin_name] = plugin_config;
-                }
-            }
-        }
-    }
+    _merge_plugins_from_data(self.plugins, profile);
 
     if "dependencies" in profile {
         for (key, value) in profile["dependencies"].items() {
@@ -319,28 +317,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
-        if _feat in data and isinstance(data[_feat], dict) {
-            if _feat in self.plugins {
-                self.plugins[_feat] = _deep_merge(self.plugins[_feat], data[_feat]);
-            } else {
-                self.plugins[_feat] = data[_feat];
-            }
-        }
-    }
-    if "plugins" in data and isinstance(data["plugins"], dict) {
-        for (plugin_name, plugin_config) in data["plugins"].items() {
-            if isinstance(plugin_config, dict) {
-                if plugin_name in self.plugins {
-                    self.plugins[plugin_name] = _deep_merge(
-                        self.plugins[plugin_name], plugin_config
-                    );
-                } else {
-                    self.plugins[plugin_name] = plugin_config;
-                }
-            }
-        }
-    }
+    _merge_plugins_from_data(self.plugins, data);
 
     if "dependencies" in data {
         deps = data["dependencies"];
@@ -886,24 +863,8 @@ impl _parse_toml_data(
             test_jobs=str(dev_data.get("test_jobs", "auto"))
         );
     }
-    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
-        if _feat in data and isinstance(data[_feat], dict) {
-            config.plugins[_feat] = data[_feat];
-        }
-    }
-    if "plugins" in data and isinstance(data["plugins"], dict) {
-        for (plugin_name, plugin_config) in data["plugins"].items() {
-            if isinstance(plugin_config, dict) {
-                if plugin_name in config.plugins {
-                    config.plugins[plugin_name] = _deep_merge(
-                        config.plugins[plugin_name], plugin_config
-                    );
-                } else {
-                    config.plugins[plugin_name] = plugin_config;
-                }
-            }
-        }
-    }
+    _merge_plugins_from_data(config.plugins, data, merge_features=False);
+
     if "environment" in data {
         env = data["environment"];
         config.environment = EnvironmentConfig(

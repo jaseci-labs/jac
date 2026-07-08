@@ -1336,6 +1336,74 @@ test "merge plugins deep nested" {
     }
 }
 
+# ===========================================================================
+# Plugin table parsing ([plugins.*] and [plugins.client])
+# ===========================================================================
+test "from_toml_str plugins client section" {
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str(
+        "[project]\nname = \"p\"\n\n[plugins.client]\nminify = true\n"
+    );
+    assert "client" in cfg.plugins;
+    assert cfg.plugins["client"]["minify"] is True;
+}
+
+test "merge_from_toml_file plugins client section" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        overlay = temp_project / "overlay.toml";
+        overlay.write_text("[plugins.client]\nminify = true\n");
+        cfg.merge_from_toml_file(overlay);
+        assert cfg.plugins["client"]["minify"] is True;
+    }
+}
+
+test "profile overlay plugins client section" {
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str(
+        "[project]\nname = \"p\"\n\n[plugins.client]\nminify = false\n\n"
+        "[environments.prod.plugins.client]\nminify = true\n"
+    );
+    assert cfg.plugins["client"]["minify"] is False;
+    cfg.apply_profile("prod");
+    assert cfg.plugins["client"]["minify"] is True;
+}
+
+test "client plugins client deep merge" {
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str(
+        "[project]\nname = \"p\"\n\n[client]\nframework = \"preact\"\n\n"
+        "[plugins.client]\nminify = true\n"
+    );
+    assert cfg.client.framework == "preact";
+    assert cfg.plugins["client"]["framework"] == "preact";
+    assert cfg.plugins["client"]["minify"] is True;
+}
+
+test "stamp kind adds client section when template omits it" {
+    import copy;
+    import from jaclang.project.kinds { ensure_client_config_section }
+    render_config = {
+        "project": {"name": "app"},
+        "dependencies": {"npm": {"jac-client-node": "1.0.7"}}
+    };
+    stamped = copy.deepcopy(render_config);
+    ensure_client_config_section(stamped, "web-app");
+    assert "client" in stamped;
+    assert stamped["dependencies"]["npm"]["jac-client-node"] == "1.0.7";
+}
+
+test "stamp kind skips client section for non client kinds" {
+    import copy;
+    import from jaclang.project.kinds { ensure_client_config_section }
+    render_config = {"project": {"name": "svc"}};
+    stamped = copy.deepcopy(render_config);
+    ensure_client_config_section(stamped, "service");
+    assert "client" not in stamped;
+}
+
 test "apply profile build section" {
     config_mod._config = None;
     cfg = JacConfig.from_toml_str(

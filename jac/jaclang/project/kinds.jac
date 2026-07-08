@@ -16,7 +16,18 @@ glob KIND_SPECS: dict[str, dict[str, str]] = {
          "desktop": {"entry": "main.jac", "plugin": ""},
          "mobile": {"entry": "main.jac", "plugin": ""}
      },
-     VALID_KINDS: list[str] = list(KIND_SPECS.keys());
+     VALID_KINDS: list[str] = list(KIND_SPECS.keys()),
+     CLIENT_KINDS: list[str] = ["web-app", "web-static", "desktop", "mobile"];
+
+def kind_has_client(kind: str) -> bool {
+    return kind in CLIENT_KINDS;
+}
+
+def ensure_client_config_section(config: dict, kind: str) {
+    if kind_has_client(kind) and "client" not in config {
+        config["client"] = {};
+    }
+}
 
 def kind_required_plugin(kind: str) -> str {
     return KIND_SPECS.get(kind, {}).get("plugin", "");

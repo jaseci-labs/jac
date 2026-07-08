@@ -5,7 +5,14 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
-glob VALID_CLIENT_KINDS: list[str] = ["web", "mobui"];
+glob VALID_CLIENT_KINDS: list[str] = ["web", "mobui"],
+     PLUGIN_FEATURE_KEYS: tuple[str, ...] = (
+         "byllm",
+         "scale",
+         "client",
+         "mcp",
+         "desktop"
+     );
 
 obj PersonConfig {
     has name: str = "",
