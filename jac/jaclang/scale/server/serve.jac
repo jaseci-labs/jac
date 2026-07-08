@@ -1,4 +1,5 @@
 import time;
+import asyncio;
 import logging;
 import mimetypes;
 import from collections.abc { Callable }
@@ -84,6 +85,7 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      JWT_EXP_DELTA_DAYS = _jwt_config['exp_delta_days'],
      SSO_HOST = _sso_config['host'],
      logger = logging.getLogger(__name__),
+     _WS_STREAM_STOP: any = object(),
      PORT_RETRY_LIMIT: int = 10,
      ERRNO_ADDR_IN_USE_LINUX: int = 98,
      ERRNO_ADDR_IN_USE_WINDOWS: int = 10048;

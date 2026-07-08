@@ -580,9 +580,22 @@ impl JacAPIServerEndpoints.register_webhook_endpoints -> None {
     }
 }
 
-"""Stream a generator target result over the socket as `chunk` frames followed
-by a terminating `done` frame. Mirrors the HTTP SSE frame semantics so a walker
-or function that returns a generator streams identically over both transports."""
+"""Advance a synchronous generator one step off the event-loop thread, returning
+the `_WS_STREAM_STOP` sentinel on exhaustion (StopIteration cannot cross an
+executor boundary, so it is converted to a sentinel)."""
+def _ws_stream_next(gen: any) -> any {
+    try {
+        return next(gen);
+    } except StopIteration {
+        return _WS_STREAM_STOP;
+    }
+}
+
+"""Stream a generator target result over the socket as `chunk` frames followed by
+a terminating `done` frame. Mirrors the HTTP SSE frame semantics: synchronous
+generators are advanced in a worker thread so a slow step does not block the
+event loop, and the `done` frame is always sent (carrying the error on failure)
+so a client that reads until `done` never hangs."""
 async def _ws_stream_result(
     websocket: WebSocket,
     ws_manager: WebSocketConnectionManager,
@@ -597,16 +610,37 @@ async def _ws_stream_result(
             await websocket.send_json(frame);
         }
     }
-    if isgenerator(result) {
-        for item in result {
-            await emit({'ok': True, 'type': 'chunk', 'data': item});
+    stream_error: (str | None) = None;
+    try {
+        if isgenerator(result) {
+            loop = asyncio.get_running_loop();
+            while True {
+                item = await loop.run_in_executor(None, _ws_stream_next, result);
+                if item is _WS_STREAM_STOP {
+                    break;
+                }
+                await emit({'ok': True, 'type': 'chunk', 'data': item});
+            }
+        } else {
+            async for item in result {
+                await emit({'ok': True, 'type': 'chunk', 'data': item});
+            }
         }
-    } else {
-        async for item in result {
-            await emit({'ok': True, 'type': 'chunk', 'data': item});
-        }
+    } except Exception as e {
+        logger.error(f"WS stream error for '{target_name}': {e}");
+        stream_error = str(e);
     }
-    await emit({'ok': True, 'type': 'done'});
+    if stream_error is None {
+        await emit({'ok': True, 'type': 'done'});
+    } else {
+        await emit(
+            {
+                'ok': False,
+                'type': 'done',
+                'error': {'code': 'STREAM_ERROR', 'message': stream_error}
+            }
+        );
+    }
 }
 
 impl JacAPIServerEndpoints.get_ws_manager -> WebSocketConnectionManager {
@@ -802,9 +836,12 @@ impl JacAPIServerEndpoints.register_websocket_endpoints -> None {
     for walker_name in self.get_walkers() {
         protocol = self.get_walker_protocol(walker_name);
         if protocol == APIProtocol.WEBSOCKET {
-            handler = self.create_websocket_handler(walker_name);
-            self.server.app.websocket(f"/ws/walker/{walker_name}")(handler);
-            self.server.app.websocket(f"/ws/{walker_name}")(handler);
+            self.server.app.websocket(f"/ws/walker/{walker_name}")(
+                self.create_websocket_handler(walker_name)
+            );
+            self.server.app.websocket(f"/ws/{walker_name}")(
+                self.create_websocket_handler(walker_name)
+            );
             logger.info(
                 f"Registered WebSocket walker endpoint: /ws/walker/{walker_name} "
                 f"(+ legacy /ws/{walker_name})"
