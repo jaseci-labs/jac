@@ -115,6 +115,20 @@ test "overlay bootstrap injects [dev] jaclang_source; pod compiles on boot" {
 }
 
 
+test "bootstrap guard executes the shipped binary, not just a PATH lookup" {
+    cmds = build_runtime_install_commands(KubernetesConfig(), False);
+    guards = [
+        c
+        for c in cmds
+        if "FATAL" in c
+    ];
+    assert len(guards) == 1;
+    assert "jac --version" in guards[0];
+    assert "command -v" not in guards[0];
+    assert "JAC_NODE_ARCH" in guards[0];
+}
+
+
 test "runtime_container_env exposes HOME + PATH, no JAC_NO_PRECOMPILE" {
     names = [e["name"] for e in runtime_container_env()];
     assert "HOME" in names;

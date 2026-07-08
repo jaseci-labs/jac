@@ -69,8 +69,11 @@ def build_runtime_install_commands(
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
     commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
     commands.append('export PATH="$HOME/.local/bin:$PATH"');
+    # The guard must EXECUTE the binary: `command -v` only checks the file is
+    # on PATH, so a wrong-arch binary passed it and died later with a bare
+    # 'Exec format error' instead of this message.
     commands.append(
-        'if ! command -v jac >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
+        'if ! jac --version >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
         'shipped jac binary did not run (toolchain unpack failed, or the '
         'binary arch does not match the node - set JAC_NODE_ARCH and '
         'redeploy)." >&2; exit 1; fi'
