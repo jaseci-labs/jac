@@ -48,6 +48,7 @@ obj CommandSpec {
         tier: str = "",
         priority: CommandPriority = CommandPriority.CORE,
         source: str = "jaclang",
+        hidden: bool = False,
         handler: Callable | None = None,
         extra_args: list[Arg] = [],
         pre_hooks: list[tuple[Callable, str]] = [],

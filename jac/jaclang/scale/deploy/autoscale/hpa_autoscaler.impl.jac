@@ -44,7 +44,7 @@ impl HPAAutoscaler.apply{
         if trigger.type not in ["cpu", "memory"] {
             raise ValueError(
                 f"Trigger '{trigger.name or trigger.type}' (type='{trigger.type}') requires KEDA. "
-                "Set autoscaler_engine = \"keda\" in [plugins.scale.kubernetes] in jac.toml."
+                "Set autoscaler_engine = \"keda\" in [scale.kubernetes] in jac.toml."
             );
         }
     }

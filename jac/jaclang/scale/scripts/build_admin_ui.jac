@@ -36,7 +36,7 @@ def main -> int {
     # Run jac build
     w("Building admin UI with `jac build main.jac`...\n");
     result = subprocess.run(
-        ["jac", "build", "main.jac"],
+        ["jac", "build", "main.jac", "--client", "web"],
         cwd=str(ui_dir),
         capture_output=True,
         text=True,

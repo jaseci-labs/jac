@@ -13,7 +13,7 @@ jac add --npm --dev tailwindcss @tailwindcss/vite
 
 ```toml
 # jac.toml - registers the Vite plugin
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 ```

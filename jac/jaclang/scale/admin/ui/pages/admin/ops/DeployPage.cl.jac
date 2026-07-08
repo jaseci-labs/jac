@@ -103,7 +103,7 @@ def:pub DeployPage -> JsxElement {
             <OpsUnavailableBanner
                 show={loadedOnce and not available}
                 detail={detail}
-                remediation="Set [plugins.scale.kubernetes].ops_console = true and redeploy so the read-only Role is bound to the gateway ServiceAccount."
+                remediation="Set [scale.kubernetes].ops_console = true and redeploy so the read-only Role is bound to the gateway ServiceAccount."
             />
             {<div className="text-danger text-sm">{errorMsg}</div>
                 if errorMsg

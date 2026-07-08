@@ -2,7 +2,6 @@ import os;
 
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
-import from jaclang.jac0core.runtime { hookimpl }
 
 
 obj PluginMetadata {
@@ -198,7 +197,6 @@ def _desktop_config_schema -> PluginConfigSchema {
 }
 
 class JacDesktopPluginConfig {
-    @hookimpl
     static def get_plugin_metadata -> dict[str, str] {
         return PluginMetadata(
             name="desktop",
@@ -207,7 +205,6 @@ class JacDesktopPluginConfig {
         ).to_dict();
     }
 
-    @hookimpl
     static def get_config_schema -> dict[str, object] {
         return _desktop_config_schema().to_dict();
     }

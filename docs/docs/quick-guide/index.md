@@ -74,11 +74,11 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     [serve]
     base_route_app = "app"
 
-    [plugins.scale]
+    [scale]
 
-    [plugins.client]
+    [client]
 
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "anthropic/claude-sonnet-4-6"
     ```
 

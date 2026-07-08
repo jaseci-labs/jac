@@ -21,7 +21,7 @@ hot-reloads just like `jac start --dev` does for web. Walker/function calls
 still go through the embedded in-process runtime, so RPC works identically
 to the packaged build.
 
-Window title and size are configured under `[plugins.desktop]` in `jac.toml`. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them).
+Window title and size are configured under `[desktop]` in `jac.toml`. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them).
 
 ## Ship to Android & iOS {#mobile}
 
@@ -34,7 +34,7 @@ jac start main.jac --client mobile --dev          # live reload on device/emulat
 jac build --client mobile --platform android      # → app-debug.apk
 ```
 
-Use `--platform ios` on macOS to produce an Xcode project. App name and id are set under `[plugins.client.mobile]`.
+Use `--platform ios` on macOS to produce an Xcode project. App name and id are set under `[client.mobile]`.
 
 ## Ship platform-native views (React Native) {#react-native}
 

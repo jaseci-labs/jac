@@ -121,7 +121,7 @@ export JAC_SYMMAP_PATH="$SYMMAP_PATH"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GDB_HELPER_JAC="${SCRIPT_DIR}/jac-gdb-helper.jac"
 GDB_HELPER="/tmp/jac-gdb-helper.$$.py"
-jac jac2py "$GDB_HELPER_JAC" > "$GDB_HELPER" 2>/dev/null
+jac tool jac2py "$GDB_HELPER_JAC" > "$GDB_HELPER" 2>/dev/null
 trap "rm -f '$GDB_HELPER'" EXIT
 
 # ── Build gdb command ──────────────────────────────────────────────────────
