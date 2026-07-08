@@ -122,6 +122,14 @@ user_manager.jac
 # expose false positives from incomplete Python type stubs. These files contain
 # valid code that fails type checking due to missing stub coverage for str,
 # Path, TextIOWrapper, JacProgram, Jac runtime, AST nodes, etc.
+# c2jac: pycparser C-AST nodes are typed as `object` throughout; attribute
+# access (e.g. `nd.left`, `nd.op`) and method calls (e.g. `nd.children()`)
+# cannot be validated without pycparser stubs. UniBuilder composes uni types
+# that the Sequence/UniNode type hierarchy flags as mismatches at check time
+# but are correct at runtime (the same gap that unitree.impl.jac already
+# has in this ignore list).
+jac/jaclang/compiler/c2jac/driver.jac
+jac/jaclang/compiler/c2jac/uni_builder.jac
 NonGPT.impl.jac
 analysis.impl.jac
 analysis.jac

@@ -83,7 +83,7 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # Coordinate helpers                                                   #
     # ------------------------------------------------------------------ #
-    def _loc(c_node: object) -> tuple[int, int] {
+    def _loc(c_node: c_ast.Node) -> tuple[int, int] {
         # Resolve coords via the shared helper, threading the running last-seen
         # line as the fallback so coord-less synthesized nodes stay near source.
         (line, col) = coord_of(c_node, self._lineno);
@@ -91,26 +91,26 @@ obj CMapper {
         return (line, col);
     }
 
-    def _stamp(py_node: object, c_node: object, *, text: str = "") -> object {
+    def _stamp(py_node: object, c_node: c_ast.Node, *, text: str = "") -> object {
         (line, col) = self._loc(c_node);
-        py_node.lineno = line;
-        py_node.col_offset = col;
-        py_node.end_lineno = line;
-        py_node.end_col_offset = col + max(len(text), 1);
+        setattr(py_node, "lineno", line);
+        setattr(py_node, "col_offset", col);
+        setattr(py_node, "end_lineno", line);
+        setattr(py_node, "end_col_offset", col + max(len(text), 1));
         return py_node;
     }
 
     def _stamp_manual(
         py_node: object, line: int, col: int, *, text: str = ""
     ) -> object {
-        py_node.lineno = line;
-        py_node.col_offset = col;
-        py_node.end_lineno = line;
-        py_node.end_col_offset = col + max(len(text), 1);
+        setattr(py_node, "lineno", line);
+        setattr(py_node, "col_offset", col);
+        setattr(py_node, "end_lineno", line);
+        setattr(py_node, "end_col_offset", col + max(len(text), 1));
         return py_node;
     }
 
-    def _alloc_slot(c_node: object) -> int {
+    def _alloc_slot(c_node: c_ast.Node) -> int {
         sid = self._next_slot;
         self._next_slot += 1;
         self.slot_map[sid] = c_node;
@@ -120,7 +120,7 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # Fallback surrogate (§8.2 validity backstop)                         #
     # ------------------------------------------------------------------ #
-    def _surrogate_stmt(c_node: object) -> object {
+    def _surrogate_stmt(c_node: c_ast.Node) -> object {
         (line, col) = self._loc(c_node);
         reason = f"{type(c_node).__name__} @ L{line}";
         self.tags.tag(
@@ -155,7 +155,7 @@ obj CMapper {
         return self._stamp_manual(ast3.Expr(value=call_n), line, col);
     }
 
-    def _surrogate_expr(c_node: object) -> object {
+    def _surrogate_expr(c_node: c_ast.Node) -> object {
         (line, col) = self._loc(c_node);
         reason = f"{type(c_node).__name__} @ L{line}";
         self.tags.tag(
@@ -185,7 +185,7 @@ obj CMapper {
         );
     }
 
-    def _mark_tier_b(c_node: object, reason: str) {
+    def _mark_tier_b(c_node: c_ast.Node, reason: str) {
         # Retag a node Tier-B for a lossy-but-best-effort emission. Unlike the
         # surrogate helpers this does NOT replace the emitted Jac — the handler
         # still emits its best-effort form — it only records the loss so the
@@ -207,7 +207,7 @@ obj CMapper {
         );
     }
 
-    def _mark_tier_a(c_node: object, idiom: Idiom, reason: str = "") {
+    def _mark_tier_a(c_node: c_ast.Node, idiom: Idiom, reason: str = "") {
         # Record a recognized Tier-A pointer idiom (§7). The handler still emits
         # the faithful Jac form; this only stamps the verdict so the idiom is
         # queryable (TagTable.by_idiom) for metrics/tests. Tier-A is never
@@ -226,7 +226,7 @@ obj CMapper {
         );
     }
 
-    def _mark_tier_b_idiom(c_node: object, idiom: Idiom, reason: str) {
+    def _mark_tier_b_idiom(c_node: c_ast.Node, idiom: Idiom, reason: str) {
         # Tier-B emission carrying a *specific* idiom verdict (e.g. a realloc we
         # elided but could not prove list-bound). Like _mark_tier_b but preserves
         # the idiom so the report names what was attempted, not a bare "tier_b".
@@ -247,7 +247,7 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # Direct-IR placeholder                                                #
     # ------------------------------------------------------------------ #
-    def _directir_placeholder(c_node: object) -> object {
+    def _directir_placeholder(c_node: c_ast.Node) -> object {
         (line, col) = self._loc(c_node);
         sid = self._alloc_slot(c_node);
         name_n = self._stamp_manual(
@@ -266,7 +266,7 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # Main dispatch                                                        #
     # ------------------------------------------------------------------ #
-    def conv(c_node: object, *, stmt: bool = True) -> object {
+    def conv(c_node: c_ast.Node, *, stmt: bool = True) -> object {
         # Statement-context increment/decrement (`i++;`) → AugAssign (`i += 1`).
         # Done before dispatch because c_UnaryOp can't know its context and an
         # AugAssign is a statement, not an expression.
@@ -293,14 +293,14 @@ obj CMapper {
         # otherwise the expression is dropped and the function body length
         # mismatches ("Length mismatch in function body").
         if stmt and isinstance(result, ast3.expr) {
-            line = getattr(result, "lineno", self._lineno);
-            col = getattr(result, "col_offset", 0);
+            line = int(getattr(result, "lineno", self._lineno));
+            col = int(getattr(result, "col_offset", 0));
             return self._stamp_manual(ast3.Expr(value=result), line, col);
         }
         return result;
     }
 
-    def _inc_dec_stmt(nd: object) -> object | None {
+    def _inc_dec_stmt(nd: c_ast.UnaryOp) -> object | None {
         # `i++` / `++i` / `i--` / `--i` as a statement → `i += 1` / `i -= 1`.
         target = self.conv_expr(nd.expr);
         if not (
@@ -318,18 +318,18 @@ obj CMapper {
         return self._stamp_manual(aug, line, col, text=nd.op);
     }
 
-    def conv_stmt(c_node: object) -> object {
+    def conv_stmt(c_node: c_ast.Node) -> object {
         return self.conv(c_node, stmt=True);
     }
 
-    def conv_expr(c_node: object) -> object {
+    def conv_expr(c_node: c_ast.Node) -> object {
         return self.conv(c_node, stmt=False);
     }
 
     # ------------------------------------------------------------------ #
     # P1a handlers                                                         #
     # ------------------------------------------------------------------ #
-    def c_FileAST(nd: object) -> object {
+    def c_FileAST(nd: c_ast.FileAST) -> object {
         body: list[object] = [];
         for d in nd.ext {
             n = self.conv_stmt(d);
@@ -346,7 +346,7 @@ obj CMapper {
         return m;
     }
 
-    def c_Compound(nd: object) -> list[object] {
+    def c_Compound(nd: c_ast.Compound) -> list[object] {
         stmts: list[object] = [];
         for item in (nd.block_items or []) {
             n = self.conv_stmt(item);
@@ -359,7 +359,7 @@ obj CMapper {
         return stmts;
     }
 
-    def c_FuncDef(nd: object) -> object {
+    def c_FuncDef(nd: c_ast.FuncDef) -> object {
         # Reset list-bound tracking per function — a name proven list-bound in one
         # function must not license a Tier-A realloc-elide on a same-named param in
         # another (§7.5).
@@ -368,7 +368,8 @@ obj CMapper {
         params: list[object] = [];
         pl = nd.decl.type.args;
         if pl is not None {
-            for p in pl.params {
+            for pr in pl.params {
+                p: c_ast.Decl = pr as c_ast.Decl;
                 if p.name is None {
                     continue;
                 }
@@ -406,7 +407,7 @@ obj CMapper {
         return self._stamp(fn, nd, text=name);
     }
 
-    def c_Decl(nd: object) -> object {
+    def c_Decl(nd: c_ast.Decl) -> object {
         # Typedef handled by c_Typedef; struct decl handled there too.
         # Here we handle: local/global variable decl with optional init.
         if nd.name is None {
@@ -500,7 +501,7 @@ obj CMapper {
         return self._stamp(aa, nd, text=nd.name);
     }
 
-    def _all_quals(nd: object) -> set {
+    def _all_quals(nd: c_ast.Decl) -> set {
         # Collect type qualifiers from a Decl and the whole nested type chain.
         # `const`/`volatile` may sit on the Decl or the pointed-to TypeDecl;
         # `restrict` lives on the PtrDecl, not the Decl — so reading nd.quals
@@ -518,7 +519,7 @@ obj CMapper {
         return quals;
     }
 
-    def _decl_struct_var(nd: object) -> object {
+    def _decl_struct_var(nd: c_ast.Decl) -> object {
         # Variable whose type is a struct — just AnnAssign with struct name.
         inner = nd.type;
         struct_name = inner.type.name or "object";
@@ -532,7 +533,7 @@ obj CMapper {
         return self._stamp(aa, nd, text=nd.name);
     }
 
-    def c_Assignment(nd: object) -> object {
+    def c_Assignment(nd: c_ast.Assignment) -> object {
         lhs = self.conv_expr(nd.lvalue);
         # Convert the rvalue BEFORE updating list-bound state so a `realloc` inside
         # it (via _realloc_elide) sees the pointer's pre-assignment binding.
@@ -581,7 +582,7 @@ obj CMapper {
         return py_node;
     }
 
-    def c_BinaryOp(nd: object) -> object {
+    def c_BinaryOp(nd: c_ast.BinaryOp) -> object {
         entry = C_BINOPS.get(nd.op);
         if entry is None {
             return self._surrogate_expr(nd);
@@ -590,6 +591,7 @@ obj CMapper {
         left = self.conv_expr(nd.left);
         right = self.conv_expr(nd.right);
         op_obj = getattr(ast3, ast_cls)();
+        expr_node: object;
         if kind == "arith" {
             expr_node = ast3.BinOp(left=left, op=op_obj, right=right);
         } elif kind == "compare" {
@@ -601,7 +603,7 @@ obj CMapper {
         return self._stamp(expr_node, nd, text=nd.op);
     }
 
-    def c_If(nd: object) -> object {
+    def c_If(nd: c_ast.If) -> object {
         test = self.conv_expr(nd.cond);
         true_stmts = self._stmts_from(nd.iftrue);
         false_stmts: list[object] = [];
@@ -612,14 +614,14 @@ obj CMapper {
         return self._stamp(ifs, nd, text="if");
     }
 
-    def c_While(nd: object) -> object {
+    def c_While(nd: c_ast.While) -> object {
         test = self.conv_expr(nd.cond);
         body = self._stmts_from(nd.stmt);
         w = ast3.While(test=test, body=body, orelse=[]);
         return self._stamp(w, nd, text="while");
     }
 
-    def c_DoWhile(nd: object) -> object {
+    def c_DoWhile(nd: c_ast.DoWhile) -> object {
         # `do { body } while (cond);` has no Python/Jac analog. Desugar to the
         # faithful `while True { body; if not cond { break } }` — body runs once
         # before the test, exactly like do-while. The one semantic gap is `continue`:
@@ -650,7 +652,7 @@ obj CMapper {
         return self._stamp(w, nd, text="do");
     }
 
-    def _has_loop_continue(nd: object) -> bool {
+    def _has_loop_continue(nd: c_ast.Node) -> bool {
         # True if a `continue` belonging to THIS loop appears in nd. Nested loops
         # and switch bodies own their own continue/break, so descent stops at them.
         if nd is None {
@@ -675,7 +677,7 @@ obj CMapper {
         return False;
     }
 
-    def c_Switch(nd: object) -> object {
+    def c_Switch(nd: c_ast.Switch) -> object {
         # C `switch` → nested if/elif/else. pycparser nests each Case/Default as a
         # block_item carrying its own statement list; empty-statement cases
         # (`case 1: case 2: ...`) fold their labels onto the next case that has a
@@ -713,7 +715,8 @@ obj CMapper {
             self._switch_branch_body(default_stmts) if default_stmts is not None else []
         );
         for grp in reversed(groups) {
-            (vals, stmts) = grp;
+            vals: list = grp[0] as list;
+            stmts: list | None = grp[1] as list | None;
             body = self._switch_branch_body(stmts);
             test = self._switch_test(nd.cond, vals, line, col);
             ifs = self._stamp_manual(
@@ -730,7 +733,9 @@ obj CMapper {
         return self._stamp_manual(ast3.Pass(), line, col);
     }
 
-    def _switch_test(cond_cnode: object, vals: list, line: int, col: int) -> object {
+    def _switch_test(
+        cond_cnode: c_ast.Node, vals: list, line: int, col: int
+    ) -> object {
         # `selector == v1 [or selector == v2 ...]`. The selector is re-converted
         # per comparison so no ast node object is shared across the tree.
         cmps: list[object] = [];
@@ -775,7 +780,7 @@ obj CMapper {
         return out;
     }
 
-    def c_TernaryOp(nd: object) -> object {
+    def c_TernaryOp(nd: c_ast.TernaryOp) -> object {
         # `cond ? a : b` → Python conditional expression `a if cond else b`
         # (PyastBuildPass.proc_if_exp → uni.IfElseExpr). Faithful (Tier-A).
         test = self.conv_expr(nd.cond);
@@ -785,7 +790,7 @@ obj CMapper {
         return self._stamp(ie, nd, text="?:");
     }
 
-    def _stmts_from(nd: object) -> list[object] {
+    def _stmts_from(nd: c_ast.Node) -> list[object] {
         if isinstance(nd, c_ast.Compound) {
             return self.c_Compound(nd);
         }
@@ -796,23 +801,23 @@ obj CMapper {
         return [n];
     }
 
-    def c_Return(nd: object) -> object {
+    def c_Return(nd: c_ast.Return) -> object {
         val = self.conv_expr(nd.expr) if nd.expr is not None else None;
         r = ast3.Return(value=val);
         return self._stamp(r, nd, text="return");
     }
 
-    def c_Break(nd: object) -> object {
+    def c_Break(nd: c_ast.Break) -> object {
         b = ast3.Break();
         return self._stamp(b, nd, text="break");
     }
 
-    def c_Continue(nd: object) -> object {
+    def c_Continue(nd: c_ast.Continue) -> object {
         c = ast3.Continue();
         return self._stamp(c, nd, text="continue");
     }
 
-    def c_FuncCall(nd: object) -> object {
+    def c_FuncCall(nd: c_ast.FuncCall) -> object {
         # FREE_ELIDE: free(p) → Pass (GC handles it; §7.3)
         if isinstance(nd.name, c_ast.ID) and nd.name.name == "free" {
             self._mark_tier_a(nd, Idiom.FREE_ELIDE, "free() elided — Jac GC reclaims");
@@ -857,7 +862,7 @@ obj CMapper {
         return call_expr;
     }
 
-    def _malloc_struct_type(nd: object) -> str | None {
+    def _malloc_struct_type(nd: c_ast.FuncCall) -> str | None {
         # Returns the struct/typedef name if nd is malloc(sizeof(T)) for a named type T, else None.
         if not isinstance(nd.name, c_ast.ID) or nd.name.name != "malloc" {
             return None;
@@ -880,7 +885,7 @@ obj CMapper {
         return None;
     }
 
-    def _realloc_of_list_bound(nd: object) -> bool {
+    def _realloc_of_list_bound(nd: c_ast.FuncCall) -> bool {
         # True if nd is `realloc(p, …)` where p is an ID currently proven list-bound.
         # Such a reassignment yields the same logical buffer, so list-boundness is
         # preserved across `arr = realloc(arr, …)` rather than dropped (§7.5).
@@ -897,7 +902,7 @@ obj CMapper {
         return isinstance(ptr, c_ast.ID) and ptr.name in self._list_bound;
     }
 
-    def _realloc_elide(nd: object) -> object | None {
+    def _realloc_elide(nd: c_ast.FuncCall) -> object | None {
         # realloc(p, n) → p. Tier-A when p is provably list-bound in this function
         # (the list grows under GC, so the resize is moot, §7.5/§9.5); otherwise
         # still elided to p but flagged Tier-B — a raw-buffer resize would be lost.
@@ -923,7 +928,7 @@ obj CMapper {
         return py_ptr;
     }
 
-    def _flatten_mult(nd: object, acc: list) {
+    def _flatten_mult(nd: c_ast.Node, acc: list) {
         # Collect the multiplicative factors of a `*`-chain into acc (so
         # `n * sizeof(T)` and `2 * n * sizeof(T)` both yield a flat factor list).
         if isinstance(nd, c_ast.BinaryOp) and nd.op == "*" {
@@ -934,7 +939,7 @@ obj CMapper {
         }
     }
 
-    def _sizeof_type(f: object) -> str | None {
+    def _sizeof_type(f: c_ast.Node) -> str | None {
         # Raw C type name of a `sizeof(T)` / `sizeof(T*)` factor, else None.
         if not isinstance(f, c_ast.UnaryOp) or f.op != "sizeof" {
             return None;
@@ -953,7 +958,7 @@ obj CMapper {
                 if isinstance(it, c_ast.Struct) and it.name {
                     return it.name;
                 }
-                names = it?.names;
+                names: list[str] | None = it?.names;
                 if names {
                     return names[-1];
                 }
@@ -972,7 +977,7 @@ obj CMapper {
         return True;
     }
 
-    def _malloc_array_match(nd: object) -> str | None {
+    def _malloc_array_match(nd: c_ast.FuncCall) -> str | None {
         # Pure structural test (no node-building, no tagging): if nd is
         # `malloc(<count> * sizeof(T))` with at least one non-sizeof factor and a
         # list-able element T, return T's C name; else None.
@@ -1000,10 +1005,10 @@ obj CMapper {
         if sizeof_name is None or others == 0 {
             return None;
         }
-        if not self._is_listable_elem(sizeof_name) {
+        if not self._is_listable_elem(sizeof_name as str) {
             return None;
         }
-        return sizeof_name;
+        return sizeof_name as str;
     }
 
     def _elem_default(tname: str) -> object {
@@ -1025,7 +1030,7 @@ obj CMapper {
         return self._stamp_manual(call, self._lineno, 0);
     }
 
-    def _product_expr(factors: list) -> object {
+    def _product_expr(factors: list[c_ast.Node]) -> object {
         # Fold converted factors into a left-leaning `*` BinOp (the element count).
         exprs = [self.conv_expr(f) for f in factors];
         acc = exprs[0];
@@ -1038,7 +1043,7 @@ obj CMapper {
         return acc;
     }
 
-    def _malloc_array(nd: object) -> object | None {
+    def _malloc_array(nd: c_ast.FuncCall) -> object | None {
         # `malloc(n*sizeof(T))` → `[T() for _ in range(n)]` (§7.2). Distinct
         # elements (comprehension, not `[x]*n`) so mutable objects don't alias.
         tname = self._malloc_array_match(nd);
@@ -1070,7 +1075,7 @@ obj CMapper {
 
     def _list_ann_of(tname: str) -> object {
         # Build a `list[T]` annotation node for a C element type tname.
-        jac = _C_PRIM_MAP.get(tname, tname);
+        jac: str = _C_PRIM_MAP.get(tname, tname) as str;
         elem = self._stamp_manual(
             ast3.Name(id=jac, ctx=ast3.Load()), self._lineno, 0, text=jac
         );
@@ -1081,12 +1086,12 @@ obj CMapper {
         return self._stamp_manual(sub, self._lineno, 0, text="list");
     }
 
-    def c_ID(nd: object) -> object {
+    def c_ID(nd: c_ast.ID) -> object {
         n = ast3.Name(id=nd.name, ctx=ast3.Load());
         return self._stamp(n, nd, text=nd.name);
     }
 
-    def c_Constant(nd: object) -> object {
+    def c_Constant(nd: c_ast.Constant) -> object {
         # Default the rendered text to the raw C literal; numeric branches
         # override it with the parsed value so a stripped suffix (`10L`→`10`)
         # doesn't leak verbatim into the emitted Jac.
@@ -1135,7 +1140,7 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # P1a — unary ops                                                      #
     # ------------------------------------------------------------------ #
-    def _is_simple_ref(c_node: object) -> bool {
+    def _is_simple_ref(c_node: c_ast.Node) -> bool {
         # A reference-shaped operand: names a storage location without pointer
         # arithmetic or reinterpretation. ID / s.f / s->f / a[i] qualify; a
         # BinaryOp (`p+1`), Cast, or nested `*`/`&` does not (those are Tier-B).
@@ -1146,7 +1151,7 @@ obj CMapper {
         );
     }
 
-    def c_UnaryOp(nd: object) -> object {
+    def c_UnaryOp(nd: c_ast.UnaryOp) -> object {
         unary_map: dict[str, object] = {
             "-": ast3.USub(),
             "+": ast3.UAdd(),
@@ -1195,7 +1200,7 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # P1b — structs → ClassDef                                            #
     # ------------------------------------------------------------------ #
-    def c_Struct(nd: object) -> object {
+    def c_Struct(nd: c_ast.Struct) -> object {
         # Bare struct definition (not through Typedef) encountered as top-level decl.
         name = nd.name or "_AnonStruct";
         fields: list[object] = [];
@@ -1214,7 +1219,7 @@ obj CMapper {
         return self._stamp(cls, nd, text=name);
     }
 
-    def _struct_field(mem: object) -> object | None {
+    def _struct_field(mem: c_ast.Decl) -> object | None {
         if mem.name is None {
             return None;
         }
@@ -1225,7 +1230,7 @@ obj CMapper {
         return self._stamp(aa, mem, text=mem.name);
     }
 
-    def c_Typedef(nd: object) -> object {
+    def c_Typedef(nd: c_ast.Typedef) -> object {
         # typedef struct { ... } TypeName  →  ClassDef named TypeName.
         inner = nd.type;
         if isinstance(inner, c_ast.TypeDecl) and isinstance(inner.type, c_ast.Struct) {
@@ -1259,7 +1264,7 @@ obj CMapper {
         return self._stamp_manual(assign, line, col, text=nd.name);
     }
 
-    def c_StructRef(nd: object) -> object {
+    def c_StructRef(nd: c_ast.StructRef) -> object {
         # s.field or s->field.
         obj_expr = self.conv_expr(nd.name);
         field_name = nd.field.name;
@@ -1270,13 +1275,13 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # P1c — arrays                                                         #
     # ------------------------------------------------------------------ #
-    def c_ArrayDecl(nd: object) -> object {
+    def c_ArrayDecl(nd: c_ast.ArrayDecl) -> object {
         # Top-level handler only called if the parent Decl routes here directly.
         # Most ArrayDecl nodes are handled via c_Decl → _decl_array.
         return self._surrogate_stmt(nd);
     }
 
-    def _decl_array(nd: object) -> object {
+    def _decl_array(nd: c_ast.Decl) -> object {
         # nd is c_ast.Decl whose .type is ArrayDecl.
         arr_decl = nd.type;
         elem_type = self._type_ann_from_type(arr_decl.type);
@@ -1313,7 +1318,7 @@ obj CMapper {
         return self._stamp(aa, nd, text=nd.name);
     }
 
-    def c_InitList(nd: object) -> object {
+    def c_InitList(nd: c_ast.InitList) -> object {
         elts: list[object] = [];
         for expr in nd.exprs {
             elts.append(self.conv_expr(expr));
@@ -1322,14 +1327,14 @@ obj CMapper {
         return self._stamp(lst, nd, text="[]");
     }
 
-    def c_ArrayRef(nd: object) -> object {
+    def c_ArrayRef(nd: c_ast.ArrayRef) -> object {
         arr = self.conv_expr(nd.name);
         idx = self.conv_expr(nd.subscript);
         s = ast3.Subscript(value=arr, slice=idx, ctx=ast3.Load());
         return self._stamp(s, nd, text="[]");
     }
 
-    def c_NamedInitializer(nd: object) -> object {
+    def c_NamedInitializer(nd: c_ast.NamedInitializer) -> object {
         # {.field = val} designated initializer → emit value, but the field name
         # (which determines WHICH struct member receives it) is dropped. That's
         # lossy whenever initializers aren't in declaration order, so flag it.
@@ -1342,12 +1347,12 @@ obj CMapper {
         return self.conv_expr(nd.expr);
     }
 
-    def _desig_name(d: object) -> str {
+    def _desig_name(d: c_ast.Node) -> str {
         # A designator is an ID (field) or a Constant (array index).
         return d.name if isinstance(d, c_ast.ID) else str(getattr(d, "value", "?"));
     }
 
-    def c_ExprList(nd: object) -> object {
+    def c_ExprList(nd: c_ast.ExprList) -> object {
         # Comma-expression: emit last element (common C idiom, conservative).
         # Earlier operands are evaluated for their side effects in C; dropping
         # them is lossy whenever any precedes the last, so flag that case.
@@ -1364,7 +1369,7 @@ obj CMapper {
         return self._surrogate_expr(nd);
     }
 
-    def c_Cast(nd: object) -> object {
+    def c_Cast(nd: c_ast.Cast) -> object {
         # C cast — emit inner expression (lossy but better than surrogate for
         # simple cases). A cast to a scalar/numeric type is representation-
         # changing ((int)f truncates, (char)x narrows, (void)e discards); we drop
@@ -1381,7 +1386,7 @@ obj CMapper {
         return self.conv_expr(nd.expr);
     }
 
-    def _cast_scalar_target(nd: object) -> str | None {
+    def _cast_scalar_target(nd: c_ast.Cast) -> str | None {
         # Return the C scalar type name a Cast targets when it is a value cast
         # (Typename → TypeDecl → IdentifierType), else None (pointer/array/struct
         # casts, which don't change the emitted value).
@@ -1392,7 +1397,7 @@ obj CMapper {
         inner = to_type?.type;
         if isinstance(inner, c_ast.TypeDecl)
         and isinstance(inner.type, c_ast.IdentifierType) {
-            names = inner.type.names;
+            names: list[str] | None = inner.type.names;
             return names[-1] if names else None;
         }
         return None;
@@ -1401,27 +1406,27 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # P1d — DIRECT_IR placeholder emission                                 #
     # ------------------------------------------------------------------ #
-    def c_For(nd: object) -> object {
+    def c_For(nd: c_ast.For) -> object {
         return self._directir_placeholder(nd);
     }
 
-    def c_Enum(nd: object) -> object {
+    def c_Enum(nd: c_ast.Enum) -> object {
         return self._directir_placeholder(nd);
     }
 
-    def c_Enumerator(nd: object) -> object {
+    def c_Enumerator(nd: c_ast.Enumerator) -> object {
         # Usually encountered inside Enum, not top-level; emit surrogate.
         return self._surrogate_stmt(nd);
     }
 
-    def c_EnumeratorList(nd: object) -> object {
+    def c_EnumeratorList(nd: c_ast.EnumeratorList) -> object {
         return self._surrogate_stmt(nd);
     }
 
     # ------------------------------------------------------------------ #
     # Type helpers                                                         #
     # ------------------------------------------------------------------ #
-    def _jac_prim(names: list) -> str {
+    def _jac_prim(names: list[str]) -> str {
         # Map a C IdentifierType name list to a Jac builtin type name.
         # `char` alone is treated as text (→ str), but `signed char` /
         # `unsigned char` are byte-numeric integers (→ int) — keying on
@@ -1435,29 +1440,29 @@ obj CMapper {
             }
             return "str";
         }
-        return _C_PRIM_MAP.get(names[-1], "int");
+        return _C_PRIM_MAP.get(names[-1], "int") as str;
     }
 
-    def _prim_typename(names: list) -> str {
+    def _prim_typename(names: list[str]) -> str {
         # Map a C IdentifierType name list to a Jac builtin type name.
         return self._jac_prim(names);
     }
 
-    def _user_type_name(t: object) -> str | None {
+    def _user_type_name(t: c_ast.Node) -> str | None {
         # Return the user-defined (struct tag / typedef) name carried by a type
         # node, or None when it names only C builtins. Shared by pointer
         # resolution and malloc(sizeof(T)) struct detection.
         if isinstance(t, c_ast.Struct) and t.name {
-            return t.name;
+            return t.name as str;
         }
-        names = t?.names;
+        names: list[str] | None = t?.names;
         if names and names[-1] not in _C_BUILTIN_TYPES {
             return names[-1];
         }
         return None;
     }
 
-    def _ptr_typename(ptr_decl: object) -> str {
+    def _ptr_typename(ptr_decl: c_ast.PtrDecl) -> str {
         # Resolve a PtrDecl to a Jac type name:
         #   char*      → str
         #   struct T*  → T   (PTR_REF; also non-builtin typedef pointers)
@@ -1478,7 +1483,7 @@ obj CMapper {
         return "object";
     }
 
-    def _typename(decl_type: object) -> str {
+    def _typename(decl_type: c_ast.Node) -> str {
         # Canonical scalar/pointer/array type-name resolver. Walks the declarator
         # chain (FuncDecl wrappers, etc.) down to the underlying TypeDecl.
         t = decl_type;
@@ -1502,14 +1507,14 @@ obj CMapper {
         return self._prim_typename(names);
     }
 
-    def _type_ann(decl: object) -> object {
+    def _type_ann(decl: c_ast.Decl) -> object {
         # Works on a Decl node.
         name = self._typename(decl.type);
         n = ast3.Name(id=name, ctx=ast3.Load());
         return self._stamp(n, decl, text=name);
     }
 
-    def _type_ann_from_type(t: object) -> object {
+    def _type_ann_from_type(t: c_ast.Node) -> object {
         # Works on a raw type node (TypeDecl, PtrDecl, etc.).
         name = self._typename(t);
         (line, col) = (self._lineno, 0);
@@ -1517,7 +1522,7 @@ obj CMapper {
         return self._stamp_manual(n, line, col, text=name);
     }
 
-    def _ret_ann(funcdecl: object) -> object {
+    def _ret_ann(funcdecl: c_ast.FuncDecl) -> object {
         name = self._typename(funcdecl.type);
         n = ast3.Name(id=name, ctx=ast3.Load());
         n.lineno = 1;
