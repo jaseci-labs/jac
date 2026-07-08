@@ -1322,27 +1322,6 @@ impl ViteBundler._write_fast_refresh_plugin(
     self: ViteBundler, configs_dir: Path
 ) -> None {
     plugin_js = r'''// jac-fast-refresh.js (generated) - React Fast Refresh for Jac's compiled modules.
-function isComponentName(name) {
-  if (name === "page" || name === "layout" || name === "app") return true;
-  // lowercase 2nd char excludes ALL-CAPS glob exports (PRODUCTS, VERSION)
-  return /^[A-Z][a-z0-9]/.test(name);
-}
-
-function collectExports(code) {
-  const names = new Set();
-  let m;
-  const braceRe = /export\s*\{([^}]*)\}/g;
-  while ((m = braceRe.exec(code))) {
-    for (const part of m[1].split(",")) {
-      const nm = part.trim().split(/\s+as\s+/).pop().trim();
-      if (nm) names.add(nm);
-    }
-  }
-  const declRe = /export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/g;
-  while ((m = declRe.exec(code))) names.add(m[1]);
-  return names;
-}
-
 export default function jacFastRefresh() {
   return {
     name: "jac-fast-refresh",
@@ -1351,15 +1330,10 @@ export default function jacFastRefresh() {
       const clean = id.split("?")[0];
       if (!clean.includes("/compiled/")) return null;
       if (!clean.endsWith(".js")) return null;
-      if (clean.endsWith("/_entry.js") || clean.endsWith("/_routes.js")) return null;
       if (code.indexOf("/*jac-fr*/") !== -1) return null;
-
-      const names = collectExports(code);
-      if (names.size === 0) return null;
-      // modules exporting any non-component keep full-reload (stale-import correctness)
-      for (const nm of names) {
-        if (!isComponentName(nm)) return null;
-      }
+      // The compiler stamps modules whose every export is a component; anything
+      // unstamped (globs, helpers, router wiring) keeps full-reload semantics.
+      if (code.indexOf("/*jac:refresh-boundary*/") === -1) return null;
 
       const modId = JSON.stringify(clean);
       // same self-accepting boundary @vitejs/plugin-react appends to JSX modules

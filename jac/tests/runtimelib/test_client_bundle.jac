@@ -116,9 +116,9 @@ test "dev config wires fast refresh and index.html installs the hook before the 
         assert "import.meta.hot.accept" in plugin_js;
         assert "validateRefreshBoundaryAndEnqueueUpdate" in plugin_js;
         assert "import.meta.hot.invalidate" in plugin_js;
-        # Router wiring and non-component modules must keep full-reload semantics
-        assert "_entry.js" in plugin_js;
-        assert "_routes.js" in plugin_js;
+        # Only modules the compiler stamped as component-only are instrumented;
+        # unstamped modules (globs, helpers, router wiring) keep full reload
+        assert '/*jac:refresh-boundary*/' in plugin_js;
         bundler._ensure_dev_index_html(Path(tmp));
         html = (Path(tmp) / "index.html").read_text();
         assert "injectIntoGlobalHook" in html;

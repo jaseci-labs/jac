@@ -199,6 +199,30 @@ test "lowercase client components get PascalCase runtime names with export contr
     assert "const Counter" not in js;
     assert "function helper()" in js;
     assert "function Helper" not in js;
+    # Mixed module (helper export) must NOT be stamped hot-swap-eligible
+    assert "/*jac:refresh-boundary*/" not in js;
+}
+
+test "component-only modules are stamped as fast-refresh boundaries" {
+    mod = compile_inline(
+        "cl {\n"
+        "    def:pub Card() -> JsxElement {\n"
+        "        return <div>card</div>;\n"
+        "    }\n"
+        "    def:pub CardTitle() -> JsxElement {\n"
+        "        return <h2>t</h2>;\n"
+        "    }\n"
+        "}\n"
+    );
+    js = mod.gen.js;
+    # Several components in one file: all exported, module stamped eligible
+    assert "function Card()" in js;
+    assert "function CardTitle()" in js;
+    assert "/*jac:refresh-boundary*/" in js;
+
+    glob_mod = compile_inline("cl {\n    glob:pub PRODUCTS = [1, 2];\n}\n");
+    # Value exports are never swap-safe: no stamp, dev server full-reloads
+    assert "/*jac:refresh-boundary*/" not in glob_mod.gen.js;
 }
 
 test "component rename is skipped when the PascalCase name is already taken" {

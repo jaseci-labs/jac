@@ -170,6 +170,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
+        component_export_names: set[str] = set(),
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
         _view_stack: list[(str | None)] = [],

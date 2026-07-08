@@ -3715,6 +3715,13 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
         if is_pub {
             name = nd.name_ref.sym_name;
             self.client_manifest.exports.append(name);
+            if (
+                isinstance(nd.signature, uni.FuncSignature)
+                and nd.signature.return_type is not None
+                and self._return_type_includes_jsx_element(nd.signature.return_type)
+            ) {
+                self.component_export_names.add(name);
+            }
 
             self.client_manifest.params[name] = [
                 p.name.sym_name
@@ -5604,6 +5611,20 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
             declaration=None, specifiers=export_specifiers, source=None
         );
         body.append(comprehensive_export);
+
+        if (
+            not self.client_manifest.globals
+            and all(name in self.component_export_names for name in module_export_names)
+        ) {
+            body.append(
+                self.sync_loc(
+                    es.ExpressionStatement(
+                        expression=es.Identifier(name='/*jac:refresh-boundary*/')
+                    ),
+                    jac_node=nd
+                )
+            );
+        }
     }
 
     if self.client_manifest.endpoint_effects {
@@ -6105,6 +6126,7 @@ impl EsastGenPass.before_pass -> None {
     import from jaclang.jac0core.codeinfo { ClientManifest }
     self.child_passes = self._init_child_passes(EsastGenPass);
     self.client_manifest = ClientManifest();
+    self.component_export_names = set();
 
     self.client_manifest.endpoint_effects = dict(
         self.ir_in.gen.interop_manifest.endpoint_effects
