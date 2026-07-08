@@ -23,9 +23,6 @@ def materialize_jab(jab_path: str) -> Path {
     return _materialize_jab_data(Path(jab_path).read_bytes(), jab_path);
 }
 
-"""Mount a .jab from raw bytes (an app binary's appended overlay, sliced out of
-the running executable). Shares the extract+register core with materialize_jab so
-`jac run app.jab` and a `--as binary` app boot the SAME way."""
 def materialize_jab_bytes(data: bytes) -> Path {
     return _materialize_jab_data(data, "<app image>");
 }

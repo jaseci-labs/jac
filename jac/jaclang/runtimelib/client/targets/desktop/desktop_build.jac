@@ -157,10 +157,7 @@ def _stage_pyembed_shim(out_dir: Path) {
 def _bundle_runtime(host_binary: Path) {
     import subprocess;
     jac_bin = os.path.realpath(os.sys.executable);
-    # The running jac appends its own [ payload ][ trailer ] runtime suffix onto
-    # the host binary (jac __graftrt). Zig owns the trailer format -- no Python
-    # copy of it here. A source/pip jac has no runtime to graft, so the tool
-    # exits non-zero and we surface the same guidance as before.
+
     rc = subprocess.run([jac_bin, "__graftrt", str(host_binary)]).returncode;
     if rc != 0 {
         raise RuntimeError(

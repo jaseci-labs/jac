@@ -1762,11 +1762,7 @@ def _bundle_binary(config: any, output: str) -> int {
     name = config.project.name;
     jac_bin = os.path.realpath(sys.executable);
 
-    # Fast-fail BEFORE the (expensive) seal: only a bundled single-file jac can
-    # carry the runtime. `jac __hasruntime` is a pure-Zig launcher verb that
-    # exits 0 iff this interpreter is such a binary; a source/pip jac (python)
-    # has no such verb and exits non-zero.
-    if subprocess.run([jac_bin, "__hasruntime"]).returncode != 0 {
+    if subprocess.run([jac_bin, "__hasruntime"], capture_output=True).returncode != 0 {
         console.error(
             "jac build --as binary needs a bundled single-file jac to carry the "
             "runtime; the current interpreter is not one (source / pip install).",
@@ -1788,9 +1784,7 @@ def _bundle_binary(config: any, output: str) -> int {
             console.error("Seal produced no manifest; aborting binary.");
             return 1;
         }
-        # A runnable binary needs a runnable entry. Fail at BUILD time (not at
-        # first run) when the seal resolved none -- e.g. an attachable package,
-        # or no main.jac and no [project] entry-point.
+
         if not (jab_app_meta(img).get("entry") or {}).get("path") {
             console.error(
                 f"No runnable entry for '{name}'; a --as binary app needs an entry "
@@ -1800,15 +1794,11 @@ def _bundle_binary(config: any, output: str) -> int {
             return 1;
         }
 
-        # One canonical payload: the same sealed `.jab` `--as jab` emits. The
-        # binary is that `.jab` appended as an overlay onto the running jac --
-        # no CPython unpack/repack, entry read from the sealed manifest at boot.
         jab_path = work / f"{name}.jab";
         jab_path.write_bytes(_tar_gz_dir(img));
 
         console.print("  Appending app image onto the jac runtime...", style="muted");
-        # The running jac copies itself and appends the `.jab` overlay; Zig owns
-        # the trailer (jac __appjab).
+
         rc = subprocess.run(
             [jac_bin, "__appjab", str(jab_path), str(out_bin)]
         ).returncode;
