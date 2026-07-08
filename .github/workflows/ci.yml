@@ -801,6 +801,10 @@ jobs:
         if: matrix.group == 'failure-path'
         env:
           JAC_TEST_JOBS: "0"
+          # Seal + ship the jac built from this checkout (channel LOCAL) so the
+          # deploy uses the PR binary instead of downloading a stable release
+          # (no published asset for this arch on CI).
+          JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
         run: |
           jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
 

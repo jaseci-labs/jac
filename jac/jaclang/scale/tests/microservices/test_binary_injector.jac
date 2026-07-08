@@ -202,18 +202,19 @@ test "pack_binary_bytes tars only the binary" {
 }
 
 
-test "BinaryInjector unpacks AND seeds both the source and the toolchain bundle" {
+test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundle" {
     injector = BinaryInjector();
-    injector._object_key = "bundles/orders/aaa.tar.gz";
+    # App bundle is a .jab; the toolchain bundle stays a plain .tar.gz.
+    injector._object_key = "bundles/orders/aaa.jab";
     injector._toolchain_object_key = "toolchain/orders/bbb.tar.gz";
     injector._bundle_bytes = b"src";
     injector._toolchain_bytes = b"tool";
 
     paths = injector._unpack_bundle_paths();
-    assert any(["aaa.tar.gz" in path for path in paths]);
+    assert any(["aaa.jab" in path for path in paths]);
     assert any(["bbb.tar.gz" in path for path in paths]);
 
     keys = [key for (key, _) in injector._seed_artifacts()];
-    assert "bundles/orders/aaa.tar.gz" in keys;
+    assert "bundles/orders/aaa.jab" in keys;
     assert "toolchain/orders/bbb.tar.gz" in keys;
 }
