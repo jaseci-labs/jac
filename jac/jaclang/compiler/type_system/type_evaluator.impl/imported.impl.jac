@@ -6,6 +6,7 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
     if isinstance(node_.name, uni.Name) { } else {
         return types.UnknownType();
     }
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
     import_node = node_.parent_of_type(uni.Import);
     assert import_node.from_loc is not None;
 
@@ -41,7 +42,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     }
                     path_str = str(path);
 
-                    if not path_str.endswith((".jac", ".py", ".pyi")) {
+                    if (not path_str.endswith((".jac", ".py", ".pyi")))
+                    or is_untyped_third_party_module(path_str) {
                         mod_type = types.ModuleType(
                             mod_name=node_.name.sym_name,
                             file_uri=path,
@@ -95,16 +97,8 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                         }
                         continue;
                     }
-
-                    flags = type_utils.compute_module_source_flags(str(path));
                     mod_type = types.ModuleType(
-                        mod_name=node_.name.sym_name,
-                        file_uri=path,
-                        symbol_table=mod,
-                        is_stub_file=flags.is_stub_file,
-                        is_stdlib_stub=flags.is_stdlib_stub,
-                        is_typing_stub=flags.is_typing_stub,
-                        is_builtin_stub=flags.is_builtin_stub,
+                        mod_name=node_.name.sym_name, file_uri=path, symbol_table=mod,
                     );
 
                     node_.name.type = mod_type;
@@ -216,6 +210,7 @@ impl TypeEvaluator._resolve_star_import_symbol(
 }
 
 impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
+    import from jaclang.jac0core.modresolver { is_untyped_third_party_module }
     if node_.path {
         if node_.path[-1].type {
             return node_.path[-1].type;
@@ -265,7 +260,8 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
                 continue;
             }
 
-            if not mod_path.endswith((".jac", ".py", ".pyi")) {
+            if (not mod_path.endswith((".jac", ".py", ".pyi")))
+            or is_untyped_third_party_module(mod_path) {
                 mod_type = types.ModuleType(
                     mod_name=npath.value,
                     file_uri=Path(mod_path).resolve(),
@@ -280,15 +276,10 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             mod: uni.Module = self._import_module_from_path(
                 mod_path, importer_path=self._resolve_importer_path(node_)
             );
-            flags = type_utils.compute_module_source_flags(mod_path);
             mod_type = types.ModuleType(
                 mod_name=npath.value,
                 file_uri=Path(mod_path).resolve(),
                 symbol_table=mod,
-                is_stub_file=flags.is_stub_file,
-                is_stdlib_stub=flags.is_stdlib_stub,
-                is_typing_stub=flags.is_typing_stub,
-                is_builtin_stub=flags.is_builtin_stub,
             );
             npath.type = mod_type;
             npath._sym_category = SymbolType.MODULE;

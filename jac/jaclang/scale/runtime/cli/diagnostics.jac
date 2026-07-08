@@ -124,7 +124,7 @@ obj PlanValidator {
                     message=(
                         f"route name '{GATEWAY_NAME}' is reserved for the internal "
                         "gateway sentinel; rename this microservice in "
-                        "[plugins.scale.microservices.routes]"
+                        "[scale.microservices.routes]"
                     )
                 )
             );
@@ -325,7 +325,7 @@ obj PlanValidator {
                 service=svc_name,
                 message=(
                     "no base image resolved for this service; apply will fail. "
-                    "Check [plugins.scale.kubernetes].python_image"
+                    "Check [scale.kubernetes].python_image"
                 )
             )
         );

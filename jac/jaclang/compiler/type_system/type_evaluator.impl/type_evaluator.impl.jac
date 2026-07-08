@@ -642,15 +642,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                 full_narrowed: TypeBase | None = None;
 
                 assert isinstance(expr.right, uni.Name);
+                if isinstance(base_type, types.AnyType) and base_type.is_foreign {
+                    expr.right.type = types.AnyType(is_foreign=True);
+                    return expr.right.type;
+                }
                 if isinstance(base_type, types.ModuleType) {
                     if base_type.is_external {
                         expr.right.type = types.AnyType(is_foreign=True);
                         return expr.right.type;
                     }
 
-                    if sym := type_utils.lookup_symtab(
+                    member_sym = type_utils.lookup_symtab(
                         base_type.symbol_table, expr.right.value, self.builtins_module
+                    );
+                    if (
+                        member_sym is None
+                        and isinstance(base_type.symbol_table, uni.Module)
                     ) {
+                        member_sym = self._resolve_star_import_symbol(
+                            base_type.symbol_table, expr.right.value
+                        );
+                    }
+                    if member_sym is not None {
+                        sym = member_sym;
                         sym_type = self.get_type_of_symbol(sym);
 
                         if special_form := self._get_special_form_type(
@@ -664,8 +678,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                         if isinstance(sym_type, types.FunctionType) {
                             overloaded_fns: list[types.FunctionType] = [sym_type];
 
+                            overload_scope = base_type.symbol_table;
+                            if sym.parent_tab is not None {
+                                overload_scope = sym.parent_tab;
+                            }
                             all_syms = type_utils.collect_member_syms(
-                                base_type.symbol_table, expr.right.value
+                                overload_scope, expr.right.value
                             );
                             for overload_symbol in all_syms {
                                 if overload_symbol == sym {
@@ -1411,6 +1429,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return td_result;
                     }
                 }
+                if tuple_elem := self._tuple_literal_index_type(
+                    base_type, subscript_arg
+                ) {
+                    return tuple_elem;
+                }
                 result = self.get_type_of_magic_method_call(
                     base_type, "__getitem__", [subscript_arg], expr
                 );
@@ -2049,14 +2072,21 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     }
                     if idx >= 0 {
                         rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                        if elem := self._extract_tuple_element_type(rhs_type, idx) {
-                            return elem;
+                        extracted = self._extract_tuple_element_type(rhs_type, idx);
+                        if (
+                            extracted is not None
+                            and not isinstance(extracted, types.UnknownType)
+                        ) {
+                            return extracted;
                         }
 
                         if elem := self._get_iterable_element_type(
                             rhs_type, unpack_assignment.value
                         ) {
                             return elem;
+                        }
+                        if extracted is not None {
+                            return extracted;
                         }
                     }
                 } elif isinstance(unpack_assignment, (uni.InForStmt, uni.InnerCompr)) {
@@ -2370,7 +2400,7 @@ impl TypeEvaluator._assign_class(
     }
     src_type = unwrapped_src;
     dest_type = unwrapped_dest;
-    if src_type.shared == dest_type.shared {
+    if src_type.shared.same_class(dest_type.shared) {
         if dest_type.is_literal_type() {
             if not src_type.is_literal_type() {
                 return False;
@@ -2514,7 +2544,7 @@ impl TypeEvaluator.is_sub_class(
         type_utils.compute_mro_linearization(sub_cls);
     }
     for cls in sub_cls.shared.mro {
-        if cls.shared == super_cls.shared {
+        if cls.shared.same_class(super_cls.shared) {
             return True;
         }
     }
@@ -3260,9 +3290,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
-    self.prefetch.union_type_class = get_types_class("UnionType");
 
-    self.prefetch.awaitable_class = get_typing_class("Awaitable");
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
 
@@ -3307,17 +3335,6 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(
         "_JsxIntrinsicElements"
     );
-
-    self.prefetch.i8_class = get_jac_builtin_class("i8");
-    self.prefetch.u8_class = get_jac_builtin_class("u8");
-    self.prefetch.i16_class = get_jac_builtin_class("i16");
-    self.prefetch.u16_class = get_jac_builtin_class("u16");
-    self.prefetch.i32_class = get_jac_builtin_class("i32");
-    self.prefetch.u32_class = get_jac_builtin_class("u32");
-    self.prefetch.i64_class = get_jac_builtin_class("i64");
-    self.prefetch.u64_class = get_jac_builtin_class("u64");
-    self.prefetch.f32_class = get_jac_builtin_class("f32");
-    self.prefetch.f64_class = get_jac_builtin_class("f64");
 }
 
 impl TypeEvaluator._load_stub_module(path: str) -> uni.Module {
@@ -3767,6 +3784,17 @@ impl TypeEvaluator._get_type_from_flow_node(
                         and not self.assign_type(declared_type, assigned_type)
                     ) {
                         narrowed_from_assignment = assigned_type;
+                    } elif (
+                        flat_target_matched
+                        and self.is_explicit_any(assigned_type)
+                        and self._union_contains_none(declared_type)
+                    ) {
+                        none_cls = self.prefetch.none_type_class;
+                        if none_cls is not None {
+                            narrowed_from_assignment = self.exclude_type_from_union(
+                                declared_type, self._convert_to_instance(none_cls)
+                            );
+                        }
                     }
                 }
                 if narrowed_from_assignment is not None {
@@ -4385,7 +4413,7 @@ impl TypeEvaluator.exclude_type_from_union(
         }
         for excl_t in to_exclude_list {
             if isinstance(excl_t, types.ClassType) {
-                exclude_shareds.add(id(excl_t.shared));
+                exclude_shareds.add(excl_t.shared.canonical_key() or id(excl_t.shared));
             } else {
                 exclude_ids.add(id(excl_t));
             }
@@ -4393,7 +4421,7 @@ impl TypeEvaluator.exclude_type_from_union(
         remaining: list[TypeBase] = [];
         for t in original.types {
             if isinstance(t, types.ClassType) {
-                if id(t.shared) in exclude_shareds {
+                if (t.shared.canonical_key() or id(t.shared)) in exclude_shareds {
                     continue;
                 }
             } elif id(t) in exclude_ids {
@@ -4412,7 +4440,7 @@ impl TypeEvaluator.exclude_type_from_union(
 
     if isinstance(original, types.ClassType)
     and isinstance(to_exclude, types.ClassType)
-    and original.shared == to_exclude.shared {
+    and original.shared.same_class(to_exclude.shared) {
         return types.NeverType();
     }
 

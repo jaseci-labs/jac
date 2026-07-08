@@ -677,11 +677,10 @@ impl graph_visualize(
 
 impl list_commands -> dict[str, any] {
     try {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        import from jaclang.cli.registry { get_registry }
+        import from jaclang.cli.registry { get_registry, register_feature_commands }
         import jaclang.cli.commands;
 
-        Jac.create_cmd();
+        register_feature_commands();
 
         registry = get_registry();
         if not registry._finalized {
@@ -690,25 +689,9 @@ impl list_commands -> dict[str, any] {
 
         commands: list[dict[str, any]] = [];
         for spec in registry.get_all() {
-            extensions: list[str] = [];
-            seen_ext: set = set();
-            for arg in spec.extra_args {
-                if arg.source != spec.source and arg.source not in seen_ext {
-                    seen_ext.add(arg.source);
-                    extensions.append(arg.source);
-                }
-            }
-
-            cmd: dict[str, any] = {
-                "name": spec.name,
-                "help": spec.help,
-                "group": spec.group,
-                "source": spec.source
-            };
-            if extensions {
-                cmd["extended_by"] = extensions;
-            }
-            commands.append(cmd);
+            commands.append(
+                {"name": spec.name, "help": spec.help, "group": spec.group}
+            );
         }
 
         commands.sort(key=lambda c : (c["group"], c["name"]));
@@ -725,11 +708,10 @@ impl list_commands -> dict[str, any] {
 
 impl get_command(name: str) -> dict[str, any] {
     try {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        import from jaclang.cli.registry { get_registry }
+        import from jaclang.cli.registry { get_registry, register_feature_commands }
         import jaclang.cli.commands;
 
-        Jac.create_cmd();
+        register_feature_commands();
         registry = get_registry();
         if not registry._finalized {
             registry.finalize();
@@ -759,8 +741,7 @@ impl get_command(name: str) -> dict[str, any] {
                 "type": type_name,
                 "required": arg.required,
                 "default": arg.default,
-                "help": arg.help,
-                "source": arg.source
+                "help": arg.help
             };
             if arg.short is not None {
                 arg_info["short"] = arg.short;
@@ -771,25 +752,12 @@ impl get_command(name: str) -> dict[str, any] {
             args.append(arg_info);
         }
 
-        extensions: list[str] = [];
-        seen_ext: set = set();
-        for arg in spec.extra_args {
-            if arg.source != spec.source and arg.source not in seen_ext {
-                seen_ext.add(arg.source);
-                extensions.append(arg.source);
-            }
-        }
-
         result: dict[str, any] = {
             "name": spec.name,
             "help": spec.help,
             "group": spec.group,
-            "source": spec.source,
             "args": args
         };
-        if extensions {
-            result["extended_by"] = extensions;
-        }
         return result;
     } except Exception as e {
         return {"error": f"Failed to get command: {str(e)}"};

@@ -36,7 +36,7 @@ From your project root:
 jac setup mobile
 ```
 
-This installs Capacitor dependencies, creates `capacitor.config.json`, and scaffolds the selected platform. By default, setup follows `[plugins.client.mobile].default_platform` and falls back to `ios` on macOS or `android` elsewhere.
+This installs Capacitor dependencies, creates `capacitor.config.json`, and scaffolds the selected platform. By default, setup follows `[client.mobile].default_platform` and falls back to `ios` on macOS or `android` elsewhere.
 
 You can force a specific scaffold explicitly:
 
@@ -54,17 +54,17 @@ jac setup mobile --platform all
 The setup also:
 
 - Checks for required tools (Node.js, Java/JDK, Android SDK, Xcode, CocoaPods)
-- Adds a `[plugins.client.mobile]` section to your `jac.toml`
+- Adds a `[client.mobile]` section to your `jac.toml`
 - Prints next steps for both platforms
 
 ---
 
 ## Configure App Metadata
 
-Open `jac.toml` and edit the `[plugins.client.mobile]` section that setup created:
+Open `jac.toml` and edit the `[client.mobile]` section that setup created:
 
 ```toml
-[plugins.client.mobile]
+[client.mobile]
 app_name = "My Jac App"
 app_id = "com.example.myapp"
 ```
@@ -263,7 +263,7 @@ From your project root:
 jac setup react-native
 ```
 
-This scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[plugins.client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree) and prints next steps.
+This scaffolds an Expo/Metro project at `.jac/mobile-rn/` (configurable via `[client.react_native].project_dir`; it lives under the centralized `.jac` build root, so it stays out of the source tree) and prints next steps.
 
 Then opt in to the mobUI project kind in `jac.toml`:
 
@@ -326,7 +326,7 @@ jac build --client react-native --platform android
 jac build --client react-native --platform ios
 ```
 
-Android produces an APK via `gradlew assembleDebug`. iOS produces a simulator-installable `.app` bundle via `xcodebuild` on macOS (a distributable `.ipa` comes from the EAS Build path); on other platforms the build errors out and points you at EAS Build. Release variants via `[plugins.client.react_native].release = true`.
+Android produces an APK via `gradlew assembleDebug`. iOS produces a simulator-installable `.app` bundle via `xcodebuild` on macOS (a distributable `.ipa` comes from the EAS Build path); on other platforms the build errors out and points you at EAS Build. Release variants via `[client.react_native].release = true`.
 
 ### EAS Update (OTA)
 
@@ -344,7 +344,7 @@ Android produces an APK via `gradlew assembleDebug`. iOS produces a simulator-in
 2. **Opt in** via `jac.toml`:
 
    ```toml
-   [plugins.client.react_native]
+   [client.react_native]
    eas_update = true
    eas_update_branch = "production"   # "" -> "production" (release) / "preview" (debug)
    ```
@@ -369,7 +369,7 @@ For the full reference, see the [jac-client Reference -> React Native Target](..
 
 By now you should have:
 
-- A `[plugins.client.mobile]` section in `jac.toml` controlling app name, identifier, and build mode.
+- A `[client.mobile]` section in `jac.toml` controlling app name, identifier, and build mode.
 - An `android/` directory with a Capacitor-wrapped Android project.
 - An `ios/` directory with a Capacitor-wrapped iOS project (on macOS).
 - The ability to build and deploy to both platforms from the same Jac codebase.

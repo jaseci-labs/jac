@@ -5,17 +5,8 @@ import from jaclang.cli.console { console }
 impl CommandExecutor.execute(
     spec: CommandSpec, args: dict[str, any]
 ) -> ExecutionResult {
-    import from jaclang.cli.command { CommandSpec, HookContext }
+    import from jaclang.cli.command { CommandSpec }
     import from jaclang.cli.executor { ExecutionResult }
-
-    context = HookContext(command_name=spec.name, args=args.copy(), data={});
-
-    if not self.run_pre_hooks(spec, context) {
-        cancel_code = context.get_data("cancel_return_code", 1);
-        return ExecutionResult(
-            return_code=int(cancel_code), error=None, context=context
-        );
-    }
 
     return_code = 0;
     error: Exception | None = None;
@@ -31,46 +22,7 @@ impl CommandExecutor.execute(
         }
     }
 
-    final_code = self.run_post_hooks(spec, context, return_code);
-    return ExecutionResult(return_code=final_code, error=error, context=context);
-}
-
-impl CommandExecutor.run_pre_hooks(spec: CommandSpec, context: HookContext) -> bool {
-    import from jaclang.cli.command { CommandSpec, HookContext }
-    for (hook, source) in spec.pre_hooks {
-        try {
-            hook(context);
-
-            if context.get_data("cancel_execution", False) {
-                return False;
-            }
-        } except Exception as e {
-            console.warning(f"Pre-hook from '{source}' failed: {e}");
-
-            if context.get_data("cancel_on_hook_error", False) {
-                return False;
-            }
-        }
-    }
-    return True;
-}
-
-impl CommandExecutor.run_post_hooks(
-    spec: CommandSpec, context: HookContext, return_code: int
-) -> int {
-    import from jaclang.cli.command { CommandSpec, HookContext }
-    current_code = return_code;
-    for (hook, source) in spec.post_hooks {
-        try {
-            new_code = hook(context, current_code);
-            if new_code is not None {
-                current_code = new_code;
-            }
-        } except Exception as e {
-            console.warning(f"Post-hook from '{source}' failed: {e}");
-        }
-    }
-    return current_code;
+    return ExecutionResult(return_code=return_code, error=error);
 }
 
 impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int {

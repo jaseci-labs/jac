@@ -85,47 +85,6 @@ def get_firestore_client(project_id: (str | None) = None) -> FirestoreClient {
 
 def get_firestore_db(db_name: str = 'jac_db', project_id: (str | None) = None) -> Db;
 
-def close_mongo_client(uri: (str | None) = None) {
-    global _mongo_clients;
-
-    try {
-        resolved_uri = _resolve_uri(uri, DatabaseType.MONGODB);
-        if resolved_uri in _mongo_clients {
-            _mongo_clients[resolved_uri].close();
-            del _mongo_clients[resolved_uri];
-        }
-    } except ValueError { }
-}
-
-def close_redis_client(uri: (str | None) = None) {
-    global _redis_clients;
-
-    try {
-        resolved_uri = _resolve_uri(uri, DatabaseType.REDIS);
-        if resolved_uri in _redis_clients {
-            _redis_clients[resolved_uri].close();
-            del _redis_clients[resolved_uri];
-        }
-    } except ValueError { }
-}
-
-def close_firestore_client(project_id: (str | None) = None) {
-    global _firestore_clients;
-
-    try {
-        resolved_project_id = _resolve_uri(project_id, DatabaseType.FIRESTORE);
-        if resolved_project_id in _firestore_clients {
-            client = _firestore_clients[resolved_project_id];
-            try {
-                if hasattr(client, 'close') {
-                    client.close();
-                }
-            } except Exception { }
-            del _firestore_clients[resolved_project_id];
-        }
-    } except ValueError { }
-}
-
 def close_all_db_connections {
     global _mongo_clients,_redis_clients,_firestore_clients;
 

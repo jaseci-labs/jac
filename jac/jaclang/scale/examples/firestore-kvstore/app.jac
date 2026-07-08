@@ -16,7 +16,7 @@ Setup
           export FIREBASE_PROJECT_ID="my-firebase-project"
           # or: export FIRESTORE_PROJECT_ID="my-firebase-project"
 
-   b) Or uncomment the [plugins.scale.database] section in jac.toml
+   b) Or uncomment the [scale.database] section in jac.toml
       and fill in your project ID.
 
 3. Authenticate with Application Default Credentials:

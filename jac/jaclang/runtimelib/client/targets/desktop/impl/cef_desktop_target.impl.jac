@@ -307,8 +307,9 @@ impl CefDesktopTarget.start(
 impl CefDesktopTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    console.print(
-        "  cef --dev: building and launching (HMR not yet wired)", style="muted"
+    raise RuntimeError(
+        "CEF desktop HMR is not supported yet. CEF routes RPC through the "
+        "loopback broker, so a Vite dev origin breaks the app. Use "
+        "`jac start --client desktop` (native webview) or web mode for HMR."
     );
-    self.start(entry_file, project_dir, api_port);
 }

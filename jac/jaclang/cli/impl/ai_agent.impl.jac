@@ -614,6 +614,31 @@ impl ProcessTools.start_app(entry_file: str) -> str {
 sem ProcessTools.serve = "Start the web/full-stack dev server and wait until it is actually serving, returning the URL to open. The first start can take a while because it installs the client dependencies and builds the client; this tool blocks until the server is ready (or fails) so you do not have to guess. On success, call browse_open on the returned URL. On failure it returns the server log tail -- read it, go back to Build to fix the cause, and do not conclude the app works.";
 sem ProcessTools.serve.entry_file = "Entry .jac file to serve; empty string means 'main.jac'.";
 
+def _poll_for_server_url(proc: object, log_path: str, timeout: float) -> str {
+    url_re = re.compile(
+        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
+    );
+    deadline = time.time() + timeout;
+    url = "";
+    while time.time() < deadline {
+        if proc.poll() is not None {
+            break;
+        }
+        try {
+            log_text = Path(log_path).read_text();
+        } except Exception {
+            log_text = "";
+        }
+        m = url_re.search(log_text);
+        if m {
+            url = m.group(0).rstrip("/");
+            break;
+        }
+        time.sleep(1.0);
+    }
+    return url;
+}
+
 impl ProcessTools.serve(entry_file: str) -> str {
     entry_path = entry_file or "main.jac";
     abs_entry = self.ws.resolve(entry_path);
@@ -659,27 +684,7 @@ impl ProcessTools.serve(entry_file: str) -> str {
         _ = e;
     }
 
-    url_re = re.compile(
-        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
-    );
-    deadline = time.time() + timeout;
-    url = "";
-    while time.time() < deadline {
-        if self.serve_proc.poll() is not None {
-            break;
-        }
-        try {
-            log_text = Path(log_path).read_text();
-        } except Exception {
-            log_text = "";
-        }
-        m = url_re.search(log_text);
-        if m {
-            url = m.group(0).rstrip("/");
-            break;
-        }
-        time.sleep(1.0);
-    }
+    url = _poll_for_server_url(self.serve_proc, log_path, timeout);
     if url {
         return (
             f"OK: server ready at {url} (logs: {log_path}). "
@@ -2660,9 +2665,6 @@ impl _run_ui_server(r: any) -> int {
         console.error(f"failed to launch the UI server: {e}");
         return 1;
     }
-    url_re = re.compile(
-        "https?://(?:localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)(?::\\d+)?\\S*"
-    );
     timeout = 180.0;
     try {
         raw = os.environ.get("JAC_AI_UI_TIMEOUT");
@@ -2670,24 +2672,7 @@ impl _run_ui_server(r: any) -> int {
             timeout = float(raw);
         }
     } except Exception { }
-    deadline = time.time() + timeout;
-    url = "";
-    while time.time() < deadline {
-        if proc.poll() is not None {
-            break;
-        }
-        try {
-            log_text = Path(log_path).read_text();
-        } except Exception {
-            log_text = "";
-        }
-        m = url_re.search(log_text);
-        if m {
-            url = m.group(0).rstrip("/");
-            break;
-        }
-        time.sleep(1.0);
-    }
+    url = _poll_for_server_url(proc, log_path, timeout);
     if not url {
         tail = "";
         try {

@@ -588,6 +588,25 @@ test "strings for-in-str count" {
     assert f(b"") == 0;
 }
 
+# --- TestNativeForTupleUnpack ---
+test "for-loop tuple unpack: homogeneous products (issue 7238)" {
+    (eng, _) = compile_native("for_tuple_unpack.na.jac");
+    f = get_func(eng, "run_products", ctypes.c_int64);
+    assert f() == 140;
+}
+
+test "for-loop tuple unpack: heterogeneous str/bytes lengths (issue 7238)" {
+    (eng, _) = compile_native("for_tuple_unpack.na.jac");
+    f = get_func(eng, "run_str_bytes_lengths", ctypes.c_int64);
+    assert f() == 13;
+}
+
+test "for-loop tuple unpack: targets reused across loops (issue 7238)" {
+    (eng, _) = compile_native("for_tuple_unpack.na.jac");
+    f = get_func(eng, "run_reuse_across_loops", ctypes.c_int64);
+    assert f() == 24;
+}
+
 # --- TestNativePrintMultiArgs ---
 test "print multi args compiles" {
     (eng, _) = compile_native("print_multi_args.na.jac");

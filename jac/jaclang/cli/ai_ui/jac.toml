@@ -22,7 +22,7 @@ typescript = "^5.3.3"
 [serve]
 base_route_app = "app"
 
-[plugins.client.app_meta_data]
+[client.app_meta_data]
 title = "Jac AI"
 description = "Watch the jac ai agent plan, build, and QA in real time"
 keywords = "jac ai agent visualizer"

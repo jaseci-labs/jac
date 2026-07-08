@@ -6,8 +6,7 @@ import from typing { Any, Optional, cast }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jaclang.runtimelib.client.targets.react_native.common {
-    resolve_node_runner,
-    resolve_rn_project_dir
+    resolve_node_runner
 }
 import from jaclang.runtimelib.client.targets.react_native.build {
     lint_native_incompatible_usage,

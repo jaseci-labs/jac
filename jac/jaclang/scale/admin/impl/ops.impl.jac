@@ -11,6 +11,7 @@ import from jaclang.scale.jserver.jserver {
     ParameterType
 }
 import from jaclang.scale.config.config_loader { get_scale_config }
+import from jaclang.scale.admin.service_urls { service_base_url }
 import from jaclang.scale.admin.traces { _tempo_base_url }
 import from jaclang.scale.admin.logs { _loki_base_url, _app_namespace }
 import from jaclang.scale._optdeps.prometheus { HAS_PROMETHEUS }
@@ -66,7 +67,7 @@ def _traces_chain(p: dict) -> dict {
                 "name": "config tracing.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[plugins.scale.microservices.tracing].enabled" + (
+                "detail": "[scale.microservices.tracing].enabled" + (
                     " = true"
                         if p.get("cfg_enabled", False)
                         else " = false (tracing off)"
@@ -109,7 +110,7 @@ def _logs_chain(p: dict) -> dict {
                 "name": "config logs.enabled",
                 "ok": p.get("cfg_enabled", False),
                 "gate": True,
-                "detail": "[plugins.scale.microservices.logs].enabled" + (
+                "detail": "[scale.microservices.logs].enabled" + (
                     " = true" if p.get("cfg_enabled", False) else " = false (logs off)"
                 )
             },
@@ -208,27 +209,7 @@ def _admin_api_chain(registered: bool) -> dict {
 
 
 def _prometheus_base_url -> str {
-    env = os.getenv("PROMETHEUS_URL", "").strip();
-    if env {
-        return env.rstrip("/");
-    }
-    app_name = os.getenv("K8S_APP_NAME", "").strip();
-    if not app_name {
-        try {
-            k8s_cfg = get_scale_config().get_kubernetes_config();
-            raw = str(k8s_cfg.get("app_name", "") or "").strip();
-            expanded = os.path.expandvars(raw);
-            if expanded and "${" not in expanded {
-                app_name = expanded;
-            }
-        } except Exception {
-            app_name = "";
-        }
-    }
-    if not app_name {
-        return "http://localhost:9090";
-    }
-    return f"http://{app_name}-prometheus-service:9090";
+    return service_base_url("PROMETHEUS_URL", "prometheus-service", 9090);
 }
 
 

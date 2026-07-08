@@ -14,7 +14,7 @@ import from jaclang.scale.runtime.discovery.discovery {
 glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent.parent / "fixtures" / "k8s_e2e";
 
 test "discover on the k8s_e2e fixture derives public prefixes with no toml routes" {
-    # The fixture declares no [plugins.scale.microservices.routes] table -
+    # The fixture declares no [scale.microservices.routes] table -
     # services and their public prefixes are auto-discovered from `sv import`.
     main = _K8S_E2E_FIXTURE / "main.jac";
     discovered = discover_sv_services(str(main));

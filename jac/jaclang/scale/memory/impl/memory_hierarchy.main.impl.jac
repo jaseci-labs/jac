@@ -229,33 +229,6 @@ impl ScaleTieredMemory.get(id: UUID) -> (Anchor | None) {
     return super.get(id);
 }
 
-impl ScaleTieredMemory.find(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> Generator[Anchor, None, None] {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                yield anchor;
-            }
-        }
-    }
-}
-
-impl ScaleTieredMemory.find_one(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> (Anchor | None) {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                return anchor;
-            }
-        }
-    }
-    return None;
-}
-
 impl ScaleTieredMemory.query(
     filter: (Callable[[Anchor], bool] | None) = None
 ) -> Generator[Anchor, None, None] {

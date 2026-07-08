@@ -520,10 +520,6 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
     return json.loads(body.decode("utf-8"));
 }
 
-impl LanguageServer._dispatch(msg: dict) -> None {
-    ;
-}
-
 impl LanguageServer._handle_initialize(params: dict) -> dict {
     root_uri = params.get("rootUri") or params.get("rootPath");
     self._workspace = Workspace(root_uri=root_uri);
