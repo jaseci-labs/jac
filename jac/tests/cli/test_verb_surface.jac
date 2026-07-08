@@ -9,15 +9,14 @@ The clean break holds only if it cannot silently regrow:
      it ships must be a subcommand/extension of an existing verb.
 """
 
-import from jaclang.jac0core.runtime { JacRuntime as Jac }
-import from jaclang.cli.registry { get_registry }
+import from jaclang.cli.registry { get_registry, extend_builtin_commands }
 import from jaclang.cli.cli { TOMBSTONED_VERBS }
 import jaclang.cli.commands;
 
 glob VERB_BUDGET: int = 24;
 
 def _all_specs(include_hidden: bool = False) -> list {
-    Jac.create_cmd();
+    extend_builtin_commands();
     return get_registry().get_all(include_hidden=include_hidden);
 }
 
