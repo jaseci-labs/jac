@@ -14,9 +14,6 @@ import from jaclang.jac0core.jir {
     write_precompiled_jir,
     FLAG_PRECOMPILED,
     FLAG_BOOTSTRAP,
-    HEADER_SIZE,
-    SECTIONS_MAGIC,
-    SEC_BYTECODE,
     SEC_DEBUG_SRC,
     FORMAT_VERSION,
     compute_module_key,
@@ -25,13 +22,7 @@ import from jaclang.jac0core.jir {
 }
 import from jaclang.jac0core.sealed {
     MANIFEST_NAME,
-    MANIFEST_FORMAT,
-    JIR_FORMAT_VERSION as SEALED_JIR_FORMAT_VERSION,
-    PRECOMPILE_SENTINEL as SEALED_SENTINEL,
-    _HEADER_SIZE as SEALED_HEADER_SIZE,
-    _SECTIONS_MAGIC as SEALED_SECTIONS_MAGIC,
-    _SEC_BYTECODE as SEALED_SEC_BYTECODE,
-    _SEC_DEBUG_SRC as SEALED_SEC_DEBUG_SRC
+    MANIFEST_FORMAT
 }
 
 glob RESULT_NAME: str = "PRECOMPILE_RESULT.json";
@@ -307,30 +298,6 @@ def collect_payloads(pkg_path: Path) -> dict[str, str] {
 def seal_finalize(
     pkg_path: Path, precompiled_dir: Path, pkg_name: str, pyver: str, embed_src: bool
 ) -> int {
-    writes = (
-        FORMAT_VERSION,
-        HEADER_SIZE,
-        SECTIONS_MAGIC,
-        SEC_BYTECODE,
-        SEC_DEBUG_SRC,
-        PRECOMPILE_SENTINEL
-    );
-    reads = (
-        SEALED_JIR_FORMAT_VERSION,
-        SEALED_HEADER_SIZE,
-        SEALED_SECTIONS_MAGIC,
-        SEALED_SEC_BYTECODE,
-        SEALED_SEC_DEBUG_SRC,
-        SEALED_SENTINEL
-    );
-    if reads != writes {
-        console.error(
-            f"JIR format drift: jir.jac writes {writes} but sealed.py "
-            f"reads {reads}. Update jaclang/jac0core/sealed.py."
-        );
-        return 1;
-    }
-
     missing = [
         str(Path(p).relative_to(pkg_path))
         for p in sealable_sources(str(pkg_path))

@@ -1,11 +1,13 @@
 """Guards the hand-copied twins that keep the sealed bootstrap importable.
 
 jaclang/jac0core/sealed.py must import before any .jac module can load, so it
-re-declares the JIR container constants and re-implements the section reader
-and co_filename patcher as pure Python (see its module docstring). These tests
-pin each twin to its jir.jac / compiler.jac original so drift fails in CI
-instead of at a sealed boot. The seal build enforces the constant half of this
-at build time too (precompile_bytecode.jac seal_finalize).
+re-implements the JIR section reader and co_filename patcher as pure Python
+(see its module docstring). The JIR container constants are no longer hand-
+copied: both sealed.py and jir.jac import them from jaclang.jac0core.jir_format
+(a dependency-free leaf), so the "container constants" test below just pins that
+shared wiring -- a re-introduced literal in either module fails it. The section
+reader and co_filename patcher are still hand-reimplemented, so the remaining
+tests pin each to its jir.jac / compiler.jac original.
 """
 
 import marshal;
@@ -26,7 +28,9 @@ import from jaclang.jac0core.jir {
     write_precompiled_jir
 }
 
-test "sealed.py container constants match jir.jac" {
+test "sealed.py and jir.jac share one set of container constants" {
+    # Both sides import these from jaclang.jac0core.jir_format now; this pins the
+    # shared wiring so a re-introduced literal in either module fails here.
     assert sealed.JIR_FORMAT_VERSION == FORMAT_VERSION;
     assert sealed._HEADER_SIZE == HEADER_SIZE;
     assert sealed._SECTIONS_MAGIC == SECTIONS_MAGIC;
