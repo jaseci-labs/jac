@@ -1087,9 +1087,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
             template_spec['initContainers'].append(
                 build_bootstrap_init_container(
-                    self.k8s_config,
-                    self.k8s_config.python_image,
-                    app_config.dev.overlays_source()
+                    self.k8s_config, self.k8s_config.python_image
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

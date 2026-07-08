@@ -864,7 +864,6 @@ obj MicroserviceManifestBuilder {
             build_bootstrap_init_container(
                 self.k8s_config,
                 self.k8s_config.python_image,
-                self.dev.overlays_source(),
                 is_gateway=(svc_name == GATEWAY_NAME)
             )
         );

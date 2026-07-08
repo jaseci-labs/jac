@@ -4,7 +4,6 @@ import from jaclang.scale.injector.bundle {
     APP_MOUNT_PATH,
     TOOLCHAIN_SUBDIR
 }
-import from jaclang.scale.injector.binary { overlay_pod_path }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -37,9 +36,7 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
 }
 
 
-def build_runtime_install_commands(
-    k8s_config: KubernetesConfig, overlay_source: bool = False
-) -> list[str] {
+def build_runtime_install_commands(k8s_config: KubernetesConfig) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
 
@@ -48,7 +45,7 @@ def build_runtime_install_commands(
 
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
-    # apt only for declared packages: the binary bundles bun+python and the overlay ships as a tar, so the default boot needs nothing from apt.
+    # apt only for declared packages: the binary bundles bun+python and the bundle ships as a tar, so the default boot needs nothing from apt.
     if config.additional_packages {
         commands.append(
             'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
@@ -76,14 +73,6 @@ def build_runtime_install_commands(
         'redeploy)." >&2; exit 1; fi'
     );
 
-    if overlay_source {
-        overlay_rel = overlay_pod_path();
-        commands.append(
-            f"grep -q '^\\[dev\\]' {APP_MOUNT_PATH}/jac.toml || "
-            f"printf '\\n[dev]\\njaclang_source = \"{overlay_rel}\"\\n' "
-            f'>> {APP_MOUNT_PATH}/jac.toml'
-        );
-    }
     return commands;
 }
 
@@ -102,25 +91,16 @@ def runtime_container_env -> list[dict[str, str]] {
 
 
 def _first_boot_install -> str {
-    # Adopt jir seeds via system python3 BEFORE any jac invocation (jac would compile the overlay first); best-effort fallback compiles as before (#7138).
-    adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
-    return (
-        f'if [ -f "{adopt}" ]; then '
-        f'python3 "{adopt}" '
-        f'|| echo "[jac-scale] jir-seed adoption failed; compiling from source"; '
-        f'fi; '
-        f'jac install'
-    );
+    # The shipped bundle already carries the precompiled sealed image, so the
+    # pod only needs to install the app's declared deps.
+    return "jac install";
 }
 
 
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig,
-    base_image: str,
-    overlay_source: bool = False,
-    is_gateway: bool = True
+    k8s_config: KubernetesConfig, base_image: str, is_gateway: bool = True
 ) -> dict[str, any] {
-    commands = build_runtime_install_commands(k8s_config, overlay_source);
+    commands = build_runtime_install_commands(k8s_config);
     commands.append(f'cd {APP_MOUNT_PATH}');
     if not is_gateway {
         # npm deps exist only to build the client, which only the gateway

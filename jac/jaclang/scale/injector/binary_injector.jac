@@ -3,10 +3,7 @@ import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
 import from jaclang.scale.injector.binary {
     download_release_binary,
     node_arch,
-    resolve_overlay_source,
-    cleanup_overlay_source,
     pack_binary_bytes,
-    pack_overlay,
     toolchain_object_key
 }
 import from jaclang.scale.injector.bundle { content_address }
@@ -28,18 +25,7 @@ obj BinaryInjector(PvcInjector) {
         payload = download_release_binary(self.dev.channel, node_arch());
         self._pod_binary_bytes = payload;
         super.prepare(app_name, namespace, project_dir);
-        if self.dev.overlays_source() {
-            (src, cleanup) = resolve_overlay_source(
-                self.dev.repo, self.dev.branch, self.dev.jaclang_source, project_dir
-            );
-            try {
-                raw = pack_overlay(payload, src);
-            } finally {
-                cleanup_overlay_source(cleanup);
-            }
-        } else {
-            raw = pack_binary_bytes(payload);
-        }
+        raw = pack_binary_bytes(payload);
         self._toolchain_object_key = toolchain_object_key(
             app_name, content_address(raw)
         );
@@ -61,18 +47,10 @@ obj BinaryInjector(PvcInjector) {
 
 
 def _blurb(dev: DevDeploy) -> str {
-    if not dev.overlays_source() {
-        if dev.channel == "dev" {
-            return "downloading the rolling `dev` (main HEAD) jac binary";
-        }
-        return "downloading the latest published (stable) jac release";
+    if dev.channel == "dev" {
+        return "downloading the rolling `dev` (main HEAD) jac binary";
     }
-    where = (
-        f"{dev.repo}@{dev.branch}"
-            if dev.repo
-            else (dev.jaclang_source or "jaseci main")
-    );
-    return f"downloading the dev binary + overlaying jaclang source ({where})";
+    return "downloading the latest published (stable) jac release";
 }
 
 
@@ -96,12 +74,11 @@ def select_injector(
         console.print(f"Ready: {_blurb(dev)}.");
         return (injector, injector._toolchain_object_key);
     } except Exception as exc {
-        logger.warning(f"[{dev.channel}] binary/source prep failed: {exc}");
+        logger.warning(f"[{dev.channel}] binary prep failed: {exc}");
         raise RuntimeError(
             f"Could not prepare the '{dev.channel}' jac runtime: {exc}. Check "
-            f"network access to github.com/jaseci-labs/jaseci releases (and "
-            f"JAC_NODE_ARCH for cross-arch nodes); for [dev] with repo/branch "
-            f"ensure the branch exists and has a jac/jaclang source tree."
+            "network access to github.com/jaseci-labs/jaseci releases (and "
+            "JAC_NODE_ARCH for cross-arch nodes)."
         );
     }
 }
