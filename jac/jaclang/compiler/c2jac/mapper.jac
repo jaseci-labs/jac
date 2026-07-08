@@ -331,7 +331,7 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     def c_FileAST(nd: c_ast.FileAST) -> object {
         body: list[object] = [];
-        for d in nd.ext {
+        for d in (nd.ext as list) {
             n = self.conv_stmt(d);
             if isinstance(n, list) {
                 body += n;
@@ -368,7 +368,7 @@ obj CMapper {
         params: list[object] = [];
         pl = nd.decl.type.args;
         if pl is not None {
-            for pr in pl.params {
+            for pr in (pl.params as list) {
                 p: c_ast.Decl = pr as c_ast.Decl;
                 if p.name is None {
                     continue;
@@ -669,7 +669,7 @@ obj CMapper {
         if isinstance(nd, c_ast.Continue) {
             return True;
         }
-        for (_, child) in nd.children() {
+        for (_, child) in (nd.children() as list) {
             if self._has_loop_continue(child) {
                 return True;
             }
@@ -853,7 +853,7 @@ obj CMapper {
         func = self.conv_expr(nd.name);
         args: list[object] = [];
         if nd.args {
-            for e in nd.args.exprs {
+            for e in (nd.args.exprs as list) {
                 args.append(self.conv_expr(e));
             }
         }
@@ -1205,7 +1205,7 @@ obj CMapper {
         name = nd.name or "_AnonStruct";
         fields: list[object] = [];
         if nd.decls {
-            for mem in nd.decls {
+            for mem in (nd.decls as list) {
                 ann_assign = self._struct_field(mem);
                 if ann_assign is not None {
                     fields.append(ann_assign);
@@ -1238,7 +1238,7 @@ obj CMapper {
             name = nd.name;
             fields: list[object] = [];
             if s.decls {
-                for mem in s.decls {
+                for mem in (s.decls as list) {
                     aa = self._struct_field(mem);
                     if aa is not None {
                         fields.append(aa);
@@ -1320,7 +1320,7 @@ obj CMapper {
 
     def c_InitList(nd: c_ast.InitList) -> object {
         elts: list[object] = [];
-        for expr in nd.exprs {
+        for expr in (nd.exprs as list) {
             elts.append(self.conv_expr(expr));
         }
         lst = ast3.List(elts=elts, ctx=ast3.Load());
