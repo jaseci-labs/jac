@@ -16,10 +16,39 @@ impl create(
     use: str = "default",
     list_jacpacks: bool = False,
     pack: str = "",
-    pack_output: str = ""
+    pack_output: str = "",
+    `skip: bool = False,
+    style: str | None = None,
+    baseColor: str | None = None,
+    theme: str | None = None,
+    font: str | None = None,
+    radius: str | None = None,
+    menuAccent: str | None = None,
+    menuColor: str | None = None
 ) -> int {
     if pack {
         return jacpack(action="pack", path=pack, output=pack_output);
+    }
+    if `skip {
+        os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
+    }
+    if use == "jac-shadcn" {
+        import from jaclang.cli.shadcn.cli { stash_create_theme }
+        theme_args = {
+            "style": style,
+            "baseColor": baseColor,
+            "theme": theme,
+            "font": font,
+            "radius": radius,
+            "menuAccent": menuAccent,
+            "menuColor": menuColor
+        };
+        overrides = {
+            k: v
+            for (k, v) in theme_args.items()
+            if v is not None
+        };
+        stash_create_theme(overrides);
     }
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry {
@@ -747,8 +776,21 @@ impl install(
 }
 
 impl add(
-    packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
+    packages: list = [],
+    dev: bool = False,
+    git: str = '',
+    verbose: bool = False,
+    npm: bool = False,
+    shadcn: bool = False
 ) -> int {
+    if shadcn {
+        import from jaclang.cli.shadcn.cli { run_shadcn_add }
+        return run_shadcn_add(packages);
+    }
+    if npm {
+        import from jaclang.runtimelib.client.cli { run_npm_add }
+        return run_npm_add(packages, dev);
+    }
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { make_git_spec }
     import from jaclang.project.providers { InstallContext, get_python_provider }
@@ -816,7 +858,17 @@ impl add(
     return 0;
 }
 
-impl remove(packages: list = [], dev: bool = False) -> int {
+impl remove(
+    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+) -> int {
+    if shadcn {
+        import from jaclang.cli.shadcn.cli { run_shadcn_remove }
+        return run_shadcn_remove(packages);
+    }
+    if npm {
+        import from jaclang.runtimelib.client.cli { run_npm_remove }
+        return run_npm_remove(packages, dev);
+    }
     import from jaclang.project.config { get_config }
     import from jaclang.project.providers { InstallContext, get_python_provider }
     config = get_config();

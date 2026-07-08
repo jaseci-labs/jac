@@ -40,6 +40,26 @@ glob registry = get_registry();
         Arg.create(
             "check_only", typ=bool, default=False, help="Run the gate and emit nothing"
         ),
+        Arg.create(
+            "client",
+            typ=str,
+            default="",
+            help=(
+                "Build a client shell instead of the artifact: web, "
+                "pwa, mobile, desktop (desktop builds a native "
+                "webview app)."
+            ),
+            choices=["web", "pwa", "mobile"],
+            short=""
+        ),
+        Arg.create(
+            "platform",
+            typ=str,
+            default=None,
+            help="Platform for desktop/mobile shells (windows, macos, linux, all, android, ios)",
+            choices=["windows", "macos", "linux", "all", "android", "ios"],
+            short="p"
+        ),
 
     ],
     examples=[
@@ -48,6 +68,7 @@ glob registry = get_registry();
         ("jac build --as wheel", "Gate + build a PyPI wheel"),
         ("jac build --check_only", "Run the whole-program gate only"),
         ("jac build --no_typecheck", "Build without the gate (escape hatch)"),
+        ("jac build --client mobile", "Build the mobile client shell"),
 
     ],
     group="build"
@@ -57,5 +78,7 @@ def build(
     projection: str = "jab",
     output: str = "dist",
     no_typecheck: bool = False,
-    check_only: bool = False
+    check_only: bool = False,
+    client: str = "",
+    platform: str | None = None
 ) -> int;

@@ -544,10 +544,33 @@ impl start(
     faux: bool = False,
     dev: bool = False,
     api_port: int = 0,
-    no_client: bool = False
+    no_client: bool = False,
+    client: str = "web",
+    host: str = "",
+    platform: str = "auto",
+    scale: bool = False,
+    target: str = "kubernetes",
+    enable_tls: bool = False,
+    dry_run: bool = False,
+    show_yaml: bool = False
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
+
+    import from jaclang.runtimelib.client.cli { run_client_start }
+    client_rc = run_client_start(
+        filename, client, host, platform, port, api_port, dev, no_client
+    );
+    if client_rc is not None {
+        return client_rc;
+    }
+
+    import from jaclang.scale.plugin { scale_start }
+    scale_rc = scale_start(filename, scale, target, enable_tls, dry_run, show_yaml);
+    if scale_rc is not None {
+        return scale_rc;
+    }
+
     if filename.endswith(".jab") {
         if dev {
             console.error(
