@@ -18,7 +18,7 @@ import from jaclang.cli.console { console }
 glob registry: CommandRegistry = get_registry();
 
 """Format a byte count as a human-friendly string (KB / MB / GB)."""
-def _human_bytes(n: str) -> str {
+def _human_bytes(n: int) -> str {
     f = float(n);
     for unit in ["B", "KB", "MB", "GB", "TB"] {
         if f < 1024.0 {
