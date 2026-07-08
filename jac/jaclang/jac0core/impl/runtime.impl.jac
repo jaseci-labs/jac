@@ -1697,8 +1697,6 @@ impl JacLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> any {
 impl JacLLM.`by(model: LLMModel) -> Callable {
     def _decorator(caller: Callable) -> Callable {
         def _wrapped_caller(*args: object, **kwargs: object) -> object {
-            import from jaclang.jac0core.mtp { fetch_mtir }
-            import from jaclang.byllm.mtir { MTIR }
             invoke_args: dict[((int | str), object)] = {};
             for (i, arg) in enumerate(args) {
                 invoke_args[i] = arg;
@@ -1706,9 +1704,7 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
             for (key, value) in kwargs.items() {
                 invoke_args[key] = value;
             }
-            mt_run = MTIR(
-                caller, invoke_args, model.call_params, fetch_mtir(caller)
-            ).runtime;
+            mt_run = JacLLM.get_mtir(caller, invoke_args, model.call_params);
             return model.invoke(mt_run=mt_run);
         }
         return _wrapped_caller;
