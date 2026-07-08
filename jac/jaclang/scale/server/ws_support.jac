@@ -41,7 +41,10 @@ obj WebSocketConnectionManager {
             try {
                 await ws.send_json(message);
             } except Exception as e {
-                logger.debug(f"WS broadcast send failed for '{walker_name}': {e}");
+                logger.debug(
+                    f"WS broadcast send failed for '{walker_name}'; dropping socket: {e}"
+                );
+                self.disconnect(ws, walker_name);
             }
         }
     }
