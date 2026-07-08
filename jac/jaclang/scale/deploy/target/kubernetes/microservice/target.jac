@@ -147,9 +147,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             names.append(dep["metadata"]["name"]);
             try {
                 app_labels.append(dep["spec"]["selector"]["matchLabels"]["app"]);
-            } except Exception {
-                _ = 0;
-            }
+            } except Exception { }
         }
         if not names {
             return;
