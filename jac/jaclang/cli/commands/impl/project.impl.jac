@@ -14,8 +14,42 @@ impl create(
     force: bool = False,
     kind: str = "",
     use: str = "default",
-    list_jacpacks: bool = False
+    list_jacpacks: bool = False,
+    pack: str = "",
+    pack_output: str = "",
+    `skip: bool = False,
+    style: str | None = None,
+    baseColor: str | None = None,
+    theme: str | None = None,
+    font: str | None = None,
+    radius: str | None = None,
+    menuAccent: str | None = None,
+    menuColor: str | None = None
 ) -> int {
+    if pack {
+        return jacpack(action="pack", path=pack, output=pack_output);
+    }
+    if `skip {
+        os.environ["JAC_CLIENT_SKIP_NPM_INSTALL"] = "1";
+    }
+    if use == "jac-shadcn" {
+        import from jaclang.cli.shadcn.cli { stash_create_theme }
+        theme_args = {
+            "style": style,
+            "baseColor": baseColor,
+            "theme": theme,
+            "font": font,
+            "radius": radius,
+            "menuAccent": menuAccent,
+            "menuColor": menuColor
+        };
+        overrides = {
+            k: v
+            for (k, v) in theme_args.items()
+            if v is not None
+        };
+        stash_create_theme(overrides);
+    }
     import from jaclang.project.config { find_project_root }
     import from jaclang.project.template_registry {
         get_template_registry,
@@ -488,8 +522,13 @@ impl install(
     quiet: bool = False,
     prefer_binary: bool = False,
     install_global: bool = False,
-    scale: bool = False
+    scale: bool = False,
+    plan: bool = False,
+    as_json: bool = False
 ) -> int {
+    if plan {
+        return deps(scale=scale, as_json=as_json);
+    }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { ensure_venv, get_venv_site_packages }
@@ -737,8 +776,21 @@ impl install(
 }
 
 impl add(
-    packages: list = [], dev: bool = False, git: str = '', verbose: bool = False
+    packages: list = [],
+    dev: bool = False,
+    git: str = '',
+    verbose: bool = False,
+    npm: bool = False,
+    shadcn: bool = False
 ) -> int {
+    if shadcn {
+        import from jaclang.cli.shadcn.cli { run_shadcn_add }
+        return run_shadcn_add(packages);
+    }
+    if npm {
+        import from jaclang.runtimelib.client.cli { run_npm_add }
+        return run_npm_add(packages, dev);
+    }
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv { make_git_spec }
     import from jaclang.project.providers { InstallContext, get_python_provider }
@@ -806,7 +858,17 @@ impl add(
     return 0;
 }
 
-impl remove(packages: list = [], dev: bool = False) -> int {
+impl remove(
+    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+) -> int {
+    if shadcn {
+        import from jaclang.cli.shadcn.cli { run_shadcn_remove }
+        return run_shadcn_remove(packages);
+    }
+    if npm {
+        import from jaclang.runtimelib.client.cli { run_npm_remove }
+        return run_npm_remove(packages, dev);
+    }
     import from jaclang.project.config { get_config }
     import from jaclang.project.providers { InstallContext, get_python_provider }
     config = get_config();
@@ -1188,7 +1250,9 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     if action == "pack" {
         if not path {
             console.error("Error: Template directory path required.");
-            console.print("Usage: jac jacpack pack <directory> [-o output.jacpack]");
+            console.print(
+                "Usage: jac create --pack <directory> [--pack_output output.jacpack]"
+            );
             return 1;
         }
         template_dir = Path(path);
@@ -1341,7 +1405,287 @@ def _run_precompiler(src_dir: str, flags: list[str]) -> int {
     return subprocess.call([sys.executable, "-c", code]);
 }
 
-def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
+def _resolve_entry_file(config: any) -> (Path | None) {
+    ep = config.project.entry_point;
+    proj_root = config.project_root;
+    if not ep or proj_root is None {
+        return None;
+    }
+    p = Path(proj_root) / ep;
+    if p.is_file() {
+        return p;
+    }
+    p2 = Path(str(p) + ".jac");
+    if p2.is_file() {
+        return p2;
+    }
+    console.print(
+        f"  ⚠ [project] entry-point '{ep}' not found under {proj_root}; "
+        "sealing without serve payloads",
+        style="warning"
+    );
+    return None;
+}
+
+def _build_serve_manifest(entry_file: Path, proj_root: Path) -> (dict | None) {
+    import os;
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    import from jaclang.jac0core.compiler { get_boundary_analysis_sched }
+    import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
+    import from jaclang.utils.precompile_bytecode {
+        find_jac_files,
+        _nested_project_dirs
+    }
+
+    nested = _nested_project_dirs(str(proj_root));
+    targets = [
+        p
+        for p in find_jac_files(str(proj_root))
+        if not any(p.startswith(n) for n in nested)
+    ];
+    entry_key = str(entry_file.resolve());
+    if entry_key not in targets {
+        targets.insert(0, entry_key);
+    }
+
+    for jac_path in targets {
+        prev_errors = len(Jac.program.errors_had);
+        try {
+            Jac.program.compile(jac_path);
+        } except Exception as e {
+            console.error(f"Seal aborted: '{jac_path}' failed to compile: {e}");
+            return None;
+        }
+        if len(Jac.program.errors_had) > prev_errors {
+            errs = "\n".join(str(e) for e in Jac.program.errors_had[prev_errors:]);
+            console.error(f"Seal aborted: '{jac_path}' failed to compile:\n{errs}");
+            return None;
+        }
+    }
+
+    client: dict = {};
+    mod = Jac.program.find_module(entry_key);
+    if mod and mod.gen.client_manifest {
+        if not mod.gen.client_manifest.exports {
+            _ensure_js_generated(mod, Jac.program);
+        }
+        m = mod.gen.client_manifest;
+        client = {
+            'exports': list(m.exports),
+            'globals': list(m.globals),
+            'params': m.params,
+            'globals_values': m.globals_values,
+            'has_client': m.has_client
+        };
+    }
+
+    proj_prefix = str(proj_root.resolve()) + os.sep;
+
+    def in_project(hmod: any) -> bool {
+        mp = hmod?.loc?.mod_path;
+        return bool(mp) and os.path.abspath(str(mp)).startswith(proj_prefix);
+    }
+
+    for hub in Jac.program._search_hubs() {
+        for hmod in hub.values() {
+            if not in_project(hmod) {
+                continue;
+            }
+            man0 = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
+            if man0 and not (man0.walker_access or man0.func_access) {
+                try {
+                    Jac.program.run_schedule(hmod, get_boundary_analysis_sched());
+                } except Exception {
+                    ;
+                }
+            }
+        }
+    }
+
+    func_access: dict[str, bool] = {};
+    walker_access: dict[str, bool] = {};
+    endpoint_effects: dict[str, any] = {};
+    cross: list[dict] = [];
+    seen: set = set();
+    for hub in Jac.program._search_hubs() {
+        for hmod in hub.values() {
+            if not in_project(hmod) {
+                continue;
+            }
+            man = hmod.gen.interop_manifest if (hmod and hmod.gen) else None;
+            if not man {
+                continue;
+            }
+            for (n, a) in man.func_access.items() {
+                if n not in func_access {
+                    func_access[n] = a;
+                }
+            }
+            for (n, a) in man.walker_access.items() {
+                if n not in walker_access {
+                    walker_access[n] = a;
+                }
+            }
+            for (ekey, eeff) in man.endpoint_effects.items() {
+                endpoint_effects[ekey] = eeff;
+            }
+            for binding in man.server_exports_to_client {
+                ast_node = binding?.ast_node;
+                src_path = (
+                    ast_node.loc.mod_path if (ast_node and ast_node?.loc) else None
+                );
+                if not src_path or (binding.name, binding.kind) in seen {
+                    continue;
+                }
+                try {
+                    rel = os.path.relpath(src_path, str(proj_root));
+                } except ValueError {
+                    continue;
+                }
+                if rel.startswith('..') {
+                    continue;
+                }
+                table = walker_access if binding.kind == 'walker' else func_access;
+                auth = table.get(binding.name, None);
+                if auth is None {
+                    is_pub = (
+                        ast_node is not None
+                        and ast_node?.access is not None
+                        and ast_node.access.tag.name == Tok.KW_PUB
+                    );
+                    auth = not is_pub;
+                }
+                seen.add((binding.name, binding.kind));
+                cross.append(
+                    {
+                        'name': binding.name,
+                        'kind': binding.kind,
+                        'src': rel.replace(os.sep, '/'),
+                        'auth': bool(auth)
+                    }
+                );
+            }
+        }
+    }
+    return {
+        'client': client,
+        'func_access': func_access,
+        'walker_access': walker_access,
+        'endpoint_effects': endpoint_effects,
+        'cross_bindings': cross
+    };
+}
+
+def _ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
+    import from jaclang.runtimelib.client { get_bun }
+    import from jaclang.runtimelib.client.targets.web_target { WebTarget }
+
+    dist = config.get_client_dir() / 'dist';
+    bun = None;
+    try {
+        bun = get_bun();
+    } except Exception {
+        bun = None;
+    }
+    if bun {
+        console.print("  Building client bundle (web)...", style="muted");
+        try {
+            WebTarget().build(entry_file, Path(config.project_root));
+        } except Exception as e {
+            console.error(f"Client build failed: {e}");
+            return None;
+        }
+        return dist if dist.is_dir() else None;
+    }
+    if dist.is_dir() and any(dist.glob('client.*.js')) {
+        console.print(
+            "  ⚠ bun unavailable; baking the existing client dist as-is",
+            style="warning"
+        );
+        return dist;
+    }
+    console.error(
+        "This app has client code but no client bundle could be built or "
+        "found (.jac/client/dist).",
+        hint="Install bun (jac will fetch it on demand) or prebuild the client."
+    );
+    return None;
+}
+
+def _bake_native_payloads(config: any, pkg_copy: Path) -> bool {
+    import os;
+    import from jaclang.jac0core.ext_registry { is_native_module, base_stem }
+    import from jaclang.runtimelib.sealed_serve { NATIVE_DIR_REL }
+
+    entry_file = _resolve_entry_file(config);
+    if entry_file is None or not is_native_module(str(entry_file)) {
+        return True;
+    }
+    try {
+        import jaclang.compiler.passes.native.llvm.binding as llvm;
+        triple = llvm.get_default_triple();
+    } except Exception as e {
+        console.error(f"Cannot resolve the native target triple: {e}");
+        return False;
+    }
+    stem = base_stem(entry_file.name);
+    out_dir = pkg_copy / NATIVE_DIR_REL / triple;
+    out_dir.mkdir(parents=True, exist_ok=True);
+    console.print(f"  Compiling native binary for {triple}...", style="muted");
+    import from jaclang.cli.commands.nacompile { nacompile }
+    rc = nacompile(filename=str(entry_file), output=str(out_dir / stem));
+    if rc != 0 {
+        console.error("Native compilation failed; seal aborted.");
+        return False;
+    }
+    return True;
+}
+
+def _bake_serve_payloads(config: any, pkg_copy: Path) -> bool {
+    import json;
+    import shutil;
+    import from jaclang.runtimelib.sealed_serve { SERVE_MANIFEST_REL, CLIENT_DIST_REL }
+
+    entry_file = _resolve_entry_file(config);
+    if entry_file is None {
+        return True;
+    }
+    sm = _build_serve_manifest(entry_file, Path(config.project_root));
+    if sm is None {
+        return False;
+    }
+    dest_manifest = pkg_copy / SERVE_MANIFEST_REL;
+    dest_manifest.parent.mkdir(parents=True, exist_ok=True);
+    dest_manifest.write_text(
+        json.dumps(sm, sort_keys=True, indent=1) + "\n", encoding="utf-8"
+    );
+
+    client_meta = sm.get('client', {}) or {};
+    if not (client_meta.get('has_client') or client_meta.get('exports')) {
+        return True;
+    }
+    dist_src = _ensure_client_dist(config, entry_file);
+    if dist_src is None {
+        return False;
+    }
+    dest_dist = pkg_copy / CLIENT_DIST_REL;
+    if dest_dist.exists() {
+        shutil.rmtree(dest_dist);
+    }
+    shutil.copytree(dist_src, dest_dist);
+    n_files = sum(
+        1
+        for p in dest_dist.rglob('*')
+        if p.is_file()
+    );
+    console.print(f"  ✔ Baked client dist ({n_files} files)", style="success");
+    return True;
+}
+
+def _make_sealed_image(
+    config: any, parent: Path, name: str, out_dir: (Path | None) = None
+) -> (Path | None) {
     import shutil;
     import tempfile;
     import from jaclang.jac0core { ext_registry }
@@ -1352,14 +1696,43 @@ def _make_sealed_image(config: any, parent: Path, name: str) -> (Path | None) {
         return None;
     }
 
+    out_names: set = set();
+    if out_dir is not None {
+        try {
+            rel0 = Path(out_dir).resolve().relative_to(Path(proj_root).resolve());
+            out_names.add(rel0.parts[0]);
+        } except ValueError { }
+    }
+
+    def copy_ignore(d: str, items: list) -> list {
+        skipped = _seal_copy_ignore(d, items);
+        if out_names and Path(d).resolve() == Path(proj_root).resolve() {
+            skipped = list(
+                set(skipped) | {
+                    it
+                    for it in items
+                    if it in out_names
+                }
+            );
+        }
+        return skipped;
+    }
+
     stage = Path(tempfile.mkdtemp(prefix=f"{name}-seal-"));
     try {
         pkg_copy = stage / name;
-        shutil.copytree(proj_root, pkg_copy, ignore=_seal_copy_ignore);
+        shutil.copytree(proj_root, pkg_copy, ignore=copy_ignore);
 
         has_init = any((pkg_copy / f).exists() for f in ext_registry.INIT_FILES);
         if not has_init and not (pkg_copy / "__init__.py").exists() {
             (pkg_copy / "__init__.jac").write_text("");
+        }
+
+        if not _bake_serve_payloads(config, pkg_copy) {
+            return None;
+        }
+        if not _bake_native_payloads(config, pkg_copy) {
+            return None;
         }
 
         rc = _run_precompiler(str(stage), ["--seal"]);
@@ -1384,7 +1757,9 @@ def _bundle_sealed(config: any, output: str) -> int {
     name = config.project.name;
     Path(output).mkdir(parents=True, exist_ok=True);
     console.print(f"\n  Sealing {name}...", style="muted");
-    dest = _make_sealed_image(config, Path(output), f"{name}-sealed");
+    dest = _make_sealed_image(
+        config, Path(output), f"{name}-sealed", out_dir=Path(output)
+    );
     if dest is None {
         return 1;
     }
@@ -1399,26 +1774,50 @@ def _bundle_sealed(config: any, output: str) -> int {
     return 0;
 }
 
+def _bundle_jab(config: any, output: str) -> int {
+    import shutil;
+    import tempfile;
+
+    name = config.project.name;
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    work = Path(tempfile.mkdtemp(prefix="jab-", dir=output));
+    try {
+        console.print(f"\n  Sealing {name}...", style="muted");
+        img = _make_sealed_image(config, work, name, out_dir=Path(output));
+        if img is None {
+            return 1;
+        }
+        payload = _tar_gz_dir(img);
+        out_jab = out_dir / f"{name}.jab";
+        out_jab.write_bytes(payload);
+    } finally {
+        shutil.rmtree(work, ignore_errors=True);
+    }
+    console.print(
+        f"  ✔ Built [cyan]{out_jab}[/cyan] ({out_jab.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(f"  Run it anywhere: jac run {out_jab.name}", style="muted");
+    return 0;
+}
+
 def _bundle_binary(config: any, output: str) -> int {
     import sys;
     import os;
-    import io;
-    import gzip;
-    import tarfile;
-    import struct;
-    import hashlib;
     import shutil;
+    import subprocess;
     import tempfile;
-    import json;
     import from jaclang.jac0core.sealed { MANIFEST_NAME }
+    import from jaclang.runtimelib.jab { jab_app_meta }
 
     name = config.project.name;
-    donor = os.path.realpath(sys.executable);
-    (stub, _payload) = _split_jac_binary(donor);
-    if stub is None {
+    jac_bin = os.path.realpath(sys.executable);
+
+    if subprocess.run([jac_bin, "__hasruntime"], capture_output=True).returncode != 0 {
         console.error(
-            "jac bundle --target binary needs a bundled (sealed) jac binary as the "
-            "donor; the current interpreter is not one (dev / link-source build).",
+            "jac build --as binary needs a bundled single-file jac to carry the "
+            "runtime; the current interpreter is not one (source / pip install).",
             hint="Run it with an installed single-file jac binary."
         );
         return 1;
@@ -1426,9 +1825,10 @@ def _bundle_binary(config: any, output: str) -> int {
 
     Path(output).mkdir(parents=True, exist_ok=True);
     work = Path(tempfile.mkdtemp(prefix="jacbin-", dir=output));
+    out_bin = Path(output) / name;
     try {
         console.print(f"\n  Sealing {name} for binary...", style="muted");
-        img = _make_sealed_image(config, work, name);
+        img = _make_sealed_image(config, work, name, out_dir=Path(output));
         if img is None {
             return 1;
         }
@@ -1437,34 +1837,27 @@ def _bundle_binary(config: any, output: str) -> int {
             return 1;
         }
 
-        console.print("  Unpacking runtime payload...", style="muted");
-        stage = work / "stage";
-        with tarfile.open(fileobj=io.BytesIO(gzip.decompress(_payload))) as tf {
-            tf.extractall(stage);
-        }
-        site = stage / "site";
-        shutil.copytree(img, site / name);
-        entry_mod = _app_entry_module(img, name, config.project.entry_point);
-        if entry_mod is None {
+        if not (jab_app_meta(img).get("entry") or {}).get("path") {
+            console.error(
+                f"No runnable entry for '{name}'; a --as binary app needs an entry "
+                "(main.jac at the package root, or [project] entry-point in jac.toml).",
+                hint="Package-only projects have nothing to run as a binary."
+            );
             return 1;
         }
-        import from jaclang.jac0core.sealed { APP_MARKER }
-        (site / APP_MARKER).write_text(
-            json.dumps({"package": name, "entry": entry_mod})
-        );
 
-        console.print(f"  Repacking binary (entry: {entry_mod})...", style="muted");
-        payload = _tar_gz_dir(stage);
-        digest = hashlib.sha256(payload).hexdigest();
-        trailer = _BIN_MAGIC + struct.pack(_BIN_LEN_FMT, len(payload)) + digest.encode();
+        jab_path = work / f"{name}.jab";
+        jab_path.write_bytes(_tar_gz_dir(img));
 
-        out_bin: Path = Path(output) / name;
-        with open(out_bin, "wb") as f {
-            f.write(stub);
-            f.write(payload);
-            f.write(trailer);
+        console.print("  Appending app image onto the jac runtime...", style="muted");
+
+        rc = subprocess.run(
+            [jac_bin, "__appjab", str(jab_path), str(out_bin)]
+        ).returncode;
+        if rc != 0 or not out_bin.is_file() {
+            console.error("Failed to append the app image onto the jac runtime.");
+            return 1;
         }
-        os.chmod(out_bin, 0o755);
     } finally {
         shutil.rmtree(work, ignore_errors=True);
     }
@@ -1477,85 +1870,32 @@ def _bundle_binary(config: any, output: str) -> int {
     return 0;
 }
 
-glob _BIN_MAGIC: bytes = b"JACBIN01",
-     _BIN_LEN_FMT: str = "<Q",
-     _BIN_TRAILER_LEN: int = 8 + 8 + 64;
-
-def _split_jac_binary(path: str) -> tuple {
-    import struct;
-    with open(path, "rb") as f {
-        data = f.read();
-    }
-    magic_at = len(data) - _BIN_TRAILER_LEN;
-    if magic_at < 0 or data[magic_at:magic_at + 8] != _BIN_MAGIC {
-        return (None, None);
-    }
-    plen = int(struct.unpack(_BIN_LEN_FMT, data[magic_at + 8:magic_at + 16])[0]);
-    start = magic_at - plen;
-    if start < 0 {
-        return (None, None);
-    }
-    return (data[:start], data[start:magic_at]);
-}
-
 def _tar_gz_dir(top: Path) -> bytes {
     import io;
     import gzip;
     import tarfile;
     import os;
+
+    def normalize(ti: any) -> any {
+        ti.mtime = 0;
+        ti.uid = 0;
+        ti.gid = 0;
+        ti.uname = "";
+        ti.gname = "";
+        return ti;
+    }
+
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w") as tf {
         for (dirpath, dirnames, filenames) in os.walk(str(top)) {
             dirnames.sort();
             for fn in sorted(filenames) {
                 full = Path(dirpath) / fn;
-                tf.add(str(full), arcname=str(full.relative_to(top)));
+                tf.add(str(full), arcname=str(full.relative_to(top)), filter=normalize);
             }
         }
     }
     return gzip.compress(buf.getvalue(), 6, mtime=0);
-}
-
-def _app_entry_module(img: Path, name: str, entry_point: str) -> (str | None) {
-    import from jaclang.jac0core { ext_registry }
-    configured = ext_registry.base_stem(entry_point) if entry_point else "";
-    candidates = ([configured] if configured else []) + ["main", "app", "__main__"];
-    for cand in candidates {
-        if _sealed_has_module(img, f"{name}.{cand}") {
-            return f"{name}.{cand}";
-        }
-    }
-
-    if configured and configured != "main" {
-        console.error(
-            f"Entry point '{entry_point}' from jac.toml has no sealed module "
-            f"'{name}.{configured}'."
-        );
-        return None;
-    }
-
-    tried = ", ".join(f"{name}.{c}" for c in dict.fromkeys(candidates));
-    console.error(
-        f"No entry module sealed for '{name}' (tried {tried}). "
-        "Set [project] entry-point in jac.toml to a module at the package root."
-    );
-    return None;
-}
-
-def _sealed_has_module(img: Path, fullname: str) -> bool {
-    import json;
-    import from jaclang.jac0core.sealed { MANIFEST_NAME }
-    manifest = img / "_precompiled" / MANIFEST_NAME;
-    if not manifest.is_file() {
-        return False;
-    }
-    data = json.loads(manifest.read_text());
-    for ent in data.get("modules", {}).values() {
-        if ent.get("module") == fullname {
-            return True;
-        }
-    }
-    return False;
 }
 
 def _bundle_npm(config: any, output: str) -> int {
@@ -1630,6 +1970,9 @@ impl bundle(output: str = "dist", target: str = "wheel") -> int {
     }
     if target == "sealed" {
         return _bundle_sealed(config, output);
+    }
+    if target == "jab" {
+        return _bundle_jab(config, output);
     }
     if target == "binary" {
         return _bundle_binary(config, output);

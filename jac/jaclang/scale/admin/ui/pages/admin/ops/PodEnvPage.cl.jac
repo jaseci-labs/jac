@@ -93,7 +93,7 @@ def:pub PodEnvPage -> JsxElement {
                 show={loadedOnce and not available}
                 detail={detail}
                 label="Other pods unavailable"
-                remediation="Showing this pod only. Enable [plugins.scale.kubernetes].ops_console for the rest."
+                remediation="Showing this pod only. Enable [scale.kubernetes].ops_console for the rest."
             />
             <select
                 value={selected}

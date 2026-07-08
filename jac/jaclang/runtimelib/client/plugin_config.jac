@@ -1,10 +1,8 @@
 import os;
 import from pathlib { Path }
-import from jaclang.jac0core.runtime { hookimpl }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 
 class JacClientPluginConfig {
-    @hookimpl
     static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "client",
@@ -13,7 +11,6 @@ class JacClientPluginConfig {
         };
     }
 
-    @hookimpl
     static def get_config_schema -> dict[str, any] {
         return {
             "section": "client",
@@ -86,7 +83,6 @@ class JacClientPluginConfig {
         };
     }
 
-    @hookimpl
     static def register_ecosystem_providers -> list {
         import from jaclang.runtimelib.client.npm_provider { NpmProvider }
         return [NpmProvider()];

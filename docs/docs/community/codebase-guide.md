@@ -197,12 +197,12 @@ Registration happens in `pyproject.toml`:
 
 | Subsystem | What it adds |
 |--------|-------------|
-| `byllm` (built into core, `jac/jaclang/byllm/`) | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Ships inside `jaclang`; `litellm` and other model deps are optional, pulled per-project via `[plugins.byllm]` config + `jac install`. |
+| `byllm` (built into core, `jac/jaclang/byllm/`) | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Ships inside `jaclang`; `litellm` and other model deps are optional, pulled per-project via `[byllm]` config + `jac install`. |
 | `scale` (built into core, `jac/jaclang/scale/`) | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. Ships inside `jaclang`; its optional deps are pulled per-project via `[scale.*]` config + `jac install`. |
 
 (The MCP server -- `jac mcp`, exposing the Jac project to AI coding assistants -- is built into core, not a plugin. See [its source](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp) and the [MCP reference](../reference/mcp.md).)
 
-For the full how-to on writing your own plugin -- CLI extension, runtime hook overrides, jac.toml schemas, project templates, and the entry-point setup -- see the [Plugin Authoring Guide](../reference/plugin-authoring.md).
+Jaclang no longer has a plugin system; the former built-in providers are now called directly by core. See [Plugins (Removed)](../reference/plugin-authoring.md) for details.
 
 ---
 

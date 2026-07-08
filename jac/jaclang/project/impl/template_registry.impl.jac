@@ -122,14 +122,22 @@ impl get_template_registry -> TemplateRegistry {
 }
 
 impl initialize_template_registry -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_template_registry();
 
     _register_core_templates(registry);
 
     _register_builtin_client_templates(registry);
 
-    results = JacRuntime.register_project_template();
+    _register_builtin_shadcn_template(registry);
+}
+
+def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
+    try {
+        import from jaclang.cli.shadcn.cli { register_project_template }
+    } except Exception {
+        return;
+    }
+    results = register_project_template();
     for entry in _iter_template_dicts(results) {
         try {
             registry.register(entry);

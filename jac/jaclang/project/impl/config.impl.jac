@@ -203,8 +203,14 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         }
     }
 
-    if "plugins" in profile {
-        self.plugins = _deep_merge(self.plugins, profile["plugins"]);
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in profile and isinstance(profile[_feat], dict) {
+            if _feat in self.plugins {
+                self.plugins[_feat] = _deep_merge(self.plugins[_feat], profile[_feat]);
+            } else {
+                self.plugins[_feat] = profile[_feat];
+            }
+        }
     }
 
     if "dependencies" in profile {
@@ -300,24 +306,12 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
             }
         }
     }
-    if "plugins" in data {
-        plugins_data = data["plugins"];
-        if "discovery" in plugins_data {
-            self.plugins_config.discovery = plugins_data["discovery"];
-        }
-        if "enabled" in plugins_data {
-            self.plugins_config.enabled = plugins_data["enabled"];
-        }
-        if "disabled" in plugins_data {
-            self.plugins_config.disabled = plugins_data["disabled"];
-        }
-        for (key, value) in plugins_data.items() {
-            if isinstance(value, dict) {
-                if key in self.plugins {
-                    self.plugins[key] = _deep_merge(self.plugins[key], value);
-                } else {
-                    self.plugins[key] = value;
-                }
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in data and isinstance(data[_feat], dict) {
+            if _feat in self.plugins {
+                self.plugins[_feat] = _deep_merge(self.plugins[_feat], data[_feat]);
+            } else {
+                self.plugins[_feat] = data[_feat];
             }
         }
     }
@@ -475,20 +469,6 @@ impl JacConfig.save -> None {
         doc["dependencies"][dep_type] = regular_deps.copy();
         if dev_deps {
             doc["dependencies"][dep_type]["dev"] = dev_deps;
-        }
-    }
-
-    if self.plugins_config.disabled is not None {
-        if self.plugins_config.disabled {
-            if "plugins" not in doc {
-                doc["plugins"] = {};
-            }
-            doc["plugins"]["disabled"] = self.plugins_config.disabled;
-        } elif "disabled" in doc.get("plugins", {}) {
-            del doc["plugins"]["disabled"];
-            if not doc["plugins"] {
-                del doc["plugins"];
-            }
         }
     }
 
@@ -880,17 +860,9 @@ impl _parse_toml_data(
             test_jobs=str(dev_data.get("test_jobs", "auto"))
         );
     }
-    if "plugins" in data {
-        plugins_data = data["plugins"];
-        config.plugins_config = PluginsConfig(
-            discovery=plugins_data.get("discovery", "auto"),
-            enabled=plugins_data.get("enabled", []),
-            disabled=plugins_data.get("disabled", [])
-        );
-        for (key, value) in plugins_data.items() {
-            if isinstance(value, dict) {
-                config.plugins[key] = value;
-            }
+    for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
+        if _feat in data and isinstance(data[_feat], dict) {
+            config.plugins[_feat] = data[_feat];
         }
     }
     if "environment" in data {

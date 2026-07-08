@@ -96,7 +96,7 @@ def:pub NetworkPage -> JsxElement {
             <OpsUnavailableBanner
                 show={loadedOnce and not available}
                 detail={detail}
-                remediation="Enable [plugins.scale.kubernetes].ops_console and redeploy."
+                remediation="Enable [scale.kubernetes].ops_console and redeploy."
             />
             {<div className="text-danger text-sm">{errorMsg}</div>
                 if errorMsg

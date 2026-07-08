@@ -241,22 +241,6 @@ test "ebnf output nonempty" {
     }
 }
 
-test "lark output nonempty" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
-    lark = extracted.emit_lark();
-    assert len(lark) > 100;
-    for line in lark.strip().split("\n") {
-        s = line.strip();
-        if not s {
-            continue;
-        }
-        assert ":" in line or line.startswith(" ") , f"Malformed line: {line}";
-    }
-}
-
 test "no duplicate rules" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);

@@ -809,7 +809,7 @@ test "uninstall without config toml" {
     }
 }
 
-"""Test that [plugins.client.configs] in jac.toml generates config files."""
+"""Test that [client.configs] in jac.toml generates config files."""
 test "config files from jac toml" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -817,7 +817,7 @@ test "config files from jac toml" {
             os.chdir(temp_dir);
 
             # Create jac.toml with postcss and tailwind configs
-            toml_content = '[project]\nname = "test-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[plugins.client.configs.postcss]\nplugins = ["tailwindcss", "autoprefixer"]\n\n[plugins.client.configs.tailwind]\ncontent = ["./**/*.jac", "./.jac/client/**/*.{js,jsx}"]\nplugins = []\n\n[plugins.client.configs.tailwind.theme.extend]\ncolors = { primary = "#3490dc" }\n';
+            toml_content = '[project]\nname = "test-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[client.configs.postcss]\nplugins = ["tailwindcss", "autoprefixer"]\n\n[client.configs.tailwind]\ncontent = ["./**/*.jac", "./.jac/client/**/*.{js,jsx}"]\nplugins = []\n\n[client.configs.tailwind.theme.extend]\ncolors = { primary = "#3490dc" }\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -871,7 +871,7 @@ test "raw template config files from jac toml" {
 
             # Create jac.toml with raw template config
             raw_content = 'import { defineConfig, defineDocs } from "fumadocs-mdx/config";\n\nexport const docs = defineDocs({\n  dir: "content/docs",\n});\n\nexport default defineConfig({});';
-            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[plugins.client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
+            toml_content = f'[project]\nname = "test-raw-configs"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[client.configs.source]\nextension = ".ts"\nraw = """\n{raw_content}\n"""\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -903,7 +903,7 @@ test "raw template config files from jac toml" {
     }
 }
 
-"""Test that [plugins.client.npm] in jac.toml generates .npmrc in .jac/client/configs/."""
+"""Test that [client.npm] in jac.toml generates .npmrc in .jac/client/configs/."""
 test "npmrc from jac toml" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -912,7 +912,7 @@ test "npmrc from jac toml" {
 
             # Create jac.toml with npm scoped registry and auth config
             # Include required npm deps to avoid auto-injection modifying the file
-            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[plugins.client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[plugins.client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[plugins.client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
+            toml_content = '[project]\nname = "test-npmrc"\nversion = "1.0.0"\ndescription = "Test project"\nentry-point = "main.jac"\n\n[dependencies.npm]\nreact = "^18.2.0"\nreact-dom = "^18.2.0"\nreact-router-dom = "^6.22.0"\nreact-error-boundary = "^5.0.0"\n\n[dependencies.npm.dev]\nvite = "^6.4.1"\n"@vitejs/plugin-react" = "^4.2.1"\ntypescript = "^5.3.3"\n"@types/react" = "^18.2.0"\n"@types/react-dom" = "^18.2.0"\n\n[client.npm.settings]\nregistry = "https://registry.example.com"\nalways-auth = true\nstrict-ssl = false\n\n[client.npm.scoped_registries]\n"@mycompany" = "https://npm.pkg.github.com"\n"@myorg" = "https://registry.example.com"\n\n[client.npm.auth."//npm.pkg.github.com/"]\n_authToken = "${NODE_AUTH_TOKEN}"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -1161,7 +1161,7 @@ test "vite config generation" {
             os.chdir(temp_dir);
 
             # Create a basic jac.toml for the project
-            toml_content = '\n[plugins.client.vite]\nplugins = ["tailwindcss()"]\nlib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n\n[plugins.client.vite.build]\nminify = "esbuild"\n';
+            toml_content = '\n[client.vite]\nplugins = ["tailwindcss()"]\nlib_imports = ["import tailwindcss from \'@tailwindcss/vite\'"]\n\n[client.vite.build]\nminify = "esbuild"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);
@@ -1227,7 +1227,7 @@ test "vite config generation" {
     }
 }
 
-"""Test that [plugins.client.paths] aliases appear in generated vite config and tsconfig."""
+"""Test that [client.paths] aliases appear in generated vite config and tsconfig."""
 test "path aliases in generated vite and tsconfig" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -1235,7 +1235,7 @@ test "path aliases in generated vite and tsconfig" {
             os.chdir(temp_dir);
 
             # Create jac.toml with path aliases
-            toml_content = '[project]\nname = "test-paths"\nversion = "1.0.0"\ndescription = "Test path aliases"\nentry-point = "main.jac"\n\n[plugins.client.paths]\n"@components/*" = "./components/*"\n"@utils/*" = "./src/utils/*"\n"@shared" = "./shared/index"\n';
+            toml_content = '[project]\nname = "test-paths"\nversion = "1.0.0"\ndescription = "Test path aliases"\nentry-point = "main.jac"\n\n[client.paths]\n"@components/*" = "./components/*"\n"@utils/*" = "./src/utils/*"\n"@shared" = "./shared/index"\n';
             config_path = os.path.join(temp_dir, "jac.toml");
             with open(config_path, "w") as f {
                 f.write(toml_content);

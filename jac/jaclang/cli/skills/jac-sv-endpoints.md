@@ -71,7 +71,7 @@ For typed report accumulation (`has reports: list[T] = [];`, exit-collector patt
 
 - `POST /walker/<name>` - spawn a walker; body maps onto `has` fields.
 - `POST /function/<name>` - call a function; body maps onto parameters.
-- `GET /docs` (Swagger), `/redoc`, `/openapi.json` - auto-generated; disable in prod with `[plugins.scale.server] docs_enabled = false`.
+- `GET /docs` (Swagger), `/redoc`, `/openapi.json` - auto-generated; disable in prod with `[scale.server] docs_enabled = false`.
 - `GET /graph` - live graph visualizer. `GET /healthz` (+ `/healthz/ready`, `/healthz/live`) - health probes.
 
 Every response is wrapped in a standard envelope:

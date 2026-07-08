@@ -163,7 +163,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             continue;
         }
 
-        py_code = ir.gen.py or "";
+        py_code = _strip_test_and_impl_meta(ir.gen.py or "");
         js_code = ir.gen.js or "";
 
         if js_code.strip() {
@@ -447,6 +447,91 @@ def _js_exports_app(js_code: str) -> bool {
 }
 
 
+def _dec_name(dec: any) -> str {
+    inner = dec;
+    if isinstance(dec, ast.Call) {
+        inner = dec.func;
+    }
+    if isinstance(inner, ast.Name) {
+        return str(inner.id);
+    }
+    if isinstance(inner, ast.Attribute) {
+        return str(inner.attr);
+    }
+    return "";
+}
+
+
+def _filtered_body(body: list) -> list {
+    kept: list = [];
+    for node in body {
+        if isinstance(node, ast.ImportFrom) {
+            mod = str(node?.module or "");
+            if not mod.startswith("jaclang") {
+                kept.append(node);
+                continue;
+            }
+            aliases = getattr(node, "names", []);
+            new_names: list = [];
+            for alias in aliases {
+                aname = getattr(alias, "name", "");
+                if (aname != "jac_test") and (aname != "impl_patch_filename") {
+                    new_names.append(alias);
+                }
+            }
+            if not new_names {
+                continue;
+            }
+            setattr(node, "names", new_names);
+            kept.append(node);
+            continue;
+        }
+        decs = getattr(node, "decorator_list", []);
+        drop = False;
+        keep_decs: list = [];
+        for dec in decs {
+            dname = _dec_name(dec);
+            if dname == "jac_test" {
+                drop = True;
+            }
+            if dname != "impl_patch_filename" {
+                keep_decs.append(dec);
+            }
+        }
+        if drop {
+            continue;
+        }
+        if decs {
+            setattr(node, "decorator_list", keep_decs);
+        }
+        inner_body = node?.body;
+        if isinstance(node, ast.ClassDef) and isinstance(inner_body, list) {
+            setattr(node, "body", _filtered_body(inner_body));
+        }
+        kept.append(node);
+    }
+    return kept;
+}
+
+
+def _strip_test_and_impl_meta(py_code: str) -> str {
+    if ("jac_test" not in py_code) and ("impl_patch_filename" not in py_code) {
+        return py_code;
+    }
+    try {
+        tree = ast.parse(py_code);
+    } except Exception {
+        return py_code;
+    }
+    tree.body = _filtered_body(tree.body);
+    try {
+        return ast.unparse(tree);
+    } except Exception {
+        return py_code;
+    }
+}
+
+
 def _is_meaningful_python(py_code: str) -> bool {
     if not py_code.strip() {
         return False;
@@ -491,7 +576,7 @@ def _emit_frontend_package_json(src: Path, frontend_dir: Path, project_name: str
 
 
 def _emit_vite_config(frontend_dir: Path, runtime_copied: bool, toml_data: dict) {
-    vite_cfg = dict(toml_data.get("plugins", {}).get("client", {}).get("vite", {}));
+    vite_cfg = dict(toml_data.get("client", {}).get("vite", {}));
     lib_imports = [str(i) for i in vite_cfg.get("lib_imports", [])];
     plugins = [str(p) for p in vite_cfg.get("plugins", [])];
 
@@ -898,7 +983,7 @@ def _resolve_project_python_deps(src: Path, project_name: str) -> list[str] {
 
 
 def _emit_backend_jac_toml(backend_dir: Path, project_name: str, toml_data: dict) {
-    byllm_cfg = toml_data.get("plugins", {}).get("byllm", {});
+    byllm_cfg = toml_data.get("byllm", {});
     if (not isinstance(byllm_cfg, dict)) or (not byllm_cfg) {
         return;
     }
@@ -906,7 +991,7 @@ def _emit_backend_jac_toml(backend_dir: Path, project_name: str, toml_data: dict
     version = str(project_cfg.get("version", "0.1.0"));
     lines: list[str] = [];
     _emit_toml_table(lines, "project", {"name": project_name, "version": version});
-    _emit_toml_table(lines, "plugins.byllm", dict(byllm_cfg));
+    _emit_toml_table(lines, "byllm", dict(byllm_cfg));
     (backend_dir / "jac.toml").write_text("\n".join(lines), encoding="utf-8");
     console.print("  ✔ byLLM config (jac.toml)", style="success");
 }

@@ -35,7 +35,7 @@ AI, deployment, and the full-stack frameworks. byLLM and Scale are **built into 
 - **Scale** -- production serving, storage, and Kubernetes (built into `jaclang` core):
   - [Overview](plugins/jac-scale.md) · [HTTP API & Walkers](plugins/jac-scale-http.md) · [Data & Storage](plugins/jac-scale-persistence.md) · [Kubernetes & Operations](plugins/jac-scale-kubernetes.md)
 - **[jac-client](plugins/jac-client.md)** -- codespaces, components, state, routing, auth, npm packages, web/PWA/mobile targets
-- **[jac-desktop](plugins/jac-desktop.md)** -- native desktop window, sidecar bundling, `[plugins.desktop]` config
+- **[jac-desktop](plugins/jac-desktop.md)** -- native desktop window, sidecar bundling, `[desktop]` config
 
 ## Python Integration
 
