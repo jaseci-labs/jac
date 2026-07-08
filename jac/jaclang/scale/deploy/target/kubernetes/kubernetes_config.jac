@@ -172,8 +172,15 @@ obj KubernetesConfig(BaseConfig) {
         default_app_name = 'jaseci';
         default_namespace = 'default';
         if project_name {
-            default_app_name = k8s_safe_slug(project_name);
-            default_namespace = default_app_name;
+            # A project name that's non-empty but slugifies to nothing (e.g.
+            # '---') must not silently collapse namespace into k8s_safe_slug's
+            # own 'jaseci' fallback; fall through to the same legacy defaults
+            # as the no-project_name case instead.
+            derived_identity = k8s_safe_slug(project_name, fallback='');
+            if derived_identity {
+                default_app_name = derived_identity;
+                default_namespace = derived_identity;
+            }
         }
         return cls(
             app_name=config.get('app_name', default_app_name),

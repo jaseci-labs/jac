@@ -939,6 +939,16 @@ test "from_dict falls back safely with no config and no project_name" {
     assert k8s_config.namespace == "default" , "with zero context, namespace must fall back to the legacy default, not crash";
 }
 
+test "from_dict falls back to legacy defaults when project_name slugifies to nothing" {
+    for degenerate_name in ["---", "!!!", "   "] {
+        k8s_config = KubernetesConfig.from_dict(
+            KubernetesConfig, {}, project_name=degenerate_name
+        );
+        assert k8s_config.app_name == "jaseci" , f"project_name={degenerate_name!r} has no usable slug; app_name must fall back to 'jaseci' like the no-project_name case, got {k8s_config.app_name!r}";
+        assert k8s_config.namespace == "default" , f"project_name={degenerate_name!r} has no usable slug; namespace must fall back to 'default' like the no-project_name case, not silently become 'jaseci', got {k8s_config.namespace!r}";
+    }
+}
+
 test "get_kubernetes_config resolves app_name and namespace from project name with zero scale config" {
     tmp_dir = Path(mkdtemp());
     toml_path = tmp_dir / "jac.toml";
