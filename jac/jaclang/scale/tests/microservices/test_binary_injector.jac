@@ -3,8 +3,16 @@ import io;
 import tarfile;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.config.dev_config { resolve_dev_channel, Channel }
-import from jaclang.scale.injector.binary { pack_binary_bytes, node_arch }
+import from jaclang.scale.config.dev_config {
+    resolve_dev_channel,
+    Channel,
+    BINARY_PATH_ENV
+}
+import from jaclang.scale.injector.binary {
+    pack_binary_bytes,
+    node_arch,
+    download_release_binary
+}
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
@@ -43,6 +51,56 @@ test "bare [dev] is the dev channel, shipped bare (it IS main HEAD)" {
 test "whitespace [ dev ] table still resolves to the dev channel" {
     d = _write_toml("[ dev ]\ntest_jobs = \"auto\"\n");
     assert resolve_dev_channel(d) == Channel.DEV;
+}
+
+
+test "JAC_SCALE_BINARY_PATH forces the LOCAL channel over any [dev] stanza" {
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = os.environ.get(BINARY_PATH_ENV);
+    try {
+        os.environ[BINARY_PATH_ENV] = "/some/jac";
+        assert resolve_dev_channel(d) == Channel.LOCAL;
+    } finally {
+        os.environ.pop(BINARY_PATH_ENV, None);
+        if saved is not None {
+            os.environ[BINARY_PATH_ENV] = saved;
+        }
+    }
+}
+
+
+test "LOCAL channel ships the binary at JAC_SCALE_BINARY_PATH, no download" {
+    with tempfile.NamedTemporaryFile(suffix="-jac", delete=False) as tmp {
+        tmp.write(b"ELF-local-binary");
+        tmp_path = tmp.name;
+    }
+    saved = os.environ.get(BINARY_PATH_ENV);
+    try {
+        os.environ[BINARY_PATH_ENV] = tmp_path;
+        assert download_release_binary("local", node_arch()) == b"ELF-local-binary";
+    } finally {
+        os.environ.pop(BINARY_PATH_ENV, None);
+        if saved is not None {
+            os.environ[BINARY_PATH_ENV] = saved;
+        }
+        os.unlink(tmp_path);
+    }
+}
+
+
+test "LOCAL channel without JAC_SCALE_BINARY_PATH is a loud error" {
+    saved = os.environ.pop(BINARY_PATH_ENV, None);
+    caught = False;
+    try {
+        download_release_binary("local", node_arch());
+    } except RuntimeError {
+        caught = True;
+    } finally {
+        if saved is not None {
+            os.environ[BINARY_PATH_ENV] = saved;
+        }
+    }
+    assert caught;
 }
 
 

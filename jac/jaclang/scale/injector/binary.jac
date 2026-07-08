@@ -43,6 +43,26 @@ def download_release_binary(channel: str, arch: str) -> bytes {
     binary_url = "";
     checksum_url = "";
 
+    if channel == "local" {
+        import from jaclang.scale.config.dev_config { BINARY_PATH_ENV }
+        local = os.environ.get(BINARY_PATH_ENV, "");
+        if not local {
+            raise RuntimeError(
+                f"channel 'local' requires {BINARY_PATH_ENV} to point at a jac "
+                "binary; it is unset or empty."
+            );
+        }
+        path = Path(local);
+        if not path.is_file() {
+            raise RuntimeError(
+                f"{BINARY_PATH_ENV}={local!r} is not a file; cannot ship a local "
+                "jac binary that does not exist."
+            );
+        }
+        logger.info(f"Shipping the local jac binary at {local} ({BINARY_PATH_ENV}).");
+        return path.read_bytes();
+    }
+
     if channel == "dev" {
         # The rolling `dev` prerelease has fixed asset names, so build the URL directly and skip the API (anonymous, 60 req/hr, exhausted on CI).
         base = f"https://github.com/{repo}/releases/download/dev";
