@@ -87,6 +87,30 @@ pub fn main(init: std.process.Init) !void {
     if (isNvimArgv0(init)) runNinja(init, exe_path, exe_z, .verbatim);
     if (isNinjaInvocation(init)) runNinja(init, exe_path, exe_z, .ninja);
 
+    // `jac __appjab <app.jab> <out>` and `jac __graftrt <host>` are build-time
+    // INTERNAL verbs, dispatched HERE before any CPython bring-up: pure-Zig
+    // trailer surgery (append a `.jab` overlay / fuse the runtime suffix) that
+    // `jac build --as binary` and the desktop builder shell out to. Keeping them
+    // in Zig is what lets runtime.zig own the trailer format outright -- Python
+    // never parses or writes a trailer. The jac CLI never sees these (same
+    // pre-Python contract as `ninja`).
+    if (isInternalVerb(init, "__appjab")) runAppjab(init, exe_path);
+    if (isInternalVerb(init, "__graftrt")) runGraftRt(init, exe_path);
+
+    // An app binary (`--as binary`) carries its `.jab` appended after the
+    // payload trailer. Export its [offset,len] so the CPython boot (cli_boot's
+    // _run_bundled_app) can slice the image out of this binary and mount it --
+    // JAC_-namespaced, so it never leaks into the interpreter's own config.
+    if (runtime.overlayForPath(io, exe_path)) |ovl| {
+        var b_off: [24]u8 = undefined;
+        var b_len: [24]u8 = undefined;
+        const off_z = std.fmt.bufPrintZ(&b_off, "{d}", .{ovl.off}) catch die("overlay offset too long");
+        const len_z = std.fmt.bufPrintZ(&b_len, "{d}", .{ovl.len}) catch die("overlay len too long");
+        if (setenv("JAC_APP_OVERLAY_OFF", off_z.ptr, 1) != 0 or
+            setenv("JAC_APP_OVERLAY_LEN", len_z.ptr, 1) != 0)
+            die("app-overlay environment setup failed (setenv)");
+    }
+
     // 2. Shared bring-up: materialize the runtime and dlopen the bundled
     //    libpython. Identical to what the desktop host does.
     //    `rt_buf` backs `emb.rt`, so it must outlive the boot below.
@@ -151,6 +175,50 @@ fn isNinjaInvocation(init: std.process.Init) bool {
     _ = it.next(); // skip argv[0]
     if (it.next()) |a| return std.mem.eql(u8, a, "ninja");
     return false;
+}
+
+/// True when argv[1] is exactly `verb` (an internal `__`-prefixed build verb).
+fn isInternalVerb(init: std.process.Init, verb: []const u8) bool {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // skip argv[0]
+    if (it.next()) |a| return std.mem.eql(u8, a, verb);
+    return false;
+}
+
+fn diePackVerb(comptime verb: []const u8, e: anyerror) noreturn {
+    std.debug.print("jac ({s}): {s}\n", .{ verb, @errorName(e) });
+    std.process.exit(70); // EX_SOFTWARE
+}
+
+/// `jac __appjab <app.jab> <out>`: copy this binary verbatim and append the
+/// `.jab` as an overlay, producing a self-contained app binary. Pure Zig, no
+/// interpreter. The base is THIS running binary (guaranteed a bundled jac);
+/// runtime.appendOverlay rejects a base that is not (a source/pip jac).
+fn runAppjab(init: std.process.Init, exe_path: []const u8) noreturn {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // argv[0]
+    _ = it.next(); // "__appjab"
+    const jab = it.next() orelse die("__appjab: missing <app.jab>");
+    const out = it.next() orelse die("__appjab: missing <out>");
+    runtime.appendOverlay(init.io, init.gpa, exe_path, jab, out) catch |e| diePackVerb("__appjab", e);
+
+    // Mark the produced binary executable (createFile made it 0644).
+    var b_out: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const out_z = std.fmt.bufPrintZ(&b_out, "{s}", .{out}) catch die("__appjab: path too long");
+    _ = std.c.chmod(out_z.ptr, 0o755);
+    std.process.exit(0);
+}
+
+/// `jac __graftrt <host>`: append this binary's `[ payload ][ trailer ]` runtime
+/// suffix onto `host` in place, fusing the bundled runtime into the desktop host
+/// binary. Pure Zig, no interpreter.
+fn runGraftRt(init: std.process.Init, exe_path: []const u8) noreturn {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // argv[0]
+    _ = it.next(); // "__graftrt"
+    const host = it.next() orelse die("__graftrt: missing <host>");
+    runtime.graftRuntime(init.io, init.gpa, exe_path, host) catch |e| diePackVerb("__graftrt", e);
+    std.process.exit(0);
 }
 
 /// True when we were invoked AS nvim (argv[0] basename == "nvim"): the TUI
