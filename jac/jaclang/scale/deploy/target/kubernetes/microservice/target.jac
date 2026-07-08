@@ -41,9 +41,6 @@ glob logger = logging.getLogger(__name__);
 
 
 def deployment_rolled_out(dep: any) -> bool {
-    # Judge readiness for THIS generation: during a rolling update the old
-    # ReplicaSet's pods keep ready_replicas > 0, which made a redeploy report
-    # "Fleet ready" while every new pod was still crash-looping.
     if (dep.status.observed_generation or 0) < (dep.metadata.generation or 0) {
         return False;
     }
@@ -58,8 +55,6 @@ def deployment_rolled_out(dep: any) -> bool {
 
 
 def crashloop_reason(pod: any) -> str {
-    # Init containers crash-loop too (e.g. a bootstrap that cannot exec the
-    # shipped binary) and never appear in container_statuses.
     statuses = (
         list(pod.status.container_statuses or []) + list(
             pod.status.init_container_statuses or []

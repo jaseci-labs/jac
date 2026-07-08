@@ -1,3 +1,4 @@
+import contextlib;
 import unittest.mock;
 import from types { SimpleNamespace }
 import from jaclang.scale.deploy.target.kubernetes.microservice.target {
@@ -52,8 +53,6 @@ test "a fully available current generation is rolled out" {
 
 
 test "old-ReplicaSet ready pods do not count for the new generation" {
-    # Redeploy: pods of the previous ReplicaSet are still Ready while the new
-    # generation's pods crash-loop; ready_replicas alone looks healthy.
     stale_status = _deployment(2, 1, 1, 0, 1, 1, ready=1);
     assert not deployment_rolled_out(stale_status);
     observed_but_not_updated = _deployment(2, 2, 1, 0, 1, 1, ready=1);
@@ -111,6 +110,26 @@ glob _BUNDLE: dict[str, any] = {
      };
 
 
+def _mocked_cluster(
+    apps_v1: unittest.mock.MagicMock, core_v1: unittest.mock.MagicMock
+) -> contextlib.ExitStack {
+    stack = contextlib.ExitStack();
+    stack.enter_context(
+        unittest.mock.patch.object(
+            KubernetesMicroserviceTarget, "_load_kube_config", unittest.mock.MagicMock()
+        )
+    );
+    stack.enter_context(
+        unittest.mock.patch("kubernetes.client.AppsV1Api", return_value=apps_v1)
+    );
+    stack.enter_context(
+        unittest.mock.patch("kubernetes.client.CoreV1Api", return_value=core_v1)
+    );
+    stack.enter_context(unittest.mock.patch("time.sleep"));
+    return stack;
+}
+
+
 test "fleet wait returns once the new generation serves" {
     apps_v1 = unittest.mock.MagicMock();
     apps_v1.read_namespaced_deployment.side_effect = [
@@ -119,18 +138,8 @@ test "fleet wait returns once the new generation serves" {
     ];
     core_v1 = unittest.mock.MagicMock();
     core_v1.list_namespaced_pod.return_value = SimpleNamespace(items=[_pod("svc-abc")]);
-    with unittest.mock.patch.object(
-        KubernetesMicroserviceTarget, "_load_kube_config", unittest.mock.MagicMock()
-    ) {
-        with unittest.mock.patch("kubernetes.client.AppsV1Api", return_value=apps_v1) {
-            with unittest.mock.patch(
-                "kubernetes.client.CoreV1Api", return_value=core_v1
-            ) {
-                with unittest.mock.patch("time.sleep") {
-                    _target()._wait_for_fleet_rollout(_BUNDLE, timeout=60);
-                }
-            }
-        }
+    with _mocked_cluster(apps_v1, core_v1) {
+        _target()._wait_for_fleet_rollout(_BUNDLE, timeout=60);
     }
     assert apps_v1.read_namespaced_deployment.call_count == 2;
 }
@@ -144,21 +153,11 @@ test "fleet wait fails fast on an init-container crash loop" {
         items=[_pod("svc-abc", init_restarts=6)]
     );
     caught = "";
-    with unittest.mock.patch.object(
-        KubernetesMicroserviceTarget, "_load_kube_config", unittest.mock.MagicMock()
-    ) {
-        with unittest.mock.patch("kubernetes.client.AppsV1Api", return_value=apps_v1) {
-            with unittest.mock.patch(
-                "kubernetes.client.CoreV1Api", return_value=core_v1
-            ) {
-                with unittest.mock.patch("time.sleep") {
-                    try {
-                        _target()._wait_for_fleet_rollout(_BUNDLE, timeout=60);
-                    } except Exception as e {
-                        caught = str(e);
-                    }
-                }
-            }
+    with _mocked_cluster(apps_v1, core_v1) {
+        try {
+            _target()._wait_for_fleet_rollout(_BUNDLE, timeout=60);
+        } except Exception as e {
+            caught = str(e);
         }
     }
     assert "crash-looping" in caught;
