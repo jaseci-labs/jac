@@ -93,45 +93,6 @@ obj WebSocketConnectionManager {
         }
     }
 
-    """Legacy in-process connect used by simple handlers; registers a context."""
-    async def connect(websocket: WebSocket, walker_name: str) {
-        await websocket.accept();
-        ctx = ConnectionContext(
-            websocket=websocket, target_kind='walker', target_name=walker_name
-        );
-        await self.register(ctx);
-    }
-
-    """Legacy disconnect: remove any contexts holding this socket for a name."""
-    def disconnect(websocket: WebSocket, walker_name: str) {
-        for kind in ['walker', 'function'] {
-            target_key = f"{kind}:{walker_name}";
-            per_target = self._by_target.get(target_key);
-            if per_target is None {
-                continue;
-            }
-            for (conn_id, ctx) in list(per_target.items()) {
-                if ctx.websocket == websocket {
-                    del per_target[conn_id];
-                }
-            }
-            if not per_target {
-                del self._by_target[target_key];
-            }
-        }
-    }
-
-    def get_connections(walker_name: str) -> list[WebSocket] {
-        result = [];
-        for kind in ['walker', 'function'] {
-            per_target = self._by_target.get(f"{kind}:{walker_name}", {});
-            for ctx in per_target.values() {
-                result.append(ctx.websocket);
-            }
-        }
-        return result;
-    }
-
     async def ensure_backplane_started -> None;
     async def shutdown -> None;
     async def ensure_subscribed(target_key: str) -> None;
@@ -140,7 +101,6 @@ obj WebSocketConnectionManager {
     async def _local_fanout(target_key: str, message: dict) -> None;
     async def register(ctx: ConnectionContext) -> (str | None);
     async def unregister(ctx: ConnectionContext) -> None;
-    async def broadcast(target_name: str, message: dict) -> None;
     async def broadcast_target(
         target_kind: str, target_name: str, message: dict
     ) -> None;
@@ -317,10 +277,6 @@ impl WebSocketConnectionManager._local_fanout(target_key: str, message: dict) ->
     }
     tasks = [self.send_to(ctx, message) for ctx in conns];
     await asyncio.gather(*tasks, return_exceptions=True);
-}
-
-impl WebSocketConnectionManager.broadcast(target_name: str, message: dict) -> None {
-    await self.broadcast_target('walker', target_name, message);
 }
 
 impl WebSocketConnectionManager.broadcast_target(

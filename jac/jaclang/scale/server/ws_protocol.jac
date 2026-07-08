@@ -184,7 +184,7 @@ async def ws_reject_capacity(websocket: WebSocket, rejection: str) {
 """Receive one JSON frame from the socket, enforcing the message-size limit."""
 async def ws_receive_frame(websocket: WebSocket, max_bytes: int) -> (str, dict | None) {
     raw = await websocket.receive_text();
-    if len(raw) > max_bytes {
+    if len(raw.encode()) > max_bytes {
         await websocket.send_json(
             ws_error_frame('MESSAGE_TOO_LARGE', f'Message exceeds {max_bytes} bytes')
         );
@@ -233,6 +233,9 @@ async def ws_handle_control(
         return 'continue';
     }
     if ctrl_type == 'refresh' {
+        if not requires_auth {
+            return 'continue';
+        }
         detail = user_manager.validate_jwt_token_detail(data.get('token'));
         if detail['status'] != 'ok' {
             await websocket.send_json(
