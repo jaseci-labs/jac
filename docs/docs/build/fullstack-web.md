@@ -37,7 +37,7 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-With a `jac.toml` declaring your npm deps and `[plugins.client]`:
+With a `jac.toml` declaring your npm deps and `[client]`:
 
 ```bash
 jac start          # production server

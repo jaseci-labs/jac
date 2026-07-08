@@ -2121,7 +2121,7 @@ test "pwa target uses jac-scale server" {
 name = "test-pwa"
 version = "1.0.0"
 
-[plugins.client.pwa]
+[client.pwa]
 theme_color = "#000000"
 '''
         );

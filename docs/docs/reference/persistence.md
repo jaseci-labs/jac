@@ -417,7 +417,7 @@ That means the same set of guarantees holds regardless of where your data lives:
 
 (Backend-specific extras layer on top: the Mongo backend adds read-repair write-back, quarantine reason codes, and startup auto-retry.)
 
-For plugin authors implementing a custom backend, see [Plugin Authoring → Recipe 7: Custom persistence backends](plugin-authoring.md#recipe-7-custom-persistence-backends) for the eight methods you need to implement.
+To supply a custom backend, see [Plugins → Custom persistence backends](plugin-authoring.md#custom-persistence-backends), which uses `JacRuntime.set_persistent_memory_provider`.
 
 ---
 

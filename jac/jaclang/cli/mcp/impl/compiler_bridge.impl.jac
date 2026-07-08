@@ -462,7 +462,7 @@ impl CompilerBridge.run_snippet(
     }
 
     if entrypoint {
-        cmd = ["jac", "enter", jac_path, entrypoint];
+        cmd = ["jac", "run", "--entry", entrypoint, jac_path];
     } else {
         cmd = ["jac", "run", jac_path];
     }

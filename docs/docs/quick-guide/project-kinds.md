@@ -377,7 +377,7 @@ typescript = "^5.3.3"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 ```
 
 ```bash
@@ -436,7 +436,7 @@ cl {
 }
 ```
 
-It uses the same `jac.toml` as the [full-stack app](#full-stack-app) (React deps + `[plugins.client]`).
+It uses the same `jac.toml` as the [full-stack app](#full-stack-app) (React deps + `[client]`).
 
 Set `kind = "web-static"` in `jac.toml` so the toolchain treats it as a client-only app (no backend):
 
@@ -472,7 +472,7 @@ jac build --client desktop            # -> .jac/client/desktop/<app>  (single bi
 jac start --client desktop            # build + launch the native window
 ```
 
-Window title and size are configured under `[plugins.desktop]` in `jac.toml`.
+Window title and size are configured under `[desktop]` in `jac.toml`.
 
 :octicons-arrow-right-24: Full tutorial: [Desktop App](../tutorials/fullstack/desktop.md)
 
@@ -488,7 +488,7 @@ jac start main.jac --client mobile --dev          # live reload on device/emulat
 jac build --client mobile --platform android      # → android/.../app-debug.apk
 ```
 
-Use `--platform ios` on macOS to produce an Xcode project. App name and id are set under `[plugins.client.mobile]`.
+Use `--platform ios` on macOS to produce an Xcode project. App name and id are set under `[client.mobile]`.
 
 :octicons-arrow-right-24: Full tutorial: [Mobile App](../tutorials/fullstack/mobile.md)
 
@@ -507,7 +507,7 @@ jac build --client react-native --platform android
 jac build --client react-native --platform ios    # macOS only
 ```
 
-Set `client_kind = "mobui"` under `[project]` in `jac.toml` to opt in. The scaffold and build options live under `[plugins.client.react_native]`.
+Set `client_kind = "mobui"` under `[project]` in `jac.toml` to opt in. The scaffold and build options live under `[client.react_native]`.
 
 :octicons-arrow-right-24: Full reference: [React Native target](../reference/plugins/jac-client.md#react-native-target-beta) · Tutorial: [Mobile App](../tutorials/fullstack/mobile.md#react-native-target)
 

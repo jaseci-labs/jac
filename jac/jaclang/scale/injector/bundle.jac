@@ -218,15 +218,33 @@ def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
         jac_path.write_bytes(pod_binary);
         jac_path.chmod(0o755);
         script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
+        # Converge on the sealed-image format (#7255): --seal emits the
+        # MANIFEST.json that jabs and sealed bundles carry, so pods get a
+        # manifest-verified image. Falls back to the unsealed best-effort
+        # tree when sealing cannot complete (a module that fails to compile
+        # fails the seal's completeness check but not the deploy).
         result = subprocess.run(
-            [str(jac_path), "run", str(script), str(stage_root)],
+            [str(jac_path), "run", str(script), str(stage_root), "--seal"],
             capture_output=True,
             text=True,
             timeout=600
         );
+        sealed_ok = (
+            result.returncode == 0
+            and (stage / "_precompiled" / "MANIFEST.json").is_file()
+        );
+        if not sealed_ok {
+            result = subprocess.run(
+                [str(jac_path), "run", str(script), str(stage_root)],
+                capture_output=True,
+                text=True,
+                timeout=600
+            );
+        }
         jac_path.unlink();
         # Guarded: py3.11's rglob raises on a missing dir, which would mask the returncode diagnostics below.
-        if added_marker and (stage / "_precompiled").is_dir() {
+        # A sealed image keeps the marker's .jir -- the manifest records it.
+        if added_marker and not sealed_ok and (stage / "_precompiled").is_dir() {
             for junk in (stage / "_precompiled").rglob("__init__.jir") {
                 junk.unlink();
             }

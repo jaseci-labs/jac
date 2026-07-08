@@ -14,7 +14,6 @@ import sys;
 import from jaclang.cli.registry { get_registry, CommandRegistry }
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.console { console }
-import from jaclang.jac0core.runtime { hookimpl }
 
 glob registry: CommandRegistry = get_registry();
 
@@ -148,7 +147,6 @@ def model(action: str = "list", alias: str = "") -> int {
 }
 
 class JacCmd {
-    @hookimpl
     static def create_cmd {
         return;
     }

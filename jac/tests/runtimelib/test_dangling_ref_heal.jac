@@ -64,7 +64,7 @@ test "traversal heals a dangling edge citation instead of raising" {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
         app.write_text(APP);
-        (rc, _, err) = _jac(tmpdir, ["enter", str(app), "create"]);
+        (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         assert rc == 0 , f"create failed: {err}";
         db = _db_path(tmpdir);
         # Corrupt out of band: delete ONE edge row while both its endpoints
@@ -78,7 +78,7 @@ test "traversal heals a dangling edge citation instead of raising" {
         conn.close();
         # The dump walker visits [-->] from root: it MUST NOT 500 on the
         # dangler; the surviving edge resolves and its Thing is visited.
-        (rc, out, err) = _jac(tmpdir, ["enter", str(app), "dump"]);
+        (rc, out, err) = _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
         assert rc == 0 , f"dump must not crash on a dangling ref (got rc={rc}): {err}";
         conn = sqlite3.connect(db);
         # The stale citation is pruned from root (2 edges -> 1) and persisted.
@@ -126,7 +126,7 @@ test "traversal heals an edge whose target node was deleted (ghost endpoint)" {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
         app.write_text(APP);
-        (rc, _, err) = _jac(tmpdir, ["enter", str(app), "create"]);
+        (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         assert rc == 0 , f"create failed: {err}";
         db = _db_path(tmpdir);
         # Delete one leaf Thing node, leaving the edge that targets it intact:
@@ -141,7 +141,7 @@ test "traversal heals an edge whose target node was deleted (ghost endpoint)" {
         conn.execute("DELETE FROM anchors WHERE id=?", (ghost, ));
         conn.commit();
         conn.close();
-        (rc, out, err) = _jac(tmpdir, ["enter", str(app), "dump"]);
+        (rc, out, err) = _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
         assert rc == 0 , f"dump must not crash on a ghost-endpoint edge: {err}";
         conn = sqlite3.connect(db);
         # root drops the broken edge (2 -> 1, the surviving Thing remains).

@@ -972,7 +972,7 @@ Local model cache: /home/you/.cache/jac/models
   qwen3.5-4b              ~2800 MB not cached   Alibaba Qwen 3.5 4B (instruction-tuned, Q4_K_M)
 ```
 
-> **Note:** In CI and other non-TTY contexts, the runtime will not prompt to download. Either `jac model pull <alias>` ahead of time, or set `BYLLM_AUTO_DOWNLOAD=1` (or `[plugins.byllm.local].auto_download = true` in `jac.toml`) to allow silent first-run downloads.
+> **Note:** In CI and other non-TTY contexts, the runtime will not prompt to download. Either `jac model pull <alias>` ahead of time, or set `BYLLM_AUTO_DOWNLOAD=1` (or `[byllm.local].auto_download = true` in `jac.toml`) to allow silent first-run downloads.
 
 ---
 
@@ -1404,7 +1404,7 @@ jac add --git https://github.com/user/package.git
 jac add react --npm
 ```
 
-For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[plugins.client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
+For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
 
 ---
 
@@ -1908,7 +1908,7 @@ The backend listens on `PORT` (default 8000). For frontend dev with hot reload, 
 
 **Extending eject from a plugin**
 
-Like every other command, `jac eject` is extensible through the standard plugin hook mechanism -- a plugin can add flags via `registry.extend_command("eject", ...)` and either replace the default behavior in a pre-hook or augment the output in a post-hook. See the [Plugin Authoring Guide](../plugin-authoring.md) for the full extension model. `jaclang.cli.commands.impl.eject` exports `load_eject_project_metadata(src: Path) -> dict`, which parses `jac.toml` and returns `project_name`, `entry_point`, `entry_module`, and the raw `toml_data`, so plugin hooks can read sections like `[plugins.scale]` or `[dependencies.npm]` without re-parsing.
+`jaclang.cli.commands.impl.eject` exports `load_eject_project_metadata(src: Path) -> dict`, which parses `jac.toml` and returns `project_name`, `entry_point`, `entry_module`, and the raw `toml_data`, so callers can read sections like `[scale]` or `[dependencies.npm]` without re-parsing.
 
 ---
 
@@ -2294,7 +2294,7 @@ separate install. There is no separate `jac desktop` command and no setup step.
 Build and run the OS-native webview target with `jac build --client desktop` /
 `jac start --client desktop`, or the Chromium Embedded Framework target with
 `jac build --client cef` / `jac start --client cef`. Set
-`engine = "cef"` under `[plugins.desktop]` for CEF projects. See the
+`engine = "cef"` under `[desktop]` for CEF projects. See the
 [jac-desktop Reference](../plugins/jac-desktop.md) for configuration and CEF
 runtime flags.
 

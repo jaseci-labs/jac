@@ -47,7 +47,7 @@ jac-client-node = "1.0.7"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 ```
 
 You typically don't need to modify this file until you add dependencies or customize settings.
@@ -438,21 +438,21 @@ enabled = ["byllm"] # Explicitly enabled
 disabled = []           # Explicitly disabled
 
 # Plugin-specific settings (byllm splits model identity from call params)
-[plugins.byllm.model]
+[byllm.model]
 default_model = "gpt-4o"
 api_key = "${OPENAI_API_KEY}"
 
-[plugins.byllm.call_params]
+[byllm.call_params]
 temperature = 0.7
 
 # Server settings (scale)
-[plugins.scale.server]
+[scale.server]
 port = 8000
 host = "0.0.0.0"
 docs_enabled = true              # Set to false to disable /docs, /redoc, /openapi.json
 
 # Webhook settings (scale)
-[plugins.scale.webhook]
+[scale.webhook]
 secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
@@ -461,14 +461,14 @@ api_key_expiry_days = 365
 # Kubernetes version pinning (scale) -- scale, byLLM, the MCP server, and the
 # client/desktop framework all ship inside the `jac` binary, so they need no
 # pinning. Use this only to pin a genuine third-party PyPI plugin for the pod image.
-[plugins.scale.kubernetes.plugin_versions]
+[scale.kubernetes.plugin_versions]
 my_plugin = "1.2.3"          # pin a version, or "none" to skip, "latest" to track
 ```
 
 **Prometheus Metrics (scale):**
 
 ```toml
-[plugins.scale.monitoring]
+[scale.monitoring]
 enabled = true
 endpoint = "/metrics"
 namespace = "myapp"
@@ -480,7 +480,7 @@ See [Prometheus Metrics](../plugins/jac-scale-kubernetes.md#prometheus-metrics) 
 **Kubernetes Secrets (scale):**
 
 ```toml
-[plugins.scale.secrets]
+[scale.secrets]
 OPENAI_API_KEY = "${OPENAI_API_KEY}"
 DATABASE_PASSWORD = "${DB_PASS}"
 ```
@@ -492,10 +492,10 @@ See also [Scale Webhooks](../plugins/jac-scale-http.md#webhooks) and [Kubernetes
 **Built-in Local Models (byllm):**
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 default_model = "local:gemma-4-e4b"   # in-process llama.cpp; no API key, no daemon
 
-[plugins.byllm.local]
+[byllm.local]
 default_alias  = "gemma-4-e4b"        # used when default_model is unset
 n_gpu_layers   = -1                   # -1 = offload all layers to GPU; 0 = CPU only
 n_ctx          = 0                    # 0 = use the alias's bundled default
@@ -507,7 +507,7 @@ Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>
 **Frontend Framework (jac-client):**
 
 ```toml
-[plugins.client]
+[client]
 framework = "react"   # "react" (default), "solid" (experimental), or "preact"
 ```
 
@@ -527,7 +527,7 @@ Switching frameworks automatically adjusts the installed npm packages and the ge
 **Import Path Aliases (jac-client):**
 
 ```toml
-[plugins.client.paths]
+[client.paths]
 "@components/*" = "./components/*"
 "@utils/*" = "./utils/*"
 "@shared" = "./shared/index"
@@ -538,10 +538,10 @@ Defines custom import aliases applied to Vite `resolve.alias`, TypeScript `compi
 **NPM Registry Configuration (jac-client):**
 
 ```toml
-[plugins.client.npm.scoped_registries]
+[client.npm.scoped_registries]
 "@mycompany" = "https://npm.pkg.github.com"
 
-[plugins.client.npm.auth."//npm.pkg.github.com/"]
+[client.npm.auth."//npm.pkg.github.com/"]
 _authToken = "${NODE_AUTH_TOKEN}"
 ```
 
@@ -549,10 +549,10 @@ This generates an `.npmrc` file during dependency installation for private/scope
 
 **Build-Time Constants (jac-client):**
 
-Define global variables that are replaced at compile time in client code via the `[plugins.client.vite.define]` section:
+Define global variables that are replaced at compile time in client code via the `[client.vite.define]` section:
 
 ```toml
-[plugins.client.vite.define]
+[client.vite.define]
 "globalThis.API_URL" = "\"https://api.example.com\""
 "globalThis.FEATURE_ENABLED" = true
 "globalThis.BUILD_VERSION" = "\"1.2.3\""
@@ -603,14 +603,14 @@ default_profile = "development"
 [environments.development]
 [environments.development.run]
 cache = false
-[environments.development.plugins.byllm]
+[environments.development.byllm]
 model = "gpt-3.5-turbo"
 
 [environments.production]
 inherits = "development"
 [environments.production.run]
 cache = true
-[environments.production.plugins.byllm]
+[environments.production.byllm]
 model = "gpt-4"
 ```
 
@@ -627,7 +627,7 @@ JAC_PROFILE=production jac run main.jac
 Use environment variable interpolation inside `jac.toml` values:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 api_key = "${OPENAI_API_KEY}"                       # Required
 default_model = "${MODEL:-gpt-4o-mini}"             # With default
 base_url = "${BASE_URL:?Base URL is required}"      # Required with error
@@ -765,7 +765,7 @@ exclude = []
 [plugins]
 discovery = "auto"
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "${LLM_MODEL:-gpt-4o-mini}"
 api_key = "${OPENAI_API_KEY}"
 
@@ -868,7 +868,7 @@ Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAG
 
 ### Scale: Kubernetes
 
-Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[plugins.scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
+Deployment settings (app name, namespace, node port, CPU/memory requests and limits, registry credentials) are configured in `jac.toml` under `[scale.kubernetes]` -- see the [Kubernetes reference](../plugins/jac-scale-kubernetes.md). At deploy time, jac-scale injects these variables into every pod:
 
 | Variable | Description |
 |----------|-------------|

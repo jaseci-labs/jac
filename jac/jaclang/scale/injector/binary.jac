@@ -278,7 +278,7 @@ def ensure_admin_dist_built(source_root: Path) -> None {
     );
     try {
         result = subprocess.run(
-            [jac_executable(), "build", "main.jac"],
+            [jac_executable(), "build", "main.jac", "--client", "web"],
             cwd=str(ui),
             capture_output=True,
             text=True,

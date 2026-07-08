@@ -37,7 +37,7 @@ def build_bundle_pvc(
             "the cluster default StorageClass. Most cloud defaults (e.g. EKS gp3 / "
             "ebs.csi.aws.com) are ReadWriteOnce and cannot provision a "
             "ReadWriteMany volume, leaving the bundle-loader pod Pending. Set "
-            "'bundle_storage_class' under [plugins.scale.kubernetes] to a "
+            "'bundle_storage_class' under [scale.kubernetes] to a "
             "RWX-capable StorageClass (e.g. 'efs-sc')."
         );
     }

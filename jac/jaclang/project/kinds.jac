@@ -72,11 +72,6 @@ def _has_client(config: JacConfig) -> bool {
         return True;
     }
 
-    for ident in config.plugins_config.enabled {
-        if ident == "jac-client" or ident.startswith("jac-client:") {
-            return True;
-        }
-    }
     return False;
 }
 
@@ -223,9 +218,9 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
         return RunPlan(
             kind=kind,
             action="build",
-            verb="bundle",
+            verb="build",
             entry_path="",
-            flags={"target": "wheel"},
+            flags={"as": "wheel"},
             summary="Build PyPI wheel into dist/"
         );
     }
@@ -233,9 +228,9 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
         return RunPlan(
             kind=kind,
             action="build",
-            verb="bundle",
+            verb="build",
             entry_path="",
-            flags={"target": "npm"},
+            flags={"as": "npm"},
             summary="Build npm package into dist/"
         );
     }
