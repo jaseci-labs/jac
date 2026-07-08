@@ -622,7 +622,7 @@ A **Pod Logs** dashboard is automatically added to Grafana with two panels: log 
 Check the live health of all deployed components:
 
 ```bash
-jac status app.jac
+jac scale status app.jac
 ```
 
 Displays a table with:
@@ -660,7 +660,7 @@ Tagged resource types: Deployments, StatefulSets, Services, ConfigMaps, Secrets,
 ### Remove Deployment
 
 ```bash
-jac destroy app.jac
+jac scale destroy app.jac
 ```
 
 !!! warning
@@ -836,7 +836,7 @@ Values using `${ENV_VAR}` syntax are resolved from the local environment at depl
 2. A Kubernetes `Opaque` Secret named `{app_name}-secrets` is created (or updated if it already exists)
 3. The Secret is attached to the deployment pod spec via `envFrom.secretRef`
 4. All keys become environment variables inside the container
-5. On `jac destroy`, the Secret is automatically cleaned up
+5. On `jac scale destroy`, the Secret is automatically cleaned up
 
 ### Example
 

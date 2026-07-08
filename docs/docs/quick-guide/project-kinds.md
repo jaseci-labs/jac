@@ -40,7 +40,7 @@ Each recipe name links to its guided **"I like to build…" track** -- a 5-minut
 
 **Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service. **status**: ✅ shipping · 🧪 beta (works, with caveats footnoted below) · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the built-in `scale` subsystem (which ships with `jaclang` core; its optional deploy deps are pulled per-project via `[scale.*]` config + `jac install`) and the full-stack client/desktop framework (which also ships with `jaclang` core).
 
-<small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm. &nbsp; ⁴ The binary renders your `cl` UI today; wiring `sv` walkers onto the embedded interpreter, HMR dev mode, and per-OS installers are in progress ([#6436](https://github.com/jaseci-labs/jaseci/issues/6436)). &nbsp; ⁵ Frontend-only Capacitor wrapper -- the app talks to a Jac server you deploy separately. &nbsp; ⁶ Beta React Native (Expo/Metro) frontend built from a mobUI source tree (`@jac/mobui` primitives, no HTML) that also compiles for the web; it talks to a Jac server you deploy separately.</small>
+<small>¹ Only to *upload* to PyPI; `jac build --as wheel` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac build --as npm` builds the `.tgz` with no Node/npm. &nbsp; ⁴ The binary renders your `cl` UI today; wiring `sv` walkers onto the embedded interpreter, HMR dev mode, and per-OS installers are in progress ([#6436](https://github.com/jaseci-labs/jaseci/issues/6436)). &nbsp; ⁵ Frontend-only Capacitor wrapper -- the app talks to a Jac server you deploy separately. &nbsp; ⁶ Beta React Native (Expo/Metro) frontend built from a mobUI source tree (`@jac/mobui` primitives, no HTML) that also compiles for the web; it talks to a Jac server you deploy separately.</small>
 
 Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 
@@ -230,7 +230,7 @@ description = "A tiny Jac library"
 ```
 
 ```bash
-jac bundle
+jac build --as wheel
 # → dist/greetlib-0.1.0-py3-none-any.whl
 ```
 
@@ -240,7 +240,7 @@ Upload it with `twine`, then `pip install greetlib` anywhere. The wheel ships yo
 
 ### npm package
 
-The client-side counterpart to the Python package: a `cl` component (or function) library published to [npm](https://www.npmjs.com) so any JavaScript or TypeScript project can `npm install` it -- whether or not they use Jac. The same `jac.toml` drives it; `--target npm` compiles your client modules to ES-module JavaScript, generates `package.json`, and emits `.d.ts` TypeScript declarations.
+The client-side counterpart to the Python package: a `cl` component (or function) library published to [npm](https://www.npmjs.com) so any JavaScript or TypeScript project can `npm install` it -- whether or not they use Jac. The same `jac.toml` drives it; `jac build --as npm` compiles your client modules to ES-module JavaScript, generates `package.json`, and emits `.d.ts` TypeScript declarations.
 
 ```jac
 # greetui/index.cl.jac
@@ -264,14 +264,14 @@ name = "@myscope/greetui"   # optional scoped npm name
 ```
 
 ```bash
-jac bundle --target npm
-# → dist/myscope-greetui-0.1.0.tgz   (jac bundle --target all builds the wheel too)
+jac build --as npm
+# → dist/myscope-greetui-0.1.0.tgz   (run jac build --as wheel to build the wheel too)
 ```
 
 The generated `package.json` wires in `@jaseci/runtime` automatically for JSX/reactive code. Upload it with `npm publish` (Jac builds the tarball but doesn't upload, exactly like `twine` for wheels).
 
 !!! note "npm packages must be standalone client code"
-    A module that crosses a server boundary (an `sv` import or call) can't run from a plain `npm install`, so `jac bundle --target npm` rejects it with a clear error. Keep server-coupled code in your app, not in the published library.
+    A module that crosses a server boundary (an `sv` import or call) can't run from a plain `npm install`, so `jac build --as npm` rejects it with a clear error. Keep server-coupled code in your app, not in the published library.
 
 :octicons-arrow-right-24: Reference: [Publishing to npm](../reference/publishing.md#publishing-to-npm-npmjsorg)
 

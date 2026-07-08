@@ -58,7 +58,7 @@ You typically don't need to modify this file until you add dependencies or custo
 
 ### [project]
 
-Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac bundle` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
+Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac build --as wheel` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
 
 ```toml
 [project]
@@ -69,7 +69,7 @@ entry-point = "main.jac"
 kind = "service"   # drives `jac run` (omit to infer from the entry-point)
 jac-version = ">=0.15.0"
 
-# Publishing metadata -- only needed to run `jac bundle`
+# Publishing metadata -- only needed to run `jac build --as wheel`
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -260,7 +260,7 @@ whose top-level `with entry` runs on import are not pulled into test collection.
 
 ### [format]
 
-Defaults for `jac format`:
+Defaults for `jac fmt`:
 
 ```toml
 [format]
@@ -280,7 +280,7 @@ print_errs = true   # Print errors to console
 
 #### [check.lint]
 
-Configure which auto-lint rules are active during `jac lint` and `jac lint --fix`. Rules use a select/ignore model with two group keywords:
+Configure which auto-lint rules are active during `jac check --lint` and `jac check --lint --fix`. Rules use a select/ignore model with two group keywords:
 
 - `"default"` - code-transforming rules only (safe, auto-fixable)
 - `"all"` - every rule, including unfixable rules like `no-print`
@@ -343,7 +343,7 @@ Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. Se
 select = ["default", "strip-comments", "strip-docstrings"]
 ```
 
-The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac format --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
+The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac fmt --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
 
 **Excluding files from lint:**
 
@@ -579,15 +579,15 @@ Custom command shortcuts:
 dev = "jac run main.jac"
 test = "jac test -v"
 build = "jac build main.jac -t"
-lint = "jac lint . --fix"
-format = "jac format ."
+lint = "jac check . --lint --fix"
+format = "jac fmt ."
 ```
 
 Run with:
 
 ```bash
-jac script dev
-jac script test
+jac x dev
+jac x test
 ```
 
 ---
@@ -643,7 +643,7 @@ base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 
 ### [project.include]
 
-Controls which files and directories `jac bundle` collects into the wheel.
+Controls which files and directories `jac build --as wheel` collects into the wheel.
 
 > **Note:** Earlier releases used a separate `[package]` / `[package.include]` section for publishing metadata. As of jaclang 0.15, `[package]` has been merged into `[project]` -- all publishing fields now live under `[project]` (see above), and file-inclusion rules live under `[project.include]`. Plain `[package]` tables are no longer read.
 
@@ -677,7 +677,7 @@ Simple patterns without a path separator (e.g. `"*.jac"`) are matched recursivel
 | `**/*.pyi` | Type stub files |
 | `**/*.lark` | Lark grammar files |
 | `**/py.typed` | PEP 561 type marker |
-| `**/*.jir` | Pre-compiled JIR bytecode (collected if already present -- see [`jac bundle`](../cli/index.md#jac-bundle)) |
+| `**/*.jir` | Pre-compiled JIR bytecode (collected if already present -- see [`jac build`](../cli/index.md#jac-build)) |
 | `_precompiled/manifest.json` | JIR precompile manifest |
 
 **Always excluded** (regardless of patterns):
@@ -772,7 +772,7 @@ api_key = "${OPENAI_API_KEY}"
 [scripts]
 dev = "jac run main.jac"
 test = "jac test"
-lint = "jac lint . --fix"
+lint = "jac check . --lint --fix"
 ```
 
 ---

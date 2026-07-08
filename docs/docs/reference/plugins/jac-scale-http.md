@@ -1753,10 +1753,10 @@ Overrides for `sv_walker_call` must end by returning the rehydrated walker insta
 | `jac start app.jac --scale --build` | Build image and deploy |
 | `jac start app.jac --scale --target kubernetes` | Explicit deployment target (default) |
 | `jac start app.jac --scale --enable-tls` | Enable HTTPS on a live deployment (no redeploy) |
-| `jac status app.jac` | Show live deployment status |
-| `jac status app.jac --target kubernetes` | Status for a specific target |
-| `jac destroy app.jac` | Remove Kubernetes deployment (prompts for confirmation) |
-| `jac destroy app.jac --target kubernetes` | Destroy a specific target |
+| `jac scale status app.jac` | Show live deployment status |
+| `jac scale status app.jac --target kubernetes` | Status for a specific target |
+| `jac scale destroy app.jac` | Remove Kubernetes deployment (prompts for confirmation) |
+| `jac scale destroy app.jac --target kubernetes` | Destroy a specific target |
 
 ---
 

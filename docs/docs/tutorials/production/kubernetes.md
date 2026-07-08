@@ -270,10 +270,10 @@ Auto-creating the SA + RoleBindings from `jac.toml` is on the roadmap but not ye
 
 ### Check Status
 
-Use `jac status main.jac` to see the health of all deployment components at a glance:
+Use `jac scale status main.jac` to see the health of all deployment components at a glance:
 
 ```bash
-jac status main.jac
+jac scale status main.jac
 ```
 
 This displays a table showing each component's status (Running, Degraded, Pending, Restarting, or Not Deployed), pod readiness counts, and service URLs.
@@ -302,7 +302,7 @@ kubectl logs -l app=jaseci -f
 Remove all Kubernetes resources created by scale:
 
 ```bash
-jac destroy main.jac
+jac scale destroy main.jac
 ```
 
 This removes:
@@ -366,7 +366,7 @@ alias kubectl='microk8s kubectl'
 
 ```bash
 # Check all component statuses at once
-jac status main.jac
+jac scale status main.jac
 
 # Or use kubectl for more detail
 kubectl get pods
@@ -400,7 +400,7 @@ kubectl logs -l app=redis
 
 ```bash
 # Quick overview of all components
-jac status main.jac
+jac scale status main.jac
 
 # Describe a pod for events
 kubectl describe pod <pod-name>
