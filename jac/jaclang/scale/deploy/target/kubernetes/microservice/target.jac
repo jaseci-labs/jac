@@ -700,6 +700,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def destroy(app_name: str, component: str = "") {
+        if component {
+            super.destroy(app_name, component);
+            return;
+        }
         if self.logger {
             self.logger.info(
                 f"Destroying microservice topology in namespace "
@@ -794,16 +798,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        try {
-            monitoring = MonitoringDeployer(self.k8s_config, self.logger);
-            monitoring.destroy(app_name, namespace, apps_v1, core_v1);
-        } except Exception as e {
-            if self.logger {
-                self.logger.info(
-                    f"Observability stack destroy reported a non-fatal error: {e}",
-                    {"app_name": app_name}
-                );
-            }
-        }
+        # Shared teardown (monitoring, ingress controller, databases, PVCs,
+        # deletion wait, namespace): without it a direct microservice destroy
+        # leaked the bundle PVC and the namespace. The fleet is already gone,
+        # so the bundle PVC releases without waiting on pod finalizers.
+        super.destroy(app_name);
     }
 }
