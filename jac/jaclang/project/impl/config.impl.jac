@@ -212,6 +212,19 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
             }
         }
     }
+    if "plugins" in profile and isinstance(profile["plugins"], dict) {
+        for (plugin_name, plugin_config) in profile["plugins"].items() {
+            if isinstance(plugin_config, dict) {
+                if plugin_name in self.plugins {
+                    self.plugins[plugin_name] = _deep_merge(
+                        self.plugins[plugin_name], plugin_config
+                    );
+                } else {
+                    self.plugins[plugin_name] = plugin_config;
+                }
+            }
+        }
+    }
 
     if "dependencies" in profile {
         for (key, value) in profile["dependencies"].items() {
@@ -312,6 +325,19 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
                 self.plugins[_feat] = _deep_merge(self.plugins[_feat], data[_feat]);
             } else {
                 self.plugins[_feat] = data[_feat];
+            }
+        }
+    }
+    if "plugins" in data and isinstance(data["plugins"], dict) {
+        for (plugin_name, plugin_config) in data["plugins"].items() {
+            if isinstance(plugin_config, dict) {
+                if plugin_name in self.plugins {
+                    self.plugins[plugin_name] = _deep_merge(
+                        self.plugins[plugin_name], plugin_config
+                    );
+                } else {
+                    self.plugins[plugin_name] = plugin_config;
+                }
             }
         }
     }
@@ -863,6 +889,13 @@ impl _parse_toml_data(
     for _feat in ("byllm", "scale", "client", "mcp", "desktop") {
         if _feat in data and isinstance(data[_feat], dict) {
             config.plugins[_feat] = data[_feat];
+        }
+    }
+    if "plugins" in data and isinstance(data["plugins"], dict) {
+        for (plugin_name, plugin_config) in data["plugins"].items() {
+            if isinstance(plugin_config, dict) {
+                config.plugins[plugin_name] = plugin_config;
+            }
         }
     }
     if "environment" in data {
