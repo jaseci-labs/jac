@@ -259,46 +259,51 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     }
     base = Path(project_dir).resolve();
     staged = _precompile_app(base, pod_binary);
-    buf = io.BytesIO();
-    (tar, gz) = open_det_tar(buf);
+    # staged is <stage_root>/app; the whole mkdtemp tree must be removed even if
+    # a tar.add below raises, or a full project copy leaks in /tmp on every
+    # failed deploy (accumulates on a retrying deploy driver).
     try {
-        with tar {
-            for path in sorted(base.rglob("*")) {
-                if not path.is_file() {
-                    continue;
-                }
-                rel = path.relative_to(base);
-                if is_excluded(rel) {
-                    continue;
-                }
-                tar.add(str(path), arcname=str(rel), filter=det_tar_member);
-            }
-            pre = staged / "_precompiled";
-            count = 0;
-            for path in sorted(pre.rglob("*")) {
-                if path.is_file() {
-                    rel = path.relative_to(staged);
+        buf = io.BytesIO();
+        (tar, gz) = open_det_tar(buf);
+        try {
+            with tar {
+                for path in sorted(base.rglob("*")) {
+                    if not path.is_file() {
+                        continue;
+                    }
+                    rel = path.relative_to(base);
+                    if is_excluded(rel) {
+                        continue;
+                    }
                     tar.add(str(path), arcname=str(rel), filter=det_tar_member);
-                    count += 1;
+                }
+                pre = staged / "_precompiled";
+                count = 0;
+                for path in sorted(pre.rglob("*")) {
+                    if path.is_file() {
+                        rel = path.relative_to(staged);
+                        tar.add(str(path), arcname=str(rel), filter=det_tar_member);
+                        count += 1;
+                    }
+                }
+                logger.info(
+                    f"Sealed {count} precompiled app-module artifacts into the .jab."
+                );
+                sanitized = sanitized_jac_toml(base, provisioned_database);
+                if sanitized is not None {
+                    data = sanitized.encode("utf-8");
+                    info = tarfile.TarInfo(name="jac.toml");
+                    info.size = len(data);
+                    tar.addfile(info, io.BytesIO(data));
                 }
             }
-            logger.info(
-                f"Sealed {count} precompiled app-module artifacts into the .jab."
-            );
-            # staged is <stage_root>/app; remove the whole mkdtemp tree, not just the child.
-            shutil.rmtree(str(staged.parent), ignore_errors=True);
-            sanitized = sanitized_jac_toml(base, provisioned_database);
-            if sanitized is not None {
-                data = sanitized.encode("utf-8");
-                info = tarfile.TarInfo(name="jac.toml");
-                info.size = len(data);
-                tar.addfile(info, io.BytesIO(data));
-            }
+        } finally {
+            gz.close();
         }
+        return buf.getvalue();
     } finally {
-        gz.close();
+        shutil.rmtree(str(staged.parent), ignore_errors=True);
     }
-    return buf.getvalue();
 }
 
 

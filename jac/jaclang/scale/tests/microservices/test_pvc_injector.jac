@@ -127,3 +127,45 @@ test "nothing is baked when no database is provisioned" {
         assert "scale" not in data;
     }
 }
+
+
+test "the bundle pvc is ReadWriteMany so every pod can mount it" {
+    pvc = build_bundle_pvc("orders", "prod", "5Gi", "efs-sc");
+    assert pvc["kind"] == "PersistentVolumeClaim";
+    assert pvc["spec"]["accessModes"] == ["ReadWriteMany"];
+    assert pvc["spec"]["storageClassName"] == "efs-sc";
+}
+
+
+test "the bundle pvc fails fast when RWX is requested without a storage class" {
+    raised = False;
+    try {
+        build_bundle_pvc("orders", "prod", "5Gi", "");
+    } except ValueError as e {
+        raised = True;
+        assert "orders-bundles" in str(e);
+        assert "ReadWriteMany" in str(e);
+        assert "bundle_storage_class" in str(e);
+    }
+    assert raised , "Expected ValueError for an RWX bundle PVC without a storage class";
+}
+
+
+test "mutate_pod_spec wires the pvc, an init container, and the app mount" {
+    injector = PvcInjector();
+    # Inject seeded state directly so this test exercises mutate_pod_spec wiring
+    # without a pod binary (prepare() now seals into a .jab and requires one).
+    injector._object_key = "bundles/orders/aaa.jab";
+    injector._bundle_bytes = b"jab";
+    pod_spec: dict[str, any] = {
+        "_jac_meta": {"app_name": "orders", "namespace": "prod"},
+        "containers": [{"name": "app", "image": "python:3.12-slim"}]
+    };
+    result = injector.mutate_pod_spec(pod_spec, "python:3.12-slim");
+    volume_names = [volume["name"] for volume in result["volumes"]];
+    assert "jac-app" in volume_names;
+    assert "jac-bundles" in volume_names;
+    assert len(result["initContainers"]) == 1;
+    mount_names = [mount["name"] for mount in result["containers"][0]["volumeMounts"]];
+    assert "jac-app" in mount_names;
+}
