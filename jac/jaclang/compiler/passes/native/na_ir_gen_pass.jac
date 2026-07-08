@@ -60,9 +60,15 @@ glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_WHITE: int = 1,
      RC_COLOR_GRAY: int = 2,
      RC_COLOR_PURPLE: int = 3,
+     RC_COLOR_MASK: int = 0x03,
      RC_BUFFERED_BIT: int = 4,
      RC_DEAD_BIT: int = 8,
      RC_TORNDOWN_BIT: int = 16,
+     RC_FLAG_MASK: int = 0x1C,
+     RC_CLEAR_COLOR_MASK: int = 0xFC,
+     RC_CLEAR_BUFFERED_MASK: int = 0xFB,
+     RC_CLEAR_DEAD_MASK: int = 0xF7,
+     RC_CLEAR_COLOR_AND_LOWER_FLAGS_MASK: int = 0xF0,
      RC_CYCLE_THRESHOLD: int = 1000;
 
 glob LIVE_NODE_ID_OFF: int = 0,
@@ -800,6 +806,34 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _emit_rc_color_store(
         b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
+    ) -> None;
+
+    def _emit_rc_color_extract(
+        b: ir.IRBuilder, cb: ir.Value, name: str = "color"
+    ) -> ir.Value;
+
+    def _emit_rc_flag_is_set(
+        b: ir.IRBuilder, cb: ir.Value, flag: int, name: str
+    ) -> ir.Value;
+
+    def _emit_rc_clear_flag(
+        b: ir.IRBuilder, cb: ir.Value, clear_mask: int, name: str
+    ) -> ir.Value;
+
+    def _emit_rc_set_flags(
+        b: ir.IRBuilder, cb: ir.Value, flags: int, name: str
+    ) -> ir.Value;
+
+    def _emit_rc_clear_and_set(
+        b: ir.IRBuilder, cb: ir.Value, clear_mask: int, set_flags: int, name: str
+    ) -> ir.Value;
+
+    def _emit_rc_branch_if_dead(
+        b: ir.IRBuilder,
+        obj_i8: ir.Value,
+        if_dead_bb: ir.Block,
+        if_alive_bb: ir.Block,
+        name_prefix: str = ""
     ) -> None;
 
     def _emit_rc_trace_dispatch(

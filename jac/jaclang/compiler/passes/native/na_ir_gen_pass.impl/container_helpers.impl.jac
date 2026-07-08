@@ -121,14 +121,7 @@ impl NaIRGenPass._emit_container_release_fn(
         b, _cont_i8, _i8pc, _i64_ptr_c, dead_check_cont_bb, dead_check_cont_bb
     );
     b = ir.IRBuilder(dead_check_cont_bb);
-    (_cdcc_csp, _cdcc_cb) = self._emit_rc_color_load(b, _cont_i8);
-    _cdcc_dead = b.and_(
-        _cdcc_cb, ir.Constant(ir.IntType(8), RC_DEAD_BIT), name="cdcc.bit"
-    );
-    _cdcc_is_dead = b.icmp_unsigned(
-        "!=", _cdcc_dead, ir.Constant(ir.IntType(8), 0), name="cdcc.dead"
-    );
-    b.cbranch(_cdcc_is_dead, done_bb, log_free_cont_bb);
+    self._emit_rc_branch_if_dead(b, _cont_i8, done_bb, log_free_cont_bb, "cdcc.");
     self._emit_struct_free_log(
         release_fn,
         log_free_cont_bb,

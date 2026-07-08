@@ -276,7 +276,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     b = ir.IRBuilder(resurrect_bb);
     (_res_csp, _res_cb) = self._emit_rc_color_load(b, retain_fn.args[0]);
     b.store(
-        b.and_(_res_cb, ir.Constant(ir.IntType(8), 0xF7), name="res.clr.dead"), _res_csp
+        self._emit_rc_clear_flag(b, _res_cb, RC_CLEAR_DEAD_MASK, "res.clr.dead"),
+        _res_csp
     );
     b.branch(resurrect_done_bb);
     b = ir.IRBuilder(resurrect_done_bb);
@@ -374,7 +375,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         release_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="cy.color.slot"
     );
     _cy_color_byte = b.load(_cy_color_slot, name="cy.color.byte");
-    _cy_color = b.and_(_cy_color_byte, ir.Constant(i8, 3), name="cy.color");
+    _cy_color = self._emit_rc_color_extract(b, _cy_color_byte, "cy.color");
     _cy_is_purple = b.icmp_unsigned(
         "==", _cy_color, ir.Constant(i8, RC_COLOR_PURPLE), name="cy.is.purple"
     );
@@ -383,18 +384,17 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 
     b = ir.IRBuilder(set_root_bb);
 
-    _cy_new_byte = b.or_(
-        b.and_(_cy_color_byte, ir.Constant(i8, 0xF0), name="cy.clear.bits"),
-        ir.Constant(i8, RC_COLOR_PURPLE | RC_BUFFERED_BIT),
-        name="cy.new.byte"
+    _cy_new_byte = self._emit_rc_clear_and_set(
+        b,
+        _cy_color_byte,
+        RC_CLEAR_COLOR_AND_LOWER_FLAGS_MASK,
+        RC_COLOR_PURPLE | RC_BUFFERED_BIT,
+        "cy.new.byte"
     );
     b.store(_cy_new_byte, _cy_color_slot);
     if self.rc_push_root_fn is not None {
-        _cy_was_buffered = b.icmp_unsigned(
-            "!=",
-            b.and_(_cy_color_byte, ir.Constant(i8, RC_BUFFERED_BIT), name="cy.wbuf"),
-            ir.Constant(i8, 0),
-            name="cy.was.buffered"
+        _cy_was_buffered = self._emit_rc_flag_is_set(
+            b, _cy_color_byte, RC_BUFFERED_BIT, "cy.wbuf"
         );
         do_push_bb = release_fn.append_basic_block("do_push_root");
         b.cbranch(_cy_was_buffered, dbg_rel_bb, do_push_bb);
@@ -407,11 +407,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         release_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="cdb.cs"
     );
     _cdb_cb = b.load(_cdb_cs, name="cdb.cb");
-    _cdb_buf_bit = b.and_(
-        _cdb_cb, ir.Constant(ir.IntType(8), RC_BUFFERED_BIT), name="cdb.buf"
-    );
-    _cdb_is_buffered = b.icmp_unsigned(
-        "!=", _cdb_buf_bit, ir.Constant(ir.IntType(8), 0), name="cdb.bufp"
+    _cdb_is_buffered = self._emit_rc_flag_is_set(
+        b, _cdb_cb, RC_BUFFERED_BIT, "cdb.buf"
     );
     mark_dead_bb = release_fn.append_basic_block("mark_dead");
     actual_dtor_check_bb = release_fn.append_basic_block("actual_dtor_check");
@@ -419,16 +416,11 @@ impl NaIRGenPass._emit_rc_helpers -> None {
 
     b = ir.IRBuilder(mark_dead_bb);
 
-    _md_torndown_bit = b.and_(
-        _cdb_cb, ir.Constant(ir.IntType(8), RC_TORNDOWN_BIT), name="md.td.bit"
+    _md_already_torndown = self._emit_rc_flag_is_set(
+        b, _cdb_cb, RC_TORNDOWN_BIT, "md.td"
     );
-    _md_already_torndown = b.icmp_unsigned(
-        "!=", _md_torndown_bit, ir.Constant(ir.IntType(8), 0), name="md.td"
-    );
-    _md_new_byte = b.or_(
-        b.and_(_cdb_cb, ir.Constant(ir.IntType(8), 0xFC), name="md.clr"),
-        ir.Constant(ir.IntType(8), RC_DEAD_BIT | RC_TORNDOWN_BIT),
-        name="md.dead"
+    _md_new_byte = self._emit_rc_clear_and_set(
+        b, _cdb_cb, RC_CLEAR_COLOR_MASK, RC_DEAD_BIT | RC_TORNDOWN_BIT, "md.dead"
     );
     b.store(_md_new_byte, _cdb_cs);
     md_run_dtor_bb = release_fn.append_basic_block("md_run_dtor");
@@ -759,14 +751,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
         b, obj_cast, i8_ptr, i64_ptr, dead_check_bb, dead_check_bb
     );
     b = ir.IRBuilder(dead_check_bb);
-    (_sdc_csp, _sdc_cb) = self._emit_rc_color_load(b, obj_cast);
-    _sdc_dead = b.and_(
-        _sdc_cb, ir.Constant(ir.IntType(8), RC_DEAD_BIT), name="sdc.bit"
-    );
-    _sdc_is_dead = b.icmp_unsigned(
-        "!=", _sdc_dead, ir.Constant(ir.IntType(8), 0), name="sdc.dead"
-    );
-    b.cbranch(_sdc_is_dead, done_bb, log_free_struct_bb);
+    self._emit_rc_branch_if_dead(b, obj_cast, done_bb, log_free_struct_bb, "sdc.");
     self._emit_struct_free_log(
         release_fn,
         log_free_struct_bb,

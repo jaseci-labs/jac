@@ -114,14 +114,67 @@ impl NaIRGenPass._emit_rc_color_load(
 impl NaIRGenPass._emit_rc_color_store(
     b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
 ) -> None {
-    i8 = ir.IntType(8);
     b.store(
-        b.or_(
-            b.and_(cb, ir.Constant(i8, 0xFC), name="clr"),
-            ir.Constant(i8, color),
-            name="ncolor"
-        ),
-        csp
+        self._emit_rc_clear_and_set(b, cb, RC_CLEAR_COLOR_MASK, color, "ncolor"), csp
+    );
+}
+
+impl NaIRGenPass._emit_rc_color_extract(
+    b: ir.IRBuilder, cb: ir.Value, name: str = "color"
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    return b.and_(cb, ir.Constant(i8, RC_COLOR_MASK), name=name);
+}
+
+impl NaIRGenPass._emit_rc_flag_is_set(
+    b: ir.IRBuilder, cb: ir.Value, flag: int, name: str
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    return b.icmp_unsigned(
+        "!=",
+        b.and_(cb, ir.Constant(i8, flag), name=f"{name}.bit"),
+        ir.Constant(i8, 0),
+        name=f"{name}.set"
+    );
+}
+
+impl NaIRGenPass._emit_rc_clear_flag(
+    b: ir.IRBuilder, cb: ir.Value, clear_mask: int, name: str
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    return b.and_(cb, ir.Constant(i8, clear_mask), name=name);
+}
+
+impl NaIRGenPass._emit_rc_set_flags(
+    b: ir.IRBuilder, cb: ir.Value, flags: int, name: str
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    return b.or_(cb, ir.Constant(i8, flags), name=name);
+}
+
+impl NaIRGenPass._emit_rc_clear_and_set(
+    b: ir.IRBuilder, cb: ir.Value, clear_mask: int, set_flags: int, name: str
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    return b.or_(
+        b.and_(cb, ir.Constant(i8, clear_mask), name=f"{name}.clr"),
+        ir.Constant(i8, set_flags),
+        name=name
+    );
+}
+
+impl NaIRGenPass._emit_rc_branch_if_dead(
+    b: ir.IRBuilder,
+    obj_i8: ir.Value,
+    if_dead_bb: ir.Block,
+    if_alive_bb: ir.Block,
+    name_prefix: str = ""
+) -> None {
+    (_csp, cb) = self._emit_rc_color_load(b, obj_i8);
+    b.cbranch(
+        self._emit_rc_flag_is_set(b, cb, RC_DEAD_BIT, f"{name_prefix}dead"),
+        if_dead_bb,
+        if_alive_bb
     );
 }
 
@@ -228,7 +281,7 @@ impl NaIRGenPass._emit_rc_mark_gray_phase -> ir.Function {
     b.cbranch(
         b.icmp_unsigned(
             "==",
-            b.and_(_mg_cb, ir.Constant(i8, 3), name="col"),
+            self._emit_rc_color_extract(b, _mg_cb, "col"),
             ir.Constant(i8, RC_COLOR_GRAY),
             name="is.gray"
         ),
@@ -236,11 +289,9 @@ impl NaIRGenPass._emit_rc_mark_gray_phase -> ir.Function {
         mg_dead_check
     );
     b = ir.IRBuilder(mg_dead_check);
-    _mg_dead_bit = b.and_(_mg_cb, ir.Constant(i8, RC_DEAD_BIT), name="mg.dead.bit");
-    _mg_is_dead = b.icmp_unsigned(
-        "!=", _mg_dead_bit, ir.Constant(i8, 0), name="mg.is.dead"
+    b.cbranch(
+        self._emit_rc_flag_is_set(b, _mg_cb, RC_DEAD_BIT, "mg.dead"), mg_done, mg_set
     );
-    b.cbranch(_mg_is_dead, mg_done, mg_set);
     b = ir.IRBuilder(mg_set);
     self._emit_rc_color_store(b, _mg_csp, _mg_cb, RC_COLOR_GRAY);
     self._emit_rc_trace_dispatch(
@@ -318,7 +369,7 @@ impl NaIRGenPass._emit_rc_scan_black_phase -> ir.Function {
     b.cbranch(
         b.icmp_unsigned(
             "==",
-            b.and_(_sb_cb, ir.Constant(i8, 3), name="col"),
+            self._emit_rc_color_extract(b, _sb_cb, "col"),
             ir.Constant(i8, RC_COLOR_BLACK),
             name="is.black"
         ),
@@ -386,7 +437,7 @@ impl NaIRGenPass._emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function 
     b.cbranch(
         b.icmp_unsigned(
             "==",
-            b.and_(_sc_cb, ir.Constant(i8, 3), name="col"),
+            self._emit_rc_color_extract(b, _sc_cb, "col"),
             ir.Constant(i8, RC_COLOR_GRAY),
             name="is.gray"
         ),
@@ -468,16 +519,16 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     b = ir.IRBuilder(cw_check);
     (_cw_csp, _cw_cb) = self._emit_rc_color_load(b, cw_fn.args[0]);
 
-    _cw_dead_bit = b.and_(_cw_cb, ir.Constant(i8, RC_DEAD_BIT), name="cw.dead.bit");
-    _cw_is_dead = b.icmp_unsigned(
-        "!=", _cw_dead_bit, ir.Constant(i8, 0), name="cw.is.dead"
+    b.cbranch(
+        self._emit_rc_flag_is_set(b, _cw_cb, RC_DEAD_BIT, "cw.dead"),
+        cw_done,
+        cw_white_check
     );
-    b.cbranch(_cw_is_dead, cw_done, cw_white_check);
     b = ir.IRBuilder(cw_white_check);
     b.cbranch(
         b.icmp_unsigned(
             "==",
-            b.and_(_cw_cb, ir.Constant(i8, 3), name="col"),
+            self._emit_rc_color_extract(b, _cw_cb, "col"),
             ir.Constant(i8, RC_COLOR_WHITE),
             name="is.white"
         ),
@@ -535,11 +586,8 @@ impl NaIRGenPass._emit_rc_mark_roots_pass(
     _slot_pp = b.bitcast(slot, i8_ptr_ptr, name=f"{prefix}pp");
     optr = b.load(_slot_pp, name=f"{prefix}obj");
     (csp, cb) = self._emit_rc_color_load(b, optr);
-    _dead = b.and_(cb, ir.Constant(i8, RC_DEAD_BIT), name=f"{prefix}dead.bit");
     b.cbranch(
-        b.icmp_unsigned("!=", _dead, ir.Constant(i8, 0), name=f"{prefix}is.dead"),
-        free_dead,
-        keep
+        self._emit_rc_flag_is_set(b, cb, RC_DEAD_BIT, f"{prefix}dead"), free_dead, keep
     );
 
     b = ir.IRBuilder(free_dead);
@@ -551,7 +599,9 @@ impl NaIRGenPass._emit_rc_mark_roots_pass(
     b.branch(cont);
 
     b = ir.IRBuilder(keep);
-    b.store(b.and_(cb, ir.Constant(i8, 0xFB), name=f"{prefix}clr"), csp);
+    b.store(
+        self._emit_rc_clear_flag(b, cb, RC_CLEAR_BUFFERED_MASK, f"{prefix}clr"), csp
+    );
     b.call(mark_gray_fn, [optr]);
     b.branch(cont);
 
@@ -598,7 +648,9 @@ impl NaIRGenPass._emit_rc_root_pass(
     optr = b.load(b.bitcast(slot, i8_ptr_ptr, name=f"{prefix}pp"), name=f"{prefix}obj");
     if clear_purple {
         (csp, cb) = self._emit_rc_color_load(b, optr);
-        b.store(b.and_(cb, ir.Constant(i8, 0xFB), name=f"{prefix}clr"), csp);
+        b.store(
+            self._emit_rc_clear_flag(b, cb, RC_CLEAR_BUFFERED_MASK, f"{prefix}clr"), csp
+        );
     }
     b.call(phase_fn, [optr]);
     nxt = b.add(idx, ir.Constant(i64, 1), name=f"{prefix}next");
