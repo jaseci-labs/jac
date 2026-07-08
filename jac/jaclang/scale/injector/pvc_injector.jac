@@ -112,8 +112,7 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        # BinaryInjector sets _pod_binary_bytes so pack_jab can seal the app into
-        # a .jab; the seal is mandatory, so the pod binary must be present (#7288).
+        # BinaryInjector sets _pod_binary_bytes; pack_jab needs it to seal the .jab.
         raw = pack_jab(
             project_dir,
             self.provisioned_database,

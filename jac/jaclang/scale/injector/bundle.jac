@@ -193,12 +193,9 @@ def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
 
 
 def _precompile_app(base: Path, pod_binary: bytes) -> Path {
-    # Seal the app's modules with the POD binary into a sealed image
-    # (_precompiled/MANIFEST.json) so the deploy artifact is a valid .jab that
-    # pods load content-keyed instead of cold-compiling on first boot (#7179,
-    # #7255). The seal is MANDATORY: a .jab requires the manifest, so an
-    # incomplete seal hard-fails the deploy rather than silently shipping a
-    # cold-compile fallback (#7288).
+    # Seal the app's modules with the pod binary into _precompiled/MANIFEST.json
+    # so the deploy artifact is a valid .jab. The seal is mandatory: an
+    # incomplete seal raises rather than shipping a cold-compile fallback.
     stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
     stage = stage_root / "app";
     try {
@@ -220,8 +217,7 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
         jac_path.write_bytes(pod_binary);
         jac_path.chmod(0o755);
         script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
-        # --seal emits the MANIFEST.json that jabs and sealed bundles carry, so
-        # pods get a manifest-verified image (#7255).
+        # --seal emits the MANIFEST.json that makes the tree a sealed image.
         result = subprocess.run(
             [str(jac_path), "run", str(script), str(stage_root), "--seal"],
             capture_output=True,
@@ -247,11 +243,10 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 
 
 def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
-    # Pack the app into a sealed .jab: the project source, the sealed
-    # _precompiled/ image (MANIFEST.json at tar root), and jac.toml. The
-    # resulting gzip-tar IS a valid .jab (materialize_jab / a plain `tar xzf`
-    # both accept it), so pods load the manifest-verified image instead of
-    # cold-compiling on boot (#7288). Requires the pod binary to seal with.
+    # Pack the app into a sealed .jab: project source, the sealed _precompiled/
+    # image (MANIFEST.json at tar root), and jac.toml. The gzip-tar IS a valid
+    # .jab (both materialize_jab and a plain `tar xzf` accept it), so pods load
+    # the manifest-verified image instead of cold-compiling on boot.
     if not pod_binary {
         raise ValueError(
             "pack_jab requires the pod binary to seal the app image; none given."
