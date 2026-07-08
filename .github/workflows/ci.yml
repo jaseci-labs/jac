@@ -608,6 +608,33 @@ jobs:
         jac test jac/tests/compiler/passes/native/test_shared_lib.jac
         jac test jac/tests/compiler/passes/native/test_exec_link.jac
 
+  # Launcher unit tests: trailer codec + `.jab`-overlay round-trip
+  # (append / detect / materialize-steps-over-overlay / graft). runtime.zig is
+  # the sole owner of the trailer format, so these guard the whole `--as binary`
+  # boot shape. Host-native, no libpython/LLVM/typeshed -- just checkout + zig.
+  # Cross-platform matrix on purpose: the format code has Linux/macOS-divergent
+  # syscall behavior (a /proc createDirPath livelock once hung this on Linux
+  # only, while macOS was green). -Dno-ninja skips the editor closure this
+  # never needs.
+  test-launcher:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+      - name: Launcher unit tests (zig build test)
+        working-directory: jac
+        run: zig build -Dno-ninja test --summary all
+
   test-cef-build:
     needs: build-jac
     runs-on: blacksmith-4vcpu-ubuntu-2404

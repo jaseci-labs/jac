@@ -168,6 +168,9 @@ jobs:
           fi
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
 
+      # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
+      # job so they gate every PR on Linux + macOS, not just release time. The
+      # smoke tests below validate the actually-shipped cross-compiled binary.
       - name: Smoke test (no system Python)
         working-directory: jac
         run: |
