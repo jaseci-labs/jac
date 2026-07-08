@@ -69,7 +69,7 @@ obj MicroserviceManifestBuilder {
         import os;
         import subprocess;
         import from jaclang.cli.console { console }
-        import from jaclang.scale.injector.binary { jac_executable }
+        import from jaclang.scale.runtime.context.util { jac_executable }
         client_entry = self._client_entry();
         if not client_entry {
             return;

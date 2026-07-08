@@ -97,8 +97,8 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     entry = self.registry.entries[name];
     port = self._assign_port(entry);
 
-    import from jaclang.scale.runtime.context.util { resolve_jac_binary }
-    jac_bin: str = resolve_jac_binary();
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    jac_bin: str = jac_executable();
 
     cmd = [jac_bin, "start", entry.file, "--port", str(port), "--no_client"];
     logger.info(f"Starting {name}: {' '.join(cmd)}");

@@ -250,14 +250,6 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 }
 
 
-def jac_executable -> str {
-    # The driver invoking ITSELF must not depend on `jac` being on PATH (the
-    # launcher exports its real path as JAC_EXECUTABLE); bench/operator hosts
-    # without PATH setup otherwise silently fall back to on-pod builds.
-    return os.environ.get("JAC_EXECUTABLE", "") or shutil.which("jac") or "jac";
-}
-
-
 def ensure_admin_dist_built(source_root: Path) -> None {
     # Build the admin console `_dist` on the host (like the client bundle) so the gateway ships it pre-built instead of doing a heavy on-pod `bun` build that can OOM-kill the container.
     admin = source_root / "jaclang" / "scale" / "admin";
@@ -276,6 +268,7 @@ def ensure_admin_dist_built(source_root: Path) -> None {
     logger.info(
         "Building the admin console on the host (ships pre-built to the gateway)."
     );
+    import from jaclang.scale.runtime.context.util { jac_executable }
     try {
         result = subprocess.run(
             [jac_executable(), "build", "main.jac", "--client", "web"],
