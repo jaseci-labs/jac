@@ -926,6 +926,24 @@ test "plain str agent answers in text without forced recovery" {
     assert mod.run_plain("go") == "plain answer" , "a str agent may answer in text when no terminal is designated";
 }
 
+test "terminal tool body executes once and ends the loop" {
+    mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
+    # The finish call is reached through both ToolCall.__call__ (history message) and
+    # get_output (return value); pre-fix both executed the body, running it twice. The
+    # fixture also queues a third "trap" output that byllm must never dispatch to. So a
+    # single `finish_body_runs == 1` proves BOTH: no double-execution, and the loop ended
+    # on the finish call instead of advancing to the trap turn.
+    result = mod.run_agent_recorded("go");
+    assert result == "once" , f"terminal tool should return its output, got {result}";
+    assert len(mod.finish_body_runs) == 1 , f"finish body must execute once (ran {len(
+        mod.finish_body_runs
+    )}x)";
+    # The trap output must remain unconsumed: byllm made exactly two LLM calls (lookup, finish).
+    assert len(mod.dbl_call_llm.seen_prompts) == 2 , f"byllm must stop at the finish call (made {len(
+        mod.dbl_call_llm.seen_prompts
+    )} calls)";
+}
+
 test "finish_tool= handles a function already in tools without mutating it" {
     mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
     # finish is in both tools=[...] and finish_tool=: the factory re-wraps it as terminal.

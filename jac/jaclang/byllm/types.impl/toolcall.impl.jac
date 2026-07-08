@@ -1,13 +1,21 @@
 #-------------------------------------------------------------------------------
 # ToolCall Implementations
 #-------------------------------------------------------------------------------
-"""Execute the tool call and return a result message."""
-impl ToolCall.__call__ -> ToolCallResultMsg {
-    if self.args is not None {
-        result = self.tool(**self.args);
-    } else {
+"""Execute the tool exactly once, caching the result for later calls."""
+impl ToolCall._run_once -> object {
+    if self.args is None {
         raise ByLLMError("ToolCall.args is None, expected a dictionary");
     }
+    if not self._executed {
+        self._result = self.tool(**self.args);
+        self._executed = True;
+    }
+    return self._result;
+}
+
+"""Execute the tool call and return a result message."""
+impl ToolCall.__call__ -> ToolCallResultMsg {
+    result = self._run_once();
     return ToolCallResultMsg(
         content=normalize_tool_result(result),
         tool_call_id=self.call_id,
@@ -26,10 +34,10 @@ impl ToolCall.is_finish_call -> bool {
     return self.tool.is_finish_tool();
 }
 
-"""Get the output from the finish tool call."""
+"""Get the output from the finish tool call (reuses the single execution)."""
 impl ToolCall.get_output -> object {
     assert (self.is_finish_call()) , "This method should only be called for finish tools.";
-    return self.tool(**self.args);
+    return self._run_once();
 }
 
 #-------------------------------------------------------------------------------

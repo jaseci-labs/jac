@@ -89,12 +89,18 @@ Created from LLM responses and can be executed to get results.
 obj ToolCall {
     has call_id: str,
         tool: Tool | McpTool,
-        args: dict;
+        args: dict,
+        # The tool runs at most once per ToolCall: the ReAct loop calls both __call__
+        # (for the history message) and get_output (for the return value) on a finish
+        # call, and a side-effecting terminal tool must not fire twice.
+        _executed: bool = False,
+        _result: object = None;
 
     def __call__ -> ToolCallResultMsg;
     def __str__ -> str;
     def is_finish_call -> bool;
     def get_output -> object;
+    def _run_once -> object;
 }
 
 """Mock tool call for testing purposes.

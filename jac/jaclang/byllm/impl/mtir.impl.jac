@@ -243,9 +243,15 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     finish_fn = call_params.get("finish_tool");
     caller_designated = finish_fn is not None and callable(finish_fn);
     if caller_designated {
+        # finish_fn may be a raw callable or a pre-built Tool. Resolve the underlying
+        # function so matching and re-wrapping never double-wrap a Tool (which would
+        # leave a duplicate non-terminal entry beside the terminal one).
+        base_fn = finish_fn.func
+            if (finish_fn?.func and finish_fn?.get_json_schema)
+            else finish_fn;
         existing_idx = None;
         for (i, t) in enumerate(tools) {
-            if t?.func is finish_fn {
+            if (t?.func is base_fn) or (t is finish_fn) {
                 existing_idx = i;
                 break;
             }
@@ -253,10 +259,10 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         if existing_idx is not None {
             prior = tools[existing_idx];
             tools[existing_idx] = Tool(
-                finish_fn, info=prior?.info, is_terminal=True
+                base_fn, info=prior?.info, is_terminal=True
             );  # type: ignore
         } else {
-            tools.append(Tool(finish_fn, is_terminal=True));  # type: ignore
+            tools.append(Tool(base_fn, is_terminal=True));  # type: ignore
         }
     }
     # A terminal exists if the caller designated one or any tool is already flagged.

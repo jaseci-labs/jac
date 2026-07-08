@@ -63,3 +63,25 @@ glob plain_llm = MockLLM(
     ]}
 );
 def run_plain(task: str) -> str by plain_llm(tools=[plain_worker]);
+
+# The terminal tool is reached via BOTH ToolCall.__call__ (history message) and
+# get_output (return value); a non-terminal tool is only reached via __call__. This
+# records every execution of its body so a test can assert the terminal ran once, not
+# twice (the pre-fix behavior, which would double-apply a submit/commit).
+glob finish_body_runs: list = [];
+
+def finish_recorded(answer: str) -> str {
+    finish_body_runs.append(answer);
+    return answer;
+}
+glob dbl_call_llm = MockLLM(
+    model_name="mockllm",
+    config={"outputs": [
+        MockToolCall(tool=lookup, args={"q": "x"}),
+        MockToolCall(tool=finish_recorded, args={"answer": "once"}),
+        # Trap turn: byllm must END on the finish call above and NEVER dispatch again to
+        # reach this output. If it did (or double-called finish), finish_body_runs > 1.
+        MockToolCall(tool=finish_recorded, args={"answer": "SHOULD-NOT-RUN"})
+    ]}
+);
+def run_agent_recorded(task: str) -> str by dbl_call_llm(tools=[lookup], finish_tool=finish_recorded);
