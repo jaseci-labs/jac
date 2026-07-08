@@ -90,13 +90,6 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
-def _first_boot_install -> str {
-    # The shipped bundle already carries the precompiled sealed image, so the
-    # pod only needs to install the app's declared deps.
-    return "jac install";
-}
-
-
 def build_bootstrap_init_container(
     k8s_config: KubernetesConfig, base_image: str, is_gateway: bool = True
 ) -> dict[str, any] {
@@ -113,7 +106,10 @@ def build_bootstrap_init_container(
             "&& cat /tmp/jac.toml.nonpm > jac.toml"
         );
     }
-    commands.append(_first_boot_install());
+    # The toolchain bundle ships the prebuilt jac binary and the app bundle
+    # ships source precompiled into .jir by pack_source; first boot only needs
+    # to install the app's declared deps.
+    commands.append("jac install");
     script = ' && '.join(commands);
     return {
         "name": "jac-bootstrap",

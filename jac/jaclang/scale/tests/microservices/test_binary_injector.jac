@@ -16,7 +16,7 @@ import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
     build_runtime_install_commands,
     runtime_container_env,
     build_service_apt_prefix,
-    _first_boot_install
+    build_bootstrap_init_container
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -66,10 +66,14 @@ test "bootstrap installs the shipped binary; no [dev], no source build" {
 
 
 test "first-boot install only runs jac install (no jir-seed adoption)" {
-    boot = _first_boot_install();
-    assert boot == "jac install";
-    assert "jir-seed" not in boot;
-    assert "_adopt.py" not in boot;
+    script = str(
+        build_bootstrap_init_container(KubernetesConfig(), "python:3.12-slim")["args"][
+            0
+        ]
+    );
+    assert "jac install" in script;
+    assert "jir-seed" not in script;
+    assert "_adopt.py" not in script;
 }
 
 
