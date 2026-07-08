@@ -57,6 +57,9 @@ jobs:
           - os: macos-14
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
+    # A wedged step (e.g. a hung test-artifact build/run) must fail loudly, not
+    # sit until GitHub's 6h hard cap holding the release. A cold build is ~20min.
+    timeout-minutes: 45
     env:
       # -Dtarget flag for zig build: set on release-channel Linux legs, empty
       # (host-native) on the dev channel and macOS.
@@ -123,12 +126,13 @@ jobs:
           restore-keys: |
             zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
 
+      # coreutils on macOS provides `gtimeout`, used to bound the test step.
       - name: Install host tools (zstd)
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
             sudo apt-get update && sudo apt-get install -y zstd
           else
-            brew install zstd
+            brew install zstd coreutils
           fi
 
       - name: Set up Zig 0.16.0
@@ -172,9 +176,16 @@ jobs:
       # (append / detect / materialize-steps-over-overlay / graft). runtime.zig
       # is the sole owner of the trailer format, so these guard the whole
       # `--as binary` boot shape. Host-native, no libpython needed.
+      # Wrapped in `timeout` so a wedge (a hung test-artifact compile/link or a
+      # test that blocks on I/O) fails this step in minutes with a SIGTERM
+      # backtrace, instead of hanging the whole build until the job timeout.
+      # macOS `timeout` comes from coreutils (installed with zstd above).
       - name: Launcher unit tests (zig build test)
         working-directory: jac
-        run: zig build test --summary all
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then TIMEOUT=gtimeout; else TIMEOUT=timeout; fi
+          "$TIMEOUT" --signal=TERM --kill-after=30s 15m \
+            zig build test --summary all --verbose
 
       - name: Smoke test (no system Python)
         working-directory: jac
