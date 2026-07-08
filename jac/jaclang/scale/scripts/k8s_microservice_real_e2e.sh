@@ -590,6 +590,40 @@ else
         "200|404|405|000" "${FIRST_SVC}-deployment" "" "5"
 fi
 
+_t "destroy start"
+echo "=== destroy: teardown must complete without manual pod deletion ==="
+# Same dispatch as `jac destroy` (default target): the base KubernetesTarget
+# must delete the label-managed fleet before the bundle PVC, or pvc-protection
+# wedges the teardown until someone deletes the pods by hand.
+if [ -n "${PORT_FORWARD_PID:-}" ]; then
+    kill "${PORT_FORWARD_PID}" 2>/dev/null || true
+    PORT_FORWARD_PID=""
+fi
+if [ -n "${LOKI_PORT_FORWARD_PID:-}" ]; then
+    kill "${LOKI_PORT_FORWARD_PID}" 2>/dev/null || true
+    LOKI_PORT_FORWARD_PID=""
+fi
+cd "${PROJECT_DIR}"
+timeout 420 jac - <<PYEOF
+from jaclang.scale.deploy.target.kubernetes.kubernetes_target import KubernetesTarget
+from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
+
+KubernetesTarget(
+    config=KubernetesConfig(app_name="jac-e2e", namespace="${NAMESPACE}")
+).destroy("jac-e2e")
+PYEOF
+
+if kubectl get deploy -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null | grep -q .; then
+    echo "FAIL: label-managed deployments survived destroy" >&2
+    exit 1
+fi
+if ! timeout 300 bash -c 'until ! kubectl get namespace "$1" >/dev/null 2>&1; do sleep 5; done' _ "${NAMESPACE}"; then
+    echo "FAIL: namespace '${NAMESPACE}' still present 300s after destroy" >&2
+    kubectl get pvc,pods -n "${NAMESPACE}" 2>/dev/null || true
+    exit 1
+fi
+echo "  destroy released the bundle PVC and deleted the namespace"
+
 _t "ALL DONE"
 print_timing_report
 echo "=== K8s microservice REAL e2e PASSED ==="
