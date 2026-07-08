@@ -227,36 +227,80 @@ test "node_arch falls back to the host arch when the cluster is unreachable" {
 }
 
 
-test "node_arch falls back to the host arch on a mixed-arch cluster" {
+test "node_arch on a mixed-arch cluster requires JAC_NODE_ARCH" {
     def check {
         with unittest.mock.patch(
             "kubernetes.client.CoreV1Api",
             return_value=_core_api_with_nodes(["amd64", "arm64"])
         ) {
-            import from jaclang.scale.injector.binary { host_arch }
-            assert node_arch() == host_arch();
+            caught = "";
+            try {
+                node_arch();
+            } except RuntimeError as e {
+                caught = str(e);
+            }
+            assert "JAC_NODE_ARCH" in caught;
+            assert "aarch64" in caught and "x86_64" in caught;
         }
     }
     _without_node_arch_env(check);
 }
 
 
-test "JAC_NODE_ARCH overrides cluster detection and is normalized" {
+def _with_node_arch_env(value: str, check: any) {
     saved = os.environ.pop("JAC_NODE_ARCH", None);
     try {
-        os.environ["JAC_NODE_ARCH"] = "arm64";
-        with unittest.mock.patch(
-            "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(["amd64"])
-        ) as api {
-            assert node_arch() == "aarch64";
-            api.assert_not_called();
-        }
+        os.environ["JAC_NODE_ARCH"] = value;
+        check();
     } finally {
         os.environ.pop("JAC_NODE_ARCH", None);
         if saved is not None {
             os.environ["JAC_NODE_ARCH"] = saved;
         }
     }
+}
+
+
+test "JAC_NODE_ARCH matching the cluster passes and is normalized" {
+    def check {
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(["arm64"])
+        ) {
+            assert node_arch() == "aarch64";
+        }
+    }
+    _with_node_arch_env("arm64", check);
+}
+
+
+test "JAC_NODE_ARCH mismatching the cluster fails at deploy time" {
+    def check {
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(["amd64"])
+        ) {
+            caught = "";
+            try {
+                node_arch();
+            } except RuntimeError as e {
+                caught = str(e);
+            }
+            assert "JAC_NODE_ARCH=aarch64" in caught;
+            assert "x86_64" in caught;
+        }
+    }
+    _with_node_arch_env("aarch64", check);
+}
+
+
+test "JAC_NODE_ARCH with an unreachable cluster is trusted as-is" {
+    def check {
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api", side_effect=Exception("no cluster")
+        ) {
+            assert node_arch() == "aarch64";
+        }
+    }
+    _with_node_arch_env("aarch64", check);
 }
 
 
