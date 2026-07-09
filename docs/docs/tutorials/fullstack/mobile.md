@@ -182,7 +182,7 @@ Both platforms use the exact same web bundle. Write your UI once; Capacitor wrap
 Capacitor has a rich plugin ecosystem for camera, geolocation, push notifications, etc. Install them via npm:
 
 ```bash
-jac add --npm @capacitor/camera
+jac install --npm @capacitor/camera
 npx cap sync
 ```
 
