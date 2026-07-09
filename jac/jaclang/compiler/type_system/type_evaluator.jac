@@ -22,7 +22,12 @@ import from jaclang.compiler.type_system { properties }
 import from jaclang.compiler.symbol_utils { int_subscript_suffix }
 import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
-import from jaclang.compiler.type_system.ts_decl_parser { TsDecl, TsType }
+import from jaclang.compiler.type_system.ts_decl_parser {
+    TsDecl,
+    TsType,
+    TsTypeKind,
+    TsDeclKind
+}
 
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,

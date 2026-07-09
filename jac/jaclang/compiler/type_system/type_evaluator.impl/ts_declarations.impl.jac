@@ -84,17 +84,19 @@ impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | 
 impl TypeEvaluator._map_ts_decl(
     decl: TsDecl, decls: dict[str, TsDecl], item_name: str
 ) -> (TypeBase | None) {
-    if decl.kind == 'function' and decl.ty is not None {
+    if decl.kind == TsDeclKind.FUNCTION and decl.ty is not None {
         mapped = self._map_ts_type(decl.ty, decls);
         if isinstance(mapped, types.FunctionType) {
             mapped.func_name = item_name;
         }
         return mapped;
     }
-    if (decl.kind in ('const', 'typealias') and decl.ty is not None) {
+    if (
+        decl.kind in (TsDeclKind.CONST, TsDeclKind.TYPEALIAS) and decl.ty is not None
+    ) {
         return self._map_ts_type(decl.ty, decls);
     }
-    if decl.kind in ('interface', 'class') {
+    if decl.kind in (TsDeclKind.INTERFACE, TsDeclKind.CLASS) {
         synth = self._synthesize_ts_decl_class(decls, item_name);
         if synth is not None {
             return synth;
@@ -114,16 +116,16 @@ impl TypeEvaluator._map_ts_type(
         return foreign_any;
     }
     k = ts.kind;
-    if k == 'any' {
+    if k == TsTypeKind.ANY {
         return foreign_any;
     }
-    if k == 'never' {
+    if k == TsTypeKind.NEVER {
         return types.NeverType();
     }
-    if k == 'void' {
+    if k == TsTypeKind.VOID {
         return self._convert_to_instance(self.get_none_type());
     }
-    if k == 'prim' {
+    if k == TsTypeKind.PRIM {
         prim_cls = {
             'string': self.prefetch.str_class,
             'number': self.prefetch.float_class,
@@ -140,12 +142,12 @@ impl TypeEvaluator._map_ts_type(
         }
         return self._convert_to_instance(prim_cls);
     }
-    if (k == 'literal-str' and self.prefetch.str_class) {
+    if (k == TsTypeKind.LITERAL_STR and self.prefetch.str_class) {
         return self._convert_to_instance(
             self.prefetch.str_class.clone_with_literal(ts.name)
         );
     }
-    if k == 'literal-num' {
+    if k == TsTypeKind.LITERAL_NUM {
         int_val: (int | None) = None;
         try {
             int_val = int(ts.name);
@@ -160,21 +162,21 @@ impl TypeEvaluator._map_ts_type(
         }
         return foreign_any;
     }
-    if (k == 'literal-bool' and self.prefetch.bool_class) {
+    if (k == TsTypeKind.LITERAL_BOOL and self.prefetch.bool_class) {
         return self._convert_to_instance(
             self.prefetch.bool_class.clone_with_literal(ts.name == 'true')
         );
     }
-    if k == 'union' {
+    if k == TsTypeKind.UNION {
         return types.UnionType(
             types=[self._map_ts_type(m, decls, seen, shells) for m in ts.args]
         );
     }
-    if (k in ('array', 'tuple') and self.prefetch.list_class) {
+    if (k in (TsTypeKind.ARRAY, TsTypeKind.TUPLE) and self.prefetch.list_class) {
         elem: TypeBase = foreign_any;
-        if k == 'array' and ts.args {
+        if k == TsTypeKind.ARRAY and ts.args {
             elem = self._map_ts_type(ts.args[0], decls, seen, shells);
-        } elif (k == 'tuple' and ts.args) {
+        } elif (k == TsTypeKind.TUPLE and ts.args) {
             mapped = [self._map_ts_type(a, decls, seen, shells) for a in ts.args];
             elem = mapped[0] if len(mapped) == 1 else types.UnionType(types=mapped);
         }
@@ -182,12 +184,12 @@ impl TypeEvaluator._map_ts_type(
         lst.private.type_args = [elem];
         return lst;
     }
-    if k == 'func' {
+    if k == TsTypeKind.FUNC {
         parameters: list[types.Parameter] = [];
         for (idx, p) in enumerate(ts.params) {
             if p.rest {
                 elem_ty: TypeBase = types.AnyType(is_foreign=True);
-                if (p.ty is not None and p.ty.kind == 'array' and p.ty.args) {
+                if (p.ty is not None and p.ty.kind == TsTypeKind.ARRAY and p.ty.args) {
                     elem_ty = self._map_ts_type(p.ty.args[0], decls, seen, shells);
                 }
                 parameters.append(
@@ -217,7 +219,7 @@ impl TypeEvaluator._map_ts_type(
         }
         return types.FunctionType(func_name='', return_type=ret, parameters=parameters);
     }
-    if k == 'ref' {
+    if k == TsTypeKind.REF {
         if seen is None {
             seen = set();
         }
@@ -226,12 +228,15 @@ impl TypeEvaluator._map_ts_type(
         }
         target = decls.get(ts.name);
         if (
-            target is not None and target.kind == 'typealias' and target.ty is not None
+            target is not None
+            and target.kind == TsDeclKind.TYPEALIAS
+            and target.ty is not None
         ) {
             seen.add(ts.name);
             return self._map_ts_type(target.ty, decls, seen, shells);
         }
-        if target is not None and target.kind in ('interface', 'class') {
+        if target is not None
+        and target.kind in (TsDeclKind.INTERFACE, TsDeclKind.CLASS) {
             if shells is not None and ts.name in shells {
                 return self._convert_to_instance(shells[ts.name]);
             }
@@ -258,7 +263,10 @@ impl TypeEvaluator._ts_synth_class_types(
 
     shells: dict[str, types.ClassType] = {};
     for (name, decl) in decls.items() {
-        if (decl.kind not in ('interface', 'class') or not name.isidentifier()) {
+        if (
+            decl.kind not in (TsDeclKind.INTERFACE, TsDeclKind.CLASS)
+            or not name.isidentifier()
+        ) {
             continue;
         }
         shells[name] = types.ClassType(

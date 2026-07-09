@@ -1,7 +1,13 @@
 """Unit tests for the pragmatic .d.ts declaration parser."""
 
 import jaclang;
-import from jaclang.compiler.type_system.ts_decl_parser { parse_dts, TsDecl, TsType }
+import from jaclang.compiler.type_system.ts_decl_parser {
+    parse_dts,
+    TsDecl,
+    TsType,
+    TsTypeKind,
+    TsDeclKind
+}
 
 def _decl_ty(decl: TsDecl) -> TsType {
     assert decl.ty is not None;
@@ -20,15 +26,15 @@ test "parses the real clsx declaration shape" {
     r = parse_dts(src);
     assert r is not None;
     d = r["clsx"];
-    assert d.kind == "function";
+    assert d.kind == TsDeclKind.FUNCTION;
     ty = _decl_ty(d);
     ret = ty.ret;
     assert ret is not None;
-    assert ret.kind == "prim" and ret.name == "string";
+    assert ret.kind == TsTypeKind.PRIM and ret.name == "string";
     assert ty.params[0].rest;
-    assert r["default"].kind == "function";
+    assert r["default"].kind == TsDeclKind.FUNCTION;
     class_value_ty = _decl_ty(r["ClassValue"]);
-    assert class_value_ty.kind == "union";
+    assert class_value_ty.kind == TsTypeKind.UNION;
 }
 
 test "parses const function types and export lists" {
@@ -42,12 +48,12 @@ test "parses const function types and export lists" {
     assert r is not None;
     assert sorted(r.keys()) == ["extendMerge", "twMerge"];
     tm_ty = _decl_ty(r["twMerge"]);
-    assert tm_ty.kind == "func";
+    assert tm_ty.kind == TsTypeKind.FUNC;
     tm_ret = tm_ty.ret;
     assert tm_ret is not None and tm_ret.name == "string";
     assert tm_ty.params[0].rest;
     p0_ty = tm_ty.params[0].ty;
-    assert p0_ty is not None and p0_ty.kind == "array";
+    assert p0_ty is not None and p0_ty.kind == TsTypeKind.ARRAY;
     ext_ret = _decl_ty(r["extendMerge"]).ret;
     assert ext_ret is not None and ext_ret.name == "number";
 }
@@ -84,7 +90,7 @@ test "namespace interface members parse with heritage" {
     r = parse_dts(src);
     assert r is not None;
     cfg = r["Config"];
-    assert cfg.kind == "interface";
+    assert cfg.kind == TsDeclKind.INTERFACE;
     assert cfg.heritage == ["Base"];
     by_name = {m.name: m for m in cfg.members};
     assert set(by_name.keys()) == {"theme", "debug"};
@@ -108,7 +114,7 @@ test "optional and rest parameters carry through" {
     ps = greet_ty.params;
     assert not ps[0].optional and ps[1].optional and ps[2].rest;
     greet_ret = greet_ty.ret;
-    assert greet_ret is not None and greet_ret.kind == "void";
+    assert greet_ret is not None and greet_ret.kind == TsTypeKind.VOID;
 }
 
 test "unmodelable constructs degrade to any instead of failing" {
@@ -122,9 +128,9 @@ test "unmodelable constructs degrade to any instead of failing" {
     );
     r = parse_dts(src);
     assert r is not None;
-    assert r["Widget"].kind == "class";
-    assert r["pick"].kind == "function";
-    assert _decl_ty(r["Cond"]).kind == "any";
+    assert r["Widget"].kind == TsDeclKind.CLASS;
+    assert r["pick"].kind == TsDeclKind.FUNCTION;
+    assert _decl_ty(r["Cond"]).kind == TsTypeKind.ANY;
     ok_ret = _decl_ty(r["ok"]).ret;
     assert ok_ret is not None and ok_ret.name == "string";
 }
@@ -140,14 +146,14 @@ test "literal types, type predicates, and readonly arrays" {
     assert r is not None;
     lv = _decl_ty(r["level"]).ret;
     assert lv is not None;
-    assert lv.kind == "union" and lv.args[0].kind == "literal-num";
+    assert lv.kind == TsTypeKind.UNION and lv.args[0].kind == TsTypeKind.LITERAL_NUM;
     is_foo_ret = _decl_ty(r["isFoo"]).ret;
     assert is_foo_ret is not None and is_foo_ret.name == "boolean";
     nm = _decl_ty(r["names"]).ret;
     assert nm is not None;
-    assert nm.kind == "array" and nm.args[0].name == "string";
+    assert nm.kind == TsTypeKind.ARRAY and nm.args[0].name == "string";
     flag_ty = _decl_ty(r["FLAG"]);
-    assert flag_ty.kind == "literal-bool";
+    assert flag_ty.kind == TsTypeKind.LITERAL_BOOL;
 }
 
 test "interface captures property members with types and optionality" {
@@ -163,7 +169,7 @@ test "interface captures property members with types and optionality" {
     r = parse_dts(src);
     assert r is not None;
     cfg = r["Config"];
-    assert cfg.kind == "interface";
+    assert cfg.kind == TsDeclKind.INTERFACE;
     by_name = {m.name: m for m in cfg.members};
     assert set(by_name.keys()) == {"theme", "retries", "debug", "tags", "onChange"};
     theme_ty = by_name["theme"].ty;
@@ -177,11 +183,13 @@ test "interface captures property members with types and optionality" {
     and debug_ty is not None
     and debug_ty.name == "boolean";
     tags_ty = by_name["tags"].ty;
-    assert by_name["tags"].readonly and tags_ty is not None and tags_ty.kind == "array";
+    assert by_name["tags"].readonly
+    and tags_ty is not None
+    and tags_ty.kind == TsTypeKind.ARRAY;
     on_change_ty = by_name["onChange"].ty;
     assert by_name["onChange"].is_method
     and on_change_ty is not None
-    and on_change_ty.kind == "func";
+    and on_change_ty.kind == TsTypeKind.FUNC;
 }
 
 test "interface captures extends heritage" {
@@ -193,6 +201,25 @@ test "interface captures extends heritage" {
     assert r is not None;
     assert r["Derived"].heritage == ["Base"];
     assert {m.name for m in r["Derived"].members} == {"extra"};
+}
+
+test "qualified and generic heritage is preserved as full name" {
+    # Regression: parse_heritage previously recorded only the first identifier,
+    # so `extends React.HTMLAttributes<HTMLDivElement>` became ["React"] instead
+    # of the fully-qualified base name. Generic args are consumed and dropped;
+    # local single-name bases are unchanged.
+    src = (
+        "export interface Props extends React.HTMLAttributes<HTMLDivElement> {\n"
+        "    className?: string;\n"
+        "}\n"
+        "export interface Plain extends Base { ok: boolean; }\n"
+        "export interface Base { id: string; }\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    assert r["Props"].heritage == ["React.HTMLAttributes"];
+    assert r["Plain"].heritage == ["Base"];
+    assert {m.name for m in r["Props"].members} == {"className"};
 }
 
 test "malformed input returns None rather than raising" {
