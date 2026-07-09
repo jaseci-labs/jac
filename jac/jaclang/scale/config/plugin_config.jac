@@ -94,18 +94,18 @@ class JacScalePluginConfig {
                         },
                         "redis_cpu_request": {
                             "type": "string",
-                            "default": "250m",
+                            "default": "100m",
                             "description": "K8s CPU request for the jac-scale provisioned Redis pod."
                         },
                         "redis_cpu_limit": {
                             "type": "string",
-                            "default": "1000m",
+                            "default": "500m",
                             "description": "K8s CPU limit for the jac-scale provisioned Redis pod."
                         },
                         "redis_memory_request": {
                             "type": "string",
-                            "default": "512Mi",
-                            "description": "K8s memory request for the jac-scale provisioned Redis pod."
+                            "default": "128Mi",
+                            "description": "K8s memory request (scheduling reservation) for the jac-scale provisioned Redis pod. Raise it alongside redis_memory_limit for a cache whose working set is large enough that eviction under node memory pressure would hurt."
                         },
                         "redis_memory_limit": {
                             "type": "string",

@@ -318,10 +318,26 @@ test "redis pod resources default to configured values" {
         'resources'
     ];
 
-    assert resources['requests']['cpu'] == '250m';
-    assert resources['requests']['memory'] == '512Mi';
-    assert resources['limits']['cpu'] == '1000m';
+    assert resources['requests']['cpu'] == '100m';
+    assert resources['requests']['memory'] == '128Mi';
+    assert resources['limits']['cpu'] == '500m';
     assert resources['limits']['memory'] == '1Gi';
+}
+
+test "default redis memory limit does not emit a headroom warning" {
+    mock_logger = unittest.mock.MagicMock();
+
+    with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
+        redis_provider = DatabaseProviderFactory.create(
+            'kubernetes_redis', None, {'app_name': 'test-app'}
+        );
+        redis_provider.deploy();
+    }
+
+    warned = any(
+        'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
+    );
+    assert not warned , "default 1Gi limit over 200mb maxmemory must not warn";
 }
 
 test "redis pod resources propagate from [scale.database] config" {
