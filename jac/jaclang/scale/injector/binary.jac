@@ -3,12 +3,12 @@ import os;
 import json;
 import hashlib;
 import logging;
-import platform;
 import tarfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
+import from jaclang.runtimelib.utils { release_arch, host_arch }
 
 glob logger = logging.getLogger(__name__);
 
@@ -16,14 +16,53 @@ glob BINARY_ARCNAME: str = "bin/jac",
      _HTTP_TIMEOUT: int = 60;
 
 
-def host_arch -> str {
-    m = platform.machine();
-    return "aarch64" if m in ("arm64", "aarch64") else m;
+def _node_architecture(k8s_node: object) -> str {
+    status = k8s_node?.status;
+    info = status?.node_info;
+    return str(getattr(info, "architecture", "") or "");
+}
+
+
+def cluster_node_archs -> list[str] {
+    try {
+        import from kubernetes { client }
+    } except ImportError {
+        return [];
+    }
+    nodes: list = [];
+    try {
+        nodes = list(client.CoreV1Api().list_node(_request_timeout=10).items);
+    } except Exception as e {
+        logger.warning(f"Could not read the cluster's node architectures ({e}).");
+        return [];
+    }
+    archs: set[str] = set();
+    for node in nodes {
+        arch = release_arch(_node_architecture(node));
+        if arch {
+            archs.add(arch);
+        }
+    }
+    return sorted(archs);
 }
 
 
 def node_arch -> str {
-    return os.environ.get("JAC_NODE_ARCH", "") or host_arch();
+    override = os.environ.get("JAC_NODE_ARCH", "");
+    if override {
+        return release_arch(override);
+    }
+    archs = cluster_node_archs();
+    if len(archs) == 1 {
+        return archs[0];
+    }
+    if archs {
+        logger.warning(
+            f"Cluster nodes report multiple architectures ({', '.join(archs)}); "
+            f"defaulting to the host arch. Set JAC_NODE_ARCH to pick one."
+        );
+    }
+    return host_arch();
 }
 
 

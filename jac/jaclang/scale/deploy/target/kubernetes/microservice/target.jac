@@ -14,7 +14,9 @@ import from jaclang.scale._optdeps.kubernetes {
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
-    get_cluster_provider
+    get_cluster_provider,
+    _resolve_current_rs_hashes,
+    _refresh_rs_hashes
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -136,6 +138,100 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return DeploymentResult(success=True, message=success_msg, details=bundle);
     }
 
+    def _scan_for_crash_loop(
+        core_v1: any, ns: str, current_hashes: set, fleet_app_names: set
+    ) -> dict[str, any] {
+        # current_hashes only covers the fleet's own microservice Deployments
+        # (resolved from `names`); companions (Redis, Prometheus, Grafana, ...)
+        # and observability pods share this namespace but were never part of
+        # that resolution, so the hash filter must not apply to them - doing
+        # so would silently exempt a crash-looping companion from detection.
+        # Image-pull failures are the opposite: only the fleet's own pods may
+        # fast-fail the rollout, so a broken companion image just lets the
+        # wait time out instead of aborting a fleet that is coming up fine.
+        imagepull_reasons: set = {
+            "ImagePullBackOff",
+            "ErrImagePull",
+            "InvalidImageName"
+        };
+        transient_reasons: set = {"PodInitializing", "ContainerCreating"};
+        crash = "";
+        crash_pod = None;
+        pulls: dict[str, any] = {};
+        phases: list[str] = [];
+        states: list[str] = [];
+        try {
+            for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                pod_name = str(p.metadata.name);
+                labels = p.metadata.labels or {};
+                app = str(labels.get("app", ""));
+                in_fleet = (app in fleet_app_names) if fleet_app_names else True;
+                if current_hashes and app in fleet_app_names {
+                    pod_hash = labels.get("pod-template-hash");
+                    if pod_hash is not None and pod_hash not in current_hashes {
+                        continue;
+                    }
+                }
+                phase = str(p.status.phase or '?');
+                statuses = list(p.status.init_container_statuses or []) + list(
+                    p.status.container_statuses or []
+                );
+                pod_reason = "";
+                pod_crash = "";
+                pod_crash_restarts = 0;
+                pod_pull = "";
+                pod_pull_reason = "";
+                for cs in statuses {
+                    waiting = cs.state.waiting if cs.state else None;
+                    reason = (waiting.reason if waiting else "") or "";
+                    restarts = cs.restart_count or 0;
+                    states.append(
+                        f"{pod_name}/{cs.name}={phase}/{reason}/{restarts}"
+                    );
+                    if reason and reason not in transient_reasons {
+                        pod_reason = reason;
+                    }
+                    # A container blocked on the registry never ran, so its
+                    # restart count says nothing about crash-looping.
+                    crashing = restarts >= 3 and reason not in imagepull_reasons;
+                    if crashing and not pod_crash {
+                        pod_crash = str(cs.name);
+                        pod_crash_restarts = restarts;
+                    } elif reason in imagepull_reasons and not pod_pull and in_fleet {
+                        pod_pull = str(cs.name);
+                        pod_pull_reason = reason;
+                    }
+                }
+                if pod_pull {
+                    pulls[pod_name] = (pod_pull, pod_pull_reason, p);
+                }
+                if pod_crash and not crash {
+                    crash = (
+                        f"pod '{pod_name}' container '{pod_crash}' "
+                        f"crash-looping ({pod_crash_restarts} restarts)"
+                    );
+                    crash_pod = p;
+                }
+                if app {
+                    token = f"{app}={phase}";
+                    if pod_reason {
+                        token = f"{app}={phase}/{pod_reason}";
+                    }
+                    phases.append(token);
+                }
+            }
+        } except Exception {
+            _ = 0;
+        }
+        return {
+            "crash": crash,
+            "crash_pod": crash_pod,
+            "pulls": pulls,
+            "phases": phases,
+            "states": states
+        };
+    }
+
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
         import time;
         import sys;
@@ -145,9 +241,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         app_labels: list[str] = [];
         for dep in bundle.get("deployments", {}).values() {
             names.append(dep["metadata"]["name"]);
+            app: str = "";
             try {
-                app_labels.append(dep["spec"]["selector"]["matchLabels"]["app"]);
+                app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
             } except Exception { }
+            if not app {
+                try {
+                    app = str((dep["metadata"].get("labels") or {}).get("app") or "");
+                } except Exception { }
+            }
+            if app {
+                app_labels.append(app);
+            }
         }
         if not names {
             return;
@@ -164,15 +269,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         pod_selector = "app in ({})".format(", ".join(app_labels))
             if app_labels
             else None;
-        imagepull_reasons: set = {
-            "ImagePullBackOff",
-            "ErrImagePull",
-            "InvalidImageName"
-        };
-        transient_reasons: set = {"PodInitializing", "ContainerCreating"};
         imagepull_streak: dict[str, int] = {};
         last_sig = "";
         last_heartbeat = -90;
+
+        current_hashes: set = set();
+        if pod_selector {
+            try {
+                current_hashes = _resolve_current_rs_hashes(ns, pod_selector);
+            } except Exception as exc {
+                console.print(
+                    f"[warn] RS hash lookup failed, falling back to broad pod "
+                    f"scan: {exc}"
+                );
+            }
+        }
 
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
@@ -196,95 +307,45 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     return;
                 }
 
-                pods = [];
-                try {
-                    if pod_selector {
-                        pods = core_v1.list_namespaced_pod(
-                            namespace=ns, label_selector=pod_selector
-                        ).items;
-                    } else {
-                        pods = core_v1.list_namespaced_pod(namespace=ns).items;
-                    }
-                } except Exception {
-                    pods = [];
+                scan = self._scan_for_crash_loop(
+                    core_v1, ns, current_hashes, fleet_apps
+                );
+                phase_tokens = scan["phases"];
+                state_tokens = scan["states"];
+                crash_failure = scan["crash"];
+                crash_pod = scan["crash_pod"];
+
+                if crash_failure and pod_selector {
+                    # A hash set captured before the new RS's revision annotation
+                    # was stamped can still point at the old RS; re-verify against
+                    # a freshly resolved set before actually failing the rollout,
+                    # mirroring check_deployment_status's crash re-verification.
+                    current_hashes = _refresh_rs_hashes(
+                        ns, pod_selector, current_hashes
+                    ) or set();
+                    recheck = self._scan_for_crash_loop(
+                        core_v1, ns, current_hashes, fleet_apps
+                    );
+                    crash_failure = recheck["crash"];
+                    crash_pod = recheck["crash_pod"];
                 }
 
-                phase_tokens: list[str] = [];
-                state_tokens: list[str] = [];
-                crash_failure = "";
-                crash_pod = None;
+                pulls = scan["pulls"];
+                imagepull_streak = {
+                    k: imagepull_streak.get(k, 0) + 1 for k in pulls
+                };
                 pull_failure = "";
                 pull_pod = None;
-                active_imagepull: set = set();
-
-                for p in pods {
-                    pod_name = str(p.metadata.name);
-                    labels = p.metadata.labels or {};
-                    app = str(labels.get("app", ""));
-                    in_fleet = (app in fleet_apps) if fleet_apps else True;
-                    phase = str(p.status.phase or '?');
-                    statuses = (p.status.init_container_statuses or []) + (
-                        p.status.container_statuses or []
-                    );
-                    pod_reason = "";
-                    pod_crash = "";
-                    pod_crash_restarts = 0;
-                    pod_pull = "";
-                    pod_pull_reason = "";
-                    for cs in statuses {
-                        waiting = cs.state.waiting if cs.state else None;
-                        reason = (waiting.reason if waiting else "") or "";
-                        restarts = cs.restart_count or 0;
-                        state_tokens.append(
-                            f"{pod_name}/{cs.name}={phase}/{reason}/{restarts}"
+                for (pod_name, info) in pulls.items() {
+                    if imagepull_streak.get(pod_name, 0) >= 2 {
+                        pull_failure = (
+                            f"pod '{pod_name}' container '{info[0]}' "
+                            f"cannot pull image ({info[1]})"
                         );
-                        if reason and reason not in transient_reasons {
-                            pod_reason = reason;
-                        }
-                        if not in_fleet {
-                            continue;
-                        }
-                        crashing = reason == "CrashLoopBackOff" and restarts >= 3;
-                        if crashing and not pod_crash {
-                            pod_crash = str(cs.name);
-                            pod_crash_restarts = restarts;
-                        } elif reason in imagepull_reasons and not pod_pull {
-                            pod_pull = str(cs.name);
-                            pod_pull_reason = reason;
-                        }
-                    }
-                    if pod_pull {
-                        active_imagepull.add(pod_name);
-                        streak = imagepull_streak.get(pod_name, 0) + 1;
-                        imagepull_streak[pod_name] = streak;
-                        if streak >= 2 and not pull_failure {
-                            pull_failure = (
-                                f"pod '{pod_name}' container '{pod_pull}' "
-                                f"cannot pull image ({pod_pull_reason})"
-                            );
-                            pull_pod = p;
-                        }
-                    }
-                    if pod_crash and not crash_failure {
-                        crash_failure = (
-                            f"pod '{pod_name}' container '{pod_crash}' "
-                            f"crash-looping ({pod_crash_restarts} restarts)"
-                        );
-                        crash_pod = p;
-                    }
-                    if app {
-                        token = f"{app}={phase}";
-                        if pod_reason {
-                            token = f"{app}={phase}/{pod_reason}";
-                        }
-                        phase_tokens.append(token);
+                        pull_pod = info[2];
+                        break;
                     }
                 }
-                imagepull_streak = {
-                    k: v
-                    for (k, v) in imagepull_streak.items()
-                    if k in active_imagepull
-                };
 
                 failure = crash_failure or pull_failure;
                 failed_pod = crash_pod if crash_failure else pull_pod;
