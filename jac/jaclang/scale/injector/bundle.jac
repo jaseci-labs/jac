@@ -192,10 +192,10 @@ def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
 }
 
 
-def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
-    # Precompile the app's modules with the POD binary so pods load content-keyed
-    # .jir from _precompiled/ instead of cold-compiling on first boot (#7179).
-    # Best-effort by design: any failure means pods compile exactly as before.
+def _precompile_app(base: Path, pod_binary: bytes) -> Path {
+    # Seal the app's modules with the pod binary into _precompiled/MANIFEST.json
+    # so the deploy artifact is a valid .jab. The seal is mandatory: an
+    # incomplete seal raises rather than shipping a cold-compile fallback.
     stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
     stage = stage_root / "app";
     try {
@@ -210,68 +210,68 @@ def _precompile_app(base: Path, pod_binary: bytes) -> (Path | None) {
         # The precompiler discovers a package by its __init__; app projects are
         # flat, so mark the staged copy (the marker's .jir is not packed).
         marker = stage / "__init__.jac";
-        added_marker = not marker.exists();
-        if added_marker {
+        if not marker.exists() {
             marker.write_text("");
         }
         jac_path = stage_root / ".pod-jac";
         jac_path.write_bytes(pod_binary);
         jac_path.chmod(0o755);
         script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
+        # --seal emits the MANIFEST.json that makes the tree a sealed image.
         result = subprocess.run(
-            [str(jac_path), "run", str(script), str(stage_root)],
+            [str(jac_path), "run", str(script), str(stage_root), "--seal"],
             capture_output=True,
             text=True,
             timeout=600
         );
         jac_path.unlink();
-        # Guarded: py3.11's rglob raises on a missing dir, which would mask the returncode diagnostics below.
-        if added_marker and (stage / "_precompiled").is_dir() {
-            for junk in (stage / "_precompiled").rglob("__init__.jir") {
-                junk.unlink();
-            }
-        }
-        if result.returncode != 0 or not (stage / "_precompiled").is_dir() {
-            logger.warning(
-                f"App precompile with the pod binary did not complete "
-                f"({(result.stderr or result.stdout).strip()[-300:]}); pods will "
-                f"compile on first boot."
+        if (
+            result.returncode != 0
+            or not (stage / "_precompiled" / "MANIFEST.json").is_file()
+        ) {
+            raise RuntimeError(
+                f"App seal did not complete, so the deploy cannot produce a "
+                f".jab: {(result.stderr or result.stdout).strip()[-300:]}"
             );
-            shutil.rmtree(str(stage_root), ignore_errors=True);
-            return None;
         }
         return stage;
-    } except Exception as e {
-        logger.warning(f"App precompile skipped ({e}); pods will compile on boot.");
+    } except Exception {
         shutil.rmtree(str(stage_root), ignore_errors=True);
-        return None;
+        raise;
     }
 }
 
 
-def pack_source(
-    project_dir: str, provisioned_database: str = "", pod_binary: bytes = b""
-) -> bytes {
-    base = Path(project_dir).resolve();
-    staged: (Path | None) = None;
-    if pod_binary {
-        staged = _precompile_app(base, pod_binary);
+def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
+    # Pack the app into a sealed .jab: project source, the sealed _precompiled/
+    # image (MANIFEST.json at tar root), and jac.toml. The gzip-tar IS a valid
+    # .jab (both materialize_jab and a plain `tar xzf` accept it), so pods load
+    # the manifest-verified image instead of cold-compiling on boot.
+    if not pod_binary {
+        raise ValueError(
+            "pack_jab requires the pod binary to seal the app image; none given."
+        );
     }
-    buf = io.BytesIO();
-    (tar, gz) = open_det_tar(buf);
+    base = Path(project_dir).resolve();
+    staged = _precompile_app(base, pod_binary);
+    # staged is <stage_root>/app; the whole mkdtemp tree must be removed even if
+    # a tar.add below raises, or a full project copy leaks in /tmp on every
+    # failed deploy (accumulates on a retrying deploy driver).
     try {
-        with tar {
-            for path in sorted(base.rglob("*")) {
-                if not path.is_file() {
-                    continue;
+        buf = io.BytesIO();
+        (tar, gz) = open_det_tar(buf);
+        try {
+            with tar {
+                for path in sorted(base.rglob("*")) {
+                    if not path.is_file() {
+                        continue;
+                    }
+                    rel = path.relative_to(base);
+                    if is_excluded(rel) {
+                        continue;
+                    }
+                    tar.add(str(path), arcname=str(rel), filter=det_tar_member);
                 }
-                rel = path.relative_to(base);
-                if is_excluded(rel) {
-                    continue;
-                }
-                tar.add(str(path), arcname=str(rel), filter=det_tar_member);
-            }
-            if staged is not None {
                 pre = staged / "_precompiled";
                 count = 0;
                 for path in sorted(pre.rglob("*")) {
@@ -281,22 +281,24 @@ def pack_source(
                         count += 1;
                     }
                 }
-                logger.info(f"Bundled {count} precompiled app-module artifacts.");
-                # staged is <stage_root>/app; remove the whole mkdtemp tree, not just the child.
-                shutil.rmtree(str(staged.parent), ignore_errors=True);
+                logger.info(
+                    f"Sealed {count} precompiled app-module artifacts into the .jab."
+                );
+                sanitized = sanitized_jac_toml(base, provisioned_database);
+                if sanitized is not None {
+                    data = sanitized.encode("utf-8");
+                    info = tarfile.TarInfo(name="jac.toml");
+                    info.size = len(data);
+                    tar.addfile(info, io.BytesIO(data));
+                }
             }
-            sanitized = sanitized_jac_toml(base, provisioned_database);
-            if sanitized is not None {
-                data = sanitized.encode("utf-8");
-                info = tarfile.TarInfo(name="jac.toml");
-                info.size = len(data);
-                tar.addfile(info, io.BytesIO(data));
-            }
+        } finally {
+            gz.close();
         }
+        return buf.getvalue();
     } finally {
-        gz.close();
+        shutil.rmtree(str(staged.parent), ignore_errors=True);
     }
-    return buf.getvalue();
 }
 
 
@@ -306,7 +308,7 @@ def content_address(raw: bytes) -> str {
 
 
 def bundle_object_key(app_name: str, digest: str) -> str {
-    return f"bundles/{app_name}/{digest}.tar.gz";
+    return f"bundles/{app_name}/{digest}.jab";
 }
 
 

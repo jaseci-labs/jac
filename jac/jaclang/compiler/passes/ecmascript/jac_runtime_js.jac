@@ -1418,7 +1418,7 @@ def build_osp_kernel_js -> str {
                 kept.append(stmt);
             }
         }
-        js = es_to_js(es.Program(body=kept, sourceType='module'));
+        js = es_to_js(es.Program(body=kept));
     } finally {
         shutil.rmtree(tmp_dir, ignore_errors=True);
     }

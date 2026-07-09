@@ -36,11 +36,11 @@ obj Memory {
     def get_roots -> Generator[Root, None, None] abs;
     def find(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> Generator[Anchor, None, None] abs;
+    ) -> Generator[Anchor, None, None];
 
     def find_one(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> (Anchor | None) abs;
+    ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None abs;
     def abort -> None;
@@ -49,10 +49,6 @@ obj Memory {
     def get_mem -> dict[UUID, Anchor] abs;
     def capabilities -> set[str];
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
-    def query_by_type(
-        arch_type_name: str, field_filter: (dict | None) = None
-    ) -> Generator[Anchor, None, None];
-
     async def aget(id: UUID) -> (Anchor | None);
     async def aput(anchor: Anchor) -> None;
     async def adelete(id: UUID) -> None;
@@ -99,14 +95,6 @@ obj VolatileMemory(Memory) {
     ) -> Generator[Anchor, None, None];
 
     def get_roots -> Generator[Root, None, None];
-    def find(
-        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> Generator[Anchor, None, None];
-
-    def find_one(
-        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> (Anchor | None);
-
     def commit(anchor: (Anchor | None) = None) -> None;
     def get_mem -> dict[UUID, Anchor];
 }
@@ -137,14 +125,6 @@ obj SqliteMemory(PersistentMemory) {
     ) -> Generator[Anchor, None, None];
 
     def get_roots -> Generator[Root, None, None];
-    def find(
-        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> Generator[Anchor, None, None];
-
-    def find_one(
-        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-    ) -> (Anchor | None);
-
     def commit(anchor: (Anchor | None) = None) -> None;
     def apply(changeset: ChangeSet) -> ApplyReport;
     def _apply_one(conn: sqlite3.Connection, intent: WriteIntent) -> None;

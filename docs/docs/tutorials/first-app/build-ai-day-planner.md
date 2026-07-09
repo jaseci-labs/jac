@@ -4,7 +4,7 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework and the built-in `scale` deployment subsystem) plus the **byllm** plugin for AI. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
+**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework, the built-in `scale` deployment subsystem, and byLLM for AI). If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
@@ -18,12 +18,11 @@ Verify your installation meets the minimum requirements:
 jac --version
 ```
 
-The `jac --version` output lists the binary version and any installed plugins. Check that the following minimums are met (the full-stack client framework and the `scale` subsystem ship inside `jaclang`, so there are no separate versions for them):
+The `jac --version` output shows the binary version. Check that the minimum is met (byLLM, the full-stack client framework, and the `scale` subsystem all ship inside the binary, so there are no separate versions for them):
 
 | Package | Minimum Version |
 |---------|----------------|
 | jaclang | 0.11.0 |
-| byllm | 0.5.0 |
 
 **Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
 
@@ -1100,17 +1099,17 @@ jac model pull gemma-4-e4b
 
 **Configure the LLM**
 
-The model is chosen in `jac.toml` -- the project file that `jac create` generated for you. Add a `[plugins.byllm.model]` section:
+The model is chosen in `jac.toml` -- the project file that `jac create` generated for you. Add a `[byllm.model]` section:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 default_model = "local:gemma-4-e4b"
 ```
 
 That's the whole configuration. Anywhere you write `by llm()` in your Jac code, this is the model that runs. No import, no module-level variable -- swapping models means editing one line in `jac.toml`, with no code change.
 
 !!! info "Use a cloud model instead"
-    If you prefer a hosted model -- typically because you want a stronger model than runs locally, or you're on a machine without GPU/RAM headroom -- swap the `default_model` line in `jac.toml`. Jac's AI plugin wraps [LiteLLM](https://docs.litellm.ai/docs/providers), so anything LiteLLM supports works here:
+    If you prefer a hosted model -- typically because you want a stronger model than runs locally, or you're on a machine without GPU/RAM headroom -- swap the `default_model` line in `jac.toml`. Jac's AI subsystem (byLLM) wraps [LiteLLM](https://docs.litellm.ai/docs/providers), so anything LiteLLM supports works here:
 
     | Provider | `default_model` value | Notes |
     |----------|-----------------------|-------|
@@ -1129,7 +1128,7 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
     glob llm = Model(model_name="local:gemma-4-e4b");
     ```
 
-    `import from jaclang.byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
+    `import from jaclang.byllm.lib { Model }` loads the AI subsystem. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
 
 **Enums as Output Constraints**
 
@@ -1992,7 +1991,7 @@ The AI can only pick from the enum values you defined -- `Category` for tasks, `
 
 **What You Learned**
 
-- **`[plugins.byllm.model]` in `jac.toml`** -- configure which LLM `by llm()` calls use
+- **`[byllm.model]` in `jac.toml`** -- configure which LLM `by llm()` calls use
 - **`glob`** -- module-level variables, accessible throughout the file (used here for `glob llm = Model(...)` as an alternative to `jac.toml` configuration)
 - **`enum`** -- fixed set of named values, used here to constrain AI output
 - **`def func(...) -> Type by llm()`** -- let the LLM implement a function from its signature

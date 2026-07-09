@@ -1,9 +1,8 @@
 import io;
 import json;
 import re;
-import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
-import from urllib.parse { urlencode, urlparse }
+import from urllib.parse { urlencode }
 
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { JacConfig }
@@ -146,7 +145,6 @@ impl JacTestClient.set_auth_token(token: str) -> None {
 
 impl JacTestClient.clear_auth -> None {
     self._auth_token = None;
-    self._current_user = None;
 }
 
 impl JacTestClient.register_user(username: str, password: str) -> TestResponse {
@@ -161,7 +159,6 @@ impl JacTestClient.register_user(username: str, password: str) -> TestResponse {
         data = response.data;
         if data and "token" in data {
             self._auth_token = data["token"];
-            self._current_user = username;
         }
     }
     return response;
@@ -179,7 +176,6 @@ impl JacTestClient.login(username: str, password: str) -> TestResponse {
         data = response.data;
         if data and "token" in data {
             self._auth_token = data["token"];
-            self._current_user = username;
         }
     }
     return response;
@@ -191,7 +187,6 @@ impl JacTestClient._execute_request(
     body: (bytes | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
-    import from http.client { HTTPMessage }
     import from email.parser { Parser }
 
     wfile = io.BytesIO();
@@ -342,6 +337,5 @@ impl JacTestClient.close -> None {
     self._server = None;
     self._handler_class = None;
     self._auth_token = None;
-    self._current_user = None;
     self._hot_reloader = None;
 }

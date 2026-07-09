@@ -75,7 +75,7 @@ Failures surface at the call site as `RuntimeError`: `sv-to-sv RPC '<module>.<fu
 
 ## Gateway mode (many services)
 
-`jac setup microservice --add <file>` (per service) writes `[plugins.scale.microservices]` plumbing into `jac.toml`; `jac start` on the project root then brings the whole stack up behind one API gateway - one public port, one unified `/docs`, one `/metrics`. `X-Trace-Id` is minted at the edge and threaded through every sv hop. Key knob: per-service `rpc_timeout` (`[plugins.scale.microservices.services.NAME] rpc_timeout = 120.0`) defaults to **10s - bump to 120-300 for LLM-backed workers** or the gateway times out long generations. With `jac start --scale` in this mode, every pod gets its peers' `JAC_SV_<MOD>_URL` auto-injected (in-cluster service DNS) - don't set them by hand; `--dry-run` previews the plan.
+`jac setup microservice --add <file>` (per service) writes `[scale.microservices]` plumbing into `jac.toml`; `jac start` on the project root then brings the whole stack up behind one API gateway - one public port, one unified `/docs`, one `/metrics`. `X-Trace-Id` is minted at the edge and threaded through every sv hop. Key knob: per-service `rpc_timeout` (`[scale.microservices.services.NAME] rpc_timeout = 120.0`) defaults to **10s - bump to 120-300 for LLM-backed workers** or the gateway times out long generations. With `jac start --scale` in this mode, every pod gets its peers' `JAC_SV_<MOD>_URL` auto-injected (in-cluster service DNS) - don't set them by hand; `--dry-run` previews the plan.
 
 ## Pitfalls
 

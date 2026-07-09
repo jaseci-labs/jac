@@ -1,5 +1,4 @@
 import jaclang.jac0core.unitree as uni;
-import from enum { Enum }
 
 enum Ownership {
     OWNED = "owned",

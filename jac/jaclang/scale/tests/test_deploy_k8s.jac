@@ -216,10 +216,15 @@ test "early exit" {
     details = result.details;
     failure_message = result.message;
     print(f"Deployment result: {details}");
-    assert "health_check_of_deployment" not in details;
-    assert len(details) == 13;
+    # app_err.jac has compile errors, so it cannot be sealed into a .jab. The
+    # deploy now fails fast at binary prep rather than shipping a source bundle
+    # that would crash-loop in the cluster; it never reaches the health check.
     assert result.success is False;
-    assert failure_message is not None and "Containers restarted" in failure_message;
+    assert "health_check_of_deployment" not in details;
+    assert failure_message is not None;
+    assert (
+        "jac runtime" in failure_message or "seal" in failure_message.lower()
+    ) , failure_message;
 }
 
 test "deployment target methods" {

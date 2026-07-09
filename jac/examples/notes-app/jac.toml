@@ -4,12 +4,12 @@ version = "0.1.0"
 description = "Notes app example exercising the CEF desktop target"
 entry-point = "main.jac"
 
-[plugins.client]
+[client]
 
-[plugins.desktop]
+[desktop]
 engine = "cef"
 
-[plugins.desktop.window]
+[desktop.window]
 title = "Notes App"
 width = 960
 height = 720

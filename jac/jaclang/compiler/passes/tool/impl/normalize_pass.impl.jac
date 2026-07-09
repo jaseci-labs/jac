@@ -710,9 +710,9 @@ impl NormalizePass.enter_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
-impl NormalizePass.enter_if_stmt(nd: uni.IfStmt) -> None {
+impl NormalizePass._normalize_cond_block(nd: uni.UniNode, kw: Tok) -> None {
     new_kid: list[uni.UniNode] = [
-        nd.gen_token(Tok.KW_IF),
+        nd.gen_token(kw),
         nd.condition,
         nd.gen_token(Tok.LBRACE),
 
@@ -727,21 +727,24 @@ impl NormalizePass.enter_if_stmt(nd: uni.IfStmt) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
-impl NormalizePass.enter_else_if(nd: uni.ElseIf) -> None {
-    new_kid: list[uni.UniNode] = [
-        nd.gen_token(Tok.KW_ELIF),
-        nd.condition,
-        nd.gen_token(Tok.LBRACE),
-
-    ];
-    for stmt in nd.body {
-        new_kid.append(stmt);
+impl NormalizePass._normalize_name_list_stmt(nd: uni.UniNode, op: Tok) -> None {
+    new_kid: list[uni.UniNode] = [nd.gen_token(op)];
+    for idx in range(len(nd.target)) {
+        new_kid.append(nd.target[idx]);
+        if idx < len(nd.target) - 1 {
+            new_kid.append(nd.gen_token(Tok.COMMA));
+        }
     }
-    new_kid.append(nd.gen_token(Tok.RBRACE));
-    if nd.else_body {
-        new_kid.append(nd.else_body);
-    }
+    new_kid.append(nd.gen_token(Tok.SEMI));
     nd.set_kids(nodes=new_kid);
+}
+
+impl NormalizePass.enter_if_stmt(nd: uni.IfStmt) -> None {
+    self._normalize_cond_block(nd, Tok.KW_IF);
+}
+
+impl NormalizePass.enter_else_if(nd: uni.ElseIf) -> None {
+    self._normalize_cond_block(nd, Tok.KW_ELIF);
 }
 
 impl NormalizePass.enter_else_stmt(nd: uni.ElseStmt) -> None {
@@ -872,20 +875,7 @@ impl NormalizePass.enter_in_for_stmt(nd: uni.InForStmt) -> None {
 }
 
 impl NormalizePass.enter_while_stmt(nd: uni.WhileStmt) -> None {
-    new_kid: list[uni.UniNode] = [
-        nd.gen_token(Tok.KW_WHILE),
-        nd.condition,
-        nd.gen_token(Tok.LBRACE),
-
-    ];
-    for stmt in nd.body {
-        new_kid.append(stmt);
-    }
-    new_kid.append(nd.gen_token(Tok.RBRACE));
-    if nd.else_body {
-        new_kid.append(nd.else_body);
-    }
-    nd.set_kids(nodes=new_kid);
+    self._normalize_cond_block(nd, Tok.KW_WHILE);
 }
 
 impl NormalizePass.enter_with_stmt(nd: uni.WithStmt) -> None {
@@ -1011,27 +1001,11 @@ impl NormalizePass.enter_cast_expr(nd: uni.CastExpr) -> None {
 }
 
 impl NormalizePass.enter_global_stmt(nd: uni.GlobalStmt) -> None {
-    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.GLOBAL_OP)];
-    for idx in range(len(nd.target)) {
-        new_kid.append(nd.target[idx]);
-        if idx < len(nd.target) - 1 {
-            new_kid.append(nd.gen_token(Tok.COMMA));
-        }
-    }
-    new_kid.append(nd.gen_token(Tok.SEMI));
-    nd.set_kids(nodes=new_kid);
+    self._normalize_name_list_stmt(nd, Tok.GLOBAL_OP);
 }
 
 impl NormalizePass.enter_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.NONLOCAL_OP)];
-    for idx in range(len(nd.target)) {
-        new_kid.append(nd.target[idx]);
-        if idx < len(nd.target) - 1 {
-            new_kid.append(nd.gen_token(Tok.COMMA));
-        }
-    }
-    new_kid.append(nd.gen_token(Tok.SEMI));
-    nd.set_kids(nodes=new_kid);
+    self._normalize_name_list_stmt(nd, Tok.NONLOCAL_OP);
 }
 
 impl NormalizePass.enter_assignment(nd: uni.Assignment) -> None {

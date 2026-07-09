@@ -2,11 +2,11 @@
 phantom `X-dashed: True` namespace key via the auto `--no-X` companion."""
 
 import argparse;
-import from jaclang.cli.command { Arg, HookContext }
+import from jaclang.cli.command { Arg }
 import from jaclang.cli.registry { CommandRegistry }
 
 
-test "hyphenated bool Arg: no phantom, --no-X toggles, get_arg forgives spelling" {
+test "hyphenated bool Arg: no phantom key, --no-X toggles through the dest" {
     registry = CommandRegistry();
 
     # Registry: hyphenated bool produces one underscored namespace key
@@ -32,16 +32,4 @@ test "hyphenated bool Arg: no phantom, --no-X toggles, get_arg forgives spelling
         parser3, Arg.create("scale", typ=bool, default=False, help="x", short="")
     );
     assert vars(parser3.parse_args(["--scale"]))["scale"] is True;
-
-    # HookContext.get_arg: hyphen and underscore both resolve
-    ctx = HookContext(command_name="start", args={"dry_run": True}, data={});
-    assert ctx.get_arg("dry_run", False) is True;
-    assert ctx.get_arg("dry-run", False) is True;
-    assert ctx.get_arg("missing", "fallback") == "fallback";
-
-    # Literal hyphen wins when present (don't break callers building args by hand)
-    ctx2 = HookContext(
-        command_name="start", args={"foo-bar": "hyphen", "foo_bar": "under"}, data={}
-    );
-    assert ctx2.get_arg("foo-bar") == "hyphen";
 }

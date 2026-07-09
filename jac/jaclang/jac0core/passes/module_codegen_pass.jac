@@ -2,7 +2,6 @@ import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.passes.transform { Transform }
-import type from jaclang.jac0core.program { JacProgram }
 
 obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     static def unwrap_body(

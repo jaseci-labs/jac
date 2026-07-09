@@ -162,3 +162,13 @@ test "shortcoming_34_return_none_implicit" {
     f"Expected at least 2 type errors but got {len(program.errors_had)}. "
     "Functions declared -> int should error if they can return None.";
 }
+
+# A `while True` with no break can only exit via return/raise, so a
+# function ending in one must NOT be flagged as implicitly returning None.
+test "shortcoming_34_while_true_no_false_positive" {
+    program = compile_and_check("checker_while_true_returns.jac");
+    _msgs = [str(e) for e in program.errors_had];
+    assert not any("implicitly return" in m for m in _msgs) , (
+        f"E1004 false positive on `while True` with no break: {_msgs}"
+    );
+}

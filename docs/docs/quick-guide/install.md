@@ -41,9 +41,9 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ---
 
-## Installing Plugins
+## Built-in Subsystems & Optional Dependencies
 
-The `jac` binary is the language core, and bundles the AI (byLLM), MCP, and deployment & scaling subsystems built in. "Enabling" one of these just resolves its optional dependencies into your project; genuine third-party plugins install the same way, by name:
+The `jac` binary bundles every capability -- the AI (byLLM), MCP, full-stack client, and deployment & scaling subsystems are all built in. There is nothing to enable; what `jac install` does is resolve a capability's **optional third-party dependencies** into your project:
 
 ```bash
 # AI/LLM integration (byLLM is built in; this pulls its optional deps -- litellm, pillow, ...):
@@ -56,7 +56,7 @@ jac install byllm
 
 The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](agent-skills-and-mcp.md)).
 
-`jac install` resolves plugins from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See the [CLI reference](../reference/cli/index.md#jac-install) for all options.
+`jac install` resolves packages from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See [One Binary, Build Anything](one-binary.md) for the full picture of what the binary bundles, and the [CLI reference](../reference/cli/index.md#jac-install) for all options.
 
 !!! note "Deployment & scaling is built in"
     Production serving and Kubernetes deployment (`jac start`, `jac start --scale`) ship inside the `jac` binary as the built-in `scale` subsystem -- there is no separate `jac-scale` package to install. Scale's optional heavier dependencies (MongoDB, Redis, Kubernetes, Prometheus, ...) are pulled into your project on demand: declare the matching `[scale.*]` config in `jac.toml`, then run `jac install` to resolve them into `.jac/venv`.
@@ -203,10 +203,10 @@ Re-run the one-line installer to upgrade the `jac` binary to the latest version:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-Built-in subsystems (byLLM, MCP, scale) upgrade with the binary itself. To force-refresh a third-party plugin's resolved dependencies, reinstall it:
+Built-in subsystems (byLLM, MCP, scale) upgrade with the binary itself. To force-refresh a project's resolved dependencies, reinstall them:
 
 ```bash
-jac install --force-reinstall <plugin>
+jac install --force-reinstall
 ```
 
 ---

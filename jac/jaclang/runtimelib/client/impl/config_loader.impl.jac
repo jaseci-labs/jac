@@ -237,35 +237,6 @@ impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
     return len(pwa_config) > 0;
 }
 
-impl JacClientConfig.check_runtime_version(
-    self: JacClientConfig
-) -> tuple[bool, str, str] {
-    jac_config = self.get_jac_config();
-    npm_deps: dict = dict(jac_config.get_plugin_deps('npm'));
-
-    user_react: str = str(npm_deps.get('react', ''));
-    required_react: str = CORE_RUNTIME_DEPS.get('react', '');
-
-    if not user_react {
-        if 'jac-client-node' in npm_deps {
-            return (False, 'jac-client-node (legacy)', required_react);
-        }
-        return (False, '', required_react);
-    }
-
-    all_required = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
-    missing = [
-        name
-        for name in all_required
-        if name not in npm_deps
-    ];
-    if missing {
-        return (False, user_react, required_react);
-    }
-
-    return (True, user_react, required_react);
-}
-
 impl JacClientConfig.get_mobile_config(self: JacClientConfig) -> dict[str, any] {
     client_config = self.get_jac_config().get_plugin_config("client");
     section = client_config.get("mobile", {});
@@ -276,26 +247,4 @@ impl JacClientConfig.get_react_native_config(self: JacClientConfig) -> dict[str,
     client_config = self.get_jac_config().get_plugin_config("client");
     section = client_config.get("react_native", {});
     return section if isinstance(section, dict) else {};
-}
-
-impl JacClientConfig.sync_runtime_version(self: JacClientConfig) -> None {
-    jac_config = self.get_jac_config();
-    npm_deps: dict = dict(jac_config.get_plugin_deps('npm'));
-
-    npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
-    dev_section = npm_plugin_deps.get('dev', {});
-    npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
-    _migrate_legacy_meta_packages(jac_config, npm_deps, npm_dev_deps);
-
-    all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
-    for (name, version) in all_runtime.items() {
-        jac_config.add_dependency(name, version, dev=False, dep_type='npm');
-    }
-    for (name, version) in CORE_DEV_DEPS.items() {
-        jac_config.add_dependency(name, version, dev=True, dep_type='npm');
-    }
-    jac_config.save();
-
-    self.invalidate();
-    console.success("Synced all core dependencies to latest required versions");
 }

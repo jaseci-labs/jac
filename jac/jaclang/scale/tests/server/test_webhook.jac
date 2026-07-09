@@ -10,7 +10,6 @@ import json;
 import os;
 import socket;
 import subprocess;
-import sys;
 import time;
 import uuid;
 import shutil;
@@ -45,9 +44,8 @@ def _start_server(
     base_url: str,
     env: dict | None = None
 ) -> subprocess.Popen {
-    jac_executable = Path(sys.executable).parent / "jac";
-
-    cmd = [str(jac_executable), "start", test_file.name, "--port", str(port)];
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    cmd = [jac_executable(), "start", test_file.name, "--port", str(port)];
 
     proc_env = os.environ.copy();
     if env {

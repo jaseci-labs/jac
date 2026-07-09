@@ -41,8 +41,6 @@ def check_pods_restarted(
     _skip_config_load: bool = False
 ) -> bool;
 
-def debug_print(statement: str, debug_only: bool = False) -> None;
-
 def parse_cpu_quantity(quantity: str) -> float;
 
 def parse_memory_quantity(quantity: str) -> float;

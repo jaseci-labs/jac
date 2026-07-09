@@ -79,7 +79,7 @@ jac ai -m local:gemma-4-e4b              # fully local -- no API key
 jac ai --ui                              # web UI with a live phase-graph visualizer
 ```
 
-It uses your `[plugins.byllm.model]` configuration (falling back to the bundled local model), reads the same built-in guides, and can edit files and run code in your project -- pass `--safe` to approve every write and command. See the [`jac ai` reference](../reference/cli/index.md#jac-ai).
+It uses your `[byllm.model]` configuration (falling back to the bundled local model), reads the same built-in guides, and can edit files and run code in your project -- pass `--safe` to approve every write and command. See the [`jac ai` reference](../reference/cli/index.md#jac-ai).
 
 ## Structured code access for agents
 

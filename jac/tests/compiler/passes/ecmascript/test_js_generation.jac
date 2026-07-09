@@ -337,7 +337,7 @@ test "cli js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path],
+        [sys.executable, "-m", "jaclang.cli.cli", "tool", "jac2js", fixture_file_path],
         capture_output=True,
         text=True,
         env=env,
@@ -357,7 +357,15 @@ test "cl only js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path, ],
+        [
+            sys.executable,
+            "-m",
+            "jaclang.cli.cli",
+            "tool",
+            "jac2js",
+            fixture_file_path,
+
+        ],
         capture_output=True,
         text=True,
         env=env,
@@ -1356,7 +1364,8 @@ test "issue 5508 case2 str methods on untyped receivers" {
     # Pluck out the user-compiled function bodies (slice from each function
     # so the injected _jac runtime is not scanned).
     user_chunks = [];
-    for fn_name in ["case2_props_upper", "case2_props_strip", "case2_props_lower"] {
+    # Lowercase components are declared PascalCase (react-refresh contract)
+    for fn_name in ["Case2_props_upper", "Case2_props_strip", "Case2_props_lower"] {
         idx = js_code.find("function " + fn_name);
         assert idx >= 0 , (f"missing compiled function {fn_name}");
         user_chunks.append(js_code[idx:idx + 400]);

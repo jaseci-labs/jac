@@ -316,6 +316,78 @@ impl BaseLLM._resolve_compaction_params(mt_run: MTRuntime) -> dict {
 }
 
 
+"""Threshold-based proactive compaction shared by the react loops.
+
+Checks the last response's prompt-token usage against the context window and
+compacts the message history before the next iteration crosses the limit.
+`cp` is the dict returned by `_resolve_compaction_params`. Returns the new
+value of `just_compacted`; raises CompactionNotEffectiveError when usage is
+still at or above the threshold right after a compaction.
+"""
+impl BaseLLM._maybe_compact(
+    mt_run: MTRuntime, usage: object, just_compacted: bool, cp: dict
+) -> bool {
+    ctx_window = int(cp["ctx_window"]);
+    if not (bool(cp["enabled"]) and ctx_window > 0) {
+        return just_compacted;
+    }
+    comp_threshold = float(cp["threshold"]);
+    prompt_tokens = int(
+        usage.get("prompt_tokens", 0)
+            if isinstance(usage, dict)
+            else usage?.prompt_tokens or 0
+    );
+    if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
+        if just_compacted {
+            raise CompactionNotEffectiveError(
+                f"{prompt_tokens}/{ctx_window} tokens "
+                f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
+                f"{comp_threshold:.0%} after compaction - provide a custom "
+                "on_compaction hook, increase ctx_window, or switch to a model "
+                "with a larger context window."
+            );
+        }
+        logger.info(
+            f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
+            f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
+            "Compacting message history."
+        );
+        self._compact_messages(mt_run, int(cp["keep_recent"]), cp["model"]);
+        return True;
+    }
+    return False;
+}
+
+
+"""Emergency compaction after the provider reported an exceeded context window.
+
+Shared by the react loops' ContextWindowExceededError handlers, so it must be
+called from an active `except` block: honours the opt-out by re-raising when
+compaction is disabled, raises CompactionNotEffectiveError when a compaction
+already just happened, and otherwise compacts and retries the call once.
+`cp` is the dict returned by `_resolve_compaction_params`.
+"""
+impl BaseLLM._emergency_compact_retry(
+    mt_run: MTRuntime, just_compacted: bool, cp: dict
+) -> CompletionResult {
+    if not bool(cp["enabled"]) {
+        raise;
+    }
+    if just_compacted {
+        raise CompactionNotEffectiveError(
+            "Context window exceeded again after emergency compaction - "
+            "provide a custom on_compaction hook, increase ctx_window, "
+            "or switch to a model with a larger context window."
+        );
+    }
+    logger.warning(
+        "byLLM compaction: context window exceeded, triggering emergency compaction."
+    );
+    self._compact_messages(mt_run, int(cp["keep_recent"]), cp["model"]);
+    return self.dispatch_no_streaming(mt_run);
+}
+
+
 """Compact mt_run.messages in-place.
 
 Resolves the `on_compaction` hook: if the caller supplied one (via call_params
@@ -822,11 +894,6 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         mt_run.call_params.get("on_iteration") or self.call_params.get("on_iteration")
     );
     _cp = self._resolve_compaction_params(mt_run);
-    comp_enabled = bool(_cp["enabled"]);
-    comp_threshold = float(_cp["threshold"]);
-    comp_keep_recent = int(_cp["keep_recent"]);
-    comp_model: str | None = _cp["model"];
-    ctx_window = int(_cp["ctx_window"]);
     iter_count = 0;
     last_tool = "";
     last_result = "";
@@ -863,24 +930,8 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         try {
             resp = self.dispatch_no_streaming(mt_run);
         } except litellm.exceptions.ContextWindowExceededError {
-            # Context window exceeded - compact and retry once before giving up.
-            # Honour the opt-out: if compaction is disabled, re-raise immediately.
-            if not comp_enabled {
-                raise;
-            }
-            if just_compacted {
-                raise CompactionNotEffectiveError(
-                    "Context window exceeded again after emergency compaction - "
-                    "provide a custom on_compaction hook, increase ctx_window, "
-                    "or switch to a model with a larger context window."
-                );
-            }
-            logger.warning(
-                "byLLM compaction: context window exceeded, triggering emergency compaction."
-            );
-            self._compact_messages(mt_run, comp_keep_recent, comp_model);
+            resp = self._emergency_compact_retry(mt_run, just_compacted, _cp);
             just_compacted = True;
-            resp = self.dispatch_no_streaming(mt_run);
         } except OutputConversionError {
             # gpt-4o returned plain text that can't be parsed - attempt recovery.
             recovery_resp = self._attempt_recovery(mt_run);
@@ -905,33 +956,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         );
         # Threshold-based proactive compaction: check current input size against the
         # context window and compact before the next iteration crosses the limit.
-        if comp_enabled and ctx_window > 0 {
-            prompt_tokens = int(
-                usage.get("prompt_tokens", 0)
-                    if isinstance(usage, dict)
-                    else usage?.prompt_tokens or 0
-            );
-            if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
-                if just_compacted {
-                    raise CompactionNotEffectiveError(
-                        f"{prompt_tokens}/{ctx_window} tokens "
-                        f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
-                        f"{comp_threshold:.0%} after compaction - provide a custom "
-                        "on_compaction hook, increase ctx_window, or switch to a model "
-                        "with a larger context window."
-                    );
-                }
-                logger.info(
-                    f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
-                    f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
-                    "Compacting message history."
-                );
-                self._compact_messages(mt_run, comp_keep_recent, comp_model);
-                just_compacted = True;
-            } else {
-                just_compacted = False;
-            }
-        }
+        just_compacted = self._maybe_compact(mt_run, usage, just_compacted, _cp);
         if resp.tool_calls {
             # Split at first finish_tool - anything after it is discarded.
             # This normalizes history regardless of parallel/sequential mode:
@@ -1411,6 +1436,34 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     );
 }
 
+"""Decide whether a failed streaming attempt should be retried.
+
+Shared by the sync/async streaming dispatchers. `attempt` is the number of
+retries already used; when the error is transient and retries remain, this
+trims `_usage_history` back to `usage_base` (pass -1 to skip), bumps the
+stream-reset counter so consumers drop already-shown tokens, logs the retry
+and returns True. The backoff sleep stays at the call site so each variant
+keeps its own sync/await sleep.
+"""
+impl BaseLLM._should_retry_stream(
+    mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
+) -> bool {
+    if not (
+        _is_transient_error(e) and attempt < self._resolve_stream_retries(mt_run)
+    ) {
+        return False;
+    }
+    if usage_base >= 0 {
+        self._usage_history = self._usage_history[:usage_base];
+    }
+    mt_run._stream_reset_count += 1;
+    self.log_info(
+        f"Transient stream error ({type(e).__name__}); "
+        f"retry {attempt + 1} on {self.model_name}"
+    );
+    return True;
+}
+
 """Dispatch the LLM call with streaming.
 
 Makes a streaming API call and yields content chunks as they arrive.
@@ -1444,15 +1497,8 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
             # Transient mid-stream drop: retry the same model from scratch, drop the
             # failed attempt's usage, and bump the reset counter so consumers discard
             # tokens already shown.
-            if _is_transient_error(e)
-            and attempt < self._resolve_stream_retries(mt_run) {
+            if self._should_retry_stream(mt_run, e, attempt, usage_base) {
                 attempt += 1;
-                self._usage_history = self._usage_history[:usage_base];
-                mt_run._stream_reset_count += 1;
-                self.log_info(
-                    f"Transient stream error ({type(e).__name__}); "
-                    f"retry {attempt} on {self.model_name}"
-                );
                 _retry_sleep(attempt);
                 continue;
             }
@@ -1515,14 +1561,8 @@ impl BaseLLM.dispatch_streaming_with_tools(
         } except Exception as e {
             # Transient mid-stream drop: discard the partial step and retry the same
             # model; the reset counter tells consumers to drop shown tokens.
-            if _is_transient_error(e)
-            and attempt < self._resolve_stream_retries(mt_run) {
+            if self._should_retry_stream(mt_run, e, attempt) {
                 attempt += 1;
-                mt_run._stream_reset_count += 1;
-                self.log_info(
-                    f"Transient stream error ({type(e).__name__}); "
-                    f"retry {attempt} on {self.model_name}"
-                );
                 _retry_sleep(attempt);
                 continue;
             }
@@ -1667,15 +1707,8 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
             }
             break;
         } except Exception as e {
-            if _is_transient_error(e)
-            and attempt < self._resolve_stream_retries(mt_run) {
+            if self._should_retry_stream(mt_run, e, attempt, usage_base) {
                 attempt += 1;
-                self._usage_history = self._usage_history[:usage_base];
-                mt_run._stream_reset_count += 1;
-                self.log_info(
-                    f"Transient stream error ({type(e).__name__}); "
-                    f"retry {attempt} on {self.model_name}"
-                );
                 await _aretry_sleep(attempt);
                 continue;
             }
@@ -1919,11 +1952,6 @@ impl BaseLLM._invoke_streaming(
             or self.call_params.get("on_iteration")
         );
         _cp = self._resolve_compaction_params(mt_run);
-        comp_enabled = bool(_cp["enabled"]);
-        comp_threshold = float(_cp["threshold"]);
-        comp_keep_recent = int(_cp["keep_recent"]);
-        comp_model: str | None = _cp["model"];
-        ctx_window = int(_cp["ctx_window"]);
         iter_count = 0;
         last_tool = "";
         last_result = "";
@@ -2014,22 +2042,8 @@ impl BaseLLM._invoke_streaming(
                 }
                 resp = _stream_out[0];
             } except litellm.exceptions.ContextWindowExceededError {
-                if not comp_enabled {
-                    raise;
-                }
-                if just_compacted {
-                    raise CompactionNotEffectiveError(
-                        "Context window exceeded again after emergency compaction - "
-                        "provide a custom on_compaction hook, increase ctx_window, "
-                        "or switch to a model with a larger context window."
-                    );
-                }
-                logger.warning(
-                    "byLLM compaction: context window exceeded, triggering emergency compaction."
-                );
-                self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                resp = self._emergency_compact_retry(mt_run, just_compacted, _cp);
                 just_compacted = True;
-                resp = self.dispatch_no_streaming(mt_run);
             } except OutputConversionError {
                 # gpt-4o returned plain text that can't be parsed - attempt recovery.
                 recovery_resp = self._attempt_recovery(mt_run);
@@ -2051,33 +2065,7 @@ impl BaseLLM._invoke_streaming(
                     else getattr(usage, "total_tokens", 0)
             );
             # Threshold-based proactive compaction - identical logic to invoke().
-            if comp_enabled and ctx_window > 0 {
-                prompt_tokens = int(
-                    usage.get("prompt_tokens", 0)
-                        if isinstance(usage, dict)
-                        else usage?.prompt_tokens or 0
-                );
-                if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
-                    if just_compacted {
-                        raise CompactionNotEffectiveError(
-                            f"{prompt_tokens}/{ctx_window} tokens "
-                            f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
-                            f"{comp_threshold:.0%} after compaction - provide a custom "
-                            "on_compaction hook, increase ctx_window, or switch to a model "
-                            "with a larger context window."
-                        );
-                    }
-                    logger.info(
-                        f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
-                        f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
-                        "Compacting message history."
-                    );
-                    self._compact_messages(mt_run, comp_keep_recent, comp_model);
-                    just_compacted = True;
-                } else {
-                    just_compacted = False;
-                }
-            }
+            just_compacted = self._maybe_compact(mt_run, usage, just_compacted, _cp);
 
             # Metrics: emit LLM call duration and completion-token count for this
             # iteration so consumers can show generation speed (tokens/sec).

@@ -107,6 +107,22 @@ jobs:
           restore-keys: |
             jac-precompiled-${{ runner.os }}-${{ runner.arch }}-
 
+      # The Zig package store (.zig-cache/p): the neovim fork + its transitive
+      # PUC Lua source off lua.org's FTP (the build's flakiest fetch), mini.nvim,
+      # tree-sitter-jac, etc. Content-addressed source packages -- immutable, so
+      # (unlike the payload-artifact caches above, kept dev-only to avoid
+      # shipping stale bits) this is safe on BOTH channels, and a release is
+      # exactly when a lua.org blip must not fail the build. Same key as
+      # setup-jac so the Linux-x86_64 leg reuses the entry main seeds; a cross
+      # -Dtarget build fetches the same source, so os/arch is the right axis.
+      - name: Cache the Zig package store (avoids re-fetching Lua/neovim deps)
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache/p
+          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+          restore-keys: |
+            zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Install host tools (zstd)
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
@@ -152,6 +168,9 @@ jobs:
           fi
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
 
+      # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
+      # job so they gate every PR on Linux + macOS, not just release time. The
+      # smoke tests below validate the actually-shipped cross-compiled binary.
       - name: Smoke test (no system Python)
         working-directory: jac
         run: |
@@ -250,44 +269,13 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
 
-      # With this platform's asset attached, `scripts/install.sh` must resolve,
-      # download, checksum-verify, and run it -- catches release-tag/installer
-      # drift at release time on the target hardware. Release channel only:
-      # install.sh resolves versioned assets, not the rolling dev tag.
-      - name: Verify install.sh can fetch + run this release
-        if: inputs.channel != 'dev' && (github.event_name == 'release' || inputs.tag != '')
-        env:
-          JAC_VER: ${{ steps.ver.outputs.version }}
-          ASSET: ${{ steps.pkg.outputs.asset }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euxo pipefail
-          TAG="${{ inputs.tag }}"
-          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
-
-          # The assets API lags uploads by a few seconds; wait for this asset.
-          echo "Waiting for asset $ASSET to appear on release $TAG..."
-          deadline=$(( SECONDS + 120 ))
-          until gh release view "$TAG" --json assets \
-                  --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; do
-            if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "::error::$ASSET did not appear on release $TAG within 120s"
-              exit 1
-            fi
-            sleep 5
-          done
-          echo "Asset $ASSET is visible; verifying install path."
-
-          HOME="$(mktemp -d)"; export HOME
-          bash scripts/install.sh --version "$JAC_VER"
-          BIN="$HOME/.local/bin/jac"
-          test -x "$BIN"
-          "$BIN" --version
-          printf 'with entry { print("installed ok"); }\n' > "$HOME/h.jac"
-          "$BIN" run "$HOME/h.jac" | grep -q "installed ok"
-          bash scripts/install.sh --uninstall
-          ! test -e "$BIN"
+      # install.sh's real `curl ... | bash` path is verified against the
+      # published release out-of-band: nightly.yml `installer-live` (daily, both
+      # platforms) and ci.yml `installer-test` (PRs touching scripts/install.sh).
+      # It is deliberately NOT re-run here as a blocking release gate: install.sh
+      # queries the GitHub API unauthenticated, and on shared macOS runners the
+      # 60/hr anon rate limit routinely trips -- failing a release whose assets
+      # uploaded fine.
 
       # Release channel only: dev binaries are already published on the `dev`
       # prerelease, and a per-push 3x ~130 MB artifact would be pure storage

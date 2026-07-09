@@ -148,7 +148,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     try {
         _add_mobile_config(project_dir, app_name, app_id);
     } except Exception as e {
-        console.warning(f"  Failed to add [plugins.client.mobile] to jac.toml: {e}");
+        console.warning(f"  Failed to add [client.mobile] to jac.toml: {e}");
     }
 
     setup_label = ", ".join(platforms);

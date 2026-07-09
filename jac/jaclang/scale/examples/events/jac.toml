@@ -4,14 +4,14 @@ version = "1.0.0"
 description = "Minimal event-streaming example for jac-scale"
 entry-point = "app.jac"
 
-[plugins.scale.events]
+[scale.events]
 enabled = true
-# Omit `url` to use the in-memory LocalEventStream. Set it (or [plugins.scale.database].redis_url)
+# Omit `url` to use the in-memory LocalEventStream. Set it (or [scale.database].redis_url)
 # to switch to RedisEventStream without code changes.
 url = "redis://localhost:6379/0"
 consumer_group = "events-example"
 
-[plugins.scale.events.retry]
+[scale.events.retry]
 max_attempts = 3
 backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"

@@ -562,9 +562,9 @@ built into `jaclang` core (`jac/jaclang/runtimelib/client/targets/desktop/`).
 Configuration is declarative in `jac.toml`:
 
 ```toml
-[plugins.desktop]
+[desktop]
 name = "my-app"
-[plugins.desktop.window]
+[desktop.window]
 title  = "My App"
 width  = 1000
 height = 700

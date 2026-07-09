@@ -495,7 +495,7 @@ obj Plan {
         if not self.services {
             console.print();
             console.print(
-                "(no microservices declared in [plugins.scale.microservices.routes])",
+                "(no microservices declared in [scale.microservices.routes])",
                 style="muted"
             );
             return;

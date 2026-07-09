@@ -701,8 +701,7 @@ def run_eas_update_opt_in(rn_dir: Path, platform: str, branch: str, message: str
         cmd.append("--auto");
     }
     console.print(
-        "  OTA publish enabled (plugins.client.react_native.eas_update=true)",
-        style="muted"
+        "  OTA publish enabled (client.react_native.eas_update=true)", style="muted"
     );
     console.print(f"  Running EAS update: {' '.join(cmd)}", style="muted");
     subprocess.run(

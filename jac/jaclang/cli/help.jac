@@ -42,9 +42,5 @@ obj HelpFormatter {
     def format_curated_help(commands: list[CommandSpec], prog: str = "jac") -> str;
 }
 
-glob _groups: CommandGroups | None = None,
-     _formatter: HelpFormatter | None = None;
-
-def get_command_groups -> CommandGroups;
-
+glob _formatter: HelpFormatter | None = None;
 def get_help_formatter -> HelpFormatter;

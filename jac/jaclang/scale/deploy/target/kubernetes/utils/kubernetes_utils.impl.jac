@@ -826,9 +826,3 @@ impl delete_k8s_secret(
         }
     }
 }
-
-impl debug_print(statement: str, debug_only: bool = False) -> None {
-    if debug_only {
-        console.print(statement);
-    }
-}
