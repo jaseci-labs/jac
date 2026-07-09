@@ -247,7 +247,7 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 - **Top-level component name is `def:pub app()`** - lowercase. Runtime mounts the literal name.
 - **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX. `{}` (empty slot) is also a parse error - use `{#* note *#}` for a no-op placeholder. A `#` outside an expression slot is treated as **literal HTML text**, not a comment.
 - **Module `glob`s can hold rich data - including JSX.** `glob _BUILDS: list[dict] = [{"name": "CLI", "icon": <Terminal size={15}/>}];` is a fine home for render-constant tables; iterate them in slots or comprehensions. `glob` is NOT reactive - anything that changes belongs in `has`.
-- **`jac format` can drop significant JSX whitespace** when reflowing mixed text + inline elements. Keep spacing that matters as explicit string children - `{" "}` between an element and text, `{" · "}` separators - those survive reformatting.
+- **`jac fmt` can drop significant JSX whitespace** when reflowing mixed text + inline elements. Keep spacing that matters as explicit string children - `{" "}` between an element and text, `{" · "}` separators - those survive reformatting.
 
 ## See also
 
