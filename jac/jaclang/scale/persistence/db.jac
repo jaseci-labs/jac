@@ -41,26 +41,23 @@ obj DeleteResult {
 def _wait_mongo_ready(
     client: MongoClient, tries: int = 15, delay: float = 2.0
 ) -> None {
-    # The k8s wait-for-mongodb init container probes TCP only, and mongod
-    # accepts sockets before its auth subsystem is ready - a pod booting into
-    # that window crashed on its first real operation and restarted (#7179).
-    # Bounded ping-retry on the first handshake instead of crash-looping;
-    # gated to the pod runtime so local CLI use never waits on a dead mongo.
+    # Defense-in-depth for the pod runtime: the mongo deployment's
+    # readinessProbe gates first boot on an authenticated ping, but mongo can
+    # restart mid-life, so the first handshake retries transient connection
+    # failures instead of crash-looping. Auth and config errors raise at
+    # once - retrying cannot fix them. Gated to the pod runtime so local CLI
+    # use never waits on a dead mongo.
     import os;
     import time;
     if not os.environ.get("JAC_SCALE_RUNTIME") {
         return;
     }
-    import from jaclang.scale._optdeps.pymongo { ConnectionFailure, OperationFailure }
-    # Retry connection failures and OperationFailure (auth-not-ready raises the
-    # same AuthenticationFailed as bad credentials - indistinguishable, so a
-    # misconfigured pod fails after the bounded budget instead of instantly).
-    # Permanent config errors (bad URI etc.) are NOT retried and raise at once.
+    import from jaclang.scale._optdeps.pymongo { ConnectionFailure }
     for attempt in range(tries) {
         try {
             client.admin.command("ping");
             return;
-        } except (ConnectionFailure, OperationFailure) {
+        } except ConnectionFailure {
             if attempt == tries - 1 {
                 raise;
             }
