@@ -7,6 +7,22 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Plugin system removed; `[plugins.*]` config flattened
+
+The pluggy-style plugin/hook system has been removed entirely. The `jac plugins` command, the `JAC_DISABLED_PLUGINS` env var, the `[plugins]` `discovery`/`enabled`/`disabled` keys, and entry-point plugin discovery are all gone. Built-in features (byLLM, scale, the client/desktop framework, MCP, shadcn) are now called directly by core, and **external third-party plugins are no longer supported**.
+
+Feature config moved from the `[plugins.<name>]` namespace to top-level `[<name>]` tables:
+
+| Old | New |
+|---|---|
+| `[plugins.byllm]` / `[plugins.byllm.model]` | `[byllm]` / `[byllm.model]` |
+| `[plugins.scale.database]` | `[scale.database]` |
+| `[plugins.client.pwa]` | `[client.pwa]` |
+
+**Impact:** rename any `[plugins.<name>]` sections in existing `jac.toml` files to the top-level form; drop any `[plugins]` enable/disable lists and `jac plugins` invocations from scripts. Everything the built-in features do is always available -- there is nothing to enable. (Older entries below that mention `[plugins.<name>]` config predate this flattening; use the top-level names.)
+
+---
+
 ### Project kinds renamed to deliverable-oriented names
 
 The `jac create --kind` / `[project] kind` taxonomy was renamed to describe **what you ship**. The old names are **not** accepted as aliases -- `jac create --kind pypi-package` and a `jac.toml` carrying `kind = "fullstack"` both fail with `Unknown project kind`.
@@ -36,9 +52,9 @@ The `jac create --kind` / `[project] kind` taxonomy was renamed to describe **wh
 
 - There is no more `pip install byllm` / `jac install -e jac-byllm`. byLLM ships inside the `jac` binary.
 - Code that did `import from byllm...` must change to `import from jaclang.byllm...` (e.g. `import from byllm.lib { Model }` becomes `import from jaclang.byllm.lib { Model }`; `import from byllm.llm { Model }` becomes `import from jaclang.byllm.llm { Model }`).
-- byLLM's third-party dependencies (litellm, pillow, ...) are no longer installed via the `byllm` package. Instead they form the `llm` capability: declare `[plugins.byllm]` in `jac.toml` and run `jac install`; the capability registry resolves litellm + pillow into the project's `.jac/venv`. Optional runtimes are separate capabilities -- `llm.local` (llama-cpp-python, huggingface_hub), `llm.mcp` (mcp), `llm.video` (opencv). Using a real model without the `llm` capability raises an actionable "run `jac install`" error.
+- byLLM's third-party dependencies (litellm, pillow, ...) are no longer installed via the `byllm` package. Instead they form the `llm` capability: declare `[byllm]` in `jac.toml` and run `jac install`; the capability registry resolves litellm + pillow into the project's `.jac/venv`. Optional runtimes are separate capabilities -- `llm.local` (llama-cpp-python, huggingface_hub), `llm.mcp` (mcp), `llm.video` (opencv). Using a real model without the `llm` capability raises an actionable "run `jac install`" error.
 
-**Unchanged from a user's perspective:** the `by llm()` syntax, `[plugins.byllm.*]` config, and the `jac model` CLI behave exactly as before -- only the packaging and import path changed.
+**Unchanged from a user's perspective:** the `by llm()` syntax, `[byllm.*]` config, and the `jac model` CLI behave exactly as before -- only the packaging and import path changed.
 
 ---
 
@@ -53,7 +69,7 @@ The `jac create --kind` / `[project] kind` taxonomy was renamed to describe **wh
 - `jac plugins enable scale` is no longer needed -- scale is always available.
 - Scale's optional third-party dependencies (fastapi, pymongo, redis, kubernetes, prometheus-client, ...) are no longer installed via package extras. Instead, declare the matching `[scale.*]` config in `jac.toml` and run `jac install`; the capability registry resolves the required libraries into the project's `.jac/venv`.
 
-**Unchanged from a user's perspective:** `jac start`, `jac start --scale`, and all `[scale.*]` / `[plugins.scale.*]` config behave exactly as before -- only the packaging changed.
+**Unchanged from a user's perspective:** `jac start`, `jac start --scale`, and all `[scale.*]` config behave exactly as before -- only the packaging changed.
 
 ---
 
@@ -965,10 +981,10 @@ my-project/
    .jac/
    ```
 
-3. If using custom `shelf_db_path` in jac-scale config, update the path:
+3. If using custom `shelf_db_path` in scale config, update the path:
 
    ```toml
-   [plugins.scale.database]
+   [scale.database]
    shelf_db_path = ".jac/data/anchor_store.db"
    ```
 

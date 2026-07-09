@@ -19,6 +19,7 @@ import from jaclang.scale.models.deployment_result { DeploymentResult }
 import from jaclang.scale.config.config_loader { JacScaleConfig, get_scale_config }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
+import from jaclang.scale.deploy.database { kubernetes_redis as redis_module }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -216,10 +217,15 @@ test "early exit" {
     details = result.details;
     failure_message = result.message;
     print(f"Deployment result: {details}");
-    assert "health_check_of_deployment" not in details;
-    assert len(details) == 13;
+    # app_err.jac has compile errors, so it cannot be sealed into a .jab. The
+    # deploy now fails fast at binary prep rather than shipping a source bundle
+    # that would crash-loop in the cluster; it never reaches the health check.
     assert result.success is False;
-    assert failure_message is not None and "Containers restarted" in failure_message;
+    assert "health_check_of_deployment" not in details;
+    assert failure_message is not None;
+    assert (
+        "jac runtime" in failure_message or "seal" in failure_message.lower()
+    ) , failure_message;
 }
 
 test "deployment target methods" {
@@ -247,6 +253,221 @@ test "deployment target methods" {
     } except Exception {
         0;
     }
+}
+
+def _make_fleet_target(app_name: str = "svc-a", namespace: str = "fleet-ns") -> any {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config["app_name"] = app_name;
+    target_config["namespace"] = namespace;
+    logger = UtilityFactory.create_logger("standard");
+    return DeploymentTargetFactory.create(
+        "kubernetes-microservice", target_config, logger
+    );
+}
+
+def _fleet_bundle(app_name: str = "svc-a") -> dict[str, any] {
+    return {
+        "deployments": {
+            app_name: {
+                "metadata": {
+                    "name": f"{app_name}-deployment",
+                    "labels": {"app": app_name}
+                }
+            }
+        }
+    };
+}
+
+# Patches the AppsV1Api/CoreV1Api used by _wait_for_fleet_rollout with the
+# given fakes and runs the rollout wait, returning whatever it raised (or
+# None on a clean return) so each test can assert on outcome, not plumbing.
+def _run_fleet_rollout(
+    deployment_target: any,
+    bundle: dict[str, any],
+    fake_apps_v1: any,
+    fake_core_v1: any,
+    timeout: int = 30
+) -> (Exception | None) {
+    caught: (Exception | None) = None;
+    with unittest.mock.patch(
+        "jaclang.scale.deploy.target.kubernetes.microservice.target.k8s_cluster_config"
+    ) {
+        with unittest.mock.patch(
+            "jaclang.scale.deploy.target.kubernetes.microservice.target.client.AppsV1Api",
+            return_value=fake_apps_v1
+        ) {
+            with unittest.mock.patch(
+                "jaclang.scale.deploy.target.kubernetes.microservice.target.client.CoreV1Api",
+                return_value=fake_core_v1
+            ) {
+                with unittest.mock.patch.object(time, "sleep") {
+                    try {
+                        deployment_target._wait_for_fleet_rollout(
+                            bundle, timeout=timeout
+                        );
+                    } except Exception as e {
+                        caught = e;
+                    }
+                }
+            }
+        }
+    }
+    return caught;
+}
+
+test "fleet rollout ignores crash-looping pod from a stale replica set" {
+    deployment_target = _make_fleet_target();
+    bundle = _fleet_bundle();
+
+    current_hash = "new-hash";
+    stale_hash = "old-hash";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": "svc-a"};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    stale_rs = unittest.mock.MagicMock();
+    stale_rs.metadata.labels = {"pod-template-hash": stale_hash, "app": "svc-a"};
+    stale_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "1"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [
+        stale_rs,
+        current_rs
+    ];
+    fake_apps_v1.read_namespaced_deployment.side_effect = [
+        SimpleNamespace(status=SimpleNamespace(ready_replicas=0)),
+        SimpleNamespace(status=SimpleNamespace(ready_replicas=1)),
+
+    ];
+
+    healthy_pod = unittest.mock.MagicMock();
+    healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
+    healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
+    healthy_pod.status.phase = "Running";
+
+    stale_pod = unittest.mock.MagicMock();
+    stale_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": stale_hash};
+    stale_pod.metadata.name = "svc-a-stale-crash";
+    stale_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    stale_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [stale_pod, healthy_pod];
+
+    caught = _run_fleet_rollout(deployment_target, bundle, fake_apps_v1, fake_core_v1);
+
+    assert caught is None , "stale crash-looping pod must not block the wait";
+    assert fake_apps_v1.read_namespaced_deployment.call_count == 2 , "fleet must reach ready on the next poll";
+}
+
+# A current-RS crash pod is never filtered out by the hash scoping, so this
+# also passes under an unconditional broad scan; kept as an over-suppression
+# guard, not a test of the RS-scoping fix itself.
+test "fleet rollout still fails when a current replica set pod is crash-looping" {
+    deployment_target = _make_fleet_target();
+    bundle = _fleet_bundle();
+
+    current_hash = "new-hash";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": "svc-a"};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
+    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
+        status=SimpleNamespace(ready_replicas=0)
+    );
+
+    crash_pod = unittest.mock.MagicMock();
+    crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
+    crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    crash_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [crash_pod];
+
+    caught = _run_fleet_rollout(deployment_target, bundle, fake_apps_v1, fake_core_v1);
+
+    assert caught is not None and "crash-looping" in str(caught) , "a crash-looping pod from the current RS must still fail the rollout wait";
+}
+
+test "fleet rollout still fails when a companion Deployment pod outside the fleet is crash-looping" {
+    deployment_target = _make_fleet_target();
+    bundle = _fleet_bundle();
+
+    current_hash = "new-hash";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": "svc-a"};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
+    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
+        status=SimpleNamespace(ready_replicas=0)
+    );
+
+    healthy_pod = unittest.mock.MagicMock();
+    healthy_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": current_hash};
+    healthy_pod.metadata.name = "svc-a-healthy";
+    healthy_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=0)];
+    healthy_pod.status.phase = "Running";
+
+    # Redis is provisioned separately from the fleet's own microservice
+    # Deployments (bundle["deployments"]), so "svc-a-redis" is never in
+    # fleet_app_names and its pod-template-hash was never resolved into
+    # current_hashes - it must still be checked for crashes. This is the
+    # test that actually guards the fleet_app_names bypass in
+    # _scan_for_crash_loop.
+    redis_pod = unittest.mock.MagicMock();
+    redis_pod.metadata.labels = {
+        "app": "svc-a-redis",
+        "pod-template-hash": "redis-hash-not-in-current-hashes"
+    };
+    redis_pod.metadata.name = "svc-a-redis-789";
+    redis_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    redis_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [healthy_pod, redis_pod];
+
+    caught = _run_fleet_rollout(deployment_target, bundle, fake_apps_v1, fake_core_v1);
+
+    assert caught is not None and "crash-looping" in str(caught) , "a crash-looping companion Deployment pod (e.g. Redis) outside the fleet's own Deployments must still fail the rollout wait";
+}
+
+# Exercises the `except Exception` fallback in _wait_for_fleet_rollout, not
+# the RS-scoping fix itself: it passes as long as the plain broad pod scan
+# still detects crashes, independent of whether hash scoping exists at all.
+test "fleet rollout falls back to broad pod scan when RS lookup fails" {
+    deployment_target = _make_fleet_target();
+    bundle = _fleet_bundle();
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.side_effect = Exception(
+        "RS API unavailable"
+    );
+    fake_apps_v1.read_namespaced_deployment.return_value = SimpleNamespace(
+        status=SimpleNamespace(ready_replicas=0)
+    );
+
+    crash_pod = unittest.mock.MagicMock();
+    crash_pod.metadata.labels = {"app": "svc-a", "pod-template-hash": "whatever-hash"};
+    crash_pod.metadata.name = "svc-a-crash";
+    crash_pod.status.container_statuses = [unittest.mock.MagicMock(restart_count=5)];
+    crash_pod.status.phase = "Running";
+
+    fake_core_v1 = unittest.mock.MagicMock();
+    fake_core_v1.list_namespaced_pod.return_value.items = [crash_pod];
+
+    caught = _run_fleet_rollout(deployment_target, bundle, fake_apps_v1, fake_core_v1);
+
+    assert caught is not None , "crash must still be detected via broad scan when RS lookup fails";
 }
 
 test "redis template file in package" {
@@ -306,6 +527,100 @@ test "kubernetes database provider security context" {
 
     assert mongo_deploy['service_account']['automountServiceAccountToken'] is False;
     assert redis_deploy['service_account']['automountServiceAccountToken'] is False;
+}
+
+test "redis pod resources default to configured values" {
+    redis_provider = DatabaseProviderFactory.create(
+        'kubernetes_redis', None, {'app_name': 'test-app'}
+    );
+    redis_deploy = redis_provider.deploy();
+    resources = redis_deploy['deployment']['spec']['template']['spec']['containers'][0][
+        'resources'
+    ];
+
+    assert resources['requests']['cpu'] == '100m';
+    assert resources['requests']['memory'] == '128Mi';
+    assert resources['limits']['cpu'] == '500m';
+    assert resources['limits']['memory'] == '1Gi';
+}
+
+test "default redis memory limit does not emit a headroom warning" {
+    mock_logger = unittest.mock.MagicMock();
+
+    with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
+        redis_provider = DatabaseProviderFactory.create(
+            'kubernetes_redis', None, {'app_name': 'test-app'}
+        );
+        redis_provider.deploy();
+    }
+
+    warned = any(
+        'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
+    );
+    assert not warned , "default 1Gi limit over 200mb maxmemory must not warn";
+}
+
+test "redis pod resources propagate from [scale.database] config" {
+    fake_config = SimpleNamespace(
+        get_database_config=lambda :
+            {
+                'redis_max_memory': '200mb',
+                'redis_cpu_request': '500m',
+                'redis_cpu_limit': '2000m',
+                'redis_memory_request': '1Gi',
+                'redis_memory_limit': '4Gi'
+            },
+        get_kubernetes_config=lambda : {}
+    );
+
+    with unittest.mock.patch.object(
+        redis_module, 'get_scale_config', lambda : fake_config
+    ) {
+        redis_provider = DatabaseProviderFactory.create(
+            'kubernetes_redis', None, {'app_name': 'test-app'}
+        );
+        redis_deploy = redis_provider.deploy();
+    }
+
+    resources = redis_deploy['deployment']['spec']['template']['spec']['containers'][0][
+        'resources'
+    ];
+
+    assert resources['requests']['cpu'] == '500m';
+    assert resources['requests']['memory'] == '1Gi';
+    assert resources['limits']['cpu'] == '2000m';
+    assert resources['limits']['memory'] == '4Gi';
+}
+
+test "redis warns when memory limit lacks headroom over maxmemory" {
+    fake_config = SimpleNamespace(
+        get_database_config=lambda :
+            {
+                'redis_max_memory': '200mb',
+                'redis_cpu_request': '250m',
+                'redis_cpu_limit': '1000m',
+                'redis_memory_request': '128Mi',
+                'redis_memory_limit': '256Mi'
+            },
+        get_kubernetes_config=lambda : {}
+    );
+    mock_logger = unittest.mock.MagicMock();
+
+    with unittest.mock.patch.object(
+        redis_module, 'get_scale_config', lambda : fake_config
+    ) {
+        with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
+            redis_provider = DatabaseProviderFactory.create(
+                'kubernetes_redis', None, {'app_name': 'test-app'}
+            );
+            redis_provider.deploy();
+        }
+    }
+
+    warned = any(
+        'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
+    );
+    assert warned , "expected a headroom warning when limit <= 2x maxmemory";
 }
 
 obj FakeNetworkingV1 {

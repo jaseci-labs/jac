@@ -5,10 +5,10 @@ import hashlib;
 import subprocess;
 import sys;
 import tarfile;
-import platform;
 import from urllib.request { urlopen, urlretrieve }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.runtimelib.utils { host_arch }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch { desktop_launch_env }
 
 def _jaclang_src_roots -> list[Path] {
@@ -24,7 +24,7 @@ def _jaclang_src_roots -> list[Path] {
             roots.append(Path(str(jl)).resolve().parent.parent);
         }
     } except Exception {
-        pass;
+        ;
     }
     return roots;
 }
@@ -303,7 +303,7 @@ def _cef_expected_sha1(sums_lock: Path, archive: str) -> str {
 }
 
 def _cef_plat_tag -> str {
-    arch = platform.machine();
+    arch = host_arch();
     if arch == "x86_64" {
         return "linux64";
     }

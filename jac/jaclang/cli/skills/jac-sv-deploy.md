@@ -31,8 +31,8 @@ JWT_SECRET = "${JWT_SECRET}"        # see jac-sv-auth: the default JWT secret MU
 jac start app.jac --scale --dry-run   # lint config + print the plan; nothing applied. Use before every deploy.
 jac start app.jac --scale             # dev deploy (no image build)
 jac start app.jac --scale --build     # build+push Docker image (DOCKER_USERNAME/PASSWORD in .env), then deploy
-jac status app.jac                    # component health table (app, Mongo, Redis, Grafana)
-jac destroy app.jac                   # DELETES THE NAMESPACE INCLUDING PERSISTENT VOLUMES - all data is lost
+jac scale status app.jac              # component health table (app, Mongo, Redis, Grafana)
+jac scale destroy app.jac             # DELETES THE NAMESPACE INCLUDING PERSISTENT VOLUMES - all data is lost
 ```
 
 ```toml
@@ -89,7 +89,7 @@ bucket = "my-app-uploads"      # region, prefix, endpoint_url (non-AWS), public_
 
 ## Pitfalls
 
-- **`jac destroy` deletes data.** PVCs included. There is a y/N prompt; there is no undo.
+- **`jac scale destroy` deletes data.** PVCs included. There is a y/N prompt; there is no undo.
 - `--dry-run` catches config errors (HPA min>max, bad resource units like `500MB` vs `500Mi`) in ~1s vs finding out after a 5-10 minute build-push-deploy.
 - HPA does nothing without `cpu_request` - Kubernetes can't compute a utilization %.
 - Multi-replica + SQLite = corruption/confusion. Going past one replica requires `MONGODB_URI` (+ Redis for cache/locks).

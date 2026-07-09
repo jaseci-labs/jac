@@ -2,7 +2,9 @@ import os;
 import io;
 import tarfile;
 import tempfile;
+import unittest.mock;
 import from pathlib { Path }
+import from types { SimpleNamespace }
 import from jaclang.scale.config.dev_config {
     resolve_dev_channel,
     Channel,
@@ -10,9 +12,11 @@ import from jaclang.scale.config.dev_config {
 }
 import from jaclang.scale.injector.binary {
     pack_binary_bytes,
+    cluster_node_archs,
     node_arch,
     download_release_binary
 }
+import from jaclang.runtimelib.utils { host_arch }
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
@@ -178,18 +182,122 @@ test "invalid system package name is rejected (no shell injection)" {
 }
 
 
-test "node_arch defaults to the host arch and honors JAC_NODE_ARCH" {
+def _fake_node(arch: str) -> SimpleNamespace {
+    return SimpleNamespace(
+        status=SimpleNamespace(node_info=SimpleNamespace(architecture=arch))
+    );
+}
+
+
+def _core_api_with_nodes(archs: list[str]) -> unittest.mock.MagicMock {
+    api = unittest.mock.MagicMock();
+    api.list_node.return_value = SimpleNamespace(items=[_fake_node(a) for a in archs]);
+    return api;
+}
+
+
+def _without_node_arch_env(check: any) {
     saved = os.environ.pop("JAC_NODE_ARCH", None);
     try {
-        assert node_arch() in ("x86_64", "aarch64");
-        os.environ["JAC_NODE_ARCH"] = "aarch64";
-        assert node_arch() == "aarch64";
+        check();
     } finally {
         os.environ.pop("JAC_NODE_ARCH", None);
         if saved is not None {
             os.environ["JAC_NODE_ARCH"] = saved;
         }
     }
+}
+
+
+test "node_arch uses the cluster's node arch, not the host arch" {
+    def check {
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api",
+            return_value=_core_api_with_nodes(["amd64", "amd64"])
+        ) {
+            assert node_arch() == "x86_64";
+        }
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(["arm64"])
+        ) {
+            assert node_arch() == "aarch64";
+        }
+    }
+    _without_node_arch_env(check);
+}
+
+
+test "node_arch falls back to the host arch when the cluster is unreachable" {
+    def check {
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api", side_effect=Exception("no cluster")
+        ) {
+            assert node_arch() in ("x86_64", "aarch64");
+        }
+    }
+    _without_node_arch_env(check);
+}
+
+
+test "node_arch falls back to the host arch on a mixed-arch cluster" {
+    def check {
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api",
+            return_value=_core_api_with_nodes(["amd64", "arm64"])
+        ) {
+            assert node_arch() == host_arch();
+        }
+    }
+    _without_node_arch_env(check);
+}
+
+
+test "JAC_NODE_ARCH overrides cluster detection and is normalized" {
+    saved = os.environ.pop("JAC_NODE_ARCH", None);
+    try {
+        os.environ["JAC_NODE_ARCH"] = "arm64";
+        with unittest.mock.patch(
+            "kubernetes.client.CoreV1Api", return_value=_core_api_with_nodes(["amd64"])
+        ) as api {
+            assert node_arch() == "aarch64";
+            api.assert_not_called();
+        }
+    } finally {
+        os.environ.pop("JAC_NODE_ARCH", None);
+        if saved is not None {
+            os.environ["JAC_NODE_ARCH"] = saved;
+        }
+    }
+}
+
+
+test "cluster_node_archs dedupes and maps GOARCH to release arch names" {
+    with unittest.mock.patch(
+        "kubernetes.client.CoreV1Api",
+        return_value=_core_api_with_nodes(["amd64", "x86_64", "arm64"])
+    ) {
+        assert cluster_node_archs() == ["aarch64", "x86_64"];
+    }
+}
+
+
+test "blank node architectures are ignored" {
+    with unittest.mock.patch(
+        "kubernetes.client.CoreV1Api",
+        return_value=_core_api_with_nodes(["  ", "", "amd64"])
+    ) {
+        assert cluster_node_archs() == ["x86_64"];
+    }
+}
+
+
+test "node listing is bounded by a request timeout" {
+    api = _core_api_with_nodes(["amd64"]);
+    with unittest.mock.patch("kubernetes.client.CoreV1Api", return_value=api) {
+        cluster_node_archs();
+    }
+    kwargs = api.list_node.call_args.kwargs;
+    assert kwargs["_request_timeout"] == 10;
 }
 
 
@@ -202,18 +310,19 @@ test "pack_binary_bytes tars only the binary" {
 }
 
 
-test "BinaryInjector unpacks AND seeds both the source and the toolchain bundle" {
+test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundle" {
     injector = BinaryInjector();
-    injector._object_key = "bundles/orders/aaa.tar.gz";
+    # App bundle is a .jab; the toolchain bundle stays a plain .tar.gz.
+    injector._object_key = "bundles/orders/aaa.jab";
     injector._toolchain_object_key = "toolchain/orders/bbb.tar.gz";
     injector._bundle_bytes = b"src";
     injector._toolchain_bytes = b"tool";
 
     paths = injector._unpack_bundle_paths();
-    assert any(["aaa.tar.gz" in path for path in paths]);
+    assert any(["aaa.jab" in path for path in paths]);
     assert any(["bbb.tar.gz" in path for path in paths]);
 
     keys = [key for (key, _) in injector._seed_artifacts()];
-    assert "bundles/orders/aaa.tar.gz" in keys;
+    assert "bundles/orders/aaa.jab" in keys;
     assert "toolchain/orders/bbb.tar.gz" in keys;
 }
