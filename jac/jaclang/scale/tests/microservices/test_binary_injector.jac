@@ -337,7 +337,12 @@ glob _fake_urls: dict = {};
 
 
 def _fake_admin_dist_urls(channel: str) -> tuple[str, str] {
-    return (_fake_urls["url"], _fake_urls["sha"]);
+    return (_fake_urls["url"], _fake_urls["url"] + ".sha256");
+}
+
+
+def _no_http(url: str) -> bytes {
+    raise AssertionError("the network must not be touched");
 }
 
 
@@ -357,30 +362,22 @@ def _make_dist_tar -> bytes {
 }
 
 
-def _serve_dir(directory: str) -> tuple {
-    handler = functools.partial(
-        http.server.SimpleHTTPRequestHandler, directory=directory
-    );
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler);
-    threading.Thread(target=srv.serve_forever, daemon=True).start();
-    return (srv, srv.server_address[1]);
-}
-
-
-test "admin console asset is downloaded, verified, staged, and cached" {
+test "admin console asset: verified download staged, cache reused, bad checksum refused" {
     serve_dir = tempfile.mkdtemp();
     payload = _make_dist_tar();
     asset = "jac-dev-admin-dist.tar.gz";
     (Path(serve_dir) / asset).write_bytes(payload);
     digest = hashlib.sha256(payload).hexdigest();
     (Path(serve_dir) / (asset + ".sha256")).write_text(f"{digest}  {asset}\n");
-    (srv, port) = _serve_dir(serve_dir);
-    _fake_urls["url"] = f"http://127.0.0.1:{port}/{asset}";
-    _fake_urls["sha"] = _fake_urls["url"] + ".sha256";
+    handler = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=serve_dir
+    );
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler);
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    _fake_urls["url"] = f"http://127.0.0.1:{srv.server_address[1]}/{asset}";
 
     saved_cache = os.environ.get("JAC_SCALE_CACHE_DIR");
-    cache_dir = tempfile.mkdtemp();
-    os.environ["JAC_SCALE_CACHE_DIR"] = cache_dir;
+    os.environ["JAC_SCALE_CACHE_DIR"] = tempfile.mkdtemp();
     try {
         with unittest.mock.patch.object(
             binary_mod, "_admin_dist_urls", _fake_admin_dist_urls
@@ -390,12 +387,21 @@ test "admin console asset is downloaded, verified, staged, and cached" {
             admin = Path(proj) / ".jac" / "admin";
             assert (admin / "index.html").is_file();
             assert (admin / "assets" / "app.js").is_file();
-            # Cached: the tarball vanishes from the server, but a fresh
-            # project still stages from the verified local cache.
+            # The tarball vanished from the server: a fresh deploy stages
+            # from the verified cache.
             os.remove(os.path.join(serve_dir, asset));
             proj2 = tempfile.mkdtemp();
             assert stage_admin_dist(proj2, "dev");
             assert (Path(proj2) / ".jac" / "admin" / "index.html").is_file();
+            # A checksum mismatch stages nothing.
+            os.environ["JAC_SCALE_CACHE_DIR"] = tempfile.mkdtemp();
+            (Path(serve_dir) / asset).write_bytes(payload);
+            (Path(serve_dir) / (asset + ".sha256")).write_text(
+                f"{'0' * 64}  {asset}\n"
+            );
+            proj3 = tempfile.mkdtemp();
+            assert not stage_admin_dist(proj3, "dev");
+            assert not (Path(proj3) / ".jac" / "admin").exists();
         }
     } finally {
         srv.shutdown();
@@ -405,41 +411,6 @@ test "admin console asset is downloaded, verified, staged, and cached" {
             os.environ["JAC_SCALE_CACHE_DIR"] = saved_cache;
         }
     }
-}
-
-
-test "a checksum-mismatched admin console asset is refused" {
-    serve_dir = tempfile.mkdtemp();
-    asset = "jac-dev-admin-dist.tar.gz";
-    (Path(serve_dir) / asset).write_bytes(_make_dist_tar());
-    (Path(serve_dir) / (asset + ".sha256")).write_text(f"{'0' * 64}  {asset}\n");
-    (srv, port) = _serve_dir(serve_dir);
-    _fake_urls["url"] = f"http://127.0.0.1:{port}/{asset}";
-    _fake_urls["sha"] = _fake_urls["url"] + ".sha256";
-
-    saved_cache = os.environ.get("JAC_SCALE_CACHE_DIR");
-    os.environ["JAC_SCALE_CACHE_DIR"] = tempfile.mkdtemp();
-    try {
-        with unittest.mock.patch.object(
-            binary_mod, "_admin_dist_urls", _fake_admin_dist_urls
-        ) {
-            proj = tempfile.mkdtemp();
-            assert not stage_admin_dist(proj, "dev");
-            assert not (Path(proj) / ".jac" / "admin").exists();
-        }
-    } finally {
-        srv.shutdown();
-        if saved_cache is None {
-            os.environ.pop("JAC_SCALE_CACHE_DIR", None);
-        } else {
-            os.environ["JAC_SCALE_CACHE_DIR"] = saved_cache;
-        }
-    }
-}
-
-
-def _no_http(url: str) -> bytes {
-    raise AssertionError("the network must not be touched");
 }
 
 

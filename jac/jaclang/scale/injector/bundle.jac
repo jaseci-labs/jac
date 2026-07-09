@@ -60,8 +60,7 @@ def is_excluded(rel: Path) -> bool {
     ) {
         return False;
     }
-    # The staged admin console: the gateway serves /app/.jac/admin directly
-    # when index.html is already there instead of building it on boot.
+    # The staged admin console the gateway serves directly.
     if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
         return False;
     }

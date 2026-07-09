@@ -251,9 +251,6 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 
 
 def _admin_dist_urls(channel: str) -> tuple[str, str] {
-    # Same release-asset resolution as the binary: fixed names on the rolling
-    # dev prerelease (no API, its anonymous quota is exhausted on CI), and
-    # the API for version-named stable assets.
     repo = "jaseci-labs/jaseci";
     suffix = "-admin-dist.tar.gz";
     if channel == "dev" {
@@ -261,8 +258,7 @@ def _admin_dist_urls(channel: str) -> tuple[str, str] {
         return (url, url + ".sha256");
     }
     if channel == "local" {
-        # The binary comes from the developer's machine; a store-bought
-        # console could skew against it, so only the package _dist is used.
+        # A downloaded console could skew against a developer-supplied binary.
         return ("", "");
     }
     api = f"https://api.github.com/repos/{repo}/releases/latest";
@@ -307,10 +303,8 @@ def download_admin_dist(channel: str) -> bytes | None {
 
 
 def stage_admin_dist(project_dir: str, channel: str) -> bool {
-    # The console ships as its own release asset per channel; the driver
-    # pulls it (checksum-verified, cached) and stages it into the bundle at
-    # <app>/.jac/admin, so gateway pods serve it instead of spending ~148s
-    # building it from source on boot.
+    # Stage the channel's console asset at <app>/.jac/admin so gateway pods
+    # serve it instead of building it from source on boot.
     dest = Path(project_dir) / ".jac" / "admin";
     try {
         payload = download_admin_dist(channel);

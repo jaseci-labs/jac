@@ -287,11 +287,9 @@ jobs:
           name: ${{ steps.pkg.outputs.asset }}
           path: jac/dist/*
 
-  # The admin console is platform-independent (html/js/css), so it is built
-  # once from the linux-x86_64 binary this run just produced (same-commit
-  # compiler) and attached to the release as its own asset. The deploy
-  # driver downloads it per channel exactly like the binary and ships it in
-  # the app bundle, so gateway pods never build the console from source.
+  # The admin console is platform-independent, so build it once with the
+  # linux-x86_64 binary this run produced (same-commit compiler) and attach
+  # it to the release as its own asset for the deploy driver to download.
   admin-dist:
     needs: build
     if: github.event_name == 'release' || inputs.tag != ''
@@ -306,9 +304,8 @@ jobs:
         working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
-      # Release channel: the build legs keep the binary as a workflow
-      # artifact; dev channel keeps none, so pull the asset this run just
-      # re-published on the rolling prerelease.
+      # Dev-channel legs keep no workflow artifact; that path pulls the
+      # asset this run just re-published on the rolling prerelease instead.
       - name: Fetch this run's linux-x86_64 binary (release channel)
         if: inputs.channel != 'dev'
         uses: actions/download-artifact@v4
