@@ -2,35 +2,32 @@
 
 The clean break holds only if it cannot silently regrow:
 
-  1. The visible core verb count stays within the budget — adding a verb
-     means removing one (or deliberately raising the budget here, in review).
+  1. The visible verb count stays within the budget; adding a verb means
+     removing one (or deliberately raising the budget here, in review).
   2. Tombstoned verbs stay unregistered; the tombstone table is authoritative.
-  3. A plugin contributes at most ONE visible top-level noun; everything else
-     it ships must be a subcommand/extension of an existing verb.
+
+Built-in features (client/scale/shadcn/byllm) are folded into core: they add
+flags to existing verbs and contribute at most one top-level verb each
+(setup / scale / retheme / model), all registered through the same
+`@registry.command` path as core.
 """
 
-import from jaclang.cli.registry { get_registry, extend_builtin_commands }
+import from jaclang.cli.registry { get_registry, register_feature_commands }
 import from jaclang.cli.cli { TOMBSTONED_VERBS }
 import jaclang.cli.commands;
 
-glob VERB_BUDGET: int = 24;
+glob VERB_BUDGET: int = 28;
 
 def _all_specs(include_hidden: bool = False) -> list {
-    extend_builtin_commands();
+    register_feature_commands();
     return get_registry().get_all(include_hidden=include_hidden);
 }
 
-test "visible core verbs stay within the budget" {
-    core = sorted(
-        [
-            s.name
-            for s in _all_specs()
-            if s.source == "jaclang"
-        ]
-    );
-    assert len(core) <= VERB_BUDGET , f"{len(
-        core
-    )} visible core verbs exceed the budget of {VERB_BUDGET}: {core}. "
+test "visible verbs stay within the budget" {
+    verbs = sorted([s.name for s in _all_specs()]);
+    assert len(verbs) <= VERB_BUDGET , f"{len(
+        verbs
+    )} visible verbs exceed the budget of {VERB_BUDGET}: {verbs}. "
     "Fold the new capability into an existing verb, or remove one.";
 }
 
@@ -44,19 +41,4 @@ test "tombstoned verbs stay unregistered" {
         ]
     );
     assert not revived , f"tombstoned verb(s) re-registered: {revived}";
-}
-
-test "plugins register at most one visible top-level noun" {
-    by_source: dict[str, list[str]] = {};
-    for s in _all_specs() {
-        if s.source != "jaclang" {
-            by_source.setdefault(s.source, []).append(s.name);
-        }
-    }
-    offenders = {
-        src: sorted(names)
-        for (src, names) in by_source.items()
-        if len(names) > 1
-    };
-    assert not offenders , f"plugins must register exactly one visible top-level noun: {offenders}";
 }

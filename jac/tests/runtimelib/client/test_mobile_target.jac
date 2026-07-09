@@ -68,22 +68,17 @@ test "mobile_dev_host helper module exists" {
     assert "8.8.8.8" in d;
 }
 
-test "JacClientCmd defines create_cmd" {
-    # Regression: create_cmd must be a real static def (not swallowed by a
-    # docstring). extend_builtin_commands() calls it directly to register the
-    # client CLI flags; if it were missing, jac setup / jac build / jac start
-    # client integration would silently no-op.
-    cli = (_client_dir / "cli.jac").read_text().replace("\r\n", "\n");
-    assert "static def create_cmd" in cli;
-}
-
-test "cli exposes mobile dev flags and cap live-reload" {
-    cli = _client_dir / "cli.jac";
-    c = cli.read_text();
-    assert 'Arg.create(\n                        "host"' in c;
-    assert "Mobile start/dev: android or ios" in c;
+test "start exposes mobile dev flags and cli wires cap live-reload" {
+    # The mobile dev flags (host/platform) now live on the core `start` command;
+    # the client module consumes them natively in run_client_start.
+    exec_jac = (
+        _client_dir.parent.parent / "cli" / "commands" / "execution.jac"
+    ).read_text();
+    assert '"host"' in exec_jac;
+    assert "Mobile start/dev: android or ios" in exec_jac;
+    c = (_client_dir / "cli.jac").read_text();
     assert "JAC_MOBILE_DEV_HOST" in c;
-    assert 'ctx.get_arg("platform", "auto")' in c;
+    assert 'os.environ["JAC_MOBILE_PLATFORM"] = str(platform)' in c;
     mobile_impl = (
         _client_dir / "targets" / "impl" / "mobile_target.impl.jac"
     ).read_text();

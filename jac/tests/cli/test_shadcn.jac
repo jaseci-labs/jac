@@ -13,7 +13,6 @@ import from jaclang.cli.shadcn.shadcn_handler { load_registry }
 import from jaclang.cli.shadcn.shadcn_handler { parse_style_css }
 import from jaclang.cli.shadcn.shadcn_handler { resolve_component }
 import from jaclang.cli.shadcn.shadcn_handler { resolve_single_component }
-import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
 
 
 # The jac-shadcn template dir, resolved from the installed package (robust to

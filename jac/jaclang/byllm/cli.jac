@@ -112,9 +112,9 @@ def _cmd_model(action: str = "list", alias: str = "") -> int {
     return 2;
 }
 
-# Registration: top-level `jac model` subcommand.
-# Decorator runs at module import; the JacCmd hook below ensures byllm
-# is loaded into the registry before argparse is finalised.
+# Registration: top-level `jac model` subcommand. The decorator runs when this
+# module is imported by register_feature_commands at CLI startup, before
+# argparse is finalised.
 @registry.command(
     name="model",
     help="Manage byllm local-model weights (Gemma 4 and friends)",
@@ -139,15 +139,8 @@ def _cmd_model(action: str = "list", alias: str = "") -> int {
         ("jac model rm gemma-4-e4b", "Delete cached weights for an alias"),
 
     ],
-    group="config",
-    source="byllm"
+    group="config"
 )
 def model(action: str = "list", alias: str = "") -> int {
     return _cmd_model(action, alias);
-}
-
-class JacCmd {
-    static def create_cmd {
-        return;
-    }
 }
