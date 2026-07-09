@@ -1,3 +1,12 @@
+def _carries_topology_index(anchor: Anchor) -> bool {
+    # A NodeAnchor that carries a topology-index blob (a root). The blob is
+    # opaque and only ever changes via EDGE_LIST_DELTA, and unlike an ordinary
+    # node's edge list it cannot be reconstructed from the edge anchors, so an
+    # edge-list-delta on such a node must still invalidate cross-pod.
+    return isinstance(anchor, NodeAnchor) and anchor.topology_index_data is not None;
+}
+
+
 impl ScaleTieredMemory.postinit -> None {
     self.__mem__ = {};
 
@@ -109,6 +118,16 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     );
                 } elif intent.anchor.id not in self_broadcasting {
                     self.l2.put(intent.anchor);
+                    cast(RedisBackend, self.l2).publish_invalidation(
+                        str(intent.anchor.id), self._l1_id
+                    );
+                } elif _carries_topology_index(intent.anchor) {
+                    # EDGE_LIST_DELTA on a root: the topology index blob can't be
+                    # reconstructed from the (invalidated) edge anchors, so other
+                    # pods would keep serving a stale GTI. Invalidate L2 and
+                    # broadcast so they evict L1 and reload the fresh index from
+                    # L3. Storm-avoidance is preserved for ordinary hot nodes.
+                    self.l2.invalidate(intent.anchor.id);
                     cast(RedisBackend, self.l2).publish_invalidation(
                         str(intent.anchor.id), self._l1_id
                     );
