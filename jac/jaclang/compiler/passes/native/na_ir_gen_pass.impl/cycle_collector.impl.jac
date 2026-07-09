@@ -536,8 +536,7 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
         cw_done
     );
     b = ir.IRBuilder(cw_set);
-
-    b.store(ir.Constant(i8, RC_COLOR_BLACK), _cw_csp);
+    self._emit_rc_color_store(b, _cw_csp, _cw_cb, RC_COLOR_BLACK);
     self._emit_rc_trace_dispatch(cw_fn, b, cw_fn.args[0], cw_vis_fn, cw_free);
 
     b = ir.IRBuilder(cw_free);
