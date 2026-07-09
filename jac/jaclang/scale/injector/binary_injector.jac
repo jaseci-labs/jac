@@ -47,7 +47,6 @@ obj BinaryInjector(PvcInjector) {
 
 
 def select_injector(
-    channel: Channel,
     storage_class: str,
     app_name: str,
     namespace: str,
@@ -55,11 +54,14 @@ def select_injector(
     provisioned_database: str = ""
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
-    blurb = (
-        "downloading the rolling `dev` (main HEAD) jac binary"
-            if channel == Channel.DEV
-            else "downloading the latest published (stable) jac release"
-    );
+    import from jaclang.scale.config.dev_config { resolve_dev_channel }
+    # The one place the pod binary channel is decided (local > dev > stable).
+    channel = resolve_dev_channel(project_dir);
+    blurbs = {
+        Channel.LOCAL: "shipping the local jac binary",
+        Channel.DEV: "downloading the rolling `dev` (main HEAD) jac binary",
+        Channel.STABLE: "downloading the latest published (stable) jac release"
+    };
     try {
         console.print(f"Preparing the '{channel.value}' jac runtime for pods.");
         injector = BinaryInjector(
@@ -68,7 +70,7 @@ def select_injector(
             provisioned_database=provisioned_database
         );
         injector.prepare(app_name, namespace, project_dir);
-        console.print(f"Ready: {blurb}.");
+        console.print(f"Ready: {blurbs[channel]}.");
         return (injector, injector._toolchain_object_key);
     } except Exception as exc {
         logger.warning(f"[{channel.value}] binary prep failed: {exc}");

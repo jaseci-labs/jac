@@ -98,3 +98,35 @@ test "dev index.html loads entry via dynamic import and tags load errors with ph
         assert '.catch(function() {})' in content;
     }
 }
+
+test "dev config wires fast refresh and index.html installs the hook before the entry" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_cfg.read_text();
+        assert 'import jacFastRefresh from "./jac-fast-refresh.js"' in dev_content;
+        assert "jacFastRefresh()," in dev_content;
+        plugin_js = (dev_cfg.parent / "jac-fast-refresh.js").read_text();
+        # Boundary mirrors @vitejs/plugin-react: register exports, self-accept,
+        # invalidate (full reload) when the new exports are not swap-safe
+        assert "registerExportsForReactRefresh" in plugin_js;
+        assert "import.meta.hot.accept" in plugin_js;
+        assert "validateRefreshBoundaryAndEnqueueUpdate" in plugin_js;
+        assert "import.meta.hot.invalidate" in plugin_js;
+        # Only modules the compiler stamped as component-only are instrumented;
+        # unstamped modules (globs, helpers, router wiring) keep full reload
+        assert '/*jac:refresh-boundary*/' in plugin_js;
+        bundler._ensure_dev_index_html(Path(tmp));
+        html = (Path(tmp) / "index.html").read_text();
+        assert "injectIntoGlobalHook" in html;
+        # The refresh hook must install before React loads with the app entry
+        assert html.index('"/@react-refresh"') < html.index(
+            'import("/compiled/_entry.js")'
+        );
+        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        assert "jacFastRefresh" not in build_content;
+    }
+}

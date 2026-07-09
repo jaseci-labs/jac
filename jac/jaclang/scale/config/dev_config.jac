@@ -9,11 +9,8 @@ source, on the host or in-pod. The channel decides which prebuilt binary:
     JAC_SCALE_BINARY_PATH set  -> LOCAL  : ship the jac binary at that local path
                                            instead of downloading a release
 
-STABLE and DEV both ship the release binary bare - there is no source overlay.
-LOCAL is the bring-your-own-binary escape hatch: point JAC_SCALE_BINARY_PATH at
-a jac binary you built (or an air-gapped mirror) and that exact file is shipped
-to pods. It takes precedence over the `[dev]` stanza, and CI's real-app e2e uses
-it to ship the binary built from the PR under test rather than a published one.
+Priority is LOCAL > DEV > STABLE: JAC_SCALE_BINARY_PATH (a local build or
+air-gapped mirror) wins over the `[dev]` stanza, which wins over the default.
 """
 
 import os;

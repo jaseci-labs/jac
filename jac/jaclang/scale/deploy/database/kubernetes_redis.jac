@@ -184,6 +184,43 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         return hash_obj.hexdigest()[:8];
     }
 
+    def _parse_size_to_bytes(value: str) -> int | None {
+        text = str(value).strip().lower();
+        multipliers = {
+            'ki': 1024,
+            'mi': 1024 ** 2,
+            'gi': 1024 ** 3,
+            'ti': 1024 ** 4,
+            'kb': 1024,
+            'mb': 1024 ** 2,
+            'gb': 1024 ** 3,
+            'tb': 1024 ** 4,
+            'k': 1000,
+            'm': 1000 ** 2,
+            'g': 1000 ** 3,
+            't': 1000 ** 4
+        };
+        for (suffix, mult) in sorted(
+            multipliers.items(), key=lambda kv : -len(kv[0])
+        ) {
+            if text.endswith(suffix) {
+                try {
+                    return int(float(text[:-len(suffix)].strip()) * mult);
+                } except ValueError {
+                    return None;
+                }
+            }
+        }
+        if text.endswith('b') {
+            text = text[:-1].strip();
+        }
+        try {
+            return int(text);
+        } except ValueError {
+            return None;
+        }
+    }
+
     def deploy(config: dict[str, any] = {}) -> dict[str, any] {
         redis_name = f"{self.app_name}-redis";
         redis_port = 6379;
@@ -198,6 +235,27 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         redis_enable_keyspace_notifications = db_config.get(
             'redis_enable_keyspace_notifications', False
         );
+        redis_cpu_request = str(db_config['redis_cpu_request']);
+        redis_cpu_limit = str(db_config['redis_cpu_limit']);
+        redis_memory_request = str(db_config['redis_memory_request']);
+        redis_memory_limit = str(db_config['redis_memory_limit']);
+
+        redis_max_memory = str(db_config['redis_max_memory']);
+        limit_bytes = self._parse_size_to_bytes(redis_memory_limit);
+        max_memory_bytes = self._parse_size_to_bytes(redis_max_memory);
+        if (
+            limit_bytes is not None
+            and max_memory_bytes is not None
+            and limit_bytes < max_memory_bytes * 2
+        ) {
+            logger.warning(
+                f"redis_memory_limit ({redis_memory_limit}) leaves little headroom "
+                f"over redis_max_memory ({redis_max_memory}); Redis needs roughly 2x "
+                f"maxmemory for BGSAVE fork copy-on-write and may be OOMKilled at "
+                f"runtime. Consider raising redis_memory_limit."
+            );
+        }
+
         redis_username = str(k8s_config.get('redis_username', 'admin'));
         redis_password = str(k8s_config.get('redis_password', 'password'));
         connection_string = self._build_connection_string(
@@ -346,8 +404,14 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                                     {'name': 'tmp', 'mountPath': '/tmp'}
                                 ],
                                 'resources': {
-                                    'requests': {'cpu': '100m', 'memory': '128Mi'},
-                                    'limits': {'cpu': '500m', 'memory': '256Mi'}
+                                    'requests': {
+                                        'cpu': redis_cpu_request,
+                                        'memory': redis_memory_request
+                                    },
+                                    'limits': {
+                                        'cpu': redis_cpu_limit,
+                                        'memory': redis_memory_limit
+                                    }
                                 },
                                 'livenessProbe': {
                                     'tcpSocket': {'port': redis_port},

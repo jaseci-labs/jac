@@ -97,7 +97,7 @@ print(w.names)
 
 Library-mode basics: archetypes subclass `Node` / `Edge` / `Walker` / `Obj`, abilities are `@on_entry` methods, `connect(a, b)` ≈ `a ++> b`, `spawn(walker, node)` ≈ `node spawn walker`. **`root` is a function in library mode** (`root()`), the opposite of `.jac` source where bare `root` is the keyword and `root()` warns W0062.
 
-`jac jac2py file.jac` prints the equivalent library-mode Python - the fastest way to learn the `jaclang.lib` API or to hand a module to a Python-only team.
+`jac tool jac2py file.jac` prints the equivalent library-mode Python - the fastest way to learn the `jaclang.lib` API or to hand a module to a Python-only team.
 
 ## Pitfalls
 

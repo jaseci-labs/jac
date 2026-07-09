@@ -104,9 +104,8 @@ description = "My custom project template"
 ```
 
 ```
-jac jacpack list                       # registered templates (same list as --list_jacpacks)
-jac jacpack pack ./my-template/        # bundle dir -> mytemplate.jacpack
-jac jacpack info ./my-template/        # inspect a template DIRECTORY
+jac create --list_jacpacks             # registered templates and kinds
+jac create --pack ./my-template/       # bundle dir -> mytemplate.jacpack (--pack_output for a custom path)
 jac create app --use ./my-template/    # use directly, no packing needed
 jac create app --use mytemplate.jacpack
 ```

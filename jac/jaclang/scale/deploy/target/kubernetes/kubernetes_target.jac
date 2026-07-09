@@ -1013,7 +1013,6 @@ obj KubernetesTarget(DeploymentTarget) {
 
             import from jaclang.scale.injector.binary_injector { select_injector }
             (injector, _tc_key) = select_injector(
-                app_config.channel,
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,

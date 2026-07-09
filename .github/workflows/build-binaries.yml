@@ -168,14 +168,9 @@ jobs:
           fi
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
 
-      # Launcher unit tests: trailer codec + `.jab`-overlay round-trip
-      # (append / detect / materialize-steps-over-overlay / graft). runtime.zig
-      # is the sole owner of the trailer format, so these guard the whole
-      # `--as binary` boot shape. Host-native, no libpython needed.
-      - name: Launcher unit tests (zig build test)
-        working-directory: jac
-        run: zig build test --summary all
-
+      # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
+      # job so they gate every PR on Linux + macOS, not just release time. The
+      # smoke tests below validate the actually-shipped cross-compiled binary.
       - name: Smoke test (no system Python)
         working-directory: jac
         run: |
@@ -185,30 +180,6 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
-
-      # Guards the unified `.jab` overlay: `jac build --as binary` seals a tiny
-      # cli app, appends it as an overlay onto the bundled jac (`jac __appjab`),
-      # and the produced binary boots its app via the same run_jab_image path as
-      # `jac run app.jab`. Release channel only -- a dev binary links its
-      # compiler from a source tree absent in this clean env.
-      - name: Smoke test (jac build --as binary)
-        if: inputs.channel != 'dev'
-        working-directory: jac
-        run: |
-          set -euxo pipefail
-          BIN="$PWD/zig-out/bin/jac"
-          WORK="$(mktemp -d)"
-          mkdir -p "$WORK/app"
-          printf '[project]\nname = "smoke"\nkind = "cli"\nentry-point = "main.jac"\n' > "$WORK/app/jac.toml"
-          printf 'with entry { print("overlay-ok"); }\n' > "$WORK/app/main.jac"
-          ( cd "$WORK/app" && env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" build --as binary )
-          env -i HOME="$WORK" PATH=/usr/bin:/bin "$WORK/app/dist/smoke" | grep -qx 'overlay-ok'
-          # Overlay coords must not hijack via env inheritance: a stale/leaked
-          # JAC_APP_OVERLAY_* must be CLEARED by a plain jac (runs its CLI) and
-          # OVERWRITTEN by an app binary (runs its own app), never mis-slice.
-          printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
-          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_APP_OVERLAY_OFF=999999999 JAC_APP_OVERLAY_LEN=16 "$BIN" run "$WORK/h.jac" | grep -qx 'ok'
-          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_APP_OVERLAY_OFF=999999999 JAC_APP_OVERLAY_LEN=16 "$WORK/app/dist/smoke" | grep -qx 'overlay-ok'
 
       # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any
       # interpreter config) into subprocesses -- a python-based child spawned
@@ -298,44 +269,13 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
 
-      # With this platform's asset attached, `scripts/install.sh` must resolve,
-      # download, checksum-verify, and run it -- catches release-tag/installer
-      # drift at release time on the target hardware. Release channel only:
-      # install.sh resolves versioned assets, not the rolling dev tag.
-      - name: Verify install.sh can fetch + run this release
-        if: inputs.channel != 'dev' && (github.event_name == 'release' || inputs.tag != '')
-        env:
-          JAC_VER: ${{ steps.ver.outputs.version }}
-          ASSET: ${{ steps.pkg.outputs.asset }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euxo pipefail
-          TAG="${{ inputs.tag }}"
-          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
-
-          # The assets API lags uploads by a few seconds; wait for this asset.
-          echo "Waiting for asset $ASSET to appear on release $TAG..."
-          deadline=$(( SECONDS + 120 ))
-          until gh release view "$TAG" --json assets \
-                  --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; do
-            if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "::error::$ASSET did not appear on release $TAG within 120s"
-              exit 1
-            fi
-            sleep 5
-          done
-          echo "Asset $ASSET is visible; verifying install path."
-
-          HOME="$(mktemp -d)"; export HOME
-          bash scripts/install.sh --version "$JAC_VER"
-          BIN="$HOME/.local/bin/jac"
-          test -x "$BIN"
-          "$BIN" --version
-          printf 'with entry { print("installed ok"); }\n' > "$HOME/h.jac"
-          "$BIN" run "$HOME/h.jac" | grep -q "installed ok"
-          bash scripts/install.sh --uninstall
-          ! test -e "$BIN"
+      # install.sh's real `curl ... | bash` path is verified against the
+      # published release out-of-band: nightly.yml `installer-live` (daily, both
+      # platforms) and ci.yml `installer-test` (PRs touching scripts/install.sh).
+      # It is deliberately NOT re-run here as a blocking release gate: install.sh
+      # queries the GitHub API unauthenticated, and on shared macOS runners the
+      # 60/hr anon rate limit routinely trips -- failing a release whose assets
+      # uploaded fine.
 
       # Release channel only: dev binaries are already published on the `dev`
       # prerelease, and a per-push 3x ~130 MB artifact would be pure storage

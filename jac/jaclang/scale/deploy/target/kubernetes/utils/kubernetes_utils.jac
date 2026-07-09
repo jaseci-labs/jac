@@ -28,7 +28,18 @@ glob COMPANION_DEFS: list = [
 
      ];
 
-def check_pods_restarted(namespace: str, app_name: str) -> bool;
+def _resolve_current_rs_hashes(namespace: str, selector: str) -> set;
+
+def _refresh_rs_hashes(
+    namespace: str, selector: str, current: (set | None)
+) -> (set | None);
+
+def check_pods_restarted(
+    namespace: str,
+    app_name: str,
+    _rs_hashes: (set | None) = None,
+    _skip_config_load: bool = False
+) -> bool;
 
 def parse_cpu_quantity(quantity: str) -> float;
 
