@@ -452,8 +452,8 @@ impl JacLangServer.get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str] {
                 node_info += f"': '{sym_node.name_spec.type.shared.class_name}";
             }
         }
-        if isinstance(sym_node, uni.AstDocNode) and sym_node.doc {
-            node_info += f"'\n'{sym_node.doc.value}";
+        if sym_node.sym and (doc := doc_of_sym(sym_node.sym)) {
+            node_info += f"'\n'{doc}";
         }
         if isinstance(sym_node, uni.Ability) and sym_node.signature {
             node_info += f"'\n'{sym_node.signature.unparse()}";
@@ -549,8 +549,19 @@ impl JacLangServer.get_completion_items_of(
         if item.detail {
             detail = lspt.CompletionItemLabelDetails(detail=item.detail);
         }
+        documentation: lspt.MarkupContent | None = None;
+        if item.documentation {
+            documentation = lspt.MarkupContent(
+                kind=lspt.MarkupKind.PlainText, value=item.documentation
+            );
+        }
         items.append(
-            lspt.CompletionItem(label=item.label, kind=item.kind, label_details=detail,)
+            lspt.CompletionItem(
+                label=item.label,
+                kind=item.kind,
+                label_details=detail,
+                documentation=documentation,
+            )
         );
     }
     return lspt.CompletionList(is_incomplete=False, items=items,);

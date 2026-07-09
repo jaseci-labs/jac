@@ -1,7 +1,6 @@
+import os;
 import socket;
 import shutil;
-import sys;
-import from pathlib { Path }
 
 def pick_free_port(name: str, base: int = 18000, retries: int = 100) -> int {
     start: int = base + (hash(name) % 1000);
@@ -21,16 +20,11 @@ def pick_free_port(name: str, base: int = 18000, retries: int = 100) -> int {
     raise RuntimeError(f"Could not find free port near {start}");
 }
 
-def resolve_jac_binary -> str {
-    found: str = shutil.which("jac") or "";
-    if found {
-        return found;
-    }
-    candidate = Path(sys.executable).parent / "jac";
-    if candidate.exists() {
-        return str(candidate);
-    }
-    return "jac";
+def jac_executable -> str {
+    # Re-invoking jac must not depend on `jac` being on PATH: the single-binary
+    # launcher pins its real path in JAC_EXECUTABLE. Fall back to PATH, then a
+    # bare name for dev / link-source runs.
+    return os.environ.get("JAC_EXECUTABLE", "") or shutil.which("jac") or "jac";
 }
 
 glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0;
