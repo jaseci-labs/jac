@@ -341,11 +341,6 @@ def _fake_admin_dist_urls(channel: str) -> tuple[str, str] {
 }
 
 
-def _no_download_admin_dist_urls(channel: str) -> tuple[str, str] {
-    raise AssertionError("the download path must not be used");
-}
-
-
 def _make_dist_tar -> bytes {
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {
@@ -372,18 +367,7 @@ def _serve_dir(directory: str) -> tuple {
 }
 
 
-def _empty_jaclang_pkg -> str {
-    # A jaclang package dir WITHOUT scale/admin/_dist, so stage_admin_dist
-    # cannot short-circuit on a locally built console.
-    pkg = Path(tempfile.mkdtemp()) / "jaclang";
-    (pkg / "scale" / "admin").mkdir(parents=True);
-    (pkg / "__init__.py").write_text("");
-    return str(pkg / "__init__.py");
-}
-
-
 test "admin console asset is downloaded, verified, staged, and cached" {
-    import jaclang;
     serve_dir = tempfile.mkdtemp();
     payload = _make_dist_tar();
     asset = "jac-dev-admin-dist.tar.gz";
@@ -401,21 +385,17 @@ test "admin console asset is downloaded, verified, staged, and cached" {
         with unittest.mock.patch.object(
             binary_mod, "_admin_dist_urls", _fake_admin_dist_urls
         ) {
-            with unittest.mock.patch.object(
-                jaclang, "__file__", _empty_jaclang_pkg()
-            ) {
-                proj = tempfile.mkdtemp();
-                assert stage_admin_dist(proj, "dev");
-                admin = Path(proj) / ".jac" / "admin";
-                assert (admin / "index.html").is_file();
-                assert (admin / "assets" / "app.js").is_file();
-                # Cached: the tarball vanishes from the server, but a fresh
-                # project still stages from the verified local cache.
-                os.remove(os.path.join(serve_dir, asset));
-                proj2 = tempfile.mkdtemp();
-                assert stage_admin_dist(proj2, "dev");
-                assert (Path(proj2) / ".jac" / "admin" / "index.html").is_file();
-            }
+            proj = tempfile.mkdtemp();
+            assert stage_admin_dist(proj, "dev");
+            admin = Path(proj) / ".jac" / "admin";
+            assert (admin / "index.html").is_file();
+            assert (admin / "assets" / "app.js").is_file();
+            # Cached: the tarball vanishes from the server, but a fresh
+            # project still stages from the verified local cache.
+            os.remove(os.path.join(serve_dir, asset));
+            proj2 = tempfile.mkdtemp();
+            assert stage_admin_dist(proj2, "dev");
+            assert (Path(proj2) / ".jac" / "admin" / "index.html").is_file();
         }
     } finally {
         srv.shutdown();
@@ -429,7 +409,6 @@ test "admin console asset is downloaded, verified, staged, and cached" {
 
 
 test "a checksum-mismatched admin console asset is refused" {
-    import jaclang;
     serve_dir = tempfile.mkdtemp();
     asset = "jac-dev-admin-dist.tar.gz";
     (Path(serve_dir) / asset).write_bytes(_make_dist_tar());
@@ -444,13 +423,9 @@ test "a checksum-mismatched admin console asset is refused" {
         with unittest.mock.patch.object(
             binary_mod, "_admin_dist_urls", _fake_admin_dist_urls
         ) {
-            with unittest.mock.patch.object(
-                jaclang, "__file__", _empty_jaclang_pkg()
-            ) {
-                proj = tempfile.mkdtemp();
-                assert not stage_admin_dist(proj, "dev");
-                assert not (Path(proj) / ".jac" / "admin").exists();
-            }
+            proj = tempfile.mkdtemp();
+            assert not stage_admin_dist(proj, "dev");
+            assert not (Path(proj) / ".jac" / "admin").exists();
         }
     } finally {
         srv.shutdown();
@@ -463,38 +438,15 @@ test "a checksum-mismatched admin console asset is refused" {
 }
 
 
-test "a locally built package _dist wins without any download" {
-    import jaclang;
-    pkg_init = _empty_jaclang_pkg();
-    dist = Path(pkg_init).parent / "scale" / "admin" / "_dist";
-    dist.mkdir(parents=True);
-    (dist / "index.html").write_text("<html>local</html>");
-
-    with unittest.mock.patch.object(
-        binary_mod, "_admin_dist_urls", _no_download_admin_dist_urls
-    ) {
-        with unittest.mock.patch.object(jaclang, "__file__", pkg_init) {
-            proj = tempfile.mkdtemp();
-            assert stage_admin_dist(proj, "stable");
-            staged = Path(proj) / ".jac" / "admin" / "index.html";
-            assert staged.read_text() == "<html>local</html>";
-        }
-    }
-}
-
-
 def _no_http(url: str) -> bytes {
     raise AssertionError("the network must not be touched");
 }
 
 
 test "local channel never downloads the admin console" {
-    import jaclang;
     with unittest.mock.patch.object(binary_mod, "_http_get_bytes", _no_http) {
-        with unittest.mock.patch.object(jaclang, "__file__", _empty_jaclang_pkg()) {
-            proj = tempfile.mkdtemp();
-            assert not stage_admin_dist(proj, "local");
-            assert not (Path(proj) / ".jac" / "admin").exists();
-        }
+        proj = tempfile.mkdtemp();
+        assert not stage_admin_dist(proj, "local");
+        assert not (Path(proj) / ".jac" / "admin").exists();
     }
 }

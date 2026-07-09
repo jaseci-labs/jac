@@ -310,20 +310,9 @@ def stage_admin_dist(project_dir: str, channel: str) -> bool {
     # The console ships as its own release asset per channel; the driver
     # pulls it (checksum-verified, cached) and stages it into the bundle at
     # <app>/.jac/admin, so gateway pods serve it instead of spending ~148s
-    # building it from source on boot. A _dist already present in the
-    # driver's own jaclang package (dev tree, wheel) wins over the download.
-    import jaclang;
+    # building it from source on boot.
     dest = Path(project_dir) / ".jac" / "admin";
-    local = Path(str(jaclang.__file__)).parent / "scale" / "admin" / "_dist";
     try {
-        if (local / "index.html").is_file() {
-            if dest.exists() {
-                shutil.rmtree(str(dest));
-            }
-            shutil.copytree(str(local), str(dest));
-            logger.info("Staged the package's admin console into the app bundle.");
-            return True;
-        }
         payload = download_admin_dist(channel);
         if payload is None {
             return False;
