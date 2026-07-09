@@ -61,7 +61,7 @@ class _BootstrapState(enum.Enum):
 # proceeds against whatever providers have been registered so far -- which is
 # the same partial-registration behaviour the old eager ``__init__`` exhibited.
 _PRODUCT_STATE = _BootstrapState.IDLE
-_PRODUCT_LOCK = threading.Lock()
+_PRODUCT_LOCK = threading.RLock()
 
 # Terminal states: no further bootstrap attempts are made once reached.
 _SETTLED_STATES = (_BootstrapState.DONE, _BootstrapState.FAILED)
@@ -119,41 +119,41 @@ def bootstrap_product() -> None:
         if _PRODUCT_STATE in _SETTLED_STATES:
             return
         if _PRODUCT_STATE == _BootstrapState.BOOTSTRAPPING:
-            # Re-entrant call (a hook fired during registration). Don't recurse;
-            # let dispatch proceed against the partially-registered plugin set.
+            # Re-entrant call from the same thread (a hook fired during
+            # registration). With RLock the same thread can re-acquire the lock,
+            # so we reach here instead of deadlocking. Don't recurse; let
+            # dispatch proceed against the partially-registered plugin set.
             return
         _PRODUCT_STATE = _BootstrapState.BOOTSTRAPPING
-    try:
-        from jaclang.jac0core.helpers import (
-            get_disabled_plugins,
-            load_plugins_with_disabling,
-        )
-        from jaclang.jac0core.runtime import plugin_manager
-
         try:
-            load_plugins_with_disabling(plugin_manager, get_disabled_plugins())
+            from jaclang.jac0core.helpers import (
+                get_disabled_plugins,
+                load_plugins_with_disabling,
+            )
+            from jaclang.jac0core.runtime import plugin_manager
+
+            try:
+                load_plugins_with_disabling(plugin_manager, get_disabled_plugins())
+            except Exception as exc:
+                warnings.warn(f"External plugin loading failed: {exc}", stacklevel=2)
+
+            _register_builtin_client_providers(plugin_manager)
+            _register_builtin_shadcn_provider(plugin_manager)
+            _register_builtin_scale_provider(plugin_manager)
+            _register_builtin_mcp_provider(plugin_manager)
+            _register_builtin_byllm_provider(plugin_manager)
+
+            _maybe_schedule_native_accel()
+            _PRODUCT_STATE = _BootstrapState.DONE
         except Exception as exc:
-            warnings.warn(f"External plugin loading failed: {exc}", stacklevel=2)
-
-        _register_builtin_client_providers(plugin_manager)
-        _register_builtin_shadcn_provider(plugin_manager)
-        _register_builtin_scale_provider(plugin_manager)
-        _register_builtin_mcp_provider(plugin_manager)
-        _register_builtin_byllm_provider(plugin_manager)
-
-        _maybe_schedule_native_accel()
-        _PRODUCT_STATE = _BootstrapState.DONE
-    except Exception as exc:
-        # Terminal failure: stamp FAILED (not IDLE) so we never retry, and warn
-        # exactly once instead of on every subsequent hook dispatch. The core
-        # stays usable against whatever registered before the failure -- the
-        # same fail-soft posture each provider helper already takes internally.
-        _PRODUCT_STATE = _BootstrapState.FAILED
-        warnings.warn(
-            f"Jac product bootstrap failed; product providers are disabled for "
-            f"this process (core remains usable): {exc}",
-            stacklevel=2,
-        )
+            # Terminal failure: stamp FAILED (not IDLE) so we never retry, and
+            # warn exactly once instead of on every subsequent hook dispatch.
+            _PRODUCT_STATE = _BootstrapState.FAILED
+            warnings.warn(
+                f"Jac product bootstrap failed; product providers are disabled for "
+                f"this process (core remains usable): {exc}",
+                stacklevel=2,
+            )
 
 
 def is_product_bootstrapped() -> bool:

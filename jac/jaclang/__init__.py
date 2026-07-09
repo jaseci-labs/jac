@@ -23,7 +23,9 @@ bootstrap_kernel()
 # already pulled jaclang.jac0core.runtime into sys.modules.
 from jaclang.jac0core.runtime import (  # noqa: E402, F401
     JacRuntime,
+    JacRuntimeImpl,
     JacRuntimeInterface,
+    plugin_manager,
 )
 
 # TODO: remove JAC_EAGER_BOOTSTRAP once all callers are audited against the
@@ -32,4 +34,4 @@ from jaclang.jac0core.runtime import (  # noqa: E402, F401
 if os.environ.get("JAC_EAGER_BOOTSTRAP") == "1":
     bootstrap_product()
 
-__all__ = ["JacRuntimeInterface", "JacRuntime"]
+__all__ = ["JacRuntimeInterface", "JacRuntime", "JacRuntimeImpl", "plugin_manager"]
