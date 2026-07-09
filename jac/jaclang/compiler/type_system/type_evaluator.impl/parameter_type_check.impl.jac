@@ -181,6 +181,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     }
     if isinstance(caller_type, types.OverloadedType) {
         _fallback_result: types.TypeBase | None = None;
+        _any_overload_arg_shape_matched = False;
 
         def _contains_unknown(ty: types.TypeBase) -> bool {
             if isinstance(ty, types.UnknownType) {
@@ -208,6 +209,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             );
 
             if not arg_param_match.argument_errors {
+                _any_overload_arg_shape_matched = True;
                 if self.validate_arg_types(arg_param_match, checking_overload=True) {
                     ret_type = overload.return_type;
 
@@ -239,6 +241,22 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 expr,
                 help_text=(
                     "Unannotated lambda parameter '" + lambda_param + "' could not be inferred from the call context, so it stays Unknown and no overload matches. Annotate it, e.g. `lambda " + lambda_param + ": <type> : ...`, or pass a typed `def` as the callback."
+                )
+            );
+        } elif (
+            _any_overload_arg_shape_matched
+            and (unresolved_lam := self._unresolved_lambda_body(expr))
+        ) {
+            param_names = ", ".join(
+                [p.name.value for p in unresolved_lam.signature.get_parameters()]
+            )
+                if isinstance(unresolved_lam.signature, uni.FuncSignature)
+                else "";
+            self.emit_diag(
+                E1054,
+                expr,
+                help_text=(
+                    "The lambda argument's body has an inferred return type that could not be resolved (stays Unknown), so no overload matches. This usually means a sub-expression in the body -- an index, call, or attribute access -- targets something whose result type the checker can't determine. Add an explicit return type annotation, e.g. `lambda " + param_names + ": <type> -> <return type> : ...`, or pass a typed `def` as the callback."
                 )
             );
         } else {
@@ -550,19 +568,56 @@ impl TypeEvaluator.match_args_to_params(
     );
 }
 
-impl TypeEvaluator._unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None {
+impl TypeEvaluator._lambda_args_of(expr: uni.FuncCall) -> list[uni.LambdaExpr] {
     if expr.params is None {
-        return None;
+        return [];
     }
+    result: list[uni.LambdaExpr] = [];
     for arg in expr.params {
         lam = arg.value if isinstance(arg, uni.KWPair) else arg;
-        if not isinstance(lam, uni.LambdaExpr) or lam.signature is None {
-            continue;
+        if isinstance(lam, uni.LambdaExpr) and lam.signature is not None {
+            result.append(lam);
         }
+    }
+    return result;
+}
+
+impl TypeEvaluator._unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None {
+    for lam in self._lambda_args_of(expr) {
         for param in lam.signature.get_parameters() {
             if param.type_tag is None {
                 return param.name.value;
             }
+        }
+    }
+    return None;
+}
+
+impl TypeEvaluator._unresolved_lambda_body(
+    expr: uni.FuncCall
+) -> uni.LambdaExpr | None {
+    for lam in self._lambda_args_of(expr) {
+        if not isinstance(lam.body, uni.Expr) {
+            continue;
+        }
+        all_params_resolved = True;
+        for param in lam.signature.get_parameters() {
+            if param.type_tag is None {
+                all_params_resolved = False;
+                break;
+            }
+            param_type = self.get_type_of_expression(param.type_tag.tag);
+            if isinstance(param_type, types.UnknownType) {
+                all_params_resolved = False;
+                break;
+            }
+        }
+        if not all_params_resolved {
+            continue;
+        }
+        body_type = self.get_type_of_expression(lam.body);
+        if isinstance(body_type, types.UnknownType) and not body_type.is_diagnosed {
+            return lam;
         }
     }
     return None;
