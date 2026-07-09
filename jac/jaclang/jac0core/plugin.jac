@@ -28,6 +28,16 @@ obj HookableMarker {
     ) -> (_F | Callable[([_F], _F)]);
 }
 
+def _is_hookimpl(func: Callable[(..., Any)], project_name: str) -> bool {
+    if getattr(func, _IMPL_ATTR, None) is not None {
+        return True;
+    }
+    if project_name {
+        return getattr(func, f'{project_name}_impl', None) is not None;
+    }
+    return False;
+}
+
 def _get_argnames(func: Callable[(..., Any)]) -> (tuple[(str, ...)] | None) {
     try {
         params = inspect.signature(func).parameters;

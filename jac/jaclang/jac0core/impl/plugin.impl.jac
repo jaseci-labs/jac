@@ -108,7 +108,7 @@ impl PluginManager.register(plugin: object, name: (str | None) = None) -> (str |
             if not callable(func) {
                 continue;
             }
-            if not getattr(func, _IMPL_ATTR, False) {
+            if not _is_hookimpl(func, self.project_name) {
                 continue;
             }
             method = getattr(plugin, attr_name, None);
