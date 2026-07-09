@@ -52,6 +52,61 @@ glob registry = get_registry();
             short="",
             help="With --pack: output .jacpack file path"
         ),
+        Arg.create(
+            "skip",
+            typ=bool,
+            default=False,
+            help="Skip npm package installation (when creating client kinds: web-app/web-static/mobile)"
+        ),
+        Arg.create(
+            "style",
+            typ=str,
+            default=None,
+            help="shadcn style preset (nova|vega|maia|lyra|mira)",
+            short=""
+        ),
+        Arg.create(
+            "baseColor",
+            typ=str,
+            default=None,
+            help="shadcn base palette (neutral|stone|zinc|gray)",
+            short=""
+        ),
+        Arg.create(
+            "theme",
+            typ=str,
+            default=None,
+            help="shadcn accent theme (e.g. rose, emerald)",
+            short=""
+        ),
+        Arg.create(
+            "font",
+            typ=str,
+            default=None,
+            help="shadcn font family (e.g. inter, outfit)",
+            short=""
+        ),
+        Arg.create(
+            "radius",
+            typ=str,
+            default=None,
+            help="shadcn border radius (none|small|medium|large)",
+            short=""
+        ),
+        Arg.create(
+            "menuAccent",
+            typ=str,
+            default=None,
+            help="shadcn menu accent (subtle|bold)",
+            short=""
+        ),
+        Arg.create(
+            "menuColor",
+            typ=str,
+            default=None,
+            help="shadcn menu color scheme",
+            short=""
+        ),
 
     ],
     examples=[
@@ -85,7 +140,15 @@ def create(
     use: str = "default",
     list_jacpacks: bool = False,
     pack: str = "",
-    pack_output: str = ""
+    pack_output: str = "",
+    `skip: bool = False,
+    style: str | None = None,
+    baseColor: str | None = None,
+    theme: str | None = None,
+    font: str | None = None,
+    radius: str | None = None,
+    menuAccent: str | None = None,
+    menuColor: str | None = None
 ) -> int;
 
 @registry.command(
@@ -264,6 +327,15 @@ def install(
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
+        Arg.create(
+            "npm", typ=bool, default=False, help="Add as npm (client-side) dependency"
+        ),
+        Arg.create(
+            "shadcn",
+            typ=bool,
+            default=False,
+            help="Add shadcn UI component(s) from registry"
+        ),
 
     ],
     examples=[
@@ -271,12 +343,19 @@ def install(
         ('jac add "numpy>=1.24" pandas', "Add multiple packages with version"),
         ("jac add pytest --dev", "Add dev dependency"),
         ("jac add --git https://github.com/user/plugin.git", "Add from git"),
+        ("jac add --npm left-pad", "Add a client-side npm dependency"),
+        ("jac add --shadcn button card", "Add shadcn UI components"),
 
     ],
     group="project"
 )
 def add(
-    packages: list = [], dev: bool = False, git: str = "", verbose: bool = False
+    packages: list = [],
+    dev: bool = False,
+    git: str = "",
+    verbose: bool = False,
+    npm: bool = False,
+    shadcn: bool = False
 ) -> int;
 
 @registry.command(
@@ -293,16 +372,26 @@ def add(
             help="Remove from dev dependencies",
             short="d"
         ),
+        Arg.create(
+            "npm", typ=bool, default=False, help="Remove npm (client-side) dependency"
+        ),
+        Arg.create(
+            "shadcn", typ=bool, default=False, help="Remove shadcn UI component(s)"
+        ),
 
     ],
     examples=[
         ("jac remove requests", "Remove a package"),
         ("jac remove pytest --dev", "Remove dev dependency"),
+        ("jac remove --npm left-pad", "Remove a client-side npm dependency"),
+        ("jac remove --shadcn button", "Remove shadcn UI components"),
 
     ],
     group="project"
 )
-def remove(packages: list = [], dev: bool = False) -> int;
+def remove(
+    packages: list = [], dev: bool = False, npm: bool = False, shadcn: bool = False
+) -> int;
 
 @registry.command(
     name="update",

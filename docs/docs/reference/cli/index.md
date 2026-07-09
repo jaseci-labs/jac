@@ -2,7 +2,7 @@
 
 The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac fmt`, `jac check --lint`), managing dependencies (`jac add`, `jac install`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`, or `jac build --as native`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
 
-The CLI is extensible through plugins, and several capabilities are built into core. The built-in `scale` subsystem (formerly the `jac-scale` plugin, now part of `jaclang` core) adds deployment commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment. The built-in full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins, now part of `jaclang` core) contributes others, such as `jac build --client desktop` for desktop app packaging. Installable plugins like `byllm` add their own commands the same way.
+Every capability ships built into the core binary. The `scale` subsystem (formerly the `jac-scale` plugin) provides deployment commands and flags -- for example, `jac start --scale` for Kubernetes deployment. The full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins) contributes others, such as `jac build --client desktop` for desktop app packaging. byLLM likewise ships built in, contributing `jac model` and the AI language features.
 
 > **💡 Enhanced Output**: All CLI commands render beautiful, colorful Rich-style output out of the box -- themes, panels, and spinners are built into jaclang by default, with no extra install needed.
 
@@ -29,7 +29,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Have an AI agent write or edit code in my project | `jac ai` |
 | Query code structure (definitions, uses, walkers) | `jac code` |
 | Inspect or recover the persistence DB | `jac db` |
-| Manage config, plugins, or profiles | `jac config` · `jac plugins` |
+| Manage config or profiles | `jac config` |
 | Manage byLLM local models | `jac model` |
 | Use Jac from an AI assistant | `jac guide` · `jac mcp` |
 | Convert between Python, Jac, and JS | `jac tool py2jac` · `jac tool jac2py` · `jac tool jac2js` |
@@ -59,7 +59,6 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac mcp` | Start the MCP server so AI assistants can use the live Jac compiler |
 | `jac completions` | Generate (and optionally install) shell completions |
 | `jac nacompile` | Compile the native (`na`) subset to a binary, shared library, or WebAssembly |
-| `jac plugins` | Manage plugins |
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
 | `jac scale` | Manage local microservices (status/stop/restart/logs) and platform deployments (status/destroy) |
@@ -82,21 +81,22 @@ A task-first index into the commands below. The full alphabetical list follows i
 jac --version
 ```
 
-Displays the Jac version, Python version, platform, and all detected plugins with their versions:
+Displays the Jac version and platform, plus documentation and community links:
 
 ```
- _
-(_) __ _  ___     Jac Language
-| |/ _` |/ __|
-| | (_| | (__     Version:  0.11.1
-_/ |\__,_|\___|    Python 3.12.3
+   _
+  (_) __ _  ___     Jac Language
+  | |/ _` |/ __|
+  | | (_| | (__     Version:  0.31.0
+ _/ |\__,_|\___|
 |__/                Platform: Linux x86_64
 
-🔌 Plugins Detected:
-   byllm==0.4.15
+📚 Documentation: https://docs.jaseci.org
+💬 Community:     https://discord.gg/6j3QNdtcN6
+🐛 Issues:        https://github.com/Jaseci-Labs/jaseci/issues
 ```
 
-(Scale and the full-stack client framework ship inside the binary as built-in core providers, so they are not listed here as separately-installed plugins.)
+(byLLM, scale, the full-stack client framework, and the MCP server all ship inside the binary, so there is no separate version to report for them.)
 
 ---
 
@@ -875,60 +875,6 @@ See the [MCP Server Reference](../mcp.md) for the full tool catalog and per-clie
 
 ---
 
-## Plugin Management
-
-### jac plugins
-
-Manage Jac plugins.
-
-```bash
-jac plugins [-h] [-v] [action] [names ...]
-```
-
-| Action | Description |
-|--------|-------------|
-| `list` | List installed plugins (default) |
-| `info` | Show plugin information |
-| `enable` | Enable plugins |
-| `disable` | Disable plugins |
-| `disabled` | List disabled plugins |
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-v, --verbose` | Verbose output | `False` |
-
-**Examples:**
-
-```bash
-# List plugins (action defaults to 'list')
-jac plugins
-
-# Explicitly list plugins
-jac plugins list
-
-# Show info about a plugin
-jac plugins info byllm
-
-# Disable a plugin
-jac plugins disable byllm
-
-# Enable a plugin
-jac plugins enable byllm
-
-# List disabled plugins
-jac plugins disabled
-```
-
-> **Note:** To install or remove plugins, use `jac install <plugin>` / `jac remove <plugin>`. The `jac plugins` command manages enabled/disabled state for already-installed plugins.
->
-> **💡 Popular Plugins**:
->
-> - **byllm**: LLM integration (`jac install byllm`)
->
-> (Kubernetes deployment and scaling ships with `jaclang` core as the built-in `scale` subsystem -- no plugin install needed; its optional deps are pulled per-project via `[scale.*]` config + `jac install`. Full-stack web and native-desktop app building likewise ships with `jaclang` core.)
-
----
-
 ## Local Model Cache
 
 The `jac model` command manages the on-disk cache of bundled local LLM weights used by byLLM's `local:<alias>` route. Weights live under `~/.cache/jac/models/<alias>/` (override with `JAC_MODELS_DIR`). See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) in the byLLM reference for the full backend.
@@ -983,7 +929,7 @@ Local model cache: /home/you/.cache/jac/models
 
 ## Database Operations
 
-The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), the built-in scale `MongoBackend`, or any plugin-provided backend that implements the interface -- through the same set of subcommands.
+The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), the built-in scale `MongoBackend`, or any custom backend that implements the interface -- through the same set of subcommands.
 
 For the architectural background (fingerprints, drift detection, quarantine philosophy, alias decorator), see [Persistence & Schema Migration](../persistence.md).
 
@@ -1234,7 +1180,6 @@ jac config [action] [key] [value] [-g GROUP] [-o FORMAT]
 - `check` - Type checking options
 - `dot` - Graph visualization settings
 - `cache` - Cache configuration
-- `plugins` - Plugin management
 - `environment` - Environment variables
 
 **Examples:**
@@ -1411,9 +1356,9 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 
 `jac install` has two modes depending on whether package names are passed. Pass `--plan` (optionally with `--json`) to preview the resolved dependency plan without installing anything -- this absorbs the former `jac deps`.
 
-**No-argument mode** - sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`. Requires a `jac.toml` in the current (or a parent) directory.
+**No-argument mode** - sync the project environment to `jac.toml`. Installs all Python (pip), git, and npm dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`. Requires a `jac.toml` in the current (or a parent) directory.
 
-**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages into the project's virtual environment at `.jac/venv/`, without reading or modifying `jac.toml`. It is the Jac-native equivalent of `pip install <pkg>`, run through the `jac` binary's bundled pip. By default it requires a `jac.toml` in the current (or a parent) directory and installs into that project's `.jac/venv`. Pass `--global` to install into the binary's own jac-owned site instead -- a location that is on `sys.path` from **any** project, for a plugin or tool you install once and use everywhere. Either target is fully self-contained: the bundled pip and the binary's own site, never the host Python or its `site-packages`.
+**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages into the project's virtual environment at `.jac/venv/`, without reading or modifying `jac.toml`. It is the Jac-native equivalent of `pip install <pkg>`, run through the `jac` binary's bundled pip. By default it requires a `jac.toml` in the current (or a parent) directory and installs into that project's `.jac/venv`. Pass `--global` to install into the binary's own jac-owned site instead -- a location that is on `sys.path` from **any** project, for a tool you install once and use everywhere. Either target is fully self-contained: the bundled pip and the binary's own site, never the host Python or its `site-packages`.
 
 > **`jac install <pkg>` vs `jac add <pkg>`**
 >
@@ -1424,7 +1369,7 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 > | Requires a project | Yes | No | Yes |
 > | Importable from other projects | No | Yes | No |
 >
-> Use `jac add` when you want the dependency recorded in `jac.toml` for reproducible installs, plain `jac install <pkg>` for an ad-hoc package scoped to this project, and `jac install <pkg> --global` for a plugin/tool you want available everywhere.
+> Use `jac add` when you want the dependency recorded in `jac.toml` for reproducible installs, plain `jac install <pkg>` for an ad-hoc package scoped to this project, and `jac install <pkg> --global` for a tool you want available everywhere.
 
 ```bash
 jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
@@ -1480,7 +1425,7 @@ jac install -e /path/to/lib
 # Editable install with all optional dependency groups
 jac install -e . --extras all
 
-# Install a plugin/tool into the global site, importable from any project
+# Install a tool into the global site, importable from any project
 jac install -e ./jac-byllm --global
 
 # Install with verbose output
@@ -2088,15 +2033,11 @@ jac completions --shell fish --install
 
 ---
 
-## Plugin Commands
+## Client Framework Commands
 
-Plugins can add new commands and extend existing ones. These commands are available when the corresponding plugin is installed.
+The built-in full-stack client framework contributes these commands and flags. They ship with `jaclang` core -- no separate install needed.
 
-### jac-client Commands
-
-These commands ship with `jaclang` core -- no separate install needed.
-
-#### jac build --client
+### jac build --client
 
 Build a **client shell** for a specific target. This is the `--client` mode of [`jac build`](#jac-build); see that section for the artifact projections (`.jab`, wheel, npm, source, native). A bare `jac build` (no `--client`) runs the type-check gate and emits a `.jab`, not a client shell.
 
@@ -2129,7 +2070,7 @@ jac build --client mobile --platform android
 jac build --client mobile --platform ios
 ```
 
-#### jac setup
+### jac setup
 
 One-time initialization for a build target.
 
@@ -2152,17 +2093,17 @@ jac setup mobile --platform ios
 jac setup mobile --platform all
 ```
 
-#### Extended Flags
+### Extended Flags
 
 | Base Command | Added Flag | Description |
 |-------------|-----------|-------------|
-| `jac create` | `--use web-static` | Create full-stack project template |
+| `jac create` | `--kind web-app` | Create full-stack project template |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
 | `jac add` | `--npm` | Add npm (client-side) dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
-#### Desktop builds
+### Desktop builds
 
 The `desktop` and `cef` client targets ship with `jaclang` core -- no
 separate install. There is no separate `jac desktop` command and no setup step.
