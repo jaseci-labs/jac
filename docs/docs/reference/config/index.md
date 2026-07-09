@@ -1,6 +1,6 @@
 # Configuration Reference
 
-The `jac.toml` file is the central configuration for Jac projects -- similar to `pyproject.toml` in Python or `package.json` in Node.js. It defines project metadata (name, version, entry point), manages dependencies (both PyPI and npm packages), sets defaults for CLI commands (test verbosity, server port, lint rules), configures plugins (LLM models, deployment targets), and supports environment-specific profiles (development vs. production).
+The `jac.toml` file is the central configuration for Jac projects -- similar to `pyproject.toml` in Python or `package.json` in Node.js. It defines project metadata (name, version, entry point), manages dependencies (both PyPI and npm packages), sets defaults for CLI commands (test verbosity, server port, lint rules), configures built-in capabilities (LLM models, deployment targets), and supports environment-specific profiles (development vs. production).
 
 You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac add` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
 
@@ -98,13 +98,13 @@ repository = "https://github.com/user/repo"
 | `maintainers` | list of `{name, email}` | Package maintainers |
 | `urls` | table | Links shown on PyPI (declared under `[project.urls]`) |
 
-> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what every plugin `jac.toml` uses and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
+> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what published packages' `jac.toml` files use and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
 
 ---
 
 ### [dependencies]
 
-Python/PyPI packages and Jac plugins:
+Python/PyPI packages:
 
 ```toml
 [dependencies]
@@ -427,17 +427,12 @@ See [Storage Reference](../plugins/jac-scale-persistence.md#storage) for the ful
 
 ---
 
-### [plugins]
+### Capability settings
 
-Plugin configuration:
+Built-in capabilities (byLLM, scale, the client framework) are configured in top-level tables named after the capability:
 
 ```toml
-[plugins]
-discovery = "auto"      # "auto", "manual", or "disabled"
-enabled = ["byllm"] # Explicitly enabled
-disabled = []           # Explicitly disabled
-
-# Plugin-specific settings (byllm splits model identity from call params)
+# byLLM settings (model identity split from call params)
 [byllm.model]
 default_model = "gpt-4o"
 api_key = "${OPENAI_API_KEY}"
@@ -689,21 +684,17 @@ Simple patterns without a path separator (e.g. `"*.jac"`) are matched recursivel
 
 ### [entrypoints]
 
-Declare console scripts and plugin entry points. Maps directly to `entry_points.txt` in the wheel's `.dist-info`.
+Declare console scripts and other entry-point groups. Maps directly to `entry_points.txt` in the wheel's `.dist-info`.
 
 ```toml
 [entrypoints.scripts]
 # Installs a "mylib" CLI command pointing to mylib.cli:main
 mylib = "mylib.cli:main"
-
-[entrypoints.jac]
-# Declare a Jac plugin; discovered via entry_points(group="jac")
-mylib = "mylib.plugin:setup"
 ```
 
 The `[entrypoints.scripts]` group is written as `[console_scripts]` in `entry_points.txt`, which is the standard pip convention for installing CLI commands. After a user runs `pip install mylib`, the `mylib` command is available on their `PATH`.
 
-The `[entrypoints.jac]` group is the entry point group Jac's plugin system queries at startup (`entry_points(group="jac")`). Any package that declares an entry point here will be auto-discovered when the user has it installed.
+Any other `[entrypoints.<group>]` table is written through to the wheel metadata verbatim, for consumers that discover packages via `importlib.metadata.entry_points()`. (Jac itself no longer loads any entry-point group at startup -- the former `jac` plugin group is defunct.)
 
 ---
 
@@ -808,7 +799,6 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 | `JAC_BASE_PATH` | Override base directory for data/storage |
 | `JAC_DATA_PATH` | Override the base directory for application data (graph storage, user db) |
 | `JACPATH` | Colon-separated extra search path for Jac module resolution (like `PYTHONPATH`) |
-| `JAC_DISABLED_PLUGINS` | Comma-separated plugins to disable: `*` for all, `package:*`, or `package:plugin` (same effect as `[plugins].disabled` in `jac.toml`) |
 | `JAC_SCHEMA_REPAIR` | Schema-drift handling on load: `repair` (default) or `strict` |
 | `JAC_STRICT_PERMISSIONS` | Enable strict permission checking for security-sensitive operations (`1`/`true`) |
 
@@ -881,4 +871,3 @@ Deployment settings (app name, namespace, node port, CPU/memory requests and lim
 
 - [CLI Reference](../cli/index.md) - Command-line interface documentation
 - [Publishing Packages](../publishing.md) - Building and uploading wheels to PyPI
-- [Plugin Management](../cli/index.md#plugin-management) - Managing plugins
