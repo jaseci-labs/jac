@@ -36,7 +36,39 @@ permissions:
   contents: write
 
 jobs:
+  # The admin console dist is platform-independent (html/js/css), so build it
+  # once here and hand it to every platform leg as a workflow artifact; each
+  # leg packs it into its payload in a single zig build. The console is jac
+  # client code, so this job compiles it with the rolling dev binary; the UI
+  # source is still this checkout's. If that source ever needs a newer
+  # compiler than dev has, this job fails loudly and the run can be retried
+  # after the dev channel catches up.
+  admin-console:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.tag || github.event.release.tag_name }}
+      - name: Build the console with the rolling dev jac binary
+        run: |
+          set -euxo pipefail
+          BASE=https://github.com/jaseci-labs/jaseci/releases/download/dev
+          curl -fsSL -o /tmp/jac "$BASE/jac-dev-linux-x86_64"
+          curl -fsSL -o /tmp/jac.sha256 "$BASE/jac-dev-linux-x86_64.sha256"
+          echo "$(cut -d' ' -f1 /tmp/jac.sha256)  /tmp/jac" | sha256sum -c -
+          chmod +x /tmp/jac
+          ( cd jac/jaclang/scale/admin/ui && /tmp/jac build main.jac )
+          test -f jac/jaclang/scale/admin/ui/.jac/client/dist/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: admin-dist
+          path: jac/jaclang/scale/admin/ui/.jac/client/dist
+          if-no-files-found: error
+
   build:
+    needs: admin-console
     strategy:
       fail-fast: false
       matrix:
@@ -123,6 +155,14 @@ jobs:
           restore-keys: |
             zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
 
+      # The prebuilt console from the admin-console job, placed at the path
+      # mkpayload bundles so the single zig build below ships it.
+      - name: Stage the prebuilt admin console
+        uses: actions/download-artifact@v4
+        with:
+          name: admin-dist
+          path: jac/jaclang/scale/admin/_dist
+
       - name: Install host tools (zstd)
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
@@ -154,31 +194,19 @@ jobs:
         working-directory: jac
         run: zig build fetch-llvm $DTARGET --summary all
 
-      - name: Build the jac binary (with the admin console baked in)
+      - name: Build the jac binary (one command)
         working-directory: jac
         # On a dev-channel shim-cache hit, stage the shim outside its in-tree
         # place path: the build copies -Dshim-bin back there, and a self-copy
         # would read the file it is truncating. Mirrors setup-jac.
         run: |
+          test -f jaclang/scale/admin/_dist/index.html
           SHIM_ARG=()
           if [ "${{ steps.shim-cache.outputs.cache-hit }}" = "true" ]; then
             mkdir -p .shim-build
             cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
             SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
           fi
-          zig build $DTARGET "${SHIM_ARG[@]}" --summary all
-          # Bake the admin console into the payload so gateway pods never
-          # build it from source on boot. The console is jac client code, so
-          # it needs the binary built above; the repack re-runs only
-          # mkpayload + the final embed (zig cache and the JIR precompile
-          # cache are warm from the first pass).
-          ADMIN=jaclang/scale/admin
-          ( cd "$ADMIN/ui" && "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" build main.jac )
-          rm -rf "$ADMIN/_dist"
-          cp -R "$ADMIN/ui/.jac/client/dist" "$ADMIN/_dist"
-          test -f "$ADMIN/_dist/index.html"
-          # Drop the UI build's work tree so only _dist rides into the payload.
-          rm -rf "$ADMIN/ui/.jac" "$ADMIN/ui/dist"
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
 
       # Launcher unit tests: trailer codec + `.jab`-overlay round-trip
