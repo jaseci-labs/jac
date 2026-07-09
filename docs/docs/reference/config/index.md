@@ -753,9 +753,6 @@ select = ["all"]
 ignore = []
 exclude = []
 
-[plugins]
-discovery = "auto"
-
 [byllm.model]
 default_model = "${LLM_MODEL:-gpt-4o-mini}"
 api_key = "${OPENAI_API_KEY}"
