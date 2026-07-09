@@ -3,6 +3,13 @@ def _carries_topology_index(anchor: Anchor) -> bool {
     # opaque and only ever changes via EDGE_LIST_DELTA, and unlike an ordinary
     # node's edge list it cannot be reconstructed from the edge anchors, so an
     # edge-list-delta on such a node must still invalidate cross-pod.
+    #
+    # Invariant this relies on: every topology mutation (_index_edge_into,
+    # _unindex_edge_from, on_node_destroyed) routes through set_topology_index,
+    # which encodes even an empty index to bytes -> topology_index_data is never
+    # reset to None once a root has an index. If a future path ever clears it to
+    # None, that edge-delta would silently skip invalidation and leave a stale L2
+    # entry; such a path must invalidate explicitly instead.
     return isinstance(anchor, NodeAnchor) and anchor.topology_index_data is not None;
 }
 

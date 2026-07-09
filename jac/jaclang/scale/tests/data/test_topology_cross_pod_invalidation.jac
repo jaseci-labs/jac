@@ -205,46 +205,51 @@ test "edge-list-delta on a root invalidates the topology index in Redis L2 + bro
         rB2_anchor.archetype ++> _XPodTypeA(idx=100);
         ctxB2.mem.commit();
 
-        # L3 (Mongo) is fresh: 101 edges, index length 101.
-        doc = _shared["mongo_client"][_DB_NAME]["_anchors"].find_one(
-            {'_id': str(root_id)}
-        );
-        assert doc is not None , "root must be persisted in Mongo";
-        assert len(doc['data']['edges']) == 101 , (
-            f"Mongo L3 must have 101 edges; got {len(doc['data']['edges'])}"
-        );
-        restored = Serializer.deserialize(doc['data']);
-        assert len(cast(NodeAnchor, restored).get_topology_index()) == 101 , (
-            "Mongo L3 topology index must be fresh (101)"
-        );
+        # try/finally so a failed assert can't leak the subscriber onto the
+        # shared Redis channel and skew message counts in later tests.
+        try {
+            # L3 (Mongo) is fresh: 101 edges, index length 101.
+            doc = _shared["mongo_client"][_DB_NAME]["_anchors"].find_one(
+                {'_id': str(root_id)}
+            );
+            assert doc is not None , "root must be persisted in Mongo";
+            assert len(doc['data']['edges']) == 101 , (
+                f"Mongo L3 must have 101 edges; got {len(doc['data']['edges'])}"
+            );
+            restored = Serializer.deserialize(doc['data']);
+            assert len(cast(NodeAnchor, restored).get_topology_index()) == 101 , (
+                "Mongo L3 topology index must be fresh (101)"
+            );
 
-        # THE FIX (L2 coherency): the root's Redis L2 entry must be invalidated,
-        # so any other pod reloads the fresh index from L3 instead of the stale
-        # 100-edge blob. Before the fix this stayed 100.
-        assert _l2_index_len(memB2, root_id) == -1 , (
-            "root's Redis L2 entry must be INVALIDATED on an edge-list-delta that "
-            f"carries a topology index; got index len {_l2_index_len(memB2, root_id)} "
-            "(a stale GTI other pods would keep serving)"
-        );
+            # THE FIX (L2 coherency): the root's Redis L2 entry must be
+            # invalidated, so any other pod reloads the fresh index from L3
+            # instead of the stale 100-edge blob. Before the fix this stayed 100.
+            assert _l2_index_len(memB2, root_id) == -1 , (
+                "root's Redis L2 entry must be INVALIDATED on an edge-list-delta "
+                "that carries a topology index; got index len "
+                f"{_l2_index_len(memB2, root_id)} (a stale GTI other pods keep serving)"
+            );
 
-        # THE FIX (cross-pod signal): an invalidation for the root must be
-        # broadcast so other pods evict their L1 copies.
-        saw_root = False;
-        for _ in range(50) {
-            msg = pubsub.get_message(timeout=0.1);
-            if msg is not None and msg.get("type") == "message" {
-                payload = json.loads(msg.get("data"));
-                if payload.get("a") == str(root_id) {
-                    saw_root = True;
-                    break;
+            # THE FIX (cross-pod signal): an invalidation for the root must be
+            # broadcast so other pods evict their L1 copies.
+            saw_root = False;
+            for _ in range(50) {
+                msg = pubsub.get_message(timeout=0.1);
+                if msg is not None and msg.get("type") == "message" {
+                    payload = json.loads(msg.get("data"));
+                    if payload.get("a") == str(root_id) {
+                        saw_root = True;
+                        break;
+                    }
                 }
             }
+            assert saw_root , (
+                "an invalidation message for the root must be published on "
+                f"'{DEFAULT_INVALIDATION_CHANNEL}' so other pods evict their L1"
+            );
+        } finally {
+            pubsub.close();
         }
-        pubsub.close();
-        assert saw_root , (
-            "an invalidation message for the root must be published on "
-            f"'{DEFAULT_INVALIDATION_CHANNEL}' so other pods evict their L1"
-        );
 
         ctxB2.close();
     } finally {
