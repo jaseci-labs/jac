@@ -257,11 +257,11 @@ def _register_builtin_scale_provider(plugin_manager: object) -> None:
     """
     try:
         from jaclang.scale.config.plugin_config import JacScalePluginConfig
-        from jaclang.scale.plugin import JacCmd, JacScalePlugin
+        from jaclang.scale.plugin import JacScalePlugin
     except Exception as exc:  # keep core usable if scale fails to import
         warnings.warn(f"Built-in scale provider unavailable: {exc}", stacklevel=2)
         return
-    for _provider in (JacCmd, JacScalePluginConfig, JacScalePlugin):
+    for _provider in (JacScalePluginConfig, JacScalePlugin):
         if not plugin_manager.is_registered(_provider):
             plugin_manager.register(_provider)
 
