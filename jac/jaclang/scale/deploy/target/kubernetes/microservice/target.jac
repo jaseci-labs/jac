@@ -185,9 +185,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     waiting = cs.state.waiting if cs.state else None;
                     reason = (waiting.reason if waiting else "") or "";
                     restarts = cs.restart_count or 0;
-                    states.append(
-                        f"{pod_name}/{cs.name}={phase}/{reason}/{restarts}"
-                    );
+                    states.append(f"{pod_name}/{cs.name}={phase}/{reason}/{restarts}");
                     if reason and reason not in transient_reasons {
                         pod_reason = reason;
                     }
@@ -320,9 +318,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     # was stamped can still point at the old RS; re-verify against
                     # a freshly resolved set before actually failing the rollout,
                     # mirroring check_deployment_status's crash re-verification.
-                    current_hashes = _refresh_rs_hashes(
-                        ns, pod_selector, current_hashes
-                    ) or set();
+                    refreshed = _refresh_rs_hashes(ns, pod_selector, current_hashes);
+                    current_hashes = refreshed or set();
                     recheck = self._scan_for_crash_loop(
                         core_v1, ns, current_hashes, fleet_apps
                     );
@@ -331,9 +328,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 }
 
                 pulls = scan["pulls"];
-                imagepull_streak = {
-                    k: imagepull_streak.get(k, 0) + 1 for k in pulls
-                };
+                imagepull_streak = {k: imagepull_streak.get(k, 0) + 1 for k in pulls};
                 pull_failure = "";
                 pull_pod = None;
                 for (pod_name, info) in pulls.items() {
