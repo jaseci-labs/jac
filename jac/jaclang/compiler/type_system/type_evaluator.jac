@@ -174,6 +174,7 @@ obj TypeEvaluator {
         _and_narrowing_overrides: dict[int, TypeBase] = {},
         _ts_decl_cache: dict[str, (dict | None)] = {},
         _ts_decl_path_cache: dict[str, (str | None)] = {},
+        _ts_synthetic_mod_cache: dict[int, (uni.Module | None)] = {},
         _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
@@ -219,6 +220,9 @@ obj TypeEvaluator {
         ts: object, decls: dict, seen: (set[str] | None) = None
     ) -> TypeBase;
 
+    def _synthesize_ts_interface(decls: dict, item_name: str) -> (TypeBase | None);
+    def _ts_synthetic_module(decls: dict) -> (uni.Module | None);
+    def _ts_type_to_pyannot(ts: object, decls: dict) -> str;
     def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;
     def _untyped_external_is_error(node_: uni.UniNode) -> bool;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;

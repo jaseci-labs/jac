@@ -13,10 +13,20 @@ obj TsType {
         ret: (TsType | None) = None;
 }
 
+obj TsMember {
+    has name: str = "",
+        ty: (TsType | None) = None,
+        optional: bool = False,
+        readonly: bool = False,
+        is_method: bool = False;
+}
+
 obj TsDecl {
     has name: str = "",
         kind: str = "any",
-        ty: (TsType | None) = None;
+        ty: (TsType | None) = None,
+        members: list[TsMember] = [],
+        heritage: list[str] = [];
 }
 
 glob _PRIM_NAMES: frozenset = frozenset(
@@ -611,6 +621,125 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         );
     }
 
+    def parse_heritage -> list[str] {
+        nonlocal pos;
+        bases: list[str] = [];
+        while (pos < n and not is_p('{')) {
+            if (is_id('extends') or is_id('implements')) {
+                advance();
+                continue;
+            }
+            if kind_at() == 'id' {
+                bases.append(val_at());
+                advance();
+                while (is_p('.') and kind_at(1) == 'id') {
+                    advance();
+                    advance();
+                }
+                if is_p('<') {
+                    collect_generics();
+                }
+                continue;
+            }
+            advance();
+        }
+        return bases;
+    }
+
+    def parse_members -> list[TsMember] {
+        nonlocal pos;
+        members: list[TsMember] = [];
+        expect_p('{');
+        while (pos < n and not is_p('}')) {
+            if (is_p(';') or is_p(',')) {
+                advance();
+                continue;
+            }
+            while (
+                is_id('public')
+                or is_id('private')
+                or is_id('protected')
+                or is_id('static')
+                or is_id('abstract')
+                or is_id('declare')
+            ) {
+                advance();
+            }
+            readonly = eat_id('readonly');
+
+            if is_p('[') {
+                skip_balanced('[', ']');
+                if eat_p(':') {
+                    parse_type_full();
+                }
+                eat_p(';');
+                eat_p(',');
+                continue;
+            }
+            if (
+                is_p('(')
+                or is_p('<')
+                or (is_id('new') and kind_at(1) == 'punct' and val_at(1) == '(')
+            ) {
+                if is_id('new') {
+                    advance();
+                }
+                ctvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(ctvs);
+                try {
+                    parse_params();
+                    if eat_p(':') {
+                        parse_return_type();
+                    }
+                } finally {
+                    typevar_stack.pop();
+                }
+                eat_p(';');
+                eat_p(',');
+                continue;
+            }
+            if kind_at() not in ('id', 'str', 'num') {
+                advance();
+                continue;
+            }
+            mname = val_at();
+            advance();
+            optional = eat_p('?');
+            is_method = False;
+            mty: (TsType | None) = None;
+            if (is_p('<') or is_p('(')) {
+                is_method = True;
+                mtvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(mtvs);
+                try {
+                    mparams = parse_params();
+                    mret: TsType = TsType(kind='any');
+                    if eat_p(':') {
+                        mret = parse_return_type();
+                    }
+                } finally {
+                    typevar_stack.pop();
+                }
+                mty = TsType(kind='func', params=mparams, ret=mret);
+            } elif eat_p(':') {
+                mty = parse_type_full();
+            }
+            members.append(
+                TsMember(
+                    name=mname,
+                    ty=mty,
+                    optional=optional,
+                    readonly=readonly,
+                    is_method=is_method,
+                )
+            );
+            eat_p(';');
+            eat_p(',');
+        }
+        expect_p('}');
+        return members;
+    }
+
     def record(decl: TsDecl, is_export: bool) {
         if (decl.name and decl.name not in decls) {
             decls[decl.name] = decl;
@@ -751,25 +880,40 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             } elif eat_id('interface') {
                 iname = val_at();
                 advance();
-                if is_p('<') {
-                    collect_generics();
+                itvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(itvs);
+                try {
+                    iheritage = parse_heritage();
+                    imembers = parse_members();
+                } finally {
+                    typevar_stack.pop();
                 }
-                while (pos < n and not is_p('{')) {
-                    advance();
-                }
-                skip_balanced('{', '}');
-                record(TsDecl(name=iname, kind='interface'), is_export);
+                record(
+                    TsDecl(
+                        name=iname,
+                        kind='interface',
+                        members=imembers,
+                        heritage=iheritage,
+                    ),
+                    is_export,
+                );
             } elif eat_id('class') {
                 cname = val_at();
                 advance();
-                if is_p('<') {
-                    collect_generics();
+                ctvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(ctvs);
+                try {
+                    cheritage = parse_heritage();
+                    cmembers = parse_members();
+                } finally {
+                    typevar_stack.pop();
                 }
-                while (pos < n and not is_p('{')) {
-                    advance();
-                }
-                skip_balanced('{', '}');
-                record(TsDecl(name=cname, kind='class'), is_export);
+                record(
+                    TsDecl(
+                        name=cname, kind='class', members=cmembers, heritage=cheritage,
+                    ),
+                    is_export,
+                );
             } elif eat_id('enum') {
                 _parse_enum_decl(is_export);
             } elif (is_id('namespace') or is_id('module')) {

@@ -98,6 +98,40 @@ test "literal types, type predicates, and readonly arrays" {
     assert r["FLAG"].ty.kind == "literal-bool";
 }
 
+test "interface captures property members with types and optionality" {
+    src = (
+        "export interface Config {\n"
+        "    theme: string;\n"
+        "    retries: number;\n"
+        "    debug?: boolean;\n"
+        "    readonly tags: string[];\n"
+        "    onChange(v: string): void;\n"
+        "}\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    cfg = r["Config"];
+    assert cfg.kind == "interface";
+    by_name = {m.name: m for m in cfg.members};
+    assert set(by_name.keys()) == {"theme", "retries", "debug", "tags", "onChange"};
+    assert by_name["theme"].ty.name == "string" and not by_name["theme"].optional;
+    assert by_name["retries"].ty.name == "number";
+    assert by_name["debug"].optional and by_name["debug"].ty.name == "boolean";
+    assert by_name["tags"].readonly and by_name["tags"].ty.kind == "array";
+    assert by_name["onChange"].is_method and by_name["onChange"].ty.kind == "func";
+}
+
+test "interface captures extends heritage" {
+    src = (
+        "export interface Base { id: string; }\n"
+        "export interface Derived extends Base { extra: number; }\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    assert r["Derived"].heritage == ["Base"];
+    assert {m.name for m in r["Derived"].members} == {"extra"};
+}
+
 test "malformed input returns None rather than raising" {
     assert parse_dts("export declare function broken(((;") is None or True;
     r = parse_dts("/* just a comment */");
