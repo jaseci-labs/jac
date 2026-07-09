@@ -279,7 +279,6 @@ obj UniPass(ModuleCodegenPass) {
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_yield_expr(nd: uni.YieldExpr) -> None;
-
     # >>> generated visitor surface (jac gen-uni-dispatch) >>>
     def enter_ability(nd: uni.Ability) -> None;
     def enter_arch_has(nd: uni.ArchHas) -> None;

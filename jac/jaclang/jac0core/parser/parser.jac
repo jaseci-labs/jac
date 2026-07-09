@@ -172,7 +172,12 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComment }
 
-import from jaclang.jac0core.constant { Tokens as Tok, EdgeDir, CodeContext, OwnershipKind }
+import from jaclang.jac0core.constant {
+    Tokens as Tok,
+    EdgeDir,
+    CodeContext,
+    OwnershipKind
+}
 
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.INT: Tok.INT.value,
