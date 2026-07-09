@@ -260,6 +260,11 @@ def _admin_dist_urls(channel: str) -> tuple[str, str] {
         url = f"https://github.com/{repo}/releases/download/dev/jac-dev{suffix}";
         return (url, url + ".sha256");
     }
+    if channel == "local" {
+        # The binary comes from the developer's machine; a store-bought
+        # console could skew against it, so only the package _dist is used.
+        return ("", "");
+    }
     api = f"https://api.github.com/repos/{repo}/releases/latest";
     meta = json.loads(_http_get_bytes(api).decode("utf-8"));
     dist_url = "";

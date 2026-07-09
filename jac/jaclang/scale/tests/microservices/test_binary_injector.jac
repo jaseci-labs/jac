@@ -481,3 +481,20 @@ test "a locally built package _dist wins without any download" {
         }
     }
 }
+
+
+def _no_http(url: str) -> bytes {
+    raise AssertionError("the network must not be touched");
+}
+
+
+test "local channel never downloads the admin console" {
+    import jaclang;
+    with unittest.mock.patch.object(binary_mod, "_http_get_bytes", _no_http) {
+        with unittest.mock.patch.object(jaclang, "__file__", _empty_jaclang_pkg()) {
+            proj = tempfile.mkdtemp();
+            assert not stage_admin_dist(proj, "local");
+            assert not (Path(proj) / ".jac" / "admin").exists();
+        }
+    }
+}
