@@ -2283,6 +2283,7 @@ impl run_agent(req: object) -> int {
 }
 
 glob _ui_recent_errors: dict = {},
+     _ui_recent_errors_lock = threading.Lock(),
      _ui_output_capture_installed = False,
      _ui_emit_tls: any = None,
      _ui_capture_bus: any = None,
@@ -2315,24 +2316,36 @@ def _ui_purge_stale_provider_errors(now: float) {
 }
 
 def _ui_remember_provider_error(text: str) {
-    now = time.monotonic();
-    _ui_purge_stale_provider_errors(now);
-    _ui_recent_errors[_ui_provider_fingerprint(text)] = now;
+    _ui_recent_errors_lock.acquire();
+    try {
+        now = time.monotonic();
+        _ui_purge_stale_provider_errors(now);
+        _ui_recent_errors[_ui_provider_fingerprint(text)] = now;
+    } finally {
+        _ui_recent_errors_lock.release();
+    }
 }
 
 def _ui_is_duplicate_provider_error(text: str) -> bool {
-    now = time.monotonic();
-    _ui_purge_stale_provider_errors(now);
-    fp = _ui_provider_fingerprint(text);
-    for (key, ts) in _ui_recent_errors.items() {
-        if now - ts > _UI_PROVIDER_DEDUP_S {
-            continue;
+    dup: bool = False;
+    _ui_recent_errors_lock.acquire();
+    try {
+        now = time.monotonic();
+        _ui_purge_stale_provider_errors(now);
+        fp = _ui_provider_fingerprint(text);
+        for (key, ts) in _ui_recent_errors.items() {
+            if now - ts > _UI_PROVIDER_DEDUP_S {
+                continue;
+            }
+            if key in fp or fp in key {
+                dup = True;
+                break;
+            }
         }
-        if key in fp or fp in key {
-            return True;
-        }
+    } finally {
+        _ui_recent_errors_lock.release();
     }
-    return False;
+    return dup;
 }
 
 def _ui_bus_emit_guarded(kind: str, text: str) {
