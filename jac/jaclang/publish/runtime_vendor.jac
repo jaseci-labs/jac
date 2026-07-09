@@ -65,7 +65,9 @@ import jaclang.jac0core.runtime as _runtime_mod
 
 from jaclang.jac0core.runtime import (
     JacRuntime,
+    JacRuntimeImpl,
     JacRuntimeInterface,
+    plugin_manager,
 )
 
 sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
