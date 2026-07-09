@@ -563,6 +563,7 @@ jac/jaclang/cli/ai_tui_na/host_embed.na.jac
 jac/jaclang/cli/ai_tui_na/terminal_image.na.jac
 jac/jaclang/cli/ai_tui_na/blob_reader.na.jac
 jac/jaclang/cli/ai_tui_na/transport.na.jac
+jac/jaclang/cli/ai_tui_na/feed.na.jac
 jac/jaclang/cli/ai_tui_na/terminal.na.jac
 jac/jaclang/cli/ai_tui_na/diff.na.jac
 jac/jaclang/cli/ai_tui_na/tui_core.na.jac
