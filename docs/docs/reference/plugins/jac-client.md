@@ -1253,7 +1253,7 @@ Because a JS error boundary catches every error regardless of declared type, per
 
 ### Comments inside JSX
 
-Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac format`:
+Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac fmt`:
 
 ```jac
 cl {
@@ -2644,7 +2644,7 @@ Changes to `.jac` files automatically reload without restart.
 ### Debug Mode
 
 ```bash
-jac debug main.jac
+jac run --debug main.jac
 ```
 
 Provides:

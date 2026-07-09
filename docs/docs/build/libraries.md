@@ -19,7 +19,7 @@ version = "0.1.0"
 ```
 
 ```bash
-jac bundle
+jac build --as wheel
 # → dist/greetlib-0.1.0-py3-none-any.whl
 ```
 
@@ -27,7 +27,7 @@ Upload it with `twine`, then `pip install greetlib` anywhere. The wheel ships yo
 
 ## npm package {#js-package}
 
-The client-side counterpart: a `cl` component (or function) library published to npm so any JavaScript/TypeScript project can `npm install` it. `jac bundle --target npm` compiles your client modules to ES-module JavaScript, generates `package.json`, and emits `.d.ts` declarations. (Modules that cross a server boundary can't ship as standalone npm packages -- keep server-coupled code in your app.)
+The client-side counterpart: a `cl` component (or function) library published to npm so any JavaScript/TypeScript project can `npm install` it. `jac build --as npm` compiles your client modules to ES-module JavaScript, generates `package.json`, and emits `.d.ts` declarations. (Modules that cross a server boundary can't ship as standalone npm packages -- keep server-coupled code in your app.)
 
 ## Shared library (C ABI) {#native-lib}
 

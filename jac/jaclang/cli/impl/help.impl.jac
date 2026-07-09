@@ -77,11 +77,6 @@ impl HelpFormatter.format_main_help(
 
         display_name = self.groups.get_display_name(group);
 
-        sources = set(cmd.source for cmd in cmds);
-        if len(sources) == 1 and "jaclang" not in sources {
-            display_name += f"  [{list(sources)[0]}]";
-        }
-
         lines.append(_help_color(f"{display_name}:", _HELP_HEADER));
 
         cmds.sort(key=lambda c: str : c.name);

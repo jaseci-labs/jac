@@ -29,15 +29,24 @@
 //! dir iteration).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
 
 /// Trailer layout: magic(8) + payload_len u64-LE(8) + sha256 hex(64) = 80 bytes.
-/// This is the authoritative definition; pack.zig reuses these constants, and
-/// the Python repacker (`_bundle_binary` / `_split_jac_binary` in
-/// jaclang/cli/commands/impl/project.impl.jac) mirrors them byte-for-byte.
+/// This is the ONE authoritative definition of the on-disk trailer wire format
+/// in the whole codebase; pack.zig reuses these constants and the append/graft
+/// helpers below, and nothing outside Zig parses or writes a trailer.
 pub const MAGIC = "JACBIN01";
+/// Overlay marker for an appended `.jab` app image. A `jac build --as binary`
+/// artifact is `[ base bundled jac ][ app.jab ][ overlay trailer ]`: the base
+/// binary is byte-identical to the installed `jac`, and its own JACBIN01 payload
+/// trailer is no longer at EOF. This distinct magic lets `materialize` tell an
+/// app binary from a plain one in a single 8-byte read and step over the overlay
+/// to find the real payload trailer. Same 80-byte layout as MAGIC, so the two
+/// share the whole codec below.
+pub const OVERLAY_MAGIC = "JABOVL01";
 pub const MAGIC_LEN = 8;
 pub const HASH_LEN = 64; // sha256 hex
 pub const TRAILER_LEN = MAGIC_LEN + 8 + HASH_LEN; // 80
@@ -110,15 +119,137 @@ pub fn rtKey(hash16: *const [16]u8, exe_path: []const u8) [RT_KEY_LEN]u8 {
     return key;
 }
 
-/// Decode an 80-byte trailer blob. Pure function (no I/O) so it is trivially
-/// testable and reused by the warm and cold paths.
-pub fn parseTrailer(bytes: *const [TRAILER_LEN]u8) Error!Trailer {
-    if (!std.mem.eql(u8, bytes[0..MAGIC_LEN], MAGIC)) return Error.BadMagic;
+/// Decode an 80-byte trailer blob, requiring `magic` (MAGIC or OVERLAY_MAGIC).
+/// Pure function (no I/O) so it is trivially testable and reused by the warm and
+/// cold paths, the overlay detector, and the append/graft tools.
+pub fn parseTrailerMagic(bytes: *const [TRAILER_LEN]u8, magic: []const u8) Error!Trailer {
+    if (!std.mem.eql(u8, bytes[0..MAGIC_LEN], magic)) return Error.BadMagic;
     const payload_len = std.mem.readInt(u64, bytes[MAGIC_LEN..][0..8], .little);
     var t: Trailer = .{ .payload_len = payload_len, .hash = undefined, .hash16 = undefined };
     @memcpy(&t.hash, bytes[MAGIC_LEN + 8 ..][0..HASH_LEN]);
     @memcpy(&t.hash16, t.hash[0..16]);
     return t;
+}
+
+/// Decode a JACBIN01 payload trailer.
+pub fn parseTrailer(bytes: *const [TRAILER_LEN]u8) Error!Trailer {
+    return parseTrailerMagic(bytes, MAGIC);
+}
+
+/// An appended `.jab` app overlay, located within the binary: `[off, off+len)`
+/// is the raw `.jab` (tar.gz) bytes, immediately followed by the 80-byte overlay
+/// trailer at EOF. The Python boot path slices exactly this region out of
+/// `sys.executable` and hands it to `materialize_jab_bytes` -- so it never needs
+/// to know the trailer format.
+pub const Overlay = struct { off: u64, len: u64 };
+
+/// If the file ends in an OVERLAY_MAGIC trailer, return the appended `.jab`'s
+/// `[off, len]`; otherwise null (a plain bundled `jac`, ninja stub, or desktop
+/// host -- all of which end in a JACBIN01 payload trailer). `total` is the full
+/// file length. Pure over an open file so both `materialize` (step over the
+/// overlay) and `overlayForPath` (report it to the CLI boot) share one decoder.
+fn peekOverlay(io: Io, file: *Io.File, total: u64) !?Overlay {
+    if (total < TRAILER_LEN) return null;
+    var traw: [TRAILER_LEN]u8 = undefined;
+    if ((try file.readPositionalAll(io, &traw, total - TRAILER_LEN)) != TRAILER_LEN)
+        return null;
+    if (!std.mem.eql(u8, traw[0..MAGIC_LEN], OVERLAY_MAGIC)) return null;
+    const t = try parseTrailerMagic(&traw, OVERLAY_MAGIC);
+    const off = std.math.sub(u64, total, TRAILER_LEN + t.payload_len) catch
+        return Error.PayloadOffsetUnderflow;
+    return Overlay{ .off = off, .len = t.payload_len };
+}
+
+/// Open `exe_path` and report a trailing `.jab` overlay (or null). Used by the
+/// launcher to export JAC_APP_OVERLAY_OFF/_LEN before booting CPython, so the
+/// bundled-app boot can slice its own image out of the running binary. Any I/O
+/// error degrades to null -- a binary we cannot read is simply "no overlay",
+/// and the normal `materialize` open below surfaces the real error.
+pub fn overlayForPath(io: Io, exe_path: []const u8) ?Overlay {
+    var file = Io.Dir.cwd().openFile(io, exe_path, .{}) catch return null;
+    defer file.close(io);
+    const total = file.length(io) catch return null;
+    return (peekOverlay(io, &file, total) catch return null);
+}
+
+/// Write `[ base ][ jab ][ OVERLAY_MAGIC | jab_len u64 LE | sha256(jab) hex ]`
+/// to `out_path`. `base` must be a plain bundled `jac` (its EOF is a JACBIN01
+/// payload trailer, never already an overlay -- rejected as BadMagic). This is
+/// the ONE writer for `jac build --as binary`; it copies the base verbatim (no
+/// CPython unpack/repack) and appends the deterministic `.jab` unchanged, so the
+/// artifact is reproducible whenever the inputs are. The caller chmods the
+/// result executable (this module stays libc-free for `zig test`).
+pub fn appendOverlay(
+    io: Io,
+    gpa: Allocator,
+    base_path: []const u8,
+    jab_path: []const u8,
+    out_path: []const u8,
+) !void {
+    const base = try Io.Dir.cwd().readFileAlloc(io, base_path, gpa, .unlimited);
+    defer gpa.free(base);
+    if (base.len < TRAILER_LEN or
+        !std.mem.eql(u8, base[base.len - TRAILER_LEN ..][0..MAGIC_LEN], MAGIC))
+        return Error.BadMagic;
+
+    const jab = try Io.Dir.cwd().readFileAlloc(io, jab_path, gpa, .unlimited);
+    defer gpa.free(jab);
+
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(jab, &digest, .{});
+    const hex = hexDigest(&digest);
+    var lenle: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lenle, jab.len, .little);
+
+    var out = try Io.Dir.cwd().createFile(io, out_path, .{ .truncate = true });
+    defer out.close(io);
+    try out.writeStreamingAll(io, base);
+    try out.writeStreamingAll(io, jab);
+    try out.writeStreamingAll(io, OVERLAY_MAGIC);
+    try out.writeStreamingAll(io, &lenle);
+    try out.writeStreamingAll(io, &hex);
+}
+
+/// Append the running binary's `[ payload ][ JACBIN01 trailer ]` runtime suffix
+/// onto `host_path` (in place), fusing the bundled CPython+jaclang runtime into
+/// a foreign host binary (the `na` desktop host). Reads `self_path`, steps over
+/// an overlay if one is present (the plain `jac` used for the fuse never has
+/// one), validates the base ends in a JACBIN01 trailer, and appends the suffix.
+/// Replaces the hand-rolled trailer parse the desktop builder used to carry.
+pub fn graftRuntime(
+    io: Io,
+    gpa: Allocator,
+    self_path: []const u8,
+    host_path: []const u8,
+) !void {
+    const self_bytes = try Io.Dir.cwd().readFileAlloc(io, self_path, gpa, .unlimited);
+    defer gpa.free(self_bytes);
+
+    var base_total: u64 = self_bytes.len;
+    if (base_total >= TRAILER_LEN and
+        std.mem.eql(u8, self_bytes[base_total - TRAILER_LEN ..][0..MAGIC_LEN], OVERLAY_MAGIC))
+    {
+        const olen = std.mem.readInt(u64, self_bytes[base_total - TRAILER_LEN + MAGIC_LEN ..][0..8], .little);
+        base_total = std.math.sub(u64, base_total, TRAILER_LEN + olen) catch
+            return Error.PayloadOffsetUnderflow;
+    }
+    if (base_total < TRAILER_LEN or
+        !std.mem.eql(u8, self_bytes[base_total - TRAILER_LEN ..][0..MAGIC_LEN], MAGIC))
+        return Error.BadMagic;
+    const payload_len = std.mem.readInt(u64, self_bytes[base_total - TRAILER_LEN + MAGIC_LEN ..][0..8], .little);
+    const suffix_start = std.math.sub(u64, base_total, TRAILER_LEN + payload_len) catch
+        return Error.PayloadOffsetUnderflow;
+    const suffix = self_bytes[suffix_start..base_total];
+
+    // Append the suffix at EOF WITHOUT truncating the host: a failed or
+    // interrupted write can only leave a partial suffix (an invalid trailer --
+    // harmless, the host is a regenerable build intermediate), never a zeroed
+    // host, and the host's existing mode is preserved. Mirrors the old
+    // `open(host, "ab")` the Python desktop builder used.
+    var host_file = try Io.Dir.cwd().openFile(io, host_path, .{ .mode = .read_write });
+    defer host_file.close(io);
+    const end = try host_file.length(io);
+    try host_file.writePositionalAll(io, suffix, end);
 }
 
 /// Resolve the global cache root, mirroring jaclang's `cache_paths.py`:
@@ -194,7 +325,16 @@ pub fn materialize(
     var keep_open = true;
     defer if (keep_open) file.close(io);
 
-    const total = try file.length(io);
+    // An app binary (`jac build --as binary`) appends `[ app.jab ][ overlay ]`
+    // after the base binary's payload trailer, so EOF is the overlay, not the
+    // JACBIN01 payload trailer. Step over it: everything below operates on the
+    // base binary's logical length, and the appended `.jab` is mounted
+    // separately (the CLI boot slices it out via JAC_APP_OVERLAY_OFF/_LEN). The
+    // cache key still folds only the base payload digest + exe path, so an app
+    // binary shares the extracted CPython tree with the plain `jac` it was built
+    // from (same payload) yet gets its own tree per install path (issue #7012).
+    const full_total = try file.length(io);
+    const total = if (try peekOverlay(io, &file, full_total)) |o| o.off else full_total;
     if (total < TRAILER_LEN) return Error.BinaryTooSmall;
 
     var traw: [TRAILER_LEN]u8 = undefined;
@@ -211,6 +351,11 @@ pub fn materialize(
 
     // Warm path: a complete extract is marked by `<rt>/.ok`.
     if (pathExists(io, rt, ".ok")) return rt;
+    if (!builtin.is_test)
+        std.debug.print(
+            "jac: first run, performing one-time setup...\n",
+            .{},
+        );
 
     // Cold path: read the compressed payload region into memory.
     const poff = std.math.sub(u64, total, TRAILER_LEN + trailer.payload_len) catch
@@ -232,6 +377,8 @@ pub fn materialize(
 
     try extractPayload(io, gpa, zbuf, rt, pid);
     gcStale(io, root, &trailer.hash16);
+    if (!builtin.is_test)
+        std.debug.print("jac: one-time setup complete.\n", .{});
     return rt;
 }
 
@@ -360,10 +507,15 @@ test "cacheRoot prefers XDG_CACHE_HOME and falls back when unwritable" {
     try testing.expect(std.mem.endsWith(u8, root, "/jac"));
     try testing.expect(std.mem.startsWith(u8, root, base));
 
-    // Unwritable preferred root -> temp fallback keyed by uid.
+    // Unwritable preferred root -> temp fallback keyed by uid. The probe path
+    // must FAIL cleanly: a component that is a file (/dev/null) yields ENOTDIR
+    // on both Linux and macOS. Do NOT use a /proc path here -- createDirPath
+    // livelocks under the read-only /proc pseudo-fs on Linux (mkdir returns
+    // EROFS, never ENOENT, so make-parents neither progresses nor backs off),
+    // which hung this whole `zig build test` step on the Linux CI legs.
     var tmp_buf: [MAX_PATH]u8 = undefined;
     const tmpdir = tmp_buf[0..try tmp.dir.realPath(io, &tmp_buf)];
-    const fb = try cacheRoot(io, "/proc/nonexistent/ro", null, tmpdir, 4242, &out);
+    const fb = try cacheRoot(io, "/dev/null/ro", null, tmpdir, 4242, &out);
     try testing.expect(std.mem.indexOf(u8, fb, "jac-cache-4242") != null);
 }
 
@@ -521,4 +673,153 @@ test "materialize gc reclaims pre-fix bare-hash16 cache dirs" {
     const rt = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf);
     try testing.expect(std.mem.endsWith(u8, rt, &rtKey(hex[0..16], exe)));
     try testing.expect(!pathExists(io, old_abs, ".ok")); // reclaimed on first run
+}
+
+// Join `<tmp>/<name>` into `buf`, returning an absolute path usable with
+// Io.Dir.cwd() (createFile/readFileAlloc take cwd-relative-or-absolute paths).
+fn tmpJoin(io: Io, tmp: *std.testing.TmpDir, name: []const u8, buf: []u8) ![]const u8 {
+    var base: [MAX_PATH]u8 = undefined;
+    const dir = base[0..try tmp.dir.realPath(io, &base)];
+    return std.fmt.bufPrint(buf, "{s}/{s}", .{ dir, name });
+}
+
+// appendOverlay writes [ base ][ jab ][ OVERLAY_MAGIC | len | sha256 ]; peekOverlay
+// (via overlayForPath) must report the .jab region [base.len, jab.len] and the
+// bytes there must be the exact .jab, so the Python boot can slice it out blind.
+test "appendOverlay embeds a .jab overlay and overlayForPath locates it" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+    var fake = try buildFakeBinary(payload); // [STUB][payload][JACBIN01 trailer]
+    defer fake.bin.deinit();
+    const base_len = fake.bin.items.len;
+    const jab = "JAB\x00fake-sealed-image-tar-gz-bytes\x01\x02\x03";
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "base", .data = fake.bin.items });
+    try tmp.dir.writeFile(io, .{ .sub_path = "app.jab", .data = jab });
+
+    var bb: [MAX_PATH]u8 = undefined;
+    var jb: [MAX_PATH]u8 = undefined;
+    var ob: [MAX_PATH]u8 = undefined;
+    const base_p = try tmpJoin(io, &tmp, "base", &bb);
+    const jab_p = try tmpJoin(io, &tmp, "app.jab", &jb);
+    const out_p = try tmpJoin(io, &tmp, "appbin", &ob);
+
+    try appendOverlay(io, testing.allocator, base_p, jab_p, out_p);
+
+    const ovl = overlayForPath(io, out_p) orelse return error.NoOverlayDetected;
+    try testing.expectEqual(@as(u64, base_len), ovl.off);
+    try testing.expectEqual(@as(u64, jab.len), ovl.len);
+
+    // The bytes at [off, off+len) are the .jab, verbatim.
+    var f = try Io.Dir.cwd().openFile(io, out_p, .{});
+    defer f.close(io);
+    var slice: [64]u8 = undefined;
+    _ = try f.readPositionalAll(io, slice[0..jab.len], ovl.off);
+    try testing.expectEqualStrings(jab, slice[0..jab.len]);
+}
+
+// A plain bundled jac (JACBIN01 at EOF) has no overlay.
+test "overlayForPath returns null for a plain binary" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+    var fake = try buildFakeBinary(payload);
+    defer fake.bin.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "base", .data = fake.bin.items });
+    var bb: [MAX_PATH]u8 = undefined;
+    const base_p = try tmpJoin(io, &tmp, "base", &bb);
+    try testing.expect(overlayForPath(io, base_p) == null);
+}
+
+// appendOverlay must reject a base that is not a bundled jac (no JACBIN01 tail),
+// the single detector that replaces the old Python `_split_jac_binary` gate.
+test "appendOverlay rejects a non-bundled base" {
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "notjac", .data = "not a bundled jac binary" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "app.jab", .data = "jab" });
+    var bb: [MAX_PATH]u8 = undefined;
+    var jb: [MAX_PATH]u8 = undefined;
+    var ob: [MAX_PATH]u8 = undefined;
+    const base_p = try tmpJoin(io, &tmp, "notjac", &bb);
+    const jab_p = try tmpJoin(io, &tmp, "app.jab", &jb);
+    const out_p = try tmpJoin(io, &tmp, "out", &ob);
+    try testing.expectError(Error.BadMagic, appendOverlay(io, testing.allocator, base_p, jab_p, out_p));
+}
+
+// The whole point of the overlay marker: materialize must extract the SAME
+// CPython payload from an app binary as from the plain base, stepping over the
+// appended .jab instead of mis-reading the overlay trailer as the payload one.
+test "materialize steps over a .jab overlay to the base payload" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+    var fake = try buildFakeBinary(payload);
+    defer fake.bin.deinit();
+    const hex = fake.hex;
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var pbuf: [MAX_PATH]u8 = undefined;
+    const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
+
+    // Build the app binary: base ++ jab ++ overlay trailer, via appendOverlay.
+    try tmp.dir.writeFile(io, .{ .sub_path = "base", .data = fake.bin.items });
+    try tmp.dir.writeFile(io, .{ .sub_path = "app.jab", .data = "pretend-sealed-image" });
+    var bb: [MAX_PATH]u8 = undefined;
+    var jb: [MAX_PATH]u8 = undefined;
+    var ob: [MAX_PATH]u8 = undefined;
+    const base_p = try tmpJoin(io, &tmp, "base", &bb);
+    const jab_p = try tmpJoin(io, &tmp, "app.jab", &jb);
+    const app_p = try tmpJoin(io, &tmp, "appbin", &ob);
+    try appendOverlay(io, testing.allocator, base_p, jab_p, app_p);
+
+    var rtbuf: [MAX_PATH]u8 = undefined;
+    const rt = try materialize(io, testing.allocator, app_p, home, null, null, 1000, 7, &rtbuf);
+
+    // Cache key folds the BASE payload digest (unchanged by the overlay) + path.
+    try testing.expect(std.mem.indexOf(u8, rt, hex[0..16]) != null);
+    // And the CPython payload extracted correctly despite the trailing overlay.
+    var dir = try Io.Dir.cwd().openDir(io, rt, .{});
+    defer dir.close(io);
+    var fbuf: [64]u8 = undefined;
+    const marker = try dir.readFile(io, "python/lib/marker.txt", &fbuf);
+    try testing.expectEqualStrings("pybytecode-marker\n", marker);
+}
+
+// graftRuntime appends the running binary's [ payload ][ JACBIN01 trailer ]
+// suffix onto a host binary (the desktop fuse), replacing the Python parser.
+test "graftRuntime fuses the runtime suffix onto a host binary" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+    var fake = try buildFakeBinary(payload); // 4-byte "STUB" + payload + 80-byte trailer
+    defer fake.bin.deinit();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const host_before = "HOST-DESKTOP-STUB";
+    try tmp.dir.writeFile(io, .{ .sub_path = "selfjac", .data = fake.bin.items });
+    try tmp.dir.writeFile(io, .{ .sub_path = "host", .data = host_before });
+    var sb: [MAX_PATH]u8 = undefined;
+    var hb: [MAX_PATH]u8 = undefined;
+    const self_p = try tmpJoin(io, &tmp, "selfjac", &sb);
+    const host_p = try tmpJoin(io, &tmp, "host", &hb);
+
+    try graftRuntime(io, testing.allocator, self_p, host_p);
+
+    const grafted = try Io.Dir.cwd().readFileAlloc(io, host_p, testing.allocator, .unlimited);
+    defer testing.allocator.free(grafted);
+    // suffix = payload ++ trailer = everything after the 4-byte "STUB".
+    const suffix = fake.bin.items[4..];
+    try testing.expectEqual(host_before.len + suffix.len, grafted.len);
+    try testing.expectEqualStrings(host_before, grafted[0..host_before.len]);
+    try testing.expectEqualSlices(u8, suffix, grafted[host_before.len..]);
 }

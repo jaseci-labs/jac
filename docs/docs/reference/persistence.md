@@ -22,7 +22,7 @@ walker create {
 }
 ```
 
-After `jac enter app.jac create`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac enter app.jac dump` (with a walker that traverses `[-->]`) sees them.
+After `jac run --entry create app.jac`, alice and bob live in `.jac/data/<app>.db`. A subsequent `jac run --entry dump app.jac` (with a walker that traverses `[-->]`) sees them.
 
 **Backends.** Out of the box, `SqliteMemory` writes to `.jac/data/<app>.db`. Configure a Mongo database under `[scale.*]` and set `MONGODB_URI`, then `jac install` pulls in `pymongo` and persistence flips to the [scale](plugins/jac-scale.md) `MongoBackend`. The storage swaps; the developer-facing model (this page) doesn't change.
 
@@ -237,7 +237,7 @@ node User {
 }
 ```
 
-**The argument is the fully-qualified old name as it appeared in stored data** -- i.e. `__module__ + "." + __name__` of the class at the time it was persisted. For files imported via `jac enter app.jac`, the module is `__main__`.
+**The argument is the fully-qualified old name as it appeared in stored data** -- i.e. `__module__ + "." + __name__` of the class at the time it was persisted. For files run via `jac run --entry ... app.jac`, the module is `__main__`.
 
 ### Code-resident vs. DB-resident aliases
 
@@ -446,7 +446,7 @@ walker dump {
 ```
 
 ```bash
-jac enter app.jac create
+jac run --entry create app.jac
 # (alice and bob persist)
 ```
 
@@ -471,7 +471,7 @@ walker dump {
 ```
 
 ```bash
-jac enter app.jac dump
+jac run --entry dump app.jac
 # alice:30:x@y   ← age coerced int→str, email defaulted, class resolved via alias
 # bob:25:x@y
 ```

@@ -3,20 +3,17 @@ import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
 import from jaclang.scale.injector.binary {
     download_release_binary,
     node_arch,
-    resolve_overlay_source,
-    cleanup_overlay_source,
     pack_binary_bytes,
-    pack_overlay,
     toolchain_object_key
 }
 import from jaclang.scale.injector.bundle { content_address }
-import from jaclang.scale.config.dev_config { DevDeploy }
+import from jaclang.scale.config.dev_config { Channel }
 
 glob logger = logging.getLogger(__name__);
 
 
 obj BinaryInjector(PvcInjector) {
-    has dev: DevDeploy = DevDeploy(),
+    has channel: Channel = Channel.STABLE,
         _toolchain_object_key: str = "",
         _toolchain_bytes: bytes = b"",
         _pod_binary_bytes: bytes = b"";
@@ -25,21 +22,10 @@ obj BinaryInjector(PvcInjector) {
         # Download the pod binary FIRST so pack_source can precompile the app's
         # modules with it (#7179): .jir is version-locked to the compiling
         # binary, so the driver's own jac cannot produce pod-valid seeds.
-        payload = download_release_binary(self.dev.channel, node_arch());
+        payload = download_release_binary(self.channel.value, node_arch());
         self._pod_binary_bytes = payload;
         super.prepare(app_name, namespace, project_dir);
-        if self.dev.overlays_source() {
-            (src, cleanup) = resolve_overlay_source(
-                self.dev.repo, self.dev.branch, self.dev.jaclang_source, project_dir
-            );
-            try {
-                raw = pack_overlay(payload, src);
-            } finally {
-                cleanup_overlay_source(cleanup);
-            }
-        } else {
-            raw = pack_binary_bytes(payload);
-        }
+        raw = pack_binary_bytes(payload);
         self._toolchain_object_key = toolchain_object_key(
             app_name, content_address(raw)
         );
@@ -60,24 +46,7 @@ obj BinaryInjector(PvcInjector) {
 }
 
 
-def _blurb(dev: DevDeploy) -> str {
-    if not dev.overlays_source() {
-        if dev.channel == "dev" {
-            return "downloading the rolling `dev` (main HEAD) jac binary";
-        }
-        return "downloading the latest published (stable) jac release";
-    }
-    where = (
-        f"{dev.repo}@{dev.branch}"
-            if dev.repo
-            else (dev.jaclang_source or "jaseci main")
-    );
-    return f"downloading the dev binary + overlaying jaclang source ({where})";
-}
-
-
 def select_injector(
-    dev: DevDeploy,
     storage_class: str,
     app_name: str,
     namespace: str,
@@ -85,23 +54,30 @@ def select_injector(
     provisioned_database: str = ""
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
+    import from jaclang.scale.config.dev_config { resolve_dev_channel }
+    # The one place the pod binary channel is decided (local > dev > stable).
+    channel = resolve_dev_channel(project_dir);
+    blurbs = {
+        Channel.LOCAL: "shipping the local jac binary",
+        Channel.DEV: "downloading the rolling `dev` (main HEAD) jac binary",
+        Channel.STABLE: "downloading the latest published (stable) jac release"
+    };
     try {
-        console.print(f"Preparing the '{dev.channel}' jac runtime for pods.");
+        console.print(f"Preparing the '{channel.value}' jac runtime for pods.");
         injector = BinaryInjector(
-            dev=dev,
+            channel=channel,
             storage_class=storage_class,
             provisioned_database=provisioned_database
         );
         injector.prepare(app_name, namespace, project_dir);
-        console.print(f"Ready: {_blurb(dev)}.");
+        console.print(f"Ready: {blurbs[channel]}.");
         return (injector, injector._toolchain_object_key);
     } except Exception as exc {
-        logger.warning(f"[{dev.channel}] binary/source prep failed: {exc}");
+        logger.warning(f"[{channel.value}] binary prep failed: {exc}");
         raise RuntimeError(
-            f"Could not prepare the '{dev.channel}' jac runtime: {exc}. Check "
-            f"network access to github.com/jaseci-labs/jaseci releases (and "
-            f"JAC_NODE_ARCH for cross-arch nodes); for [dev] with repo/branch "
-            f"ensure the branch exists and has a jac/jaclang source tree."
+            f"Could not prepare the '{channel.value}' jac runtime: {exc}. Check "
+            "network access to github.com/jaseci-labs/jaseci releases (and "
+            "JAC_NODE_ARCH for cross-arch nodes)."
         );
     }
 }

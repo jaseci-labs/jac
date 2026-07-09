@@ -5,7 +5,7 @@ Build a reusable library in Jac and ship it to PyPI as a wheel and to npm as a p
 **What you'll do:**
 
 1. Scaffold a `py-package` project and write a small library
-2. Build a PyPI-ready wheel with `jac bundle` and test it locally
+2. Build a PyPI-ready wheel with `jac build --as wheel` and test it locally
 3. Upload it with twine
 4. Do the same for npm with a `js-package`
 
@@ -72,7 +72,7 @@ jac test
 ## 3. Build the wheel
 
 ```bash
-jac bundle
+jac build --as wheel
 ```
 
 ```
@@ -112,7 +112,7 @@ The npm flow is symmetric -- the `js-package` kind compiles `cl` (client) code t
 cd ..
 jac create jsgreet --kind js-package
 cd jsgreet
-jac bundle --target npm
+jac build --as npm
 ```
 
 ```
@@ -128,7 +128,7 @@ npm publish dist/jsgreet-0.1.0.tgz --access public
 ```
 
 !!! tip "One project, both targets"
-    `jac bundle --target all` builds the wheel *and* the npm tarball from a single project, when your library has both server-usable and client-usable modules. Modules that cross the server boundary are rejected with a clear error at bundle time.
+    There's no single "all" command -- run `jac build --as wheel` and `jac build --as npm` separately to produce both the wheel *and* the npm tarball from a single project, when your library has both server-usable and client-usable modules. Modules that cross the server boundary are rejected with a clear error at build time.
 
 ## Gotchas
 
