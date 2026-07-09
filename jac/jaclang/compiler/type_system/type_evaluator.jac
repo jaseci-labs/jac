@@ -3,7 +3,13 @@ import os;
 import from pathlib { Path }
 import from typing { cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { TOKEN_MAP, SymbolType, Tokens as Tok, EdgeDir }
+import from jaclang.jac0core.constant {
+    TOKEN_MAP,
+    SymbolType,
+    Tokens as Tok,
+    EdgeDir,
+    SymbolAccess,
+}
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
@@ -174,7 +180,7 @@ obj TypeEvaluator {
         _and_narrowing_overrides: dict[int, TypeBase] = {},
         _ts_decl_cache: dict[str, (dict[str, TsDecl] | None)] = {},
         _ts_decl_path_cache: dict[str, (str | None)] = {},
-        _ts_synthetic_mod_cache: dict[int, (uni.Module | None)] = {},
+        _ts_synth_class_cache: dict[int, (dict[str, types.ClassType] | None)] = {},
         _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
@@ -223,16 +229,17 @@ obj TypeEvaluator {
         ts: (TsType | None),
         decls: dict[str, TsDecl],
         seen: (set[str] | None) = None,
-        synth_interfaces: bool = True,
+        shells: (dict[str, types.ClassType] | None) = None
     ) -> TypeBase;
 
-    def _jac_type_to_pyannot(ty: TypeBase) -> str;
     def _synthesize_ts_decl_class(
         decls: dict[str, TsDecl], item_name: str
     ) -> (TypeBase | None);
 
-    def _ts_synthetic_module(decls: dict[str, TsDecl]) -> (uni.Module | None);
-    def _ts_type_to_pyannot(ts: (TsType | None), decls: dict[str, TsDecl]) -> str;
+    def _ts_synth_class_types(
+        decls: dict[str, TsDecl]
+    ) -> (dict[str, types.ClassType] | None);
+
     def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;
     def _untyped_external_is_error(node_: uni.UniNode) -> bool;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;

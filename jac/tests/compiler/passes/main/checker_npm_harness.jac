@@ -184,3 +184,42 @@ def make_iface_npm_project(proj_dir: Path) -> Path {
     );
     return proj_dir;
 }
+
+"""Materialize a client project with cross/recursive interface d.ts (issue #7319).
+
+Exercises the cross-interface, recursive, array-of-interface, and
+interface-via-typealias shapes that previously collapsed to foreign `any`
+because shell-driven synthesis re-entered the cache while the sentinel was
+still `None`. Returns the project root.
+"""
+def make_relational_npm_project(proj_dir: Path) -> Path {
+    nm = client_node_modules(proj_dir);
+    install_npm_pkg(
+        nm,
+        "relpkg",
+        '{"name":"relpkg","version":"1.0.0",'
+        '"exports":{".":{"types":"./dist/index.d.ts",'
+        '"import":"./dist/index.mjs"}}}',
+        {
+            "dist/index.mjs": (
+                "export function getParent() {}\n"
+                "export function getHead() {}\n"
+                "export function getHolder() {}\n"
+            ),
+            "dist/index.d.ts": (
+                "export interface Child { name: string; }\n"
+                "export interface Parent { child: Child; children: Child[]; }\n"
+                "export interface Node { value: number; next: Node; }\n"
+                "export type Wrapped = Child;\n"
+                "export interface Holder { wrapped: Wrapped; }\n"
+                "export declare function getParent(): Parent;\n"
+                "export declare function getHead(): Node;\n"
+                "export declare function getHolder(): Holder;\n"
+            )
+        }
+    );
+    write_client_jac_project(
+        proj_dir, "relfixture", "lib/app.cl.jac", 'relpkg = "^1.0.0"\n'
+    );
+    return proj_dir;
+}

@@ -740,6 +740,22 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         return members;
     }
 
+    def _parse_struct_decl(kind: str) -> TsDecl {
+        sname = val_at();
+        advance();
+        stvs = collect_generics() if is_p('<') else set();
+        typevar_stack.append(stvs);
+        sheritage: list[str] = [];
+        smembers: list[TsMember] = [];
+        try {
+            sheritage = parse_heritage();
+            smembers = parse_members();
+        } finally {
+            typevar_stack.pop();
+        }
+        return TsDecl(name=sname, kind=kind, members=smembers, heritage=sheritage);
+    }
+
     def record(decl: TsDecl, is_export: bool) {
         if (decl.name and decl.name not in decls) {
             decls[decl.name] = decl;
@@ -878,42 +894,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                     record(TsDecl(name=tname, kind='typealias', ty=aty), is_export);
                 }
             } elif eat_id('interface') {
-                iname = val_at();
-                advance();
-                itvs = collect_generics() if is_p('<') else set();
-                typevar_stack.append(itvs);
-                try {
-                    iheritage = parse_heritage();
-                    imembers = parse_members();
-                } finally {
-                    typevar_stack.pop();
-                }
-                record(
-                    TsDecl(
-                        name=iname,
-                        kind='interface',
-                        members=imembers,
-                        heritage=iheritage,
-                    ),
-                    is_export,
-                );
+                record(_parse_struct_decl('interface'), is_export);
             } elif eat_id('class') {
-                cname = val_at();
-                advance();
-                ctvs = collect_generics() if is_p('<') else set();
-                typevar_stack.append(ctvs);
-                try {
-                    cheritage = parse_heritage();
-                    cmembers = parse_members();
-                } finally {
-                    typevar_stack.pop();
-                }
-                record(
-                    TsDecl(
-                        name=cname, kind='class', members=cmembers, heritage=cheritage,
-                    ),
-                    is_export,
-                );
+                record(_parse_struct_decl('class'), is_export);
             } elif eat_id('enum') {
                 _parse_enum_decl(is_export);
             } elif (is_id('namespace') or is_id('module')) {
@@ -1006,48 +989,14 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                     );
                 }
             } elif eat_id('interface') {
-                iname = val_at();
-                advance();
-                itvs = collect_generics() if is_p('<') else set();
-                typevar_stack.append(itvs);
-                try {
-                    iheritage = parse_heritage();
-                    imembers = parse_members();
-                } finally {
-                    typevar_stack.pop();
-                }
-                if iname {
-                    ns_decls.setdefault(
-                        iname,
-                        TsDecl(
-                            name=iname,
-                            kind='interface',
-                            members=imembers,
-                            heritage=iheritage,
-                        ),
-                    );
+                sd = _parse_struct_decl('interface');
+                if sd.name {
+                    ns_decls.setdefault(sd.name, sd);
                 }
             } elif eat_id('class') {
-                cname = val_at();
-                advance();
-                ctvs = collect_generics() if is_p('<') else set();
-                typevar_stack.append(ctvs);
-                try {
-                    cheritage = parse_heritage();
-                    cmembers = parse_members();
-                } finally {
-                    typevar_stack.pop();
-                }
-                if cname {
-                    ns_decls.setdefault(
-                        cname,
-                        TsDecl(
-                            name=cname,
-                            kind='class',
-                            members=cmembers,
-                            heritage=cheritage,
-                        ),
-                    );
+                sd = _parse_struct_decl('class');
+                if sd.name {
+                    ns_decls.setdefault(sd.name, sd);
                 }
             } elif eat_id('enum') {
                 ename = val_at() if kind_at() == 'id' else '';

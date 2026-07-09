@@ -107,7 +107,7 @@ impl TypeEvaluator._map_ts_type(
     ts: (TsType | None),
     decls: dict[str, TsDecl],
     seen: (set[str] | None) = None,
-    synth_interfaces: bool = True,
+    shells: (dict[str, types.ClassType] | None) = None
 ) -> TypeBase {
     foreign_any = types.AnyType(is_foreign=True);
     if ts is None or self.prefetch is None {
@@ -167,17 +167,15 @@ impl TypeEvaluator._map_ts_type(
     }
     if k == 'union' {
         return types.UnionType(
-            types=[self._map_ts_type(m, decls, seen, synth_interfaces) for m in ts.args]
+            types=[self._map_ts_type(m, decls, seen, shells) for m in ts.args]
         );
     }
     if (k in ('array', 'tuple') and self.prefetch.list_class) {
         elem: TypeBase = foreign_any;
         if k == 'array' and ts.args {
-            elem = self._map_ts_type(ts.args[0], decls, seen, synth_interfaces);
+            elem = self._map_ts_type(ts.args[0], decls, seen, shells);
         } elif (k == 'tuple' and ts.args) {
-            mapped = [
-                self._map_ts_type(a, decls, seen, synth_interfaces) for a in ts.args
-            ];
+            mapped = [self._map_ts_type(a, decls, seen, shells) for a in ts.args];
             elem = mapped[0] if len(mapped) == 1 else types.UnionType(types=mapped);
         }
         lst = self.prefetch.list_class.clone_as_instance();
@@ -190,9 +188,7 @@ impl TypeEvaluator._map_ts_type(
             if p.rest {
                 elem_ty: TypeBase = types.AnyType(is_foreign=True);
                 if (p.ty is not None and p.ty.kind == 'array' and p.ty.args) {
-                    elem_ty = self._map_ts_type(
-                        p.ty.args[0], decls, seen, synth_interfaces
-                    );
+                    elem_ty = self._map_ts_type(p.ty.args[0], decls, seen, shells);
                 }
                 parameters.append(
                     types.Parameter(
@@ -208,7 +204,7 @@ impl TypeEvaluator._map_ts_type(
                 types.Parameter(
                     name=p.name or f"p{idx}",
                     category=types.ParameterCategory.Positional,
-                    param_type=self._map_ts_type(p.ty, decls, seen, synth_interfaces)
+                    param_type=self._map_ts_type(p.ty, decls, seen, shells)
                         if p.ty is not None
                         else types.AnyType(is_foreign=True),
                     has_default=p.optional,
@@ -217,7 +213,7 @@ impl TypeEvaluator._map_ts_type(
         }
         ret: TypeBase = types.AnyType(is_foreign=True);
         if ts.ret is not None {
-            ret = self._map_ts_type(ts.ret, decls, seen, synth_interfaces);
+            ret = self._map_ts_type(ts.ret, decls, seen, shells);
         }
         return types.FunctionType(func_name='', return_type=ret, parameters=parameters);
     }
@@ -233,19 +229,11 @@ impl TypeEvaluator._map_ts_type(
             target is not None and target.kind == 'typealias' and target.ty is not None
         ) {
             seen.add(ts.name);
-            return self._map_ts_type(target.ty, decls, seen, synth_interfaces);
+            return self._map_ts_type(target.ty, decls, seen, shells);
         }
         if target is not None and target.kind in ('interface', 'class') {
-            if not synth_interfaces {
-                if not self.prefetch.object_class {
-                    return foreign_any;
-                }
-                return types.ClassType(
-                    _shared=types.ClassType.ClassDetailsShared(
-                        class_name=ts.name,
-                        symbol_table=self.prefetch.object_class.shared.symbol_table,
-                    )
-                );
+            if shells is not None and ts.name in shells {
+                return self._convert_to_instance(shells[ts.name]);
             }
             synth = self._synthesize_ts_decl_class(decls, ts.name);
             if synth is not None {
@@ -257,175 +245,94 @@ impl TypeEvaluator._map_ts_type(
     return foreign_any;
 }
 
-impl TypeEvaluator._jac_type_to_pyannot(ty: TypeBase) -> str {
-    if isinstance(ty, types.AnyType) {
-        return "Any";
-    }
-    if isinstance(ty, types.NeverType) {
-        return "object";
-    }
-    if isinstance(ty, types.UnionType) {
-        ordered: list[str] = [];
-        for member in ty.types {
-            part = self._jac_type_to_pyannot(member);
-            if part not in ordered {
-                ordered.append(part);
-            }
-        }
-        return " | ".join(ordered) if ordered else "object";
-    }
-    if isinstance(ty, types.ClassType) {
-        if (
-            self.prefetch
-            and self.prefetch.none_type_class
-            and ty.shared == self.prefetch.none_type_class.shared
-        ) {
-            return "None";
-        }
-        if ty.is_literal_type() {
-            lit_val = ty.get_literal_value();
-            if isinstance(lit_val, str) {
-                return "str";
-            }
-            if isinstance(lit_val, bool) {
-                return "bool";
-            }
-            if isinstance(lit_val, int) {
-                return "int";
-            }
-            if isinstance(lit_val, float) {
-                return "float";
-            }
-        }
-        if (
-            self.prefetch
-            and self.prefetch.list_class
-            and ty.shared == self.prefetch.list_class.shared
-        ) {
-            if ty.private.type_args {
-                return f"list[{self._jac_type_to_pyannot(ty.private.type_args[0])}]";
-            }
-            return "list";
-        }
-        prim = type_utils.primitive_type_name_of(ty);
-        if prim {
-            return prim;
-        }
-        if ty.shared.class_name {
-            return ty.shared.class_name;
-        }
-    }
-    if isinstance(ty, types.FunctionType) {
-        return "object";
-    }
-    return "object";
-}
-
-impl TypeEvaluator._ts_type_to_pyannot(
-    ts: (TsType | None), decls: dict[str, TsDecl]
-) -> str {
-    if ts is None {
-        return "object";
-    }
-    return self._jac_type_to_pyannot(
-        self._map_ts_type(ts, decls, synth_interfaces=False)
-    );
-}
-
-impl TypeEvaluator._ts_synthetic_module(
+impl TypeEvaluator._ts_synth_class_types(
     decls: dict[str, TsDecl]
-) -> (uni.Module | None) {
+) -> (dict[str, types.ClassType] | None) {
     key = id(decls);
-    if key in self._ts_synthetic_mod_cache {
-        return self._ts_synthetic_mod_cache[key];
+    if key in self._ts_synth_class_cache {
+        return self._ts_synth_class_cache[key];
     }
+    self._ts_synth_class_cache[key] = None;
 
-    self._ts_synthetic_mod_cache[key] = None;
-    lines: list[str] = [];
+    synth_src = uni.Source('', '<ts-synth>');
+
+    shells: dict[str, types.ClassType] = {};
     for (name, decl) in decls.items() {
-        if decl.kind not in ('interface', 'class') {
+        if (decl.kind not in ('interface', 'class') or not name.isidentifier()) {
             continue;
         }
-        if not name.isidentifier() {
-            continue;
-        }
-        bases: list[str] = [];
-        for b in decl.heritage {
-            base_decl = decls.get(b);
-            if (
-                base_decl is not None
-                and base_decl.kind in ('interface', 'class')
-                and b.isidentifier()
-            ) {
-                bases.append(b);
-            }
-        }
-        lines.append(
-            f"class {name}(" + ", ".join(bases) + "):" if bases else f"class {name}:"
+        shells[name] = types.ClassType(
+            _shared=types.ClassType.ClassDetailsShared(
+                class_name=name, symbol_table=uni.Module.make_stub(inject_name=name),
+            ),
+            flags=types.TypeFlags.Instantiable,
         );
-        body: list[str] = [];
-        for m in decl.members {
-            if not m.name or m.is_method or not m.name.isidentifier() {
-                continue;
-            }
-            annot = self._ts_type_to_pyannot(m.ty, decls);
-
-            if m.optional and annot != "Any" {
-                annot = f"{annot} | None";
-            }
-            body.append(f"    {m.name}: {annot}");
-        }
-        if not body {
-            body.append("    pass");
-        }
-        lines.extend(body);
-        lines.append("");
     }
-    if not lines {
+    if not shells {
         return None;
     }
 
-    source = "from typing import Any\n" + "\n".join(lines) + "\n";
-    mod: (uni.Module | None) = None;
-    try {
-        uni_source = uni.Source(source, f"<ts-synthetic-{key}>");
-        mod = PyastBuildPass(
-            ir_in=uni.PythonModuleAst(py_ast.parse(source), orig_src=uni_source),
-            prog=self.program,
-        ).ir_out;
-        SymTabBuildPass(ir_in=mod, prog=self.program);
-
-        for nm in mod.get_all_sub_nodes(uni.Name) {
-            if nm.value == "Any" and isinstance(nm.parent, uni.SubTag) {
-                nm.type = types.AnyType(is_foreign=True);
+    for (name, decl) in decls.items() {
+        cls_type = shells.get(name);
+        if cls_type is None {
+            continue;
+        }
+        scope = cls_type.shared.symbol_table;
+        for m in decl.members {
+            if (not m.name or m.is_method or not m.name.isidentifier()) {
+                continue;
+            }
+            member_type = self._map_ts_type(m.ty, decls, None, shells);
+            if m.optional {
+                member_type = types.UnionType(
+                    types=[member_type, self._convert_to_instance(self.get_none_type())]
+                );
+            }
+            field_node = uni.Name(
+                orig_src=synth_src,
+                name=Tok.NAME.value,
+                value=m.name,
+                line=0,
+                end_line=0,
+                col_start=0,
+                col_end=0,
+                pos_start=0,
+                pos_end=0,
+            );
+            field_node.type = member_type;
+            scope.names_in_scope[m.name] = uni.Symbol(
+                defn=field_node, access=SymbolAccess.PUBLIC, parent_tab=scope
+            );
+        }
+        base_classes: list[types.TypeBase] = [];
+        for b in decl.heritage {
+            base = shells.get(b);
+            if base is not None {
+                base_classes.append(base);
             }
         }
-    } except Exception {
-        mod = None;
+        if not base_classes and self.prefetch and self.prefetch.object_class {
+            base_classes.append(self.prefetch.object_class);
+        }
+        cls_type.shared.base_classes = base_classes;
     }
-    self._ts_synthetic_mod_cache[key] = mod;
-    return mod;
+
+    for cls_type in shells.values() {
+        type_utils.compute_mro_linearization(cls_type);
+    }
+
+    self._ts_synth_class_cache[key] = shells;
+    return shells;
 }
 
 impl TypeEvaluator._synthesize_ts_decl_class(
     decls: dict[str, TsDecl], item_name: str
 ) -> (TypeBase | None) {
-    mod = self._ts_synthetic_module(decls);
-    if mod is None {
+    classes = self._ts_synth_class_types(decls);
+    if classes is None {
         return None;
     }
-    sym = mod.names_in_scope.get(item_name);
-    if sym is None {
-        return None;
-    }
-    cls_type = self.get_type_of_symbol(sym);
-    if not isinstance(cls_type, types.ClassType) {
-        return None;
-    }
-
-    cls_type.shared.is_ts_synthetic = True;
-
-    return cls_type;
+    return classes.get(item_name);
 }
 
 impl TypeEvaluator._emit_untyped_external(

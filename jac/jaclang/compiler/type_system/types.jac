@@ -129,7 +129,6 @@ obj ClassType(TypeBase) {
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
             is_from_stdlib_stub: bool = False,
-            is_ts_synthetic: bool = False,
             is_data_class: bool = False,
             is_namedtuple: bool = False,
             is_typeddict: bool = False,

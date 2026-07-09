@@ -105,7 +105,7 @@ def:pub use() -> str {
 }
 ```
 
-Constructs outside the supported subset (generics, conditional/mapped types, `export *`, and similar) degrade to a declared foreign `any` at that boundary rather than failing the whole module. Imports with no declarations at all carry foreign `any` and surface **`W1102`** once; set **`[check] untyped-external = "error"`** in `jac.toml` to escalate those to **`E1120`**. Values flowing *from* a synthesized interface type keep the same gradual leniency as other foreign sources (whole-object assignment stays permissive), while assignments *into* an imported interface annotation remain strict.
+Constructs outside the supported subset (generics, conditional/mapped types, `export *`, and similar) degrade to a declared foreign `any` at that boundary rather than failing the whole module. Imports with no declarations at all carry foreign `any` and surface **`W1102`** once; set **`[check] untyped-external = "error"`** in `jac.toml` to escalate those to **`E1120`**. Synthesized interface values use their declared structure: field access and matching interface annotations are checked precisely; whole-object assignment into an unrelated Jac type is rejected. Individual `any` fields on an interface still flow gradually, like other foreign sources. Assignments *into* an imported interface annotation remain strict.
 
 This is a type-checker feature only; bundling under `jac start` / `jac build` is unchanged.
 
