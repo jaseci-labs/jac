@@ -410,6 +410,7 @@ obj TypeEvaluator {
         args: MatchArgsToParamsResult, checking_overload: bool = False
     ) -> None;
 
+    def _non_lambda_args_type_check(args: MatchArgsToParamsResult) -> bool;
     def _build_field_params(
         class_type: types.ClassType, skip_deferred: bool = True
     ) -> dict[str, types.Parameter];

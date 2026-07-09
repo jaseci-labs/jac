@@ -44,6 +44,41 @@ impl TypeEvaluator.validate_arg_types(
     return not has_errors;
 }
 
+impl TypeEvaluator._non_lambda_args_type_check(args: MatchArgsToParamsResult) -> bool {
+    bindings: dict[str, TypeBase] = {};
+    for (arg, param) in args.arg_params.items() {
+        if param is None or param.param_type is None {
+            continue;
+        }
+        value = arg.value if isinstance(arg, uni.KWPair) else arg;
+        if isinstance(value, uni.LambdaExpr) {
+            continue;
+        }
+        self.assign_type_to_type_var(
+            param.param_type, self.get_type_of_expression(value), bindings
+        );
+    }
+
+    for (arg, param) in args.arg_params.items() {
+        if param is None or param.param_type is None {
+            continue;
+        }
+        value = arg.value if isinstance(arg, uni.KWPair) else arg;
+        if isinstance(value, uni.LambdaExpr) {
+            continue;
+        }
+        expected = param.param_type;
+        if bindings {
+            expected = type_utils.apply_solved_type_vars(expected, bindings);
+        }
+        arg_type = self.get_type_of_expression(value, expected_type=expected);
+        if not self.assign_type(arg_type, expected, strict=self._is_strict_site(arg)) {
+            return False;
+        }
+    }
+    return True;
+}
+
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
@@ -181,7 +216,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     }
     if isinstance(caller_type, types.OverloadedType) {
         _fallback_result: types.TypeBase | None = None;
-        _any_overload_arg_shape_matched = False;
+        _non_lambda_args_valid_for_some_overload = False;
 
         def _contains_unknown(ty: types.TypeBase) -> bool {
             if isinstance(ty, types.UnknownType) {
@@ -209,7 +244,9 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             );
 
             if not arg_param_match.argument_errors {
-                _any_overload_arg_shape_matched = True;
+                if self._non_lambda_args_type_check(arg_param_match) {
+                    _non_lambda_args_valid_for_some_overload = True;
+                }
                 if self.validate_arg_types(arg_param_match, checking_overload=True) {
                     ret_type = overload.return_type;
 
@@ -244,7 +281,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 )
             );
         } elif (
-            _any_overload_arg_shape_matched
+            _non_lambda_args_valid_for_some_overload
             and (unresolved_lam := self._unresolved_lambda_body(expr))
         ) {
             param_names = ", ".join(
