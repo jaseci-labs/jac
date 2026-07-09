@@ -279,7 +279,7 @@ impl TypeEvaluator._ts_synth_class_types(
         }
         scope = cls_type.shared.symbol_table;
         for m in decl.members {
-            if (not m.name or m.is_method or not m.name.isidentifier()) {
+            if (not m.name or not m.name.isidentifier()) {
                 continue;
             }
             member_type = self._map_ts_type(m.ty, decls, None, shells);

@@ -92,7 +92,7 @@ import "./global.css";
 Client npm imports are type-checked from each package's TypeScript declarations. During `jac check`, Jac locates the `.d.ts` for a specifier (via `package.json` `types`/`typings`, the `exports` `types` condition, a sibling declaration file next to the resolved entry, or `@types/<package>` fallback) and ingests a pragmatic subset:
 
 - **Functions, constants, and type aliases** get their declared signatures.
-- **`interface` and `class` declarations** are synthesized into structural types, so member access on imported values and on locals annotated with an imported interface/class resolves with real field types.
+- **`interface` and `class` declarations** are synthesized into structural types, so member access on imported values and on locals annotated with an imported interface/class resolves with real field types, and **method calls** (`c.onChange(v)`) are checked against their declared parameter and return types.
 - **Unions, arrays, literals, optional/rest parameters, namespaces with `export =`, and `extends` heritage** are modeled where the parser supports them.
 
 ```jac
@@ -101,6 +101,7 @@ cl import from "cfgpkg" { getConfig, Config }
 def:pub use() -> str {
     c: Config = getConfig();
     theme: str = c.theme;   # field access is checked
+    c.onChange("ready");    # method call is checked against its signature
     return theme;
 }
 ```

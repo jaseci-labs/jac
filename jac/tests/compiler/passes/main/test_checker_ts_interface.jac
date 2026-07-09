@@ -261,3 +261,67 @@ test "interface field typed via a typealias resolves" {
         f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
     }
 }
+
+test "interface method call type-checks with correct argument types" {
+    # Regression for issue where the .d.ts parser captured method signatures
+    # but the synthesizer dropped them, so `c.onChange("x")` errored with
+    # E1030 ("Type Config has no attribute onChange"). Methods now synthesize
+    # as FunctionType members of the structural class symbol table.
+    with TemporaryDirectory() as td {
+        proj = make_iface_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "method_ok.cl.jac";
+        f.write_text(
+            'cl import from "cfgpkg" { getConfig }\n\n'
+            'def:pub use() -> str {\n'
+            '    c = getConfig();\n'
+            '    c.onChange("ready");\n'
+            '    greeting: str = c.greet("world");\n'
+            '    return greeting;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , "Interface method call should type-check cleanly, got "
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "interface method call with a wrong argument type errors" {
+    # A method's parameters are real, not any: passing a number where a string
+    # is declared must raise an argument-type error. Guards against the method
+    # signature silently collapsing to a callable-any.
+    with TemporaryDirectory() as td {
+        proj = make_iface_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "method_bad_arg.cl.jac";
+        f.write_text(
+            'cl import from "cfgpkg" { getConfig }\n\n'
+            'def:pub bad() -> None {\n'
+            '    c = getConfig();\n'
+            '    c.onChange(5);\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) > 0 , "Expected an argument-type error calling onChange with a number, got none";
+        assert "E1030" not in err_codes , f"Method onChange should be resolvable (no E1030), got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "interface method return type is checked, not any" {
+    # The declared return type flows precisely: `greet` returns `string`, so
+    # assigning its result into a `float` must error (the return is not any).
+    with TemporaryDirectory() as td {
+        proj = make_iface_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "method_ret_bad.cl.jac";
+        f.write_text(
+            'cl import from "cfgpkg" { getConfig }\n\n'
+            'def:pub bad() -> None {\n'
+            '    c = getConfig();\n'
+            '    n: float = c.greet("world");\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) > 0 , "Expected a type error assigning greet's string result into a float, got none";
+        assert any(c in ("E1001", "E1002", "E1035") for c in err_codes) , f"Expected an assignment type error, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+    }
+}
