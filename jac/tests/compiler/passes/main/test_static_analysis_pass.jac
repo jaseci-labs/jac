@@ -157,6 +157,29 @@ test "ambient typing names resolve without import" {
     }
 }
 
+test "ambient typing names resolve in .impl.jac annex files" {
+    # Regression for the pass-local ambient cache that re-parsed
+    # typing_ambient.pyi (commit 4a907b6a2). The source of truth for ambient
+    # typing names now lives on TypeEvaluator.ambient_typing_names_by_module,
+    # the same registry the redundant-import check uses -- so undefined-name
+    # suppression and redundant-import detection cannot drift apart. This
+    # fixture pair exercises both the decl signature and the .impl.jac body.
+    file_path = os.path.join(FIXTURES, "ambient_typing_impl.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    error_msgs = [str(e) for e in prog.errors_had];
+    for tname in ["Callable", "Sequence"] {
+        undef = [
+            w
+            for w in warning_msgs
+            if f"'{tname}' may be undefined" in w
+        ];
+        assert len(undef) == 0 , f"{tname} should be ambient in .impl.jac: got {undef}";
+    }
+    assert len(error_msgs) == 0 , f"Expected no errors, got: {error_msgs}";
+}
+
 test "redundant typing imports warn on the import line" {
     file_path = os.path.join(FIXTURES, "redundant_typing_imports.jac");
     prog = JacProgram();
