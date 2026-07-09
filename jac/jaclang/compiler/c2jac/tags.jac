@@ -1,3 +1,9 @@
+"""Tag types and TagTable for c2jac.
+
+NodeTag captures how each pycparser C-AST node will be handled. TagTable stores
+these tags keyed by id(c_node) — no node mutation (§11.5).
+"""
+
 enum Tier { TIER_A = "tier_a", TIER_B = "tier_b" }
 
 enum Mechanism { PY_AST = "py_ast", DIRECT_IR = "direct_ir" }
@@ -15,6 +21,7 @@ enum Idiom {
     TIER_B = "tier_b"
 }
 
+"""Per-node annotation produced by the boundary table and analyzers."""
 obj NodeTag {
     has tier: Tier,
         mechanism: Mechanism,
@@ -24,6 +31,7 @@ obj NodeTag {
         snippet: str = "";
 }
 
+"""Stores NodeTags keyed by id(c_node) — no C-AST mutation."""
 obj TagTable {
     has _data: dict[int, NodeTag] = {};
 
@@ -40,6 +48,14 @@ obj TagTable {
             v
             for v in self._data.values()
             if v.tier == Tier.TIER_B
+        ];
+    }
+
+    def by_idiom(idiom: Idiom) -> list[NodeTag] {
+        return [
+            v
+            for v in self._data.values()
+            if v.idiom == idiom
         ];
     }
 }

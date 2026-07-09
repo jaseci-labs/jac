@@ -6,7 +6,6 @@ import from tests.support { JAC_ROOT }
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier }
-import from jaclang.compiler.c2jac.report { report_json }
 import from jaclang.jac0core.program { JacProgram }
 import from pycparser { c_parser }
 
@@ -81,7 +80,7 @@ test "enum_prepass: Color gets ENUM_AS_ENUM verdict" {
     file_ast = c_parser.CParser().parse(src, "enum_simple.c");
     ev = build_enum_map(file_ast);
     verdicts = list(ev.verdicts.values());
-    assert Idiom.ENUM_AS_ENUM.value in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
+    assert Idiom.ENUM_AS_ENUM in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
 }
 
 test "enum_prepass: Permissions gets ENUM_AS_CONSTS verdict (non-sequential values)" {
@@ -90,7 +89,7 @@ test "enum_prepass: Permissions gets ENUM_AS_CONSTS verdict (non-sequential valu
     ev = build_enum_map(file_ast);
     verdicts = list(ev.verdicts.values());
     # PERM_ALL = 7 breaks sequential rule and values are power-of-2 flags.
-    assert Idiom.ENUM_AS_CONSTS.value in verdicts , f"Expected ENUM_AS_CONSTS in {verdicts}";
+    assert Idiom.ENUM_AS_CONSTS in verdicts , f"Expected ENUM_AS_CONSTS in {verdicts}";
 }
 
 test "enum_simple.c transpiles: named enum appears as enum keyword" {
@@ -113,7 +112,7 @@ test "enum_collision.c second enum demotes to TIER_B no duplicate glob" {
     ev = build_enum_map(file_ast);
     verdicts = list(ev.verdicts.values());
     # The second enum with VAL_A collision should be TIER_B.
-    assert "tier_b" in verdicts , f"Expected tier_b for collision in {verdicts}";
+    assert Idiom.TIER_B in verdicts , f"Expected TIER_B for collision in {verdicts}";
 }
 
 test "enum_collision.c emits valid Jac without duplicate globals" {
@@ -139,15 +138,14 @@ test "expr_stmts.c: i++ statement lowers to augmented assignment" {
     assert "i += 1" in jac_str , f"Expected 'i += 1' from 'i++' in:\n{jac_str}";
 }
 
-# --- Bug #2: Tier-B enum verdict reaches the tag table / sidecar report ---
+# --- Bug #2: Tier-B enum verdict reaches the tag table ---
 test "enum_collision.c: demoted enum is recorded as a Tier-B site" {
     (jac_str, tags) = _transpile("enum_collision.c");
     tier_b = tags.tier_b_entries();
     assert len(tier_b) >= 1 , "Expected at least one Tier-B entry for the collided enum";
-    report_str = report_json("enum_collision.c", tags);
-    assert "tier_b_sites" in report_str;
-    # The previously-empty sidecar must now list the demoted enum.
-    assert "collides" in report_str , f"Expected collision reason in report:\n{report_str}";
+    # The demoted enum must carry its collision reason on the tag.
+    reasons = [nt.reason for nt in tier_b];
+    assert any("collides" in r for r in reasons) , f"Expected collision reason on a Tier-B tag:\n{reasons}";
 }
 
 # --- Bug #3: unsupported for forms preserve semantics + mark Tier-B ---
@@ -238,7 +236,33 @@ test "enum_tu_collision.c: enum constant colliding with a top-level function dem
     verdicts = list(ev.verdicts.values());
     # STATUS_OK is also a top-level function name — seeding TU names makes this
     # collision visible regardless of declaration order.
-    assert "tier_b" in verdicts , f"Expected tier_b for TU-name collision in {verdicts}";
+    assert Idiom.TIER_B in verdicts , f"Expected TIER_B for TU-name collision in {verdicts}";
+}
+
+# --- Review finding 4: direct-IR for-body/condition expression coverage.
+# A function call and a unary `!` inside a C-for body now lower faithfully, so
+# the loop stays a clean IterForStmt and is NOT demoted to Tier-B. ---
+test "for_call_body.c: call + unary-! in the body lower faithfully (clean IterForStmt)" {
+    (jac_str, tags) = _transpile("for_call_body.c");
+    assert "for i = 0 to i < n by i += 1 {" in jac_str , f"Expected clean IterForStmt in:\n{jac_str}";
+    # The bare call statement and the call sub-expression both survive.
+    assert "total + sink(i)" in jac_str , f"Expected call expression preserved in:\n{jac_str}";
+    # Unary `!` lowers to `not`.
+    assert "if not total {" in jac_str , f"Expected unary-! → 'not' in:\n{jac_str}";
+}
+
+test "for_call_body.c: faithfully-lowered body does NOT demote the loop to Tier-B" {
+    (jac_str, tags) = _transpile("for_call_body.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # Regression: calls/unary-! used to have no direct-IR case and demoted the
+    # whole loop. They are faithful now, so no "not faithfully lowered" flag.
+    assert not any("not faithfully lowered" in r for r in reasons) , f"Body is faithful now, unexpected Tier-B: {reasons}";
+}
+
+test "for_call_body.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_call_body.c");
+    errs = _recompile_errors(jac_str, "for_call_body.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
 
 test "enum_tu_collision.c: no duplicate module global shadows the function" {

@@ -2,7 +2,7 @@
 # the build reads version/metadata here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.30.9"
+version = "0.31.0"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"
@@ -10,7 +10,8 @@ requires_python = ">=3.14"
 # Native LLVM is the in-tree LLVMPY_* shim, statically linked by Zig
 # (jac/native + `zig build fetch-llvm`), not the llvmlite wheel — no llvmlite dep.
 dependencies = [
-    "pycparser>=2.22",  # c2jac's C parser
+    "pycparser>=2.22",  # c2jac C-source front-end parser
+    "pcpp>=1.30",  # c2jac C preprocessor (pure-Python; no system toolchain needed)
 ]
 
 [project.urls]
@@ -53,6 +54,9 @@ exclude = [
     # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale
     # -- a large self-contained subsystem whose inline comments are kept.
     "*/byllm/*",
+    # c2jac C-to-Jac transpiler: a large self-contained subsystem whose inline
+    # comments document C-idiom-to-Jac mapping and coupling constraints, kept.
+    "*/c2jac/*",
     "console.impl.jac",
     "cli_boot.jac",
     # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:

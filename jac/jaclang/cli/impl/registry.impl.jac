@@ -172,6 +172,8 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         kwargs["action"] = "append";
         kwargs["nargs"] = "+";
         kwargs["default"] = None;
+        shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
+        kwargs["dest"] = shared_dest;
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
