@@ -89,6 +89,56 @@ impl CommandRegistry.get_groups -> list[str] {
     return sorted(list(groups));
 }
 
+impl CommandRegistry.load_from_manifest(manifest: list) -> None {
+    import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
+
+    _type_map: dict = {"str": str, "int": int, "bool": bool, "float": float};
+    _kind_map: dict = {
+        "POSITIONAL": ArgKind.POSITIONAL,
+        "OPTION": ArgKind.OPTION,
+        "FLAG": ArgKind.FLAG,
+        "MULTI": ArgKind.MULTI,
+        "REMAINDER": ArgKind.REMAINDER,
+        "APPEND": ArgKind.APPEND,
+
+    };
+
+    for entry in manifest {
+        if entry["name"] in self.commands {
+            continue;
+        }
+        args: list = [];
+        for ad in entry.get("args", []) {
+            arg = Arg.create(
+                name=ad["name"],
+                kind=_kind_map.get(ad.get("kind", "OPTION"), ArgKind.OPTION),
+                typ=_type_map.get(ad.get("typ", "str"), str),
+                `default=ad.get("default"),
+                help=ad.get("help", ""),
+                short=ad.get("short"),
+                choices=ad.get("choices"),
+                required=ad.get("required", False),
+                metavar=ad.get("metavar"),
+                dest=ad.get("dest"),
+            );
+            args.append(arg);
+        }
+        spec = CommandSpec(
+            name=entry["name"],
+            help=entry["help"],
+            description=entry.get("description", ""),
+            args=args,
+            examples=entry.get("examples", []),
+            group=entry.get("group", "general"),
+            tier=entry.get("tier") or "",
+            hidden=entry.get("hidden", False),
+            handler=None,
+            module=entry.get("module"),
+        );
+        self.commands[entry["name"]] = spec;
+    }
+}
+
 impl CommandRegistry.finalize -> argparse.ArgumentParser {
     if self._finalized {
         return self.parser;

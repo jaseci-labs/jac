@@ -15,9 +15,17 @@ Import-time work is split into two tiers so ``import jaclang`` stays cheap:
   - eagerly up-front when ``JAC_EAGER_BOOTSTRAP=1`` is set (transition shim
     for callers -- e.g. the test suite -- that still assume eager plugins).
 
-Splitting these tiers is what lets ``jac --version`` / ``jac purge`` /
-``import jaclang`` avoid pulling the entire product surface (client framework,
+Splitting these tiers is what lets a bare ``import jaclang`` and ``jac purge``
+(short-circuited in ``jaclang.jac0core.cli_boot.start_cli`` before the product
+CLI ever loads) avoid pulling the entire product surface (client framework,
 scale, byllm, LLVM bindings, ``jaclang.project.config`` ...) at startup.
+
+Intermediate state, not the finished story: ``jac --version`` does *not* yet
+skip the product tier. ``start_cli`` in :mod:`jaclang.cli.cli` calls
+:func:`bootstrap_product` before argv is parsed (so ``create_cmd`` can register
+every plugin's commands), which means the version flag still pays for full
+product bootstrap today. Short-circuiting it belongs to the separate
+startup-perf work, not to this kernel/product tier split.
 """
 
 from __future__ import annotations
@@ -33,12 +41,18 @@ class _BootstrapState(enum.Enum):
     IDLE = "idle"
     BOOTSTRAPPING = "bootstrapping"
     DONE = "done"
+    FAILED = "failed"
 
 
-# Product-bootstrap state machine: IDLE -> BOOTSTRAPPING -> DONE.
+# Product-bootstrap state machine: IDLE -> BOOTSTRAPPING -> {DONE, FAILED}.
 #
-# On failure the state returns to IDLE so a later call can retry; only a
-# fully successful run stamps DONE.
+# DONE and FAILED are both *terminal*: once bootstrap has run we never attempt
+# it again this process. A run that raises stamps FAILED (not IDLE) and emits a
+# single warning -- previously it reset to IDLE, so every subsequent hook
+# dispatch re-ran the whole failing bootstrap and re-logged the warning, which
+# is pathological in a hot loop. Product bootstrap is deterministic within a
+# process (same env, same installed plugins), so a failure that happens once
+# will happen every time; retrying buys nothing but noise.
 #
 # The BOOTSTRAPPING state makes ``ensure_for_hook`` re-entrancy-safe: a hook
 # fired *during* ``bootstrap_product()`` (e.g. by a plugin running code at
@@ -48,6 +62,9 @@ class _BootstrapState(enum.Enum):
 # the same partial-registration behaviour the old eager ``__init__`` exhibited.
 _PRODUCT_STATE = _BootstrapState.IDLE
 _PRODUCT_LOCK = threading.Lock()
+
+# Terminal states: no further bootstrap attempts are made once reached.
+_SETTLED_STATES = (_BootstrapState.DONE, _BootstrapState.FAILED)
 
 
 def bootstrap_kernel() -> None:
@@ -90,15 +107,16 @@ def bootstrap_kernel() -> None:
 def bootstrap_product() -> None:
     """Register built-in providers, external plugins, and native acceleration.
 
-    Idempotent and re-entrancy-safe. Normally triggered lazily via
+    Idempotent, re-entrancy-safe, and run-once: a failing run is not retried
+    (it stamps FAILED and warns once). Normally triggered lazily via
     :func:`ensure_for_hook` or explicitly by the CLI; opt into eager behaviour
     with ``JAC_EAGER_BOOTSTRAP=1``.
     """
     global _PRODUCT_STATE
-    if _PRODUCT_STATE == _BootstrapState.DONE:
+    if _PRODUCT_STATE in _SETTLED_STATES:
         return
     with _PRODUCT_LOCK:
-        if _PRODUCT_STATE == _BootstrapState.DONE:
+        if _PRODUCT_STATE in _SETTLED_STATES:
             return
         if _PRODUCT_STATE == _BootstrapState.BOOTSTRAPPING:
             # Re-entrant call (a hook fired during registration). Don't recurse;
@@ -125,14 +143,33 @@ def bootstrap_product() -> None:
 
         _maybe_schedule_native_accel()
         _PRODUCT_STATE = _BootstrapState.DONE
-    except Exception:
-        _PRODUCT_STATE = _BootstrapState.IDLE
-        raise
+    except Exception as exc:
+        # Terminal failure: stamp FAILED (not IDLE) so we never retry, and warn
+        # exactly once instead of on every subsequent hook dispatch. The core
+        # stays usable against whatever registered before the failure -- the
+        # same fail-soft posture each provider helper already takes internally.
+        _PRODUCT_STATE = _BootstrapState.FAILED
+        warnings.warn(
+            f"Jac product bootstrap failed; product providers are disabled for "
+            f"this process (core remains usable): {exc}",
+            stacklevel=2,
+        )
 
 
 def is_product_bootstrapped() -> bool:
-    """Return True once :func:`bootstrap_product` has completed."""
+    """Return True once :func:`bootstrap_product` has completed successfully."""
     return _PRODUCT_STATE == _BootstrapState.DONE
+
+
+def is_product_settled() -> bool:
+    """Return True once product bootstrap has reached a terminal state.
+
+    Terminal means either DONE (succeeded) or FAILED (won't be retried). Callers
+    that want to latch a one-time fast path -- e.g. the runtime's hook-dispatch
+    proxy -- should gate on this, not on :func:`is_product_bootstrapped`, so a
+    failed bootstrap latches too and stops re-triggering the lazy path.
+    """
+    return _PRODUCT_STATE in _SETTLED_STATES
 
 
 def ensure_for_hook() -> None:
@@ -142,8 +179,12 @@ def ensure_for_hook() -> None:
     library code or tests invoking ``Jac.<hook>(...)`` after a bare
     ``import jaclang`` still resolve every provider -- without paying for that
     registration at import time. Idempotent and re-entrancy-safe.
+
+    Only attempts bootstrap from IDLE: once the state is terminal (DONE or
+    FAILED) or already BOOTSTRAPPING, this is a no-op, so a failed bootstrap is
+    never retried on later hook dispatches.
     """
-    if _PRODUCT_STATE != _BootstrapState.DONE:
+    if _PRODUCT_STATE == _BootstrapState.IDLE:
         bootstrap_product()
 
 

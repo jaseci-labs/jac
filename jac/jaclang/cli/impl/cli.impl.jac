@@ -39,14 +39,44 @@ impl start_cli -> None {
         console.print(notice, style='info', file=sys.stderr);
     }
 
+    raw_argv = sys.argv[1:];
+
+    if raw_argv and raw_argv[0] in ('--version', '-V') {
+        import from jaclang.cli.banners { print_version_banner }
+        print_version_banner(jac_version());
+        return;
+    }
+
     _load_project_config();
 
+    import from jaclang.cli._cmd_manifest { MANIFEST }
     import from jaclang.bootstrap { bootstrap_product }
-    bootstrap_product();
-
-    Jac.create_cmd();
 
     registry = get_registry();
+    registry.load_from_manifest(MANIFEST);
+
+    if not raw_argv or (len(raw_argv) == 1 and raw_argv[0] in ('-h', '--help')) {
+        parser = registry.finalize();
+        formatter = get_help_formatter();
+        if not raw_argv {
+            import from jaclang.cli.banners { print_logo }
+            print_logo(jac_version());
+            console.print("");
+            help_text = formatter.format_main_help(
+                registry.get_all(), prog="jac", version=jac_version()
+            );
+        } else {
+            help_text = formatter.format_main_help(
+                registry.get_all(), prog="jac", version=jac_version(), verbose=True
+            );
+        }
+        console.print(help_text);
+        return;
+    }
+
+    bootstrap_product();
+    Jac.create_cmd();
+
     parser = registry.finalize();
 
     raw_argv = sys.argv[1:];

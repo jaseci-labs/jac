@@ -27,7 +27,18 @@ impl CommandExecutor.execute(
 
 impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int {
     import inspect;
+    import importlib;
     import from jaclang.cli.command { CommandSpec }
+    import from jaclang.cli.registry { get_registry }
+
+    if spec.handler is None and spec.module {
+        importlib.import_module(spec.module);
+        loaded = get_registry().get(spec.name);
+        if loaded is not None {
+            spec = loaded;
+        }
+    }
+
     if spec.handler is None {
         console.error(f"No handler registered for command '{spec.name}'");
         return 1;

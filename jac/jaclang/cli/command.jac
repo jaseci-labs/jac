@@ -44,7 +44,8 @@ obj CommandSpec {
         group: str = "general",
         tier: str = "",
         hidden: bool = False,
-        handler: Callable | None = None;
+        handler: Callable | None = None,
+        module: str | None = None;
 
     def get_all_args -> list[Arg];
 }

@@ -404,6 +404,16 @@ def get_disabled_plugins -> list {
     }
 }
 
+glob _FOLDED_IN_PLUGIN_DISTS = {
+         'jac-client',
+         'jac-desktop',
+         'jac-super',
+         'jac-scale',
+         'jac-mcp',
+         'jac-byllm',
+         'byllm'
+     };
+
 def load_plugins_with_disabling(
     plugin_manager: 'pluggy.PluginManager', disabled_list: list
 ) -> None {
@@ -439,6 +449,10 @@ def load_plugins_with_disabling(
         } except Exception {
             dist = None;
             dist_name = 'unknown';
+        }
+
+        if dist_name in _FOLDED_IN_PLUGIN_DISTS {
+            continue;
         }
         qualified_name = f"{dist_name}:{ep.name}";
         should_disable = False;

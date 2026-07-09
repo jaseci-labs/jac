@@ -102,13 +102,15 @@ def _ensure_product_for_hook(name: str) {
         return;
     }
     try {
-        import from jaclang.bootstrap { ensure_for_hook, is_product_bootstrapped }
+        import from jaclang.bootstrap { ensure_for_hook, is_product_settled }
         ensure_for_hook();
-        if is_product_bootstrapped() {
+
+        if is_product_settled() {
             _product_done[0] = True;
         }
     } except Exception as exc {
         logger.warning(f"product bootstrap failed before hook '{name}': {exc}");
+        _product_done[0] = True;
     }
 }
 
@@ -598,13 +600,45 @@ def build_plugin_hook_layer(iface: type[any]) -> tuple[(type[any], type[any])] {
         impl_methods[name] = hookimpl(wrapped_impl);
         """Create a proxy method that dispatches through plugin_manager.""";
         def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
-            if is_coro {
-                async def async_proxy(*args: object, **kwargs: object) -> object {
+            params = list(sig.parameters.values());
+            has_var = any(
+                p.kind in (
+                    inspect.Parameter.VAR_POSITIONAL,
+                    inspect.Parameter.VAR_KEYWORD
+                ) for p in params
+            );
+            pos_names = [
+                p.name
+                for p in params
+                if p.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD
+                )
+            ];
+            defaults = {
+                p.name: p.default
+                for p in params
+                if p.default is not inspect.Parameter.empty
+            };
+            def _bind_kwargs(args: tuple, kwargs: dict) -> dict {
+                if has_var {
                     bound = sig.bind_partial(*args, **kwargs);
                     bound.apply_defaults();
+                    return bound.arguments;
+                }
+                call_kwargs = dict(defaults);
+                for (i, val) in enumerate(args) {
+                    call_kwargs[pos_names[i]] = val;
+                }
+                call_kwargs.update(kwargs);
+                return call_kwargs;
+            }
+            if is_coro {
+                async def async_proxy(*args: object, **kwargs: object) -> object {
+                    call_kwargs = _bind_kwargs(args, kwargs);
                     _ensure_product_for_hook(name);
                     hookcaller = getattr(plugin_manager.hook, name);
-                    result = hookcaller(**bound.arguments);
+                    result = hookcaller(**call_kwargs);
                     if inspect.iscoroutine(result) {
                         return await result;
                     }
@@ -615,11 +649,10 @@ def build_plugin_hook_layer(iface: type[any]) -> tuple[(type[any], type[any])] {
                 return async_proxy;
             }
             def proxy(*args: object, **kwargs: object) -> object {
-                bound = sig.bind_partial(*args, **kwargs);
-                bound.apply_defaults();
+                call_kwargs = _bind_kwargs(args, kwargs);
                 _ensure_product_for_hook(name);
                 hookcaller = getattr(plugin_manager.hook, name);
-                return hookcaller(**bound.arguments);
+                return hookcaller(**call_kwargs);
             }
             proxy.__name__ = name;
             proxy.__signature__ = sig;
