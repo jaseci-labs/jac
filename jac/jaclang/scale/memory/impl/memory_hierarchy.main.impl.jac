@@ -88,6 +88,8 @@ impl ScaleTieredMemory.put(anchor: Anchor) -> None {
 }
 
 impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
+    # clear the guard on entry so an earlier clean commit cannot mask a later one
+    self._committed = False;
     if self.l3 is None {
         self.changes.clear();
         self._mark_committed(anchor);
