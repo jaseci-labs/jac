@@ -1,7 +1,12 @@
 """Unit tests for the pragmatic .d.ts declaration parser."""
 
 import jaclang;
-import from jaclang.compiler.type_system.ts_decl_parser { parse_dts }
+import from jaclang.compiler.type_system.ts_decl_parser { parse_dts, TsDecl, TsType }
+
+def _decl_ty(decl: TsDecl) -> TsType {
+    assert decl.ty is not None;
+    return decl.ty;
+}
 
 test "parses the real clsx declaration shape" {
     src = (
@@ -16,10 +21,14 @@ test "parses the real clsx declaration shape" {
     assert r is not None;
     d = r["clsx"];
     assert d.kind == "function";
-    assert d.ty.ret.kind == "prim" and d.ty.ret.name == "string";
-    assert d.ty.params[0].rest;
+    ty = _decl_ty(d);
+    ret = ty.ret;
+    assert ret is not None;
+    assert ret.kind == "prim" and ret.name == "string";
+    assert ty.params[0].rest;
     assert r["default"].kind == "function";
-    assert r["ClassValue"].ty.kind == "union";
+    class_value_ty = _decl_ty(r["ClassValue"]);
+    assert class_value_ty.kind == "union";
 }
 
 test "parses const function types and export lists" {
@@ -32,11 +41,15 @@ test "parses const function types and export lists" {
     r = parse_dts(src);
     assert r is not None;
     assert sorted(r.keys()) == ["extendMerge", "twMerge"];
-    tm = r["twMerge"];
-    assert tm.ty.kind == "func" and tm.ty.ret.name == "string";
-    assert tm.ty.params[0].rest and tm.ty.params[0].ty.kind == "array";
-    ext = r["extendMerge"];
-    assert ext.ty.ret.name == "number";
+    tm_ty = _decl_ty(r["twMerge"]);
+    assert tm_ty.kind == "func";
+    tm_ret = tm_ty.ret;
+    assert tm_ret is not None and tm_ret.name == "string";
+    assert tm_ty.params[0].rest;
+    p0_ty = tm_ty.params[0].ty;
+    assert p0_ty is not None and p0_ty.kind == "array";
+    ext_ret = _decl_ty(r["extendMerge"]).ret;
+    assert ext_ret is not None and ext_ret.name == "number";
 }
 
 test "namespace with export-equals promotes members" {
@@ -51,8 +64,10 @@ test "namespace with export-equals promotes members" {
     r = parse_dts(src);
     assert r is not None;
     assert "make" in r and "version" in r;
-    assert r["make"].ty.ret.name == "boolean";
-    assert r["version"].ty.name == "string";
+    make_ret = _decl_ty(r["make"]).ret;
+    assert make_ret is not None and make_ret.name == "boolean";
+    version_ty = _decl_ty(r["version"]);
+    assert version_ty.name == "string";
 }
 
 test "namespace interface members parse with heritage" {
@@ -73,8 +88,14 @@ test "namespace interface members parse with heritage" {
     assert cfg.heritage == ["Base"];
     by_name = {m.name: m for m in cfg.members};
     assert set(by_name.keys()) == {"theme", "debug"};
-    assert by_name["theme"].ty.name == "string";
-    assert by_name["debug"].optional and by_name["debug"].ty.name == "boolean";
+    theme_ty = by_name["theme"].ty;
+    assert theme_ty is not None
+    and theme_ty.name == "string"
+    and not by_name["theme"].optional;
+    debug_ty = by_name["debug"].ty;
+    assert by_name["debug"].optional
+    and debug_ty is not None
+    and debug_ty.name == "boolean";
     base = r["Base"];
     assert {m.name for m in base.members} == {"id"};
 }
@@ -83,9 +104,11 @@ test "optional and rest parameters carry through" {
     src = "export declare function greet(name: string, punct?: string, ...rest: any[]): void;\n";
     r = parse_dts(src);
     assert r is not None;
-    ps = r["greet"].ty.params;
+    greet_ty = _decl_ty(r["greet"]);
+    ps = greet_ty.params;
     assert not ps[0].optional and ps[1].optional and ps[2].rest;
-    assert r["greet"].ty.ret.kind == "void";
+    greet_ret = greet_ty.ret;
+    assert greet_ret is not None and greet_ret.kind == "void";
 }
 
 test "unmodelable constructs degrade to any instead of failing" {
@@ -101,8 +124,9 @@ test "unmodelable constructs degrade to any instead of failing" {
     assert r is not None;
     assert r["Widget"].kind == "class";
     assert r["pick"].kind == "function";
-    assert r["Cond"].ty.kind == "any";
-    assert r["ok"].ty.ret.name == "string";
+    assert _decl_ty(r["Cond"]).kind == "any";
+    ok_ret = _decl_ty(r["ok"]).ret;
+    assert ok_ret is not None and ok_ret.name == "string";
 }
 
 test "literal types, type predicates, and readonly arrays" {
@@ -114,12 +138,16 @@ test "literal types, type predicates, and readonly arrays" {
     );
     r = parse_dts(src);
     assert r is not None;
-    lv = r["level"].ty.ret;
+    lv = _decl_ty(r["level"]).ret;
+    assert lv is not None;
     assert lv.kind == "union" and lv.args[0].kind == "literal-num";
-    assert r["isFoo"].ty.ret.name == "boolean";
-    nm = r["names"].ty.ret;
+    is_foo_ret = _decl_ty(r["isFoo"]).ret;
+    assert is_foo_ret is not None and is_foo_ret.name == "boolean";
+    nm = _decl_ty(r["names"]).ret;
+    assert nm is not None;
     assert nm.kind == "array" and nm.args[0].name == "string";
-    assert r["FLAG"].ty.kind == "literal-bool";
+    flag_ty = _decl_ty(r["FLAG"]);
+    assert flag_ty.kind == "literal-bool";
 }
 
 test "interface captures property members with types and optionality" {
@@ -138,11 +166,22 @@ test "interface captures property members with types and optionality" {
     assert cfg.kind == "interface";
     by_name = {m.name: m for m in cfg.members};
     assert set(by_name.keys()) == {"theme", "retries", "debug", "tags", "onChange"};
-    assert by_name["theme"].ty.name == "string" and not by_name["theme"].optional;
-    assert by_name["retries"].ty.name == "number";
-    assert by_name["debug"].optional and by_name["debug"].ty.name == "boolean";
-    assert by_name["tags"].readonly and by_name["tags"].ty.kind == "array";
-    assert by_name["onChange"].is_method and by_name["onChange"].ty.kind == "func";
+    theme_ty = by_name["theme"].ty;
+    assert theme_ty is not None
+    and theme_ty.name == "string"
+    and not by_name["theme"].optional;
+    retries_ty = by_name["retries"].ty;
+    assert retries_ty is not None and retries_ty.name == "number";
+    debug_ty = by_name["debug"].ty;
+    assert by_name["debug"].optional
+    and debug_ty is not None
+    and debug_ty.name == "boolean";
+    tags_ty = by_name["tags"].ty;
+    assert by_name["tags"].readonly and tags_ty is not None and tags_ty.kind == "array";
+    on_change_ty = by_name["onChange"].ty;
+    assert by_name["onChange"].is_method
+    and on_change_ty is not None
+    and on_change_ty.kind == "func";
 }
 
 test "interface captures extends heritage" {

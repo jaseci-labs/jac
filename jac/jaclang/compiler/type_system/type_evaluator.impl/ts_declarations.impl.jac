@@ -63,12 +63,12 @@ impl TypeEvaluator._ts_declared_type_from_file(
     return self._map_ts_decl(decl, decls, item_name);
 }
 
-impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict | None) {
+impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | None) {
     if dts_path in self._ts_decl_cache {
         return self._ts_decl_cache[dts_path];
     }
     import from jaclang.compiler.type_system.ts_decl_parser { parse_dts }
-    decls: (dict | None) = None;
+    decls: (dict[str, TsDecl] | None) = None;
     try {
         with open(dts_path, 'r', encoding='utf-8', errors='replace') as f {
             source = f.read();
@@ -82,7 +82,7 @@ impl TypeEvaluator._load_ts_declarations(dts_path: str) -> (dict | None) {
 }
 
 impl TypeEvaluator._map_ts_decl(
-    decl: object, decls: dict, item_name: str
+    decl: TsDecl, decls: dict[str, TsDecl], item_name: str
 ) -> (TypeBase | None) {
     if decl.kind == 'function' and decl.ty is not None {
         mapped = self._map_ts_type(decl.ty, decls);
@@ -104,8 +104,8 @@ impl TypeEvaluator._map_ts_decl(
 }
 
 impl TypeEvaluator._map_ts_type(
-    ts: object,
-    decls: dict,
+    ts: (TsType | None),
+    decls: dict[str, TsDecl],
     seen: (set[str] | None) = None,
     synth_interfaces: bool = True,
 ) -> TypeBase {
@@ -146,11 +146,10 @@ impl TypeEvaluator._map_ts_type(
         );
     }
     if k == 'literal-num' {
+        int_val: (int | None) = None;
         try {
             int_val = int(ts.name);
-        } except ValueError {
-            int_val = None;
-        }
+        } except ValueError { }
         if (int_val is not None and self.prefetch.int_class) {
             return self._convert_to_instance(
                 self.prefetch.int_class.clone_with_literal(int_val)
@@ -238,14 +237,13 @@ impl TypeEvaluator._map_ts_type(
         }
         if target is not None and target.kind in ('interface', 'class') {
             if not synth_interfaces {
-                stub_table = (
-                    self.prefetch.object_class.shared.symbol_table
-                        if self.prefetch.object_class
-                        else None
-                );
+                if not self.prefetch.object_class {
+                    return foreign_any;
+                }
                 return types.ClassType(
                     _shared=types.ClassType.ClassDetailsShared(
-                        class_name=ts.name, symbol_table=stub_table
+                        class_name=ts.name,
+                        symbol_table=self.prefetch.object_class.shared.symbol_table,
                     )
                 );
             }
@@ -323,7 +321,9 @@ impl TypeEvaluator._jac_type_to_pyannot(ty: TypeBase) -> str {
     return "object";
 }
 
-impl TypeEvaluator._ts_type_to_pyannot(ts: object, decls: dict) -> str {
+impl TypeEvaluator._ts_type_to_pyannot(
+    ts: (TsType | None), decls: dict[str, TsDecl]
+) -> str {
     if ts is None {
         return "object";
     }
@@ -332,7 +332,9 @@ impl TypeEvaluator._ts_type_to_pyannot(ts: object, decls: dict) -> str {
     );
 }
 
-impl TypeEvaluator._ts_synthetic_module(decls: dict) -> (uni.Module | None) {
+impl TypeEvaluator._ts_synthetic_module(
+    decls: dict[str, TsDecl]
+) -> (uni.Module | None) {
     key = id(decls);
     if key in self._ts_synthetic_mod_cache {
         return self._ts_synthetic_mod_cache[key];
@@ -347,13 +349,17 @@ impl TypeEvaluator._ts_synthetic_module(decls: dict) -> (uni.Module | None) {
         if not name.isidentifier() {
             continue;
         }
-        bases = [
-            b
-            for b in decl.heritage
-            if decls.get(b) is not None
-            and decls.get(b).kind in ('interface', 'class')
-            and b.isidentifier()
-        ];
+        bases: list[str] = [];
+        for b in decl.heritage {
+            base_decl = decls.get(b);
+            if (
+                base_decl is not None
+                and base_decl.kind in ('interface', 'class')
+                and b.isidentifier()
+            ) {
+                bases.append(b);
+            }
+        }
         lines.append(
             f"class {name}(" + ", ".join(bases) + "):" if bases else f"class {name}:"
         );
@@ -402,7 +408,7 @@ impl TypeEvaluator._ts_synthetic_module(decls: dict) -> (uni.Module | None) {
 }
 
 impl TypeEvaluator._synthesize_ts_decl_class(
-    decls: dict, item_name: str
+    decls: dict[str, TsDecl], item_name: str
 ) -> (TypeBase | None) {
     mod = self._ts_synthetic_module(decls);
     if mod is None {

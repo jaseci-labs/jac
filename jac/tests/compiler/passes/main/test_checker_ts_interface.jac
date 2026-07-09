@@ -8,6 +8,7 @@ checker_npm_harness.jac (issue #7152).
 
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
+import from typing { cast }
 import from .checker_npm_harness {
     check_npm_file,
     make_iface_npm_project,
@@ -16,7 +17,7 @@ import from .checker_npm_harness {
 
 test "interface field access resolves with correct types" {
     with TemporaryDirectory() as td {
-        proj = make_iface_npm_project(Path(td));
+        proj = make_iface_npm_project(Path(cast(str, td)));
         f = proj / "lib" / "app.cl.jac";
         f.write_text(
             'cl import from "cfgpkg" { getConfig, getDerived }\n\n'
@@ -38,7 +39,7 @@ test "interface field access resolves with correct types" {
 
 test "whole-object assignment of a synthetic interface stays lenient" {
     with TemporaryDirectory() as td {
-        proj = make_iface_npm_project(Path(td));
+        proj = make_iface_npm_project(Path(cast(str, td)));
         f = proj / "lib" / "lenient.cl.jac";
         # A synthetic interface *value* (source) flowing into a mismatched Jac
         # annotation must NOT error (Phase 4-v1 src-side gradual typing),
@@ -61,7 +62,7 @@ test "whole-object assignment of a synthetic interface stays lenient" {
 
 test "assigning a concrete Jac value into a synthetic interface annotation errors" {
     with TemporaryDirectory() as td {
-        proj = make_iface_npm_project(Path(td));
+        proj = make_iface_npm_project(Path(cast(str, td)));
         f = proj / "lib" / "dest_strict.cl.jac";
         # Dest-side synthetic annotations must still reject incompatible Jac
         # values (str/int into Config). Leniency is only for external sources.
@@ -81,7 +82,7 @@ test "assigning a concrete Jac value into a synthetic interface annotation error
 
 test "interface imported directly as a type annotation resolves fields" {
     with TemporaryDirectory() as td {
-        proj = make_iface_npm_project(Path(td));
+        proj = make_iface_npm_project(Path(cast(str, td)));
         f = proj / "lib" / "annot.cl.jac";
         # Config is imported and used directly as an annotation (type position),
         # not just inferred from a return type. Field access on the annotated
@@ -102,7 +103,7 @@ test "interface imported directly as a type annotation resolves fields" {
 
 test "an any-typed interface field flows gradually like untyped JS" {
     with TemporaryDirectory() as td {
-        proj = make_iface_npm_project(Path(td));
+        proj = make_iface_npm_project(Path(cast(str, td)));
         f = proj / "lib" / "gradual.cl.jac";
         # `payload: any` resolves to a *foreign* any (not the opaque `object`
         # that rejects everything), so it flows gradually into a concrete-typed
@@ -124,7 +125,7 @@ test "an any-typed interface field flows gradually like untyped JS" {
 
 test "accessing a nonexistent interface field errors" {
     with TemporaryDirectory() as td {
-        proj = make_iface_npm_project(Path(td));
+        proj = make_iface_npm_project(Path(cast(str, td)));
         f = proj / "lib" / "bad.cl.jac";
         f.write_text(
             'cl import from "cfgpkg" { getConfig }\n\n'
