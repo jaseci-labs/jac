@@ -1,16 +1,9 @@
 import argparse;
 import from typing { Callable }
-import from jaclang.cli.command {
-    Arg,
-    ArgKind,
-    CommandSpec,
-    CommandPriority,
-    HookContext
-}
+import from jaclang.cli.command { Arg, ArgKind, CommandSpec }
 
 obj CommandRegistry {
     has commands: dict[str, CommandSpec] = {},
-        _pending_extensions: dict[str, list[tuple]] = {},
         _finalized: bool = False,
         parser: argparse.ArgumentParser | None = None,
         sub_parsers: any = None;
@@ -23,18 +16,8 @@ obj CommandRegistry {
         examples: list[tuple[str, str]] | None = None,
         group: str = "general",
         tier: str = "",
-        priority: CommandPriority = CommandPriority.CORE,
-        source: str = "jaclang",
         hidden: bool = False
     ) -> Callable[[Callable], Callable];
-
-    def extend_command(
-        command_name: str,
-        args: list[Arg] | None = None,
-        pre_hook: Callable[[HookContext], None] | None = None,
-        post_hook: Callable[[HookContext, int], int] | None = None,
-        source: str = "unknown"
-    ) -> None;
 
     def get(name: str) -> CommandSpec | None;
     def has_command(name: str) -> bool;
@@ -44,7 +27,6 @@ obj CommandRegistry {
 
     def get_groups -> list[str];
     def finalize -> argparse.ArgumentParser;
-    def _apply_pending_extensions(name: str) -> None;
     def _build_subparser(
         subparsers: any, spec: CommandSpec
     ) -> argparse.ArgumentParser;
@@ -56,4 +38,4 @@ glob _registry: CommandRegistry | None = None;
 
 def get_registry -> CommandRegistry;
 
-def extend_builtin_commands -> None;
+def register_feature_commands -> None;

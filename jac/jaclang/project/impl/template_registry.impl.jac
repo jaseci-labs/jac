@@ -133,11 +133,11 @@ impl initialize_template_registry -> None {
 
 def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
     try {
-        import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
+        import from jaclang.cli.shadcn.cli { register_project_template }
     } except Exception {
         return;
     }
-    results = JacShadcnPlugin.register_project_template();
+    results = register_project_template();
     for entry in _iter_template_dicts(results) {
         try {
             registry.register(entry);

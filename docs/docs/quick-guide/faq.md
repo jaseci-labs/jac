@@ -30,7 +30,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
     ??? question "What's the difference between Jac, Jaclang, and Jaseci?"
         - Jac: The language
         - Jaclang: The compiler/runtime, shipped as the self-contained `jac` binary
-        - Jaseci: The broader framework and ecosystem. Some capabilities ship built into `jaclang` core (like `scale` for serving and deployment); others are separate plugins (byllm, etc.) installed via `jac install`
+        - Jaseci: The broader framework and ecosystem. All core capabilities -- `scale` for serving and deployment, byLLM for AI, the full-stack client framework, and the MCP server -- ship built into the `jac` binary; only their optional third-party dependencies are pulled per-project via `jac install`
 
     ??? question "Do I need to know graph theory to use Jaseci?"
         No. Learn OSP: [OSP Guide](https://docs.jaseci.org/tutorials/language/osp/)
@@ -112,7 +112,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
 ??? "Common Issues"
 
     ??? question "I installed Jac with the one-line installer but `pip show` says packages aren't installed."
-        The one-line installer uses [uv](https://docs.astral.sh/uv/) to install Jac in an isolated environment, separate from your system Python. This means `pip show` and `pip list` won't find Jac packages. Use `jac --version` instead -- it lists all installed plugins and their versions.
+        The one-line installer downloads the self-contained native `jac` binary -- it does not install anything into a Python environment, so `pip show` and `pip list` have nothing to find. Use `jac --version` to confirm the installed version.
 
     ??? question "`jac clean --all` says 'No jac.toml found'."
         `jac clean --all` (and the project-level cleanup flags it implies) needs a Jac project -- a directory with a `jac.toml`. Plain `jac clean` (no flags) only clears the local `.jac/data/` directory, but `--all`, `--cache`, and `--packages` operate on project artifacts and require the project root. If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac create <name>`.

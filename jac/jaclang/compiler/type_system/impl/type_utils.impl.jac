@@ -250,6 +250,27 @@ impl collect_member_syms(
     return [];
 }
 
+impl doc_of_sym(sym: Symbol) -> (str | None) {
+    if not sym.decl {
+        return None;
+    }
+    decl = sym.decl.name_of;
+    if isinstance(decl, uni.AstDocNode) and decl.doc {
+        return decl.doc.lit_value;
+    }
+    if isinstance(decl, uni.HasVar) {
+        if (arch_has := decl.find_parent_of_type(uni.ArchHas)) and arch_has.doc {
+            return arch_has.doc.lit_value;
+        }
+    }
+    return None;
+}
+
+impl completion_item_from_sym(name: str, sym: Symbol) -> CompletionItem {
+    kind = completion_kind_from_sym(sym);
+    return CompletionItem(label=name, kind=kind, documentation=doc_of_sym(sym));
+}
+
 impl get_completion_items(
     ty: (types.TypeBase | uni.UniScopeNode)
 ) -> list[CompletionItem] {
@@ -258,8 +279,7 @@ impl get_completion_items(
         scope: (uni.UniScopeNode | None) = ty;
         while scope {
             for (name, sym) in scope.names_in_scope.items() {
-                kind = completion_kind_from_sym(sym);
-                ret.append(CompletionItem(label=name, kind=kind));
+                ret.append(completion_item_from_sym(name, sym));
             }
             scope = scope.parent_scope;
         }
@@ -269,14 +289,12 @@ impl get_completion_items(
         }
         for cls in ty.shared.mro {
             for (name, sym) in cls.shared.symbol_table.names_in_scope.items() {
-                kind = completion_kind_from_sym(sym);
-                ret.append(CompletionItem(label=name, kind=kind));
+                ret.append(completion_item_from_sym(name, sym));
             }
         }
     } elif isinstance(ty, types.ModuleType) {
         for (name, sym) in ty.symbol_table.names_in_scope.items() {
-            kind = completion_kind_from_sym(sym);
-            ret.append(CompletionItem(label=name, kind=kind));
+            ret.append(completion_item_from_sym(name, sym));
         }
     }
     return ret;
