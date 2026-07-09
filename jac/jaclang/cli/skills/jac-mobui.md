@@ -114,6 +114,7 @@ Runtime theme switch: prebuild both sheets once (`glob STYLES_DARK = buildStyles
 Supported props are the RN flexbox subset: `flex`, `flexDirection`, `alignItems`, `justifyContent`, `gap`, `padding*`, `margin*`, `backgroundColor`, `borderRadius`, `borderWidth`, `borderColor`, `width`/`height`/`maxWidth`, `position:"absolute"` + `top`/`left`/…, and (on `<Text>` only) `color`, `fontSize`, `fontWeight`, `lineHeight`, `textAlign`.
 
 Styling gotchas:
+
 - ⚠ **Default `flexDirection` is `column`** - set `"row"` explicitly for rows.
 - ⚠ **Text style goes on `<Text>`, layout on `<View>`** - `color`/`fontSize` on a `<View>` is ignored.
 - **No CSS shorthand strings** - `padding: "8px 16px"` and `"1px solid #ccc"` are invalid; use `paddingVertical`/`paddingHorizontal` and `borderWidth`+`borderColor`. Colors are plain strings (hex/`rgba()`).
@@ -183,6 +184,7 @@ def kbBehavior() -> str { return "padding" if Platform.OS == "ios" else "height"
 ```
 
 ## Scaffolding checklist (new MobUI app)
+
 1. `jac.toml` with `client_kind = "mobui"` + the npm deps above.
 2. `main.jac` - backend `node`/`walker:pub`, then a `cl {}` with `def:pub app -> JsxElement`; author the whole UI here in primitives (file-layout trap above).
 3. `theme.cl.jac` - token globals + `buildStyles`.
@@ -190,6 +192,7 @@ def kbBehavior() -> str { return "padding" if Platform.OS == "ios" else "height"
 5. `jac install`, then `jac start main.jac --dev` and validate.
 
 ## See also
+
 - `jac-cl-components` - shared `.cl.jac` rules (state, effects, JSX-in-Jac, pitfalls) that all still apply
 - `jac-mobile-app` - the **Capacitor** target (webview wrapper of a web bundle; keeps HTML) - different from MobUI
 - `jac-fullstack-patterns`, `jac-walker-patterns`, `jac-sv-endpoints` - the backend the UI calls

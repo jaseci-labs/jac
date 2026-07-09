@@ -95,6 +95,7 @@ endpoint). One `async def:pub` per walker lives in `services/api.cl.jac`.
 ## The build pipeline
 
 This is the heart of jachammer and a faithful port of jacBuilder's real transport
+
 - **not** a poll-and-hope shim. When you send a prompt:
 
 1. **`ai_chat(action="start")`** kicks off the turn server-side and returns a
