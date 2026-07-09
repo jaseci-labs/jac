@@ -195,11 +195,10 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 
 
 def stage_admin_dist(project_dir: str) -> bool {
-    # Stage the driver's prebuilt admin console at <app>/.jac/admin. Release
-    # binaries bake _dist into their payload (build-binaries.yml), so pods
-    # normally find it in their own jaclang package; this copy is the bridge
-    # for pod binaries released before the bake, whose gateways would
-    # otherwise rebuild the console from source on every boot (#7291).
+    # Release binaries bake _dist into their payload, so pods normally find
+    # the admin console in their own jaclang package; this copy into
+    # <app>/.jac/admin is the bridge for pod binaries released before the
+    # bake, whose gateways would otherwise build the console on every boot.
     import jaclang;
     dist = Path(str(jaclang.__file__)).parent / "scale" / "admin" / "_dist";
     if not (dist / "index.html").is_file() {
