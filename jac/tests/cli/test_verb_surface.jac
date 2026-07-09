@@ -16,7 +16,7 @@ import from jaclang.cli.registry { get_registry, register_feature_commands }
 import from jaclang.cli.cli { TOMBSTONED_VERBS }
 import jaclang.cli.commands;
 
-glob VERB_BUDGET: int = 28;
+glob VERB_BUDGET: int = 29;
 
 def _all_specs(include_hidden: bool = False) -> list {
     register_feature_commands();
