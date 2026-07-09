@@ -4,8 +4,8 @@ glob SYSTEM_PERSONA = """\
     """,
      INSTRUCTION_TOOL = """
     Use the tools provided to reach the goal. Call one tool at a time with \
-    proper args—no explanations, no narration. Think step by step, invoking tools \
-    as needed. When done, always call finish_tool(output) to return the final
+    proper args, no explanations, no narration. Think step by step, invoking tools \
+    as needed. When done, always call {terminal}(output) to return the final
     output. Only use tools.
     """;
 
@@ -65,6 +65,17 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     has_mtir = ir_info is not None;
     # Prepare tools with or without MTIR info
     raw_tools = call_params.get("tools", []);
+    # Name the terminal tool for the tool instruction: a designated finish_tool= uses that
+    # function's name; otherwise it is byllm's injected finish_tool. Instructing the model
+    # to call a tool that isn't in its schema (the old hard-coded "finish_tool") is a
+    # guaranteed mismatch for any finish_tool=fn where fn is not named "finish_tool".
+    _finish_param = call_params.get("finish_tool");
+    terminal_name = "finish_tool";
+    if _finish_param?.get_name {
+        terminal_name = _finish_param.get_name();
+    } elif _finish_param is not None {
+        terminal_name = getattr(_finish_param, "__name__", "finish_tool");
+    }
     tools = [];
     local_idx = 0;
     for func in raw_tools {
@@ -211,7 +222,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Prepare the messages for the LLM call.
     sys_msg = Message(
         role=MessageRole.SYSTEM,
-        content=system_content + (INSTRUCTION_TOOL if tools else ""),
+        content=system_content + (
+            INSTRUCTION_TOOL.replace("{terminal}", terminal_name) if tools else ""
+        ),
     );
     user_msg = Message(
         role=MessageRole.USER,
@@ -424,6 +437,14 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | McpTool | None {
 
 """Return the tool that ends the ReAct loop (injected or caller-designated), or None."""
 impl MTRuntime.get_terminal_tool -> Tool | McpTool | None {
+    # Prefer an explicitly-flagged terminal (a designated finish_tool= or byllm's injected
+    # finish_tool) over a tool that merely matches the reserved name, so a user tool
+    # coincidentally named "finish_tool" cannot shadow the real terminal.
+    for tool in self.tools {
+        if tool?.is_terminal {
+            return tool;
+        }
+    }
     for tool in self.tools {
         if tool.is_finish_tool() {
             return tool;

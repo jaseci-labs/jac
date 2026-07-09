@@ -910,6 +910,35 @@ test "terminal tool ends the loop and returns its output" {
     # The model calls a worker then the terminal tool; the loop ends and returns
     # the terminal tool's output.
     assert mod.run_agent("go") == "done" , "designated terminal tool should end the loop with its output";
+    # The tool instruction must name the DESIGNATED terminal ("finish"), not the generic
+    # "finish_tool" that isn't in the schema.
+    sysprompt = str(mod.term_llm.seen_prompts[0]);
+    assert "finish(output)" in sysprompt , f"instruction should name the designated terminal, got: {sysprompt}";
+    assert "finish_tool(output)" not in sysprompt , "instruction must not reference the generic finish_tool when one is designated";
+}
+
+test "get_terminal_tool prefers the designated terminal over a name-only match" {
+    # A user tool coincidentally named "finish_tool" (is_terminal False) must not shadow
+    # the caller-designated terminal, even when it appears first in the list.
+    def finish_tool(x: str) -> str {
+        return x;
+    }
+    def realfinish(answer: str) -> str {
+        return answer;
+    }
+    name_only = Tool(finish_tool);
+    designated = Tool(realfinish, is_terminal=True);
+    mt_run = MTRuntime(
+        messages=[],
+        resp_type=str,
+        stream=False,
+        tools=[name_only, designated],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    term = mt_run.get_terminal_tool();
+    assert term is not None , "a terminal tool should be found";
+    assert term.get_name() == "realfinish" , f"should return the flagged terminal, got {term.get_name()}";
 }
 
 test "designated terminal forces recovery on a natural exit" {
