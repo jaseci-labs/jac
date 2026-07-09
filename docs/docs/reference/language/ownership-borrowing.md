@@ -145,6 +145,7 @@ with entry {
 
 `linear` declares a **must-use** resource: it is move-checked exactly like `own`, but where `own` is affine (dropping is fine), a `linear` binding must be consumed -- moved to its final owner, passed on, or sealed into managed storage -- exactly once before its scope ends. Never consuming it is [`E1305`](../diagnostics.md#ownership-borrow-errors); consuming it twice is the usual use-after-move `E1301`:
 
+<!-- jac-skip -->
 ```jac
 obj File { has fd: int = 0; }
 
