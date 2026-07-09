@@ -27,7 +27,7 @@ obj MicroserviceOrchestrator {
             logger.warning(
                 "No microservices to run: no routes were declared or discovered "
                 "(no `sv import` / `to sv:` markers next to the entry file). "
-                "Set [plugins.scale.microservices.routes] to declare them explicitly."
+                "Set [scale.microservices.routes] to declare them explicitly."
             );
             return;
         }
@@ -89,7 +89,7 @@ obj MicroserviceOrchestrator {
 
     def start_gateway_only -> None {
         if not self.ms_config.get("routes", {}) {
-            logger.error("No routes declared in [plugins.scale.microservices.routes]");
+            logger.error("No routes declared in [scale.microservices.routes]");
             return;
         }
 
@@ -184,7 +184,9 @@ obj MicroserviceOrchestrator {
 
         console.print(f"  Building client from {client_entry}...");
         try {
-            build_result = subprocess.run(["jac", "build", client_entry], timeout=120);
+            build_result = subprocess.run(
+                ["jac", "build", client_entry, "--client", "web"], timeout=120
+            );
             if build_result.returncode == 0 {
                 console.print("  Client build complete");
             } else {

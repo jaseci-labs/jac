@@ -94,7 +94,7 @@ def:pub feed() -> list[PostView] {
 
 ## Schema changes survive
 
-Persisted data lives in `.jac/data/` (SQLite) by default; set `MONGODB_URI` (env or `[plugins.scale.database] mongodb_uri`) to flip to MongoDB (+ Redis L2 cache). Same model on both. Edits to archetypes **never delete data**:
+Persisted data lives in `.jac/data/` (SQLite) by default; set `MONGODB_URI` (env or `[scale.database] mongodb_uri`) to flip to MongoDB (+ Redis L2 cache). Same model on both. Edits to archetypes **never delete data**:
 
 - **Added field with a default** → old rows load, field takes the default. **Type change** → coerced (str↔int/float/bool, ISO str→datetime, value→Enum, ...); failed coercion keeps the raw value and logs.
 - **Removed field** → the stored value moves to the **attic** (`__jac_attic__` sub-document riding with the row), recoverable, never dropped.

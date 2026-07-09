@@ -554,6 +554,10 @@ test "run test native codespace file" {
 test "run test native broken import surfaces error" {
     # A test file that was explicitly collected but fails to import must be a
     # collection error, not an empty (silently passing) result (issue #7150).
+    # Since the native error gate (issue #7239) the failure surfaces at
+    # compile time: the unresolvable imported symbol makes native codegen
+    # error, the module publishes no artifact, and the collection error
+    # carries the compiler diagnostics naming that symbol and the file.
     captured = io.StringIO();
     old_stdout = sys.stdout;
     sys.stdout = captured;
@@ -566,7 +570,9 @@ test "run test native broken import surfaces error" {
 
     # Non-zero exit and a visible error -- never a silent green pass.
     assert rc != 0;
-    assert "this_module_does_not_exist_7150" in out;
+    assert "native_broken_import_test" in out;
+    assert "E5090" in out;
+    assert "nope" in out;
     assert "passed" not in out;
 }
 
@@ -1036,36 +1042,6 @@ test "cli error exit codes" {
     assert "Hello World!" in stdout;
 }
 
-test "positional args with defaults" {
-    captured = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured;
-    try {
-        result = config_cmd.plugins();
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout = captured.getvalue();
-    assert result == 0 , "jac plugins should work without action argument";
-    assert "installed jac plugin" in stdout.lower() , (
-        "Output should show installed plugins list"
-    );
-
-    # Verify explicit list action produces the same result
-    captured_explicit = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured_explicit;
-    try {
-        config_cmd.plugins(action="list");
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout_explicit = captured_explicit.getvalue();
-    assert stdout == stdout_explicit , (
-        "jac plugins and jac plugins list should produce identical output"
-    );
-}
-
 test "format tracks changed files" {
     with tempfile.TemporaryDirectory() as tmpdir {
         # Create a file that needs formatting (bad indentation/spacing)
@@ -1127,7 +1103,7 @@ test "format -s preserves bracketed Jac syntax through Rich console" {
             f.write(src);
         }
         process = subprocess.Popen(
-            ["jac", "format", "-s", src_path],
+            ["jac", "fmt", "-s", src_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -2117,20 +2093,6 @@ test "jac grammar" {
     assert result == 0 , "grammar command should exit with code 0";
     assert "::=" in stdout_value , "EBNF output should contain rule definitions";
     assert "module" in stdout_value , "Grammar should contain module rule";
-}
-
-test "jac grammar lark" {
-    captured = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured;
-    try {
-        result = analysis.grammar(lark=True);
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout_value = captured.getvalue();
-    assert result == 0 , "grammar lark command should exit with code 0";
-    assert len(stdout_value) > 0 , "Lark output should not be empty";
 }
 
 test "jac cli check ignore patterns" {

@@ -1,27 +1,18 @@
-"""Regression: visit-routing LLM calls go through the `call_llm` plugin hook.
+"""Regression: visit-routing LLM calls go through the central `call_llm` entry.
 
 `route_visit` must dispatch via `Jac.call_llm` (not `model.invoke` directly) so
-any registered `call_llm`/`acall_llm` middleware (retry, cost tracking,
-observability, rate limiting) fires for routing exactly as it does for regular
-`by llm` calls. This fixture registers an observing `call_llm` hook, runs a
-routing visit, and reports how many times the hook fired.
+that the single runtime LLM entry point stays authoritative for routing exactly
+as it is for regular `by llm` calls. This fixture temporarily wraps
+`Jac.call_llm` to count invocations, runs a routing visit, and reports how many
+times it fired.
 """
 
-import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
+import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.byllm.lib { MockLLM }
 import from jaclang.byllm.types { CompletionResult }
 import from jaclang.byllm.mtir { MTRuntime }
 
 glob hook_calls: list = [];
-
-class ObsPlugin {
-    """Observability middleware: counts every routed LLM call, then delegates."""
-    @hookimpl
-    static def call_llm(model: object, mt_run: MTRuntime) -> object {
-        hook_calls.append(1);
-        return model.invoke(mt_run=mt_run);
-    }
-}
 
 obj PickFirstMock(MockLLM) {
     """Selects the first candidate handle."""
@@ -51,13 +42,19 @@ walker router {
 }
 
 with entry {
-    plugin_manager.register(ObsPlugin);
+    _orig_call_llm = Jac.call_llm;
+
+    def _counting_call_llm(model: object, mt_run: MTRuntime) -> object {
+        hook_calls.append(1);
+        return _orig_call_llm(model, mt_run);
+    }
+    Jac.call_llm = _counting_call_llm;
     try {
         desk = root ++> Desk();
         desk ++> Agent(tag="a");
         router() spawn desk;
     } finally {
-        plugin_manager.unregister(ObsPlugin);
+        Jac.call_llm = _orig_call_llm;
     }
     print("HOOK_CALLS:" + str(len(hook_calls)));
 }

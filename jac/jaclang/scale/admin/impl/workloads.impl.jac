@@ -58,7 +58,7 @@ def _unavailable_reason -> str {
     try {
         import from jaclang.scale.config.config_loader { get_scale_config }
         if not bool(get_scale_config().get_monitoring_config().get('enabled', False)) {
-            return "Monitoring is disabled. Set [plugins.scale.monitoring] enabled = true in jac.toml and redeploy to see workload metrics.";
+            return "Monitoring is disabled. Set [scale.monitoring] enabled = true in jac.toml and redeploy to see workload metrics.";
         }
     } except Exception { }
     if resolve_prometheus_url() is None {

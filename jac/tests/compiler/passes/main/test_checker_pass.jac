@@ -2887,6 +2887,21 @@ test "destructure_element_narrowing" {
     assert 'Cannot return int | str' in msg , f"Expected non-strict-narrow error, got: {msg}";
 }
 
+"""Per-position tuple index typing + variadic destructuring (issue #7238)."""
+test "tuple_index_typing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_tuple_index_typing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Only `per_position_mismatch` errors: `t[1]` is bytes, assigned to str.
+    assert len(program.errors_had) == 1 , "Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot assign bytes to str' in msg , f"Expected per-position mismatch, got: {msg}";
+}
+
 """Match-case narrowing is killed by a later assignment to the subject."""
 test "match_case_reassign_reset" {
     program = JacProgram();

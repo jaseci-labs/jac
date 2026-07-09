@@ -7,7 +7,7 @@ import re;
 import select;
 import socket;
 import subprocess;
-import sys;
+import from jaclang.scale.runtime.context.util { jac_executable }
 import time;
 import uuid;
 import shutil;
@@ -65,10 +65,8 @@ def _start_server(
     base_url: str,
     extra_args: list[str] | None = None
 ) -> subprocess.Popen {
-    jac_executable = Path(sys.executable).parent / "jac";
-
     cmd = [
-        str(jac_executable),
+        jac_executable(),
         "start",
         test_file.name if not extra_args else str(test_file),
         "--port",
@@ -1495,9 +1493,8 @@ def setup_dev_mode_server -> subprocess.Popen {
     }
     _cleanup_db_files(dm_fixtures_dir);
 
-    jac_executable = Path(sys.executable).parent / "jac";
     cmd = [
-        str(jac_executable),
+        jac_executable(),
         "start",
         str(dm_test_file),
         "--port",
@@ -1923,8 +1920,7 @@ test "server startup - port fallback integration" {
         response = requests.get(f"http://localhost:{port1}/healthz", timeout=5);
         assert response.status_code == 200 , "First server should be running";
 
-        jac_executable = Path(sys.executable).parent / "jac";
-        cmd = [str(jac_executable), "start", sv_test_file.name, "--port", str(port1)];
+        cmd = [jac_executable(), "start", sv_test_file.name, "--port", str(port1)];
 
         sp2 = subprocess.Popen(
             cmd,
@@ -2107,7 +2103,6 @@ test "pwa target uses jac-scale server" {
     import tempfile;
 
     port = get_free_port();
-    jac_executable = Path(sys.executable).parent / "jac";
 
     with tempfile.TemporaryDirectory() as temp_dir {
         temp_path = Path(temp_dir);
@@ -2121,20 +2116,12 @@ test "pwa target uses jac-scale server" {
 name = "test-pwa"
 version = "1.0.0"
 
-[plugins.client.pwa]
+[client.pwa]
 theme_color = "#000000"
 '''
         );
         server = subprocess.Popen(
-            [
-                str(jac_executable),
-                "start",
-                "--client",
-                "pwa",
-                "main.jac",
-                "-p",
-                str(port)
-            ],
+            [jac_executable(), "start", "--client", "pwa", "main.jac", "-p", str(port)],
             cwd=temp_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

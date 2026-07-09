@@ -47,10 +47,10 @@ Minimum `jac.toml`:
 name = "my_app"
 entry-point = "main.jac"
 
-[plugins.scale.microservices]
+[scale.microservices]
 enabled = true
 
-[plugins.scale.microservices.routes]
+[scale.microservices.routes]
 my_service = "/api/my"
 ```
 
@@ -79,7 +79,7 @@ curl http://localhost:8000/api/my/walker/<your_walker>
 For external access enable Ingress:
 
 ```toml
-[plugins.scale.microservices.ingress]
+[scale.microservices.ingress]
 enabled = true
 host = "my-app.local"
 ingress_class_name = "nginx"
@@ -93,20 +93,20 @@ curl http://my-app.local/health
 ## Per-service tuning
 
 ```toml
-[plugins.scale.microservices.services.my_service]
+[scale.microservices.services.my_service]
 replicas       = 2
 cpu_request    = "100m"
 cpu_limit      = "500m"
 memory_request = "128Mi"
 memory_limit   = "512Mi"
 
-[plugins.scale.microservices.services.my_service.hpa]
+[scale.microservices.services.my_service.hpa]
 enabled    = true
 min        = 2
 max        = 10
 cpu_target = 70
 
-[plugins.scale.microservices.services.my_service.pdb]
+[scale.microservices.services.my_service.pdb]
 enabled         = true
 max_unavailable = 1
 ```

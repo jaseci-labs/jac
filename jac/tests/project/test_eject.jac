@@ -232,11 +232,9 @@ test "byLLM projects vendor jaclang.byllm and pin the llm capability deps" {
         assert rc == 0;
         vend = src / "ejected" / "backend" / "jaclang";
         assert (vend / "byllm" / "lib.py").exists();
-        assert (vend / "byllm" / "plugin.py").exists();
-        # The vendored init registers the byllm provider.
-        assert "_register_vendored_byllm_provider" in (
-            vend / "__init__.py"
-        ).read_text();
+        # byLLM is folded into core, so its closure (e.g. the MTIR the runtime
+        # calls into) is vendored directly -- no separate plugin registration.
+        assert (vend / "byllm" / "mtir.py").exists();
         reqs = _backend(src, "requirements.txt").read_text();
         assert "litellm" in reqs;
         for line in reqs.splitlines() {
@@ -467,7 +465,7 @@ test "request model includes fields inherited from a base walker" {
 
 
 # ==================== [eject.db] SQLAlchemy persistence ====================
-test "[eject.db] sqlalchemy vendors the backend, hook, and SQLAlchemy dep" {
+test "[eject.db] sqlalchemy vendors the backend, provider wiring, and SQLAlchemy dep" {
     with TemporaryDirectory() as td {
         src = Path(td) / "dbapp";
         _write_project(src, "dbapp");
@@ -485,7 +483,7 @@ test "[eject.db] sqlalchemy vendors the backend, hook, and SQLAlchemy dep" {
             "from jaclang.runtimelib.storage.sqlalchemy_memory "
             "import SqlAlchemyMemory"
         ) in main_py;
-        assert "def get_persistent_memory" in main_py;
+        assert "set_persistent_memory_provider" in main_py;
         assert "JAC_DB_URL" in main_py;
         reqs = _backend(src, "requirements.txt").read_text();
         # pinned via the central data.sql capability (canonical lowercase spec)
@@ -883,7 +881,7 @@ test "byLLM plugin config is emitted into backend/jac.toml" {
         src = Path(td) / "llmcfg";
         src.mkdir(parents=True, exist_ok=True);
         (src / "jac.toml").write_text(
-            '[project]\nname = "llmcfg"\nversion = "0.2.0"\nentry-point = "main.jac"\n' + '\n[plugins.byllm.model]\n' + 'default_model = "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}"\n' + 'api_key = "${BYLLM_API_KEY:-EMPTY}"\n' + '\n[plugins.byllm.call_params]\ntemperature = 0.0\nmax_tokens = 1024\n'
+            '[project]\nname = "llmcfg"\nversion = "0.2.0"\nentry-point = "main.jac"\n' + '\n[byllm.model]\n' + 'default_model = "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}"\n' + 'api_key = "${BYLLM_API_KEY:-EMPTY}"\n' + '\n[byllm.call_params]\ntemperature = 0.0\nmax_tokens = 1024\n'
         );
         (src / "main.jac").write_text(
             'import from jaclang.byllm.lib { Model }\n\n' + 'def:pub ask(q: str) -> str by Model()(query=q);\n'
@@ -895,9 +893,9 @@ test "byLLM plugin config is emitted into backend/jac.toml" {
         text = toml_out.read_text();
         # The byLLM model section is carried over, interpolation preserved so
         # the runtime resolves it from .env (not baked at eject time).
-        assert "[plugins.byllm.model]" in text;
+        assert "[byllm.model]" in text;
         assert "${BYLLM_MODEL:-openai/google/gemma-4-12B-it}" in text;
-        assert "[plugins.byllm.call_params]" in text;
+        assert "[byllm.call_params]" in text;
         assert "max_tokens = 1024" in text;
         # The project section is present so the config loader finds the root.
         assert 'name = "llmcfg"' in text;
@@ -912,5 +910,81 @@ test "projects without byLLM config get no backend jac.toml" {
         rc = _silent_eject(str(src));
         assert rc == 0;
         assert not _backend(src, "jac.toml").exists();
+    }
+}
+
+
+# ==================== test annexes stripped from backend modules ====================
+test "compiled test code and dev-path decorators are stripped from the backend" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "tst";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "tst"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text('import from core { compute }\n');
+        (src / "core.jac").write_text('def:pub compute(x: int) -> int;\n');
+        # An impl annex: its function carries an @impl_patch_filename decorator
+        # naming the annex's absolute path.
+        (src / "core.impl.jac").write_text(
+            'impl compute(x: int) -> int {\n    return x * 2;\n}\n'
+        );
+        # A test annex: compiles to an @jac_test function merged into core.
+        (src / "core.test.jac").write_text(
+            'test "doubles" {\n    assert compute(2) == 4;\n}\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        core_py = _backend(src, "core.py").read_text();
+        # Real code survives.
+        assert "def compute" in core_py;
+        # Test code and the dev-path decorators do not.
+        assert "def test_" not in core_py;
+        assert "jac_test" not in core_py;
+        assert "impl_patch_filename" not in core_py;
+        assert str(src) not in core_py;
+    }
+}
+
+
+test "a user import named jac_test is not stripped (only jaclib imports are)" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "uimp";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "uimp"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text('import from helper { run }\n');
+        (src / "userlib.jac").write_text(
+            'def jac_test() -> str {\n    return "custom";\n}\n'
+        );
+        (src / "helper.jac").write_text(
+            'import from userlib { jac_test }\n\n' + 'def:pub run() -> str {\n    return jac_test();\n}\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        helper_py = _backend(src, "helper.py").read_text();
+        # The project's own jac_test import must survive; only jaclib's is pruned.
+        assert "from userlib import jac_test" in helper_py;
+    }
+}
+
+
+test "no impl_patch_filename decorators survive anywhere in the ejected backend" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "vend";
+        _write_project(src, "vend");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        # The app modules and the vendored jaclang runtime alike must ship no
+        # @impl_patch_filename decorators (they name .jac sources the ejected
+        # Python app does not contain).
+        offenders: list = [];
+        for py in (src / "ejected" / "backend").rglob("*.py") {
+            if "@impl_patch_filename(" in py.read_text() {
+                offenders.append(str(py.name));
+            }
+        }
+        assert offenders == [] , f"impl_patch_filename left in: {offenders}";
     }
 }

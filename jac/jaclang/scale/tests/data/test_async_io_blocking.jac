@@ -18,15 +18,12 @@ Expected after async fix: PASSES (wall-clock ~ SLOW_SEC).
 import contextlib;
 import gc;
 import os;
-import socket;
-import subprocess;
-import sys;
 import time;
 import from pathlib { Path }
 import from concurrent.futures { ThreadPoolExecutor, as_completed }
 
 import requests;
-import from jaclang.scale.tests.server_support { get_free_port }
+import from jaclang.scale.tests.server_support { get_free_port, start_server }
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "race_app.jac";
@@ -55,33 +52,6 @@ def register_user(base_url: str, username: str) -> str {
         body = body[1];
     }
     return body["data"]["token"];
-}
-
-def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Popen {
-    import shutil;
-    jac_executable = shutil.which("jac") or str(Path(sys.executable).parent / "jac");
-    cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
-    server = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=str(fixtures_dir),
-        env=os.environ.copy()
-    );
-    base_url = f"http://localhost:{port}";
-    for _ in range(30) {
-        try {
-            r = requests.get(f"{base_url}/healthz", timeout=1);
-            if r.status_code == 200 {
-                return server;
-            }
-        } except Exception {
-            time.sleep(1);
-        }
-    }
-    (stdout, stderr) = server.communicate(timeout=2);
-    raise RuntimeError(f"server failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 }
 
 test "N concurrent slow walkers must complete in ~1 SLOW_SEC (async honesty)" {

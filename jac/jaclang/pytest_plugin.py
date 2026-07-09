@@ -384,13 +384,22 @@ class JacFile(pytest.File):
                 # unrelated broken file should not abort the whole sweep,
                 # downgrade to a non-fatal diagnostic on stderr instead.
                 explicit = str(self.path.resolve()) in _explicit_targets(self.config)
+                # ImportError messages carry the compiler's own diagnostics
+                # (e.g. native codegen errors); render them verbatim so the
+                # collection error shows the real compile failure instead of
+                # a repr with escaped newlines.
+                exc_text = (
+                    f"{type(exc).__name__}: {exc}"
+                    if isinstance(exc, ImportError)
+                    else repr(exc)
+                )
                 if explicit:
                     raise self.CollectError(
-                        f"failed to import Jac test module {self.path}: {exc!r}"
+                        f"failed to import Jac test module {self.path}: {exc_text}"
                     ) from exc
                 sys.stderr.write(
                     f"jac: skipping test file that failed to import: "
-                    f"{self.path}: {exc!r}\n"
+                    f"{self.path}: {exc_text}\n"
                 )
                 return []
         finally:

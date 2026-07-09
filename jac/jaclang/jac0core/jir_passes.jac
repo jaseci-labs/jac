@@ -6,7 +6,6 @@ import from jaclang.jac0core.jir_registry {
     FieldKind,
     IDX_TO_SPEC,
     NAME_TO_IDX,
-    NodeSpec,
     get_class_mapping
 }
 import type from jaclang.jac0core.unitree {
@@ -144,18 +143,13 @@ obj JirReader {
         _nodes: list[object] by postinit,
         _class_map: (dict[str, type] | None) = None,
         _uni_types: (tuple[type, ...] | None) = None,
-        _enum_cache: (dict[str, dict[str, object]] | None) = None,
-        bytecode_section: (bytes | None) = None,
-        mtir_section: (bytes | None) = None,
-        llvm_ir_section: (bytes | None) = None,
-        interop_section: (bytes | None) = None;
+        _enum_cache: (dict[str, dict[str, object]] | None) = None;
 
     def postinit {
         self._nodes = [];
     }
 
     def read_module(data: bytes) -> (Module | None);
-    def _read_trailing_sections(data: bytes) -> dict[int, bytes];
     def _wire_source(module: Module) -> None;
     def _fix_param_kinds -> None;
     def _init_caches -> None;

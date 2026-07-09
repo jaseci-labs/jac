@@ -85,17 +85,17 @@ sv {
 ### 2. Configure jac.toml
 
 ```toml
-[plugins.scale.microservices]
+[scale.microservices]
 enabled = true
 
 # Map module names to gateway URL prefixes (for client-facing routing)
-[plugins.scale.microservices.routes]
+[scale.microservices.routes]
 products_app = "/api/products"
 cart_app = "/api/cart"
 orders_app = "/api/orders"
 
 # Optional: client UI served as SPA
-[plugins.scale.microservices.client]
+[scale.microservices.client]
 entry = "main.jac"
 ```
 
@@ -206,14 +206,14 @@ URLs will 404 in microservices mode unless you:
 
 Static mounts are the simpler option when you don't want to restructure
 the build. Add one or more entries to
-`[plugins.scale.microservices.client.static_mounts]`:
+`[scale.microservices.client.static_mounts]`:
 
 ```toml
-[[plugins.scale.microservices.client.static_mounts]]
+[[scale.microservices.client.static_mounts]]
 url_prefix = "/static/assets"
 local_path = "assets"
 
-[[plugins.scale.microservices.client.static_mounts]]
+[[scale.microservices.client.static_mounts]]
 url_prefix = "/uploads"
 local_path = "/var/jac-uploads"
 ```
@@ -298,7 +298,7 @@ Same code, different deployer:
 
 ## Kubernetes Deployment
 
-`jac start <file>.jac --scale` with `[plugins.scale.microservices].enabled = true`
+`jac start <file>.jac --scale` with `[scale.microservices].enabled = true`
 auto-routes to the microservice K8s target: one image built and pushed,
 then per-service `Deployment` + `ClusterIP Service` + autoscaler (HPA or KEDA `ScaledObject`) + PDB applied
 for every `sv import`-discovered service plus the gateway.
@@ -310,7 +310,7 @@ code changes from local mode.
 
 ### Per-service config
 
-`[plugins.scale.microservices.services.NAME]` (gateway = `__gateway__`):
+`[scale.microservices.services.NAME]` (gateway = `__gateway__`):
 
 | Key | Default | Notes |
 |---|---|---|
@@ -322,22 +322,22 @@ code changes from local mode.
 | `rpc_timeout` | `10.0` | `sv import` httpx timeout (s) |
 | `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
 | `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler bounds (applies to both `"hpa"` and `"keda"` engines) |
-| `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`). Each entry: `type` (required), `metadata` (default `{}`), `name` (default `null`), `auth.secret_refs` (default `{}`). Same shape as `[[plugins.scale.kubernetes.extra_triggers]]`. |
+| `[[triggers]]` | `[]` | Per-service KEDA triggers (requires `autoscaler_engine = "keda"`). Each entry: `type` (required), `metadata` (default `{}`), `name` (default `null`), `auth.secret_refs` (default `{}`). Same shape as `[[scale.kubernetes.extra_triggers]]`. |
 | `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
 
 ```toml
-[plugins.scale.microservices.services.llm_app]
+[scale.microservices.services.llm_app]
 replicas = 2
 cpu_limit = "2000m"
 memory_limit = "4Gi"
 rpc_timeout = 120.0
 
-[plugins.scale.microservices.services.llm_app.hpa]
+[scale.microservices.services.llm_app.hpa]
 min = 3
 max = 20
 
-# KEDA per-service trigger (requires autoscaler_engine = "keda" in [plugins.scale.kubernetes])
-[[plugins.scale.microservices.services.llm_app.triggers]]
+# KEDA per-service trigger (requires autoscaler_engine = "keda" in [scale.kubernetes])
+[[scale.microservices.services.llm_app.triggers]]
 type = "prometheus"
 name = "pending-jobs"
 metadata = { serverAddress = "http://prometheus:9090", metricName = "llm_queue_depth", threshold = "5", query = "sum(llm_queue_depth)" }
@@ -350,23 +350,23 @@ Use the `auth.secret_refs` field to wire a Kubernetes Secret into a KEDA `Trigge
 `secret_refs` keys are the KEDA scaler parameter names (e.g. `password`, `username`). Each value points to a secret name and key within that secret.
 
 ```toml
-[plugins.scale.kubernetes]
+[scale.kubernetes]
 autoscaler_engine = "keda"
 
-[plugins.scale.microservices.services.my_service.hpa]
+[scale.microservices.services.my_service.hpa]
 min = 1
 max = 4
 
-[[plugins.scale.microservices.services.my_service.triggers]]
+[[scale.microservices.services.my_service.triggers]]
 type = "redis"
 name = "my-queue"
 
-[plugins.scale.microservices.services.my_service.triggers.metadata]
+[scale.microservices.services.my_service.triggers.metadata]
 address    = "redis-service.default.svc:6379"
 listName   = "my-list"
 listLength = "5"
 
-[plugins.scale.microservices.services.my_service.triggers.auth.secret_refs]
+[scale.microservices.services.my_service.triggers.auth.secret_refs]
 password = { name = "redis-secret", key = "password" }
 username = { name = "redis-secret", key = "username" }
 ```
@@ -386,7 +386,7 @@ drain middleware (`P13`), `kubectl rollout restart deployment/<svc>-deployment`
 completes with zero non-2xx responses.
 
 Each service also gets an autoscaler (an HPA by default, or a KEDA `ScaledObject`
-when `autoscaler_engine = "keda"` is set in `[plugins.scale.kubernetes]`) and a
+when `autoscaler_engine = "keda"` is set in `[scale.kubernetes]`) and a
 PDB (`maxUnavailable=1`). Opt out per-service with `hpa.enabled = false` / `pdb.enabled = false`.
 
 **KEDA scale-down timing:** `autoscaler_cooldown` only applies when scaling down to 0 replicas (requires `idle_replicas = 0`). When `min_replicas > 0`, scaling down from N to min is handled entirely by the Kubernetes HPA stabilization window (default 5 minutes), and `autoscaler_cooldown` has no effect on it. To reduce the scale-down delay in this case, patch the HPA stabilization window via the `keda.sh/downscale-stabilization` annotation on the ScaledObject, or accept the default 5-minute floor.
@@ -398,7 +398,7 @@ PDB (`maxUnavailable=1`). Opt out per-service with `hpa.enabled = false` / `pdb.
 Default off. Opt in for an external URL routed to the gateway:
 
 ```toml
-[plugins.scale.microservices.ingress]
+[scale.microservices.ingress]
 enabled = true
 host = "shop.example.com"          # optional
 ingress_class_name = "nginx"       # or alb / gce / traefik
@@ -459,14 +459,14 @@ The gateway forwards these to healthy services (tries all, skips 404):
 
 ## Production-Hardening Knobs
 
-All configured under `[plugins.scale.microservices]` in `jac.toml`. `jac
+All configured under `[scale.microservices]` in `jac.toml`. `jac
 setup microservice` writes commented reference blocks for each; uncomment
 and tune per deployment.
 
 ### Graceful shutdown on SIGTERM
 
 ```toml
-[plugins.scale.microservices]
+[scale.microservices]
 drain_timeout_seconds = 10
 ```
 
@@ -480,7 +480,7 @@ to complete. Mirrors K8s `terminationGracePeriodSeconds`.
 Default is 10s. Override for LLM / generation / long-running services:
 
 ```toml
-[plugins.scale.microservices.services.llm_app]
+[scale.microservices.services.llm_app]
 rpc_timeout = 120.0
 ```
 
@@ -551,7 +551,7 @@ dev workflows (Vite on `:5173`, React on `:3000`, etc.) work without
 config. Override to restrict:
 
 ```toml
-[plugins.scale.microservices.cors]
+[scale.microservices.cors]
 allow_origins     = ["https://app.example.com"]   # concrete list
 allow_methods     = ["GET", "POST", "OPTIONS"]
 allow_headers     = ["Authorization", "Content-Type"]
@@ -568,7 +568,7 @@ headers to read a 503 envelope).
 Token bucket, per-IP + optional per-user. Opt-in:
 
 ```toml
-[plugins.scale.microservices.rate_limit]
+[scale.microservices.rate_limit]
 enabled           = true
 per_ip_rpm        = 600
 per_user_rpm      = 120        # 0 disables per-user tier
@@ -584,7 +584,7 @@ responses carry the standard envelope + `Retry-After` header.
 
 + `GET /health` - JSON summary of service statuses (always on).
 + `GET /metrics` - Prometheus exposition. Enable with
-  `[plugins.scale.monitoring] enabled = true`.
+  `[scale.monitoring] enabled = true`.
 + `X-Trace-Id` - gateway mints one if the client omits it and threads
   it through every downstream hop (including `sv` RPCs). Echoed back
   on every response.

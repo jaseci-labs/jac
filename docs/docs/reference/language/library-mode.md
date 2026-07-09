@@ -10,7 +10,7 @@
 
 Jac provides a library mode that enables developers to express all Jac language features as standard Python code. This mode provides complete access to Jac's object-spatial programming capabilities through the `jaclang.lib` package, allowing developers to work entirely within Python syntax.
 
-This page focuses on what is unique to library mode: the `jaclang.lib` API surface and the `jac jac2py` workflow. For how Jac compiles to and interoperates with Python in general (bytecode transpilation, bidirectional imports, type-only imports), see [Python Integration](python-integration.md#jac-compiles-to-python-bytecode). Library mode itself corresponds to adoption [Pattern 5: Pure Python + Jac Library](python-integration.md#pattern-5-pure-python-jac-library).
+This page focuses on what is unique to library mode: the `jaclang.lib` API surface and the `jac tool jac2py` workflow. For how Jac compiles to and interoperates with Python in general (bytecode transpilation, bidirectional imports, type-only imports), see [Python Integration](python-integration.md#jac-compiles-to-python-bytecode). Library mode itself corresponds to adoption [Pattern 5: Pure Python + Jac Library](python-integration.md#pattern-5-pure-python-jac-library).
 
 Library mode is designed for:
 
@@ -24,7 +24,7 @@ Library mode is designed for:
 
 ### **Converting Jac Code to Pure Python**
 
-The `jac jac2py` command transpiles Jac source files into equivalent Python code, emitting clean `jaclang.lib` imports with type hints and docstrings so the output works with standard Python IDEs, linters, and formatters. (The same transpilation pipeline underpins all Jac→Python compilation -- see [How it Works: Transpilation to Native Python](python-integration.md#how-it-works-transpilation-to-native-python).)
+The `jac tool jac2py` command transpiles Jac source files into equivalent Python code, emitting clean `jaclang.lib` imports with type hints and docstrings so the output works with standard Python IDEs, linters, and formatters. (The same transpilation pipeline underpins all Jac→Python compilation -- see [How it Works: Transpilation to Native Python](python-integration.md#how-it-works-transpilation-to-native-python).)
 
 ---
 
@@ -90,7 +90,7 @@ with entry {
 
 ### **The Library Mode Python Equivalent**
 
-Run `jac jac2py friends.jac` to generate:
+Run `jac tool jac2py friends.jac` to generate:
 
 ??? example "Generated Python code"
     ```python
@@ -486,7 +486,6 @@ visit(
 | `impl_patch_filename(file_loc)` | Patch function file location | `file_loc`: File path for stack traces |
 | `thread_run(func, *args)` | Run function in thread | `func`: Function<br>`args`: Arguments |
 | `thread_wait(future)` | Wait for thread completion | `future`: Future object |
-| `create_cmd()` | Create CLI commands | No parameters (placeholder) |
 
 ---
 

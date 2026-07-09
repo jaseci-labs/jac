@@ -608,8 +608,8 @@ test "by operator" {
     assert result == 1;
     stdout_value = captured_output.getvalue();
     assert "by" in stdout_value.lower();
-    assert "not" in stdout_value.lower();
-    assert "implemented" in stdout_value.lower();
+    assert "requires" in stdout_value.lower();
+    assert "visitable" in stdout_value.lower();
 }
 
 # -- read_file_with_encoding tests --
