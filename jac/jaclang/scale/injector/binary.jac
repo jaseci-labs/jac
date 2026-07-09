@@ -1,7 +1,6 @@
 import io;
 import os;
 import shutil;
-import subprocess;
 import json;
 import hashlib;
 import logging;
@@ -196,63 +195,25 @@ def pack_binary_bytes(binary_bytes: bytes) -> bytes {
 
 
 def stage_admin_dist(project_dir: str) -> bool {
-    # Put the prebuilt admin console at <app>/.jac/admin so the STABLE-channel
-    # gateway skips its ~148s on-pod source build (#7291). Source: the driver's
-    # own jaclang package _dist; if absent, one cached host build via jac build.
+    # Stage the driver's prebuilt admin console at <app>/.jac/admin. Release
+    # binaries bake _dist into their payload (build-binaries.yml), so pods
+    # normally find it in their own jaclang package; this copy is the bridge
+    # for pod binaries released before the bake, whose gateways would
+    # otherwise rebuild the console from source on every boot (#7291).
     import jaclang;
-    import from jaclang.scale.runtime.context.util { jac_executable }
+    dist = Path(str(jaclang.__file__)).parent / "scale" / "admin" / "_dist";
+    if not (dist / "index.html").is_file() {
+        return False;
+    }
     try {
-        admin_pkg = Path(str(jaclang.__file__)).parent / "scale" / "admin";
-        dist = admin_pkg / "_dist";
-        if not (dist / "index.html").is_file() {
-            ui = admin_pkg / "ui";
-            if not (ui / "main.jac").is_file() {
-                return False;
-            }
-            logger.info("Building the admin console on the host (one-time, cached).");
-            result = subprocess.run(
-                [jac_executable(), "build", "main.jac"],
-                cwd=str(ui),
-                capture_output=True,
-                text=True,
-                timeout=300
-            );
-            built = ui / ".jac" / "client" / "dist";
-            if result.returncode != 0 or not (built / "index.html").is_file() {
-                logger.warning(
-                    f"Host admin build failed ({result.stderr.strip()[-200:]}); "
-                    f"the gateway builds it on boot."
-                );
-                return False;
-            }
-            # Stage into a temp sibling and rename so a killed process cannot
-            # leave a partial _dist whose index.html passes the cache sentinel.
-            tmp = admin_pkg / "_dist.tmp";
-            if tmp.exists() {
-                shutil.rmtree(str(tmp));
-            }
-            shutil.copytree(str(built), str(tmp));
-            if dist.exists() {
-                shutil.rmtree(str(dist));
-            }
-            tmp.rename(dist);
-        }
         dest = Path(project_dir) / ".jac" / "admin";
-        dest.mkdir(parents=True, exist_ok=True);
-        for item in dist.iterdir() {
-            target = dest / item.name;
-            if item.is_dir() {
-                if target.exists() {
-                    shutil.rmtree(str(target));
-                }
-                shutil.copytree(str(item), str(target));
-            } else {
-                shutil.copy2(str(item), str(target));
-            }
+        if dest.exists() {
+            shutil.rmtree(str(dest));
         }
+        shutil.copytree(str(dist), str(dest));
         logger.info("Staged the prebuilt admin console into the app bundle.");
         return True;
-    } except Exception as e {
+    } except OSError as e {
         logger.warning(
             f"Could not stage the admin console ({e}); the gateway builds it on boot."
         );

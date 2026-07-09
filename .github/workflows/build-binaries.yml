@@ -154,7 +154,7 @@ jobs:
         working-directory: jac
         run: zig build fetch-llvm $DTARGET --summary all
 
-      - name: Build the jac binary (one command)
+      - name: Build the jac binary (with the admin console baked in)
         working-directory: jac
         # On a dev-channel shim-cache hit, stage the shim outside its in-tree
         # place path: the build copies -Dshim-bin back there, and a self-copy
@@ -166,6 +166,22 @@ jobs:
             cp jaclang/compiler/passes/native/llvm/libjacllvm.* .shim-build/
             SHIM_ARG=(-Dshim-bin=".shim-build/$(ls .shim-build | head -1)")
           fi
+          zig build $DTARGET "${SHIM_ARG[@]}" --summary all
+          # Bake the prebuilt admin console into the payload (#7302): without
+          # it, every scale gateway pod rebuilds the console from source on
+          # boot (~148s each). The console is jac client code, so it needs the
+          # binary built above -- build it, place the dist where the gateway's
+          # bootstrap_admin_ui looks (jaclang/scale/admin/_dist), and repack.
+          # The second zig build re-runs only mkpayload + the final embed: the
+          # compiled artifacts are cached in .zig-cache and the JIR precompile
+          # is warm in .precompiled-build from the first pass.
+          ADMIN=jaclang/scale/admin
+          ( cd "$ADMIN/ui" && "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" build main.jac )
+          rm -rf "$ADMIN/_dist"
+          cp -R "$ADMIN/ui/.jac/client/dist" "$ADMIN/_dist"
+          test -f "$ADMIN/_dist/index.html"
+          # Drop the UI build's work tree so only _dist rides into the payload.
+          rm -rf "$ADMIN/ui/.jac" "$ADMIN/ui/dist"
           zig build $DTARGET "${SHIM_ARG[@]}" --summary all
 
       # Launcher unit tests: trailer codec + `.jab`-overlay round-trip
@@ -185,6 +201,15 @@ jobs:
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+          # The baked admin console (#7302): the payload must carry
+          # jaclang/scale/admin/_dist, or every scale gateway pod rebuilds the
+          # console from source on boot.
+          {
+            printf 'import jaclang;\nimport os;\nwith entry {\n'
+            printf '    d = os.path.join(os.path.dirname(jaclang.__file__), "scale", "admin", "_dist", "index.html");\n'
+            printf '    assert os.path.isfile(d), d;\n    print("admin-dist-ok");\n}\n'
+          } > "$WORK/adm.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/adm.jac" | grep -q admin-dist-ok
 
       # Guards the unified `.jab` overlay: `jac build --as binary` seals a tiny
       # cli app, appends it as an overlay onto the bundled jac (`jac __appjab`),
