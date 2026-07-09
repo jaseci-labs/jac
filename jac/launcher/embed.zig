@@ -11,7 +11,7 @@
 //! What it owns (and nothing more -- no BOOT_SRC, no worker mode; those belong
 //! to each frontend):
 //!
-//!   1. materialize the trailer payload to `<cache>/rt/<hash16>-<pathhash>/` (runtime.zig),
+//!   1. materialize the trailer payload to `<cache>/<pathhash>/rt/<hash16>/` (runtime.zig),
 //!   2. dlopen the bundled libpython (RTLD_NOW|GLOBAL) -- GLOBAL so the embedded
 //!      interpreter's own C-extensions resolve against it,
 //!   3. configure + initialize the interpreter via the PEP 741 stable-ABI init
@@ -94,7 +94,7 @@ const MAX_PATH = Io.Dir.max_path_bytes;
 pub const Embed = struct {
     /// dlopen handle for the bundled libpython (RTLD_NOW|GLOBAL).
     handle: *anyopaque,
-    /// `<cache>/rt/<hash16>-<pathhash>` -- the materialized runtime tree (slice
+    /// `<cache>/<pathhash>/rt/<hash16>` -- the materialized runtime tree (slice
     /// into the caller-provided rt_buf passed to `open`).
     rt: []const u8,
 

@@ -14,11 +14,15 @@
 //!               = 80 bytes, fixed, at EOF.
 //!
 //! On first run the payload is gzip-decompressed and untarred into
-//! `<cache>/rt/<hash16>-<pathhash>/` (atomic temp-dir + rename). `<hash16>` is
+//! `<cache>/<pathhash>/rt/<hash16>/` (atomic temp-dir + rename). `<hash16>` is
 //! the first 16 hex chars of the trailer digest (the payload version);
-//! `<pathhash>` folds in the binary's own path so co-located checkouts with
-//! identical payloads get distinct trees (see `rtKey`, issue #7012). A `.ok`
-//! marker guards against partial extracts; subsequent runs short-circuit on it.
+//! `<pathhash>` is the binary's own path digest and sits above `rt/`, so each
+//! binary gets its own private `rt/`: co-located checkouts with identical
+//! payloads get distinct trees (see `pathHash`), and gcStale for one binary can
+//! never evict another binary's in-use tree. A one-time `gcLegacy` sweep (gated
+//! by a `.legacy-swept` sentinel) reclaims trees written by the previous
+//! shared-`rt/` layout. A `.ok` marker guards against partial extracts;
+//! subsequent runs short-circuit on it.
 //!
 //! The payload is gzip (deflate), not zstd, so BOTH ends of the pipe are pure
 //! std: launcher/payload.zig compresses with `std.compress.flate.Compress` at
@@ -75,8 +79,8 @@ pub const Trailer = struct {
     payload_len: u64,
     /// Full sha256 hex of the compressed payload; verified on the cold path.
     hash: [HASH_LEN]u8,
-    /// First 16 hex chars of `hash`; the payload-version prefix of the
-    /// `rt/<hash16>-<pathhash>` dir name (see `rtKey`).
+    /// First 16 hex chars of `hash`; the payload-version tree dir name inside a
+    /// binary's `<pathhash>/rt` (see `pathHash`).
     hash16: [16]u8,
 };
 
@@ -92,31 +96,24 @@ pub fn hexDigest(digest: *const [32]u8) [HASH_LEN]u8 {
     return hex;
 }
 
-/// Length of an `rt/<key>` cache-dir name: `<hash16>` + '-' + 16 path-hash hex.
-pub const RT_KEY_LEN = 16 + 1 + 16; // 33
-
-/// Cache-key dir name for the runtime tree: the payload version (`hash16`)
-/// folded together with a short digest of the binary's own path.
+/// 16-char hex digest of the binary's own path -- the `<pathhash>` bucket dir
+/// that sits above `rt/`, giving each binary path its own private `rt/` tree.
 ///
-/// Keying on the path as well as the payload is what isolates co-located
-/// checkouts (issue #7012): two clones whose payloads are byte-identical share
-/// one `hash16`, so a payload-only key (`rt/<hash16>`) collapsed them onto a
-/// single materialized tree -- and whichever ran first baked in its own
-/// absolute dev-source paths, so the second checkout silently executed the
-/// first's source. Distinct binary paths now yield distinct `rt/<key>` trees.
+/// Bucketing by path isolates co-located checkouts: two clones whose payloads
+/// are byte-identical share one `<hash16>`, so a payload-only key would collapse
+/// them onto a single tree -- and whichever ran first baked in its own absolute
+/// dev-source paths, so the second checkout would silently execute the first's
+/// source. Distinct binary paths yield distinct buckets, avoiding that.
 ///
-/// The `<hash16>-...` shape is deliberate: every key for a given payload version
-/// shares the `hash16` prefix, which `gcStale` uses to keep sibling checkouts
-/// while still reclaiming trees from previous versions.
-pub fn rtKey(hash16: *const [16]u8, exe_path: []const u8) [RT_KEY_LEN]u8 {
+/// It also scopes `gcStale`: cleanup only ever scans one binary's own
+/// `<pathhash>/rt`, so it can never evict a tree belonging to a different binary
+/// running concurrently from the same cache home.
+pub fn pathHash(exe_path: []const u8) [16]u8 {
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(exe_path, &digest, .{});
-    const path_hex = hexDigest(&digest);
-    var key: [RT_KEY_LEN]u8 = undefined;
-    @memcpy(key[0..16], hash16);
-    key[16] = '-';
-    @memcpy(key[17..RT_KEY_LEN], path_hex[0..16]);
-    return key;
+    var out: [16]u8 = undefined;
+    @memcpy(&out, hexDigest(&digest)[0..16]);
+    return out;
 }
 
 /// Decode an 80-byte trailer blob, requiring `magic` (MAGIC or OVERLAY_MAGIC).
@@ -306,7 +303,7 @@ fn dirWritable(io: Io, path: []const u8) bool {
 }
 
 /// Resolve (and on first run, extract) the runtime tree for this binary.
-/// Returns the `<cache>/rt/<hash16>-<pathhash>` path inside `rt_out`.
+/// Returns the `<cache>/<pathhash>/rt/<hash16>` path inside `rt_out`.
 ///
 /// `exe_path` is this executable; `uid`/`pid` and the three env strings are
 /// passed in by the caller (launcher.zig) so this module stays libc-free.
@@ -345,9 +342,30 @@ pub fn materialize(
     var root_buf: [MAX_PATH]u8 = undefined;
     const root = try cacheRoot(io, xdg_cache_home, home, tmpdir, uid, &root_buf);
 
-    const key = rtKey(&trailer.hash16, exe_path);
-    const rt = std.fmt.bufPrint(rt_out, "{s}/rt/{s}", .{ root, &key }) catch
+    // `<pathhash>/rt/<hash16>`: each binary path gets its OWN private `rt/`
+    // directory (the `<pathhash>` bucket sits above `rt/`), and the payload
+    // version is the tree inside it. gcStale only ever scans this binary's own
+    // `<pathhash>/rt`, so a different binary running concurrently from the same
+    // cache home can never evict a tree this one is mid-read on -- their `rt/`
+    // dirs are separate and gcStale never opens the other's. Within one binary's
+    // `rt/` a version bump still reclaims the old `<hash16>` (intended cleanup).
+    const path_hex = pathHash(exe_path);
+    var bucket_buf: [MAX_PATH]u8 = undefined;
+    const bucket = std.fmt.bufPrint(&bucket_buf, "{s}/{s}/rt", .{ root, &path_hex }) catch
         return Error.MaterializeFailed;
+    const rt = std.fmt.bufPrint(rt_out, "{s}/{s}", .{ bucket, &trailer.hash16 }) catch
+        return Error.MaterializeFailed;
+
+    // Reclaim previous-layout trees exactly once per cache home, on warm and
+    // cold paths alike: a binary already on the new layout still takes the warm
+    // return below, so gating this only on the cold path would never sweep a
+    // cache that was migrated before this ran. The `.legacy-swept` sentinel
+    // makes it a single directory scan ever, so the warm path stays cheap.
+    if (!pathExists(io, root, ".legacy-swept")) {
+        // Stamp the sentinel only on a clean sweep; a transient delete failure
+        // leaves it unset so a later run retries instead of leaking forever.
+        if (gcLegacy(io, root)) markSwept(io, root);
+    }
 
     // Warm path: a complete extract is marked by `<rt>/.ok`.
     if (pathExists(io, rt, ".ok")) return rt;
@@ -376,7 +394,7 @@ pub fn materialize(
         return Error.PayloadHashMismatch;
 
     try extractPayload(io, gpa, zbuf, rt, pid);
-    gcStale(io, root, &trailer.hash16);
+    gcStale(io, bucket, &trailer.hash16);
     if (!builtin.is_test)
         std.debug.print("jac: one-time setup complete.\n", .{});
     return rt;
@@ -427,34 +445,85 @@ fn extractPayload(
     };
 }
 
-/// Best-effort GC of `rt/<old-hash>...` trees left by previous binary versions.
-/// Replaces the C launcher's `system("find ... -exec rm -rf")`.
+/// Best-effort GC of stale `<hash16>` version trees, scoped to ONE binary's
+/// own `<pathhash>/rt` bucket. Replaces the C launcher's `system("find ...")`.
 ///
-/// `keep_hash16` is the CURRENT payload version. Every co-located checkout of
-/// that version shares this prefix (`<hash16>-<pathhash>`, see `rtKey`), so we
-/// keep them all -- evicting a sibling here would force it to re-extract on its
-/// next run, churning the cache for no benefit. Trees whose prefix differs
-/// belong to a previous version and are reclaimed; so are pre-fix entries named
-/// by the bare `<hash16>` (a payload-only key), which no current binary looks
-/// up -- the length check evicts them on the first run after upgrading rather
-/// than letting them linger until the next version bump.
-fn gcStale(io: Io, root: []const u8, keep_hash16: *const [16]u8) void {
-    var rtbuf: [MAX_PATH]u8 = undefined;
-    const rtdir = std.fmt.bufPrint(&rtbuf, "{s}/rt", .{root}) catch return;
-    var dir = Io.Dir.cwd().openDir(io, rtdir, .{ .iterate = true }) catch return;
+/// `bucket` is `<cache>/<pathhash>/rt` for THIS binary; `keep_hash16` is its
+/// CURRENT payload version. We only iterate this bucket, so a different binary's
+/// bucket is never even opened -- that is what makes eviction safe when two
+/// binary versions share a cache home concurrently: one binary must not evict a
+/// tree another binary is mid-read on. Within this bucket, any inner dir that is
+/// not the current version is a previous version of the SAME binary and is
+/// reclaimed (the intended cleanup). A live `.tmp.<pid>` extract is skipped.
+/// `keep_hash16` is already the 16-char hex inner dir name.
+fn gcStale(io: Io, bucket: []const u8, keep_hash16: *const [16]u8) void {
+    var dir = Io.Dir.cwd().openDir(io, bucket, .{ .iterate = true }) catch return;
     defer dir.close(io);
     var it = dir.iterate();
     while (it.next(io) catch null) |entry| {
         if (entry.kind != .directory) continue;
-        // A current-version tree in the new key format -> keep. hash16 is a
-        // fixed 16-char hex string, so a prefix match is an exact version match;
-        // the length check excludes both other versions and the old bare-hash16
-        // format. (A live `.tmp.<pid>` extract is longer than RT_KEY_LEN, so it
-        // falls through to the explicit skip below rather than being kept here.)
-        if (entry.name.len == RT_KEY_LEN and std.mem.startsWith(u8, entry.name, keep_hash16)) continue;
+        if (std.mem.eql(u8, entry.name, keep_hash16)) continue; // current version -> keep
         if (std.mem.indexOf(u8, entry.name, ".tmp.") != null) continue; // a live extract
         dir.deleteTree(io, entry.name) catch {};
     }
+}
+
+/// One-time reclamation of trees left by the previous cache layout, which put
+/// every version under a shared `<cache>/rt/` as `<hash16>-<pathhash>` (33 chars
+/// with a dash) or, older still, a bare `<hash16>` (16 chars). The current
+/// layout is `<cache>/<pathhash>/rt/<hash16>`, so `gcStale` never revisits the
+/// old `<cache>/rt/` dir and those trees would otherwise leak disk forever after
+/// an upgrade. Only entries matching an old-format name are removed; any other
+/// entry is left untouched, and the new per-binary buckets live one level up so
+/// they are never seen here. A live `.tmp.<pid>` extract is skipped.
+/// Returns true iff the sweep completed with no legacy tree left behind, so the
+/// caller may stamp the run-once sentinel. A failed `deleteTree` (transient FS
+/// error) returns false so the sweep is retried on a later run instead of being
+/// permanently suppressed by the sentinel.
+fn gcLegacy(io: Io, root: []const u8) bool {
+    var rtbuf: [MAX_PATH]u8 = undefined;
+    const rtdir = std.fmt.bufPrint(&rtbuf, "{s}/rt", .{root}) catch return false;
+    // A missing legacy dir means nothing to reclaim -> sweep is trivially
+    // complete. Any OTHER open failure (transient FS / permission error) leaves
+    // the dir unvisited, so report incomplete and let a later run retry.
+    var dir = Io.Dir.cwd().openDir(io, rtdir, .{ .iterate = true }) catch |err|
+        return err == error.FileNotFound;
+    defer dir.close(io);
+    var complete = true;
+    var it = dir.iterate();
+    while (true) {
+        // An iteration error is not end-of-directory: entries past the failure
+        // point were never visited, so treat it like a failed delete (leave the
+        // sentinel unset) rather than declaring the sweep complete.
+        const maybe = it.next(io) catch {
+            complete = false;
+            break;
+        };
+        const entry = maybe orelse break;
+        if (entry.kind != .directory) continue;
+        if (std.mem.indexOf(u8, entry.name, ".tmp.") != null) continue; // a live extract
+        // Old formats only: `<hash16>-<pathhash>` (33 chars, one dash) or bare
+        // `<hash16>` (16 chars). Anything else is not ours to remove.
+        const legacy = (entry.name.len == 33 and entry.name[16] == '-') or entry.name.len == 16;
+        if (!legacy) continue;
+        dir.deleteTree(io, entry.name) catch {
+            complete = false; // leave the sentinel unset so this retries later
+        };
+    }
+    // The now-empty `<cache>/rt` dir is left in place: an empty dir costs
+    // nothing, and removing it would need a whole-dir delete that could race a
+    // concurrent legacy extract. Legacy content is what leaks disk, and that is
+    // gone.
+    return complete;
+}
+
+/// Stamp the `.legacy-swept` sentinel so `gcLegacy` runs at most once per cache
+/// home. Best-effort: if the write fails the only cost is a repeated scan.
+fn markSwept(io: Io, root: []const u8) void {
+    var buf: [MAX_PATH]u8 = undefined;
+    const p = std.fmt.bufPrint(&buf, "{s}/.legacy-swept", .{root}) catch return;
+    const f = Io.Dir.cwd().createFile(io, p, .{}) catch return;
+    f.close(io);
 }
 
 /// True if `<dir>/<name>` exists and is openable.
@@ -558,9 +627,12 @@ test "materialize extracts the fixture payload and is idempotent" {
     var rtbuf: [MAX_PATH]u8 = undefined;
     const rt = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf);
 
-    // Expected key = `<hash16>-<pathhash>` (rtKey): payload version then path.
-    try testing.expect(std.mem.endsWith(u8, rt, &rtKey(hex[0..16], exe)));
-    try testing.expect(std.mem.indexOf(u8, rt, hex[0..16]) != null);
+    // Layout = `<pathhash>/rt/<hash16>`: the path bucket sits above `rt/`, the
+    // payload version is the tree inside it.
+    const ph = pathHash(exe);
+    var want_buf: [MAX_PATH]u8 = undefined;
+    const want = try std.fmt.bufPrint(&want_buf, "{s}/rt/{s}", .{ &ph, hex[0..16] });
+    try testing.expect(std.mem.endsWith(u8, rt, want));
 
     var dir = try Io.Dir.cwd().openDir(io, rt, .{});
     defer dir.close(io);
@@ -627,11 +699,13 @@ test "materialize isolates co-located binaries with identical payloads" {
     }
 }
 
-// A pre-fix binary wrote the cache dir under the bare payload digest
-// (`rt/<hash16>`). After upgrading to a path-folded binary, that orphaned
-// old-format tree is never looked up again, so the cold-path GC must reclaim it
-// on the first run rather than leaving it until the next payload-version bump.
-test "materialize gc reclaims pre-fix bare-hash16 cache dirs" {
+// gcStale must (a) reclaim an OLD-version tree in THIS binary's own bucket, yet
+// (b) never touch ANOTHER binary's bucket. (b) is what keeps a second binary
+// version cold-starting from the same cache home from evicting a tree the first
+// binary is still reading. We seed both a stale-version sibling in the current
+// binary's `<pathhash>/rt` and a full tree in a DIFFERENT binary's
+// `<pathhash>/rt`, run a cold materialize, and assert only the former is gone.
+test "materialize gc reclaims same-binary stale versions but spares other binaries" {
     const io = testing.io;
     const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
     defer testing.allocator.free(payload);
@@ -648,25 +722,112 @@ test "materialize gc reclaims pre-fix bare-hash16 cache dirs" {
     var ebuf: [MAX_PATH]u8 = undefined;
     const exe = ebuf[0..try tmp.dir.realPathFile(io, "jacbin", &ebuf)];
 
-    // Pre-seed the old-format tree `<home>/jac/rt/<hash16>` (bare digest, the
-    // shape a pre-fix binary wrote), complete with its `.ok` marker.
-    var oldrel: [MAX_PATH]u8 = undefined;
-    const old_rel = std.fmt.bufPrint(&oldrel, "jac/rt/{s}", .{hex[0..16]}) catch unreachable;
-    try tmp.dir.createDirPath(io, old_rel);
-    var okrel: [MAX_PATH]u8 = undefined;
-    const ok_rel = std.fmt.bufPrint(&okrel, "{s}/.ok", .{old_rel}) catch unreachable;
-    try tmp.dir.writeFile(io, .{ .sub_path = ok_rel, .data = "" });
+    // (a) A stale OLD-version tree in THIS binary's own bucket: same <pathhash>,
+    // a different (bogus) <hash16>. A real hash16 is a sha256 slice and is never
+    // all-zeros, so `0000...` is a safe stand-in for a superseded version that
+    // gcStale should reclaim.
+    const my_bucket = pathHash(exe);
+    var staledir: [MAX_PATH]u8 = undefined;
+    const stale_dir = std.fmt.bufPrint(&staledir, "jac/{s}/rt/0000000000000000", .{&my_bucket}) catch unreachable;
+    try tmp.dir.createDirPath(io, stale_dir);
+    var stalerel: [MAX_PATH]u8 = undefined;
+    const stale_rel = std.fmt.bufPrint(&stalerel, "{s}/.ok", .{stale_dir}) catch unreachable;
+    try tmp.dir.writeFile(io, .{ .sub_path = stale_rel, .data = "" });
+    var staleabs: [MAX_PATH]u8 = undefined;
+    const stale_abs = std.fmt.bufPrint(&staleabs, "{s}/jac/{s}/rt/0000000000000000", .{ home, &my_bucket }) catch unreachable;
+    try testing.expect(pathExists(io, stale_abs, ".ok"));
 
-    var oldabs: [MAX_PATH]u8 = undefined;
-    const old_abs = std.fmt.bufPrint(&oldabs, "{s}/jac/rt/{s}", .{ home, hex[0..16] }) catch unreachable;
-    try testing.expect(pathExists(io, old_abs, ".ok")); // present before upgrade
+    // (b) A tree in a DIFFERENT binary's bucket (a made-up <pathhash>; a real
+    // pathHash is a sha256 slice and is never all-f's). This stands in for a
+    // concurrently-running other-version binary; gcStale must not open this
+    // bucket, so its tree must survive untouched.
+    var otherdir: [MAX_PATH]u8 = undefined;
+    const other_dir = std.fmt.bufPrint(&otherdir, "jac/ffffffffffffffff/rt/{s}", .{hex[0..16]}) catch unreachable;
+    try tmp.dir.createDirPath(io, other_dir);
+    var otherrel: [MAX_PATH]u8 = undefined;
+    const other_rel = std.fmt.bufPrint(&otherrel, "{s}/.ok", .{other_dir}) catch unreachable;
+    try tmp.dir.writeFile(io, .{ .sub_path = other_rel, .data = "" });
+    var otherabs: [MAX_PATH]u8 = undefined;
+    const other_abs = std.fmt.bufPrint(&otherabs, "{s}/jac/ffffffffffffffff/rt/{s}", .{ home, hex[0..16] }) catch unreachable;
+    try testing.expect(pathExists(io, other_abs, ".ok"));
 
-    // Cold-path materialize runs gcStale; the old-format tree must be gone and
-    // the new path-folded tree present.
+    // Cold-path materialize runs gcStale over THIS binary's bucket only.
     var rtbuf: [MAX_PATH]u8 = undefined;
+    var wantbuf: [MAX_PATH]u8 = undefined;
     const rt = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf);
-    try testing.expect(std.mem.endsWith(u8, rt, &rtKey(hex[0..16], exe)));
-    try testing.expect(!pathExists(io, old_abs, ".ok")); // reclaimed on first run
+    const want = try std.fmt.bufPrint(&wantbuf, "{s}/rt/{s}", .{ &my_bucket, hex[0..16] });
+    try testing.expect(std.mem.endsWith(u8, rt, want));
+
+    try testing.expect(!pathExists(io, stale_abs, ".ok")); // (a) same-binary old version reclaimed
+    try testing.expect(pathExists(io, other_abs, ".ok")); // (b) other binary's tree spared
+}
+
+// materialize must reclaim trees left by the PREVIOUS cache layout, which lived
+// under a shared `<cache>/rt/` as `<hash16>-<pathhash>` (33 chars, one dash) or
+// a bare `<hash16>` (16 chars). Those are never revisited by the new per-binary
+// `gcStale`, so without a legacy sweep they leak disk forever after an upgrade.
+// A directory matching neither old shape must be spared. The sweep is gated by a
+// `.legacy-swept` sentinel so it runs exactly once, and it runs even when the
+// materialize takes the warm path (a cache already migrated to the new layout
+// still has old `<cache>/rt/` trees to reclaim). A legacy tree that reappears
+// after the sentinel is stamped is intentionally NOT re-swept.
+test "materialize gc reclaims previous-layout cache trees" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var pbuf: [MAX_PATH]u8 = undefined;
+    const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
+
+    var fake = try buildFakeBinary(payload);
+    defer fake.bin.deinit();
+    try tmp.dir.writeFile(io, .{ .sub_path = "jacbin", .data = fake.bin.items });
+    var ebuf: [MAX_PATH]u8 = undefined;
+    const exe = ebuf[0..try tmp.dir.realPathFile(io, "jacbin", &ebuf)];
+
+    // Seed three entries under the legacy `<cache>/rt/`: a combined-key tree, a
+    // bare-hash16 tree (both old formats -> reclaimed), and a foreign name that
+    // is neither shape (-> spared).
+    const names = [_][]const u8{
+        "0123456789abcdef-fedcba9876543210", // <hash16>-<pathhash> (33, dash at 16)
+        "0123456789abcdef", // bare <hash16> (16)
+        "keep-me-not-a-cache-tree", // neither shape
+    };
+    for (names) |n| {
+        var rel: [MAX_PATH]u8 = undefined;
+        const p = std.fmt.bufPrint(&rel, "jac/rt/{s}/.ok", .{n}) catch unreachable;
+        var d: [MAX_PATH]u8 = undefined;
+        const dd = std.fmt.bufPrint(&d, "jac/rt/{s}", .{n}) catch unreachable;
+        try tmp.dir.createDirPath(io, dd);
+        try tmp.dir.writeFile(io, .{ .sub_path = p, .data = "" });
+    }
+
+    var rtbuf: [MAX_PATH]u8 = undefined;
+    _ = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf);
+
+    var abs: [MAX_PATH]u8 = undefined;
+    for (names, 0..) |n, i| {
+        const p = std.fmt.bufPrint(&abs, "{s}/jac/rt/{s}", .{ home, n }) catch unreachable;
+        const gone = !pathExists(io, p, ".ok");
+        if (i < 2) {
+            try testing.expect(gone); // legacy formats reclaimed
+        } else {
+            try testing.expect(!gone); // foreign name spared
+        }
+    }
+
+    // The sentinel is now stamped, so a legacy tree reappearing (e.g. an old
+    // binary re-extracting) is NOT re-swept: a warm second run leaves it alone.
+    const readd = std.fmt.bufPrint(&abs, "jac/rt/{s}/.ok", .{names[1]}) catch unreachable;
+    var rd: [MAX_PATH]u8 = undefined;
+    const readd_dir = std.fmt.bufPrint(&rd, "jac/rt/{s}", .{names[1]}) catch unreachable;
+    try tmp.dir.createDirPath(io, readd_dir);
+    try tmp.dir.writeFile(io, .{ .sub_path = readd, .data = "" });
+    _ = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf); // warm
+    const readd_abs = std.fmt.bufPrint(&abs, "{s}/jac/rt/{s}", .{ home, names[1] }) catch unreachable;
+    try testing.expect(pathExists(io, readd_abs, ".ok")); // sentinel gate held; not re-swept
 }
 
 // Join `<tmp>/<name>` into `buf`, returning an absolute path usable with
