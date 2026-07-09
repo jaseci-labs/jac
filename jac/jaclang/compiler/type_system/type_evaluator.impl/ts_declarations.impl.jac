@@ -272,6 +272,54 @@ impl TypeEvaluator._ts_synth_class_types(
         return None;
     }
 
+    direct_bases: dict[str, list[str]] = {};
+    for (name, decl) in decls.items() {
+        if name not in shells {
+            continue;
+        }
+        picked: list[str] = [];
+        seen: set[str] = set();
+        for b in decl.heritage {
+            if b != name and b in shells and b not in seen {
+                seen.add(b);
+                picked.append(b);
+            }
+        }
+        direct_bases[name] = picked;
+    }
+    WHITE = 0;
+    GRAY = 1;
+    BLACK = 2;
+    color: dict[str, int] = {n: WHITE for n in shells};
+    back_edges: set[tuple[(str, str)]] = set();
+    for start in shells {
+        if color[start] != WHITE {
+            continue;
+        }
+        color[start] = GRAY;
+        stack: list[tuple[(str, int)]] = [(start, 0)];
+        while stack {
+            top = stack[-1];
+            cur = top[0];
+            idx = top[1];
+            nbrs = direct_bases.get(cur, []);
+            if idx < len(nbrs) {
+                stack[-1] = (cur, idx + 1);
+                v = nbrs[idx];
+                cv = color[v];
+                if cv == GRAY {
+                    back_edges.add((cur, v));
+                } elif cv == WHITE {
+                    color[v] = GRAY;
+                    stack.append((v, 0));
+                }
+            } else {
+                stack.pop();
+                color[cur] = BLACK;
+            }
+        }
+    }
+
     for (name, decl) in decls.items() {
         cls_type = shells.get(name);
         if cls_type is None {
@@ -305,7 +353,10 @@ impl TypeEvaluator._ts_synth_class_types(
             );
         }
         base_classes: list[types.TypeBase] = [];
-        for b in decl.heritage {
+        for b in direct_bases.get(name, []) {
+            if (name, b) in back_edges {
+                continue;
+            }
             base = shells.get(b);
             if base is not None {
                 base_classes.append(base);

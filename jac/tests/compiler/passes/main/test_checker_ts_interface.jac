@@ -13,6 +13,8 @@ import from .checker_npm_harness {
     check_npm_file,
     make_iface_npm_project,
     make_relational_npm_project,
+    make_generic_npm_project,
+    make_cyclic_npm_project,
     pretty_checker_errors
 }
 
@@ -323,5 +325,117 @@ test "interface method return type is checked, not any" {
         assert len(program.errors_had) > 0 , "Expected a type error assigning greet's string result into a float, got none";
         assert any(c in ("E1001", "E1002", "E1035") for c in err_codes) , f"Expected an assignment type error, got codes {err_codes}:"
         f"\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "optional recursive interface field narrows to its real member type" {
+    # `Node.parent?: Node` resolves to `Node | None` (not foreign any), so a
+    # None-narrow recovers the real `Node` and `parent.value` is a `number`.
+    with TemporaryDirectory() as td {
+        proj = make_relational_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "opt_ok.cl.jac";
+        f.write_text(
+            'cl import from "relpkg" { getHead }\n\n'
+            'def:pub use() -> float {\n'
+            '    n = getHead();\n'
+            '    p = n.parent;\n'
+            '    if p is not None {\n'
+            '        v: float = p.value;\n'
+            '        return v;\n'
+            '    }\n'
+            '    return 0.0;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , "Optional recursive field should narrow to its real Node type, got "
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "accessing through an optional interface field without narrowing errors" {
+    # Regression guard: an optional interface reference must NOT collapse to
+    # foreign any. `parent` is `Node | None`, so a bare `parent.nope` is a
+    # nullable-deref error (E1099); `parent` itself stays a recognized member
+    # (no E1030). If this regressed to any, the access would pass silently.
+    with TemporaryDirectory() as td {
+        proj = make_relational_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "opt_bad.cl.jac";
+        f.write_text(
+            'cl import from "relpkg" { getHead }\n\n'
+            'def:pub bad() -> str {\n'
+            '    n = getHead();\n'
+            '    return n.parent.nope;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) > 0 , "Optional interface field should not collapse to any; expected an error, got none";
+        assert "E1099" in err_codes , f"Expected E1099 (nullable attribute access) for parent.nope, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+        assert "E1030" not in err_codes , f"`parent` must be a recognized member (no E1030), got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "generic heritage degrades gracefully to gradual any" {
+    # `Derived extends Base<string>` is documented degradation: the type
+    # argument is dropped, so `Base<T>`'s `id: T` resolves to gradual `any`
+    # (assignable to str), while Derived's own `extra` stays a precise number.
+    with TemporaryDirectory() as td {
+        proj = make_generic_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "gen_ok.cl.jac";
+        f.write_text(
+            'cl import from "genpkg" { getDerived }\n\n'
+            'def:pub use() -> str {\n'
+            '    d = getDerived();\n'
+            '    own: float = d.extra;\n'
+            '    s: str = d.id;\n'
+            '    return s;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , "Generic heritage should degrade gracefully (id -> any), got "
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "generic-derived synthetic class still rejects unknown fields" {
+    # Even though the type argument degrades, the structural class symbol
+    # table stays precise: a field that is neither inherited nor declared
+    # must raise E1030 (guards against the whole interface collapsing to any).
+    with TemporaryDirectory() as td {
+        proj = make_generic_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "gen_bad.cl.jac";
+        f.write_text(
+            'cl import from "genpkg" { getDerived }\n\n'
+            'def:pub bad() -> str {\n'
+            '    d = getDerived();\n'
+            '    return d.totallybogus;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert "E1030" in err_codes , f"Expected E1030 for a bogus field on a generic-derived interface, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "cyclic interface heritage degrades without crashing" {
+    # `CycA extends CycB` and `CycB extends CycA` is a heritage cycle, which
+    # is impossible in real Jac archetypes but reachable from arbitrary .d.ts
+    # input. The synthesizer must break the cycle so C3 linearization
+    # terminates (previously: RecursionError) and own members still resolve.
+    with TemporaryDirectory() as td {
+        proj = make_cyclic_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "cyc_ok.cl.jac";
+        f.write_text(
+            'cl import from "cycpkg" { getCycA }\n\n'
+            'def:pub use() -> float {\n'
+            '    x = getCycA();\n'
+            '    n: float = x.a;\n'
+            '    return n;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , "Cyclic heritage should degrade without crashing; own member must resolve. Got "
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
     }
 }

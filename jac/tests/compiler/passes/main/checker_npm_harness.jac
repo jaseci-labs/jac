@@ -212,7 +212,7 @@ def make_relational_npm_project(proj_dir: Path) -> Path {
             "dist/index.d.ts": (
                 "export interface Child { name: string; }\n"
                 "export interface Parent { child: Child; children: Child[]; }\n"
-                "export interface Node { value: number; next: Node; }\n"
+                "export interface Node { value: number; next: Node; parent?: Node; }\n"
                 "export type Wrapped = Child;\n"
                 "export interface Holder { wrapped: Wrapped; }\n"
                 "export declare function getParent(): Parent;\n"
@@ -223,6 +223,69 @@ def make_relational_npm_project(proj_dir: Path) -> Path {
     );
     write_client_jac_project(
         proj_dir, "relfixture", "lib/app.cl.jac", 'relpkg = "^1.0.0"\n'
+    );
+    return proj_dir;
+}
+
+"""Materialize a client project with generic interface heritage (issue #7319).
+
+Exercises `Derived extends Base<string>` -- the type argument is dropped by
+the parser/synthesizer, so the inherited `id: T` member degrades to gradual
+`any` while the derived class's own members stay precise. Used to document
+that degradation rather than silently collapse the whole interface.
+"""
+def make_generic_npm_project(proj_dir: Path) -> Path {
+    nm = client_node_modules(proj_dir);
+    install_npm_pkg(
+        nm,
+        "genpkg",
+        '{"name":"genpkg","version":"1.0.0",'
+        '"exports":{".":{"types":"./dist/index.d.ts",'
+        '"import":"./dist/index.mjs"}}}',
+        {
+            "dist/index.mjs": "export function getDerived() {}\n",
+            "dist/index.d.ts": (
+                "export interface Base<T> { id: T; }\n"
+                "export interface Derived extends Base<string> { extra: number; }\n"
+                "export declare function getDerived(): Derived;\n"
+            )
+        }
+    );
+    write_client_jac_project(
+        proj_dir, "genfixture", "lib/app.cl.jac", 'genpkg = "^1.0.0"\n'
+    );
+    return proj_dir;
+}
+
+"""Materialize a client project with cyclic interface heritage (issue #7319).
+
+`CycA extends CycB` while `CycB extends CycA` forms a heritage cycle, which
+is impossible in real Jac archetypes but reachable from arbitrary ``.d.ts``
+input. The synthesizer must break the cycle so C3 linearization terminates
+(previously: ``RecursionError``) and own members still resolve.
+"""
+def make_cyclic_npm_project(proj_dir: Path) -> Path {
+    nm = client_node_modules(proj_dir);
+    install_npm_pkg(
+        nm,
+        "cycpkg",
+        '{"name":"cycpkg","version":"1.0.0",'
+        '"exports":{".":{"types":"./dist/index.d.ts",'
+        '"import":"./dist/index.mjs"}}}',
+        {
+            "dist/index.mjs": (
+                "export function getCycA() {}\nexport function getCycB() {}\n"
+            ),
+            "dist/index.d.ts": (
+                "export interface CycA extends CycB { a: number; }\n"
+                "export interface CycB extends CycA { b: string; }\n"
+                "export declare function getCycA(): CycA;\n"
+                "export declare function getCycB(): CycB;\n"
+            )
+        }
+    );
+    write_client_jac_project(
+        proj_dir, "cycfixture", "lib/app.cl.jac", 'cycpkg = "^1.0.0"\n'
     );
     return proj_dir;
 }
