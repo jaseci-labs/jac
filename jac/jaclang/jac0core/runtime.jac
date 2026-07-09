@@ -56,6 +56,7 @@ import from jaclang.jac0core.modresolver {
     pop_import_base
 }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
+import from jaclang.jac0core { plugin }
 import type from http.server { BaseHTTPRequestHandler }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
 import type from jaclang.jac0core.compiler { JacCompiler }
@@ -79,6 +80,11 @@ glob logger = getLogger(__name__),
      _default_full_target_path: list = [None],
      _shared_root_resolver: list = [None, None],
      _product_done: list = [False];
+
+glob plugin_manager = plugin.PluginManager('jac'),
+     hookspec = plugin.HookspecMarker('jac'),
+     hookimpl = plugin.HookimplMarker('jac'),
+     hookable = plugin.HookableMarker();
 
 glob _scale_provider_cache: list = [];
 
@@ -548,6 +554,9 @@ class JacBuiltin {
 }
 
 class JacCmd {
+    @hookable
+    static def create_cmd -> None;
+
     static def run_ai_agent(req: object) -> int;
 }
 
