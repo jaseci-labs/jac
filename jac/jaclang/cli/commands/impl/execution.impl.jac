@@ -164,12 +164,24 @@ def _run_jab(filename: str, port: (int | None), args: list, serve_only: bool) ->
     return run_jab_image(img_root, port, args, serve_only, filename);
 }
 
-def _resolve_serve_port(requested: int) -> int {
+def _resolve_serve_port(requested: int, filename: str) -> int {
     if requested {
         return requested;
     }
-    import from jaclang.project.config { get_config }
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config, get_config_for_path }
+
     cfg = get_config();
+    if filename {
+        entry = Path(filename);
+        if entry.exists() {
+            entry_cfg = get_config_for_path(entry.resolve().parent);
+            if entry_cfg is not None
+            and (cfg is None or entry_cfg.project_root != cfg.project_root) {
+                cfg = entry_cfg;
+            }
+        }
+    }
     return (cfg.serve.port if cfg else 0) or 8000;
 }
 
@@ -577,7 +589,7 @@ impl start(
         client,
         host,
         platform,
-        _resolve_serve_port(requested_port),
+        _resolve_serve_port(requested_port, filename),
         api_port,
         dev,
         no_client
@@ -648,7 +660,7 @@ impl start(
         return 1;
     }
 
-    port = _resolve_serve_port(requested_port);
+    port = _resolve_serve_port(requested_port, filename);
 
     if dev and not no_client {
         vite_port = port;
