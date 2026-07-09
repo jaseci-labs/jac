@@ -21,6 +21,39 @@ DOCKER_PASSWORD=your-dockerhub-password-or-token
 
 ---
 
+### Runtime Binary
+
+Pods run a prebuilt `jac` binary that carries the jaclang runtime (including the `scale` subsystem). It is never built from source in the pod - the deploy driver selects and ships it. Which binary is shipped depends on the channel:
+
+| Channel | Selected by | Binary shipped |
+|---------|-------------|----------------|
+| **stable** | no `[dev]` stanza in `jac.toml` (default) | Latest published release |
+| **dev** | a `[dev]` stanza in `jac.toml` | Rolling `dev` prerelease (main HEAD) |
+| **local** | `JAC_SCALE_BINARY_PATH` set | The exact binary at that path |
+
+Both `stable` and `dev` download the binary from [GitHub Releases](https://github.com/jaseci-labs/jaseci/releases) and run it as-is - there is no source overlay.
+
+**Local binary (`JAC_SCALE_BINARY_PATH`).** Point this environment variable at a `jac` binary you built (or an air-gapped mirror) and the deploy ships that exact file to pods instead of downloading a release. It takes precedence over the `[dev]` stanza:
+
+```bash
+export JAC_SCALE_BINARY_PATH=/path/to/jac
+jac start app.jac --scale
+```
+
+Use this for air-gapped clusters, to pin an exact build, or to deploy a binary you compiled locally. The driver checksum-caches downloaded release binaries per channel, so an unchanged `stable`/`dev` deploy does not re-download on every run.
+
+---
+
+### App Artifact (`.jab`)
+
+The app is packed on the deploy driver into a sealed **`.jab`** image, seeded to the bundle PVC, and extracted into the pod's `/app` volume. The `.jab` contains the project source, a `_precompiled/` sealed image (`MANIFEST.json` + content-keyed `.jir` modules built with the pod binary), and the sanitized `jac.toml`.
+
+Sealing is **mandatory**: if the app cannot be sealed into a valid image, the deploy fails rather than shipping a bundle that cold-compiles on the pod's first boot. When a pod starts, the compiler auto-loads the sibling `_precompiled/` image, so services run from precompiled modules with no on-pod compile step - for both single-app and microservice deployments.
+
+If a module in your project cannot be sealed (for example, a file that fails to compile), the deploy aborts with the seal error. Fix or exclude the offending module and redeploy.
+
+---
+
 ### Naming & Namespace
 
 Controls the application name used for all Kubernetes resource names and the namespace resources are created in.

@@ -8,10 +8,17 @@ impl build(
     projection: str = "jab",
     output: str = "dist",
     no_typecheck: bool = False,
-    check_only: bool = False
+    check_only: bool = False,
+    client: str = "",
+    platform: str | None = None
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.project.kinds { resolve_entry }
+
+    if client {
+        import from jaclang.runtimelib.client.cli { run_client_build }
+        return run_client_build(filename, client, platform);
+    }
 
     cfg = get_config(start_path=Path.cwd(), force_discover=True);
     if cfg is None or cfg.project_root is None {
