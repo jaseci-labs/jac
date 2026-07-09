@@ -1257,6 +1257,14 @@ impl TypeEvaluator._get_function_type_params(
     func: uni.Ability
 ) -> list[types.TypeVarType] {
     type_params: list[types.TypeVarType] = [];
+
+    for tp_node in func.type_params or [] {
+        declared = self.get_type_of_expression(tp_node.name);
+        if isinstance(declared, types.TypeVarType) {
+            type_params.append(declared);
+        }
+    }
+
     if not isinstance(func.signature, uni.FuncSignature) {
         return type_params;
     }

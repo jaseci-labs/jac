@@ -46,6 +46,22 @@ impl Bag.assign_all(target: list[_T]) -> list[_T] {
     return copied;
 }
 
+# A type parameter declared on the ability is in scope in the body even when it
+# never appears in the signature, inline and through a detached impl alike.
+obj Gen {
+    def inline_only[U] -> int {
+        held: list[U] = [];
+        return len(held);
+    }
+
+    def impl_only[U] -> int;
+}
+
+impl Gen.impl_only -> int {
+    held: list[U] = [];
+    return len(held);
+}
+
 # Negative guard: `_T` is not bound by this non-generic archetype.
 obj Plain {
     has bad: list[_T];
