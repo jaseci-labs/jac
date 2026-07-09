@@ -4,6 +4,7 @@ import from jaclang.scale.injector.binary {
     download_release_binary,
     node_arch,
     pack_binary_bytes,
+    stage_admin_dist,
     toolchain_object_key
 }
 import from jaclang.scale.injector.bundle { content_address }
@@ -22,6 +23,7 @@ obj BinaryInjector(PvcInjector) {
         # Download the pod binary FIRST so pack_source can precompile the app's
         # modules with it (#7179): .jir is version-locked to the compiling
         # binary, so the driver's own jac cannot produce pod-valid seeds.
+        stage_admin_dist(project_dir, self.channel.value);
         payload = download_release_binary(self.channel.value, node_arch());
         self._pod_binary_bytes = payload;
         super.prepare(app_name, namespace, project_dir);

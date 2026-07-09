@@ -1,10 +1,15 @@
 import os;
 import io;
+import functools;
+import hashlib;
+import http.server;
 import tarfile;
 import tempfile;
+import threading;
 import unittest.mock;
 import from pathlib { Path }
 import from types { SimpleNamespace }
+import jaclang.scale.injector.binary as binary_mod;
 import from jaclang.scale.config.dev_config {
     resolve_dev_channel,
     Channel,
@@ -14,7 +19,8 @@ import from jaclang.scale.injector.binary {
     pack_binary_bytes,
     cluster_node_archs,
     node_arch,
-    download_release_binary
+    download_release_binary,
+    stage_admin_dist
 }
 import from jaclang.runtimelib.utils { host_arch }
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
@@ -325,4 +331,153 @@ test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundl
     keys = [key for (key, _) in injector._seed_artifacts()];
     assert "bundles/orders/aaa.jab" in keys;
     assert "toolchain/orders/bbb.tar.gz" in keys;
+}
+
+glob _fake_urls: dict = {};
+
+
+def _fake_admin_dist_urls(channel: str) -> tuple[str, str] {
+    return (_fake_urls["url"], _fake_urls["sha"]);
+}
+
+
+def _no_download_admin_dist_urls(channel: str) -> tuple[str, str] {
+    raise AssertionError("the download path must not be used");
+}
+
+
+def _make_dist_tar -> bytes {
+    buf = io.BytesIO();
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
+        for (name, data) in [
+            ("index.html", b"<html>admin</html>"),
+            ("assets/app.js", b"console.log('admin')")
+        ] {
+            info = tarfile.TarInfo(name=name);
+            info.size = len(data);
+            tar.addfile(info, io.BytesIO(data));
+        }
+    }
+    return buf.getvalue();
+}
+
+
+def _serve_dir(directory: str) -> tuple {
+    handler = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=directory
+    );
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler);
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    return (srv, srv.server_address[1]);
+}
+
+
+def _empty_jaclang_pkg -> str {
+    # A jaclang package dir WITHOUT scale/admin/_dist, so stage_admin_dist
+    # cannot short-circuit on a locally built console.
+    pkg = Path(tempfile.mkdtemp()) / "jaclang";
+    (pkg / "scale" / "admin").mkdir(parents=True);
+    (pkg / "__init__.py").write_text("");
+    return str(pkg / "__init__.py");
+}
+
+
+test "admin console asset is downloaded, verified, staged, and cached" {
+    import jaclang;
+    serve_dir = tempfile.mkdtemp();
+    payload = _make_dist_tar();
+    asset = "jac-dev-admin-dist.tar.gz";
+    (Path(serve_dir) / asset).write_bytes(payload);
+    digest = hashlib.sha256(payload).hexdigest();
+    (Path(serve_dir) / (asset + ".sha256")).write_text(f"{digest}  {asset}\n");
+    (srv, port) = _serve_dir(serve_dir);
+    _fake_urls["url"] = f"http://127.0.0.1:{port}/{asset}";
+    _fake_urls["sha"] = _fake_urls["url"] + ".sha256";
+
+    saved_cache = os.environ.get("JAC_SCALE_CACHE_DIR");
+    cache_dir = tempfile.mkdtemp();
+    os.environ["JAC_SCALE_CACHE_DIR"] = cache_dir;
+    try {
+        with unittest.mock.patch.object(
+            binary_mod, "_admin_dist_urls", _fake_admin_dist_urls
+        ) {
+            with unittest.mock.patch.object(
+                jaclang, "__file__", _empty_jaclang_pkg()
+            ) {
+                proj = tempfile.mkdtemp();
+                assert stage_admin_dist(proj, "dev");
+                admin = Path(proj) / ".jac" / "admin";
+                assert (admin / "index.html").is_file();
+                assert (admin / "assets" / "app.js").is_file();
+                # Cached: the tarball vanishes from the server, but a fresh
+                # project still stages from the verified local cache.
+                os.remove(os.path.join(serve_dir, asset));
+                proj2 = tempfile.mkdtemp();
+                assert stage_admin_dist(proj2, "dev");
+                assert (Path(proj2) / ".jac" / "admin" / "index.html").is_file();
+            }
+        }
+    } finally {
+        srv.shutdown();
+        if saved_cache is None {
+            os.environ.pop("JAC_SCALE_CACHE_DIR", None);
+        } else {
+            os.environ["JAC_SCALE_CACHE_DIR"] = saved_cache;
+        }
+    }
+}
+
+
+test "a checksum-mismatched admin console asset is refused" {
+    import jaclang;
+    serve_dir = tempfile.mkdtemp();
+    asset = "jac-dev-admin-dist.tar.gz";
+    (Path(serve_dir) / asset).write_bytes(_make_dist_tar());
+    (Path(serve_dir) / (asset + ".sha256")).write_text(f"{'0' * 64}  {asset}\n");
+    (srv, port) = _serve_dir(serve_dir);
+    _fake_urls["url"] = f"http://127.0.0.1:{port}/{asset}";
+    _fake_urls["sha"] = _fake_urls["url"] + ".sha256";
+
+    saved_cache = os.environ.get("JAC_SCALE_CACHE_DIR");
+    os.environ["JAC_SCALE_CACHE_DIR"] = tempfile.mkdtemp();
+    try {
+        with unittest.mock.patch.object(
+            binary_mod, "_admin_dist_urls", _fake_admin_dist_urls
+        ) {
+            with unittest.mock.patch.object(
+                jaclang, "__file__", _empty_jaclang_pkg()
+            ) {
+                proj = tempfile.mkdtemp();
+                assert not stage_admin_dist(proj, "dev");
+                assert not (Path(proj) / ".jac" / "admin").exists();
+            }
+        }
+    } finally {
+        srv.shutdown();
+        if saved_cache is None {
+            os.environ.pop("JAC_SCALE_CACHE_DIR", None);
+        } else {
+            os.environ["JAC_SCALE_CACHE_DIR"] = saved_cache;
+        }
+    }
+}
+
+
+test "a locally built package _dist wins without any download" {
+    import jaclang;
+    pkg_init = _empty_jaclang_pkg();
+    dist = Path(pkg_init).parent / "scale" / "admin" / "_dist";
+    dist.mkdir(parents=True);
+    (dist / "index.html").write_text("<html>local</html>");
+
+    with unittest.mock.patch.object(
+        binary_mod, "_admin_dist_urls", _no_download_admin_dist_urls
+    ) {
+        with unittest.mock.patch.object(jaclang, "__file__", pkg_init) {
+            proj = tempfile.mkdtemp();
+            assert stage_admin_dist(proj, "stable");
+            staged = Path(proj) / ".jac" / "admin" / "index.html";
+            assert staged.read_text() == "<html>local</html>";
+        }
+    }
 }
