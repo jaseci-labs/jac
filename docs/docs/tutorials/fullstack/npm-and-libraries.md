@@ -8,7 +8,7 @@ Jac's client-side compiler gives you full access to the npm ecosystem. You can i
 > - Time: ~30 minutes
 
 !!! note "npm imports and `jac check`"
-    npm packages bundle correctly under `jac start`, but the static checker has no `.d.ts`-equivalent stubs for them yet, so attribute access on imported npm symbols (`useRef().current`, `axios.get`, lodash methods, shadcn primitives, etc.) shows up as Unknown under isolated `jac check`. The snippets below run as written; a typed-stub story for npm imports lands as a separate type-checker improvement.
+    `jac check` types client npm imports from each package's `.d.ts` when declarations are installed (functions, constants, type aliases, and structural `interface`/`class` members). Constructs the checker does not model yet, or packages with no declarations, still surface as foreign `any` (`W1102`, or `E1120` when `[check] untyped-external = "error"`). See [npm import type checking](../../reference/plugins/jac-client.md#npm-import-type-checking-jac-check) in the Full Reference.
 
 ---
 

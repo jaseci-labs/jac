@@ -217,10 +217,14 @@ obj TypeEvaluator {
     def _load_ts_declarations(dts_path: str) -> (dict | None);
     def _map_ts_decl(decl: object, decls: dict, item_name: str) -> (TypeBase | None);
     def _map_ts_type(
-        ts: object, decls: dict, seen: (set[str] | None) = None
+        ts: object,
+        decls: dict,
+        seen: (set[str] | None) = None,
+        synth_interfaces: bool = True,
     ) -> TypeBase;
 
-    def _synthesize_ts_interface(decls: dict, item_name: str) -> (TypeBase | None);
+    def _jac_type_to_pyannot(ty: TypeBase) -> str;
+    def _synthesize_ts_decl_class(decls: dict, item_name: str) -> (TypeBase | None);
     def _ts_synthetic_module(decls: dict) -> (uni.Module | None);
     def _ts_type_to_pyannot(ts: object, decls: dict) -> str;
     def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;

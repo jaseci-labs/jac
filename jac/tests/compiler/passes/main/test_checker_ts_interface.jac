@@ -2,70 +2,21 @@
 
 An imported `.d.ts` `interface` is synthesized into a structural ClassType so
 that field access resolves with real types (autocomplete + type checking),
-instead of collapsing to a foreign `any`. Mirrors the npm-project harness in
-test_checker_npm_imports.jac (issue #7152).
+instead of collapsing to a foreign `any`. Uses the shared npm harness in
+checker_npm_harness.jac (issue #7152).
 """
 
 import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
-import jaclang;
-import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-import from jaclang.jac0core.program { JacProgram }
-
-"""Materialize a client project with one npm package shipping interface d.ts."""
-def _make_iface_project(proj_dir: Path) -> Path {
-    node_modules = proj_dir / ".jac" / "client" / "node_modules";
-    pkg = node_modules / "cfgpkg";
-    (pkg / "dist").mkdir(parents=True, exist_ok=True);
-    (pkg / "package.json").write_text(
-        '{"name":"cfgpkg","version":"1.0.0",'
-        '"exports":{".":{"types":"./dist/index.d.ts",'
-        '"import":"./dist/index.mjs"}}}'
-    );
-    (pkg / "dist" / "index.mjs").write_text(
-        "export function getConfig() {}\nexport function getDerived() {}\n"
-    );
-    (pkg / "dist" / "index.d.ts").write_text(
-        "export interface Config {\n"
-        "    theme: string;\n"
-        "    retries: number;\n"
-        "    debug?: boolean;\n"
-        "    tags: string[];\n"
-        "    payload: any;\n"
-        "}\n"
-        "export interface Base { id: string; }\n"
-        "export interface Derived extends Base { extra: number; }\n"
-        "export declare function getConfig(): Config;\n"
-        "export declare function getDerived(): Derived;\n"
-    );
-    (proj_dir / "jac.toml").write_text(
-        '[project]\nname = "ifacefixture"\nversion = "0.1.0"\n'
-        'entry-point = "lib/app.cl.jac"\n\n'
-        '[dependencies.npm]\ncfgpkg = "^1.0.0"\n'
-    );
-    (proj_dir / "lib").mkdir(parents=True, exist_ok=True);
-    return proj_dir;
-}
-
-def _check(path: Path) -> tuple[JacProgram, list[str]] {
-    program = JacProgram();
-    mod = program.compile(str(path));
-    TypeCheckPass(ir_in=mod, prog=program);
-    codes = [
-        e.code.code
-        for e in program.errors_had
-        if e.code is not None
-    ];
-    return (program, codes);
-}
-
-def _pretty(program: JacProgram) -> str {
-    return "\n".join([e.pretty_print() for e in program.errors_had]);
+import from .checker_npm_harness {
+    check_npm_file,
+    make_iface_npm_project,
+    pretty_checker_errors
 }
 
 test "interface field access resolves with correct types" {
     with TemporaryDirectory() as td {
-        proj = _make_iface_project(Path(td));
+        proj = make_iface_npm_project(Path(td));
         f = proj / "lib" / "app.cl.jac";
         f.write_text(
             'cl import from "cfgpkg" { getConfig, getDerived }\n\n'
@@ -79,18 +30,18 @@ test "interface field access resolves with correct types" {
             '    return theme;\n'
             '}\n'
         );
-        (program, codes) = _check(f);
+        (program, err_codes, _) = check_npm_file(f);
         assert len(program.errors_had) == 0 , f"Interface field access should type-check cleanly, got "
-        f"{len(program.errors_had)} diagnostic(s):\n{_pretty(program)}";
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
     }
 }
 
 test "whole-object assignment of a synthetic interface stays lenient" {
     with TemporaryDirectory() as td {
-        proj = _make_iface_project(Path(td));
+        proj = make_iface_npm_project(Path(td));
         f = proj / "lib" / "lenient.cl.jac";
-        # A synthetic interface value flowing across a whole-object boundary
-        # into a mismatched annotation must NOT error (Phase 4-v1 leniency),
+        # A synthetic interface *value* (source) flowing into a mismatched Jac
+        # annotation must NOT error (Phase 4-v1 src-side gradual typing),
         # replicating the foreign-any suppressor it replaces. Member access
         # (proven precise in the sibling tests) is unaffected.
         f.write_text(
@@ -100,15 +51,37 @@ test "whole-object assignment of a synthetic interface stays lenient" {
             '    return x;\n'
             '}\n'
         );
-        (program, codes) = _check(f);
+        (program, err_codes, _) = check_npm_file(f);
         assert len(program.errors_had) == 0 , f"Whole-object assignment of a synthetic interface should be "
-        f"lenient, got {len(program.errors_had)} diagnostic(s):\n{_pretty(program)}";
+        f"lenient, got {len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(
+            program
+        )}";
+    }
+}
+
+test "assigning a concrete Jac value into a synthetic interface annotation errors" {
+    with TemporaryDirectory() as td {
+        proj = make_iface_npm_project(Path(td));
+        f = proj / "lib" / "dest_strict.cl.jac";
+        # Dest-side synthetic annotations must still reject incompatible Jac
+        # values (str/int into Config). Leniency is only for external sources.
+        f.write_text(
+            'cl import from "cfgpkg" { Config }\n\n'
+            'def:pub bad() -> None {\n'
+            '    c: Config = "hello";\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) > 0 , f"Expected a type error assigning str into Config, got none";
+        assert any(c in ("E1001", "E1002", "E1035") for c in err_codes) , f"Expected an assignment type error, got codes {err_codes}:\n{pretty_checker_errors(
+            program
+        )}";
     }
 }
 
 test "interface imported directly as a type annotation resolves fields" {
     with TemporaryDirectory() as td {
-        proj = _make_iface_project(Path(td));
+        proj = make_iface_npm_project(Path(td));
         f = proj / "lib" / "annot.cl.jac";
         # Config is imported and used directly as an annotation (type position),
         # not just inferred from a return type. Field access on the annotated
@@ -121,15 +94,15 @@ test "interface imported directly as a type annotation resolves fields" {
             '    return theme;\n'
             '}\n'
         );
-        (program, codes) = _check(f);
+        (program, err_codes, _) = check_npm_file(f);
         assert len(program.errors_had) == 0 , f"Interface used directly as an annotation should resolve, got "
-        f"{len(program.errors_had)} diagnostic(s):\n{_pretty(program)}";
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
     }
 }
 
 test "an any-typed interface field flows gradually like untyped JS" {
     with TemporaryDirectory() as td {
-        proj = _make_iface_project(Path(td));
+        proj = make_iface_npm_project(Path(td));
         f = proj / "lib" / "gradual.cl.jac";
         # `payload: any` resolves to a *foreign* any (not the opaque `object`
         # that rejects everything), so it flows gradually into a concrete-typed
@@ -143,15 +116,15 @@ test "an any-typed interface field flows gradually like untyped JS" {
             '    return s;\n'
             '}\n'
         );
-        (program, codes) = _check(f);
+        (program, err_codes, _) = check_npm_file(f);
         assert len(program.errors_had) == 0 , f"An any-typed interface field should flow gradually, got "
-        f"{len(program.errors_had)} diagnostic(s):\n{_pretty(program)}";
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
     }
 }
 
 test "accessing a nonexistent interface field errors" {
     with TemporaryDirectory() as td {
-        proj = _make_iface_project(Path(td));
+        proj = make_iface_npm_project(Path(td));
         f = proj / "lib" / "bad.cl.jac";
         f.write_text(
             'cl import from "cfgpkg" { getConfig }\n\n'
@@ -160,8 +133,8 @@ test "accessing a nonexistent interface field errors" {
             '    return c.nonexistent_field;\n'
             '}\n'
         );
-        (program, codes) = _check(f);
-        assert "E1030" in codes , f"Expected E1030 (no attribute) for a bogus field, got codes {codes}:"
-        f"\n{_pretty(program)}";
+        (program, err_codes, _) = check_npm_file(f);
+        assert "E1030" in err_codes , f"Expected E1030 (no attribute) for a bogus field, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
     }
 }

@@ -276,7 +276,10 @@ Defaults for `jac check`:
 ```toml
 [check]
 print_errs = true   # Print errors to console
+untyped-external = "warn"   # "error" escalates undeclared npm/PyPI imports to E1120
 ```
+
+`untyped-external` controls how `jac check` reports imports from external modules that ship no type information (no `.d.ts` for client npm packages, no `py.typed`/`.pyi` on the Python side). The default warns once per import with **`W1102`** and types the binding as foreign `any`. Set `untyped-external = "error"` to require declarations and emit **`E1120`** instead. See [npm import type checking](../plugins/jac-client.md#npm-import-type-checking-jac-check) in the jac-client reference.
 
 #### [check.lint]
 

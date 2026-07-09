@@ -55,6 +55,30 @@ test "namespace with export-equals promotes members" {
     assert r["version"].ty.name == "string";
 }
 
+test "namespace interface members parse with heritage" {
+    src = (
+        "declare namespace Lib {\n"
+        "    export interface Base { id: string; }\n"
+        "    export interface Config extends Base {\n"
+        "        theme: string;\n"
+        "        debug?: boolean;\n"
+        "    }\n"
+        "}\n"
+        "export = Lib;\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    cfg = r["Config"];
+    assert cfg.kind == "interface";
+    assert cfg.heritage == ["Base"];
+    by_name = {m.name: m for m in cfg.members};
+    assert set(by_name.keys()) == {"theme", "debug"};
+    assert by_name["theme"].ty.name == "string";
+    assert by_name["debug"].optional and by_name["debug"].ty.name == "boolean";
+    base = r["Base"];
+    assert {m.name for m in base.members} == {"id"};
+}
+
 test "optional and rest parameters carry through" {
     src = "export declare function greet(name: string, punct?: string, ...rest: any[]): void;\n";
     r = parse_dts(src);

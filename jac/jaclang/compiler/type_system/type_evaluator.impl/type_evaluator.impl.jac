@@ -2771,8 +2771,7 @@ impl TypeEvaluator.assign_type(
         return True;
     }
 
-    if (isinstance(src_type, types.ClassType) and src_type.shared.is_ts_synthetic)
-    or (isinstance(dest_type, types.ClassType) and dest_type.shared.is_ts_synthetic) {
+    if isinstance(src_type, types.ClassType) and src_type.shared.is_ts_synthetic {
         return True;
     }
 

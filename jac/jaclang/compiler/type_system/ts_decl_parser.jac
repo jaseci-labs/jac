@@ -1005,20 +1005,60 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                         tname, TsDecl(name=tname, kind='typealias', ty=aty)
                     );
                 }
-            } elif (is_id('interface') or is_id('class') or is_id('enum')) {
-                dkind = val_at();
+            } elif eat_id('interface') {
+                iname = val_at();
                 advance();
-                dname = val_at() if kind_at() == 'id' else '';
-                advance();
-                if is_p('<') {
-                    collect_generics();
+                itvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(itvs);
+                try {
+                    iheritage = parse_heritage();
+                    imembers = parse_members();
+                } finally {
+                    typevar_stack.pop();
                 }
-                while (pos < n and not is_p('{')) {
+                if iname {
+                    ns_decls.setdefault(
+                        iname,
+                        TsDecl(
+                            name=iname,
+                            kind='interface',
+                            members=imembers,
+                            heritage=iheritage,
+                        ),
+                    );
+                }
+            } elif eat_id('class') {
+                cname = val_at();
+                advance();
+                ctvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(ctvs);
+                try {
+                    cheritage = parse_heritage();
+                    cmembers = parse_members();
+                } finally {
+                    typevar_stack.pop();
+                }
+                if cname {
+                    ns_decls.setdefault(
+                        cname,
+                        TsDecl(
+                            name=cname,
+                            kind='class',
+                            members=cmembers,
+                            heritage=cheritage,
+                        ),
+                    );
+                }
+            } elif eat_id('enum') {
+                ename = val_at() if kind_at() == 'id' else '';
+                if ename {
                     advance();
                 }
-                skip_balanced('{', '}');
-                if dname {
-                    ns_decls.setdefault(dname, TsDecl(name=dname, kind=dkind));
+                if is_p('{') {
+                    skip_balanced('{', '}');
+                }
+                if ename {
+                    ns_decls.setdefault(ename, TsDecl(name=ename, kind='enum'));
                 }
             } elif (is_id('namespace') or is_id('module')) {
                 advance();

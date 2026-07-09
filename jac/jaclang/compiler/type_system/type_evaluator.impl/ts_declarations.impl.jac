@@ -95,7 +95,7 @@ impl TypeEvaluator._map_ts_decl(
         return self._map_ts_type(decl.ty, decls);
     }
     if decl.kind in ('interface', 'class') {
-        synth = self._synthesize_ts_interface(decls, item_name);
+        synth = self._synthesize_ts_decl_class(decls, item_name);
         if synth is not None {
             return synth;
         }
@@ -104,13 +104,19 @@ impl TypeEvaluator._map_ts_decl(
 }
 
 impl TypeEvaluator._map_ts_type(
-    ts: object, decls: dict, seen: (set[str] | None) = None
+    ts: object,
+    decls: dict,
+    seen: (set[str] | None) = None,
+    synth_interfaces: bool = True,
 ) -> TypeBase {
     foreign_any = types.AnyType(is_foreign=True);
     if ts is None or self.prefetch is None {
         return foreign_any;
     }
     k = ts.kind;
+    if k == 'any' {
+        return foreign_any;
+    }
     if k == 'never' {
         return types.NeverType();
     }
@@ -122,7 +128,10 @@ impl TypeEvaluator._map_ts_type(
             'string': self.prefetch.str_class,
             'number': self.prefetch.float_class,
             'boolean': self.prefetch.bool_class,
-            'object': self.prefetch.object_class
+            'object': self.prefetch.object_class,
+            'symbol': self.prefetch.object_class,
+            'bigint': self.prefetch.int_class,
+
         }.get(
             ts.name
         );
@@ -159,15 +168,17 @@ impl TypeEvaluator._map_ts_type(
     }
     if k == 'union' {
         return types.UnionType(
-            types=[self._map_ts_type(m, decls, seen) for m in ts.args]
+            types=[self._map_ts_type(m, decls, seen, synth_interfaces) for m in ts.args]
         );
     }
     if (k in ('array', 'tuple') and self.prefetch.list_class) {
         elem: TypeBase = foreign_any;
         if k == 'array' and ts.args {
-            elem = self._map_ts_type(ts.args[0], decls, seen);
+            elem = self._map_ts_type(ts.args[0], decls, seen, synth_interfaces);
         } elif (k == 'tuple' and ts.args) {
-            mapped = [self._map_ts_type(a, decls, seen) for a in ts.args];
+            mapped = [
+                self._map_ts_type(a, decls, seen, synth_interfaces) for a in ts.args
+            ];
             elem = mapped[0] if len(mapped) == 1 else types.UnionType(types=mapped);
         }
         lst = self.prefetch.list_class.clone_as_instance();
@@ -180,7 +191,9 @@ impl TypeEvaluator._map_ts_type(
             if p.rest {
                 elem_ty: TypeBase = types.AnyType(is_foreign=True);
                 if (p.ty is not None and p.ty.kind == 'array' and p.ty.args) {
-                    elem_ty = self._map_ts_type(p.ty.args[0], decls, seen);
+                    elem_ty = self._map_ts_type(
+                        p.ty.args[0], decls, seen, synth_interfaces
+                    );
                 }
                 parameters.append(
                     types.Parameter(
@@ -196,7 +209,7 @@ impl TypeEvaluator._map_ts_type(
                 types.Parameter(
                     name=p.name or f"p{idx}",
                     category=types.ParameterCategory.Positional,
-                    param_type=self._map_ts_type(p.ty, decls, seen)
+                    param_type=self._map_ts_type(p.ty, decls, seen, synth_interfaces)
                         if p.ty is not None
                         else types.AnyType(is_foreign=True),
                     has_default=p.optional,
@@ -205,7 +218,7 @@ impl TypeEvaluator._map_ts_type(
         }
         ret: TypeBase = types.AnyType(is_foreign=True);
         if ts.ret is not None {
-            ret = self._map_ts_type(ts.ret, decls, seen);
+            ret = self._map_ts_type(ts.ret, decls, seen, synth_interfaces);
         }
         return types.FunctionType(func_name='', return_type=ret, parameters=parameters);
     }
@@ -221,10 +234,22 @@ impl TypeEvaluator._map_ts_type(
             target is not None and target.kind == 'typealias' and target.ty is not None
         ) {
             seen.add(ts.name);
-            return self._map_ts_type(target.ty, decls, seen);
+            return self._map_ts_type(target.ty, decls, seen, synth_interfaces);
         }
         if target is not None and target.kind in ('interface', 'class') {
-            synth = self._synthesize_ts_interface(decls, ts.name);
+            if not synth_interfaces {
+                stub_table = (
+                    self.prefetch.object_class.shared.symbol_table
+                        if self.prefetch.object_class
+                        else None
+                );
+                return types.ClassType(
+                    _shared=types.ClassType.ClassDetailsShared(
+                        class_name=ts.name, symbol_table=stub_table
+                    )
+                );
+            }
+            synth = self._synthesize_ts_decl_class(decls, ts.name);
             if synth is not None {
                 return self._convert_to_instance(synth);
             }
@@ -234,63 +259,77 @@ impl TypeEvaluator._map_ts_type(
     return foreign_any;
 }
 
+impl TypeEvaluator._jac_type_to_pyannot(ty: TypeBase) -> str {
+    if isinstance(ty, types.AnyType) {
+        return "Any";
+    }
+    if isinstance(ty, types.NeverType) {
+        return "object";
+    }
+    if isinstance(ty, types.UnionType) {
+        ordered: list[str] = [];
+        for member in ty.types {
+            part = self._jac_type_to_pyannot(member);
+            if part not in ordered {
+                ordered.append(part);
+            }
+        }
+        return " | ".join(ordered) if ordered else "object";
+    }
+    if isinstance(ty, types.ClassType) {
+        if (
+            self.prefetch
+            and self.prefetch.none_type_class
+            and ty.shared == self.prefetch.none_type_class.shared
+        ) {
+            return "None";
+        }
+        if ty.is_literal_type() {
+            lit_val = ty.get_literal_value();
+            if isinstance(lit_val, str) {
+                return "str";
+            }
+            if isinstance(lit_val, bool) {
+                return "bool";
+            }
+            if isinstance(lit_val, int) {
+                return "int";
+            }
+            if isinstance(lit_val, float) {
+                return "float";
+            }
+        }
+        if (
+            self.prefetch
+            and self.prefetch.list_class
+            and ty.shared == self.prefetch.list_class.shared
+        ) {
+            if ty.private.type_args {
+                return f"list[{self._jac_type_to_pyannot(ty.private.type_args[0])}]";
+            }
+            return "list";
+        }
+        prim = type_utils.primitive_type_name_of(ty);
+        if prim {
+            return prim;
+        }
+        if ty.shared.class_name {
+            return ty.shared.class_name;
+        }
+    }
+    if isinstance(ty, types.FunctionType) {
+        return "object";
+    }
+    return "object";
+}
+
 impl TypeEvaluator._ts_type_to_pyannot(ts: object, decls: dict) -> str {
     if ts is None {
         return "object";
     }
-    k = ts.kind;
-    if k == 'any' {
-        return "Any";
-    }
-    if k == 'prim' {
-        return {
-            'string': 'str',
-            'number': 'float',
-            'boolean': 'bool',
-            'object': 'object',
-            'symbol': 'object',
-            'bigint': 'int',
-
-        }.get(
-            ts.name, 'object'
-        );
-    }
-    if k == 'void' {
-        return 'None';
-    }
-    if k == 'literal-str' {
-        return 'str';
-    }
-    if k == 'literal-num' {
-        return 'float';
-    }
-    if k == 'literal-bool' {
-        return 'bool';
-    }
-    if k in ('array', 'tuple') {
-        if ts.args {
-            return f"list[{self._ts_type_to_pyannot(ts.args[0], decls)}]";
-        }
-        return 'list';
-    }
-    if k == 'union' {
-        ordered: list[str] = [];
-        for a in ts.args {
-            p = self._ts_type_to_pyannot(a, decls);
-            if p not in ordered {
-                ordered.append(p);
-            }
-        }
-        return " | ".join(ordered) if ordered else 'object';
-    }
-    if k == 'ref' {
-        target = decls.get(ts.name);
-        if target is not None and target.kind in ('interface', 'class') {
-            return ts.name;
-        }
-        return 'object';
-    }
-    return 'object';
+    return self._jac_type_to_pyannot(
+        self._map_ts_type(ts, decls, synth_interfaces=False)
+    );
 }
 
 impl TypeEvaluator._ts_synthetic_module(decls: dict) -> (uni.Module | None) {
@@ -362,7 +401,7 @@ impl TypeEvaluator._ts_synthetic_module(decls: dict) -> (uni.Module | None) {
     return mod;
 }
 
-impl TypeEvaluator._synthesize_ts_interface(
+impl TypeEvaluator._synthesize_ts_decl_class(
     decls: dict, item_name: str
 ) -> (TypeBase | None) {
     mod = self._ts_synthetic_module(decls);
