@@ -132,7 +132,8 @@ impl JacConfig._section_map -> dict {
         "dot": self.dot,
         "cache": self.cache,
         "environment": self.environment,
-        "client": self.client
+        "client": self.client,
+        "plugins": self.plugins_table
     };
 }
 
@@ -314,6 +315,9 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
                 self.plugins[_feat] = data[_feat];
             }
         }
+    }
+    if "plugins" in data and isinstance(data["plugins"], dict) {
+        _apply_plugins_table(self, data["plugins"]);
     }
 
     if "dependencies" in data {
@@ -667,6 +671,27 @@ impl _parse_include(raw: dict[str, any]) -> PackageIncludeConfig {
     );
 }
 
+def _apply_plugins_table(config: JacConfig, plugins_data: dict) {
+    disabled = plugins_data.get("disabled", []);
+    if isinstance(disabled, list) {
+        config.plugins_table.disabled = [
+            str(name)
+            for name in disabled
+            if isinstance(name, str)
+        ];
+    }
+    for (key, value) in plugins_data.items() {
+        if key in ("disabled", "enabled") or not isinstance(value, dict) {
+            continue;
+        }
+        if key in config.plugins {
+            config.plugins[key] = _deep_merge(config.plugins[key], value);
+        } else {
+            config.plugins[key] = value;
+        }
+    }
+}
+
 impl _parse_toml_data(
     data: dict[str, any], toml_path: Path | None = None
 ) -> JacConfig {
@@ -864,6 +889,9 @@ impl _parse_toml_data(
         if _feat in data and isinstance(data[_feat], dict) {
             config.plugins[_feat] = data[_feat];
         }
+    }
+    if "plugins" in data and isinstance(data["plugins"], dict) {
+        _apply_plugins_table(config, data["plugins"]);
     }
     if "environment" in data {
         env = data["environment"];

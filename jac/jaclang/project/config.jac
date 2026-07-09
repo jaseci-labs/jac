@@ -141,6 +141,10 @@ obj DevConfig {
         test_jobs: str = "auto";
 }
 
+obj PluginsTableConfig {
+    has disabled: list[str] = [];
+}
+
 def interpolate_env_vars(value: str) -> str;
 
 def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
@@ -173,6 +177,7 @@ obj JacConfig {
         plugin_dependencies: dict[str, dict[str, any]] = {},
         scripts: dict[str, str] = {},
         plugins: dict[str, dict[str, any]] = {},
+        plugins_table: PluginsTableConfig = PluginsTableConfig(),
         environments: dict[str, dict[str, any]] = {},
         project_root: Path | None = None,
         toml_path: Path | None = None,

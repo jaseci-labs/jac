@@ -1316,6 +1316,37 @@ test "merge storage type mapping" {
     }
 }
 
+test "plugins table disabled from toml" {
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str(
+        '[project]\nname = "test"\n\n[plugins]\n'
+        'disabled = ["somepkg:foo", "other:bar"]\n'
+    );
+    assert cfg.plugins_table.disabled == ["somepkg:foo", "other:bar"];
+}
+
+test "plugins table loads nested plugin config from plugins section" {
+    cfg = JacConfig.from_toml_str(
+        '[project]\nname = "test"\n\n[plugins.byllm]\ndefault_model = "gpt-4"\n'
+    );
+    assert cfg.plugins["byllm"]["default_model"] == "gpt-4";
+}
+
+test "get_disabled_plugins reads plugins table from loaded config" {
+    import from jaclang.jac0core.helpers { get_disabled_plugins }
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[plugins]\ndisabled = ["*"]\n'
+        );
+        cfg = JacConfig.load(toml_path);
+        set_config(cfg);
+        assert get_disabled_plugins() == ["*"];
+        set_config(None);
+    }
+}
+
 test "merge plugins deep nested" {
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {

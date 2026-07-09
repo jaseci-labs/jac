@@ -76,4 +76,6 @@ def config(
     ],
     group="config"
 )
-def plugins(action: str = "list", names: list = [], verbose: bool = False) -> int;
+def plugins(
+    action: str = "list", names: list | None = None, verbose: bool = False
+) -> int;

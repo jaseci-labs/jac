@@ -16,19 +16,28 @@ glob CONFIG_GROUPS = [
      ];
 
 def _disabled_plugins_ref(config: object) -> list[str] {
+    return config.plugins_table.disabled;
+}
+
+def _sync_plugins_table_raw(config: object) {
+    disabled = list(config.plugins_table.disabled);
     if not config._raw_data {
         config._raw_data = {};
     }
-    if "plugins" not in config._raw_data
-    or not isinstance(config._raw_data["plugins"], dict) {
-        config._raw_data["plugins"] = {};
+    if disabled {
+        if "plugins" not in config._raw_data
+        or not isinstance(config._raw_data["plugins"], dict) {
+            config._raw_data["plugins"] = {};
+        }
+        config._raw_data["plugins"]["disabled"] = disabled;
+    } elif "plugins" in config._raw_data
+    and isinstance(config._raw_data["plugins"], dict)
+    and "disabled" in config._raw_data["plugins"] {
+        del config._raw_data["plugins"]["disabled"];
+        if not config._raw_data["plugins"] {
+            del config._raw_data["plugins"];
+        }
     }
-    plugins_section = config._raw_data["plugins"];
-    if "disabled" not in plugins_section
-    or not isinstance(plugins_section["disabled"], list) {
-        plugins_section["disabled"] = [];
-    }
-    return plugins_section["disabled"];
 }
 
 def _persist_disabled_plugins(config: object) -> None {
@@ -59,6 +68,7 @@ def _persist_disabled_plugins(config: object) -> None {
         }
     }
     config.persist_doc(doc);
+    _sync_plugins_table_raw(config);
 }
 
 impl plugins(
@@ -397,7 +407,7 @@ impl plugins(
         }
 
         for (
-            short_name,
+            _short_name,
             qualified_name,
             plugin,
             plugin_class_name
@@ -542,7 +552,7 @@ def _config_path {
         }
         if config.config_files and len(config.config_files) > 1 {
             console.print(
-                f"\nLoaded config files (lowest to highest priority):", style="info"
+                "\nLoaded config files (lowest to highest priority):", style="info"
             );
             for (i, path) in enumerate(config.config_files) {
                 label = _config_file_label(path, config.active_profile);
@@ -734,7 +744,7 @@ def _output_table(settings: dict, show_all: bool) -> None {
     max_value = 0;
     max_default = 0;
 
-    for (grp, grp_settings) in settings.items() {
+    for (_grp, grp_settings) in settings.items() {
         for (key, data) in grp_settings.items() {
             max_key = max(max_key, len(key));
             max_value = max(max_value, len(str(data["value"])));
@@ -958,7 +968,7 @@ def _config_set(config: object, key: str, value: str) -> int {
     if config is None {
         result = find_project_root();
         if result {
-            (proj_root, cfg_path) = result;
+            (_, cfg_path) = result;
             config = JacConfig.load(cfg_path);
         } else {
             console.error(

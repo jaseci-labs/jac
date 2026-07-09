@@ -1841,6 +1841,83 @@ test "config no project" {
     }
 }
 
+test "plugins list" {
+    tmp_path = tempfile.mkdtemp();
+    toml_content = '[project]\nname = "test-project"\nversion = "1.0.0"\n';
+    toml_path = os.path.join(tmp_path, "jac.toml");
+    with open(toml_path, "w") as f {
+        f.write(toml_content);
+    }
+    original_cwd = os.getcwd();
+    os.chdir(tmp_path);
+    set_config(None);
+    try {
+        captured = io.StringIO();
+        old_stdout = sys.stdout;
+        sys.stdout = captured;
+        try {
+            result = config_cmd.plugins(action="list");
+        } finally {
+            sys.stdout = old_stdout;
+        }
+        stdout = captured.getvalue();
+        assert result == 0;
+        assert "Installed Jac Plugins" in stdout;
+    } finally {
+        os.chdir(original_cwd);
+        set_config(None);
+        shutil.rmtree(tmp_path, ignore_errors=True);
+    }
+}
+
+test "plugins disable enable wildcard persists jac toml" {
+    import tomllib;
+    tmp_path = tempfile.mkdtemp();
+    toml_content = '[project]\nname = "test-project"\nversion = "1.0.0"\n';
+    toml_path = os.path.join(tmp_path, "jac.toml");
+    with open(toml_path, "w") as f {
+        f.write(toml_content);
+    }
+    original_cwd = os.getcwd();
+    os.chdir(tmp_path);
+    set_config(None);
+    try {
+        result = config_cmd.plugins(action="disable", names=["*"]);
+        assert result == 0;
+        with open(toml_path, "rb") as f {
+            parsed = tomllib.load(f);
+        }
+        assert parsed["plugins"]["disabled"] == ["*"];
+
+        captured = io.StringIO();
+        captured_err = io.StringIO();
+        old_stdout = sys.stdout;
+        old_stderr = sys.stderr;
+        sys.stdout = captured;
+        sys.stderr = captured_err;
+        try {
+            result = config_cmd.plugins(action="disabled");
+        } finally {
+            sys.stdout = old_stdout;
+            sys.stderr = old_stderr;
+        }
+        assert result == 0;
+        combined = captured.getvalue() + captured_err.getvalue();
+        assert "*" in combined;
+
+        result = config_cmd.plugins(action="enable", names=["*"]);
+        assert result == 0;
+        with open(toml_path, "rb") as f {
+            parsed = tomllib.load(f);
+        }
+        assert "plugins" not in parsed or "disabled" not in parsed.get("plugins", {});
+    } finally {
+        os.chdir(original_cwd);
+        set_config(None);
+        shutil.rmtree(tmp_path, ignore_errors=True);
+    }
+}
+
 # --- TestCleanCommand tests ---
 test "clean no project" {
     with tempfile.TemporaryDirectory() as tmpdir {
