@@ -1,4 +1,15 @@
+"""IPC frame parsing: host state frames -> TuiState mutations.
+
+The host streams newline-delimited frames of `KEY:value` lines separated
+by FRAME_SEP, with keys drawn from ipc_schema. Event lines pack extra
+colon-separated sub-fields; their text is escaped by the sv serializer
+(tui_shared _esc_text/_esc_field: backslash, newline, and — for fields
+only — colon), and _unescape here is the exact inverse. Event text keeps
+raw colons on the wire, so parsers must split a fixed number of times
+and treat the remainder as opaque payload.
+"""
 import from .state { TuiState, EventKind, TuiStatus }
+import from .util { parse_int_or, split_kv }
 import from .ipc_schema {
     FIELD_TYPE,
     FIELD_STATUS,
@@ -14,6 +25,12 @@ import from .ipc_schema {
     FRAME_SEP
 }
 
+glob _UNESCAPE_MAP: dict[str, str] = {"n": "\n", "\\": "\\", "c": ":"};
+
+# FROZEN: CI regex-greps `def parse_event_kind` and its `s == "..."`
+# literal-comparison if-chain body shape — do not rewrite this def as a
+# match statement or dict lookup, and do not reorder its branches.
+"""Map a wire event-kind token to its EventKind ("tool" aliases CALL)."""
 def parse_event_kind(s: str) -> EventKind {
     if s == "user" {
         return EventKind.USER;
@@ -51,6 +68,7 @@ def parse_event_kind(s: str) -> EventKind {
     return EventKind.UNKNOWN;
 }
 
+"""Map a wire status token to its TuiStatus member."""
 def parse_tui_status(s: str) -> TuiStatus {
     if s == "idle" {
         return TuiStatus.IDLE;
@@ -61,84 +79,68 @@ def parse_tui_status(s: str) -> TuiStatus {
     return TuiStatus.UNKNOWN;
 }
 
+"""Decode wire escaping — the exact inverse of sv _esc_text/_esc_field.
+
+Recognized pairs are backslash-n (newline), doubled backslash, and
+backslash-c (colon); any other backslash, including one ending the
+string, passes through unchanged.
+"""
 def _unescape(s: str) -> str {
-    result: str = "";
-    i: int = 0;
+    parts: list[str] = [];
     slen = len(s);
+    i: int = 0;
     while i < slen {
         c = s[i];
         if c == "\\" and i + 1 < slen {
-            nc = s[i + 1];
-            if nc == "n" {
-                result = result + "\n";
-                i = i + 2;
-                continue;
-            }
-            if nc == "\\" {
-                result = result + "\\";
-                i = i + 2;
-                continue;
-            }
-            if nc == "c" {
-                result = result + ":";
-                i = i + 2;
+            decoded = _UNESCAPE_MAP.get(s[i + 1], "");
+            if decoded {
+                parts.append(decoded);
+                i += 2;
                 continue;
             }
         }
-        result = result + c;
-        i = i + 1;
+        parts.append(c);
+        i += 1;
     }
-    return result;
+    return "".join(parts);
 }
 
-def _parse_ev_val(state: TuiState, val: str) -> None {
-    i1 = val.find(":");
-    if i1 < 0 {
+"""Apply an EV value `id:kind:node:text` — upsert the event.
+
+node and text are wire-escaped; text may contain raw colons, so only
+the first three separators split fields. Malformed values are ignored.
+"""
+def _parse_ev_val(state: TuiState, val: str) {
+    if ":" not in val {
         return;
     }
-    id_str = val[:i1];
-    rest1 = val[i1 + 1:];
-
-    i2 = rest1.find(":");
-    if i2 < 0 {
+    (id_str, rest) = split_kv(val, ":");
+    if ":" not in rest {
         return;
     }
-    kind = rest1[:i2];
-    rest2 = rest1[i2 + 1:];
-
-    i3 = rest2.find(":");
-    if i3 < 0 {
+    (kind, rest2) = split_kv(rest, ":");
+    if ":" not in rest2 {
         return;
     }
-    node_name = _unescape(rest2[:i3]);
-    text_esc = rest2[i3 + 1:];
-    text = _unescape(text_esc);
-
-    ev_id: int = 0;
-    try {
-        ev_id = int(id_str);
-    } except Exception { }
-
-    state.upsert_event(ev_id, parse_event_kind(kind), text, node_name);
+    (node_esc, text_esc) = split_kv(rest2, ":");
+    state.upsert_event(
+        parse_int_or(id_str, 0),
+        parse_event_kind(kind),
+        _unescape(text_esc),
+        _unescape(node_esc)
+    );
 }
 
-def _parse_eva_val(state: TuiState, val: str) -> None {
-    i1 = val.find(":");
-    if i1 < 0 {
+"""Apply an EVA value `id:delta` — append the wire-escaped delta."""
+def _parse_eva_val(state: TuiState, val: str) {
+    if ":" not in val {
         return;
     }
-    id_str = val[:i1];
-    delta_esc = val[i1 + 1:];
-    delta = _unescape(delta_esc);
-
-    ev_id: int = 0;
-    try {
-        ev_id = int(id_str);
-    } except Exception { }
-
-    state.append_to_event(ev_id, delta);
+    (id_str, delta_esc) = split_kv(val, ":");
+    state.append_to_event(parse_int_or(id_str, 0), _unescape(delta_esc));
 }
 
+"""Apply one `key:val` frame line; scalar field updates mark state dirty."""
 def ipc_apply_line(state: TuiState, key: str, val: str) {
     if key == FIELD_EV {
         _parse_ev_val(state, val);
@@ -165,55 +167,46 @@ def ipc_apply_line(state: TuiState, key: str, val: str) {
     state.dirty = True;
 }
 
+"""Parse one frame blob into state changes; always True (reader contract).
+
+Each line is split once into (key, val); separators, length prefixes,
+and non-KV noise are dropped. A heartbeat frame is a no-op; a full
+frame resets events before the lines are applied in wire order.
+"""
 def ipc_parse_frame(state: TuiState, blob: str) -> bool {
-    lines: list[str] = [];
+    pairs: list[tuple[str, str]] = [];
     for raw in blob.split("\n") {
         line = raw.strip();
-        if line == FRAME_SEP {
+        if not line or line == FRAME_SEP or ":" not in line {
             continue;
         }
-        colon_at = line.find(":");
-        if colon_at >= 0 and line[:colon_at] == FIELD_LEN {
-            continue;
-        }
-        if len(line) > 0 {
-            lines.append(line);
+        (key, val) = split_kv(line, ":");
+        if key != FIELD_LEN {
+            pairs.append((key, val));
         }
     }
-
-    if len(lines) == 0 {
+    if not pairs {
         return True;
     }
 
     frame_type: str = "";
-    for line in lines {
-        colon_at = line.find(":");
-        if colon_at >= 0 and line[:colon_at] == FIELD_TYPE {
-            frame_type = line[colon_at + 1:];
+    for pair in pairs {
+        if pair[0] == FIELD_TYPE {
+            frame_type = pair[1];
             break;
         }
     }
-
     if frame_type == FTYPE_HB {
         return True;
     }
-
     if frame_type == FTYPE_FULL {
         state.reset_events();
     }
 
-    for line in lines {
-        colon_at = line.find(":");
-        if colon_at < 0 {
-            continue;
+    for pair in pairs {
+        if pair[0] != FIELD_TYPE {
+            ipc_apply_line(state, pair[0], pair[1]);
         }
-        key = line[:colon_at];
-        if key == FIELD_TYPE {
-            continue;
-        }
-        val = line[colon_at + 1:];
-        ipc_apply_line(state, key, val);
     }
-
     return True;
 }

@@ -1,351 +1,287 @@
-import from .terminal { ansi_sgr, term_spaces, term_dashes }
+"""Markdown-to-ANSI renderer for feed rows.
+
+md_render turns model-output markdown into width-padded, SGR-styled
+terminal rows: #/##/### headings, code fences (verbatim body), horizontal
+rules, -/*/+ bullets and "N." ordered items with hanging-indent wrap,
+> blockquotes, and word-wrapped paragraphs. Inline spans (code, bold,
+italic, strike, hyperlinks) restyle mid-line and reset back to the
+surrounding block style. Emitted escape bytes are golden-gated: the
+concat order of every row is deliberate.
+
+NOTE ON STYLE: the three loops below deliberately walk by index where sv
+house style would use for-in/enumerate — na's refcount machinery double-
+frees a string that is (a) rebound from a for-in loop var, (b) used as a
+concat operand while being a for-in loop var, or (c) picked between two
+params by a ternary; a def returning an imported glob str corrupts the
+glob the same way. Each site carries a WHY comment; index reads are safe.
+"""
+
+import from .terminal {
+    ANSI_BOLD,
+    ANSI_FG_YELLOW,
+    ANSI_ITALIC,
+    ANSI_RESET,
+    ANSI_STRIKE,
+    Rgb,
+    ansi_sgr,
+    term_spaces,
+    term_dashes
+}
 import from .width { visible_width, ansi_pad }
 import from .terminal_image { term_hyperlink }
 import from .theme {
-    TH_BG_R,
-    TH_BG_G,
-    TH_BG_B,
-    TH_MD_H1_R,
-    TH_MD_H1_G,
-    TH_MD_H1_B,
-    TH_MD_H2_R,
-    TH_MD_H2_G,
-    TH_MD_H2_B,
-    TH_MD_H3_R,
-    TH_MD_H3_G,
-    TH_MD_H3_B,
-    TH_MD_CODE_R,
-    TH_MD_CODE_G,
-    TH_MD_CODE_B,
-    TH_MD_CODE_BG_R,
-    TH_MD_CODE_BG_G,
-    TH_MD_CODE_BG_B,
-    TH_MD_FENCE_R,
-    TH_MD_FENCE_G,
-    TH_MD_FENCE_B,
-    TH_MD_BQ_R,
-    TH_MD_BQ_G,
-    TH_MD_BQ_B,
-    TH_MD_BQ_BAR_R,
-    TH_MD_BQ_BAR_G,
-    TH_MD_BQ_BAR_B,
-    TH_MD_HR_R,
-    TH_MD_HR_G,
-    TH_MD_HR_B,
-    TH_NONE,
-    TH_BOLD,
-    TH_DIM,
-    TH_ITALIC
+    TH_BG,
+    TH_SGR_MD_H1,
+    TH_SGR_MD_H2,
+    TH_SGR_MD_H3,
+    TH_SGR_MD_CODE,
+    TH_SGR_MD_FENCE,
+    TH_SGR_MD_BQ,
+    TH_SGR_MD_BQ_BAR,
+    TH_SGR_MD_HR
 }
 
+glob _HR_MAX_COLS: int = 80;
+
+# --- line classification ---
+
+"""True when s holds nothing but spaces, tabs, and carriage returns."""
 def _md_is_blank(s: str) -> bool {
-    i: int = 0;
-    n = len(s);
-    while i < n {
-        c = s[i];
-        if c != " " and c != "\t" and c != "\r" {
-            return False;
-        }
-        i = i + 1;
-    }
-    return True;
+    return s.strip(" \t\r") == "";
 }
 
+"""True when s opens or closes a ``` code fence."""
 def _md_is_fence(s: str) -> bool {
-    n = len(s);
-    if n < 3 {
-        return False;
-    }
-    return s[0] == "`" and s[1] == "`" and s[2] == "`";
+    return s.startswith("```");
 }
 
+"""Language tag after an opening fence, leading blanks dropped (s must be a fence line)."""
 def _md_fence_lang(s: str) -> str {
-    if len(s) <= 3 {
-        return "";
-    }
-    lang = s[3:];
-    i: int = 0;
-    nl = len(lang);
-    while i < nl and (lang[i] == " " or lang[i] == "\t") {
-        i = i + 1;
-    }
-    return lang[i:];
+    tag = s[3:];
+    return tag.lstrip(" \t");
 }
 
+"""ATX heading level 1-3 when s is a heading line, else 0."""
 def _md_heading_level(s: str) -> int {
-    n = len(s);
-    if n < 2 or s[0] != "#" {
-        return 0;
+    if s.startswith("### ") {
+        return 3;
     }
-    if s[1] == " " {
+    if s.startswith("## ") {
+        return 2;
+    }
+    if s.startswith("# ") {
         return 1;
-    }
-    if s[1] == "#" {
-        if n < 3 {
-            return 0;
-        }
-        if s[2] == " " {
-            return 2;
-        }
-        if s[2] == "#" and n >= 4 and s[3] == " " {
-            return 3;
-        }
     }
     return 0;
 }
 
-def _md_heading_text(s: str, level: int) -> str {
-    h_skip = level + 1;
-    if len(s) <= h_skip {
-        return "";
-    }
-    return s[h_skip:];
-}
-
+"""True when s is a ---/___/*** horizontal rule: >=3 identical marks, spaces allowed."""
 def _md_is_hr(s: str) -> bool {
-    n = len(s);
-    if n < 3 {
+    if len(s) < 3 {
         return False;
     }
-    c = s[0];
-    if c != "-" and c != "_" and c != "*" {
+    mark = s[0];
+    if mark not in "-_*" {
         return False;
     }
-    count: int = 0;
-    i: int = 0;
-    while i < n {
-        ch = s[i];
-        if ch == c {
-            count = count + 1;
-        } else {
-            if ch != " " {
-                return False;
-            }
-        }
-        i = i + 1;
-    }
-    return count >= 3;
+    marks = s.replace(" ", "");
+    return len(marks) >= 3 and marks == mark * len(marks);
 }
 
+"""True when s is an unordered list item ("- ", "* ", or "+ ")."""
 def _md_is_ul(s: str) -> bool {
-    n = len(s);
-    if n < 2 {
+    if len(s) < 2 {
         return False;
     }
-    c = s[0];
-    return (c == "-" or c == "*" or c == "+") and s[1] == " ";
+    return s[0] in "-*+" and s[1] == " ";
 }
 
-def _md_is_ol(s: str) -> bool {
-    n = len(s);
-    if n < 3 {
-        return False;
-    }
-    i: int = 0;
-    while i < n and s[i] >= "0" and s[i] <= "9" {
-        i = i + 1;
-    }
-    if i == 0 or i + 1 >= n {
-        return False;
-    }
-    return s[i] == "." and s[i + 1] == " ";
-}
-
+"""Index just past the "N. " marker when s is an ordered list item, else -1."""
 def _md_ol_marker_end(s: str) -> int {
     n = len(s);
-    i: int = 0;
-    while i < n and s[i] >= "0" and s[i] <= "9" {
-        i = i + 1;
+    digits: int = 0;
+    while digits < n and s[digits].isdigit() {
+        digits += 1;
     }
-    return i + 2;
-}
-
-def _md_is_bq(s: str) -> bool {
-    return len(s) >= 1 and s[0] == ">";
-}
-
-def _md_bq_text(s: str) -> str {
-    if len(s) <= 1 {
-        return "";
+    if digits == 0 or digits + 1 >= n {
+        return -1;
     }
-    if s[1] == " " {
-        return s[2:];
-    }
-    return s[1:];
-}
-
-def _md_find_close(s: str, start: int, delim: str, dlen: int) -> int {
-    n = len(s);
-    i: int = start;
-    while i + dlen <= n {
-        if s[i:i + dlen] == delim {
-            return i;
-        }
-        i = i + 1;
+    if s[digits] == "." and s[digits + 1] == " " {
+        return digits + 2;
     }
     return -1;
 }
 
+"""True when s is a blockquote line."""
+def _md_is_bq(s: str) -> bool {
+    return s.startswith(">");
+}
+
+"""Quote body of a blockquote line; "> text" and ">text" both yield "text"."""
+def _md_bq_text(s: str) -> str {
+    return s[2:] if s.startswith("> ") else s[1:];
+}
+
+# --- inline spans ---
+
+"""Index of the next occurrence of delim at or after start in s, or -1."""
+def _md_find_close(s: str, start: int, delim: str) -> int {
+    tail = s[start:];
+    at = tail.find(delim);
+    return start + at if at >= 0 else -1;
+}
+
+"""Style inline code/bold/italic/strike/link spans in one line, resetting
+back to base_sgr after each span. Unclosed delimiters pass through as
+literal text. The four delimiter blocks stay explicit (single `*` demands
+non-empty content, the others allow empty) and accumulate via concat —
+kept byte-for-byte on the original emission shapes, which are golden-gated
+and proven safe against na's refcount aliasing bugs."""
 def _md_apply_inline(s: str, base_sgr: str) -> str {
     result: str = "";
-    i: int = 0;
     n = len(s);
+    i: int = 0;
     while i < n {
         c = s[i];
 
         if c == "`" {
-            j = _md_find_close(s, i + 1, "`", 1);
-            if j >= 0 {
-                result = result + "\033[33m" + s[i + 1:j] + "\033[0m" + base_sgr;
-                i = j + 1;
+            close_at = _md_find_close(s, i + 1, "`");
+            if close_at >= 0 {
+                result = result + ANSI_FG_YELLOW + s[i + 1:close_at] + ANSI_RESET + base_sgr;
+                i = close_at + 1;
                 continue;
             }
         }
 
         if c == "*" and i + 1 < n and s[i + 1] == "*" {
-            j = _md_find_close(s, i + 2, "**", 2);
-            if j >= 0 {
-                result = result + "\033[1m" + s[i + 2:j] + "\033[0m" + base_sgr;
-                i = j + 2;
+            close_at = _md_find_close(s, i + 2, "**");
+            if close_at >= 0 {
+                result = result + ANSI_BOLD + s[i + 2:close_at] + ANSI_RESET + base_sgr;
+                i = close_at + 2;
                 continue;
             }
         }
 
         if c == "*" and (i + 1 >= n or s[i + 1] != "*") {
-            j = _md_find_close(s, i + 1, "*", 1);
-            if j > i + 1 {
-                result = result + "\033[3m" + s[i + 1:j] + "\033[0m" + base_sgr;
-                i = j + 1;
+            close_at = _md_find_close(s, i + 1, "*");
+            if close_at > i + 1 {
+                result = result + ANSI_ITALIC + s[i + 1:close_at] + ANSI_RESET + base_sgr;
+                i = close_at + 1;
                 continue;
             }
         }
 
         if c == "~" and i + 1 < n and s[i + 1] == "~" {
-            j = _md_find_close(s, i + 2, "~~", 2);
-            if j >= 0 {
-                result = result + "\033[9m" + s[i + 2:j] + "\033[0m" + base_sgr;
-                i = j + 2;
+            close_at = _md_find_close(s, i + 2, "~~");
+            if close_at >= 0 {
+                result = result + ANSI_STRIKE + s[i + 2:close_at] + ANSI_RESET + base_sgr;
+                i = close_at + 2;
                 continue;
             }
         }
 
         if c == "[" {
-            j = _md_find_close(s, i + 1, "]", 1);
-            if j > i {
-                if j + 1 < n {
-                    if s[j + 1] == "(" {
-                        k = _md_find_close(s, j + 2, ")", 1);
-                        if k > j + 1 {
-                            link_text = s[i + 1:j];
-                            link_url = s[j + 2:k];
-                            result = result + term_hyperlink(link_text, link_url);
-                            i = k + 1;
-                            continue;
-                        }
-                    }
+            close_bracket = _md_find_close(s, i + 1, "]");
+            if (close_bracket > i
+                and close_bracket + 1 < n
+                and s[close_bracket + 1] == "(") {
+                close_paren = _md_find_close(s, close_bracket + 2, ")");
+                if close_paren > close_bracket + 1 {
+                    link_text = s[i + 1:close_bracket];
+                    link_url = s[close_bracket + 2:close_paren];
+                    result = result + term_hyperlink(link_text, link_url);
+                    i = close_paren + 1;
+                    continue;
                 }
             }
         }
 
         result = result + s[i];
-        i = i + 1;
+        i += 1;
     }
     return result;
 }
 
+# --- wrapping and row emission ---
+
+"""Greedy word-wrap of a styled line to width columns; every emitted row is
+padded to width and reset. Always yields at least one row."""
 def _md_wrap(styled: str, width: int, base_sgr: str) -> list[str] {
-    result: list[str] = [];
-    words = styled.split(" ");
+    rows: list[str] = [];
     current: str = "";
     current_w: int = 0;
-    i: int = 0;
-    nw = len(words);
+    words = styled.split(" ");
 
-    while i < nw {
-        word = words[i];
-        ww = visible_width(word);
-
+    # Index walk, not for-in: `current = word` would alias a for-in loop
+    # var, which trips an na refcount double-free (index reads are safe).
+    word_count = len(words);
+    wi: int = 0;
+    while wi < word_count {
+        word = words[wi];
+        wi += 1;
+        word_w = visible_width(word);
         if current_w == 0 {
             current = word;
-            current_w = ww;
+            current_w = word_w;
+        } elif current_w + 1 + word_w <= width {
+            current = current + " " + word;
+            current_w += 1 + word_w;
         } else {
-            if current_w + 1 + ww <= width {
-                current = current + " " + word;
-                current_w = current_w + 1 + ww;
-            } else {
-                result.append(base_sgr + ansi_pad(current, width) + "\033[0m");
-                current = word;
-                current_w = ww;
-            }
+            rows.append(base_sgr + ansi_pad(current, width) + ANSI_RESET);
+            current = word;
+            current_w = word_w;
         }
-        i = i + 1;
     }
 
-    if current_w > 0 or len(result) == 0 {
-        result.append(base_sgr + ansi_pad(current, width) + "\033[0m");
+    if current_w > 0 or len(rows) == 0 {
+        rows.append(base_sgr + ansi_pad(current, width) + ANSI_RESET);
     }
-
-    return result;
+    return rows;
 }
 
-def _md_append(src: list[str], dst: list[str]) {
+"""Append wrapped rows to out with a hanging indent: the first row carries
+first_prefix, continuation rows carry cont_prefix, all painted in sgr."""
+def _md_emit_wrapped(
+    wrapped: list[str],
+    out: list[str],
+    sgr: str,
+    first_prefix: str,
+    cont_prefix: str
+) {
+    # Index walk, not for-in/enumerate: a for-in loop var used as a concat
+    # operand trips an na refcount double-free, as does selecting a prefix
+    # param via ternary (`a if cond else b` aliases the chosen param).
+    n = len(wrapped);
     i: int = 0;
-    n = len(src);
     while i < n {
-        dst.append(src[i]);
-        i = i + 1;
+        if i == 0 {
+            out.append(sgr + first_prefix + wrapped[i]);
+        } else {
+            out.append(sgr + cont_prefix + wrapped[i]);
+        }
+        i += 1;
     }
 }
 
-def md_render(text: str, width: int, r: int, g: int, b: int, attrs: int) -> list[str] {
-    base_sgr = ansi_sgr(r, g, b, TH_BG_R, TH_BG_G, TH_BG_B, attrs);
+# --- block renderer ---
+
+"""Render markdown text into width-column ANSI rows in the given base
+color/attrs. Returns a fresh list per call. Fenced code renders verbatim
+(no inline styling); list items and blockquotes wrap under a hanging
+indent; everything else word-wraps as a styled paragraph."""
+def md_render(text: str, width: int, color: Rgb, attrs: int) -> list[str] {
+    base_sgr = ansi_sgr(color, TH_BG, attrs);
     result: list[str] = [];
-
-    h1_sgr = ansi_sgr(
-        TH_MD_H1_R, TH_MD_H1_G, TH_MD_H1_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD
-    );
-    h2_sgr = ansi_sgr(
-        TH_MD_H2_R, TH_MD_H2_G, TH_MD_H2_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD
-    );
-    h3_sgr = ansi_sgr(
-        TH_MD_H3_R, TH_MD_H3_G, TH_MD_H3_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD
-    );
-    code_line_sgr = ansi_sgr(
-        TH_MD_CODE_R,
-        TH_MD_CODE_G,
-        TH_MD_CODE_B,
-        TH_MD_CODE_BG_R,
-        TH_MD_CODE_BG_G,
-        TH_MD_CODE_BG_B,
-        TH_NONE
-    );
-    code_fence_sgr = ansi_sgr(
-        TH_MD_FENCE_R, TH_MD_FENCE_G, TH_MD_FENCE_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM
-    );
-    bq_text_sgr = ansi_sgr(
-        TH_MD_BQ_R, TH_MD_BQ_G, TH_MD_BQ_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_ITALIC
-    );
-    bq_bar_sgr = ansi_sgr(
-        TH_MD_BQ_BAR_R,
-        TH_MD_BQ_BAR_G,
-        TH_MD_BQ_BAR_B,
-        TH_BG_R,
-        TH_BG_G,
-        TH_BG_B,
-        TH_NONE
-    );
-    hr_sgr = ansi_sgr(
-        TH_MD_HR_R, TH_MD_HR_G, TH_MD_HR_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM
-    );
-
-    lines = text.split("\n");
     in_fence: bool = False;
-    i: int = 0;
-    nlines = len(lines);
 
-    while i < nlines {
-        line = lines[i];
-
+    # Index walk, not for-in: rebinding a local derived from a for-in loop
+    # var (the \r strip below) trips an na refcount double-free.
+    lines = text.split("\n");
+    line_count = len(lines);
+    line_idx: int = 0;
+    while line_idx < line_count {
+        line = lines[line_idx];
+        line_idx += 1;
         ll = len(line);
         if ll > 0 and line[ll - 1] == "\r" {
             line = line[:ll - 1];
@@ -353,138 +289,81 @@ def md_render(text: str, width: int, r: int, g: int, b: int, attrs: int) -> list
 
         if in_fence {
             if _md_is_fence(line) {
-                close_row = code_fence_sgr + "```";
-                result.append(ansi_pad(close_row, width) + "\033[0m");
+                close_row = TH_SGR_MD_FENCE + "```";
+                result.append(ansi_pad(close_row, width) + ANSI_RESET);
                 in_fence = False;
             } else {
-                code_row = code_line_sgr + "  " + line;
-                result.append(ansi_pad(code_row, width) + "\033[0m");
+                code_row = TH_SGR_MD_CODE + "  " + line;
+                result.append(ansi_pad(code_row, width) + ANSI_RESET);
             }
-            i = i + 1;
             continue;
         }
 
         if _md_is_blank(line) {
-            result.append(base_sgr + ansi_pad("", width) + "\033[0m");
-            i = i + 1;
+            result.append(base_sgr + ansi_pad("", width) + ANSI_RESET);
             continue;
         }
 
         if _md_is_fence(line) {
-            lang = _md_fence_lang(line);
-            fence_label: str = "```";
-            if len(lang) > 0 {
-                fence_label = "```" + lang;
-            }
-            open_row = code_fence_sgr + fence_label;
-            result.append(ansi_pad(open_row, width) + "\033[0m");
+            open_row = TH_SGR_MD_FENCE + "```" + _md_fence_lang(line);
+            result.append(ansi_pad(open_row, width) + ANSI_RESET);
             in_fence = True;
-            i = i + 1;
             continue;
         }
 
         lvl = _md_heading_level(line);
         if lvl > 0 {
-            h_text = _md_heading_text(line, lvl);
-            h_sgr = h1_sgr;
+            h_sgr = TH_SGR_MD_H1;
             if lvl == 2 {
-                h_sgr = h2_sgr;
+                h_sgr = TH_SGR_MD_H2;
             }
             if lvl == 3 {
-                h_sgr = h3_sgr;
+                h_sgr = TH_SGR_MD_H3;
             }
+            h_text = line[lvl + 1:];
             styled = _md_apply_inline(h_text, h_sgr);
             wrapped = _md_wrap(styled, width, h_sgr);
-            _md_append(wrapped, result);
-            i = i + 1;
+            result.extend(wrapped);
             continue;
         }
 
         if _md_is_hr(line) {
-            hr_w = width;
-            if hr_w > 80 {
-                hr_w = 80;
-            }
-            hr_content = hr_sgr + term_dashes(hr_w);
-            result.append(ansi_pad(hr_content, width) + "\033[0m");
-            i = i + 1;
+            rule = TH_SGR_MD_HR + term_dashes(min(width, _HR_MAX_COLS));
+            result.append(ansi_pad(rule, width) + ANSI_RESET);
             continue;
         }
 
         if _md_is_ul(line) {
-            item_text = line[2:];
-            styled = _md_apply_inline(item_text, base_sgr);
-            avail = width - 2;
-            if avail < 1 {
-                avail = 1;
-            }
-            wrapped = _md_wrap(styled, avail, base_sgr);
-            nw = len(wrapped);
-            j: int = 0;
-            while j < nw {
-                if j == 0 {
-                    row = base_sgr + "• " + wrapped[j];
-                } else {
-                    row = base_sgr + "  " + wrapped[j];
-                }
-                result.append(row);
-                j = j + 1;
-            }
-            i = i + 1;
+            body = line[2:];
+            styled = _md_apply_inline(body, base_sgr);
+            wrapped = _md_wrap(styled, max(1, width - 2), base_sgr);
+            _md_emit_wrapped(wrapped, result, base_sgr, "• ", "  ");
             continue;
         }
 
-        if _md_is_ol(line) {
-            mend = _md_ol_marker_end(line);
-            marker = line[:mend];
-            item_text = line[mend:];
-            styled = _md_apply_inline(item_text, base_sgr);
-            marker_w = len(marker);
-            avail = width - marker_w;
-            if avail < 1 {
-                avail = 1;
-            }
-            cont_pad = term_spaces(marker_w);
-            wrapped = _md_wrap(styled, avail, base_sgr);
-            nw = len(wrapped);
-            j: int = 0;
-            while j < nw {
-                if j == 0 {
-                    row = base_sgr + marker + wrapped[j];
-                } else {
-                    row = base_sgr + cont_pad + wrapped[j];
-                }
-                result.append(row);
-                j = j + 1;
-            }
-            i = i + 1;
+        marker_end = _md_ol_marker_end(line);
+        if marker_end >= 0 {
+            marker = line[:marker_end];
+            body = line[marker_end:];
+            marker_cols = len(marker);
+            cont_pad = term_spaces(marker_cols);
+            styled = _md_apply_inline(body, base_sgr);
+            wrapped = _md_wrap(styled, max(1, width - marker_cols), base_sgr);
+            _md_emit_wrapped(wrapped, result, base_sgr, marker, cont_pad);
             continue;
         }
 
         if _md_is_bq(line) {
-            bq_text = _md_bq_text(line);
-            styled = _md_apply_inline(bq_text, bq_text_sgr);
-            avail = width - 2;
-            if avail < 1 {
-                avail = 1;
-            }
-            wrapped = _md_wrap(styled, avail, bq_text_sgr);
-            nw = len(wrapped);
-            j: int = 0;
-            while j < nw {
-                row = bq_bar_sgr + "│ " + wrapped[j];
-                result.append(row);
-                j = j + 1;
-            }
-            i = i + 1;
+            quote = _md_bq_text(line);
+            styled = _md_apply_inline(quote, TH_SGR_MD_BQ);
+            wrapped = _md_wrap(styled, max(1, width - 2), TH_SGR_MD_BQ);
+            _md_emit_wrapped(wrapped, result, TH_SGR_MD_BQ_BAR, "│ ", "│ ");
             continue;
         }
 
         styled = _md_apply_inline(line, base_sgr);
         wrapped = _md_wrap(styled, width, base_sgr);
-        _md_append(wrapped, result);
-
-        i = i + 1;
+        result.extend(wrapped);
     }
 
     return result;

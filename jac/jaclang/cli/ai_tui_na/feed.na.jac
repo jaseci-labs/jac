@@ -1,18 +1,35 @@
+"""Feed layout: wraps the event log into styled DisplayRow lines.
+
+Dispatches each event on its kind's RenderMode (markdown, tool call/result,
+inline image, or plain prefixed text) and memoizes the wrapped rows on the
+Event itself, keyed by exactly (len(text), width), so streaming appends only
+re-wrap the event that grew.
+"""
 import from .state { Event, DisplayRow, TuiState, EventKind, kind_style, RenderMode }
 import from .markdown { md_render }
 import from .tool_block { tool_call_rows, tool_result_rows }
-import from .terminal_image { image_rows, image_fallback }
+import from .terminal_image { image_rows }
+import from .util { parse_int_or, split_kv }
 
+glob _FEED_MARGIN_COLS: int = 4,
+    _MIN_FEED_WIDTH: int = 20,
+    _DEFAULT_IMAGE_MIME: str = "image/png",
+    _CONT_PREFIX: str = "    ";
+
+"""Display body for an event: PHASE events show their node name when set."""
 def event_text(ev: Event) -> str {
-    kind = ev.kind;
-    if kind == EventKind.PHASE {
-        if len(ev.node) > 0 {
-            return ev.node;
-        }
+    if ev.kind == EventKind.PHASE and ev.node {
+        return ev.node;
     }
     return ev.text;
 }
 
+"""Hard-wrap text at width, appending rows into out.
+
+The first row carries first_pre, continuations carry cont_pre; each row
+keeps at least one body byte even when a prefix leaves no room. Empty text
+still emits one prefix-only row.
+"""
 def _wrap_line(
     text: str,
     width: int,
@@ -21,57 +38,83 @@ def _wrap_line(
     kind: EventKind,
     out: list[DisplayRow]
 ) -> None {
-    af = width - len(first_pre);
-    if af < 1 {
-        af = 1;
-    }
-    ac = width - len(cont_pre);
-    if ac < 1 {
-        ac = 1;
-    }
-    n = len(text);
-    if n == 0 {
+    first_avail = max(1, width - len(first_pre));
+    cont_avail = max(1, width - len(cont_pre));
+    if not text {
         out.append(DisplayRow(text=first_pre, kind=kind, is_continuation=False));
         return;
     }
+    n = len(text);
     pos: int = 0;
     first: bool = True;
     while pos < n {
-        take = af;
-        if not first {
-            take = ac;
-        }
+        take = first_avail if first else cont_avail;
         chunk = text[pos:pos + take];
-        row_text = first_pre + chunk;
-        if not first {
-            row_text = cont_pre + chunk;
-        }
-        out.append(DisplayRow(text=row_text, kind=kind, is_continuation=not first));
-        pos = pos + take;
+        prefix = first_pre if first else cont_pre;
+        out.append(
+            DisplayRow(text=prefix + chunk, kind=kind, is_continuation=not first)
+        );
+        pos += take;
         first = False;
     }
 }
 
+"""Append pre-styled rows into out, marking all but the first as continuations.
+
+Kept index-based on purpose: storing an enumerate loop-var string into a
+DisplayRow corrupts it later on the na pathway (verified against golden).
+"""
+def _append_styled_rows(
+    rows: list[str],
+    kind: EventKind,
+    out: list[DisplayRow]
+) -> None {
+    for i in range(len(rows)) {
+        out.append(
+            DisplayRow(text=rows[i], kind=kind, is_continuation=i > 0, pre_styled=True)
+        );
+    }
+}
+
+"""Decode IMG metadata and append rendered image rows into out.
+
+meta is the event's node field in the wire format mime[:w[:h]]; missing or
+unparsable parts fall back to image/png and 0x0 (protocol auto-size). The
+re-parse must stay wire-compatible with the ipc producer.
+"""
+def _image_event_rows(
+    meta: str,
+    body: str,
+    width: int,
+    kind: EventKind,
+    out: list[DisplayRow]
+) -> None {
+    mime: str = _DEFAULT_IMAGE_MIME;
+    img_w: int = 0;
+    img_h: int = 0;
+    if ":" in meta {
+        (mime_part, dims) = split_kv(meta, ":");
+        mime = mime_part;
+        if ":" in dims {
+            (w_str, h_str) = split_kv(dims, ":");
+            img_w = parse_int_or(w_str, 0);
+            img_h = parse_int_or(h_str, 0);
+        }
+    }
+    _append_styled_rows(image_rows(body, mime, img_w, img_h, width), kind, out);
+}
+
+"""Render one event into display rows according to its kind's RenderMode."""
 def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
     kind = ev.kind;
     style = kind_style(kind);
     body = event_text(ev);
 
     if style.mode == RenderMode.MARKDOWN {
-        md_rows = md_render(body, width, style.r, style.g, style.b, style.attrs);
-        i: int = 0;
-        n = len(md_rows);
-        while i < n {
-            out.append(
-                DisplayRow(
-                    text=md_rows[i], kind=kind, is_continuation=i > 0, pre_styled=True
-                )
-            );
-            i = i + 1;
-        }
+        md_rows = md_render(body, width, style.color, style.attrs);
+        _append_styled_rows(md_rows, kind, out);
         return;
     }
-
     if style.mode == RenderMode.TOOL_CALL {
         tool_call_rows(ev.node, body, width, out);
         return;
@@ -80,90 +123,42 @@ def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
         tool_result_rows(ev.node, body, width, out);
         return;
     }
-
     if style.mode == RenderMode.IMAGE {
-        img_mime: str = "image/png";
-        img_w: int = 0;
-        img_h: int = 0;
-        colon1 = ev.node.find(":");
-        if colon1 >= 0 {
-            img_mime = ev.node[:colon1];
-            rest_node = ev.node[colon1 + 1:];
-            colon2 = rest_node.find(":");
-            if colon2 >= 0 {
-                w_str = rest_node[:colon2];
-                h_str = rest_node[colon2 + 1:];
-                try {
-                    img_w = int(w_str);
-                } except Exception { }
-                try {
-                    img_h = int(h_str);
-                } except Exception { }
-            }
-        }
-        img_row_list = image_rows(body, img_mime, img_w, img_h, width);
-        ni = len(img_row_list);
-        ii: int = 0;
-        while ii < ni {
-            out.append(
-                DisplayRow(
-                    text=img_row_list[ii],
-                    kind=kind,
-                    is_continuation=ii > 0,
-                    pre_styled=True
-                )
-            );
-            ii = ii + 1;
-        }
+        _image_event_rows(ev.node, body, width, kind, out);
         return;
     }
 
-    pre = style.prefix;
-    cont = "    ";
-    parts = body.split("\n");
-    i: int = 0;
-    np = len(parts);
-    while i < np {
-        _wrap_line(parts[i], width, pre, cont, kind, out);
-        i = i + 1;
+    for part in body.split("\n") {
+        _wrap_line(part, width, style.prefix, _CONT_PREFIX, kind, out);
     }
 }
 
-def build_rows(state: TuiState) {
-    width = state.term_cols - 4;
-    if width < 20 {
-        width = 20;
+"""Re-wrap ev into its row memo when the exact (len(text), width) key is stale.
+
+This key is the streaming-append contract: growing text or a layout width
+change invalidates; anything else reuses the cached rows untouched.
+"""
+def _refresh_row_cache(ev: Event, width: int) -> None {
+    if ev.cache_text_len == len(ev.text) and ev.cache_width == width {
+        return;
     }
+    event_rows: list[DisplayRow] = [];
+    wrap_event(ev, width, event_rows);
+    ev.cache_text_len = len(ev.text);
+    ev.cache_width = width;
+    ev.cached_rows = event_rows;
+}
+
+"""Rebuild state.display_rows from the event log, separator rows included."""
+def build_rows(state: TuiState) {
+    width = max(_MIN_FEED_WIDTH, state.term_cols - _FEED_MARGIN_COLS);
     rows: list[DisplayRow] = [];
-    i: int = 0;
-    n = len(state.events);
-    while i < n {
+    for (i, ev) in enumerate(state.events) {
         if i > 0 {
             rows.append(DisplayRow(text="", kind=EventKind.SEP, is_continuation=False));
         }
-        ev = state.events[i];
-
-        if ev.cache_text_len == len(ev.text) and ev.cache_width == width {
-            j: int = 0;
-            nc = len(ev.cached_rows);
-            while j < nc {
-                rows.append(ev.cached_rows[j]);
-                j = j + 1;
-            }
-        } else {
-            event_rows: list[DisplayRow] = [];
-            wrap_event(ev, width, event_rows);
-            ev.cache_text_len = len(ev.text);
-            ev.cache_width = width;
-            ev.cached_rows = event_rows;
-            j: int = 0;
-            nc = len(event_rows);
-            while j < nc {
-                rows.append(event_rows[j]);
-                j = j + 1;
-            }
-        }
-        i = i + 1;
+        _refresh_row_cache(ev, width);
+        rows.extend(ev.cached_rows);
     }
     state.display_rows = rows;
     state.layout_cols = state.term_cols;

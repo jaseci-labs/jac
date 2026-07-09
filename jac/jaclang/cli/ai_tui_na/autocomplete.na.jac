@@ -1,6 +1,39 @@
-import from .state { TuiState, AcItem, EditorState, AcKind }
-import from .commands { slash_ac_catalog }
+"""Autocomplete: fuzzy-ranked slash-command and @file suggestions.
 
+Detects a trigger under the editor cursor (a `/command` on the first
+line, or an `@path` token), ranks candidates with `fuzzy_score`, and
+splices the accepted suggestion back into the editor line. Siblings
+consume only `ac_update` / `ac_apply` (input.na.jac).
+"""
+
+import from .state { TuiState, AcKind }
+import from .editor { EditorState }
+import from .commands { slash_ac_catalog }
+import from .select_list { SelectItem }
+
+"""Sentinel returned by fuzzy_score when query is not a subsequence of text."""
+glob FUZZY_NO_MATCH: int = -9999;
+
+glob _CONSEC_BONUS: int = 5,
+     _GAP_PENALTY: int = 2,
+     _BOUNDARY_BONUS: int = 10,
+     _EXACT_BONUS: int = 100,
+     _PATH_FALLBACK_PENALTY: int = 20,
+     _FILE_SCAN_CAP: int = 300,
+     _MAX_AC_RESULTS: int = 20;
+
+glob _WORD_BOUNDARY_CHARS: str = "/-_. ";
+
+# --- fuzzy scoring ---
+
+"""Score `query` as a case-insensitive subsequence of `text`; lower is better.
+
+Returns FUZZY_NO_MATCH when `query` is not a subsequence of `text`.
+Bonuses subtract from the score: consecutive matches, matches at the
+start or just after a word-boundary char, and an exact full match.
+Gaps between matches add. The ordering this induces is golden-tested
+behavior — do not retune the weights.
+"""
 def fuzzy_score(query: str, text: str) -> int {
     qn = len(query);
     tn = len(text);
@@ -8,7 +41,7 @@ def fuzzy_score(query: str, text: str) -> int {
         return 0;
     }
     if qn > tn {
-        return -9999;
+        return FUZZY_NO_MATCH;
     }
 
     ql = query.lower();
@@ -18,264 +51,198 @@ def fuzzy_score(query: str, text: str) -> int {
     score: int = 0;
     last_match: int = -1;
     consec: int = 0;
-
-    i: int = 0;
-    while i < tn and qi < qn {
-        if tl[i] == ql[qi] {
-            if last_match == i - 1 {
-                consec = consec + 1;
-                score = score - consec * 5;
-            } else {
-                consec = 0;
-                if last_match >= 0 {
-                    score = score + (i - last_match - 1) * 2;
-                }
-            }
-
-            if i == 0 {
-                score = score - 10;
-            } elif tl[i - 1] == "/"
-            or tl[i - 1] == "-"
-            or tl[i - 1] == "_"
-            or tl[i - 1] == "."
-            or tl[i - 1] == " " {
-                score = score - 10;
-            }
-            last_match = i;
-            qi = qi + 1;
+    for i in range(tn) {
+        if qi >= qn {
+            break;
         }
-        i = i + 1;
+        if tl[i] != ql[qi] {
+            continue;
+        }
+        if last_match == i - 1 {
+            consec += 1;
+            score -= consec * _CONSEC_BONUS;
+        } else {
+            consec = 0;
+            if last_match >= 0 {
+                score += (i - last_match - 1) * _GAP_PENALTY;
+            }
+        }
+        if i == 0 or tl[i - 1] in _WORD_BOUNDARY_CHARS {
+            score -= _BOUNDARY_BONUS;
+        }
+        last_match = i;
+        qi += 1;
     }
 
     if qi < qn {
-        return -9999;
+        return FUZZY_NO_MATCH;
     }
-
     if ql == tl {
-        score = score - 100;
+        score -= _EXACT_BONUS;
     }
-
     return score;
 }
 
-def _basename(path: str) -> str {
-    n = len(path);
-    i: int = n - 1;
-    while i >= 0 {
-        if path[i] == "/" {
-            return path[i + 1:];
-        }
-        i = i - 1;
-    }
-    return path;
-}
+# --- ranking ---
 
-obj ScoredEntry {
-    has value: str = "",
-        label: str = "",
-        description: str = "",
+"""A select-list item paired with its fuzzy rank."""
+obj _ScoredItem {
+    has item: SelectItem = SelectItem(),
         score: int = 0;
 }
 
-def _sort_entries_by_score(entries: list[ScoredEntry]) -> list[AcItem] {
-    n = len(entries);
-    i: int = 1;
-    while i < n {
+"""Sort `entries` ascending by score (in place) and return their items.
+
+Manual insertion sort on purpose: na's sort()/sorted() silently ignore
+`key=`, and the stable ranking (ties keep source order) is behavior.
+"""
+def _sort_entries_by_score(entries: list[_ScoredItem]) -> list[SelectItem] {
+    for i in range(1, len(entries)) {
         cur = entries[i];
         j: int = i - 1;
-        while j >= 0 {
-            if entries[j].score <= cur.score {
-                break;
-            }
+        while j >= 0 and entries[j].score > cur.score {
             entries[j + 1] = entries[j];
-            j = j - 1;
+            j -= 1;
         }
         entries[j + 1] = cur;
-        i = i + 1;
     }
-
-    result: list[AcItem] = [];
-    k: int = 0;
-    while k < n {
-        entry = entries[k];
-        result.append(
-            AcItem(value=entry.value, label=entry.label, description=entry.description)
-        );
-        k = k + 1;
-    }
-    return result;
+    return [e.item for e in entries];
 }
 
+# --- trigger detection ---
+
+"""Trigger found under the cursor: its kind, raw prefix, and match query."""
 obj AutocompleteTrigger {
     has kind: AcKind = AcKind.NONE,
         prefix: str = "",
         query: str = "";
 }
 
+"""Detect an autocomplete trigger at the editor cursor.
+
+Slash commands fire only on line 0 while the cursor is still inside the
+first word; @file fires for an '@' at a token start with no whitespace
+between it and the cursor.
+"""
 def _extract_trigger(ed: EditorState) -> AutocompleteTrigger {
-    if len(ed.lines) == 0 {
+    if not ed.lines {
         return AutocompleteTrigger();
     }
 
     cur_line = ed.lines[ed.cursor_line];
     before = cur_line[:ed.cursor_col];
-    blen = len(before);
 
-    if ed.cursor_line == 0 and blen > 0 and before[0] == "/" {
-        j: int = 1;
-        has_space: bool = False;
-        while j < blen {
-            if before[j] == " " {
-                has_space = True;
-                break;
-            }
-            j = j + 1;
+    if ed.cursor_line == 0 and before.startswith("/") {
+        if " " in before {
+            return AutocompleteTrigger();
         }
-        if not has_space {
-            return AutocompleteTrigger(
-                kind=AcKind.SLASH, prefix=before, query=before[1:]
-            );
-        }
+        return AutocompleteTrigger(kind=AcKind.SLASH, prefix=before, query=before[1:]);
+    }
+
+    at = before.rfind("@");
+    if at < 0 {
         return AutocompleteTrigger();
     }
-
-    j: int = ed.cursor_col - 1;
-    while j >= 0 {
-        c = cur_line[j];
-        if c == "@" {
-            if j == 0 or cur_line[j - 1] == " " or cur_line[j - 1] == "\t" {
-                prefix = before[j:];
-                return AutocompleteTrigger(
-                    kind=AcKind.AT_FILE, prefix=prefix, query=prefix[1:]
-                );
-            }
-            break;
-        }
-        if c == " " or c == "\t" {
-            break;
-        }
-        j = j - 1;
+    tail = before[at + 1:];
+    if " " in tail or "\t" in tail {
+        return AutocompleteTrigger();
     }
-
-    return AutocompleteTrigger();
+    if at > 0 and before[at - 1] not in " \t" {
+        return AutocompleteTrigger();
+    }
+    prefix = before[at:];
+    return AutocompleteTrigger(kind=AcKind.AT_FILE, prefix=prefix, query=prefix[1:]);
 }
 
-def _slash_items(query: str, state: TuiState) -> list[AcItem] {
-    catalog = slash_ac_catalog(state);
-    entries: list[ScoredEntry] = [];
+# --- candidate sources ---
 
-    i: int = 0;
-    n = len(catalog);
-    while i < n {
-        item = catalog[i];
-        cmd = item.value;
-        desc = item.description;
-        name = cmd[1:];
-        s: int = 0;
-        matched: bool = True;
-        if len(query) > 0 {
-            s = fuzzy_score(query, name);
-            if s == -9999 {
-                matched = False;
-            }
-        }
-        if matched {
-            entries.append(
-                ScoredEntry(value=cmd, label=cmd, description=desc, score=s)
-            );
-        }
-        i = i + 1;
+"""Return the final path component (bytes after the last '/')."""
+def _basename(path: str) -> str {
+    slash_at = path.rfind("/");
+    if slash_at < 0 {
+        return path;
+    }
+    return path[slash_at + 1:];
+}
+
+"""Rank the slash-command catalog against `query`; empty query keeps catalog order."""
+def _slash_items(query: str, state: TuiState) -> list[SelectItem] {
+    catalog = slash_ac_catalog(state);
+    if not query {
+        return catalog;
     }
 
-    if len(query) == 0 {
-        items: list[AcItem] = [];
-        j: int = 0;
-        while j < len(entries) {
-            e = entries[j];
-            items.append(
-                AcItem(value=e.value, label=e.label, description=e.description)
-            );
-            j = j + 1;
+    entries: list[_ScoredItem] = [];
+    for item in catalog {
+        cmd = item.value;
+        score = fuzzy_score(query, cmd[1:]);
+        if score != FUZZY_NO_MATCH {
+            entries.append(_ScoredItem(item=item, score=score));
         }
-        return items;
     }
     return _sort_entries_by_score(entries);
 }
 
-def _file_items(state: TuiState, query: str) -> list[AcItem] {
-    n = len(state.files);
-    limit: int = n;
-    if limit > 300 {
-        limit = 300;
+"""Rank candidate file paths against `query`.
+
+Scans at most _FILE_SCAN_CAP files and returns at most _MAX_AC_RESULTS
+rows. Basename matches outrank full-path-only matches (the path
+fallback carries a fixed penalty).
+"""
+def _file_items(state: TuiState, query: str) -> list[SelectItem] {
+    files = state.files;
+    limit = min(len(files), _FILE_SCAN_CAP);
+
+    if not query {
+        head = min(limit, _MAX_AC_RESULTS);
+        return [SelectItem(value=path, label=_basename(path), description=path) for path in files[:head]];
     }
 
-    entries: list[ScoredEntry] = [];
-
-    i: int = 0;
-    while i < limit {
-        path = state.files[i];
+    entries: list[_ScoredItem] = [];
+    for path in files[:limit] {
         base = _basename(path);
-        s: int = 0;
-        matched: bool = True;
-        if len(query) > 0 {
-            s = fuzzy_score(query, base);
-            if s == -9999 {
-                s = fuzzy_score(query, path);
-                if s != -9999 {
-                    s = s + 20;
-                }
-            }
-            if s == -9999 {
-                matched = False;
+        score = fuzzy_score(query, base);
+        if score == FUZZY_NO_MATCH {
+            score = fuzzy_score(query, path);
+            if score != FUZZY_NO_MATCH {
+                score += _PATH_FALLBACK_PENALTY;
             }
         }
-        if matched {
+        if score != FUZZY_NO_MATCH {
             entries.append(
-                ScoredEntry(value=path, label=base, description=path, score=s)
+                _ScoredItem(
+                    item=SelectItem(value=path, label=base, description=path),
+                    score=score
+                )
             );
         }
-        i = i + 1;
     }
 
-    if len(query) == 0 {
-        items: list[AcItem] = [];
-        j: int = 0;
-        while j < len(entries) and j < 20 {
-            e = entries[j];
-            items.append(
-                AcItem(value=e.value, label=e.label, description=e.description)
-            );
-            j = j + 1;
-        }
-        return items;
-    }
-
-    all_sorted = _sort_entries_by_score(entries);
-    result: list[AcItem] = [];
-    j: int = 0;
-    while j < len(all_sorted) and j < 20 {
-        result.append(all_sorted[j]);
-        j = j + 1;
-    }
-    return result;
+    ranked = _sort_entries_by_score(entries);
+    keep = min(len(ranked), _MAX_AC_RESULTS);
+    return ranked[:keep];
 }
 
+# --- public API ---
+
+"""Refresh autocomplete state from the editor; dismiss when no trigger or items.
+
+Selection survives same-kind updates (so arrowing survives typing) and
+resets otherwise, or when it falls off the end of a shrunken item list.
+"""
 def ac_update(state: TuiState) {
     trigger = _extract_trigger(state.editor);
-
     if trigger.kind == AcKind.NONE {
         state.ac.dismiss();
         return;
     }
 
-    items: list[AcItem] = [];
-    if trigger.kind == AcKind.SLASH {
-        items = _slash_items(trigger.query, state);
-    } else {
-        items = _file_items(state, trigger.query);
-    }
-
-    if len(items) == 0 {
+    items: list[SelectItem] = (
+        _slash_items(trigger.query, state)
+        if trigger.kind == AcKind.SLASH
+        else _file_items(state, trigger.query)
+    );
+    if not items {
         state.ac.dismiss();
         return;
     }
@@ -286,58 +253,41 @@ def ac_update(state: TuiState) {
     state.ac.prefix = trigger.prefix;
     state.ac.query = trigger.query;
     state.ac.items = items;
-    if not same_kind {
-        state.ac.selected_idx = 0;
-    }
-    if state.ac.selected_idx >= len(items) {
+    if not same_kind or state.ac.selected_idx >= len(items) {
         state.ac.selected_idx = 0;
     }
 }
 
+"""Splice the selected suggestion into the editor, replacing the trigger prefix."""
 def ac_apply(state: TuiState) {
-    if not state.ac.active or len(state.ac.items) == 0 {
+    if not state.ac.active or not state.ac.items {
         return;
     }
     idx = state.ac.selected_idx;
     if idx < 0 or idx >= len(state.ac.items) {
         return;
     }
+
     item = state.ac.items[idx];
     ed = state.editor;
     cur_line = ed.lines[ed.cursor_line];
     prefix_len = len(state.ac.prefix);
-    prefix_start = ed.cursor_col - prefix_len;
-    if prefix_start < 0 {
-        prefix_start = 0;
-    }
+    prefix_start = max(0, ed.cursor_col - prefix_len);
     before = cur_line[:prefix_start];
     after = cur_line[ed.cursor_col:];
 
+    # pre-declared: na infers LiteralString from branch assigns and then
+    # rejects the other branch's str
     new_text: str = "";
     if state.ac.kind == AcKind.SLASH {
         new_text = item.value + " ";
     } else {
         val = item.value;
-        if val.endswith("/") {
-            new_text = "@" + val;
-        } else {
-            new_text = "@" + val + " ";
-        }
+        suffix = "" if val.endswith("/") else " ";
+        new_text = "@" + val + suffix;
     }
 
-    new_line = before + new_text + after;
-    new_lines: list[str] = [];
-    i: int = 0;
-    n = len(ed.lines);
-    while i < n {
-        if i == ed.cursor_line {
-            new_lines.append(new_line);
-        } else {
-            new_lines.append(ed.lines[i]);
-        }
-        i = i + 1;
-    }
-    ed.lines = new_lines;
+    ed.lines[ed.cursor_line] = before + new_text + after;
     ed.cursor_col = prefix_start + len(new_text);
 
     state.ac.dismiss();

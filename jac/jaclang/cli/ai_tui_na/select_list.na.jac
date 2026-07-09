@@ -1,28 +1,34 @@
-import from .width { visible_width, ansi_trunc, ansi_pad }
-import from .terminal { ansi_sgr, ansi_reset }
-import from .keys { Key, KeyKind }
-import from .theme {
-    TH_BG_R,
-    TH_BG_G,
-    TH_BG_B,
-    TH_BORDER_R,
-    TH_BORDER_G,
-    TH_BORDER_B,
-    TH_TITLE_R,
-    TH_TITLE_G,
-    TH_TITLE_B,
-    TH_BOLD,
-    TH_DIM
-}
+"""Filterable pick list driven by TUI overlays (command palette, model/file pickers).
 
+SelectList owns the item set, an incrementally filtered view of it, and the
+selection cursor. overlay.na.jac feeds keys through handle_key and interprets
+the returned SelectAction: SELECT accepts current(), CANCEL dismisses the
+overlay, CHANGED requests a redraw.
+"""
+
+import from .width { visible_width, ansi_trunc }
+import from .terminal { ansi_reset, term_spaces }
+import from .keys { Key, KeyKind }
+import from .theme { TH_SGR_TITLE, TH_SGR_BORDER_DIM }
+
+glob _TWO_COL_MIN_W: int = 40,
+     _PRIMARY_COL_W: int = 24,
+     _PRIMARY_COL_RESERVE: int = 16,
+     _PRIMARY_COL_MIN_W: int = 8,
+     _ROW_RIGHT_MARGIN: int = 2,
+     _DESC_MIN_W: int = 10;
+
+"""Verdict handle_key hands back to the overlay driver."""
 enum SelectAction { NONE = 0, CHANGED = 1, SELECT = 2, CANCEL = 3, }
 
+"""One selectable entry: value is what SELECT yields, label is what renders."""
 obj SelectItem {
     has value: str = "",
         label: str = "",
         description: str = "";
 }
 
+"""Scrollable pick list with prefix/substring filtering and wrap-around cursor."""
 obj SelectList {
     has items: list[SelectItem] = [],
         filtered: list[SelectItem] = [],
@@ -30,6 +36,7 @@ obj SelectList {
         max_visible: int = 8,
         filter_text: str = "";
 
+    """Replace the item set and clear filter and cursor state."""
     def reset_items(items: list[SelectItem]) {
         self.items = items;
         self.filtered = items;
@@ -37,15 +44,15 @@ obj SelectList {
         self.filter_text = "";
     }
 
+    """Label if present, else the raw value."""
     def _display_value(item: SelectItem) -> str {
-        if len(item.label) > 0 {
-            return item.label;
-        }
-        return item.value;
+        return item.label if item.label else item.value;
     }
 
+    """True when prefix hits item's value or label (slash-stripped or plain
+    prefix match first, then substring)."""
     def _matches(item: SelectItem, prefix: str) -> bool {
-        if len(prefix) == 0 {
+        if not prefix {
             return True;
         }
         val = item.value;
@@ -55,213 +62,130 @@ obj SelectList {
                 return True;
             }
         }
-        if val.startswith(prefix) {
+        if val.startswith(prefix) or item.label.startswith(prefix) {
             return True;
         }
-        lbl = item.label;
-        if lbl.startswith(prefix) {
+        if prefix in val {
             return True;
         }
-
-        if val.find(prefix) >= 0 {
-            return True;
-        }
-        if lbl.find(prefix) >= 0 {
-            return True;
-        }
-        return False;
+        return prefix in item.label;
     }
 
+    """Refilter items against prefix and reset the cursor to the top."""
     def set_filter(prefix: str) {
         self.filter_text = prefix;
-        next_filtered: list[SelectItem] = [];
-        i: int = 0;
-        n = len(self.items);
-        while i < n {
-            item = self.items[i];
-            if self._matches(item, prefix) {
-                next_filtered.append(item);
-            }
-            i = i + 1;
-        }
-        self.filtered = next_filtered;
+        self.filtered = [
+            item for item in self.items if self._matches(item, prefix)
+        ];
         self.selected = 0;
     }
 
+    """Move the cursor up one row, wrapping to the bottom."""
     def move_up {
         n = len(self.filtered);
         if n == 0 {
             return;
         }
-        if self.selected == 0 {
-            self.selected = n - 1;
-        } else {
-            self.selected = self.selected - 1;
-        }
+        self.selected = n - 1 if self.selected == 0 else self.selected - 1;
     }
 
+    """Move the cursor down one row, wrapping to the top."""
     def move_down {
         n = len(self.filtered);
         if n == 0 {
             return;
         }
-        if self.selected >= n - 1 {
-            self.selected = 0;
-        } else {
-            self.selected = self.selected + 1;
-        }
+        self.selected = 0 if self.selected >= n - 1 else self.selected + 1;
     }
 
+    """Item under the cursor, or None when the filtered view is empty."""
     def current -> SelectItem | None {
-        n = len(self.filtered);
-        if n == 0 {
-            return None;
-        }
-        if self.selected < 0 or self.selected >= n {
+        if self.selected < 0 or self.selected >= len(self.filtered) {
             return None;
         }
         return self.filtered[self.selected];
     }
 
+    """Two-column row (value column, gap, dimmed description); "" when the
+    description column would be too narrow and the caller must fall back."""
+    def _render_two_col(
+        prefix: str,
+        val: str,
+        desc: str,
+        is_selected: bool,
+        inner_w: int
+    ) -> str {
+        primary_w = max(
+            _PRIMARY_COL_MIN_W,
+            min(_PRIMARY_COL_W, inner_w - _PRIMARY_COL_RESERVE)
+        );
+        val_disp = ansi_trunc(val, primary_w);
+        val_w = visible_width(val_disp);
+        gap = max(1, primary_w - val_w);
+        desc_max = inner_w - visible_width(prefix) - val_w - gap
+            - _ROW_RIGHT_MARGIN;
+        if desc_max <= _DESC_MIN_W {
+            return "";
+        }
+        desc_disp = ansi_trunc(desc, desc_max);
+        sp = term_spaces(gap);
+        if is_selected {
+            return TH_SGR_TITLE + prefix + val_disp + sp + desc_disp
+                + ansi_reset();
+        }
+        return prefix + val_disp + TH_SGR_BORDER_DIM + sp + desc_disp
+            + ansi_reset();
+    }
+
+    """Render one row, preferring the two-column layout when it fits."""
     def _render_item(item: SelectItem, is_selected: bool, inner_w: int) -> str {
-        prefix: str = "  ";
-        if is_selected {
-            prefix = "→ ";
-        }
-        prefix_w = visible_width(prefix);
-        desc = item.description;
-        desc_len = len(desc);
+        prefix = "→ " if is_selected else "  ";
         val = self._display_value(item);
-
-        if desc_len > 0 and inner_w > 40 {
-            primary_w: int = 24;
-            if primary_w > inner_w - 16 {
-                primary_w = inner_w - 16;
-            }
-            if primary_w < 8 {
-                primary_w = 8;
-            }
-            val_disp = ansi_trunc(val, primary_w);
-            val_w = visible_width(val_disp);
-            gap = primary_w - val_w;
-            if gap < 1 {
-                gap = 1;
-            }
-            sp: str = "";
-            gi: int = 0;
-            while gi < gap {
-                sp = sp + " ";
-                gi = gi + 1;
-            }
-            desc_max = inner_w - prefix_w - val_w - gap - 2;
-            if desc_max > 10 {
-                desc_disp = ansi_trunc(desc, desc_max);
-                line = prefix + val_disp + sp + desc_disp;
-                if is_selected {
-                    return ansi_sgr(
-                        TH_TITLE_R,
-                        TH_TITLE_G,
-                        TH_TITLE_B,
-                        TH_BG_R,
-                        TH_BG_G,
-                        TH_BG_B,
-                        TH_BOLD
-                    ) + line + ansi_reset();
-                }
-                return prefix + val_disp + ansi_sgr(
-                    TH_BORDER_R,
-                    TH_BORDER_G,
-                    TH_BORDER_B,
-                    TH_BG_R,
-                    TH_BG_G,
-                    TH_BG_B,
-                    TH_DIM
-                ) + sp + desc_disp + ansi_reset();
+        if item.description and inner_w > _TWO_COL_MIN_W {
+            row = self._render_two_col(
+                prefix,
+                val,
+                item.description,
+                is_selected,
+                inner_w
+            );
+            if row {
+                return row;
             }
         }
-
-        max_val = inner_w - prefix_w - 2;
-        if max_val < 1 {
-            max_val = 1;
-        }
-        val_disp = ansi_trunc(val, max_val);
-        line = prefix + val_disp;
+        max_val = max(1, inner_w - visible_width(prefix) - _ROW_RIGHT_MARGIN);
+        line = prefix + ansi_trunc(val, max_val);
         if is_selected {
-            return ansi_sgr(
-                TH_TITLE_R, TH_TITLE_G, TH_TITLE_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD
-            ) + line + ansi_reset();
+            return TH_SGR_TITLE + line + ansi_reset();
         }
         return line;
     }
 
+    """Render the window of rows around the cursor as a fresh list, plus a
+    dim "(n/m)" indicator row whenever some items are scrolled out of view."""
     def render(inner_w: int) -> list[str] {
-        lines: list[str] = [];
         n = len(self.filtered);
         if n == 0 {
-            msg = "  No matches";
-            lines.append(
-                ansi_sgr(
-                    TH_BORDER_R,
-                    TH_BORDER_G,
-                    TH_BORDER_B,
-                    TH_BG_R,
-                    TH_BG_G,
-                    TH_BG_B,
-                    TH_DIM
-                ) + msg + ansi_reset()
-            );
-            return lines;
+            return [TH_SGR_BORDER_DIM + "  No matches" + ansi_reset()];
         }
+        mv = max(1, self.max_visible);
+        start = max(0, self.selected - mv // 2);
+        start = min(start, max(0, n - mv));
+        end = min(start + mv, n);
 
-        mv = self.max_visible;
-        if mv < 1 {
-            mv = 1;
+        lines: list[str] = [];
+        for idx in range(start, end) {
+            is_sel = idx == self.selected;
+            lines.append(self._render_item(self.filtered[idx], is_sel, inner_w));
         }
-        start: int = self.selected - mv // 2;
-        if start < 0 {
-            start = 0;
-        }
-        max_start = n - mv;
-        if max_start < 0 {
-            max_start = 0;
-        }
-        if start > max_start {
-            start = max_start;
-        }
-        end = start + mv;
-        if end > n {
-            end = n;
-        }
-
-        idx = start;
-        while idx < end {
-            item = self.filtered[idx];
-            is_sel: bool = False;
-            if idx == self.selected {
-                is_sel = True;
-            }
-            lines.append(self._render_item(item, is_sel, inner_w));
-            idx = idx + 1;
-        }
-
         if start > 0 or end < n {
             info = f"  ({self.selected + 1}/{n})";
-            info = ansi_trunc(info, inner_w);
-            lines.append(
-                ansi_sgr(
-                    TH_BORDER_R,
-                    TH_BORDER_G,
-                    TH_BORDER_B,
-                    TH_BG_R,
-                    TH_BG_G,
-                    TH_BG_B,
-                    TH_DIM
-                ) + info + ansi_reset()
-            );
+            lines.append(TH_SGR_BORDER_DIM + ansi_trunc(info, inner_w) + ansi_reset());
         }
         return lines;
     }
 
+    """Map a key to a SelectAction; CHAR and BACKSPACE edit the filter text."""
     def handle_key(k: Key) -> SelectAction {
         if k.kind == KeyKind.UP {
             self.move_up();
@@ -271,40 +195,28 @@ obj SelectList {
             self.move_down();
             return SelectAction.CHANGED;
         }
-
         if k.kind == KeyKind.ENTER {
-            if len(self.filtered) > 0 {
-                return SelectAction.SELECT;
-            }
-            return SelectAction.NONE;
+            return SelectAction.SELECT if self.filtered else SelectAction.NONE;
         }
-
         if k.kind == KeyKind.ESCAPE {
             return SelectAction.CANCEL;
         }
         if k.kind == KeyKind.CTRL {
             ch = chr(k.code);
-            if ch == "c" or ch == "q" {
-                return SelectAction.CANCEL;
-            }
-            return SelectAction.NONE;
+            return SelectAction.CANCEL if ch in "cq" else SelectAction.NONE;
         }
-
         if k.kind == KeyKind.BACKSPACE {
-            if len(self.filter_text) > 0 {
-                self.filter_text = self.filter_text[:len(self.filter_text) - 1];
-                self.set_filter(self.filter_text);
-                return SelectAction.CHANGED;
+            if not self.filter_text {
+                return SelectAction.NONE;
             }
-            return SelectAction.NONE;
-        }
-
-        if k.kind == KeyKind.CHAR {
-            self.filter_text = self.filter_text + chr(k.code);
-            self.set_filter(self.filter_text);
+            trimmed = self.filter_text[:len(self.filter_text) - 1];
+            self.set_filter(trimmed);
             return SelectAction.CHANGED;
         }
-
+        if k.kind == KeyKind.CHAR {
+            self.set_filter(self.filter_text + chr(k.code));
+            return SelectAction.CHANGED;
+        }
         return SelectAction.NONE;
     }
 }

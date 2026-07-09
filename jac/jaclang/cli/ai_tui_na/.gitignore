@@ -4,3 +4,6 @@ libc_tty.na.jac
 tty_plat.na.jac
 libjacpyembed.so
 libjacpyembed.dylib
+_golden_harness.na.jac
+_golden_run.sh
+golden_out.txt

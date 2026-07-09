@@ -1,8 +1,19 @@
-import from .state { TuiState, AcItem, TuiStatus }
+"""Slash-command registry and dispatch for the native TUI.
+
+Owns the CmdDef command table (slash spellings, palette entries, autocomplete
+catalog) and routes resolved commands to overlay opens, scroll actions, or IPC
+sends on the runtime's command queue. Wire command strings come verbatim from
+ipc_schema and must stay byte-identical.
+"""
+import from .state { TuiState, TuiStatus }
 import from .select_list { SelectItem }
-import from .ipc_schema { CMD_SEND, CMD_STOP, CMD_RESET, CMD_QUIT, CMD_APPLY }
+import from .ipc_schema { CMD_STOP, CMD_RESET, CMD_QUIT, CMD_APPLY }
 import from .runtime { TuiRuntime }
 
+# Prefix of the raw settings passthrough line, e.g. "/settings theme=dark".
+glob _SETTINGS_PREFIX: str = "/settings ";
+
+"""How a command acts when executed."""
 enum CmdKind {
     NONE = 0,
     OVERLAY = 1,
@@ -12,8 +23,15 @@ enum CmdKind {
     IPC = 5,
 }
 
+"""What the caller should do after dispatching a command."""
 enum CmdResult { NONE = 0, HANDLED = 1, QUIT = 2, OPEN_MODEL = 3, OPEN_FILE = 4, }
 
+"""One command: identity, slash spellings, and visibility flags.
+
+slash_labels[0] is the spelling autocomplete shows; later entries are hidden
+aliases that still resolve. `palette`/`slash_ac` gate where the command is
+listed, and `running_only` restricts palette listing to an active turn.
+"""
 obj CmdDef {
     has value: str = "",
         slash_labels: list[str] = [],
@@ -25,6 +43,7 @@ obj CmdDef {
         running_only: bool = False,
         palette_label: str = "";
 
+    """Perform this command against the runtime and report the follow-up."""
     def execute(rt: TuiRuntime) -> CmdResult {
         state = rt.state;
 
@@ -70,8 +89,11 @@ obj CmdDef {
     }
 }
 
+# --- command table ---
+
 glob _CMD_DEFS_CACHE: list[CmdDef] = [];
 
+"""Append one CmdDef built from up to two slash spellings."""
 def _push_cmd(
     defs: list[CmdDef],
     value: str,
@@ -107,6 +129,10 @@ def _push_cmd(
     );
 }
 
+"""Build (once) and return the ordered command table (original machinery:
+the literal-table form destabilizes the na refcounter in this composition).
+Callers must hold the result in a local (`defs = _cmd_defs();`) before use.
+"""
 def _cmd_defs -> list[CmdDef] {
     if len(_CMD_DEFS_CACHE) > 0 {
         return _CMD_DEFS_CACHE;
@@ -238,35 +264,34 @@ def _cmd_defs -> list[CmdDef] {
     return _CMD_DEFS_CACHE;
 }
 
+# --- dispatch ---
+
+"""Return the command registered under `value`, or None when unknown."""
 def _find_def(value: str) -> CmdDef | None {
     defs = _cmd_defs();
-    i: int = 0;
-    while i < len(defs) {
-        if defs[i].value == value {
-            return defs[i];
+    for d in defs {
+        if d.value == value {
+            return d;
         }
-        i = i + 1;
     }
     return None;
 }
 
-def resolve_slash_line(text: str) -> str {
+"""Map a typed slash line to a command value; "" when unrecognized."""
+def _resolve_slash_line(text: str) -> str {
     defs = _cmd_defs();
-    i: int = 0;
-    while i < len(defs) {
-        d = defs[i];
-        j: int = 0;
-        while j < len(d.slash_labels) {
-            if text == d.slash_labels[j] {
+    for d in defs {
+        # membership tests on list[str] are broken on na; compare each label.
+        for label in d.slash_labels {
+            if text == label {
                 return d.value;
             }
-            j = j + 1;
         }
-        i = i + 1;
     }
     return "";
 }
 
+"""Execute the command registered under `cmd`; NONE when unknown."""
 def command_dispatch(cmd: str, rt: TuiRuntime) -> CmdResult {
     d = _find_def(cmd);
     if d is None {
@@ -275,94 +300,86 @@ def command_dispatch(cmd: str, rt: TuiRuntime) -> CmdResult {
     return d.execute(rt);
 }
 
+"""Handle a submitted slash line: settings passthrough or table dispatch."""
 def slash_submit(text: str, rt: TuiRuntime) -> CmdResult {
     state = rt.state;
-    if text.startswith("/settings ") {
-        args = text[10:].strip();
+    if text.startswith(_SETTINGS_PREFIX) {
+        args = text.removeprefix(_SETTINGS_PREFIX).strip();
+        # concat, not f-string: args is unbounded user input and na
+        # f-strings truncate at a 1024-byte buffer.
         rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":" + args);
         return CmdResult.HANDLED;
     }
-    value = resolve_slash_line(text);
-    if len(value) == 0 {
+    value = _resolve_slash_line(text);
+    if not value {
         return CmdResult.NONE;
     }
     return command_dispatch(value, rt);
 }
 
-def run_command(cmd: str, rt: TuiRuntime) -> bool {
-    return command_dispatch(cmd, rt) == CmdResult.QUIT;
+"""Send a model switch to the host and mark the screen dirty."""
+def apply_model(model: str, rt: TuiRuntime) {
+    state = rt.state;
+    # concat, not f-string: model is env-sourced and unbounded, and na
+    # f-strings truncate at a 1024-byte buffer (see slash_submit above).
+    rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":model=" + model);
+    state.dirty = True;
 }
 
+# --- overlay item feeds ---
+
+"""Palette entries for the command overlay, honoring running-only gating."""
 def palette_commands(state: TuiState) -> list[SelectItem] {
     items: list[SelectItem] = [];
     defs = _cmd_defs();
-    i: int = 0;
-    while i < len(defs) {
-        d = defs[i];
-        if d.palette {
-            if d.running_only and state.status != TuiStatus.RUNNING {
-                i = i + 1;
-                continue;
-            }
-            items.append(
-                SelectItem(
-                    value=d.value, label=d.palette_label, description=d.description
-                )
-            );
+    for d in defs {
+        if not d.palette {
+            continue;
         }
-        i = i + 1;
+        if d.running_only and state.status != TuiStatus.RUNNING {
+            continue;
+        }
+        items.append(
+            SelectItem(
+                value=d.value, label=d.palette_label, description=d.description
+            )
+        );
     }
     return items;
 }
 
-def slash_ac_catalog(state: TuiState) -> list[AcItem] {
-    items: list[AcItem] = [];
+"""Autocomplete entries for slash input (one per visible command)."""
+def slash_ac_catalog(state: TuiState) -> list[SelectItem] {
+    items: list[SelectItem] = [];
     defs = _cmd_defs();
-    i: int = 0;
-    while i < len(defs) {
-        d = defs[i];
-        if d.slash_ac {
-            label = d.slash_labels[0];
-            if d.kind == CmdKind.OVERLAY and len(d.palette_label) > 0 {
-                label = d.palette_label;
-            }
-            items.append(AcItem(value=label, label=label, description=d.description));
+    for d in defs {
+        if not d.slash_ac {
+            continue;
         }
-        i = i + 1;
+        label = d.slash_labels[0];
+        if d.kind == CmdKind.OVERLAY and d.palette_label {
+            label = d.palette_label;
+        }
+        items.append(SelectItem(value=label, label=label, description=d.description));
     }
     return items;
 }
 
+"""Model-preset overlay items; the active model is marked "current"."""
 def model_items(state: TuiState) -> list[SelectItem] {
-    items: list[SelectItem] = [];
-    i: int = 0;
-    n = len(state.model_presets);
-    while i < n {
-        name = state.model_presets[i];
-        desc: str = "";
-        if name == state.model_name {
-            desc = "current";
-        }
-        items.append(SelectItem(value=name, label=name, description=desc));
-        i = i + 1;
-    }
-    return items;
+    return [
+        SelectItem(
+            value=name,
+            label=name,
+            description=("current" if name == state.model_name else "")
+        )
+        for name in state.model_presets
+    ];
 }
 
+"""Project-file overlay items."""
 def file_items(state: TuiState) -> list[SelectItem] {
-    items: list[SelectItem] = [];
-    i: int = 0;
-    n = len(state.files);
-    while i < n {
-        path = state.files[i];
-        items.append(SelectItem(value=path, label=path, description=""));
-        i = i + 1;
-    }
-    return items;
-}
-
-def apply_model(model: str, rt: TuiRuntime) {
-    state = rt.state;
-    rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":model=" + model);
-    state.dirty = True;
+    return [
+        SelectItem(value=path, label=path, description="") for path in state.files
+    ];
 }
