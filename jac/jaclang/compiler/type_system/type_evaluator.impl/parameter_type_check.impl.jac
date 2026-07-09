@@ -596,29 +596,26 @@ impl TypeEvaluator._unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | Non
 impl TypeEvaluator._unresolved_lambda_body(
     expr: uni.FuncCall
 ) -> uni.LambdaExpr | None {
-    for lam in self._lambda_args_of(expr) {
-        if not isinstance(lam.body, uni.Expr) {
-            continue;
+    lambdas = self._lambda_args_of(expr);
+    if len(lambdas) != 1 {
+        return None;
+    }
+    lam = lambdas[0];
+    if not isinstance(lam.body, uni.Expr) {
+        return None;
+    }
+    for param in lam.signature.get_parameters() {
+        if param.type_tag is None {
+            return None;
         }
-        all_params_resolved = True;
-        for param in lam.signature.get_parameters() {
-            if param.type_tag is None {
-                all_params_resolved = False;
-                break;
-            }
-            param_type = self.get_type_of_expression(param.type_tag.tag);
-            if isinstance(param_type, types.UnknownType) {
-                all_params_resolved = False;
-                break;
-            }
+        param_type = self.get_type_of_expression(param.type_tag.tag);
+        if isinstance(param_type, types.UnknownType) {
+            return None;
         }
-        if not all_params_resolved {
-            continue;
-        }
-        body_type = self.get_type_of_expression(lam.body);
-        if isinstance(body_type, types.UnknownType) and not body_type.is_diagnosed {
-            return lam;
-        }
+    }
+    body_type = self.get_type_of_expression(lam.body);
+    if isinstance(body_type, types.UnknownType) and not body_type.is_diagnosed {
+        return lam;
     }
     return None;
 }
