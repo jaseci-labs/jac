@@ -410,6 +410,7 @@ jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_subprocess.na.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/host_boot.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/inprocess_dispatch.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/oauth_broker.jac
+jac/jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.na.jac
 jac/jaclang/runtimelib/client/targets/desktop/plugin/plugin_host.jac
 jac/jaclang/runtimelib/client/targets/impl/mobile_target.impl.jac
 jac/jaclang/runtimelib/client/targets/impl/pwa_target.impl.jac
