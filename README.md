@@ -157,7 +157,7 @@ The same language — and the same skills — produce every kind of software. Ea
 | Python package (PyPI wheel) | `jac build --as wheel` | [Libraries](https://docs.jaseci.org/build/libraries/) |
 | npm package | `jac build --as npm` | [Libraries](https://docs.jaseci.org/build/libraries/) |
 | C-ABI shared library (`.so`/`.dylib`/`.dll`) | `jac nacompile lib.na.jac --shared` | [Libraries](https://docs.jaseci.org/build/libraries/) |
-| WebAssembly in the browser | `jac build` | [Native pathway](https://docs.jaseci.org/reference/language/native-pathway/) |
+| WebAssembly in the browser | `jac build` in a `web-static` project | [Native pathway](https://docs.jaseci.org/reference/language/native-pathway/) |
 | Kubernetes deployment | `jac start --scale` | [Deploy & scale](https://docs.jaseci.org/reference/plugins/jac-scale/) |
 
 Proof it's real: a [playable chess engine](https://docs.jaseci.org/tutorials/native/chess/) compiled to a standalone binary, a [raylib game running as WebAssembly](jac/examples/raylib_shooter/web) in the browser, and [littleX](jac/examples/littleX) — a full Twitter-style social app, backend to frontend, in about 1,100 lines of Jac.
