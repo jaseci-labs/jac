@@ -10,7 +10,10 @@
 #
 # Local build (binary for each arch under <ctx>/{amd64,arm64}/jac):
 #   docker build -f docker/jaclang.Dockerfile <ctx>
-FROM debian:bookworm-slim
+# trixie's glibc (2.41) covers both channels: release binaries carry a 2.17
+# floor, but dev-channel binaries build host-native on ubuntu-24.04 (2.39)
+# and fail on bookworm's 2.36.
+FROM debian:trixie-slim
 
 ARG TARGETARCH
 
