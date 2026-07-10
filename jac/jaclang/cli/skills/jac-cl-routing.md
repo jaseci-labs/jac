@@ -141,11 +141,11 @@ Also note `return children;` alone fails `jac check` with `E1002: Cannot return 
 - **Links:** `<Link to="/about">About</Link>`. NOT `<a href>` for in-app paths (full reload, loses state); plain `<a>` only for external URLs.
 - **Programmatic:** `nav = useNavigate();` then from a handler: `nav("/dashboard")`, `nav("/login", {"replace": True})` (no history entry), `nav(-1)` (back), `nav(1)` (forward). Call the hook at component top, the function in handlers - never inside JSX attribute values.
 - **Redirect as render:** `return <Navigate to="/login" replace={True} />;`.
-- **Query params:** no `useSearchParams` hook - parse `useLocation().search` with the browser's `URLSearchParams`:
+- **Query params:** no `useSearchParams` hook - parse `useLocation().search` with the browser's `URLSearchParams`. `URLSearchParams` is a constructor, not a plain function - build it with the `new()` builtin (see `jac-cl-js-interop`); a bare `URLSearchParams(...)` call throws `TypeError: ... cannot be invoked without 'new'` at runtime:
 
 ```
 location = useLocation();
-searchParams = URLSearchParams(location.search);
+searchParams = new(URLSearchParams, location.search);
 query = searchParams.get("q") or "";
 page = int(searchParams.get("page") or "1");
 # update: nav(f"/search?q={query}&page={page + 1}");

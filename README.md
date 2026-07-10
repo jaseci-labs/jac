@@ -54,40 +54,16 @@ Install the self-contained `jac` binary. No Python, pip, Node, or C toolchain re
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-Save this as `hello.jac`:
-
-```jac
-node Person {
-    has name: str;
-}
-
-walker Greeter {
-    can start with Root entry {
-        visit [-->];
-    }
-    can greet with Person entry {
-        print(f"Hello, {here.name}!");
-        visit [-->];
-    }
-}
-
-with entry {
-    root ++> Person(name="Ada");
-    root ++> Person(name="Alan");
-    root spawn Greeter();
-}
-```
+Then clone and run [**this_is_jac**](https://github.com/jaseci-labs/this_is_jac), a showcase site built entirely in Jac:
 
 ```bash
-jac run hello.jac
+git clone https://github.com/jaseci-labs/this_is_jac
+cd this_is_jac
+jac install   # first run: pulls python + npm deps
+jac start     # builds the frontend + wasm, serves on http://localhost:8000
 ```
 
-```text
-Hello, Ada!
-Hello, Alan!
-```
-
-Now run it again: the people accumulate. The graph hanging off `root` **persists between runs automatically**, and that same machinery backs Jac servers in production. No database to set up, ever.
+Open <http://localhost:8000> and scroll. Sign the guestbook -- it's backed by walkers writing to a real graph that **persists automatically, no database to set up**. Spawn a walker that traverses that graph live, play a native-compiled shooter running in the browser as WebAssembly, and poke at a full social app embedded as a single component. One language, one codebase, all the way down.
 
 > Don't want to install anything? Open the [**Jac Playground**](https://playground.jaseci.org) in your browser.
 >
@@ -187,6 +163,27 @@ One language and one skill set produce every kind of software. Each row is one c
 | Kubernetes deployment | `jac start --scale` | [Deploy & scale](https://docs.jaseci.org/reference/plugins/jac-scale/) |
 
 Proof it's real: a [playable chess engine](https://docs.jaseci.org/tutorials/native/chess/) compiled to a standalone binary, a [raylib game running as WebAssembly](jac/examples/raylib_shooter/web) in the browser, and [littleX](jac/examples/littleX), a full Twitter-style social app, backend to frontend, in about 1,100 lines of Jac.
+
+## And build it better
+
+Each of those deliverables is a **project kind**: `jac create myapp --kind <kind>` scaffolds it, stamps the kind into `jac.toml`, and a bare `jac run` already knows whether to execute, serve, or build it. The scaffolding is the small part -- the point is what the language does for each kind that a traditional stack makes you assemble by hand:
+
+| `--kind` | What you ship | What Jac adds beyond a traditional language |
+|---|---|---|
+| `cli` | Terminal script / tool | Graph-native data modeling in a one-off script, a `root` graph that **persists between runs** (no database, no files), and `by llm()` AI with zero glue -- where a script normally means Python + SQLite + an LLM SDK |
+| `cli-native` | Compiled program, run in place | The same source compiled through **bundled LLVM** -- C-level speed with no gcc, clang, or rustc installed |
+| `native-binary` | Zero-dependency executable | Jac's own linker emits the ELF/Mach-O/PE file (no `ld` in the loop) -- ship to machines with no Jac and no Python, territory that normally means learning C, Rust, or Go |
+| `native-lib` | C-ABI shared library (`.so`/`.dylib`/`.dll`) | Expose Jac to **any language with a C FFI** (C, Rust, Go, Python `ctypes`) by marking functions `:pub` -- refcounted handles included, and `--target` **cross-builds for Linux/macOS/Windows** with no extra toolchain |
+| `service` | Headless REST API | `walker:pub` **is** the endpoint: request bodies map to its fields, `report` is the JSON response, Swagger at `/docs`, and per-user isolated persistence -- no FastAPI + SQLAlchemy + Pydantic + auth middleware to wire up |
+| `service-mesh` | Microservice cluster | `sv import` **is** the architecture: the compiler turns imports into HTTP stubs, the consumer auto-starts its providers, and env vars re-point services across hosts -- no OpenAPI codegen, no client SDKs |
+| `py-package` | pip-installable wheel | `jac build --as wheel` with nothing beyond `jac.toml`; the wheel runs under the `jac` binary with **no `jaclang` runtime dependency** |
+| `js-package` | npm tarball | Compiles to ES modules with **auto-generated `package.json` and `.d.ts` declarations**, consumable from any JS/TS project -- built with no Node.js installed |
+| `web-app` | Full-stack web app | Backend, frontend, and data model **in one file**: `cl` code compiles to React, and the compiler writes every RPC and shares types across the boundary -- instead of two projects and five frameworks |
+| `web-static` | Client-only page | `na {}` blocks compile to **WebAssembly with Jac's own wasm linker** (no emscripten); `jac build` emits a portable `index.html` that opens straight from disk |
+| `desktop` 🧪 | Native desktop binary | The same app wrapped in the **OS webview** as one compiled binary -- no Electron, no Rust, no PyInstaller |
+| `mobile` 🧪 | Android / iOS app | The same `cl` bundle wrapped by Capacitor, or true-native React Native via mobUI -- JS tooling runs on the bundled Bun, no Node.js |
+
+The full cookbook, with a small working example of each: [What You Can Build](https://docs.jaseci.org/quick-guide/project-kinds/).
 
 ## AI, graphs, and UIs are language features
 

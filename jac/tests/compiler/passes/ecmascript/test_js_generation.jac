@@ -169,6 +169,7 @@ test "core fixture emits expected constructs" {
         "for (const i of array)",
         "for (let i = 0; (i < limit); i += 1)",
         "while ((counter > 0))",
+        "while (true)",
 
     ] {
         assert pattern in js_code;
