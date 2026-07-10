@@ -533,6 +533,24 @@ impl install(
     if plan {
         return deps(scale=scale, as_json=as_json);
     }
+    if shadcn or npm {
+        channel = "--shadcn" if shadcn else "--npm";
+        ineffective: list[str] = [
+            flag
+            for (enabled, flag) in [
+                (no_save, "--no-save"),
+                (dry_run, "--dry-run"),
+                (install_global, "--global")
+            ]
+            if enabled
+        ];
+        if ineffective {
+            console.warning(
+                f"{', '.join(ineffective)} has no effect with {channel} "
+                "(it applies only to Python venv installs)."
+            );
+        }
+    }
     if shadcn {
         import from jaclang.cli.shadcn.cli { run_shadcn_add }
         return run_shadcn_add(packages);
@@ -625,6 +643,14 @@ impl install(
             return 1;
         }
         if git {
+            if len(packages) > 1 {
+                console.error(
+                    f"Pass at most one name with --git (used as the dependency "
+                    f"alias); got {len(packages)}: {', '.join(packages)}.",
+                    hint="Install additional packages separately: 'jac install <pkg>'."
+                );
+                return 1;
+            }
             if packages {
                 pkg_name = packages[0];
             } else {

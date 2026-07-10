@@ -1340,6 +1340,67 @@ test "install multiple pkgs records all" {
     }
 }
 
+test "install --git rejects multiple positional names" {
+    # A single positional is the git dependency alias; more than one is
+    # ambiguous and used to be silently dropped, so it must now error.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        project_path = create_test_project(tmp);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch.object(PythonProvider, "install_specs") as mock_install {
+                result = proj_cmds.install(
+                    packages=["mylib", "extra"], git="https://github.com/u/plugin.git"
+                );
+            }
+            assert result == 1;
+            # The guard fires before anything is installed.
+            mock_install.assert_not_called();
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install --npm warns when a venv-only save flag is ignored" {
+    # --no-save applies only to Python venv installs; on the npm path it is
+    # silently ineffective, so the command warns instead of quietly recording.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    import from jaclang.cli.console { console }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        project_path = create_test_project(tmp);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch("jaclang.runtimelib.client.cli.run_npm_add") as mock_npm, patch.object(
+                console, "warning"
+            ) as mock_warn {
+                mock_npm.return_value = 0;
+                result = proj_cmds.install(packages=["lodash"], npm=True, no_save=True);
+            }
+            assert result == 0;
+            mock_npm.assert_called_once();
+            warned = " ".join([str(c) for c in mock_warn.call_args_list]);
+            assert "--no-save" in warned , f"expected an ignored-flag warning, got: {warned}";
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
 test "install pkg pip failure no toml update" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
