@@ -41,6 +41,56 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ---
 
+## Run in Docker
+
+Official images ship with every release -- the `jac` binary on a slim Debian base with the runtime already unpacked, so the first command starts instantly (no one-time setup inside the container):
+
+```bash
+docker run --rm ghcr.io/jaseci-labs/jaclang:latest --version
+```
+
+| Tag | What you get |
+|-----|--------------|
+| `jaclang:latest` | The newest jaclang release |
+| `jaclang:<version>` | That exact release (e.g. `jaclang:0.31.2`) -- pin this in CI |
+| `jaclang:dev` | Rolling build of main HEAD, refreshed on every merge |
+
+Images are multi-arch (`linux/amd64` + `linux/arm64`).
+
+**Run a program** -- mount your project at `/app` (the image's working directory):
+
+```bash
+docker run --rm -v "$PWD":/app ghcr.io/jaseci-labs/jaclang:latest run main.jac
+```
+
+**Serve a project** -- publish the port:
+
+```bash
+docker run --rm -v "$PWD":/app -p 8000:8000 ghcr.io/jaseci-labs/jaclang:latest start
+```
+
+**Interactive shell** -- the entrypoint is `jac`; override it to poke around:
+
+```bash
+docker run --rm -it -v "$PWD":/app --entrypoint bash ghcr.io/jaseci-labs/jaclang:latest
+```
+
+**As a CI or app base image:**
+
+```dockerfile
+FROM ghcr.io/jaseci-labs/jaclang:0.31.2
+COPY . /app
+RUN jac install
+CMD ["start", "main.jac"]
+```
+
+!!! note "Dependencies live in the container"
+    `jac install` inside the container resolves your project's optional
+    dependencies into the container's environment, so bake it into your image
+    (as above) or re-run it after starting a fresh container.
+
+---
+
 ## Built-in Subsystems & Optional Dependencies
 
 The `jac` binary bundles every capability -- the AI (byLLM), MCP, full-stack client, and deployment & scaling subsystems are all built in. There is nothing to enable; what `jac install` does is resolve a capability's **optional third-party dependencies** into your project:
