@@ -353,6 +353,11 @@ jobs:
   #   <version> + latest on the release channel, dev on the rolling prerelease.
   # The image bakes the extracted runtime (see docker/jaclang.Dockerfile), so
   # containers skip jac's one-time setup.
+  #
+  # Setup: none beyond this file (GITHUB_TOKEN + the job-level packages:write
+  # cover the push), EXCEPT a one-time step after the first publish: GHCR
+  # creates the package private, so a maintainer must set the jaclang package's
+  # visibility to public in the org's package settings.
   docker-image:
     needs: build
     if: github.event_name == 'release' || inputs.tag != ''
