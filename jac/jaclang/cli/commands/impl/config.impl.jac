@@ -12,7 +12,8 @@ glob CONFIG_GROUPS = [
          "check",
          "dot",
          "cache",
-         "environment"
+         "environment",
+         "plugins"
      ];
 
 def _disabled_plugins_ref(config: object) -> list[str] {
@@ -71,20 +72,7 @@ def _persist_disabled_plugins(config: object) -> None {
     _sync_plugins_table_raw(config);
 }
 
-impl plugins(
-    action: str = 'list', names: list | None = None, verbose: bool = False
-) -> int {
-    if names is None {
-        names = [];
-    }
-    import from jaclang.bootstrap { bootstrap_product }
-    bootstrap_product();
-    import from jaclang.jac0core.runtime { plugin_manager }
-    import from jaclang.cli.registry { get_registry }
-    import from jaclang.project.config { get_config, JacConfig, find_project_root }
-    import from jaclang.jac0core.helpers { get_disabled_plugins }
-    import from pathlib { Path }
-
+def _build_plugin_maps(plugin_manager: object) -> dict[str, any] {
     plugin_to_dist: dict[int, tuple[str, str]] = {};
     for (plugin, dist_facade) in plugin_manager.list_plugin_distinfo() {
         dist_name = dist_facade.project_name;
@@ -93,12 +81,10 @@ impl plugins(
     }
 
     plugin_list = plugin_manager.list_name_plugin();
-
     short_to_qualified: dict[str, list[tuple[str, object]]] = {};
-
     qualified_to_plugin: dict[str, object] = {};
-
     package_to_qualified: dict[str, list[str]] = {};
+
     for (short_name, plugin) in plugin_list {
         if short_name.isdigit() {
             continue;
@@ -106,19 +92,15 @@ impl plugins(
         if id(plugin) in plugin_to_dist {
             (pkg_name, pkg_version) = plugin_to_dist[id(plugin)];
             qualified_name = f"{pkg_name}:{short_name}";
-
             qualified_to_plugin[qualified_name] = plugin;
-
             if short_name not in short_to_qualified {
                 short_to_qualified[short_name] = [];
             }
             short_to_qualified[short_name].append((qualified_name, plugin));
-
             if pkg_name not in package_to_qualified {
                 package_to_qualified[pkg_name] = [];
             }
             package_to_qualified[pkg_name].append(qualified_name);
-
             pkg_with_version = f"{pkg_name}=={pkg_version}";
             if pkg_with_version not in package_to_qualified {
                 package_to_qualified[pkg_with_version] = [];
@@ -138,16 +120,73 @@ impl plugins(
         }
     }
 
+    return {
+        "plugin_to_dist": plugin_to_dist,
+        "plugin_list": plugin_list,
+        "short_to_qualified": short_to_qualified,
+        "qualified_to_plugin": qualified_to_plugin,
+        "package_to_qualified": package_to_qualified
+    };
+}
+
+def _is_external_plugin(
+    plugin: object, plugin_to_dist: dict[int, tuple[str, str]]
+) -> bool {
+    return id(plugin) in plugin_to_dist;
+}
+
+def _resolve_disable_target(
+    target: str, maps: dict[str, any], failed_plugins: list[str]
+) -> tuple[str, list[str]] | None {
+    qualified_to_plugin = maps["qualified_to_plugin"];
+    package_to_qualified = maps["package_to_qualified"];
+    short_to_qualified = maps["short_to_qualified"];
+
+    if ':' in target {
+        if target in qualified_to_plugin or target in failed_plugins {
+            return ("qualified", [target]);
+        }
+        return None;
+    }
+    if target in package_to_qualified {
+        return ("package", package_to_qualified[target]);
+    }
+    if target in short_to_qualified {
+        matches = short_to_qualified[target];
+        if len(matches) == 1 {
+            return ("qualified", [matches[0][0]]);
+        }
+        return ("ambiguous", [q for (q, _) in matches]);
+    }
+    return None;
+}
+
+impl plugins(
+    action: str = 'list', names: list | None = None, verbose: bool = False
+) -> int {
+    if names is None {
+        names = [];
+    }
+    import from jaclang.bootstrap { bootstrap_product }
+    bootstrap_product();
+    import from jaclang.jac0core.runtime { plugin_manager }
+    import from jaclang.project.config { get_config, JacConfig, find_project_root }
+    import from jaclang.jac0core.helpers {
+        get_disabled_plugins,
+        get_failed_plugin_names
+    }
+    import from pathlib { Path }
+
+    maps = _build_plugin_maps(plugin_manager);
+    plugin_to_dist = maps["plugin_to_dist"];
+    plugin_list = maps["plugin_list"];
+    short_to_qualified = maps["short_to_qualified"];
+    qualified_to_plugin = maps["qualified_to_plugin"];
+    package_to_qualified = maps["package_to_qualified"];
+    failed_plugins = get_failed_plugin_names();
+
     config = get_config();
     disabled_plugins: list[str] = get_disabled_plugins();
-
-    def is_external_plugin(plugin: object) -> bool {
-        return id(plugin) in plugin_to_dist;
-    }
-
-    def is_disabled(qualified_name: str) -> bool {
-        return qualified_name in disabled_plugins;
-    }
 
     if action == 'disable' {
         if not names {
@@ -186,56 +225,38 @@ impl plugins(
                 continue;
             }
 
-            if ':' in target {
-                if target in qualified_to_plugin {
-                    plugin = qualified_to_plugin[target];
-                    if not is_external_plugin(plugin) {
-                        console.error(f"Cannot disable core plugin '{target}'.");
-                        continue;
-                    }
-                    if target not in disabled_list {
-                        disabled_list.append(target);
-                        console.success(f"Disabled: {target}", emoji=False);
-                    } else {
-                        console.warning(f"Already disabled: {target}", emoji=False);
-                    }
-                } else {
-                    console.warning(f"'{target}' not found.");
-                }
-            } elif target in package_to_qualified {
-                qualified_names = package_to_qualified[target];
-                for qname in qualified_names {
-                    if qname not in disabled_list {
-                        disabled_list.append(qname);
-                        console.success(f"Disabled: {qname}", emoji=False);
-                    } else {
-                        console.warning(f"Already disabled: {qname}", emoji=False);
-                    }
-                }
-            } elif target in short_to_qualified {
-                matches = short_to_qualified[target];
-                if len(matches) == 1 {
-                    (qname, plugin) = matches[0];
-                    if not is_external_plugin(plugin) {
-                        console.error(f"Cannot disable core plugin '{target}'.");
-                        continue;
-                    }
-                    if qname not in disabled_list {
-                        disabled_list.append(qname);
-                        console.success(f"Disabled: {qname}", emoji=False);
-                    } else {
-                        console.warning(f"Already disabled: {qname}", emoji=False);
-                    }
-                } else {
-                    console.warning(
-                        f"Ambiguous: '{target}' exists in multiple packages. Use qualified name:"
-                    );
-                    for (qname, _) in matches {
-                        console.print(f"  jac plugins disable {qname}", style="muted");
-                    }
-                }
-            } else {
+            resolved = _resolve_disable_target(target, maps, failed_plugins);
+            if resolved is None {
                 console.warning(f"'{target}' not found as a plugin or package name.");
+                continue;
+            }
+            (kind, qnames) = resolved;
+            if kind == "ambiguous" {
+                console.warning(
+                    f"Ambiguous: '{target}' exists in multiple packages. Use qualified name:"
+                );
+                for qname in qnames {
+                    console.print(f"  jac plugins disable {qname}", style="muted");
+                }
+                continue;
+            }
+            if kind == "package" and target in ("jaclang", "jaclang (built-in)") {
+                console.error("Cannot disable built-in jaclang plugins as a package.");
+                continue;
+            }
+            for qname in qnames {
+                plugin = qualified_to_plugin.get(qname);
+                if plugin is not None
+                and not _is_external_plugin(plugin, plugin_to_dist) {
+                    console.error(f"Cannot disable core plugin '{qname}'.");
+                    continue;
+                }
+                if qname not in disabled_list {
+                    disabled_list.append(qname);
+                    console.success(f"Disabled: {qname}", emoji=False);
+                } else {
+                    console.warning(f"Already disabled: {qname}", emoji=False);
+                }
             }
         }
         _persist_disabled_plugins(config);
@@ -373,18 +394,6 @@ impl plugins(
         return 0;
     }
 
-    commands_by_package: dict[str, list[str]] = {};
-    registry = get_registry();
-    for command in registry.get_all() {
-        source = command?.source;
-        if source and source != 'jaclang' {
-            pkg = source;
-            if pkg not in commands_by_package {
-                commands_by_package[pkg] = [];
-            }
-            commands_by_package[pkg].append(command.name);
-        }
-    }
     console.print(
         f"\n🔌 Installed Jac Plugins ({named_plugin_count} plugins from {len(
             plugins_by_dist
@@ -455,13 +464,16 @@ impl plugins(
             }
         }
 
-        pkg_commands = commands_by_package.get(pkg_name, []);
-        if pkg_commands {
-            console.print(
-                f"     💻 Commands: {', '.join(sorted(pkg_commands))}", style="warning"
-            );
-        }
+        console.print();
+    }
 
+    if failed_plugins {
+        console.warning(
+            f"Failed to load ({len(failed_plugins)}) — disable with qualified name:"
+        );
+        for name in sorted(failed_plugins) {
+            console.print(f"  ✖ {name}", style="muted");
+        }
         console.print();
     }
 
@@ -586,7 +598,8 @@ def _config_groups {
         "check": "Check command defaults (print_errs)",
         "dot": "Dot/graph visualization defaults (depth, traverse, format)",
         "cache": "Cache settings (enabled, dir)",
-        "environment": "Environment profile settings (default_profile)"
+        "environment": "Environment profile settings (default_profile)",
+        "plugins": "External entry-point plugins (disabled list only)"
     };
     for grp in CONFIG_GROUPS {
         desc = group_descriptions.get(grp, "");
@@ -605,7 +618,8 @@ def _get_group_defaults(group_name: str) -> dict {
         CheckConfig,
         DotConfig,
         CacheConfig,
-        EnvironmentConfig
+        EnvironmentConfig,
+        PluginsTableConfig
     }
 
     defaults_map = {
@@ -618,7 +632,8 @@ def _get_group_defaults(group_name: str) -> dict {
         "check": CheckConfig(),
         "dot": DotConfig(),
         "cache": CacheConfig(),
-        "environment": EnvironmentConfig()
+        "environment": EnvironmentConfig(),
+        "plugins": PluginsTableConfig()
     };
 
     default_obj = defaults_map.get(group_name);
@@ -639,6 +654,9 @@ def _get_group_defaults(group_name: str) -> dict {
 }
 
 def _get_group_attr(group_name: str) -> str {
+    if group_name == "plugins" {
+        return "plugins_table";
+    }
     return group_name;
 }
 

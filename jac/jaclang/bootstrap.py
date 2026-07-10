@@ -9,23 +9,21 @@ Import-time work is split into two tiers so ``import jaclang`` stays cheap:
   providers (client / shadcn / scale / mcp / byllm), loads external entry-point
   plugins, and schedules native acceleration. It is triggered *lazily*:
 
-  - explicitly by the CLI (``start_cli`` calls it before ``create_cmd``),
+  - explicitly by the CLI (``start_cli`` calls it before
+    ``register_feature_commands``),
   - on the first hook dispatch (:func:`ensure_for_hook`, wired into the
     runtime's hook-dispatch proxy), or
   - eagerly up-front when ``JAC_EAGER_BOOTSTRAP=1`` is set (transition shim
     for callers -- e.g. the test suite -- that still assume eager plugins).
 
-Splitting these tiers is what lets a bare ``import jaclang`` and ``jac purge``
-(short-circuited in ``jaclang.jac0core.cli_boot.start_cli`` before the product
-CLI ever loads) avoid pulling the entire product surface (client framework,
-scale, byllm, LLVM bindings, ``jaclang.project.config`` ...) at startup.
-
-Intermediate state, not the finished story: ``jac --version`` does *not* yet
-skip the product tier. ``start_cli`` in :mod:`jaclang.cli.cli` calls
-:func:`bootstrap_product` before argv is parsed (so ``create_cmd`` can register
-every plugin's commands), which means the version flag still pays for full
-product bootstrap today. Short-circuiting it belongs to the separate
-startup-perf work, not to this kernel/product tier split.
+Splitting these tiers is what lets a bare ``import jaclang``, ``jac --version``,
+and ``jac purge`` (short-circuited in ``jaclang.jac0core.cli_boot.start_cli``
+before the product CLI ever loads) avoid pulling the entire product surface
+(client framework, scale, byllm, LLVM bindings, ``jaclang.project.config`` ...)
+at startup. ``start_cli`` short-circuits ``--version`` / ``-V`` before
+:func:`bootstrap_product` and defers feature command registration to
+:func:`jaclang.cli.registry.register_feature_commands` only when a real command
+is about to run.
 """
 
 from __future__ import annotations
@@ -138,7 +136,6 @@ def bootstrap_product() -> None:
                 warnings.warn(f"External plugin loading failed: {exc}", stacklevel=2)
 
             _register_builtin_client_providers(plugin_manager)
-            _register_builtin_shadcn_provider(plugin_manager)
             _register_builtin_scale_provider(plugin_manager)
             _register_builtin_mcp_provider(plugin_manager)
             _register_builtin_byllm_provider(plugin_manager)
@@ -203,13 +200,13 @@ def _register_builtin_client_providers(plugin_manager: object) -> None:
     are now part of core and register directly (no entry points, no separate
     package). Serving hooks (render_page / get_client_js / send_static_file /
     format_build_error) are inlined into core's defaults; these providers
-    contribute the ``[plugins.client]`` / ``[plugins.desktop]`` config schema,
-    the npm dependency type, the project templates (fullstack/client/mobile/
-    desktop), plugin metadata, and the client CLI commands (``build`` /
-    ``setup`` / ``start`` + ``--npm`` / ``--cl``).
+    contribute the ``[client]`` / ``[desktop]`` config schema, plugin metadata,
+    and project templates. CLI commands and shadcn templates register separately
+    via :func:`jaclang.cli.registry.register_feature_commands` and
+    :func:`jaclang.project.template_registry.initialize_template_registry` so
+    this path never imports the heavy client CLI or compiler surface.
     """
     try:
-        from jaclang.runtimelib.client.cli import JacClientCmd
         from jaclang.runtimelib.client.desktop_plugin_config import (
             JacDesktopPluginConfig,
         )
@@ -217,28 +214,9 @@ def _register_builtin_client_providers(plugin_manager: object) -> None:
     except Exception as exc:  # keep core usable if the framework fails to import
         warnings.warn(f"Built-in client framework unavailable: {exc}", stacklevel=2)
         return
-    for _provider in (JacClientPluginConfig, JacDesktopPluginConfig, JacClientCmd):
+    for _provider in (JacClientPluginConfig, JacDesktopPluginConfig):
         if not plugin_manager.is_registered(_provider):
             plugin_manager.register(_provider)
-
-
-def _register_builtin_shadcn_provider(plugin_manager: object) -> None:
-    """Register the built-in shadcn/ui CLI provider.
-
-    This shipped as the ``shadcn`` entry point of the separate ``jac-super``
-    plugin; it is now part of core and registers directly (no entry point, no
-    separate package). Importing the module also registers the ``jac retheme``
-    command (via its ``@registry.command`` decorator); registering the plugin
-    class wires its ``create_cmd`` / ``register_project_template`` hooks, which
-    add the ``--shadcn`` flags and the ``jac-shadcn`` project template.
-    """
-    try:
-        from jaclang.cli.shadcn.plugin import JacShadcnPlugin
-    except Exception as exc:  # keep core usable if shadcn fails to import
-        warnings.warn(f"Built-in shadcn provider unavailable: {exc}", stacklevel=2)
-        return
-    if not plugin_manager.is_registered(JacShadcnPlugin):
-        plugin_manager.register(JacShadcnPlugin)
 
 
 def _register_builtin_scale_provider(plugin_manager: object) -> None:
@@ -275,7 +253,7 @@ def _register_builtin_mcp_provider(plugin_manager: object) -> None:
     no external ``mcp``/pydantic/starlette/uvicorn dependency). The ``jac mcp``
     command itself auto-registers when ``jaclang.cli.commands.mcp`` is imported
     during CLI init; registering the plugin class here contributes the
-    ``[plugins.mcp]`` config schema and plugin metadata.
+    ``[mcp]`` config schema and plugin metadata.
     """
     try:
         from jaclang.cli.mcp.plugin_config import JacMcpPluginConfig
@@ -295,8 +273,7 @@ def _register_builtin_byllm_provider(plugin_manager: object) -> None:
     behind ``jaclang.byllm._optdeps`` shims and a ``require_optional`` guard in
     ``Model.postinit``, so this registration never pulls the ``llm`` capability
     closure at ``import jaclang`` time; those deps arrive in the project
-    ``.jac/venv`` via the capability registry when ``[plugins.byllm]`` is
-    declared.
+    ``.jac/venv`` via the capability registry when ``[byllm]`` is declared.
     """
     try:
         import jaclang.byllm.cli  # noqa: F401 — registers model command

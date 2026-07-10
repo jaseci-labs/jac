@@ -707,20 +707,6 @@ class JacScalePlugin {
         return http_transport().call_walker(module_name, walker_name, args, stub_cls);
     }
 }
-
-
-import inspect;
-glob func = JacScalePlugin.create_j_context,
-     sig = inspect.signature(func),
-     sig_nodef = sig.replace(
-         parameters=[
-             p.replace(default=inspect.Parameter.empty) for p in sig.parameters.values()
-         ]
-     );
-
-with entry {
-    func.__signature__ = sig_nodef;
-}
 # JacScalePlugin is registered explicitly by
 # jaclang.bootstrap._register_builtin_scale_provider (product tier) rather
 # than as an import side effect, so importing this module no longer

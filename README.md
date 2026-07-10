@@ -201,7 +201,7 @@ The `jac` CLI is your primary interface for interacting with the Jaseci ecosyste
 | **`jac start <file.jac>`** | Starts a REST API server for a Jac program. |
 | **`jac start <file.jac> --scale`** | Deploys to Kubernetes with Redis and MongoDB auto-provisioning. |
 | **`jac create <name> --kind web-app`** | Creates a new full-stack Jac project with frontend support. |
-| **`jac plugins`** | Manages Jac plugins (enable/disable byllm, jac-mcp, etc.). |
+| **`jac plugins`** | List/disable **external** entry-point plugins (`jac plugins list/disable/enable`). Built-in features cannot be disabled. |
 
 ---
 

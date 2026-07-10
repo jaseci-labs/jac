@@ -51,6 +51,7 @@ impl start_cli -> None {
 
     import from jaclang.cli._cmd_manifest { MANIFEST }
     import from jaclang.bootstrap { bootstrap_product }
+    import from jaclang.cli.registry { register_feature_commands }
 
     registry = get_registry();
     registry.load_from_manifest(MANIFEST);
@@ -75,7 +76,7 @@ impl start_cli -> None {
     }
 
     bootstrap_product();
-    Jac.create_cmd();
+    register_feature_commands();
 
     parser = registry.finalize();
 

@@ -31,6 +31,7 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac add --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |
+| `[plugins]` | external entry-point plugins only: `disabled = ["dist:plugin", "dist:*", "*"]` (see below) |
 
 ## Dependency verbs (don't pip-install into a Jac project by hand)
 
@@ -82,7 +83,17 @@ cache = true
 
 ## Built-in capabilities
 
-byLLM, scale, the client/desktop framework, and the MCP server all ship inside the `jac` binary - there is no plugin system, nothing to enable or disable, and no `jac plugins` command. Configure a capability with its top-level table (`[byllm]`, `[scale.*]`, `[client]`, `[desktop]`) and run `jac install` to resolve its optional third-party dependencies into `.jac/venv` (e.g. a `[byllm]` model config pulls litellm/pillow; `[scale.database]` pulls pymongo). Old `[plugins.<name>]` config paths no longer parse - use the top-level names.
+byLLM, scale, the client/desktop framework, and the MCP server ship inside the
+`jac` binary; configure them with top-level tables (`[byllm]`, `[scale.*]`,
+`[client]`, `[desktop]`, `[mcp]`) and run `jac install` to resolve optional
+third-party dependencies into `.jac/venv`. Old `[plugins.<name>]` config paths
+no longer parse; use the top-level names.
+
+**External** entry-point plugins (third-party packages registering on the `jac`
+hook group) can be listed and disabled via `[plugins].disabled` or
+`jac plugins list/disable/enable/disabled`. Built-ins cannot be disabled.
+See `plugin-authoring` / the config reference `[plugins]` section for qualified
+names (`package:plugin`, `package:*`, `*`).
 
 ## .jacignore
 

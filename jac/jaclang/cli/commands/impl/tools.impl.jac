@@ -332,6 +332,11 @@ impl gen_jir_registry(verify: bool = False) -> int {
     return 0;
 }
 
+impl gen_cmd_manifest(verify: bool = False) -> int {
+    import from jaclang.cli.gen_cmd_manifest { generate }
+    return generate(verify=verify);
+}
+
 impl gen_uni_dispatch(verify: bool = False) -> int {
     import from jaclang.jac0core.gen_uni_dispatch { write_all, verify_all }
     if verify {

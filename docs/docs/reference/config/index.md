@@ -617,6 +617,52 @@ JAC_PROFILE=production jac run main.jac
 
 ---
 
+### [plugins]
+
+Controls **external** entry-point plugins discovered via the `jac` setuptools
+group. Built-in capabilities (byLLM, scale, client/desktop, MCP, shadcn) are
+always present and cannot be disabled here.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `disabled` | `list[str]` | `[]` | Entry points to skip at bootstrap |
+
+Each entry is a qualified name (`distribution:plugin`), a package wildcard
+(`my-dist:*`), or `*` to disable all external plugins.
+
+```toml
+[plugins]
+disabled = ["broken-pkg:my-plugin", "legacy-dist:*"]
+```
+
+Manage the list from the CLI (writes `jac.toml`):
+
+```bash
+jac plugins list
+jac plugins disable my-dist:my-plugin
+jac plugins enable my-dist:my-plugin
+jac plugins disabled
+```
+
+Or via `jac config`:
+
+```bash
+jac config get plugins.disabled
+jac config set plugins.disabled '["my-dist:my-plugin"]'
+jac config unset plugins.disabled
+```
+
+If an entry point fails to import (missing dependency), `jac plugins list`
+shows it under **Failed to load**; pass that qualified name to
+`jac plugins disable` to silence the warning.
+
+Feature configuration for built-in capabilities lives in top-level tables
+(`[byllm]`, `[scale.*]`, `[client]`, `[desktop]`, `[mcp]`), not under
+`[plugins.<name>]`. See [Plugins](../plugin-authoring.md) for the full
+external-plugin reference.
+
+---
+
 ## Environment Variable Interpolation
 
 Use environment variable interpolation inside `jac.toml` values:

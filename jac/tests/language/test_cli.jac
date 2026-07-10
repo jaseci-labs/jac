@@ -1551,6 +1551,7 @@ test "config groups" {
         assert "build" in stdout;
         assert "test" in stdout;
         assert "serve" in stdout;
+        assert "plugins" in stdout;
     } finally {
         os.chdir(original_cwd);
         set_config(None);
@@ -1912,6 +1913,86 @@ test "plugins disable enable wildcard persists jac toml" {
         }
         assert "plugins" not in parsed or "disabled" not in parsed.get("plugins", {});
     } finally {
+        os.chdir(original_cwd);
+        set_config(None);
+        shutil.rmtree(tmp_path, ignore_errors=True);
+    }
+}
+
+test "config get set plugins disabled" {
+    import tomllib;
+    tmp_path = tempfile.mkdtemp();
+    toml_content = '[project]\nname = "test-project"\nversion = "1.0.0"\n';
+    toml_path = os.path.join(tmp_path, "jac.toml");
+    with open(toml_path, "w") as f {
+        f.write(toml_content);
+    }
+    original_cwd = os.getcwd();
+    os.chdir(tmp_path);
+    set_config(None);
+    try {
+        result = config_cmd.config(
+            action="set", key="plugins.disabled", value='["pkg:plugin"]'
+        );
+        assert result == 0;
+        with open(toml_path, "rb") as f {
+            parsed = tomllib.load(f);
+        }
+        assert parsed["plugins"]["disabled"] == ["pkg:plugin"];
+
+        captured = io.StringIO();
+        old_stdout = sys.stdout;
+        sys.stdout = captured;
+        try {
+            result = config_cmd.config(action="get", key="plugins.disabled");
+        } finally {
+            sys.stdout = old_stdout;
+        }
+        assert result == 0;
+        assert "[1 items]" in captured.getvalue();
+        assert "explicitly set" in captured.getvalue();
+
+        result = config_cmd.config(action="unset", key="plugins.disabled");
+        assert result == 0;
+        with open(toml_path, "rb") as f {
+            parsed = tomllib.load(f);
+        }
+        assert "plugins" not in parsed or "disabled" not in parsed.get("plugins", {});
+    } finally {
+        os.chdir(original_cwd);
+        set_config(None);
+        shutil.rmtree(tmp_path, ignore_errors=True);
+    }
+}
+
+test "plugins disable accepts failed entry point qualified name" {
+    import from jaclang.jac0core.helpers {
+        clear_failed_plugin_names,
+        get_failed_plugin_names
+    }
+    import jaclang.jac0core.helpers as helpers_mod;
+    tmp_path = tempfile.mkdtemp();
+    toml_content = '[project]\nname = "test-project"\nversion = "1.0.0"\n';
+    toml_path = os.path.join(tmp_path, "jac.toml");
+    with open(toml_path, "w") as f {
+        f.write(toml_content);
+    }
+    original_cwd = os.getcwd();
+    os.chdir(tmp_path);
+    set_config(None);
+    try {
+        clear_failed_plugin_names();
+        helpers_mod._FAILED_PLUGIN_QUALIFIED_NAMES.append("broken-dist:bad-plugin");
+        assert "broken-dist:bad-plugin" in get_failed_plugin_names();
+        result = config_cmd.plugins(action="disable", names=["broken-dist:bad-plugin"]);
+        assert result == 0;
+        import tomllib;
+        with open(toml_path, "rb") as f {
+            parsed = tomllib.load(f);
+        }
+        assert "broken-dist:bad-plugin" in parsed["plugins"]["disabled"];
+    } finally {
+        clear_failed_plugin_names();
         os.chdir(original_cwd);
         set_config(None);
         shutil.rmtree(tmp_path, ignore_errors=True);

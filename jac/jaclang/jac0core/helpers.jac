@@ -404,6 +404,16 @@ def get_disabled_plugins -> list {
     }
 }
 
+glob _FAILED_PLUGIN_QUALIFIED_NAMES: list[str] = [];
+
+def get_failed_plugin_names -> list[str] {
+    return list(_FAILED_PLUGIN_QUALIFIED_NAMES);
+}
+
+def clear_failed_plugin_names {
+    _FAILED_PLUGIN_QUALIFIED_NAMES.clear();
+}
+
 glob _FOLDED_IN_PLUGIN_DISTS = {
          'jac-client',
          'jac-desktop',
@@ -418,6 +428,7 @@ def load_plugins_with_disabling(
     plugin_manager: 'pluggy.PluginManager', disabled_list: list
 ) -> None {
     import from importlib.metadata { entry_points }
+    clear_failed_plugin_names();
     disable_all = '*' in disabled_list;
     disabled_qualified: set = `set();
     disabled_packages: set = `set();
@@ -475,6 +486,7 @@ def load_plugins_with_disabling(
             plugin_manager._plugin_distinfo.append((plugin, DistFacade(dist)));
         } except Exception as exc {
             import sys;
+            _FAILED_PLUGIN_QUALIFIED_NAMES.append(qualified_name);
             if isinstance(exc, MalformedJacTomlError) {
                 sys.stderr.write(
                     f"warning: plugin '{qualified_name}' failed to load -- "

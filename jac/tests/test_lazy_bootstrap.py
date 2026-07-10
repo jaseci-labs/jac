@@ -6,6 +6,14 @@ The lazy path (bare ``import jaclang`` -> first hook -> ``ensure_for_hook`` ->
 pytest process is already eagerly bootstrapped. These tests therefore drive the
 lazy path in a clean child interpreter via ``subprocess`` with the eager flag
 removed from the environment.
+
+**Hermetic tests** (no ``libjacllvm.so`` required) exercise bootstrap state
+machine behaviour in an isolated child with ``JAC_LLVM_SHIM`` stripped, or
+inspect pure-Python surfaces (manifest file, source layout, ``PluginManager``).
+
+**Integration tests** (``require_jac_compiler``) import product-tier ``.jac``
+modules (CLI registry, ``collect_manifest``, ``start_cli``) and skip when the
+LLVM shim is absent.
 """
 
 from __future__ import annotations
@@ -13,18 +21,29 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 
-def _run(code: str, *, eager: bool | None) -> subprocess.CompletedProcess[str]:
+def _run(
+    code: str,
+    *,
+    eager: bool | None,
+    hermetic: bool = False,
+) -> subprocess.CompletedProcess[str]:
     """Run ``code`` in a fresh interpreter, controlling the eager-bootstrap flag.
 
     ``eager=None`` removes ``JAC_EAGER_BOOTSTRAP`` from the child env (the real
     lazy path); ``eager=True`` sets it to ``"1"``.
+
+    When ``hermetic=True``, the child does not inherit ``JAC_LLVM_SHIM`` so
+    bootstrap-state tests run in CI/dev checkouts without a built LLVM artifact.
     """
     env = dict(os.environ)
     env.pop("JAC_EAGER_BOOTSTRAP", None)
+    if hermetic:
+        env.pop("JAC_LLVM_SHIM", None)
     if eager:
         env["JAC_EAGER_BOOTSTRAP"] = "1"
     return subprocess.run(
@@ -55,6 +74,7 @@ assert is_product_settled() is False, "product settled at import"
 print("OK")
 """,
         eager=None,
+        hermetic=True,
     )
     _assert_ok(proc)
 
@@ -63,17 +83,21 @@ def test_hook_dispatch_triggers_product_bootstrap() -> None:
     """Dispatching any @hookable after a bare import triggers product bootstrap."""
     proc = _run(
         """
+import contextlib
 import jaclang
 from jaclang.bootstrap import is_product_bootstrapped
 from jaclang.jac0core.runtime import JacRuntime as Jac
 assert not is_product_bootstrapped()
-# get_sv_registry is a no-arg, side-effect-free @hookable; calling it must run
-# the lazy product bootstrap through the dispatch proxy's ensure_for_hook.
-Jac.get_sv_registry()
+# store() routes through the dispatch proxy and triggers ensure_for_hook. The
+# default hook body may fail without the LLVM shim, but product bootstrap must
+# still complete first.
+with contextlib.suppress(Exception):
+    Jac.store(base_path="/tmp/x", create_dirs=False)
 assert is_product_bootstrapped(), "hook dispatch did not bootstrap product"
 print("OK")
 """,
         eager=None,
+        hermetic=True,
     )
     _assert_ok(proc)
 
@@ -88,6 +112,7 @@ assert is_product_bootstrapped(), "eager flag did not bootstrap at import"
 print("OK")
 """,
         eager=True,
+        hermetic=True,
     )
     _assert_ok(proc)
 
@@ -123,6 +148,7 @@ assert len(boom_warnings) == 1, [str(w.message) for w in caught]
 print("OK")
 """,
         eager=None,
+        hermetic=True,
     )
     _assert_ok(proc)
 
@@ -210,7 +236,30 @@ def test_hook_proxy_fast_path_matches_bind_partial(
 
 
 def test_version_flag_skips_bootstrap() -> None:
-    """``jac --version`` exits without calling ``bootstrap_product``."""
+    """``start_cli`` short-circuits ``--version`` before ``bootstrap_product``."""
+    impl = (
+        Path(__file__).resolve().parents[1]
+        / "jaclang"
+        / "cli"
+        / "impl"
+        / "cli.impl.jac"
+    )
+    text = impl.read_text(encoding="utf-8")
+    version_idx = text.find("('--version', '-V')")
+    bootstrap_idx = text.find("bootstrap_product()")
+    assert version_idx != -1 and bootstrap_idx != -1
+    assert version_idx < bootstrap_idx, (
+        "expected --version short-circuit before bootstrap_product in cli.impl.jac"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Integration tests (need LLVM shim to compile product-tier .jac modules)
+# ---------------------------------------------------------------------------
+
+
+def test_version_flag_skips_bootstrap_runtime(require_jac_compiler: None) -> None:
+    """``jac --version`` exits without calling ``bootstrap_product`` (integration)."""
     proc = _run(
         """
 import sys, os
@@ -238,7 +287,7 @@ print("OK")
     _assert_ok(proc)
 
 
-def test_version_flag_prints_version() -> None:
+def test_version_flag_prints_version(require_jac_compiler: None) -> None:
     """``jac --version`` produces output without crashing."""
     proc = _run(
         """
@@ -260,6 +309,16 @@ print("OK")
         ln for ln in proc.stdout.splitlines() if ln.strip() and ln.strip() != "OK"
     ]
     assert non_ok, f"no version output found: {proc.stdout!r}"
+
+
+def test_manifest_matches_live_registry(require_jac_compiler: None) -> None:
+    """Checked-in MANIFEST matches live @registry.command registrations."""
+    from jaclang.cli._cmd_manifest import MANIFEST
+    from jaclang.cli.gen_cmd_manifest import collect_manifest, manifest_diff
+
+    live = collect_manifest()
+    errors = manifest_diff(MANIFEST, live)
+    assert not errors, "cmd manifest drift:\n" + "\n".join(errors)
 
 
 def test_manifest_has_all_core_commands() -> None:
@@ -284,12 +343,13 @@ def test_manifest_commands_have_required_fields() -> None:
         assert entry["module"].startswith("jaclang.cli.commands."), entry
 
 
-def test_registry_load_from_manifest() -> None:
+def test_registry_load_from_manifest(require_jac_compiler: None) -> None:
     """``load_from_manifest`` populates the registry without importing command modules."""
     from jaclang.cli._cmd_manifest import MANIFEST
     from jaclang.cli.registry import CommandRegistry
 
     reg = CommandRegistry()
+    reg.init()
     reg.load_from_manifest(MANIFEST)
 
     assert len(reg.commands) == len(MANIFEST)
@@ -300,12 +360,13 @@ def test_registry_load_from_manifest() -> None:
     assert any(a.name == "filename" for a in spec.args)
 
 
-def test_registry_load_from_manifest_is_idempotent() -> None:
+def test_registry_load_from_manifest_is_idempotent(require_jac_compiler: None) -> None:
     """Calling ``load_from_manifest`` twice doesn't duplicate or overwrite specs."""
     from jaclang.cli._cmd_manifest import MANIFEST
     from jaclang.cli.registry import CommandRegistry
 
     reg = CommandRegistry()
+    reg.init()
     reg.load_from_manifest(MANIFEST)
     first_spec = reg.get("run")
     reg.load_from_manifest(MANIFEST)
