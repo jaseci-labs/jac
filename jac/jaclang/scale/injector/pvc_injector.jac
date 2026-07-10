@@ -100,6 +100,7 @@ obj PvcInjector(Injector) {
         storage_class: str = "",
         loader_image: str = "busybox:1.36",
         provisioned_database: str = "",
+        pre_tar_hook: any = None,
         _object_key: str = "",
         _bundle_bytes: bytes = b"";
 
@@ -116,7 +117,8 @@ obj PvcInjector(Injector) {
         raw = pack_jab(
             project_dir,
             self.provisioned_database,
-            getattr(self, "_pod_binary_bytes", b"")
+            getattr(self, "_pod_binary_bytes", b""),
+            pre_tar=self.pre_tar_hook
         );
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);

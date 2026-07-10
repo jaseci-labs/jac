@@ -209,7 +209,14 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
             }
             dest = stage / path.relative_to(base);
             dest.parent.mkdir(parents=True, exist_ok=True);
-            shutil.copy2(str(path), str(dest));
+            # The host client build may rewrite .jac/client/dist while this copy
+            # runs; a file that vanishes mid-copy only feeds the precompiler
+            # (which ignores dist), so skip it rather than fail the seal.
+            try {
+                shutil.copy2(str(path), str(dest));
+            } except OSError {
+                continue;
+            }
         }
         # The precompiler discovers a package by its __init__; app projects are
         # flat, so mark the staged copy (the marker's .jir is not packed).
@@ -246,7 +253,9 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
 }
 
 
-def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> bytes {
+def pack_jab(
+    project_dir: str, provisioned_database: str, pod_binary: bytes, pre_tar: any = None
+) -> bytes {
     # Pack the app into a sealed .jab: project source, the sealed _precompiled/
     # image (MANIFEST.json at tar root), and jac.toml. The gzip-tar IS a valid
     # .jab (both materialize_jab and a plain `tar xzf` accept it), so pods load
@@ -258,6 +267,11 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     }
     base = Path(project_dir).resolve();
     staged = _precompile_app(base, pod_binary);
+    # Host work that overlaps the seal (the client build) must land in the
+    # tree before the tar below reads it.
+    if pre_tar is not None {
+        pre_tar();
+    }
     # staged is <stage_root>/app; the whole mkdtemp tree must be removed even if
     # a tar.add below raises, or a full project copy leaks in /tmp on every
     # failed deploy (accumulates on a retrying deploy driver).

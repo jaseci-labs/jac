@@ -18,6 +18,114 @@ def k8s_safe_name(svc_name: str) -> str {
 }
 
 
+obj HostClientBuild {
+    # Builds the client bundle on the host in a background thread so it
+    # overlaps the app seal (the two write disjoint paths: .jac/client/dist
+    # vs a temp staging copy). start() fires once the pod binary is
+    # downloaded; join() must run before the tree is packed.
+    has project_dir: str = "",
+        client_entry: str = "",
+        _thread: any = None,
+        _tmp_jac: str = "",
+        _error: str = "";
+
+    def start(pod_binary: bytes, arch: str) {
+        import os;
+        import threading;
+        import from jaclang.cli.console { console }
+        if not self.client_entry {
+            return;
+        }
+        if not os.path.isfile(os.path.join(self.project_dir, self.client_entry)) {
+            return;
+        }
+        exe = self._resolve_jac(pod_binary, arch);
+        if not exe {
+            console.print(
+                "No jac executable can run on this host to build the client; "
+                "the gateway pod will build it on boot instead."
+            );
+            return;
+        }
+        console.print(
+            f"Building the client bundle on the host ({self.client_entry}), "
+            f"in parallel with the app seal."
+        );
+        self._thread = threading.Thread(target=self._run, args=(exe, ), daemon=True);
+        self._thread.start();
+    }
+
+    def _resolve_jac(pod_binary: bytes, arch: str) -> str {
+        # Prefer the driver's own jac; otherwise the just-downloaded pod
+        # binary works whenever the host can execute it (linux, same arch),
+        # which covers CI runners and python-driver environments.
+        import os;
+        import sys;
+        import shutil;
+        import tempfile;
+        import from jaclang.scale.runtime.context.util { jac_executable }
+        import from jaclang.runtimelib.utils { host_arch }
+        exe = jac_executable();
+        if shutil.which(exe) or os.path.isfile(exe) {
+            return exe;
+        }
+        if sys.platform != "linux" or host_arch() != arch or not pod_binary {
+            return "";
+        }
+        (fd, path) = tempfile.mkstemp(prefix="jac-client-build-", suffix="-jac");
+        with os.fdopen(fd, "wb") as handle {
+            handle.write(pod_binary);
+        }
+        os.chmod(path, 0o755);
+        self._tmp_jac = path;
+        return path;
+    }
+
+    def _run(exe: str) {
+        import os;
+        import subprocess;
+        try {
+            subprocess.run(
+                [exe, "build", self.client_entry, "--client", "web"],
+                cwd=self.project_dir,
+                check=True,
+                capture_output=True,
+                timeout=900
+            );
+        } except Exception as exc {
+            self._error = str(exc);
+        } finally {
+            if self._tmp_jac {
+                try {
+                    os.unlink(self._tmp_jac);
+                } except OSError {
+                    ;
+                }
+            }
+        }
+    }
+
+    def join {
+        import os;
+        import from jaclang.cli.console { console }
+        if self._thread is None {
+            return;
+        }
+        self._thread.join();
+        dist = os.path.join(self.project_dir, ".jac", "client", "dist");
+        if not self._error and os.path.isfile(os.path.join(dist, "index.html")) {
+            console.print("Client bundle built; shipping it to the gateway pod.");
+        } else {
+            console.print(
+                f"Host client build did not complete "
+                f"({self._error or 'no dist produced'}); the gateway pod will "
+                f"build it on boot instead."
+            );
+        }
+    }
+}
+
+
 obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
@@ -49,50 +157,24 @@ obj MicroserviceManifestBuilder {
         import from jaclang.scale.injector.binary_injector { select_injector }
         import from jaclang.scale.injector.pvc_injector { PvcInjector }
         proj = self.project_dir or app_config.code_folder;
-        self._build_client_bundle(proj);
+        # The client build starts once the pod binary is downloaded (so it can
+        # run even when the driver has no jac on PATH) and overlaps the app
+        # seal; pack_jab joins it before the tree is tarred.
+        build = HostClientBuild(
+            project_dir=proj, client_entry=(self._client_entry() or "")
+        );
         selection = select_injector(
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
             proj,
-            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else "")
+            provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else ""),
+            on_binary_ready=build.start,
+            pre_tar_hook=build.join
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
         return injector;
-    }
-
-    def _build_client_bundle(project_dir: str) {
-        import os;
-        import subprocess;
-        import from jaclang.cli.console { console }
-        import from jaclang.scale.runtime.context.util { jac_executable }
-        client_entry = self._client_entry();
-        if not client_entry {
-            return;
-        }
-        entry_abs = os.path.join(project_dir, client_entry);
-        if not os.path.isfile(entry_abs) {
-            return;
-        }
-        dist = os.path.join(project_dir, ".jac", "client", "dist");
-        console.print(f"Building the client bundle on the host ({client_entry}).");
-        try {
-            subprocess.run(
-                [jac_executable(), "build", client_entry, "--client", "web"],
-                cwd=project_dir,
-                check=True,
-                timeout=900
-            );
-            if os.path.isfile(os.path.join(dist, "index.html")) {
-                console.print("Client bundle built; shipping it to the gateway pod.");
-            }
-        } except Exception as exc {
-            console.print(
-                f"Host client build did not complete ({exc}); the gateway pod "
-                f"will build it on boot instead."
-            );
-        }
     }
 
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
