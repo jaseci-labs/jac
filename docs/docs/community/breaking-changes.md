@@ -25,13 +25,7 @@ The `jac add` verb has been removed; `jac install <pkg>` absorbs it. This is a *
 
 ---
 
-### Plugin system scope (0.31.1 update)
-
-The 0.31.0 removal dropped third-party hook plugins and the full `[plugins]` control plane. **0.31.1 partially restores** external entry-point discovery and `[plugins].disabled` / `jac plugins` for *disabling* broken optional packages; built-in features (byLLM, scale, client, MCP, shadcn) remain core and cannot be disabled. Feature config stays in top-level `[byllm]`, `[scale]`, `[client]`, etc. See [Plugins](../reference/plugin-authoring.md).
-
----
-
-### Plugin system removed; `[plugins.*]` config flattened (0.31.0)
+### Plugin system removed; `[plugins.*]` config flattened
 
 The pluggy-style plugin/hook system has been removed entirely. The `jac plugins` command, the `JAC_DISABLED_PLUGINS` env var, the `[plugins]` `discovery`/`enabled`/`disabled` keys, and entry-point plugin discovery are all gone. Built-in features (byLLM, scale, the client/desktop framework, MCP, shadcn) are now called directly by core, and **external third-party plugins are no longer supported**.
 

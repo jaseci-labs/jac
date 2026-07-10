@@ -1,6 +1,5 @@
 import fnmatch;
 import html;
-import inspect;
 import json;
 import os;
 import sys;
@@ -11,7 +10,6 @@ import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
 import dataclasses;
 import from dataclasses { dataclass, field }
-import from functools { wraps }
 import from http.server { HTTPServer }
 import from inspect { getfile }
 import from logging { getLogger }
@@ -56,7 +54,6 @@ import from jaclang.jac0core.modresolver {
     pop_import_base
 }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
-import from jaclang.jac0core { plugin }
 import type from http.server { BaseHTTPRequestHandler }
 import type from jaclang.cli.console { JacConsole as ConsoleImpl }
 import type from jaclang.jac0core.compiler { JacCompiler }
@@ -78,13 +75,7 @@ glob logger = getLogger(__name__),
      ),
      _default_base_path_dir: list = [os.getcwd()],
      _default_full_target_path: list = [None],
-     _shared_root_resolver: list = [None, None],
-     _product_done: list = [False];
-
-glob plugin_manager = plugin.PluginManager('jac'),
-     hookspec = plugin.HookspecMarker('jac'),
-     hookimpl = plugin.HookimplMarker('jac'),
-     hookable = plugin.HookableMarker();
+     _shared_root_resolver: list = [None, None];
 
 glob _scale_provider_cache: list = [];
 
@@ -101,23 +92,6 @@ def _scale_provider -> any {
     } except ImportError { }
     _scale_provider_cache.append(result);
     return result;
-}
-
-def _ensure_product_for_hook(name: str) {
-    if _product_done[0] {
-        return;
-    }
-    try {
-        import from jaclang.bootstrap { ensure_for_hook, is_product_settled }
-        ensure_for_hook();
-
-        if is_product_settled() {
-            _product_done[0] = True;
-        }
-    } except Exception as exc {
-        logger.warning(f"product bootstrap failed before hook '{name}': {exc}");
-        _product_done[0] = True;
-    }
 }
 
 def _prefetch_edges(origin: list[NodeArchetype]) -> None {
@@ -224,7 +198,6 @@ obj LLMModel(Protocol) {
 class JacContext {
     static def get_context -> ExecutionContext;
     static def reset_graph(root_node: (Root | None) = None) -> int;
-    @hookable
     static def create_j_context(
         user_root: (str | None),
         base_path_dir: (str | None) = None,
@@ -245,12 +218,8 @@ class JacPersistence {
     static def object_ref(`obj: Archetype) -> str;
     static def save(`obj: (Archetype | Anchor)) -> None;
     static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None;
-    @hookable
     static def get_user_manager(base_path: str) -> UserManager;
-
-    @hookable
     static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
-
     static def get_persistent_memory(config: dict) -> any;
     static def set_persistent_memory_provider(provider: Callable | None) -> None;
 }
@@ -467,24 +436,14 @@ class JacServe {
         error_output: str, project_dir: Path, config: object = None
     ) -> str;
 
-    @hookable
     static def get_api_server_class -> type;
-
-    @hookable
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
-
-    @hookable
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
-
-    @hookable
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any;
 
-    @hookable
     static def get_sv_registry -> dict[str, str];
-
-    @hookable
     static def create_server(
         jac_server: JacServer, host: str, port: int, max_retries: int = 10
     ) -> HTTPServer;
@@ -554,9 +513,6 @@ class JacBuiltin {
 }
 
 class JacCmd {
-    @hookable
-    static def create_cmd -> None;
-
     static def run_ai_agent(req: object) -> int;
 }
 
@@ -566,124 +522,6 @@ class JacConfig {
 }
 
 class JacRuntimeInterface(JacClassReferences, JacContext, JacPersistence, JacAccessValidation, JacGraph, JacWalker, JacArchetype, JacModule, JacIntrospection, JacLLM, JacServe, JacTest, JacBuiltin, JacCmd, JacConfig) {}
-
-def build_plugin_hook_layer(iface: type[any]) -> tuple[(type[any], type[any])] {
-    spec_methods = {};
-    impl_methods = {};
-    proxy_methods = {};
-    for (name, method) in inspect.getmembers(iface, predicate=inspect.isfunction) {
-        if name.startswith('_') {
-            continue;
-        }
-        raw = inspect.getattr_static(iface, name, None);
-        hook_opts = raw?._jac_hookable;
-        if hook_opts is None {
-            continue;
-        }
-        sig = inspect.signature(method);
-        sig_nodef = sig.replace(
-            parameters=[
-                p.replace(`default=inspect.Parameter.empty)
-                for p in sig.parameters.values()
-            ]
-        );
-        doc = method.__doc__ or '';
-        """Create a placeholder method for the spec class.""";
-        def make_spec(
-            name: str, sig_nodef: inspect.Signature, doc: str, method: Callable
-        ) -> Callable {
-            @wraps(method)
-            def placeholder(*args: object, **kwargs: object) {
-                ;
-            }
-            placeholder.__name__ = name;
-            placeholder.__doc__ = doc;
-            placeholder.__signature__ = sig_nodef;
-            return placeholder;
-        }
-        spec_methods[name] = hookspec(firstresult=hook_opts.get('firstresult', True))(
-            make_spec(name, sig_nodef, doc, method)
-        );
-        wrapped_impl = wraps(method)(method);
-        wrapped_impl.__signature__ = sig_nodef;
-        impl_methods[name] = hookimpl(wrapped_impl);
-        """Create a proxy method that dispatches through plugin_manager.""";
-        def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
-            params = list(sig.parameters.values());
-            has_var = any(
-                p.kind in (
-                    inspect.Parameter.VAR_POSITIONAL,
-                    inspect.Parameter.VAR_KEYWORD
-                ) for p in params
-            );
-            pos_names = [
-                p.name
-                for p in params
-                if p.kind in (
-                    inspect.Parameter.POSITIONAL_ONLY,
-                    inspect.Parameter.POSITIONAL_OR_KEYWORD
-                )
-            ];
-            defaults = {
-                p.name: p.default
-                for p in params
-                if p.default is not inspect.Parameter.empty
-            };
-            def _bind_kwargs(args: tuple, kwargs: dict) -> dict {
-                if has_var {
-                    bound = sig.bind_partial(*args, **kwargs);
-                    bound.apply_defaults();
-                    return bound.arguments;
-                }
-                call_kwargs = dict(defaults);
-                for (i, val) in enumerate(args) {
-                    call_kwargs[pos_names[i]] = val;
-                }
-                call_kwargs.update(kwargs);
-                return call_kwargs;
-            }
-            if is_coro {
-                async def async_proxy(*args: object, **kwargs: object) -> object {
-                    call_kwargs = _bind_kwargs(args, kwargs);
-                    _ensure_product_for_hook(name);
-                    hookcaller = getattr(plugin_manager.hook, name);
-                    result = hookcaller(**call_kwargs);
-                    if inspect.iscoroutine(result) {
-                        return await result;
-                    }
-                    return result;
-                }
-                async_proxy.__name__ = name;
-                async_proxy.__signature__ = sig;
-                return async_proxy;
-            }
-            def proxy(*args: object, **kwargs: object) -> object {
-                call_kwargs = _bind_kwargs(args, kwargs);
-                _ensure_product_for_hook(name);
-                hookcaller = getattr(plugin_manager.hook, name);
-                return hookcaller(**call_kwargs);
-            }
-            proxy.__name__ = name;
-            proxy.__signature__ = sig;
-            return proxy;
-        }
-        proxy_methods[name] = make_proxy(
-            name, sig, inspect.iscoroutinefunction(method)
-        );
-    }
-    spec_cls = `type(f"{iface.__name__}Spec", (object, ), spec_methods);
-    impl_cls = `type(f"{iface.__name__}Impl", (object, ), impl_methods);
-
-    for (hname, proxy_fn) in proxy_methods.items() {
-        setattr(iface, hname, staticmethod(proxy_fn));
-    }
-    return (spec_cls, impl_cls);
-}
-
-with entry {
-    (JacRuntimeSpec, JacRuntimeImpl) = build_plugin_hook_layer(JacRuntimeInterface);
-    plugin_manager.add_hookspecs(JacRuntimeSpec);
-}
 
 class JacRuntime(JacRuntimeInterface) {
     with entry {

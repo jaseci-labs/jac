@@ -65,17 +65,12 @@ import jaclang.jac0core.runtime as _runtime_mod
 
 from jaclang.jac0core.runtime import (
     JacRuntime,
-    JacRuntimeImpl,
     JacRuntimeInterface,
-    plugin_manager,
 )
 
 sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
-if not plugin_manager.is_registered(JacRuntimeImpl):
-    plugin_manager.register(JacRuntimeImpl)
-
-__all__ = ["JacRuntime", "JacRuntimeImpl", "JacRuntimeInterface", "plugin_manager"]
+__all__ = ["JacRuntime", "JacRuntimeInterface"]
 ''',
      _BYLLM_INIT_EXTRA: str = '',
      _CLOSURE_CACHE: dict[tuple, dict[str, str]] = {};

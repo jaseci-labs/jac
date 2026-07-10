@@ -26,7 +26,6 @@ obj CommandRegistry {
     ) -> list[CommandSpec];
 
     def get_groups -> list[str];
-    def load_from_manifest(manifest: list) -> None;
     def finalize -> argparse.ArgumentParser;
     def _build_subparser(
         subparsers: any, spec: CommandSpec

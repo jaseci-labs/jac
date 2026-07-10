@@ -1180,7 +1180,6 @@ jac config [action] [key] [value] [-g GROUP] [-o FORMAT]
 - `dot` - Graph visualization settings
 - `cache` - Cache configuration
 - `environment` - Environment variables
-- `plugins` - External entry-point plugin disable list (`disabled`)
 
 **Examples:**
 
@@ -1215,44 +1214,6 @@ jac config show -o json
 # Output as TOML
 jac config list -o toml
 ```
-
-### jac plugins
-
-List and manage **external** entry-point plugins (setuptools `jac` group).
-Built-in capabilities (byLLM, scale, client, MCP) always load and cannot be
-disabled here.
-
-```bash
-jac plugins [list|disable|enable|disabled] [names...]
-```
-
-| Action | Description |
-|--------|-------------|
-| `list` | Show installed external plugins and any failed entry points |
-| `disable` | Add qualified names to `[plugins].disabled` in `jac.toml` |
-| `enable` | Remove names from `[plugins].disabled` |
-| `disabled` | Print the current disabled list |
-
-Qualified names use `distribution:plugin`. Wildcards: `package:*` disables all
-plugins from a package; `*` disables every external plugin.
-
-```bash
-jac plugins list
-jac plugins disable my-dist:my-plugin
-jac plugins disable broken-pkg:*
-jac plugins disabled
-jac plugins enable my-dist:my-plugin
-```
-
-Persisted setting in `jac.toml`:
-
-```toml
-[plugins]
-disabled = ["my-dist:my-plugin"]
-```
-
-See [Configuration: `[plugins]`](../config/index.md#plugins) and
-[Plugins](../plugin-authoring.md).
 
 ---
 

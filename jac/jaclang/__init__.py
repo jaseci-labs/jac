@@ -1,37 +1,46 @@
-"""The Jac Programming Language.
+"""The Jac Programming Language."""
 
-``import jaclang`` performs only the cheap *kernel* bootstrap
-(:func:`jaclang.bootstrap.bootstrap_kernel`): it registers the Jac
-meta-importer and the core ``JacRuntime`` plugin. The heavier *product* tier
-(built-in providers, external plugins, native acceleration) is deferred and
-triggered lazily -- see :mod:`jaclang.bootstrap`.
+import sys
 
-Set ``JAC_EAGER_BOOTSTRAP=1`` to restore the legacy eager behaviour (every
-provider registered at import time); this is the transition shim used by the
-test suite and will be removed once callers migrate to the lazy bootstrap.
-"""
+from jaclang.meta_importer import JacMetaImporter  # noqa: E402
 
-import os
+# Register JacMetaImporter BEFORE anything else, so .jac modules can be imported
+if not any(isinstance(f, JacMetaImporter) for f in sys.meta_path):
+    sys.meta_path.insert(0, JacMetaImporter())
 
-from jaclang.bootstrap import bootstrap_kernel, bootstrap_product
-
-# Kernel tier: meta-importer + core JacRuntime. Must run before anything that
-# imports .jac modules (including the re-exports below).
-bootstrap_kernel()
-
-# Backwards-compatible exports. These imports are cheap now -- bootstrap_kernel
-# already pulled jaclang.jac0core.runtime into sys.modules.
-from jaclang.jac0core.runtime import (  # noqa: E402, F401
+# Import compiler first to ensure generated parsers exist before jac0core.parser is loaded
+# Backwards-compatible import path for older code.
+# Prefer `jaclang.jac0core.runtime` going forward.
+import jaclang.jac0core.runtime as _runtime_mod  # noqa: E402
+from jaclang import compiler as _compiler  # noqa: E402, F401
+from jaclang.jac0core.runtime import (  # noqa: E402
     JacRuntime,
-    JacRuntimeImpl,
     JacRuntimeInterface,
-    plugin_manager,
 )
 
-# TODO: remove JAC_EAGER_BOOTSTRAP once all callers are audited against the
-# lazy bootstrap. Tests that inspect plugin_manager.get_plugins() directly
-# should call bootstrap_product() in their fixture instead of relying on this.
-if os.environ.get("JAC_EAGER_BOOTSTRAP") == "1":
-    bootstrap_product()
+sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
-__all__ = ["JacRuntimeInterface", "JacRuntime", "JacRuntimeImpl", "plugin_manager"]
+# Put the current project's .jac/venv on sys.path so per-project dependencies
+# (jac install [-e] <pkg>) and the on-demand feature capabilities (byllm, scale,
+# ...) are importable. In the single binary this already ran via sitecustomize
+# during interpreter startup; this call is the library-use fallback (plain
+# `import jaclang` with no sitecustomize). The helper is idempotent and uses
+# addsitedir, so editable .pth links are processed.
+with __import__("contextlib").suppress(Exception):
+    import _jac_finder as _jf
+
+    _jf.add_project_venv_to_path()
+
+# Schedule deferred native acceleration if autonative is enabled in jac.toml
+try:
+    from jaclang.project.config import get_config as _get_jac_config
+
+    _jac_cfg = _get_jac_config()
+    if _jac_cfg and _jac_cfg.run.autonative:
+        from jaclang.jac0core.native_accel import schedule_native_acceleration
+
+        schedule_native_acceleration()
+except Exception:
+    pass  # Config not available or acceleration failed — continue normally
+
+__all__ = ["JacRuntimeInterface", "JacRuntime"]

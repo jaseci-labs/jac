@@ -5,7 +5,6 @@ import pdb;
 import re;
 import from functools { lru_cache }
 import from traceback { TracebackException }
-import type from jaclang { plugin as pluggy }
 
 @lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str {
@@ -309,12 +308,6 @@ def read_toml_with_encoding(file_path: str) -> dict {
     }
 }
 
-obj DistFacade {
-    has _dist: (object | None);
-    has project_name: str { getter; }
-    has version: str { getter; }
-}
-
 def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
     import sys;
     sys.stderr.write(
@@ -362,157 +355,6 @@ def path_matches_exclude(
     return False;
 }
 
-
-def get_disabled_plugins -> list {
-    env_disabled = os.environ.get('JAC_DISABLED_PLUGINS', '').strip();
-    if env_disabled {
-        return [
-            d.strip()
-            for d in env_disabled.split(',')
-            if d.strip()
-        ];
-    }
-
-    import from jaclang.project.config { get_config }
-    config = get_config();
-    if config is not None {
-        return list(config.plugins_table.disabled);
-    }
-
-    import from jaclang.jac0core.modresolver { find_project_root }
-    result = find_project_root();
-    if result is None {
-        return [];
-    }
-    (_, toml_path) = result;
-    try {
-        data = read_toml_with_encoding(str(toml_path));
-        disabled = data.get('plugins', {}).get('disabled', []);
-        if isinstance(disabled, list) {
-            return [
-                str(name)
-                for name in disabled
-                if isinstance(name, str)
-            ];
-        }
-        return [];
-    } except MalformedJacTomlError as exc {
-        _warn_malformed_jac_toml(exc);
-        return [];
-    } except Exception {
-        return [];
-    }
-}
-
-glob _FAILED_PLUGIN_QUALIFIED_NAMES: list[str] = [];
-
-def get_failed_plugin_names -> list[str] {
-    return list(_FAILED_PLUGIN_QUALIFIED_NAMES);
-}
-
-def clear_failed_plugin_names {
-    _FAILED_PLUGIN_QUALIFIED_NAMES.clear();
-}
-
-glob _FOLDED_IN_PLUGIN_DISTS = {
-         'jac-client',
-         'jac-desktop',
-         'jac-super',
-         'jac-scale',
-         'jac-mcp',
-         'jac-byllm',
-         'byllm'
-     };
-
-def load_plugins_with_disabling(
-    plugin_manager: 'pluggy.PluginManager', disabled_list: list
-) -> None {
-    import from importlib.metadata { entry_points }
-    clear_failed_plugin_names();
-    disable_all = '*' in disabled_list;
-    disabled_qualified: set = `set();
-    disabled_packages: set = `set();
-    disabled_short: set = `set();
-    for name in disabled_list {
-        if (name == '*') {
-            continue;
-        } elif name.endswith(':*') {
-            disabled_packages.add(name[:-2]);
-        } elif (':' in name) {
-            disabled_qualified.add(name);
-        } else {
-            disabled_short.add(name);
-        }
-    }
-    if disable_all {
-        return;
-    }
-    try {
-        eps = entry_points(group='jac');
-    } except TypeError {
-        all_eps = entry_points();
-        eps = all_eps.get('jac', []);
-    }
-    for ep in eps {
-        try {
-            dist = ep.dist;
-            dist_name = dist.name if dist else 'unknown';
-        } except Exception {
-            dist = None;
-            dist_name = 'unknown';
-        }
-
-        if dist_name in _FOLDED_IN_PLUGIN_DISTS {
-            continue;
-        }
-        qualified_name = f"{dist_name}:{ep.name}";
-        should_disable = False;
-        if (dist_name in disabled_packages) {
-            should_disable = True;
-        } elif (qualified_name in disabled_qualified) {
-            should_disable = True;
-        } elif (ep.name in disabled_short) {
-            should_disable = True;
-        }
-        if should_disable {
-            continue;
-        }
-        try {
-            plugin = ep.load();
-            if plugin_manager.is_registered(plugin) {
-                continue;
-            }
-            plugin_manager.register(plugin, name=ep.name);
-            plugin_manager._plugin_distinfo.append((plugin, DistFacade(dist)));
-        } except Exception as exc {
-            import sys;
-            _FAILED_PLUGIN_QUALIFIED_NAMES.append(qualified_name);
-            if isinstance(exc, MalformedJacTomlError) {
-                sys.stderr.write(
-                    f"warning: plugin '{qualified_name}' failed to load -- "
-                    "jac.toml parse failure (see warning above).\n"
-                );
-            } elif isinstance(exc, ModuleNotFoundError) and exc?.name {
-                detail = f"missing dependency '{exc.name}'";
-                sys.stderr.write(
-                    f"warning: plugin '{qualified_name}' failed to load -- "
-                    f"{detail}. Install the missing package, or disable this "
-                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
-                    "jac.toml.\n"
-                );
-            } else {
-                cause = type(exc).__name__;
-                detail = f"{cause}: {exc}";
-                sys.stderr.write(
-                    f"warning: plugin '{qualified_name}' failed to load -- "
-                    f"{detail}. Install the missing package, or disable this "
-                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
-                    "jac.toml.\n"
-                );
-            }
-        }
-    }
-}
 
 def _is_version_info_access(expr: 'uni.Expr') -> bool {
     import jaclang.jac0core.unitree as uni;

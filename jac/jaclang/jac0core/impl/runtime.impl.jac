@@ -1406,11 +1406,23 @@ impl JacBuiltin.get_console -> ConsoleImpl {
 }
 
 impl JacServe.get_api_server_class -> type {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.get_api_server_class();
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from jaclang.runtimelib.server { JacAPIServer }
     return JacAPIServer;
 }
 
 impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _sp.ensure_sv_service(module_name, base_path);
+        return;
+    }
     import os;
     import socket;
     import time;
@@ -1480,6 +1492,10 @@ impl JacServe.ensure_sv_service(module_name: str, base_path: str) -> None {
 }
 
 impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.sv_service_call(module_name, func_name, args);
+    }
     import from jaclang.runtimelib { sv_client }
 
     import from jaclang.runtimelib.sv_sse {
@@ -1540,6 +1556,10 @@ impl JacServe.sv_service_call(module_name: str, func_name: str, args: dict) -> a
 impl JacServe.sv_walker_call(
     module_name: str, walker_name: str, args: dict, stub_cls: any
 ) -> any {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.sv_walker_call(module_name, walker_name, args, stub_cls);
+    }
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.sv_sse { sv_http_post }
 
@@ -1586,6 +1606,10 @@ impl JacServe.sv_walker_call(
 
 
 impl JacServe.get_sv_registry -> dict[str, str] {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.get_sv_registry();
+    }
     import from jaclang.runtimelib { sv_client }
     return dict(sv_client._registry);
 }
@@ -1593,6 +1617,13 @@ impl JacServe.get_sv_registry -> dict[str, str] {
 impl JacServe.create_server(
     jac_server: JacServer, host: str, port: int, max_retries: int = 10
 ) -> HTTPServer {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.create_server(jac_server, host, port);
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from http.server { ThreadingHTTPServer }
     handler_class = jac_server.create_handler();
     current_port = port;
@@ -1697,6 +1728,8 @@ impl JacLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> any {
 impl JacLLM.`by(model: LLMModel) -> Callable {
     def _decorator(caller: Callable) -> Callable {
         def _wrapped_caller(*args: object, **kwargs: object) -> object {
+            import from jaclang.jac0core.mtp { fetch_mtir }
+            import from jaclang.byllm.mtir { MTIR }
             invoke_args: dict[((int | str), object)] = {};
             for (i, arg) in enumerate(args) {
                 invoke_args[i] = arg;
@@ -1704,7 +1737,9 @@ impl JacLLM.`by(model: LLMModel) -> Callable {
             for (key, value) in kwargs.items() {
                 invoke_args[key] = value;
             }
-            mt_run = JacLLM.get_mtir(caller, invoke_args, model.call_params);
+            mt_run = MTIR(
+                caller, invoke_args, model.call_params, fetch_mtir(caller)
+            ).runtime;
             return model.invoke(mt_run=mt_run);
         }
         return _wrapped_caller;
@@ -1818,6 +1853,13 @@ impl JacContext.create_j_context(
     base_path_dir: (str | None) = None,
     full_target_path: (str | None) = None
 ) -> ExecutionContext {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.create_j_context(user_root, base_path_dir, full_target_path);
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from jaclang.runtimelib.context { ExecutionContext }
     ctx = ExecutionContext(
         base_path_dir=base_path_dir, full_target_path=full_target_path
@@ -2018,6 +2060,13 @@ impl JacConfig.validate_config(config: dict[(str, Any)]) -> list[str] {
 }
 
 impl JacPersistence.get_user_manager(base_path: str) -> UserManager {
+    _sp = _scale_provider();
+    if _sp is not None {
+        _scaled = _sp.get_user_manager(base_path);
+        if _scaled is not None {
+            return _scaled;
+        }
+    }
     import from jaclang.runtimelib.server { UserManager }
     return UserManager(base_path=base_path);
 }
@@ -2025,6 +2074,10 @@ impl JacPersistence.get_user_manager(base_path: str) -> UserManager {
 impl JacPersistence.store(
     base_path: str = './storage', create_dirs: bool = True
 ) -> any {
+    _sp = _scale_provider();
+    if _sp is not None {
+        return _sp.store(base_path, create_dirs);
+    }
     import from jaclang.runtimelib.storage { LocalStorage }
     return LocalStorage(base_path=base_path, create_dirs=create_dirs);
 }

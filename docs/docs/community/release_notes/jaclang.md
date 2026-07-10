@@ -30,7 +30,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ### New Features
 
-- **Lazy two-tier bootstrap and CLI manifest**: `import jaclang` now runs only the kernel tier (meta-importer + core runtime); built-in providers, external entry-point plugins, and native acceleration register on first hook dispatch or first real CLI command. `jac --version` and bare help skip product bootstrap. CLI argparse metadata is loaded from generated `_cmd_manifest.py` (regenerate with `jac gen-cmd-manifest`); feature commands still register via `register_feature_commands` at dispatch time. `[plugins].disabled` and `jac plugins` return for managing external entry-point plugins only.
 - **WebSocket function endpoints and streaming**: `def` functions marked `@restspec(protocol=APIProtocol.WEBSOCKET)` are now served at `/ws/function/{name}`, walkers gain the canonical `/ws/walker/{name}` path (with `/ws/{name}` kept as a legacy alias), and generator results stream as `chunk`/`done` frames over the socket for both walkers and functions.
 - **Scale deploy: ship a local jac binary with `JAC_SCALE_BINARY_PATH`**: Set `JAC_SCALE_BINARY_PATH` to a jac binary you built (or an air-gapped mirror) and the deploy ships that exact file to pods instead of downloading a published release. This selects the new `local` binary channel and takes precedence over the `[dev]` stanza. The real-app K8s e2e uses it to ship the binary built from the PR under test.
 - **Langserve: docstrings in completions**: Completion items now carry the declaration's docstring as `documentation`, shown in the editor's completion popup for objects, enums, abilities, modules, and `has` fields. Hover reuses the same extraction and now renders docstrings via their parsed literal value (quotes stripped).
@@ -44,7 +43,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ### Documentation
 
-- **Docs: plugin reference restored for external plugins**: `plugin-authoring.md` now documents the limited entry-point plugin surface (`[plugins].disabled`, `jac plugins`) alongside flattened feature config tables.
 - **Docs: guide skills and mkdocs aligned with the plugin-system removal**: The shipped `jac guide` skills no longer teach removed verbs or plugin-era config -- `jac bundle` is now `jac build --as wheel|npm`, `jac format`/`jac lint` are `jac fmt`/`jac check --lint --fix`, `jac jacpack` folded into `jac create --pack/--list_jacpacks`, platform teardown is `jac scale status/destroy`, and the `[plugins]` table, `jac plugins` command, and `JAC_DISABLED_PLUGINS` references are gone in favor of the top-level capability tables (`[byllm]`, `[scale.*]`, `[client]`, `[desktop]`). The docs site gets the same sweep plus a new "One Binary, Build Anything" quick-guide page and a Breaking Changes entry for the `[plugins.*]` config flattening.
 
 ## jaclang 0.31.0

@@ -152,29 +152,6 @@ def completions(shell: str = "bash", install: bool = False) -> int;
 def gen_jir_registry(verify: bool = False) -> int;
 
 @registry.command(
-    name="gen-cmd-manifest",
-    hidden=True,
-    help="Regenerate _cmd_manifest.py from @registry.command declarations",
-    args=[
-        Arg.create(
-            "verify",
-            typ=bool,
-            default=False,
-            help="Check that _cmd_manifest.py is up to date; exit 1 if not",
-            short="v"
-        ),
-
-    ],
-    examples=[
-        ("jac gen-cmd-manifest", "Regenerate _cmd_manifest.py"),
-        ("jac gen-cmd-manifest --verify", "Check manifest is up to date (for CI)"),
-
-    ],
-    group="tools"
-)
-def gen_cmd_manifest(verify: bool = False) -> int;
-
-@registry.command(
     name="gen-uni-dispatch",
     hidden=True,
     help="Regenerate static enter_node/exit_node dispatch for UniPass subclasses",
