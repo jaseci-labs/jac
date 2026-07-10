@@ -349,22 +349,22 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
 
-  # Publishes ghcr.io/<owner>/jaclang from the binaries this run produced:
+  # Publishes jaseci/jaclang (Docker Hub) from the binaries this run produced:
   #   <version> + latest on the release channel, dev on the rolling prerelease.
-  # The image bakes the extracted runtime (see docker/jaclang.Dockerfile), so
-  # containers skip jac's one-time setup.
+  # The image bakes the extracted runtime and the scale serve closure (see
+  # docker/jaclang.Dockerfile), so it doubles as the deployment base image.
   #
-  # Setup: none beyond this file (GITHUB_TOKEN + the job-level packages:write
-  # cover the push), EXCEPT a one-time step after the first publish: GHCR
-  # creates the package private, so a maintainer must set the jaclang package's
-  # visibility to public in the org's package settings.
+  # Setup (one-time, repo secrets): DOCKERHUB_USERNAME + DOCKERHUB_TOKEN, an
+  # access token from the `jaseci` Docker Hub org with write access. The job
+  # is skipped when the secrets are absent (forks).
   docker-image:
     needs: build
     if: github.event_name == 'release' || inputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -409,20 +409,23 @@ jobs:
           cp docker/jaclang.Dockerfile ctx/Dockerfile
 
       - uses: docker/setup-qemu-action@v3
+        if: env.DOCKERHUB_USERNAME != ''
 
       - uses: docker/setup-buildx-action@v3
+        if: env.DOCKERHUB_USERNAME != ''
 
       - uses: docker/login-action@v3
+        if: env.DOCKERHUB_USERNAME != ''
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Compute image tags
         id: tags
+        if: env.DOCKERHUB_USERNAME != ''
         run: |
           set -euo pipefail
-          IMAGE="ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/jaclang"
+          IMAGE="jaseci/jaclang"
           if [ "${{ inputs.channel }}" = "dev" ]; then
             TAGS="$IMAGE:dev"
           else
@@ -431,6 +434,7 @@ jobs:
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (linux/amd64, linux/arm64)
+        if: env.DOCKERHUB_USERNAME != ''
         uses: docker/build-push-action@v6
         with:
           context: ctx

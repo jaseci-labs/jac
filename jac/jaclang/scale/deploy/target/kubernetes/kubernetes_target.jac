@@ -946,6 +946,10 @@ obj KubernetesTarget(DeploymentTarget) {
                 {'namespace': namespace}
             );
         }
+        import from jaclang.scale.injector.binary { resolve_pod_base_image }
+        self.k8s_config.python_image = resolve_pod_base_image(
+            app_config.code_folder, self.k8s_config.python_image
+        );
 
         try {
             validate_resource_limits(

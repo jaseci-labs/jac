@@ -809,6 +809,13 @@ obj MicroserviceManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
+        import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+            image_pull_policy
+        }
+        pull_policy = image_pull_policy(resolved_image);
+        if pull_policy {
+            container["imagePullPolicy"] = pull_policy;
+        }
 
         container["startupProbe"] = self._build_startup_probe();
         resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
