@@ -1631,7 +1631,8 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 | `--as` | Emits | Replaces |
 |--------|-------|----------|
 | `jab` (default) | A sealed `.jab` app bundle (deterministic `tar.gz` of the sealed image) | -- |
-| `sealed` / `binary` | Sealed image / native binary form | -- |
+| `sealed` | The sealed image as an unpacked directory (exactly what a `.jab` archives) | -- |
+| `binary` | A self-contained app executable: a copy of the `jac` launcher with your sealed `.jab` appended as an overlay | -- |
 | `wheel` | A `pip install`-ready Python wheel in `dist/` | `jac bundle` |
 | `npm` | An npm tarball | `jac bundle --target npm` |
 | `source` | An editable FastAPI + JavaScript source tree (zero `.jac` files) | `jac eject` |
@@ -1640,6 +1641,11 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 **The type-check gate.** `jac build` refuses to emit an artifact if the program fails the whole-program type check. Pass `--no_typecheck` to skip the gate, or `--check_only` to run the gate and emit nothing (useful in CI).
 
 **The `.jab` artifact.** A `.jab` is a single self-describing sealed app bundle: client dist, serve manifest, and native binaries are baked in and hash-verified at load, so [`jac run app.jab`](#jac-run) / [`jac start app.jab`](#jac-start) execute or serve it with **zero live compilation**. It is kind-aware: `cli` kinds execute, servable kinds production-serve, and attachable packages refuse to run standalone.
+
+**Shipping an executable: `binary` vs `native`.** These two projections solve different problems and are easy to confuse:
+
+- `--as binary` packages **any** app (walkers, Python imports, a full web client) into one executable by appending the sealed `.jab` onto a copy of the running `jac` launcher. The file carries the full runtime and boots through the same path as `jac run app.jab`, with zero live compilation. Because it embeds the runtime, the artifact is large but complete: hand it to a machine with no Jac, Python, or Node installed. The entry point resolves the same way `jac run` does (a `main.jac` or the `[project]` entry-point in `jac.toml`); an entry-less package is rejected at build time.
+- `--as native` AOT-compiles the restricted `na` subset through LLVM into a **small, dependency-free** binary (no walkers, no async, no Python imports). Reach for it when your program fits the [native pathway](../language/native-pathway.md) and you want the smallest possible artifact.
 
 **Building a wheel (publish to PyPI):**
 
