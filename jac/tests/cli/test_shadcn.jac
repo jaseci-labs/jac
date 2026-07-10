@@ -344,3 +344,39 @@ test "add components fails without shadcn config" {
         assert result == False;
     }
 }
+
+test "registry uses valid Jac module names throughout" {
+    # GUARD: a hyphen is the minus operator and cannot be a Jac module name, so
+    # no registry file may be hyphenated and no relative (dot-prefixed) import
+    # may contain a hyphen - else the import cannot match its file.
+    import from jaclang.cli.shadcn.shadcn_handler { _registry_dir }
+    import re;
+    ui_dir = _registry_dir() / "components" / "ui";
+    for source_file in ui_dir.glob("*.cl.jac") {
+        assert "-" not in source_file.name;
+        for spec in re.findall(r'import from "(\.[^"]*)"', source_file.read_text()) {
+            assert "-" not in spec;
+        }
+    }
+}
+
+test "component with a peer resolves to a matching underscored import" {
+    # combobox imports .input_group and declares input-group as a peer, so the
+    # peer installs and the import matches the installed file name.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["combobox"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        assert (ui_dir / "input_group.cl.jac").exists();
+        combobox_src = (ui_dir / "combobox.cl.jac").read_text();
+        assert 'import from ".input_group"' in combobox_src;
+        assert 'import from ".input-group"' not in combobox_src;
+    }
+}
