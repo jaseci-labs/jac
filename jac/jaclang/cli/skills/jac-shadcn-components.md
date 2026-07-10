@@ -41,7 +41,10 @@ import from .ui.table { Table, TableHeader, TableBody, TableRow, TableHead, Tabl
 # cn() utility - always from lib/utils, never from @jac/runtime
 import from ..lib.utils { cn }
 
-# npm packages (icons etc.) - always cl import, always a quoted bare-package string
+# npm packages - always cl import, always QUOTED: a hyphen, @, or / is a parse
+# error unquoted, so `react-dom` / `class-variance-authority` need quotes too, not
+# just @-scoped names. (Only local dotted paths above - `.ui.X`, `.lib.utils` - may
+# drop the quotes.)
 cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Icon, Menu01Icon }
 ```
