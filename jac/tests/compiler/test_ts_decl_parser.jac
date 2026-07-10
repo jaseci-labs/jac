@@ -242,3 +242,131 @@ test "malformed input returns None rather than raising" {
         );
     }
 }
+
+test "default exported class preserves members" {
+    # Regression: _parse_export_default previously skipped the class body and
+    # emitted an empty TsDecl(name='default', kind=CLASS), losing every member.
+    # A named exported class with the same body returned 2 members, so default
+    # classes must now go through the same struct/class path.
+    src = (
+        "export default class Widget {\n"
+        "    value: string;\n"
+        "    run(x: number): boolean;\n"
+        "}\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    d = r["default"];
+    assert d.kind == TsDeclKind.CLASS;
+    by_name = {m.name: m for m in d.members};
+    assert set(by_name.keys()) == {"value", "run"};
+    value_ty = by_name["value"].ty;
+    assert value_ty is not None and value_ty.name == "string";
+    assert by_name["run"].is_method;
+    run_ty = by_name["run"].ty;
+    assert run_ty is not None and run_ty.kind == TsTypeKind.FUNC;
+}
+
+test "default exported class preserves name, heritage, and members" {
+    src = (
+        "export interface Base { id: string; }\n"
+        "export default class Widget extends Base { extra: number; }\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    d = r["default"];
+    assert d.kind == TsDeclKind.CLASS;
+    assert d.heritage == ["Base"];
+    assert {m.name for m in d.members} == {"extra"};
+    # The class name is local to the module; only "default" is exported.
+    assert "default" in r and "Base" in r and "Widget" not in r;
+}
+
+test "anonymous default class preserves members" {
+    src = "export default class {\n" "    value: string;\n" "}\n";
+    r = parse_dts(src);
+    assert r is not None;
+    d = r["default"];
+    assert d.kind == TsDeclKind.CLASS;
+    assert {m.name for m in d.members} == {"value"};
+}
+
+test "class modifiers are captured on members" {
+    # Regression: parse_members used to skip public/private/protected/static
+    # and emit every member as a public instance field, so static and private
+    # members were mis-modeled. Modifiers are now recorded as metadata.
+    src = (
+        "export declare class Widget {\n"
+        "    static version: string;\n"
+        "    private secret: string;\n"
+        "    protected internal: number;\n"
+        "    value: string;\n"
+        "}\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    d = r["Widget"];
+    by_name = {m.name: m for m in d.members};
+    assert set(by_name.keys()) == {"version", "secret", "internal", "value"};
+    assert by_name["version"].is_static;
+    assert by_name["secret"].access == "private";
+    assert by_name["internal"].access == "protected";
+    assert (not by_name["value"].is_static and by_name["value"].access == "public");
+}
+
+test "overloaded methods are kept as separate members" {
+    # Regression: duplicate method/property names overwrote each other during
+    # synthesis, collapsing overloads to a single (wrong) signature. The
+    # parser must retain every signature so synthesis can degrade duplicates
+    # to foreign any instead of silently picking the last one.
+    src = (
+        "export interface Api {\n"
+        "    get(x: string): string;\n"
+        "    get(x: number): number;\n"
+        "}\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    gets = [
+        m
+        for m in r["Api"].members
+        if m.name == "get"
+    ];
+    assert len(gets) == 2;
+    assert all(m.is_method for m in gets);
+}
+
+test "callable interface records call signature and named members" {
+    # Regression: call/construct signatures were parsed then discarded, so a
+    # callable interface silently lost its callability. The first call
+    # signature is now recorded on the decl; named members are preserved.
+    src = (
+        "export interface Fn {\n"
+        "    (x: string): number;\n"
+        "    label: string;\n"
+        "}\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    d = r["Fn"];
+    assert {m.name for m in d.members} == {"label"};
+    assert d.call_sig is not None;
+    assert d.call_sig.kind == TsTypeKind.FUNC;
+    cs_ret = d.call_sig.ret;
+    assert cs_ret is not None and cs_ret.name == "number";
+}
+
+test "construct signatures are not recorded as call signatures" {
+    src = (
+        "export interface Ctor {\n"
+        "    new (x: string): Ctor;\n"
+        "    label: string;\n"
+        "}\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    d = r["Ctor"];
+    assert {m.name for m in d.members} == {"label"};
+    # Construct signatures are not modeled; call_sig stays None.
+    assert d.call_sig is None;
+}

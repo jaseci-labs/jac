@@ -26,7 +26,8 @@ import from jaclang.compiler.type_system.ts_decl_parser {
     TsDecl,
     TsType,
     TsTypeKind,
-    TsDeclKind
+    TsDeclKind,
+    TsMember
 }
 
 import from jaclang.jac0core.diagnostics {

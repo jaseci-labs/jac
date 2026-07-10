@@ -257,6 +257,48 @@ def make_generic_npm_project(proj_dir: Path) -> Path {
     return proj_dir;
 }
 
+"""Materialize a client project with class modifiers and method overloads.
+
+Exercises the member-modifier and overload-degradation synthesis paths:
+- ``Widget`` mixes static/private/protected/public members; only the public
+  instance member should be synthesized onto the instance.
+- ``Api`` declares two ``get`` overloads; duplicate signatures must degrade
+  to foreign any rather than collapse to the last (wrong) signature.
+"""
+def make_modifiers_npm_project(proj_dir: Path) -> Path {
+    nm = client_node_modules(proj_dir);
+    install_npm_pkg(
+        nm,
+        "modpkg",
+        '{"name":"modpkg","version":"1.0.0",'
+        '"exports":{".":{"types":"./dist/index.d.ts",'
+        '"import":"./dist/index.mjs"}}}',
+        {
+            "dist/index.mjs": (
+                "export function getWidget() {}\nexport function getApi() {}\n"
+            ),
+            "dist/index.d.ts": (
+                "export declare class Widget {\n"
+                "    static version: string;\n"
+                "    private secret: string;\n"
+                "    protected internal: number;\n"
+                "    value: string;\n"
+                "}\n"
+                "export interface Api {\n"
+                "    get(x: string): string;\n"
+                "    get(x: number): number;\n"
+                "}\n"
+                "export declare function getWidget(): Widget;\n"
+                "export declare function getApi(): Api;\n"
+            )
+        }
+    );
+    write_client_jac_project(
+        proj_dir, "modfixture", "lib/app.cl.jac", 'modpkg = "^1.0.0"\n'
+    );
+    return proj_dir;
+}
+
 """Materialize a client project with cyclic interface heritage (issue #7319).
 
 `CycA extends CycB` while `CycB extends CycA` forms a heritage cycle, which

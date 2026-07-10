@@ -447,19 +447,24 @@ impl ParamAssignmentTracker.postinit -> None {
     }
 }
 
-impl compute_mro_linearization(cls: types.ClassType) -> None {
+impl compute_mro_linearization(
+    cls: types.ClassType, _visiting: (set | None) = None
+) -> None {
     if cls.shared.mro {
         return;
     }
+    if _visiting is None {
+        _visiting = set();
+    }
     key = id(cls.shared);
-    if key in _MRO_IN_PROGRESS {
+    if key in _visiting {
         return;
     }
-    _MRO_IN_PROGRESS.add(key);
+    _visiting.add(key);
     try {
         for base in cls.shared.base_classes {
             if isinstance(base, types.ClassType) {
-                compute_mro_linearization(base);
+                compute_mro_linearization(base, _visiting);
             }
         }
 
@@ -518,7 +523,7 @@ impl compute_mro_linearization(cls: types.ClassType) -> None {
         }
         cls.shared.mro = result;
     } finally {
-        _MRO_IN_PROGRESS.discard(key);
+        _visiting.discard(key);
     }
 }
 

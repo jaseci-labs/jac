@@ -334,20 +334,36 @@ impl TypeEvaluator._ts_synth_class_types(
             continue;
         }
         scope = cls_type.shared.symbol_table;
+
+        kept_by_name: dict[str, list[TsMember]] = {};
         for m in decl.members {
             if (not m.name or not m.name.isidentifier()) {
                 continue;
             }
-            member_type = self._map_ts_type(m.ty, decls, None, shells);
-            if m.optional {
-                member_type = types.UnionType(
-                    types=[member_type, self._convert_to_instance(self.get_none_type())]
-                );
+            if m.is_static or m.access in ('private', 'protected') {
+                continue;
+            }
+            kept_by_name.setdefault(m.name, []).append(m);
+        }
+        for (mname, group) in kept_by_name.items() {
+            if len(group) > 1 {
+                member_type = types.AnyType(is_foreign=True);
+            } else {
+                m = group[0];
+                member_type = self._map_ts_type(m.ty, decls, None, shells);
+                if m.optional {
+                    member_type = types.UnionType(
+                        types=[
+                            member_type,
+                            self._convert_to_instance(self.get_none_type())
+                        ]
+                    );
+                }
             }
             field_node = uni.Name(
                 orig_src=synth_src,
                 name=Tok.NAME.value,
-                value=m.name,
+                value=mname,
                 line=0,
                 end_line=0,
                 col_start=0,
@@ -356,7 +372,7 @@ impl TypeEvaluator._ts_synth_class_types(
                 pos_end=0,
             );
             field_node.type = member_type;
-            scope.names_in_scope[m.name] = uni.Symbol(
+            scope.names_in_scope[mname] = uni.Symbol(
                 defn=field_node, access=SymbolAccess.PUBLIC, parent_tab=scope
             );
         }

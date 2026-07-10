@@ -45,7 +45,9 @@ obj TsMember {
         ty: (TsType | None) = None,
         optional: bool = False,
         readonly: bool = False,
-        is_method: bool = False;
+        is_method: bool = False,
+        is_static: bool = False,
+        access: str = "public";
 }
 
 obj TsDecl {
@@ -53,7 +55,8 @@ obj TsDecl {
         kind: TsDeclKind = TsDeclKind.ANY,
         ty: (TsType | None) = None,
         members: list[TsMember] = [],
-        heritage: list[str] = [];
+        heritage: list[str] = [],
+        call_sig: (TsType | None) = None;
 }
 
 glob _PRIM_NAMES: frozenset = frozenset(
@@ -673,15 +676,18 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         return bases;
     }
 
-    def parse_members -> list[TsMember] {
+    def parse_members -> tuple[(list[TsMember], (TsType | None))] {
         nonlocal pos;
         members: list[TsMember] = [];
+        call_sig: (TsType | None) = None;
         expect_p('{');
         while (pos < n and not is_p('}')) {
             if (is_p(';') or is_p(',')) {
                 advance();
                 continue;
             }
+            is_static = False;
+            access = "public";
             while (
                 is_id('public')
                 or is_id('private')
@@ -690,6 +696,15 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 or is_id('abstract')
                 or is_id('declare')
             ) {
+                if is_id('static') {
+                    is_static = True;
+                } elif is_id('private') {
+                    access = "private";
+                } elif is_id('protected') {
+                    access = "protected";
+                } elif is_id('public') {
+                    access = "public";
+                }
                 advance();
             }
             readonly = eat_id('readonly');
@@ -708,18 +723,26 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 or is_p('<')
                 or (is_id('new') and kind_at(1) == 'punct' and val_at(1) == '(')
             ) {
-                if is_id('new') {
+                is_construct = is_id('new');
+                if is_construct {
                     advance();
                 }
                 ctvs = collect_generics() if is_p('<') else set();
                 typevar_stack.append(ctvs);
                 try {
-                    parse_params();
+                    cs_params = parse_params();
+                    cs_ret: TsType = TsType(kind=TsTypeKind.ANY);
                     if eat_p(':') {
-                        parse_return_type();
+                        cs_ret = parse_return_type();
                     }
                 } finally {
                     typevar_stack.pop();
+                }
+
+                if (not is_construct and call_sig is None) {
+                    call_sig = TsType(
+                        kind=TsTypeKind.FUNC, params=cs_params, ret=cs_ret
+                    );
                 }
                 eat_p(';');
                 eat_p(',');
@@ -758,13 +781,15 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                     optional=optional,
                     readonly=readonly,
                     is_method=is_method,
+                    is_static=is_static,
+                    access=access,
                 )
             );
             eat_p(';');
             eat_p(',');
         }
         expect_p('}');
-        return members;
+        return (members, call_sig);
     }
 
     def _parse_struct_decl(kind: TsDeclKind) -> TsDecl {
@@ -774,13 +799,20 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         typevar_stack.append(stvs);
         sheritage: list[str] = [];
         smembers: list[TsMember] = [];
+        scall_sig: (TsType | None) = None;
         try {
             sheritage = parse_heritage();
-            smembers = parse_members();
+            (smembers, scall_sig) = parse_members();
         } finally {
             typevar_stack.pop();
         }
-        return TsDecl(name=sname, kind=kind, members=smembers, heritage=sheritage);
+        return TsDecl(
+            name=sname,
+            kind=kind,
+            members=smembers,
+            heritage=sheritage,
+            call_sig=scall_sig
+        );
     }
 
     def record(decl: TsDecl, is_export: bool) {
@@ -1140,14 +1172,30 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             return;
         }
         if eat_id('class') {
-            if kind_at() == 'id' {
-                advance();
+            if (is_id('extends') or is_id('implements') or is_p('{') or is_p('<')) {
+                atvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(atvs);
+                try {
+                    aherit = parse_heritage();
+                    (amembers, acall_sig) = parse_members();
+                } finally {
+                    typevar_stack.pop();
+                }
+                exported_direct['default'] = TsDecl(
+                    name='default',
+                    kind=TsDeclKind.CLASS,
+                    members=amembers,
+                    heritage=aherit,
+                    call_sig=acall_sig
+                );
+                return;
             }
-            while (pos < n and not is_p('{')) {
-                advance();
+
+            d = _parse_struct_decl(TsDeclKind.CLASS);
+            exported_direct['default'] = d;
+            if (d.name and d.name not in decls) {
+                decls[d.name] = d;
             }
-            skip_balanced('{', '}');
-            exported_direct['default'] = TsDecl(name='default', kind=TsDeclKind.CLASS);
             return;
         }
         if (kind_at() == 'id' and kind_at(1) == 'punct' and val_at(1) == ';') {
