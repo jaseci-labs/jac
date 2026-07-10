@@ -4,6 +4,7 @@ import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
 
 glob TOMBSTONED_VERBS: dict[str, str] = {
+         "add": "jac install <pkg>",
          "format": "jac fmt",
          "lint": "jac check --lint",
          "deps": "jac install --plan",

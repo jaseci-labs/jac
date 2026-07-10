@@ -4,6 +4,10 @@ import from jaclang.scale.injector.bundle {
     APP_MOUNT_PATH,
     TOOLCHAIN_SUBDIR
 }
+import from jaclang.scale.injector.pvc_injector {
+    BUNDLE_VOLUME_NAME,
+    BUNDLE_MOUNT_PATH
+}
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -106,9 +110,23 @@ def build_bootstrap_init_container(
             "&& cat /tmp/jac.toml.nonpm > jac.toml"
         );
     }
+    # Point the pip cache at the shared RWX bundle PVC: the first pod warms it,
+    # every later pod (and every redeploy) downloads ~nothing. pip only - bun's
+    # cache is thousands of tiny files, pathological on EFS/NFS; it stays on
+    # the pod-local disk. Best-effort: an unwritable PVC skips the export.
+    cache = f"{BUNDLE_MOUNT_PATH}/.cache";
+    commands.append(
+        f'if mkdir -p {cache}/pip 2>/dev/null; then '
+        # Bound the cache so it cannot squeeze the bundles off the shared PVC
+        # (default size 1Gi): past ~512MB it is wiped and rewarmed by this boot.
+        f'if [ "$(du -sm {cache} 2>/dev/null | cut -f1)" -gt 512 ] 2>/dev/null; then '
+        f'rm -rf {cache}/pip && mkdir -p {cache}/pip; fi; '
+        f'export PIP_CACHE_DIR={cache}/pip; '
+        f'fi'
+    );
     # The toolchain bundle ships the prebuilt jac binary and the app bundle
-    # ships source precompiled into .jir by pack_source; first boot only needs
-    # to install the app's declared deps.
+    # ships source precompiled into .jir; first boot only needs to install the
+    # app's declared deps.
     commands.append("jac install");
     script = ' && '.join(commands);
     return {
@@ -125,6 +143,9 @@ def build_bootstrap_init_container(
             },
             "seccompProfile": {"type": "RuntimeDefault"}
         },
-        "volumeMounts": [{"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}]
+        "volumeMounts": [
+            {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH},
+            {"name": BUNDLE_VOLUME_NAME, "mountPath": BUNDLE_MOUNT_PATH}
+        ]
     };
 }

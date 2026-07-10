@@ -7,6 +7,24 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### `jac add` merged into `jac install`
+
+The `jac add` verb has been removed; `jac install <pkg>` absorbs it. This is a **clean break** -- `jac add ...` now fails with a pointer to the new spelling.
+
+| Old | New |
+|---|---|
+| `jac add requests` | `jac install requests` |
+| `jac add pytest --dev` | `jac install pytest --dev` |
+| `jac add --git <url>` | `jac install --git <url>` |
+| `jac add --npm <pkg>` | `jac install --npm <pkg>` |
+| `jac add --shadcn <name>` | `jac install --shadcn <name>` |
+
+**Behavior change:** `jac install <pkg>` now **records the dependency in `jac.toml`** (what `jac add` did) instead of installing without tracking. Pass the new `--no-save` flag for the old untracked behavior; `--global` and `--dry-run` continue to never touch `jac.toml`.
+
+**Impact:** update scripts and CI invocations of `jac add` to `jac install`, and add `--no-save` to any `jac install <pkg>` call that relied on jac.toml staying unmodified. `jac remove` and `jac update` are unchanged.
+
+---
+
 ### Plugin system scope (0.31.1 update)
 
 The 0.31.0 removal dropped third-party hook plugins and the full `[plugins]` control plane. **0.31.1 partially restores** external entry-point discovery and `[plugins].disabled` / `jac plugins` for *disabling* broken optional packages; built-in features (byLLM, scale, client, MCP, shadcn) remain core and cannot be disabled. Feature config stays in top-level `[byllm]`, `[scale]`, `[client]`, etc. See [Plugins](../reference/plugin-authoring.md).

@@ -1488,6 +1488,9 @@ test "jac install <pkg> routes package names to the project venv installer" {
             '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
         );
         os.chdir(_tmpdir);
+        # `install` now records to jac.toml, so discovery must resolve to this
+        # tmp project (not a config cached from an earlier test) before save.
+        _reset_config();
         captured: list = [];
         def fake_install_specs(
             self: object, config: object, specs: object, ctx: object

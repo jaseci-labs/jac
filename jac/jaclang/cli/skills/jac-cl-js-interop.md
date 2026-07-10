@@ -16,6 +16,7 @@ ws = new(WebSocket, url);
 parsed = new(URL, String(window.location.origin));
 now = new(Date);
 evt = new(CustomEvent, "my-event", {"detail": {"key": "value"}});
+params = new(URLSearchParams, window.location.search);
 m = new(Map);
 promise = new(Promise, lambda(resolve: any, reject: any) {
     resolve.call(None, result);
@@ -83,7 +84,7 @@ useEffect(lambda {
 
 ## Browser globals
 
-`localStorage.getItem/setItem/removeItem`, `window.addEventListener`, `document.querySelector`, `setTimeout`/`setInterval`/`clearInterval`, `requestAnimationFrame`, `JSON.parse/stringify`, `URLSearchParams`, `encodeURIComponent`, `globalThis.*` (including `[client.vite.define]` build-time constants) - all available directly, no import. See the `jac check` note above.
+`localStorage.getItem/setItem/removeItem`, `window.addEventListener`, `document.querySelector`, `setTimeout`/`setInterval`/`clearInterval`, `requestAnimationFrame`, `JSON.parse/stringify`, `encodeURIComponent`, `globalThis.*` (including `[client.vite.define]` build-time constants) - all available directly, no import. `URLSearchParams` is available too, but it's a constructor - build it with `new(URLSearchParams, ...)`, not a bare call (see above). See the `jac check` note above.
 
 ## Timing patterns (all use `Ref` value fields - see `jac-npm-packages`)
 
