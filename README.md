@@ -8,7 +8,7 @@
   <h1>The Jac Programming Language</h1>
   <h3>The Only Language You Need to Build Anything</h3>
 
-  <p>One self-contained binary. One Python-like language. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features — compiled to Python bytecode, JavaScript, and native machine code.</p>
+  <p>One self-contained binary. One Python-like language. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features, compiled to Python bytecode, JavaScript, and native machine code.</p>
 
   <p>
     <a href="https://github.com/jaseci-labs/jaseci/releases/latest">
@@ -38,15 +38,15 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/demo-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/demo-light.svg">
-    <img alt="Install jac, create a web app, and serve it — three commands" src="docs/docs/assets/readme/demo-dark.svg" width="880">
+    <img alt="Install jac, create a web app, and serve it in three commands" src="docs/docs/assets/readme/demo-dark.svg" width="880">
   </picture>
 </div>
 
-Jac is a programming language designed for humans and AI to build together. It compiles one clean, Python-like syntax to Python bytecode, JavaScript, and native machine code — with the entire PyPI, npm, and C ecosystems available without wrappers or interop layers. The things every real application needs — an LLM call, a data model that persists, a REST API, a frontend, a deployment story — are language features, not frameworks you assemble around it.
+Jac is a programming language designed for humans and AI to build together. It compiles one clean, Python-like syntax to Python bytecode, JavaScript, and native machine code, with the entire PyPI, npm, and C ecosystems available without wrappers or interop layers. The things every real application needs (an LLM call, a data model that persists, a REST API, a frontend, a deployment story) are language features, not frameworks you assemble around it.
 
 ## Try Jac in 30 seconds
 
-Install the self-contained `jac` binary — no Python, pip, Node, or C toolchain required:
+Install the self-contained `jac` binary. No Python, pip, Node, or C toolchain required:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
@@ -85,7 +85,7 @@ Hello, Ada!
 Hello, Alan!
 ```
 
-Now run it again — the people accumulate. The graph hanging off `root` **persists between runs automatically**, and that same machinery backs Jac servers in production. No database to set up, ever.
+Now run it again: the people accumulate. The graph hanging off `root` **persists between runs automatically**, and that same machinery backs Jac servers in production. No database to set up, ever.
 
 > Don't want to install anything? Open the [**Jac Playground**](https://playground.jaseci.org) in your browser.
 >
@@ -93,13 +93,13 @@ Now run it again — the people accumulate. The graph hanging off `root` **persi
 
 ## One binary, your whole toolchain
 
-One download replaces the entire modern development stack — interpreter and JS runtime, compilers and linker, package managers, server, and deployer:
+One download replaces the interpreter, the JS runtime, the compilers and linker, the package managers, the server, and the deployer:
 
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/one-binary-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/one-binary-light.svg">
-    <img alt="The jac binary bundles CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer — and builds every kind of artifact" src="docs/docs/assets/readme/one-binary-dark.svg" width="880">
+    <img alt="The jac binary bundles CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src="docs/docs/assets/readme/one-binary-dark.svg" width="880">
   </picture>
 </div>
 
@@ -110,18 +110,18 @@ One download replaces the entire modern development stack — interpreter and JS
 
 | Capability | What it replaces | How you use it |
 |---|---|---|
-| **CPython 3.14** | System Python, pyenv, venvs | Bundled — runs your `.jac` files and PyPI imports |
-| **Bun** | Node.js, npm, npx | Bundled — compiles `cl` code to JS, manages npm deps |
-| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled — `jac build --as native` produces real binaries |
+| **CPython 3.14** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
+| **Bun** | Node.js, npm, npx | Bundled -- compiles `cl` code to JS, manages npm deps |
+| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build --as native` produces real binaries |
 | **Package manager** | pip, npm, pipx | `jac install` for PyPI *and* npm, in one `jac.toml` |
 | **Universal tool runner** | npx, pipx run | `jac x` runs any installed PyPI or npm CLI tool |
-| **REST server** | Flask, FastAPI, Express | `jac start` — walkers become API endpoints |
-| **Kubernetes deployer** | Docker + kubectl + Helm | `jac start --scale` — one-command K8s deployment |
-| **AI integration** | LangChain, prompt libraries | `by llm()` — built into the language |
-| **MCP server** | Separate MCP packages | `jac mcp` — AI-assisted development, built in |
+| **REST server** | Flask, FastAPI, Express | `jac start` -- walkers become API endpoints |
+| **Kubernetes deployer** | Docker + kubectl + Helm | `jac start --scale` -- one-command K8s deployment |
+| **AI integration** | LangChain, prompt libraries | `by llm()` -- built into the language |
+| **MCP server** | Separate MCP packages | `jac mcp` -- AI-assisted development, built in |
 | **Type checker** | mypy, pyright, tsc | `jac check` |
 | **Formatter & test runner** | black, ruff, pytest, jest | `jac fmt`, `jac test` |
-| **Language server** | Separate LSP packages | `jac lsp` — IDE support built in |
+| **Language server** | Separate LSP packages | `jac lsp` -- IDE support built in |
 
 Full story: [One Binary, Build Anything](https://docs.jaseci.org/quick-guide/one-binary/).
 
@@ -142,12 +142,14 @@ The commands you'll use every day:
 
 ## Build anything
 
-The same language — and the same skills — produce every kind of software. Each row is one command away:
+One language and one skill set produce every kind of software. Each row is one command away:
 
 | What you're building | The command | Guide |
 |---|---|---|
 | Script / CLI tool | `jac run app.jac` | [CLI & native](https://docs.jaseci.org/build/cli-and-native/) |
 | Zero-dependency native executable | `jac build --as native` | [CLI & native](https://docs.jaseci.org/build/cli-and-native/) |
+| Single-file app bundle (`.jab`) | `jac build` | [CLI reference](https://docs.jaseci.org/reference/cli/#jac-build) |
+| Self-contained app executable | `jac build --as binary` | [CLI reference](https://docs.jaseci.org/reference/cli/#jac-build) |
 | REST API (+ Swagger, auth, persistence) | `jac start api.jac` | [Backend APIs](https://docs.jaseci.org/build/backend-apis/) |
 | Microservices | `sv import` + `jac start` | [Backend APIs](https://docs.jaseci.org/build/backend-apis/) |
 | Full-stack web app | `jac start` | [Full-stack web](https://docs.jaseci.org/build/fullstack-web/) |
@@ -160,7 +162,7 @@ The same language — and the same skills — produce every kind of software. Ea
 | WebAssembly in the browser | `jac build` in a `web-static` project | [Native pathway](https://docs.jaseci.org/reference/language/native-pathway/) |
 | Kubernetes deployment | `jac start --scale` | [Deploy & scale](https://docs.jaseci.org/reference/plugins/jac-scale/) |
 
-Proof it's real: a [playable chess engine](https://docs.jaseci.org/tutorials/native/chess/) compiled to a standalone binary, a [raylib game running as WebAssembly](jac/examples/raylib_shooter/web) in the browser, and [littleX](jac/examples/littleX) — a full Twitter-style social app, backend to frontend, in about 1,100 lines of Jac.
+Proof it's real: a [playable chess engine](https://docs.jaseci.org/tutorials/native/chess/) compiled to a standalone binary, a [raylib game running as WebAssembly](jac/examples/raylib_shooter/web) in the browser, and [littleX](jac/examples/littleX), a full Twitter-style social app, backend to frontend, in about 1,100 lines of Jac.
 
 ## AI, graphs, and UIs are language features
 
@@ -177,9 +179,9 @@ with entry {
 }
 ```
 
-No prompt, no parsing, no API glue. The compiler constructs the prompt from your function's name, argument names, and types (plus optional `sem` annotations), and the return type is an enforced output schema — this is [Meaning-Typed Programming](https://arxiv.org/abs/2405.08965). Declare your model once in `jac.toml`, run `jac install byllm`, and use any [LiteLLM-compatible provider](https://docs.litellm.ai/docs/providers) — or fully local models with `jac install 'byllm[local]'`. [Learn more →](https://docs.jaseci.org/reference/plugins/byllm/)
+No prompt, no parsing, no API glue. The compiler constructs the prompt from your function's name, argument names, and types (plus optional `sem` annotations), and the return type is an enforced output schema. This is [Meaning-Typed Programming](https://arxiv.org/abs/2405.08965). Declare your model once in `jac.toml`, run `jac install byllm`, and use any [LiteLLM-compatible provider](https://docs.litellm.ai/docs/providers), or go fully local with `jac install 'byllm[local]'`. [Learn more →](https://docs.jaseci.org/reference/plugins/byllm/)
 
-### Your data is a graph — and your API writes itself
+### Your data is a graph, and your API writes itself
 
 ```jac
 node Task {
@@ -208,7 +210,7 @@ walker:pub list_tasks {
 jac start api.jac --no-client   # POST /walker/add_task · /walker/list_tasks
 ```
 
-Model your domain as nodes and edges; send **walkers** to traverse it. Mark a walker `:pub` and `jac start` turns it into a REST endpoint — request bodies map onto its fields, `report` becomes the JSON response, Swagger docs appear at `/docs`, and every user gets their own isolated, persistent graph. No ORM, no schema migrations, no session plumbing. [Graphs & walkers →](https://docs.jaseci.org/tutorials/language/osp/)
+Model your domain as nodes and edges; send **walkers** to traverse it. Mark a walker `:pub` and `jac start` turns it into a REST endpoint: request bodies map onto its fields, `report` becomes the JSON response, Swagger docs appear at `/docs`, and every user gets their own isolated, persistent graph. No ORM, no schema migrations, no session plumbing. [Graphs & walkers →](https://docs.jaseci.org/tutorials/language/osp/)
 
 ### Frontend and backend in one file
 
@@ -246,9 +248,9 @@ cl def:pub app -> JsxElement {
 }
 ```
 
-Code in `cl` compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC — the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac start` serves it; `jac start --dev` gives you hot reload. [Full-stack tutorial →](https://docs.jaseci.org/build/fullstack-web/)
+Code in `cl` compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac start` serves it; `jac start --dev` gives you hot reload. [Full-stack tutorial →](https://docs.jaseci.org/build/fullstack-web/)
 
-For all three ideas in one file — an AI categorizer, a native-compiled scoring function, a persistent graph, and a React UI — see [`jac/examples/mini_todo`](jac/examples/mini_todo).
+For all three ideas in one file (an AI categorizer, a native-compiled scoring function, a persistent graph, and a React UI), see [`jac/examples/mini_todo`](jac/examples/mini_todo).
 
 ## Laptop to Kubernetes without changing your code
 
@@ -257,25 +259,25 @@ jac start main.jac           # local: REST API + auth + Swagger + persistence
 jac start main.jac --scale   # cloud: Kubernetes with Redis, MongoDB, load balancing
 ```
 
-Your code doesn't change when you outgrow one machine. The `scale` subsystem ships inside the binary: `--scale` builds the images, provisions Redis and MongoDB, and deploys to Kubernetes with health checks — zero Dockerfiles, zero YAML, zero DevOps. [Deploy & scale →](https://docs.jaseci.org/reference/plugins/jac-scale/)
+Your code doesn't change when you outgrow one machine. The `scale` subsystem ships inside the binary: `--scale` builds the images, provisions Redis and MongoDB, and deploys to Kubernetes with health checks. Zero Dockerfiles, zero YAML, zero DevOps. [Deploy & scale →](https://docs.jaseci.org/reference/plugins/jac-scale/)
 
 ## Learn Jac
 
-- [**Build an AI Day Planner**](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/) — the flagship tutorial: every core concept in one guided full-stack project
-- [**Jac Fundamentals**](https://docs.jaseci.org/tutorials/language/basics/) — the language itself, for Python developers
-- [**Build a Chess Engine**](https://docs.jaseci.org/tutorials/native/chess/) — the native pathway, from source to standalone binary
-- [**WebAssembly in the Browser**](https://docs.jaseci.org/tutorials/native/wasm/) — native-speed compute, client-side
-- [**Jac Playground**](https://playground.jaseci.org) — run Jac in your browser, and [**Ask Jac GPT**](https://jac-gpt.jaseci.org) — a docs-trained assistant
+- [**Build an AI Day Planner**](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/) -- the flagship tutorial: every core concept in one guided full-stack project
+- [**Jac Fundamentals**](https://docs.jaseci.org/tutorials/language/basics/) -- the language itself, for Python developers
+- [**Build a Chess Engine**](https://docs.jaseci.org/tutorials/native/chess/) -- the native pathway, from source to standalone binary
+- [**WebAssembly in the Browser**](https://docs.jaseci.org/tutorials/native/wasm/) -- native-speed compute, client-side
+- [**Jac Playground**](https://playground.jaseci.org) -- run Jac in your browser, and [**Ask Jac GPT**](https://jac-gpt.jaseci.org) -- a docs-trained assistant
 - In your terminal: `jac guide` (curated references), `jac ai` (interactive coding agent), `jac mcp` (wire Jac expertise into Claude Code, Cursor, and friends)
 
 ## What's in this repo
 
-This is the Jaseci monorepo — everything that makes Jac work:
+This is the Jaseci monorepo, home to everything that makes Jac work:
 
 | Directory | What it is |
 |---|---|
-| [`jac/`](jac/) | **jaclang** — the compiler, runtime, and everything inside the `jac` binary: the language, the full-stack client framework, the `scale` deployment subsystem, the MCP server, and the LLVM native pathway |
-| [`jac-byllm/`](jac-byllm/) | **byllm** — AI/LLM integration via Meaning-Typed Programming (`jac install byllm`) |
+| [`jac/`](jac/) | **jaclang** -- the compiler, runtime, and everything inside the `jac` binary: the language, the full-stack client framework, the `scale` deployment subsystem, the MCP server, and the LLVM native pathway |
+| [`jac-byllm/`](jac-byllm/) | **byllm** -- AI/LLM integration via Meaning-Typed Programming (`jac install byllm`) |
 | [`docs/`](docs/) | The documentation site at [docs.jaseci.org](https://docs.jaseci.org) |
 | [`scripts/`](scripts/) | The installer and release tooling |
 
@@ -283,7 +285,7 @@ The official VS Code extension lives at [jaseci-labs/jac-vscode](https://github.
 
 ## Research
 
-Jac's core ideas are peer-reviewed research, not just design taste. Meaning-Typed Programming — the foundation of `by llm()` — is described in [*"Meaning-Typed Programming: Language Abstractions and Compilation for AI-Integrated Applications"*](https://arxiv.org/abs/2405.08965). The project grew out of research at the University of Michigan and is now developed in the open by a global community.
+Jac's core ideas are peer-reviewed research, not just design taste. Meaning-Typed Programming, the foundation of `by llm()`, is described in [*"Meaning-Typed Programming: Language Abstractions and Compilation for AI-Integrated Applications"*](https://arxiv.org/abs/2405.08965). The project grew out of research at the University of Michigan and is now developed in the open by a global community.
 
 ## Built with Jac
 
@@ -298,11 +300,11 @@ Building something with Jac? Tell us on [Discord](https://discord.gg/6j3QNdtcN6)
 
 ## Contributing
 
-We welcome contributions of every size — from typo fixes to compiler passes.
+We welcome contributions of every size, from typo fixes to compiler passes.
 
 - **Ask questions & share ideas** on our [Discord server](https://discord.gg/6j3QNdtcN6)
 - **Report bugs** via [GitHub issues](https://github.com/jaseci-labs/jaseci/issues)
-- **Send PRs** — start with the [contributing guide](https://docs.jaseci.org/community/contributing/) and [CONTRIBUTING.md](CONTRIBUTING.md); `bash scripts/fresh_env.sh` sets up a dev environment
+- **Send PRs**: start with the [contributing guide](https://docs.jaseci.org/community/contributing/) and [CONTRIBUTING.md](CONTRIBUTING.md); `bash scripts/fresh_env.sh` sets up a dev environment
 
 ## License
 

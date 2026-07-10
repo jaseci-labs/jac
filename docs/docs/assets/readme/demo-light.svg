@@ -10,15 +10,15 @@
   <circle cx="24" cy="26" r="7" fill="#ff5f56"/>
   <circle cx="46" cy="26" r="7" fill="#ffbd2e"/>
   <circle cx="68" cy="26" r="7" fill="#27c93f"/>
-  <text class="t dim" x="440" y="31" text-anchor="middle">jac — zero to full-stack</text>
+  <text class="t dim" x="440" y="31" text-anchor="middle">jac · zero to full-stack</text>
   <line x1="1" y1="48" x2="879" y2="48" stroke="#eaeef2"/>
 
   <text class="t" x="28" y="84"><tspan class="acc">$ </tspan><tspan class="fg">curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash</tspan></text>
-  <text class="t" x="28" y="110"><tspan class="ok">✓ </tspan><tspan class="dim">jac installed — one self-contained binary (no Python, no Node, no C toolchain)</tspan></text>
+  <text class="t" x="28" y="110"><tspan class="ok">✓ </tspan><tspan class="dim">jac installed · one self-contained binary (no Python, no Node, no C toolchain)</tspan></text>
 
   <text class="t" x="28" y="148"><tspan class="acc">$ </tspan><tspan class="fg">jac create myapp --kind web-app &amp;&amp; cd myapp &amp;&amp; jac install</tspan></text>
 
   <text class="t" x="28" y="186"><tspan class="acc">$ </tspan><tspan class="fg">jac start</tspan></text>
-  <text class="t" x="28" y="212"><tspan class="acc">▸ </tspan><tspan class="dim">REST API + auth + Swagger docs + React frontend — no database, no glue code</tspan></text>
+  <text class="t" x="28" y="212"><tspan class="acc">▸ </tspan><tspan class="dim">REST API + auth + Swagger docs + React frontend · no database, no glue code</tspan></text>
   <text class="t" x="28" y="238"><tspan class="ok">✓ </tspan><tspan class="fg">serving at </tspan><tspan class="acc">http://localhost:8000</tspan></text>
 </svg>
