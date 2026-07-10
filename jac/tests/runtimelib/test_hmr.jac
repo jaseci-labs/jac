@@ -374,6 +374,62 @@ test "signal full reload bumps the watched nonce file" {
     }
 }
 
+"""Client compiler stub: emits `next_code` as the module's compiled output."""
+obj _FakeJcc {
+    has out_path: Path,
+        next_code: str,
+        compiled_dir: str;
+
+    def _output_path_for(source_path: any, base_dir: any) -> Path {
+        return self.out_path;
+    }
+
+    def compile_dependencies_recursively(
+        source_path: any, source_root: any = None, skip_existing: bool = False
+    ) {
+        self.out_path.write_text(self.next_code);
+    }
+}
+
+obj _FakeCompiler {
+    has jac_client_compiler: any;
+}
+
+test "recompile signals a full reload only when the export set changes" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        compiled = temp_dir / ".jac" / "client" / "compiled";
+        compiled.mkdir(parents=True);
+        src = temp_dir / "widget.cl.jac";
+        src.write_text("def:pub Widget() -> JsxElement { return <p>w</p>; }");
+        js = compiled / "widget.js";
+        with_export = "function Widget() {}\nexport {Widget};\n";
+        js.write_text(with_export);
+        jcc = _FakeJcc(out_path=js, next_code=with_export, compiled_dir=str(compiled));
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir),
+            module_name="test",
+            watcher=watcher,
+            client_compiler=_FakeCompiler(jac_client_compiler=jcc)
+        );
+        signal = compiled.parent / ".jac-force-reload";
+        # An edit that leaves the export set alone stays hot-swappable
+        reloader._recompile_client_unified(str(src));
+        assert not signal.exists() , "a body-only edit must not force a reload";
+        # Dropping `:pub` removes the export: importers hold a stale reference,
+        # so the reloader must force a reload for the error to surface
+        jcc.next_code = "function Widget() {}\n";
+        reloader._recompile_client_unified(str(src));
+        assert signal.exists() , "a removed export must force a reload";
+        # Renaming the component is a removal plus an addition
+        signal.unlink();
+        jcc.next_code = "function Renamed() {}\nexport {Renamed};\n";
+        reloader._recompile_client_unified(str(src));
+        assert signal.exists() , "a renamed export must force a reload";
+    }
+}
+
 # --- TestHMRIntegration ---
 test "file change triggers callback" {
     with tempfile.TemporaryDirectory() as tmp {
