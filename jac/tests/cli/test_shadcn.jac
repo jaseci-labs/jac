@@ -344,3 +344,47 @@ test "add components fails without shadcn config" {
         assert result == False;
     }
 }
+
+test "add hyphenated component installs underscored file name" {
+    # GUARD: a hyphen cannot appear in a Jac module name, so `install --shadcn
+    # dropdown-menu` MUST write `dropdown_menu.cl.jac`. A hyphenated file is not
+    # importable (unquoted = parse error, quoted = unresolved). Do not drop the
+    # install-side dash-to-underscore conversion.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["dropdown-menu"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        # The underscored file MUST exist; the hyphenated one MUST NOT.
+        assert (ui_dir / "dropdown_menu.cl.jac").exists();
+        assert not (ui_dir / "dropdown-menu.cl.jac").exists();
+        # No installed file (incl. peer deps) may contain a hyphen.
+        for installed in ui_dir.glob("*.cl.jac") {
+            assert "-" not in installed.name;
+        }
+    }
+}
+
+test "add double-stem-mismatch component installs underscored file name" {
+    # `input-otp` -> registry file `otp-input.cl.jac` -> installed `otp_input.cl.jac`.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["input-otp"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        assert (ui_dir / "otp_input.cl.jac").exists();
+        assert not (ui_dir / "otp-input.cl.jac").exists();
+    }
+}
