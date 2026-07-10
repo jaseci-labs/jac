@@ -330,6 +330,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def _target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node;

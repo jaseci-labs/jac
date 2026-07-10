@@ -788,6 +788,15 @@ obj WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     def postinit -> None;
 }
 
+obj ForeverStmt(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
+    has body: Sequence[CodeBlockStmt];
+
+    def postinit -> None;
+}
+
 obj WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;

@@ -33,16 +33,16 @@ Declare dependencies in your `jac.toml` file under `[dependencies.npm]`:
 tailwindcss = "latest"
 ```
 
-Then run `jac start` or `jac add --npm` to install them.
+Then run `jac start` or `jac install --npm` to install them.
 
 ### Via CLI
 
 ```bash
 # Add a runtime dependency
-jac add --npm sonner
+jac install --npm sonner
 
 # Add a dev dependency
-jac add --npm --dev tailwindcss
+jac install --npm --dev tailwindcss
 
 # Remove a dependency
 jac remove --npm sonner
@@ -217,7 +217,7 @@ def:pub SearchBox() -> JsxElement {
 1. Add dependencies:
 
 ```bash
-jac add --npm --dev tailwindcss @tailwindcss/vite
+jac install --npm --dev tailwindcss @tailwindcss/vite
 ```
 
 1. Configure in `jac.toml`:
@@ -274,7 +274,7 @@ def:pub Tab(props: any) -> JsxElement {
 
 ## shadcn/ui Integration
 
-[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. shadcn support is built into **jaclang** -- the full component set ships bundled with jaclang, so `jac add --shadcn` installs pre-built, themed components **offline** (no registry fetch).
+[shadcn/ui](https://ui.shadcn.com/) is a popular component library built on Radix UI primitives and Tailwind CSS. shadcn support is built into **jaclang** -- the full component set ships bundled with jaclang, so `jac install --shadcn` installs pre-built, themed components **offline** (no registry fetch).
 
 ### Setup
 
@@ -312,7 +312,7 @@ jac retheme                                  # regenerate from the current jac.t
 ### Add more components
 
 ```bash
-jac add --shadcn button card dialog
+jac install --shadcn button card dialog
 ```
 
 This resolves the chosen style's `.cl.jac` components into `components/ui/`, installs peer dependencies automatically, and creates the `cn()` utility if needed -- all from the bundled component set, no network required.
@@ -336,7 +336,7 @@ cl {
 
 ### The cn() Utility in Jac
 
-`jac add --shadcn` and `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you, so you rarely write this by hand. For reference, the standard shadcn `cn()` utility is written entirely in Jac (no TypeScript needed) using a variadic parameter:
+`jac install --shadcn` and `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you, so you rarely write this by hand. For reference, the standard shadcn `cn()` utility is written entirely in Jac (no TypeScript needed) using a variadic parameter:
 
 ```jac
 # lib/utils.cl.jac
@@ -348,7 +348,7 @@ def:pub cn(*inputs: any) -> str {
 }
 ```
 
-Required dependencies (added automatically by `jac add --shadcn`):
+Required dependencies (added automatically by `jac install --shadcn`):
 
 ```toml
 [dependencies.npm]
@@ -358,7 +358,7 @@ tailwind-merge = "*"
 
 ### Building shadcn Components in Jac
 
-`jac add --shadcn` already installs the full, production-ready primitives into `components/ui/`, so you don't normally hand-write them -- build your own higher-level components on top instead. The simplified examples below are illustrative: they show how a bundled component is structured (CVA for variants, a `...lib.utils` import for `cn()`, JSX prop spread) and how you'd author a custom one.
+`jac install --shadcn` already installs the full, production-ready primitives into `components/ui/`, so you don't normally hand-write them -- build your own higher-level components on top instead. The simplified examples below are illustrative: they show how a bundled component is structured (CVA for variants, a `...lib.utils` import for `cn()`, JSX prop spread) and how you'd author a custom one.
 
 Here's how the shadcn Button component looks in Jac, using Class Variance Authority (CVA) for variant management:
 
@@ -590,7 +590,7 @@ def:pub SplitView() -> JsxElement {
 
 | Task | How |
 |------|-----|
-| Add npm package | `jac add --npm <pkg>` or `[dependencies.npm]` in jac.toml |
+| Add npm package | `jac install --npm <pkg>` or `[dependencies.npm]` in jac.toml |
 | Import package | `import from "<package>" { named_export }` |
 | Import React hooks | `import from react { useRef, useCallback }` |
 | Setup Tailwind | Add vite plugin config + CSS import |

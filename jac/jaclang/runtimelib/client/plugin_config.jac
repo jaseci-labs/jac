@@ -150,7 +150,9 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
     console.print();
     if get_bun() is None {
         console.warning("Bun is required for client development");
-        console.print("  After installing Bun, run: jac add --cl\n", style="muted");
+        console.print(
+            "  After installing Bun, run: jac install --npm\n", style="muted"
+        );
         return;
     }
 
@@ -162,7 +164,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             style="muted"
         );
         console.print(
-            "  Run 'jac add --npm' when ready to install packages.\n", style="muted"
+            "  Run 'jac install --npm' when ready to install packages.\n", style="muted"
         );
         return;
     }
@@ -195,7 +197,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             console.warning("Bun is required but could not be found or installed.");
             console.print(
                 "  💡 Install manually: https://bun.sh\n"
-                "  💡 You can install packages later with: jac add --cl\n",
+                "  💡 You can install packages later with: jac install --npm\n",
                 style="muted"
             );
             return;
@@ -206,13 +208,15 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         } except ClientBundleError as e {
             console.warning(f"Failed to install packages: {e}");
             console.print(
-                "  💡 You can install packages later with: jac add --cl\n", style="muted"
+                "  💡 You can install packages later with: jac install --npm\n",
+                style="muted"
             );
         }
     } except Exception as e {
         console.warning(f"Could not install default packages: {e}");
         console.print(
-            "  💡 You can install packages later with: jac add --cl\n", style="muted"
+            "  💡 You can install packages later with: jac install --npm\n",
+            style="muted"
         );
     }
 }

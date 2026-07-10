@@ -231,13 +231,13 @@ cl {
 
 ```bash
 # Add a package
-jac add --npm lodash
+jac install --npm lodash
 
 # Add dev dependency
-jac add --npm --dev @types/react
+jac install --npm --dev @types/react
 
 # Install all dependencies
-jac add --npm
+jac install --npm
 ```
 
 Or in `jac.toml`:

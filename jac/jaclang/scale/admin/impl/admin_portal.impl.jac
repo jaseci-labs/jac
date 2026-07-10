@@ -1224,19 +1224,6 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     import from jaclang.scale.admin { admin_portal }
     admin_dir = Path(admin_portal.__file__).parent;
 
-    bundled_dist = admin_dir / "_dist";
-    if bundled_dist.exists() and (bundled_dist / "index.html").exists() {
-        logger.info("Using pre-built admin client from package");
-        try {
-            _copy_dir_contents(bundled_dist, dist_dir);
-            logger.info("Pre-built admin client deployed successfully");
-            return True;
-        } except Exception as e {
-            logger.error(f"Failed to deploy pre-built admin client: {e}");
-            return False;
-        }
-    }
-
     ui_dir = admin_dir / "ui";
     if not (ui_dir / "main.jac").exists() {
         logger.error(f"Admin UI source not found at {ui_dir}");

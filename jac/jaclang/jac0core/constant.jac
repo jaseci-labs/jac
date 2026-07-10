@@ -227,6 +227,7 @@ class Tokens(StrEnum) {
         KW_TO = 'KW_TO';
         KW_BY = 'KW_BY';
         KW_WHILE = 'KW_WHILE';
+        KW_FOREVER = 'KW_FOREVER';
         KW_CONTINUE = 'KW_CONTINUE';
         KW_BREAK = 'KW_BREAK';
         KW_DISENGAGE = 'KW_DISENGAGE';
@@ -448,6 +449,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_FINALLY': 'finally',
          'KW_FLOW': 'flow',
          'KW_FOR': 'for',
+         'KW_FOREVER': 'forever',
          'KW_FROM': 'from',
          'KW_GLOBAL': 'glob',
          'KW_HAS': 'has',

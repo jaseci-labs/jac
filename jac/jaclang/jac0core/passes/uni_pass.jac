@@ -156,6 +156,7 @@ obj UniPass(ModuleCodegenPass) {
     def enter_unary_expr(nd: uni.UnaryExpr) -> None;
     def enter_visit_stmt(nd: uni.VisitStmt) -> None;
     def enter_while_stmt(nd: uni.WhileStmt) -> None;
+    def enter_forever_stmt(nd: uni.ForeverStmt) -> None;
     def enter_with_stmt(nd: uni.WithStmt) -> None;
     def enter_yield_expr(nd: uni.YieldExpr) -> None;
     def exit_ability(nd: uni.Ability) -> None;
@@ -277,6 +278,7 @@ obj UniPass(ModuleCodegenPass) {
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;
     def exit_visit_stmt(nd: uni.VisitStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_yield_expr(nd: uni.YieldExpr) -> None;
 }

@@ -132,7 +132,7 @@ impl create(
         if plugin and not _plugin_available(plugin) {
             console.error(
                 f"Project kind '{target_kind}' requires the {plugin} plugin, which is not installed.",
-                hint=f"Install it (e.g. `pip install {plugin}` / `jac add {plugin}`), then retry."
+                hint=f"Install it (e.g. `pip install {plugin}` / `jac install {plugin}`), then retry."
             );
             return 1;
         }
@@ -513,6 +513,10 @@ impl install(
     editable: list = [],
     dev: bool = False,
     extras: list = [],
+    no_save: bool = False,
+    git: str = "",
+    npm: bool = False,
+    shadcn: bool = False,
     verbose: bool = False,
     force_reinstall: bool = False,
     no_cache_dir: bool = False,
@@ -529,9 +533,39 @@ impl install(
     if plan {
         return deps(scale=scale, as_json=as_json);
     }
+    if shadcn or npm {
+        channel = "--shadcn" if shadcn else "--npm";
+        ineffective: list[str] = [
+            flag
+            for (enabled, flag) in [
+                (no_save, "--no-save"),
+                (dry_run, "--dry-run"),
+                (install_global, "--global")
+            ]
+            if enabled
+        ];
+        if ineffective {
+            console.warning(
+                f"{', '.join(ineffective)} has no effect with {channel} "
+                "(it applies only to Python venv installs)."
+            );
+        }
+    }
+    if shadcn {
+        import from jaclang.cli.shadcn.cli { run_shadcn_add }
+        return run_shadcn_add(packages);
+    }
+    if npm {
+        import from jaclang.runtimelib.client.cli { run_npm_add }
+        return run_npm_add(packages, dev);
+    }
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.pyvenv { ensure_venv, get_venv_site_packages }
+    import from jaclang.project.pyvenv {
+        ensure_venv,
+        get_venv_site_packages,
+        make_git_spec
+    }
     import from jaclang.project.providers {
         InstallContext,
         get_provider_registry,
@@ -560,26 +594,37 @@ impl install(
         verbose=verbose, install_flags=install_flags, target="global"
     );
 
-    if packages {
+    if packages or git {
         if editable {
             console.error(
-                "Cannot mix package names with -e/--editable in a single command. "
+                "Cannot mix package names or --git with -e/--editable in a single command. "
                 "Run them separately: 'jac install <pkg>' then 'jac install -e <path>'."
             );
             return 1;
         }
-        if dev or extras {
+        save = not (no_save or install_global or dry_run);
+        if extras {
             console.warning(
-                "--dev and --extras have no effect with package names. "
-                "Use 'jac add <pkg> --dev' to track packages in jac.toml."
+                "--extras has no effect with package names; "
+                "declare optional groups in jac.toml instead."
+            );
+        }
+        if dev and not save {
+            console.warning(
+                "--dev has no effect with --no-save/--global/--dry-run "
+                "(nothing is recorded in jac.toml)."
             );
         }
         if install_global {
+            specs: list = list(packages);
+            if git {
+                specs.append(make_git_spec(git));
+            }
             console.print(
-                f"\n📦 Installing {len(packages)} package(s) into the global site",
+                f"\n📦 Installing {len(specs)} package(s) into the global site",
                 style="bold"
             );
-            if not python.install_specs(None, packages, global_ctx) {
+            if not python.install_specs(None, specs, global_ctx) {
                 return 1;
             }
             if dry_run {
@@ -597,11 +642,78 @@ impl install(
             );
             return 1;
         }
-        console.print(
-            f"\n📦 Installing {len(packages)} package(s) into {config.get_venv_dir()}",
-            style="bold"
-        );
-        return 0 if python.install_specs(config, packages, ctx) else 1;
+        if git {
+            if len(packages) > 1 {
+                console.error(
+                    f"Pass at most one name with --git (used as the dependency "
+                    f"alias); got {len(packages)}: {', '.join(packages)}.",
+                    hint="Install additional packages separately: 'jac install <pkg>'."
+                );
+                return 1;
+            }
+            if packages {
+                pkg_name = packages[0];
+            } else {
+                pkg_name = git.rstrip("/").split("/")[-1];
+                if pkg_name.endswith(".git") {
+                    pkg_name = pkg_name[:-4];
+                }
+            }
+            console.print(f"\n📦 Adding {pkg_name} from git", style="bold");
+            console.print(f"  Repository: {git}", style="muted");
+            with console.status(
+                f"Installing {pkg_name}...", spinner="dots"
+            ) as status {
+                git_success = python.install_specs(config, [make_git_spec(git)], ctx);
+            }
+            if not git_success {
+                console.error(f"Failed to install {pkg_name}");
+                return 1;
+            }
+            if dry_run {
+                console.success("Dry run complete (nothing installed).");
+                return 0;
+            }
+            console.print(f"  ✔ {pkg_name}", style="success");
+            if save {
+                config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
+                config.save();
+                console.print(
+                    f"\n  ✔ Updated jac.toml [dependencies.git]", style="muted"
+                );
+            }
+            return 0;
+        }
+        if not save {
+            console.print(
+                f"\n📦 Installing {len(packages)} package(s) into {config.get_venv_dir()}",
+                style="bold"
+            );
+            return 0 if python.install_specs(config, packages, ctx) else 1;
+        }
+        console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
+        parsed = [python.parse_spec(pkg_spec) for pkg_spec in packages];
+        with console.status(
+            f"Installing {len(packages)} package(s)...", spinner="dots"
+        ) as status {
+            recorded = python.add_packages(config, parsed, dev, ctx);
+        }
+        if recorded is None {
+            console.error("Failed to install package(s)");
+            return 1;
+        }
+        for ((name, _), version_str) in zip(parsed, recorded) {
+            console.print(f"  ✔ {name} ({version_str})", style="success");
+        }
+        try {
+            config.save();
+            section = "dev-dependencies" if dev else "dependencies";
+            console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
+        } except Exception as e {
+            console.error(f"Could not save jac.toml: {e}");
+            return 1;
+        }
+        return 0;
     }
 
     editable = [p for group in (editable or []) for p in group];
@@ -773,89 +885,6 @@ impl install(
         console.error("Some dependencies failed to install");
         return 1;
     }
-}
-
-impl add(
-    packages: list = [],
-    dev: bool = False,
-    git: str = '',
-    verbose: bool = False,
-    npm: bool = False,
-    shadcn: bool = False
-) -> int {
-    if shadcn {
-        import from jaclang.cli.shadcn.cli { run_shadcn_add }
-        return run_shadcn_add(packages);
-    }
-    if npm {
-        import from jaclang.runtimelib.client.cli { run_npm_add }
-        return run_npm_add(packages, dev);
-    }
-    import from jaclang.project.config { get_config }
-    import from jaclang.project.pyvenv { make_git_spec }
-    import from jaclang.project.providers { InstallContext, get_python_provider }
-    config = get_config();
-    if config is None {
-        console.error(
-            "No jac.toml found", hint="Run 'jac create' to create a project first."
-        );
-        return 1;
-    }
-    if not packages and not git {
-        console.error(
-            "No packages specified",
-            hint="Use 'jac add <package>' to add a package, or 'jac install' to install all dependencies."
-        );
-        return 1;
-    }
-    python = get_python_provider();
-    ctx = InstallContext(verbose=verbose);
-    if git {
-        if packages {
-            pkg_name = packages[0];
-        } else {
-            pkg_name = git.rstrip("/").split("/")[-1];
-            if pkg_name.endswith(".git") {
-                pkg_name = pkg_name[:-4];
-            }
-        }
-        console.print(f"\n📦 Adding {pkg_name} from git", style="bold");
-        console.print(f"  Repository: {git}", style="muted");
-        with console.status(f"Installing {pkg_name}...", spinner="dots") as status {
-            git_success = python.install_specs(config, [make_git_spec(git)], ctx);
-        }
-        if git_success {
-            config.add_dependency(pkg_name, git, dev=dev, dep_type="git");
-            config.save();
-            console.print(f"  ✔ {pkg_name}", style="success");
-            console.print(f"\n  ✔ Updated jac.toml [dependencies.git]", style="muted");
-            return 0;
-        } else {
-            console.error(f"Failed to install {pkg_name}");
-            return 1;
-        }
-    }
-    console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
-    for pkg_spec in packages {
-        (name, version) = python.parse_spec(pkg_spec);
-        with console.status(f"Installing {name}...", spinner="dots") as status {
-            recorded = python.add_package(config, name, version, dev, ctx);
-        }
-        if recorded is None {
-            console.error(f"Failed to install {name}");
-            return 1;
-        }
-        console.print(f"  ✔ {name} ({recorded})", style="success");
-    }
-    try {
-        config.save();
-        section = "dev-dependencies" if dev else "dependencies";
-        console.print(f"\n  ✔ Updated jac.toml [{section}]", style="muted");
-    } except Exception as e {
-        console.error(f"Could not save jac.toml: {e}");
-        return 1;
-    }
-    return 0;
 }
 
 impl remove(
