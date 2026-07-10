@@ -1,5 +1,6 @@
 import atexit;
 import os;
+import from typing { cast }
 import from pathlib { Path }
 import redis;
 import from pymongo { MongoClient }
@@ -103,12 +104,19 @@ def _bind_scale_memory(ctx: ExecutionContext, persist_root: bool) -> tuple {
 }
 
 
-def _seed_pushdown_graph -> None {
+def _seed_pushdown_graph {
     for i in range(100) {
         root ++> _PushdownLead(idx=i);
     }
     for i in range(20) {
         root ++> _PushdownOther(idx=i);
+    }
+}
+
+
+def _close_ctx(ctx: (ExecutionContext | None)) {
+    if ctx is not None {
+        cast(ExecutionContext, ctx).close();
     }
 }
 
@@ -121,6 +129,8 @@ test "edge-ref slice bounds mongodb fetches" {
     set_config(cfg);
     JacRuntime.set_base_path("/tmp/_pushdown_mongo");
 
+    ctx1: (ExecutionContext | None) = None;
+    ctx2: (ExecutionContext | None) = None;
     try {
         ctx1 = ExecutionContext();
         (mongo1, redis1) = _bind_scale_memory(ctx1, persist_root=True);
@@ -129,6 +139,7 @@ test "edge-ref slice bounds mongodb fetches" {
         root_id = root.__jac__.id;
         ctx1.mem.commit();
         ctx1.close();
+        ctx1 = None;
 
         # Drop the L2 cache so the slice is served from mongo, making the fetch
         # count reflect what the database is actually asked to load.
@@ -151,9 +162,9 @@ test "edge-ref slice bounds mongodb fetches" {
             f"Slice should bound MongoDB fetches; got {mongo2.fetch_count} "
             "items requested for [0:50]"
         );
-
-        ctx2.close();
     } finally {
+        _close_ctx(ctx2);
+        _close_ctx(ctx1);
         JacRuntime.set_base_path(orig_base);
         set_config(JacConfig());
     }
@@ -168,6 +179,8 @@ test "edge-ref slice bounds redis cache promotions" {
     set_config(cfg);
     JacRuntime.set_base_path("/tmp/_pushdown_redis");
 
+    ctx1: (ExecutionContext | None) = None;
+    ctx2: (ExecutionContext | None) = None;
     try {
         ctx1 = ExecutionContext();
         (mongo1, redis1) = _bind_scale_memory(ctx1, persist_root=True);
@@ -176,6 +189,7 @@ test "edge-ref slice bounds redis cache promotions" {
         root_id = root.__jac__.id;
         ctx1.mem.commit();
         ctx1.close();
+        ctx1 = None;
 
         _shared["redis_client"].flushall();
 
@@ -195,9 +209,9 @@ test "edge-ref slice bounds redis cache promotions" {
             f"Slice should bound Redis cache promotions; got {redis2.put_count} "
             "puts for [0:50]"
         );
-
-        ctx2.close();
     } finally {
+        _close_ctx(ctx2);
+        _close_ctx(ctx1);
         JacRuntime.set_base_path(orig_base);
         set_config(JacConfig());
     }
