@@ -223,7 +223,22 @@ test "qualified and generic heritage is preserved as full name" {
 }
 
 test "malformed input returns None rather than raising" {
-    assert parse_dts("export declare function broken(((;") is None or True;
-    r = parse_dts("/* just a comment */");
-    assert r is None;
+    # parse_dts must swallow parse errors and return None for anything it
+    # cannot model, rather than raising out of the type checker. Previously
+    # the first case asserted `... is None or True`, which is a tautology
+    # and never exercised the degrade-gracefully contract.
+    for malformed in [
+        "export declare function broken(((;",  # malformed params
+        "/* just a comment */",  # no declarations
+        "",  # empty input
+        "export declare const x: 'unterminated;",  # unterminated string
+        "export declare const x: /* unterminated",  # unterminated block
+        "export = Foo;",  # export-eq to unknown name
+        "@#$%^&*",  # garbage tokens
+
+    ] {
+        assert parse_dts(malformed) is None , (
+            f"Expected None for malformed input {malformed!r}"
+        );
+    }
 }
