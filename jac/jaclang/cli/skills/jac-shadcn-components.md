@@ -50,10 +50,10 @@ cl import from "@hugeicons/core-free-icons" { SearchIcon, Add01Icon, Cancel01Ico
 
 | Your file | UI primitive | `cn` (lib/utils) |
 |-----------|-------------|------------------|
-| `components/EventCard.cl.jac` | `".ui.button"` | `"..lib.utils"` |
-| `pages/dashboard.jac` (file-based route) | `"..components.ui.button"` | `"..lib.utils"` |
-| `pages/(auth)/dashboard.jac` (route group) | `"...components.ui.button"` | `"...lib.utils"` |
-| project root `main.jac` (use `cl import`) | `".components.ui.button"` | `".lib.utils"` |
+| `components/EventCard.cl.jac` | `.ui.button` | `..lib.utils` |
+| `pages/dashboard.jac` (file-based route) | `..components.ui.button` | `..lib.utils` |
+| `pages/(auth)/dashboard.jac` (route group) | `...components.ui.button` | `...lib.utils` |
+| project root `main.jac` (use `cl import`) | `.components.ui.button` | `.lib.utils` |
 
 **A `pages/` file is not inside `components/`.** From within `components/`, `ui/` is a subfolder, so the prefix is `.ui.X`. From a sibling directory like `pages/`, you go up to the project root and back down into `components/`, so the prefix is `..components.ui.X` - and one MORE dot for each `pages/` subfolder (a route group like `(auth)/` counts as a folder). Undercounting (e.g. `.components.ui.card` from `pages/login.jac`) silently fails the client bundle with `Could not resolve`, not `jac check`.
 
