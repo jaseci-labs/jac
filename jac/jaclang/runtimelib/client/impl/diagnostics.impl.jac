@@ -156,7 +156,7 @@ impl MissingDependencyDetector.detect(
             self.create_diagnostic(
                 message="A required npm module could not be found.",
                 hint=HINT_CHECK_IMPORTS,
-                quick_fix="jac add --npm <package-name>"
+                quick_fix="jac install --npm <package-name>"
             )
         ];
     }
@@ -170,7 +170,7 @@ impl MissingDependencyDetector.detect(
             file_path=jac_file,
             line=line_num,
             hint=f"This is a core jac-client dependency.\n  It should be auto-injected. Try: jac client install",
-            quick_fix=f"jac add --npm {module_name}"
+            quick_fix=f"jac install --npm {module_name}"
         );
     } elif is_dev_dep {
         diag = self.create_diagnostic(
@@ -178,7 +178,7 @@ impl MissingDependencyDetector.detect(
             file_path=jac_file,
             line=line_num,
             hint=f"This is a core jac-client dev dependency.\n  It should be auto-injected. Try: jac client install",
-            quick_fix=f"jac add --npm-dev {module_name}"
+            quick_fix=f"jac install --npm --dev {module_name}"
         );
     } else {
         diag = self.create_diagnostic(
@@ -186,7 +186,7 @@ impl MissingDependencyDetector.detect(
             file_path=jac_file,
             line=line_num,
             hint=HINT_ADD_PACKAGE,
-            quick_fix=f"jac add --npm {module_name}"
+            quick_fix=f"jac install --npm {module_name}"
         );
     }
     if jac_file and line_num > 0 {
