@@ -94,8 +94,6 @@ pages/
     └── [id].jac        # /users/:id
 ```
 
-**One layout per resolved path - route groups do NOT nest layouts.** A layout keys by its resolved URL path, and a route group `(x)/` is pathless (adds no segment), so a `layout.jac` inside it keys to the *parent's* path, not a new one. `pages/layout.jac` and `pages/(auth)/layout.jac` therefore both key to `/`, and the build fails with `Layout collision: '/' has layouts from both ...`. Nesting works only for real path segments (`users/` above), never for groups. To give a group its own shell, put its pages under a real segment (`app/` with `app/layout.jac`), or branch on the route inside the single parent `layout.jac`. Do not add a `layout.jac` to a `(group)/`.
-
 **Protected route group** - naming a group `(auth)/` is all that is needed; the build system automatically wraps every page inside with an `AuthGuard` in the generated entry script. No layout file or manual `AuthGuard` call required.
 
 The default redirect for unauthenticated users is `/login`. To change it, set `auth_redirect` in `jac.toml`:
