@@ -1,22 +1,14 @@
-"""Multi-pod coherency: topology index (GTI) invalidation on edge-list-delta.
+"""Multi-pod coherency: topology index (GTI) invalidation on edge-list-delta (#7334).
 
-Regression for #7334. In a multi-pod deployment backed by ScaleTieredMemory
-(Mongo L3 + Redis L2), adding an edge to a *root* updates the root's
-`topology_index_data` in Mongo (L3) but historically did NOT refresh Redis (L2)
-nor broadcast a cross-pod invalidation, because `commit` deliberately excludes
-EDGE_LIST_DELTA intents from `l2.put`/`publish_invalidation` (storm avoidance).
+`commit` excludes EDGE_LIST_DELTA intents from L2 put/broadcast (storm avoidance).
+That is safe for edge lists (reconstructable from the edge anchors) but not for a
+root's topology index: an opaque blob that only changes via EDGE_LIST_DELTA and
+can't be reconstructed, so other pods kept serving a stale GTI. The fix invalidates
++ broadcasts such deltas when the anchor carries a topology index.
 
-The topology index is the exception to that rule: it is an opaque blob that only
-ever changes via EDGE_LIST_DELTA and CANNOT be reconstructed from the (already
-invalidated) edge anchors. So it falls through the crack and other pods keep
-serving a stale GTI. The fix invalidates + broadcasts for edge-list-deltas whose
-anchor carries a topology index (a root), while preserving storm avoidance for
-ordinary content nodes.
-
-These tests spin up real Mongo + Redis via testcontainers and drive two/three
-`ScaleTieredMemory` instances ("pods") sharing that storage. A custom `Root()`
-gives each test a real per-user-style root (fresh UUID, persistent), avoiding the
-special anonymous root (id 0) that every ExecutionContext re-creates locally.
+Real Mongo + Redis via testcontainers. A custom `Root()` gives each test a real
+per-user root (fresh UUID, persistent), avoiding the anonymous root (id 0) that
+every ExecutionContext re-creates locally.
 """
 
 import atexit;
@@ -117,10 +109,7 @@ def _make_pod -> ScaleTieredMemory {
 }
 
 
-"""Decode the root cached in Redis L2 and return its topology-index length.
-
-Returns -1 when the root has no Redis entry (i.e. it was invalidated).
-"""
+"""Topology-index length of the root cached in Redis L2; -1 if not cached."""
 def _l2_index_len(mem: ScaleTieredMemory, root_id: UUID) -> int {
     raw = cast(RedisBackend, mem.l2).redis_client.get(f"anchor:{root_id}");
     if not raw {
@@ -134,10 +123,7 @@ def _l2_index_len(mem: ScaleTieredMemory, root_id: UUID) -> int {
 }
 
 
-"""Builder pod: create a persistent root with `n` _XPodTypeA children, commit.
-
-Returns the root id. Leaves storage populated and the builder context closed.
-"""
+"""Builder pod: persist a root with `n` _XPodTypeA children; return its id."""
 def _seed_root(n: int) -> UUID {
     memB = _make_pod();
     ctxB = ExecutionContext();
@@ -222,8 +208,7 @@ test "edge-list-delta on a root invalidates the topology index in Redis L2 + bro
             );
 
             # THE FIX (L2 coherency): the root's Redis L2 entry must be
-            # invalidated, so any other pod reloads the fresh index from L3
-            # instead of the stale 100-edge blob. Before the fix this stayed 100.
+            # invalidated so other pods reload the fresh index. Was 100 before.
             assert _l2_index_len(memB2, root_id) == -1 , (
                 "root's Redis L2 entry must be INVALIDATED on an edge-list-delta "
                 "that carries a topology index; got index len "

@@ -1,15 +1,8 @@
 def _carries_topology_index(anchor: Anchor) -> bool {
-    # A NodeAnchor that carries a topology-index blob (a root). The blob is
-    # opaque and only ever changes via EDGE_LIST_DELTA, and unlike an ordinary
-    # node's edge list it cannot be reconstructed from the edge anchors, so an
-    # edge-list-delta on such a node must still invalidate cross-pod.
-    #
-    # Invariant this relies on: every topology mutation (_index_edge_into,
-    # _unindex_edge_from, on_node_destroyed) routes through set_topology_index,
-    # which encodes even an empty index to bytes -> topology_index_data is never
-    # reset to None once a root has an index. If a future path ever clears it to
-    # None, that edge-delta would silently skip invalidation and leave a stale L2
-    # entry; such a path must invalidate explicitly instead.
+    # A root NodeAnchor whose topology-index blob can't be reconstructed from the
+    # edge anchors, so an edge-list-delta on it must invalidate cross-pod. Relies
+    # on set_topology_index never resetting the blob to None once set; a future
+    # path that clears it must invalidate explicitly.
     return isinstance(anchor, NodeAnchor) and anchor.topology_index_data is not None;
 }
 
@@ -129,11 +122,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                         str(intent.anchor.id), self._l1_id
                     );
                 } elif _carries_topology_index(intent.anchor) {
-                    # EDGE_LIST_DELTA on a root: the topology index blob can't be
-                    # reconstructed from the (invalidated) edge anchors, so other
-                    # pods would keep serving a stale GTI. Invalidate L2 and
-                    # broadcast so they evict L1 and reload the fresh index from
-                    # L3. Storm-avoidance is preserved for ordinary hot nodes.
+                    # Edge-list-delta on a root: invalidate + broadcast so other
+                    # pods drop their stale GTI and reload the fresh index from L3.
                     self.l2.invalidate(intent.anchor.id);
                     cast(RedisBackend, self.l2).publish_invalidation(
                         str(intent.anchor.id), self._l1_id
