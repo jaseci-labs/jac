@@ -1048,6 +1048,13 @@ obj KubernetesTarget(DeploymentTarget) {
                 needs_root=True
             );
             container_config['env'] = container_config['env'] + runtime_container_env();
+            import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+                image_pull_policy
+            }
+            pull_policy = image_pull_policy(self.k8s_config.python_image);
+            if pull_policy {
+                container_config['imagePullPolicy'] = pull_policy;
+            }
 
             app_sa_name = f"{app_name}-sa";
             self._create_service_account(app_sa_name, app_name, namespace, core_v1);
