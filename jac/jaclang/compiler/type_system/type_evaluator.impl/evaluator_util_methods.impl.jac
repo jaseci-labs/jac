@@ -405,6 +405,67 @@ impl TypeEvaluator._get_getattr_return_type(
     return None;
 }
 
+impl TypeEvaluator._resolve_enum_value_type(
+    enum_type: types.ClassType
+) -> TypeBase | None {
+    val_type = enum_type.shared.enum_value_type;
+    if val_type is None and enum_type.shared.enum_members {
+        member_types = [
+            m.value_type
+            for m in enum_type.shared.enum_members.values()
+            if m.value_type is not None
+        ];
+        if member_types
+        and all(
+            isinstance(t, types.ClassType)
+            and isinstance(member_types[0], types.ClassType)
+            and t.shared == member_types[0].shared for t in member_types
+        ) {
+            val_type = member_types[0];
+        }
+    }
+    return val_type;
+}
+
+impl TypeEvaluator._synthesize_enum_metaclass_attr(
+    enum_type: types.ClassType, attr_name: str
+) -> TypeBase | None {
+    if not (
+        self.prefetch
+        and self.prefetch.dict_class
+        and self.prefetch.list_class
+        and self.prefetch.str_class
+    ) {
+        return None;
+    }
+    str_inst = self._convert_to_instance(self.prefetch.str_class);
+    if attr_name == "_member_names_" {
+        list_type = self.prefetch.list_class.specialize_generics([str_inst]);
+        return self._convert_to_instance(list_type);
+    }
+    if attr_name in ("__members__", "_member_map_") {
+        member_inst = enum_type.clone_as_instance();
+        dict_type = self.prefetch.dict_class.specialize_generics(
+            [str_inst, member_inst]
+        );
+        return self._convert_to_instance(dict_type);
+    }
+    if attr_name == "_value2member_map_" {
+        member_inst = enum_type.clone_as_instance();
+        val_type = self._resolve_enum_value_type(enum_type);
+        key_type = (
+            self._convert_to_instance(val_type)
+                if val_type is not None
+                else types.AnyType()
+        );
+        dict_type = self.prefetch.dict_class.specialize_generics(
+            [key_type, member_inst]
+        );
+        return self._convert_to_instance(dict_type);
+    }
+    return None;
+}
+
 impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
     return type_utils.convert_to_instance(jtype);
 }
