@@ -149,6 +149,11 @@ test "dev config wires the layered dev-status bridge; build config does not" {
         assert '".jac-dev-status.json"' in plugin_js;
         assert '.startsWith("jac")' in plugin_js;
         assert '"full-reload"' in plugin_js;
+        # Jac-recovery reloads must not clear a still-broken Vite layer, and
+        # clearing needs a connected client to re-arm a persisting error
+        assert "!payload.jacTriggered" in plugin_js;
+        assert "server.ws.clients.size > 0" in plugin_js;
+        assert "jacTriggered: true" in dev_content;
         # Client slot clears only on the browser's clean-load beacon
         assert '"jac:client-ready"' in plugin_js;
         bundler._ensure_dev_index_html(Path(tmp));

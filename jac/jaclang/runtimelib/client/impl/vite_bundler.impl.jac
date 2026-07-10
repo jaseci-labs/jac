@@ -533,7 +533,7 @@ function sendFullReload(server) {
   // Broadcast over the websocket first (works for both Vite 5 and Vite 6 clients).
   try {
     if (server.ws && typeof server.ws.send === "function") {
-      server.ws.send({ type: "full-reload", path: "*" });
+      server.ws.send({ type: "full-reload", path: "*", jacTriggered: true });
       sent = true;
     }
   } catch (e) {}
@@ -544,7 +544,7 @@ function sendFullReload(server) {
       for (const k of Object.keys(envs)) {
         const env = envs[k];
         if (env && env.hot && typeof env.hot.send === "function") {
-          env.hot.send({ type: "full-reload", path: "*" });
+          env.hot.send({ type: "full-reload", path: "*", jacTriggered: true });
           sent = true;
         }
       }
@@ -677,7 +677,7 @@ function jacBuildErrorOverlay() {{
         // CURRENT state instead).
         if (server.ws.clients && server.ws.clients.size === 0) return;
         if (!raw) {{
-          server.ws.send({{ type: "full-reload", path: "*" }});
+          server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
           return;
         }}
         let file = "", message = raw;
@@ -718,7 +718,7 @@ function jacBuildErrorOverlay() {{
               server.moduleGraph.invalidateModule(mod);
             }}
             if (hadImporters) {{
-              server.ws.send({{ type: "full-reload", path: "*" }});
+              server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
             }}
           }}
         }} catch (e) {{}}
@@ -1437,6 +1437,12 @@ export default function jacDevStatus() {
               payload
               && (payload.type === "update" || payload.type === "full-reload")
               && state.vite
+              // Jac-recovery reloads (jacBuildErrorOverlay) say nothing about
+              // the Vite layer; with no client connected nothing will re-arm
+              // a still-broken module, so keep the error latched.
+              && !payload.jacTriggered
+              && server.ws.clients
+              && server.ws.clients.size > 0
             ) {
               state.vite = null;
               flush();
