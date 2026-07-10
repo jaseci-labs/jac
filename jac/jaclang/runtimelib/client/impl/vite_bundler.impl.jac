@@ -653,6 +653,37 @@ function jacPortReporter() {{
   }};
 }}
 
+// Vite plugin: full-reload on demand. Fast Refresh boundaries swallow edits
+// that change a module's export set (e.g. removing `:pub`), running stale code
+// with no signal. The jac dev server detects the change and bumps
+// .jac-force-reload; this reload re-runs the app so the real link error
+// surfaces at load (overlay). jacTriggered keeps the dev-status vite slot intact.
+function jacForceReload() {{
+  const signalFile = path.resolve(buildDir, ".jac-force-reload");
+  return {{
+    name: "jac-force-reload",
+    configureServer(server) {{
+      // Create the file so the watch attaches to an existing path; each reload
+      // request bumps its contents, firing a "change" the watcher delivers.
+      // Reloads fire only when the nonce content actually advances, so a
+      // watcher replay of the boot-time value can never cause a spurious reload.
+      let lastNonce = "0";
+      try {{ fs.writeFileSync(signalFile, lastNonce); }} catch (e) {{}}
+      try {{ server.watcher.add(signalFile); }} catch (e) {{}}
+      const onSig = (f) => {{
+        if (path.resolve(f) !== signalFile) return;
+        let nonce;
+        try {{ nonce = fs.readFileSync(signalFile, "utf-8"); }} catch (e) {{ return; }}
+        if (nonce === lastNonce) return;
+        lastNonce = nonce;
+        server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
+      }};
+      server.watcher.on("add", onSig);
+      server.watcher.on("change", onSig);
+    }},
+  }};
+}}
+
 // Vite plugin: surface Jac build errors via Vite's native error overlay.
 // The jac dev server mirrors build health to .jac-build-error.json; the file
 // existing means broken (show overlay), removed means recovered (reload).
@@ -746,6 +777,7 @@ export default defineConfig({{
     jacPortReporter(),
     jacBuildErrorOverlay(),
     jacDevStatus(),
+    jacForceReload(),
     jacFastRefresh(),{compiled_reload_plug_in}{(
             newline + plugins_str + newline + '  '
         )
