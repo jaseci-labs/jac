@@ -195,8 +195,8 @@ impl create(
     }
     import time;
     start_time = time.time();
-    console.print("\n✨ Creating new Jac project...\n", style="bold cyan");
-    console.print("  📁 Setting up project structure", style="muted");
+    console.print(f"\nCreating project '{project_name}'\n", style="bold cyan");
+    console.print("  Setting up project structure", style="muted");
 
     import copy;
     render_config = copy.deepcopy(tmpl.config);
@@ -260,7 +260,7 @@ impl create(
     steps.append("jac install           Install dependencies");
     steps.append(f"jac run               {_run_blurb(tmpl.kind)}");
     console.print_next_steps(steps);
-    console.print("\n🚀 Happy coding!\n", style="bold green");
+    console.print();
     return 0;
 }
 
@@ -367,7 +367,7 @@ def _resolve_template(use: str, registry: any) -> any {
     import urllib.error;
 
     if use.startswith("http://") or use.startswith("https://") {
-        console.print(f"Downloading template from {use}...");
+        console.print(f"Downloading template from {use}");
         try {
             with tempfile.NamedTemporaryFile(suffix=".jacpack", delete=False) as tmp {
                 tmp_path = Path(tmp.name);
@@ -621,7 +621,7 @@ impl install(
                 specs.append(make_git_spec(git));
             }
             console.print(
-                f"\n📦 Installing {len(specs)} package(s) into the global site",
+                f"\nInstalling {len(specs)} package(s) into the global site",
                 style="bold"
             );
             if not python.install_specs(None, specs, global_ctx) {
@@ -659,7 +659,7 @@ impl install(
                     pkg_name = pkg_name[:-4];
                 }
             }
-            console.print(f"\n📦 Adding {pkg_name} from git", style="bold");
+            console.print(f"\nAdding {pkg_name} from git", style="bold");
             console.print(f"  Repository: {git}", style="muted");
             with console.status(
                 f"Installing {pkg_name}...", spinner="dots"
@@ -686,12 +686,12 @@ impl install(
         }
         if not save {
             console.print(
-                f"\n📦 Installing {len(packages)} package(s) into {config.get_venv_dir()}",
+                f"\nInstalling {len(packages)} package(s) into {config.get_venv_dir()}",
                 style="bold"
             );
             return 0 if python.install_specs(config, packages, ctx) else 1;
         }
-        console.print(f"\n📦 Adding {len(packages)} Python package(s)", style="bold");
+        console.print(f"\nAdding {len(packages)} Python package(s)", style="bold");
         parsed = [python.parse_spec(pkg_spec) for pkg_spec in packages];
         with console.status(
             f"Installing {len(packages)} package(s)...", spinner="dots"
@@ -759,7 +759,7 @@ impl install(
             all_dep_specs.extend(dep_specs);
             editable_targets.append((config, src_dir));
             console.print(
-                f"\n📦 Editable: {config.project.name} ({src_dir})", style="bold"
+                f"\nEditable: {config.project.name} ({src_dir})", style="bold"
             );
         }
 
@@ -826,9 +826,7 @@ impl install(
         );
         return 1;
     }
-    console.print(
-        f"\n📦 Installing dependencies for {config.project.name}", style="bold"
-    );
+    console.print(f"\nInstalling dependencies for {config.project.name}", style="bold");
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
     try {
@@ -867,7 +865,7 @@ impl install(
         if not provider_deps {
             continue;
         }
-        console.print(f"\n  Installing {provider.name} dependencies...", style="muted");
+        console.print(f"\n  Installing {provider.name} dependencies", style="muted");
         try {
             provider.install_all(config, provider_deps, ctx);
             console.print(
@@ -1001,7 +999,7 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         return 0;
     }
     console.print(
-        f"\n📦 Updating {len(specs_to_update)} package(s) for {config.project.name}",
+        f"\nUpdating {len(specs_to_update)} package(s) for {config.project.name}",
         style="bold"
     );
     with console.status(
@@ -1096,7 +1094,7 @@ impl deps(scale: bool = False, as_json: bool = False) -> int {
         return 0;
     }
     console.print(
-        f"\n📦 Resolved dependency plan for {config.project.name}", style="bold"
+        f"\nResolved dependency plan for {config.project.name}", style="bold"
     );
     for ecosystem in plan.ecosystems() {
         eco_deps = plan.for_ecosystem(ecosystem);
@@ -1356,7 +1354,7 @@ def _bundle_wheel(config: any, output: str) -> int {
     out_dir.mkdir(parents=True, exist_ok=True);
     builder = WheelBuilder(config=config, project_root=config.project_root);
 
-    console.print("\n  Transpiling Jac → Python and building wheel...", style="muted");
+    console.print("\n  Transpiling Jac → Python and building wheel", style="muted");
     try {
         whl_path = builder.build_to(out_dir);
     } except Exception as e {
@@ -1382,7 +1380,7 @@ def _bundle_wheel(config: any, output: str) -> int {
         style="success"
     );
 
-    console.print("  Building sdist...", style="muted");
+    console.print("  Building sdist", style="muted");
     try {
         sdist_path = builder.build_sdist_to(out_dir);
     } except Exception as e {
@@ -1618,7 +1616,7 @@ def _ensure_client_dist(config: any, entry_file: Path) -> (Path | None) {
         bun = None;
     }
     if bun {
-        console.print("  Building client bundle (web)...", style="muted");
+        console.print("  Building client bundle (web)", style="muted");
         try {
             WebTarget().build(entry_file, Path(config.project_root));
         } except Exception as e {
@@ -1661,7 +1659,7 @@ def _bake_native_payloads(config: any, pkg_copy: Path) -> bool {
     stem = base_stem(entry_file.name);
     out_dir = pkg_copy / NATIVE_DIR_REL / triple;
     out_dir.mkdir(parents=True, exist_ok=True);
-    console.print(f"  Compiling native binary for {triple}...", style="muted");
+    console.print(f"  Compiling native binary for {triple}", style="muted");
     import from jaclang.cli.commands.nacompile { nacompile }
     rc = nacompile(filename=str(entry_file), output=str(out_dir / stem));
     if rc != 0 {
@@ -1785,7 +1783,7 @@ def _make_sealed_image(
 def _bundle_sealed(config: any, output: str) -> int {
     name = config.project.name;
     Path(output).mkdir(parents=True, exist_ok=True);
-    console.print(f"\n  Sealing {name}...", style="muted");
+    console.print(f"\n  Sealing {name}", style="muted");
     dest = _make_sealed_image(
         config, Path(output), f"{name}-sealed", out_dir=Path(output)
     );
@@ -1812,7 +1810,7 @@ def _bundle_jab(config: any, output: str) -> int {
     out_dir.mkdir(parents=True, exist_ok=True);
     work = Path(tempfile.mkdtemp(prefix="jab-", dir=output));
     try {
-        console.print(f"\n  Sealing {name}...", style="muted");
+        console.print(f"\n  Sealing {name}", style="muted");
         img = _make_sealed_image(config, work, name, out_dir=Path(output));
         if img is None {
             return 1;
@@ -1856,7 +1854,7 @@ def _bundle_binary(config: any, output: str) -> int {
     work = Path(tempfile.mkdtemp(prefix="jacbin-", dir=output));
     out_bin = Path(output) / name;
     try {
-        console.print(f"\n  Sealing {name} for binary...", style="muted");
+        console.print(f"\n  Sealing {name} for binary", style="muted");
         img = _make_sealed_image(config, work, name, out_dir=Path(output));
         if img is None {
             return 1;
@@ -1878,7 +1876,7 @@ def _bundle_binary(config: any, output: str) -> int {
         jab_path = work / f"{name}.jab";
         jab_path.write_bytes(_tar_gz_dir(img));
 
-        console.print("  Appending app image onto the jac runtime...", style="muted");
+        console.print("  Appending app image onto the jac runtime", style="muted");
 
         rc = subprocess.run(
             [jac_bin, "__appjab", str(jab_path), str(out_bin)]
@@ -1933,7 +1931,7 @@ def _bundle_npm(config: any, output: str) -> int {
 
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
-    console.print("\n  Building npm tarball...", style="muted");
+    console.print("\n  Building npm tarball", style="muted");
     try {
         builder = NpmBuilder(config=config, project_root=config.project_root);
         tgz_path = builder.build_to(out_dir);
@@ -1960,8 +1958,8 @@ def _bundle_npm_runtime(output: str, framework: str = "") -> int {
     version = importlib.metadata.version("jaclang");
     pkg_name = runtime_pkg_name(framework);
     out_dir = Path(output);
-    console.print(f"\n📦 Building {pkg_name} v{version}", style="bold");
-    console.print("\n  Compiling runtime → npm tarball...", style="muted");
+    console.print(f"\nBuilding {pkg_name} v{version}", style="bold");
+    console.print("\n  Compiling runtime → npm tarball", style="muted");
     try {
         path = build_runtime_to(out_dir, version, framework=framework);
     } except Exception as e {
@@ -2015,7 +2013,7 @@ impl bundle(output: str = "dist", target: str = "wheel") -> int {
     }
 
     console.print(
-        f"\n📦 Bundling {config.project.name} " f"v{config.project.version} ({target})",
+        f"\nBundling {config.project.name} " f"v{config.project.version} ({target})",
         style="bold"
     );
 

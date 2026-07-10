@@ -83,8 +83,13 @@ impl start_cli -> None {
     }
 
     if args.version {
-        import from jaclang.cli.banners { print_version_banner }
-        print_version_banner(jac_version());
+        import platform;
+        sys_info = f"{platform.system()} {platform.machine()}";
+        ver = jac_version();
+        reset = "\033[0m";
+        bold = "\033[1m" if console.use_color else "";
+        r = reset if console.use_color else "";
+        console.print(f"{bold}jac{r} {ver}  ({sys_info})");
         return;
     }
 

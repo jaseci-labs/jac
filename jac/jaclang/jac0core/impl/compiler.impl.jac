@@ -12,7 +12,7 @@ impl _SetupProgress._get_jaclang_root -> str {
 impl _SetupProgress._atexit_handler -> None {
     if (self._banner_shown and (self._compile_count > 0)) {
         sys.stderr.write(
-            f"Jac setup complete! ({self._compile_count} modules compiled and cached)\n"
+            f"Jac setup complete ({self._compile_count} modules compiled and cached)\n"
         );
         sys.stderr.flush();
     }

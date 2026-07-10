@@ -602,7 +602,7 @@ impl start(
         } else {
             console.error(f"Error: File '{filename}' not found.");
             console.error(f"  Current directory: {os.getcwd()}");
-            console.error("  Please check the file path and try again.");
+            console.error("  Check the file path and try again.");
         }
         return 1;
     }
@@ -746,7 +746,7 @@ impl start(
         server.start(dev=dev, no_client=no_client, on_ready=_announce_ready);
         return 0;
     } except KeyboardInterrupt {
-        console.print('\nShutting down...');
+        console.print('\nShutting down');
         if hot_reloader {
             hot_reloader.stop();
         }
@@ -799,7 +799,7 @@ def _ensure_watchdog_installed -> bool {
     }
 
     console.print(
-        "\n  📦 Installing watchdog (required for --dev mode)...\n", style="info"
+        "\n  Installing watchdog (required for --dev mode)...\n", style="info"
     );
     python = get_python_provider();
     if python.install_specs(config, ["watchdog>=3.0.0"], InstallContext()) {
@@ -874,7 +874,7 @@ def _print_startup_message(
     console.print();
 
     if dev and not no_client {
-        console.print("  🚀 Server ready", style="bold green");
+        console.print("  Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
         console.print(f"    App:  http://localhost:{primary_port}/", style="muted");
@@ -885,21 +885,21 @@ def _print_startup_message(
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
-            console.print("  👀 Watching for changes...", style="info");
+            console.print("  Watching for changes", style="info");
         }
     } elif dev and no_client {
-        console.print("  🚀 Server ready (API only)", style="bold green");
+        console.print("  Server ready (API only)", style="bold green");
         console.print();
         file_count = _count_jac_files(base_path);
         if file_count > 0 {
             console.print_watching("**/*.jac", file_count);
         } else {
-            console.print("  👀 Watching for changes...", style="info");
+            console.print("  Watching for changes", style="info");
         }
     } elif no_client {
-        console.print("  🚀 Server ready (no client)", style="bold green");
+        console.print("  Server ready (no client)", style="bold green");
     } else {
-        console.print("  🚀 Server ready", style="bold green");
+        console.print("  Server ready", style="bold green");
     }
 
     console.print();
