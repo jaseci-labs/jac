@@ -905,6 +905,7 @@ impl NaIRGenPass._codegen_instantiation(
             );
             self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
         }
+        self._emit_trace_fn(type_name);
         _trace_fn_s = self.struct_trace_fns.get(type_name);
         if _trace_fn_s is not None {
             _obj_i8_tr = self.builder.bitcast(
