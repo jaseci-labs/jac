@@ -422,7 +422,9 @@ def materialize_themed_starter(
         ) + ", font: " + font + ")",
         style="bold green"
     );
-    console.print("  Add more components with: jac add --shadcn <name>", style="muted");
+    console.print(
+        "  Add more components with: jac install --shadcn <name>", style="muted"
+    );
     return True;
 }
 

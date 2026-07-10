@@ -91,6 +91,26 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": ".jac/data/anchor_store.db",
                             "description": "File-based storage path for ShelfDB fallback"
+                        },
+                        "redis_cpu_request": {
+                            "type": "string",
+                            "default": "100m",
+                            "description": "K8s CPU request for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 100m or 1."
+                        },
+                        "redis_cpu_limit": {
+                            "type": "string",
+                            "default": "500m",
+                            "description": "K8s CPU limit for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 500m or 1."
+                        },
+                        "redis_memory_request": {
+                            "type": "string",
+                            "default": "128Mi",
+                            "description": "K8s memory request (scheduling reservation) for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 128Mi or 512Mi (not 128mb). Raise it alongside redis_memory_limit for a cache whose working set is large enough that eviction under node memory pressure would hurt."
+                        },
+                        "redis_memory_limit": {
+                            "type": "string",
+                            "default": "1Gi",
+                            "description": "K8s memory limit (cgroup) for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 1Gi or 512Mi (not 1gb, which the API server rejects at apply time). Must exceed redis_max_memory with headroom for BGSAVE fork copy-on-write, fragmentation, and buffers, or the pod is OOMKilled."
                         }
                     }
                 },

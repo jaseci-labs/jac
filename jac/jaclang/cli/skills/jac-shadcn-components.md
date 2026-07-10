@@ -1,13 +1,13 @@
 ---
 name: jac-shadcn-components
-description: Building with jac-shadcn primitives (built into jaclang core) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Pair with `jac-shadcn-blocks` for design constants and composition patterns. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml.
+description: Building with jac-shadcn primitives (built into jaclang core) - getting components with `jac install --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Pair with `jac-shadcn-blocks` for design constants and composition patterns. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml.
 ---
 
 shadcn primitives in Jac are built into **jaclang core**. A jac-shadcn project (`jac create --use jac-shadcn`, or any project with a `[jac-shadcn]` section in `jac.toml`) keeps the primitives in `components/ui/`.
 
-**Never hand-write a primitive** (Button, Card, Input, Dialog, Table, Badge, etc.). If it already lives in `components/ui/`, import and compose it. If it does **not** exist yet, install it with `jac add --shadcn <name>` - do not re-implement it. Your job is to build **high-level page/feature components** in `components/` that compose these primitives.
+**Never hand-write a primitive** (Button, Card, Input, Dialog, Table, Badge, etc.). If it already lives in `components/ui/`, import and compose it. If it does **not** exist yet, install it with `jac install --shadcn <name>` - do not re-implement it. Your job is to build **high-level page/feature components** in `components/` that compose these primitives.
 
-> The starter from `jac create --use jac-shadcn` ships with **only `button` and `card`** pre-installed. Everything else (dialog, table, select, ...) must be added on demand. Always scan `components/ui/` first, then `jac add` what's missing.
+> The starter from `jac create --use jac-shadcn` ships with **only `button` and `card`** pre-installed. Everything else (dialog, table, select, ...) must be added on demand. Always scan `components/ui/` first, then `jac install --shadcn` what's missing.
 
 ## Getting components
 
@@ -16,13 +16,13 @@ shadcn primitives in Jac are built into **jaclang core**. A jac-shadcn project (
 jac create --use jac-shadcn --theme rose --font inter myapp
 
 # Add primitives - resolves peer deps, patches jac.toml [dependencies.npm], offline
-jac add --shadcn dialog table badge select tabs
+jac install --shadcn dialog table badge select tabs
 
 # Remove primitives
 jac remove --shadcn dialog
 ```
 
-`jac add --shadcn` is bundled and offline (no network). It writes `components/ui/<name>.cl.jac`, auto-installs any peer components, and creates `lib/utils.cl.jac` with `cn()` if missing. The add-name is the kebab-case registry name (`dropdown-menu`, `alert-dialog`, `input-group`, `input-otp`, ...).
+`jac install --shadcn` is bundled and offline (no network). It writes `components/ui/<name>.cl.jac`, auto-installs any peer components, and creates `lib/utils.cl.jac` with `cn()` if missing. The add-name is the kebab-case registry name (`dropdown-menu`, `alert-dialog`, `input-group`, `input-otp`, ...).
 
 ## Import patterns
 
@@ -60,7 +60,7 @@ Do **not** check a `components/ui/*.cl.jac` primitive with `jac check` directly 
 
 ## Component selection
 
-Most filenames are the kebab-case of the component (`alert-dialog` → import `".ui.alert-dialog"`). The one mismatch: `jac add --shadcn input-otp` installs as `otp-input.cl.jac` and exports `InputOTP`.
+Most filenames are the kebab-case of the component (`alert-dialog` → import `".ui.alert-dialog"`). The one mismatch: `jac install --shadcn input-otp` installs as `otp-input.cl.jac` and exports `InputOTP`.
 
 | Need | Component(s) |
 |------|-------------|
@@ -317,7 +317,7 @@ def:pub WarningAlert() -> JsxElement {
 
 ## Complete example
 
-A composite page in `components/` (so primitives are `".ui.<name>"`, `cn` is `"..lib.utils"`). Run `jac add --shadcn card button badge table dialog spinner` first if those aren't installed.
+A composite page in `components/` (so primitives are `".ui.<name>"`, `cn` is `"..lib.utils"`). Run `jac install --shadcn card button badge table dialog spinner` first if those aren't installed.
 
 ```jac
 import from ".ui.card" { Card, CardHeader, CardTitle, CardContent }
@@ -384,16 +384,16 @@ def:pub EventListPage() -> JsxElement {
 
 ## Rules
 
-- **Scan `components/ui/` first; if a primitive is missing, `jac add --shadcn <name>` - never hand-write it.** The starter ships only `button` + `card`; add the rest on demand.
+- **Scan `components/ui/` first; if a primitive is missing, `jac install --shadcn <name>` - never hand-write it.** The starter ships only `button` + `card`; add the rest on demand.
 - **Quote every UI-primitive import path and keep the hyphens.** `import from ".ui.dropdown-menu" { ... }`. Unquoted hyphens are a parse error; underscores resolve to nothing.
 - **Import path = dots relative to your file's folder.** From `components/`: `".ui.<name>"` and `"..lib.utils"`. See the location table above.
 - **`cn()` always from `lib/utils`**, never from `@jac/runtime`. It's pre-implemented - don't recreate it.
 - **Build high-level components in `components/`** (e.g., `EventCard.cl.jac`, `EventsPage.cl.jac`) that compose the primitives. Never add page logic to `components/ui/` files, and never edit those files - they're managed by the registry.
-- **Theme with `jac retheme`, not by editing `global.css`** (a retheme overwrites it). Don't recreate or hand-edit `jac.toml`'s `[jac-shadcn]`/`[dependencies.npm]` - `jac add`/`jac retheme` manage them.
+- **Theme with `jac retheme`, not by editing `global.css`** (a retheme overwrites it). Don't recreate or hand-edit `jac.toml`'s `[jac-shadcn]`/`[dependencies.npm]` - `jac install`/`jac retheme` manage them.
 
 ## Peer dependency chains
 
-`jac add --shadcn` auto-resolves peer dependencies via BFS. When calling `jac add`, list only primaries - never list peer components manually.
+`jac install --shadcn` auto-resolves peer dependencies via BFS. When calling `jac install --shadcn`, list only primaries - never list peer components manually.
 
 | Primary | Auto-installed peers |
 |---|---|
@@ -433,7 +433,7 @@ Consolidated quick-reference. See Import patterns and component selection sectio
 
 **Sidebar className spread** - Never pass `className` directly to `SidebarMenuButton`, `SidebarMenuAction`, `SidebarGroup`, `SidebarMenuItem`, or `SidebarTrigger`. The prop spreads after computed base classes, overriding them. Use a wrapping `<div>` for layout overrides instead.
 
-**Never edit files in `components/ui/`** - Managed by `jac add --shadcn` and `jac remove --shadcn`. Manual edits are silently overwritten on next run.
+**Never edit files in `components/ui/`** - Managed by `jac install --shadcn` and `jac remove --shadcn`. Manual edits are silently overwritten on next run.
 
 **Import paths must be quoted strings.** Unquoted hyphens cause a parse error. Underscores in the module path silently resolve to nothing.
 
@@ -443,12 +443,12 @@ import from .ui.dropdown-menu { DropdownMenu }      # WRONG - unquoted, parse er
 import from ".ui.dropdown_menu" { DropdownMenu }    # WRONG - underscore, resolves to nothing
 ```
 
-**File name vs import path:** `jac add --shadcn dropdown-menu` installs as `dropdown-menu.cl.jac`. The import path uses the same hyphenated name: `import from ".ui.dropdown-menu"`. Do not convert hyphens to underscores in either the filename or the import path.
+**File name vs import path:** `jac install --shadcn dropdown-menu` installs as `dropdown-menu.cl.jac`. The import path uses the same hyphenated name: `import from ".ui.dropdown-menu"`. Do not convert hyphens to underscores in either the filename or the import path.
 
 ## See also
 
 - `jac-cl-components` - component shape, `has` state, event handlers, JSX rules
 - `jac-cl-organization` - file layout, hook pattern, when to extract
 - `jac-cl-styling` - conditional classes, cn() usage, semantic color tokens
-- `jac-npm-packages` - note: in jac-shadcn projects npm deps are managed by `jac add`/`jac retheme`
+- `jac-npm-packages` - note: in jac-shadcn projects npm deps are managed by `jac install`/`jac retheme`
 - `jac-shadcn-blocks` - design system constants, anti-patterns, and composition pattern skeletons

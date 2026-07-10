@@ -486,7 +486,6 @@ visit(
 | `impl_patch_filename(file_loc)` | Patch function file location | `file_loc`: File path for stack traces |
 | `thread_run(func, *args)` | Run function in thread | `func`: Function<br>`args`: Arguments |
 | `thread_wait(future)` | Wait for thread completion | `future`: Future object |
-| `create_cmd()` | Create CLI commands | No parameters (placeholder) |
 
 ---
 

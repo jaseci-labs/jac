@@ -415,15 +415,15 @@ def _create_jac_toml(temp_dir: str, deps: str = "", dev_deps: str = "") -> str {
     return config_path;
 }
 
-"""Test add command without --npm flag errors when no jac.toml exists."""
+"""Test install command without --npm flag errors when no jac.toml exists."""
 test "install without cl flag" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
             os.chdir(temp_dir);
 
-            # Run add command without --npm flag and without jac.toml
-            result = run(["jac", "add", "lodash"], capture_output=True, text=True,);
+            # Run install command without --npm flag and without jac.toml
+            result = run(["jac", "install", "lodash"], capture_output=True, text=True,);
 
             # Should error when no jac.toml exists
             assert result.returncode == 1;
@@ -437,7 +437,7 @@ test "install without cl flag" {
     }
 }
 
-"""Test jac add --npm adds npm dep when project also has pypi deps."""
+"""Test jac install --npm adds npm dep when project also has pypi deps."""
 test "add npm with mixed deps" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -451,9 +451,9 @@ test "add npm with mixed deps" {
                 f.write(toml_content);
             }
 
-            # Run jac add --npm lodash
+            # Run jac install --npm lodash
             result = run(
-                ["jac", "add", "--npm", "lodash"], capture_output=True, text=True,
+                ["jac", "install", "--npm", "lodash"], capture_output=True, text=True,
             );
 
             # Should succeed
@@ -475,7 +475,7 @@ test "add npm with mixed deps" {
     }
 }
 
-"""Test add --npm command installs all packages from jac.toml."""
+"""Test install --npm command installs all packages from jac.toml."""
 test "install all packages" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -485,8 +485,8 @@ test "install all packages" {
             # Create jac.toml with some dependencies
             _create_jac_toml(temp_dir, deps='lodash = "^4.17.21"');
 
-            # Run add --npm command without package name
-            result = run(["jac", "add", "--npm"], capture_output=True, text=True,);
+            # Run install --npm command without package name
+            result = run(["jac", "install", "--npm"], capture_output=True, text=True,);
 
             # Should succeed
             assert result.returncode == 0;
@@ -505,7 +505,7 @@ test "install all packages" {
     }
 }
 
-"""Test add --npm command adds package to dependencies."""
+"""Test install --npm command adds package to dependencies."""
 test "install package to dependencies" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -515,9 +515,9 @@ test "install package to dependencies" {
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir);
 
-            # Run add --npm command with package name
+            # Run install --npm command with package name
             result = run(
-                ["jac", "add", "--npm", "lodash"], capture_output=True, text=True,
+                ["jac", "install", "--npm", "lodash"], capture_output=True, text=True,
             );
 
             # Should succeed
@@ -545,7 +545,7 @@ test "install package to dependencies" {
     }
 }
 
-"""Test add --npm command with specific version."""
+"""Test install --npm command with specific version."""
 test "install package with version" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -555,9 +555,9 @@ test "install package with version" {
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir);
 
-            # Run add --npm command with package and version
+            # Run install --npm command with package and version
             result = run(
-                ["jac", "add", "--npm", "lodash@^4.17.21"],
+                ["jac", "install", "--npm", "lodash@^4.17.21"],
                 capture_output=True,
                 text=True,
             );
@@ -587,7 +587,7 @@ test "install package with version" {
     }
 }
 
-"""Test add --npm -d command adds package to dev-dependencies."""
+"""Test install --npm -d command adds package to dev-dependencies."""
 test "install package to devdependencies" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -597,9 +597,9 @@ test "install package to devdependencies" {
             # Create jac.toml
             config_path = _create_jac_toml(temp_dir);
 
-            # Run add --npm -d command
+            # Run install --npm -d command
             run(
-                ["jac", "add", "--npm", "-d", "@types/react"],
+                ["jac", "install", "--npm", "-d", "@types/react"],
                 capture_output=True,
                 text=True,
             );
@@ -624,16 +624,16 @@ test "install package to devdependencies" {
     }
 }
 
-"""Test add --npm command when jac.toml doesn't exist."""
+"""Test install --npm command when jac.toml doesn't exist."""
 test "install without config json" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
         try {
             os.chdir(temp_dir);
 
-            # Run add --npm command without jac.toml
+            # Run install --npm command without jac.toml
             result = run(
-                ["jac", "add", "--npm", "lodash"], capture_output=True, text=True,
+                ["jac", "install", "--npm", "lodash"], capture_output=True, text=True,
             );
 
             # Should fail with non-zero exit code
