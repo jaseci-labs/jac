@@ -16,6 +16,7 @@ import from .checker_npm_harness {
     make_generic_npm_project,
     make_cyclic_npm_project,
     make_callable_npm_project,
+    make_degrade_npm_project,
     pretty_checker_errors
 }
 
@@ -460,6 +461,93 @@ test "callable interface is callable with a typed return and keeps its fields" {
         (program, err_codes, _) = check_npm_file(f);
         assert len(program.errors_had) == 0 , "Callable interface should call cleanly with a typed return and str field. Got "
         f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "index-signature interface synthesizes no fields, so keyed access errors" {
+    # `interface Dict { [key: string]: number }` has only an index signature,
+    # which is not modeled. The synthesized class has no members, so any keyed
+    # access raises E1030 rather than resolving to a number. Documents the
+    # degradation (index signatures are unsupported) instead of pretending the
+    # value is a precise map.
+    with TemporaryDirectory() as td {
+        proj = make_degrade_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "idx.cl.jac";
+        f.write_text(
+            'cl import from "degpkg" { getDict }\n\n'
+            'def:pub bad() -> None {\n'
+            '    d = getDict();\n'
+            '    x = d.anything;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert "E1030" in err_codes , f"Expected E1030 for keyed access on an index-signature interface, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "an implicit-any interface member flows gradually" {
+    # `loose;` has no type annotation (implicit any). Like an explicit `any`
+    # member, it resolves to a foreign any and flows into a concrete-typed
+    # local, while a sibling annotated member stays precise.
+    with TemporaryDirectory() as td {
+        proj = make_degrade_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "loose.cl.jac";
+        f.write_text(
+            'cl import from "degpkg" { getCfg }\n\n'
+            'def:pub use() -> str {\n'
+            '    c = getCfg();\n'
+            '    s: str = c.loose;\n'
+            '    return c.theme;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , "An implicit-any member should flow gradually, got "
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "an abstract class synthesizes like a normal structural class" {
+    # `declare abstract class Base` is synthesized structurally: `abstract` is
+    # transparent, so a declared field resolves precisely while a bogus field
+    # still raises exactly one E1030.
+    with TemporaryDirectory() as td {
+        proj = make_degrade_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "abs.cl.jac";
+        f.write_text(
+            'cl import from "degpkg" { getBase }\n\n'
+            'def:pub use() -> str {\n'
+            '    b = getBase();\n'
+            '    n: str = b.name;\n'
+            '    z = b.nope;\n'
+            '    return n;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert err_codes.count("E1030") == 1 , f"Expected exactly one E1030 (only the bogus field) on an abstract class, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "merged interface declarations do not combine members" {
+    # TS declaration merging (`interface Merged` declared twice) is not
+    # supported: only one block's members survive synthesis, so a field from
+    # the other block raises E1030. Documents the limitation rather than
+    # silently exposing a partial union.
+    with TemporaryDirectory() as td {
+        proj = make_degrade_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "merge.cl.jac";
+        f.write_text(
+            'cl import from "degpkg" { getMerged }\n\n'
+            'def:pub bad() -> None {\n'
+            '    m = getMerged();\n'
+            '    x = m.a;\n'
+            '    y = m.b;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert "E1030" in err_codes , f"Expected E1030 from an unmerged declaration's field, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
     }
 }
 

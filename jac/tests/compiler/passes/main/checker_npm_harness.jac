@@ -362,3 +362,53 @@ def make_callable_npm_project(proj_dir: Path) -> Path {
     );
     return proj_dir;
 }
+
+"""Materialize a client project exercising documented synthesis degradations.
+
+Shapes the parser/synthesizer models leniently rather than precisely:
+- ``Dict`` has only an index signature -- it synthesizes with no named
+  members, so any keyed access reports E1030.
+- ``Cfg.loose`` has no type annotation (implicit any) -- it degrades to a
+  foreign any and flows gradually, while ``theme`` stays a precise str.
+- ``Base`` is an ``abstract`` class -- ``abstract`` is transparent to
+  synthesis, so it behaves like a normal structural class.
+- ``Merged`` is declared twice -- TS declaration merging is unsupported, so
+  only one block's members survive.
+Returns the project root.
+"""
+def make_degrade_npm_project(proj_dir: Path) -> Path {
+    nm = client_node_modules(proj_dir);
+    install_npm_pkg(
+        nm,
+        "degpkg",
+        '{"name":"degpkg","version":"1.0.0",'
+        '"exports":{".":{"types":"./dist/index.d.ts",'
+        '"import":"./dist/index.mjs"}}}',
+        {
+            "dist/index.mjs": (
+                "export function getDict() {}\n"
+                "export function getCfg() {}\n"
+                "export function getBase() {}\n"
+                "export function getMerged() {}\n"
+            ),
+            "dist/index.d.ts": (
+                "export interface Dict { [key: string]: number; }\n"
+                "export interface Cfg { loose; theme: string; }\n"
+                "export declare abstract class Base {\n"
+                "    name: string;\n"
+                "    abstract run(): void;\n"
+                "}\n"
+                "export interface Merged { a: string; }\n"
+                "export interface Merged { b: number; }\n"
+                "export declare function getDict(): Dict;\n"
+                "export declare function getCfg(): Cfg;\n"
+                "export declare function getBase(): Base;\n"
+                "export declare function getMerged(): Merged;\n"
+            )
+        }
+    );
+    write_client_jac_project(
+        proj_dir, "degfixture", "lib/app.cl.jac", 'degpkg = "^1.0.0"\n'
+    );
+    return proj_dir;
+}

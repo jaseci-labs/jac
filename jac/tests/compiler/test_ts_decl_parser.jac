@@ -373,3 +373,73 @@ test "construct signatures are not recorded as call signatures" {
     # Construct signatures are not modeled; call_sig stays None.
     assert d.call_sig is None;
 }
+
+test "declare type keyword parses like a bare type alias" {
+    # Both the bare `type` and the ambient `declare type` spellings must parse
+    # to a TYPEALIAS. Only the bare form was previously exercised.
+    src = "type Foo = number;\ndeclare type Bar = string;\n";
+    r = parse_dts(src);
+    assert r is not None;
+    assert r["Foo"].kind == TsDeclKind.TYPEALIAS;
+    assert r["Bar"].kind == TsDeclKind.TYPEALIAS;
+    foo_ty = _decl_ty(r["Foo"]);
+    bar_ty = _decl_ty(r["Bar"]);
+    assert foo_ty.kind == TsTypeKind.PRIM and foo_ty.name == "number";
+    assert bar_ty.kind == TsTypeKind.PRIM and bar_ty.name == "string";
+}
+
+test "abstract classes and members parse transparently" {
+    # `abstract` (on the class and on members) is a modifier the parser eats
+    # without dropping the declaration: the class is a CLASS, both members are
+    # retained, and a subclass records its heritage.
+    src = (
+        "declare abstract class A {\n"
+        "    abstract foo(): void;\n"
+        "    bar: string;\n"
+        "}\n"
+        "declare class C extends A {}\n"
+    );
+    r = parse_dts(src);
+    assert r is not None;
+    assert r["A"].kind == TsDeclKind.CLASS;
+    assert {m.name for m in r["A"].members} == {"foo", "bar"};
+    assert r["C"].heritage == ["A"];
+}
+
+test "index signatures are dropped, leaving no named members" {
+    # An index signature `[key: string]: T` is not modeled: the interface
+    # parses with zero named members rather than raising. (Documents the
+    # degradation exercised at the checker level.)
+    src = "export interface Dict { [key: string]: number; }\n";
+    r = parse_dts(src);
+    assert r is not None;
+    assert r["Dict"].kind == TsDeclKind.INTERFACE;
+    assert {m.name for m in r["Dict"].members} == set();
+}
+
+test "implicit-any members parse with no type" {
+    # A member with no type annotation (implicit any) parses with ty None; an
+    # un-annotated method still parses as a FUNC method. Neither crashes the
+    # parser.
+    src = "declare class C {\n" "    publicMember;\n" "    publicFunction(x);\n" "}\n";
+    r = parse_dts(src);
+    assert r is not None;
+    by_name = {m.name: m for m in r["C"].members};
+    assert set(by_name.keys()) == {"publicMember", "publicFunction"};
+    assert by_name["publicMember"].ty is None;
+    assert not by_name["publicMember"].is_method;
+    assert by_name["publicFunction"].is_method;
+    pf_ty = by_name["publicFunction"].ty;
+    assert pf_ty is not None and pf_ty.kind == TsTypeKind.FUNC;
+}
+
+test "export as namespace UMD line is ignored, siblings survive" {
+    # A UMD `export as namespace N` global-binding line has no structural
+    # meaning here; it is skipped gracefully while other exports remain.
+    src = "export var X;\nexport interface A { b: number; }\nexport as namespace N;\n";
+    r = parse_dts(src);
+    assert r is not None;
+    assert "X" in r and "A" in r;
+    assert "N" not in r;
+    assert {m.name for m in r["A"].members} == {"b"};
+}
