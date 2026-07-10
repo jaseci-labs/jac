@@ -665,10 +665,17 @@ function jacForceReload() {{
     configureServer(server) {{
       // Create the file so the watch attaches to an existing path; each reload
       // request bumps its contents, firing a "change" the watcher delivers.
-      try {{ fs.writeFileSync(signalFile, "0"); }} catch (e) {{}}
+      // Reloads fire only when the nonce content actually advances, so a
+      // watcher replay of the boot-time value can never cause a spurious reload.
+      let lastNonce = "0";
+      try {{ fs.writeFileSync(signalFile, lastNonce); }} catch (e) {{}}
       try {{ server.watcher.add(signalFile); }} catch (e) {{}}
       const onSig = (f) => {{
         if (path.resolve(f) !== signalFile) return;
+        let nonce;
+        try {{ nonce = fs.readFileSync(signalFile, "utf-8"); }} catch (e) {{ return; }}
+        if (nonce === lastNonce) return;
+        lastNonce = nonce;
         server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
       }};
       server.watcher.on("add", onSig);
