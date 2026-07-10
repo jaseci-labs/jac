@@ -38,12 +38,47 @@ impl HotReloader.stop -> None {
 }
 
 impl HotReloader.build_status -> dict {
+    dev_error = self._dev_status_error();
     with HotReloader._build_lock {
-        error = {"file": self._build_error_file, "message": self._build_error}
-            if self._build_status is BuildStatus.ERROR
-            else None;
-        return {"status": self._build_status.value, "error": error};
+        status = self._build_status;
+        if status is BuildStatus.ERROR {
+            return {
+                "status": status.value,
+                "error": {
+                    "file": self._build_error_file,
+                    "message": self._build_error,
+                    "source": "jac"
+                }
+            };
+        }
+        if status is BuildStatus.OK and dev_error {
+            return {"status": BuildStatus.ERROR.value, "error": dev_error};
+        }
+        return {"status": status.value, "error": None};
     }
+}
+
+impl HotReloader._dev_status_error -> (dict | None) {
+    status_file = self._error_file_path().parent / '.jac-dev-status.json';
+    try {
+        data = json.loads(status_file.read_text(encoding='utf-8'));
+    } except (OSError, ValueError) {
+        return None;
+    }
+    if not isinstance(data, dict) {
+        return None;
+    }
+    for source in ('vite', 'client') {
+        slot = data.get(source);
+        if isinstance(slot, dict) and slot.get('message') {
+            return {
+                "file": str(slot.get('file') or ''),
+                "message": str(slot['message']),
+                "source": source
+            };
+        }
+    }
+    return None;
 }
 
 impl HotReloader.record_ok -> None {

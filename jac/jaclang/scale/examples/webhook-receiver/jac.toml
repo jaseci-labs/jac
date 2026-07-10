@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Signed webhook receiver example for jac-scale"
 entry-point = "app.jac"
 
-[plugins.scale.webhook]
+[scale.webhook]
 # Reject signed requests whose timestamp is older than this window.
 replay_tolerance_seconds = 300
 # Reject bodies larger than 1 MiB.

@@ -24,8 +24,8 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 
-[plugins.byllm.model]
+[byllm.model]
 # default_model = "ollama/gemma4:e4b"
 default_model = "local:gemma-4-e2b"

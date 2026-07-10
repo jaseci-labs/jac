@@ -1,91 +1,256 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/logo.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/logo.png">
-    <img alt="Jaclang logo" src="docs/docs/assets/logo.png" width="80px">
-  </picture>
+  <img alt="Jac logo" src="docs/docs/assets/logo.png" width="80px">
 
-  <h1>Jaseci</h1>
-  <h3>Designed for Humans and AI to Build Together</h3>
+  <h1>The Jac Programming Language</h1>
+  <h3>The Only Language You Need to Build Anything</h3>
+
+  <p>One self-contained binary. One Python-like language. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features, compiled to Python bytecode, JavaScript, and native machine code.</p>
 
   <p>
     <a href="https://github.com/jaseci-labs/jaseci/releases/latest">
       <img src="https://img.shields.io/github/v/release/jaseci-labs/jaseci?style=flat-square" alt="Latest release">
     </a>
+    <a href="https://github.com/jaseci-labs/jaseci/actions/workflows/ci.yml">
+      <img src="https://img.shields.io/github/actions/workflow/status/jaseci-labs/jaseci/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status">
+    </a>
     <a href="https://codecov.io/gh/Jaseci-Labs/jaseci">
-      <img src="https://img.shields.io/codecov/c/github/Jaseci-Labs/jaseci?style=flat-square" alt="Code Coverage">
+      <img src="https://img.shields.io/codecov/c/github/Jaseci-Labs/jaseci?style=flat-square" alt="Code coverage">
+    </a>
+    <a href="https://github.com/jaseci-labs/jaseci/stargazers">
+      <img src="https://img.shields.io/github/stars/jaseci-labs/jaseci?style=flat-square&logo=github&label=stars&color=f7b731" alt="GitHub stars">
+    </a>
+    <a href="https://github.com/jaseci-labs/jaseci/releases">
+      <img src="https://img.shields.io/github/downloads/jaseci-labs/jaseci/total?style=flat-square&label=downloads" alt="Release downloads">
     </a>
     <a href="https://discord.gg/6j3QNdtcN6">
-  <img src="https://img.shields.io/badge/Discord-Community-blue?style=flat-square&logo=discord" alt="Discord">
-</a>
+      <img src="https://img.shields.io/discord/1105093583750574120?style=flat-square&logo=discord&logoColor=white&label=discord&color=5865F2" alt="Discord members online">
+    </a>
+    <a href="LICENSE">
+      <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license">
+    </a>
   </p>
 
-[**Website**](https://www.jaseci.org/) · [**Full Documentation**](https://www.jac-lang.org/) · [**Contribution Guide**](https://www.jac-lang.org/internals/contrib/)
+  <p>
+    <a href="https://docs.jaseci.org"><b>Docs</b></a> ·
+    <a href="https://playground.jaseci.org"><b>Playground</b></a> ·
+    <a href="https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/"><b>Tutorial</b></a> ·
+    <a href="https://discord.gg/6j3QNdtcN6"><b>Discord</b></a>
+  </p>
 
-<!-- =======
-  [jac-lang.org] | [Getting Started] | [Contributing]
-
-  [jac-lang.org]: https://www.jaseci.org/
-  [Getting Started]: https://www.jac-lang.org/learn/getting_started/
-  [Contributing]: https://www.jac-lang.org/internals/contrib/ -->
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/demo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/demo-light.svg">
+    <img alt="Install jac, create a web app, and serve it in three commands" src="docs/docs/assets/readme/demo-light.svg" width="880">
+  </picture>
 </div>
 
-# Jaseci Ecosystem
+Jac is a programming language designed for humans and AI to build together. It compiles one clean, Python-like syntax to Python bytecode, JavaScript, and native machine code, with the entire PyPI, npm, and C ecosystems available without wrappers or interop layers. The things every real application needs (an LLM call, a data model that persists, a REST API, a frontend, a deployment story) are language features, not frameworks you assemble around it.
 
-Jac is a programming language designed for humans and AI to build together. With clean, Python-like syntax, Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible) -- giving full access to every library in the PyPI, npm, and native ecosystems. Jac adds constructs that let you weave AI into your code, model complex domains as graphs, and deploy to the cloud -- all without switching languages, managing databases, or writing infrastructure.
+## Try Jac in 30 seconds
 
-This repository houses the Jaseci stack -- the core libraries and tooling that make Jac work:
+Install the self-contained `jac` binary. No Python, pip, Node, or C toolchain required:
 
-- **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. Ships with the built-in full-stack web/desktop app framework (React-like `cl` components, server, and bundler with full access to the entire npm/node ecosystem) and the built-in `scale` subsystem (`jaclang.scale`) for fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. Distributed as the self-contained `jac` binary (see [install below](#installation--setup)).
-- **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`jac install byllm`)
-- **`mcp`:** Built into the `jac` binary (no install) -- an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. Start it with `jac mcp`.
-- **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+```
 
----
+Save this as `hello.jac`:
 
-## Core Concepts
+```jac
+node Person {
+    has name: str;
+}
 
-Jac imagines what should be abstracted away from the developer and automates it through the compiler and runtime. This philosophy is grounded in five key principles.
+walker Greeter {
+    can start with Root entry {
+        visit [-->];
+    }
+    can greet with Person entry {
+        print(f"Hello, {here.name}!");
+        visit [-->];
+    }
+}
 
-- **AI-Native:** Treat AI models as a native type through [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965). Weave LLMs into your logic as effortlessly as calling a function, no prompt engineering required.
+with entry {
+    root ++> Person(name="Ada");
+    root ++> Person(name="Alan");
+    root spawn Greeter();
+}
+```
 
-- **Full-Stack in One Language:** Build backend logic and frontend interfaces without switching languages. Write React-like components alongside your server code with seamless data flow between them.
+```bash
+jac run hello.jac
+```
 
-- **Ecosystem-Native Compilation:** Jac compiles to Python bytecode, JavaScript, and native machine code (C-ABI compatible). Access the entire PyPI ecosystem (`numpy`, `pandas`, `torch`, etc.), npm ecosystem (`react`, `vite`, `tailwind`, etc.), and native C libraries without friction -- no interop layer, no wrappers.
+```text
+Hello, Ada!
+Hello, Alan!
+```
 
-- **Graph-Native Domain Modeling:** Model complex domains as first-class graphs of objects and deploy agentic **walker** objects to traverse them, performing operations in-situ. No separate database setup or ORM required.
+Now run it again: the people accumulate. The graph hanging off `root` **persists between runs automatically**, and that same machinery backs Jac servers in production. No database to set up, ever.
 
-- **Cloud-Native:** Deploy to the cloud without writing infrastructure. A single `jac start` command gives you a production-ready API server. Add `--scale` for automatic Kubernetes deployment with Redis and MongoDB provisioning.
+> Don't want to install anything? Open the [**Jac Playground**](https://playground.jaseci.org) in your browser.
+>
+> Prebuilt binaries ship for **macOS and Linux**; on Windows, use WSL (a native PowerShell installer is coming soon). See the [installation guide](https://docs.jaseci.org/quick-guide/install/) for versions, upgrading, and IDE setup.
 
-- **Designed for Humans and AI:** A language built for human readability and AI code generation alike. The number of tokens to realize a full application is minimized by ~10x on average, and features like `has` declarations and `impl` separation (interfaces separate from implementations) create structure that both humans can reason about and models can reliably produce.
+## For AI agents
 
----
+Jac is designed for humans and AI to build together, and that includes your coding agent. The `jac` binary ships an MCP server with Jac validation, formatting, docs, and examples built in. Wire it into Claude Code with one command:
 
-## A Complete Full-Stack AI App in One File
+```bash
+claude mcp add jac -- jac mcp
+```
+
+For Cursor, Windsurf, or any other MCP client, add this to your MCP config (use `jac mcp --mode lite` for smaller models):
+
+```json
+{ "mcpServers": { "jac": { "command": "jac", "args": ["mcp"] } } }
+```
+
+Or skip the setup entirely and paste this into your agent's chat; it will install Jac and configure itself:
+
+```text
+Fetch https://raw.githubusercontent.com/jaseci-labs/jaseci/main/SKILL.md and follow its instructions.
+```
+
+LLM-friendly docs pointers live at [docs.jaseci.org/llms.txt](https://docs.jaseci.org/llms.txt), and `jac ai` gives you a Jac-fluent coding agent in your terminal with no setup at all.
+
+## One binary, your whole toolchain
+
+One download replaces the interpreter, the JS runtime, the compilers and linker, the package managers, the server, and the deployer:
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/one-binary-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/one-binary-light.svg">
+    <img alt="The jac binary bundles CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src="docs/docs/assets/readme/one-binary-light.svg" width="880">
+  </picture>
+</div>
+
+<details>
+<summary><strong>What's inside the binary (and what you can uninstall)</strong></summary>
+
+<br>
+
+| Capability | What it replaces | How you use it |
+|---|---|---|
+| **CPython 3.14** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
+| **Bun** | Node.js, npm, npx | Bundled -- compiles `cl` code to JS, manages npm deps |
+| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build --as native` produces real binaries |
+| **Package manager** | pip, npm, pipx | `jac install` for PyPI *and* npm, in one `jac.toml` |
+| **Universal tool runner** | npx, pipx run | `jac x` runs any installed PyPI or npm CLI tool |
+| **REST server** | Flask, FastAPI, Express | `jac start` -- walkers become API endpoints |
+| **Kubernetes deployer** | Docker + kubectl + Helm | `jac start --scale` -- one-command K8s deployment |
+| **AI integration** | LangChain, prompt libraries | `by llm()` -- built into the language |
+| **MCP server** | Separate MCP packages | `jac mcp` -- AI-assisted development, built in |
+| **Type checker** | mypy, pyright, tsc | `jac check` |
+| **Formatter & test runner** | black, ruff, pytest, jest | `jac fmt`, `jac test` |
+| **Language server** | Separate LSP packages | `jac lsp` -- IDE support built in |
+
+Full story: [One Binary, Build Anything](https://docs.jaseci.org/quick-guide/one-binary/).
+
+</details>
+
+The commands you'll use every day:
+
+| Command | What it does |
+| :--- | :--- |
+| `jac run main.jac` | Run a program (like `python3`, but for anything) |
+| `jac dev` | Live dev loop with hot reload |
+| `jac start` | Serve your program: REST API, auth, Swagger docs, frontend |
+| `jac build` | Type-check the whole project and emit a sealed app bundle |
+| `jac build --as native` | Compile to a standalone, zero-dependency executable |
+| `jac install` / `jac x` | Manage PyPI + npm deps / run any installed CLI tool |
+| `jac check` / `jac fmt` / `jac test` | Type-check, format, test |
+| `jac ai` / `jac mcp` / `jac guide` | Built-in coding agent, MCP server, curated docs |
+
+## Build anything
+
+One language and one skill set produce every kind of software. Each row is one command away:
+
+| What you're building | The command | Guide |
+|---|---|---|
+| Script / CLI tool | `jac run app.jac` | [CLI & native](https://docs.jaseci.org/build/cli-and-native/) |
+| Zero-dependency native executable | `jac build --as native` | [CLI & native](https://docs.jaseci.org/build/cli-and-native/) |
+| Single-file app bundle (`.jab`) | `jac build` | [CLI reference](https://docs.jaseci.org/reference/cli/#jac-build) |
+| Self-contained app executable | `jac build --as binary` | [CLI reference](https://docs.jaseci.org/reference/cli/#jac-build) |
+| REST API (+ Swagger, auth, persistence) | `jac start api.jac` | [Backend APIs](https://docs.jaseci.org/build/backend-apis/) |
+| Microservices | `sv import` + `jac start` | [Backend APIs](https://docs.jaseci.org/build/backend-apis/) |
+| Full-stack web app | `jac start` | [Full-stack web](https://docs.jaseci.org/build/fullstack-web/) |
+| Desktop app (native webview) | `jac build --client desktop` | [Desktop & mobile](https://docs.jaseci.org/build/desktop-mobile/) |
+| Mobile app (Android / iOS) | `jac build --client mobile` | [Desktop & mobile](https://docs.jaseci.org/build/desktop-mobile/) |
+| AI agents & LLM apps | `by llm()` | [AI agents](https://docs.jaseci.org/build/ai-agents/) |
+| Python package (PyPI wheel) | `jac build --as wheel` | [Libraries](https://docs.jaseci.org/build/libraries/) |
+| npm package | `jac build --as npm` | [Libraries](https://docs.jaseci.org/build/libraries/) |
+| C-ABI shared library (`.so`/`.dylib`/`.dll`) | `jac nacompile lib.na.jac --shared` | [Libraries](https://docs.jaseci.org/build/libraries/) |
+| WebAssembly in the browser | `jac build` in a `web-static` project | [Native pathway](https://docs.jaseci.org/reference/language/native-pathway/) |
+| Kubernetes deployment | `jac start --scale` | [Deploy & scale](https://docs.jaseci.org/reference/plugins/jac-scale/) |
+
+Proof it's real: a [playable chess engine](https://docs.jaseci.org/tutorials/native/chess/) compiled to a standalone binary, a [raylib game running as WebAssembly](jac/examples/raylib_shooter/web) in the browser, and [littleX](jac/examples/littleX), a full Twitter-style social app, backend to frontend, in about 1,100 lines of Jac.
+
+## AI, graphs, and UIs are language features
+
+### Call an LLM like a function
+
+```jac
+enum Priority { LOW, MEDIUM, HIGH, URGENT }
+
+def assess(ticket: str) -> Priority by llm();
+
+with entry {
+    print(assess("Checkout is down and customers are leaving!"));
+    # Priority.URGENT
+}
+```
+
+No prompt, no parsing, no API glue. The compiler constructs the prompt from your function's name, argument names, and types (plus optional `sem` annotations), and the return type is an enforced output schema. This is [Meaning-Typed Programming](https://arxiv.org/abs/2405.08965). Declare your model once in `jac.toml`, run `jac install byllm`, and use any [LiteLLM-compatible provider](https://docs.litellm.ai/docs/providers), or go fully local with `jac install 'byllm[local]'`. [Learn more →](https://docs.jaseci.org/reference/plugins/byllm/)
+
+### Your data is a graph, and your API writes itself
+
+```jac
+node Task {
+    has title: str;
+    has done: bool = False;
+}
+
+walker:pub add_task {
+    has title: str;
+    can create with Root entry {
+        task = Task(title=self.title);
+        root ++> task;
+        report {"id": jid(task), "title": task.title};
+    }
+}
+
+walker:pub list_tasks {
+    can fetch with Root entry {
+        report [{"id": jid(t), "title": t.title, "done": t.done}
+                for t in [-->][?:Task]];
+    }
+}
+```
+
+```bash
+jac start api.jac --no-client   # POST /walker/add_task · /walker/list_tasks
+```
+
+Model your domain as nodes and edges; send **walkers** to traverse it. Mark a walker `:pub` and `jac start` turns it into a REST endpoint: request bodies map onto its fields, `report` becomes the JSON response, Swagger docs appear at `/docs`, and every user gets their own isolated, persistent graph. No ORM, no schema migrations, no session plumbing. [Graphs & walkers →](https://docs.jaseci.org/tutorials/language/osp/)
+
+### Frontend and backend in one file
 
 ```jac
 node Todo {
-    has title: str, category: str = "other", done: bool = False;
+    has title: str, done: bool = False;
 }
 
-enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
-
-def categorize(title: str) -> Category by llm();
-
 def:pub add_todo(title: str) -> Todo {
-    try {
-        result = categorize(title);
-        category = str(result).split(".")[-1].lower();
-    } except Exception {
-        category = "other (setup AI key)";
-    }
-    todo = Todo(title=title, category=category);
-    root() ++> todo;
+    todo = Todo(title=title);
+    root ++> todo;
     return todo;
 }
 
 def:pub get_todos -> list[Todo] {
-    return [root()-->][?:Todo];
+    return [root-->][?:Todo];
 }
 
 cl def:pub app -> JsxElement {
@@ -100,137 +265,85 @@ cl def:pub app -> JsxElement {
     return <div>
         <input value={text}
             onChange={lambda e: ChangeEvent { text = e.target.value; }}
-            onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); } }}
             placeholder="Add a todo..." />
         <button onClick={add}>Add</button>
-        {[<p key={jid(t)}>{t.title} ({t.category})</p> for t in todos]}
+        {[<p key={jid(t)}>{t.title}</p> for t in todos]}
     </div>;
 }
 ```
 
-This single file defines a persistent data model, an AI-powered categorizer, a REST API, and a React frontend -- without any database configuration, prompt engineering, or separate frontend project.
+Code in `cl` compiles to a React/JSX bundle for the browser; everything else compiles to Python for the server. That `await add_todo(...)` in the click handler is a real RPC: the compiler generates the HTTP call, serialization, and shared types across the boundary. `jac start` serves it; `jac start --dev` gives you hot reload. [Full-stack tutorial →](https://docs.jaseci.org/build/fullstack-web/)
 
-<details>
-<summary><strong>Run this example</strong></summary>
+For all three ideas in one file (an AI categorizer, a native-compiled scoring function, a persistent graph, and a React UI), see [`jac/examples/mini_todo`](jac/examples/mini_todo).
 
-<br>
-
-Save the code above as `main.jac`, then create a `jac.toml` in the same directory:
-
-```toml
-[project]
-name = "mini-todo"
-
-[dependencies.npm]
-react = "^18.2.0"
-react-dom = "^18.2.0"
-
-[dependencies.npm.dev]
-vite = "^6.4.1"
-"@vitejs/plugin-react" = "^4.2.1"
-typescript = "^5.3.3"
-"@types/react" = "^18.2.0"
-"@types/react-dom" = "^18.2.0"
-
-[serve]
-base_route_app = "app"
-
-[plugins.scale]
-
-[plugins.client]
-
-[plugins.byllm.model]
-default_model = "claude-sonnet-4-20250514"
-```
-
-Install Jac, add the plugins this example uses, set your API key, and run:
+## Laptop to Kubernetes without changing your code
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
-jac install byllm
-export ANTHROPIC_API_KEY="your-key-here"
-jac start main.jac
+jac start main.jac           # local: REST API + auth + Swagger + persistence
+jac start main.jac --scale   # cloud: Kubernetes with Redis, MongoDB, load balancing
 ```
 
-Open [http://localhost:8000](http://localhost:8000) to see it running. Jac supports any [LiteLLM-compatible model](https://docs.litellm.ai/docs/providers) -- use `gemini/gemini-2.5-flash` for a free alternative or `ollama/llama3.2:1b` for local models.
+Your code doesn't change when you outgrow one machine. The `scale` subsystem ships inside the binary: `--scale` builds the images, provisions Redis and MongoDB, and deploys to Kubernetes with health checks. Zero Dockerfiles, zero YAML, zero DevOps. [Deploy & scale →](https://docs.jaseci.org/reference/plugins/jac-scale/)
 
-</details>
+## Learn Jac
 
----
+- [**Build an AI Day Planner**](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/) -- the flagship tutorial: every core concept in one guided full-stack project
+- [**Jac Fundamentals**](https://docs.jaseci.org/tutorials/language/basics/) -- the language itself, for Python developers
+- [**Build a Chess Engine**](https://docs.jaseci.org/tutorials/native/chess/) -- the native pathway, from source to standalone binary
+- [**WebAssembly in the Browser**](https://docs.jaseci.org/tutorials/native/wasm/) -- native-speed compute, client-side
+- [**Jac Playground**](https://playground.jaseci.org) -- run Jac in your browser, and [**Ask Jac GPT**](https://jac-gpt.jaseci.org) -- a docs-trained assistant
+- In your terminal: `jac guide` (curated references), `jac ai` (interactive coding agent), `jac mcp` (wire Jac expertise into Claude Code, Cursor, and friends)
 
-## Become a Jac Programmer
+## What's in this repo
 
-The best way to learn Jac is by building something real. The [**Build an AI Day Planner**](https://docs.jaseci.org/tutorials/first-app/build-ai-day-planner/) tutorial walks you through every core concept -- variables, functions, graphs, walkers, AI integration, authentication, and full-stack deployment -- in a single guided project.
+This is the Jaseci monorepo, home to everything that makes Jac work:
 
----
+| Directory | What it is |
+|---|---|
+| [`jac/`](jac/) | **jaclang** -- the compiler, runtime, and everything inside the `jac` binary: the language, the full-stack client framework, the `scale` deployment subsystem, the MCP server, and the LLVM native pathway |
+| [`jac-byllm/`](jac-byllm/) | **byllm** -- AI/LLM integration via Meaning-Typed Programming (`jac install byllm`) |
+| [`docs/`](docs/) | The documentation site at [docs.jaseci.org](https://docs.jaseci.org) |
+| [`scripts/`](scripts/) | The installer and release tooling |
 
-## Installation & Setup
+The official VS Code extension lives at [jaseci-labs/jac-vscode](https://github.com/jaseci-labs/jac-vscode).
 
-<details>
-<summary><strong>Install (Recommended)</strong></summary>
+## Research
 
-<br>
+Jac's core ideas are peer-reviewed research, not just design taste. The project grew out of research at the University of Michigan and is now developed in the open by a global community. Citing Jac in your own work? GitHub's "Cite this repository" button (powered by [CITATION.cff](CITATION.cff)) gives a ready-made reference.
 
-Install the self-contained `jac` binary with one command -- no Python, pip, or uv required:
+## Built with Jac
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
-```
+| Project | Description |
+|---------|-------------|
+| [**Tobu**](https://tobu.life/) | AI-powered memory keeper for the stories behind your photos and videos |
+| [**TrueSelph**](https://trueselph.com/) | Production-grade scalable agentic conversational AI platform |
+| [**Myca**](https://www.myca.ai/) | AI-powered productivity tool for high-performing individuals |
+| [**Pocketnest Birdy AI**](https://www.pocketnest.com/) | Commercial financial AI powered by your own financial journey |
 
-Then add plugins as you need them:
+Building something with Jac? Tell us on [Discord](https://discord.gg/6j3QNdtcN6) and we'll add it here.
 
-```bash
-jac install byllm        # AI/LLM integration
-# MCP server for AI-assisted development is built in: run `jac mcp` (no install)
-# Production deployment & scaling is built in as the `scale` subsystem (no install)
-```
+Jaseci is a member of the [NVIDIA Inception Program](https://www.nvidia.com/en-us/startups/) for cutting-edge AI startups.
 
-Production deployment & scaling ships built into the `jac` binary as the `scale` subsystem (no separate install); its optional deps (MongoDB, Redis, Kubernetes, ...) are pulled per-project via `[scale.*]` config + `jac install`.
+## Contributing
 
-See the [installation guide](https://docs.jaseci.org/quick-guide/install/) for versions, upgrading, and IDE setup.
+We welcome contributions of every size, from typo fixes to compiler passes.
 
-</details>
+- **Ask questions & share ideas** on our [Discord server](https://discord.gg/6j3QNdtcN6)
+- **Report bugs** via [GitHub issues](https://github.com/jaseci-labs/jaseci/issues)
+- **Send PRs**: start with the [contributing guide](https://docs.jaseci.org/community/contributing/) and [CONTRIBUTING.md](CONTRIBUTING.md); `bash scripts/fresh_env.sh` sets up a dev environment
 
-## Command-Line Interface (CLI)
-
-The `jac` CLI is your primary interface for interacting with the Jaseci ecosystem.
-
-| Command | Description |
-| :--- | :--- |
-| **`jac run <file.jac>`** | Executes a Jac file, much like `python3`. |
-| **`jac start <file.jac>`** | Starts a REST API server for a Jac program. |
-| **`jac start <file.jac> --scale`** | Deploys to Kubernetes with Redis and MongoDB auto-provisioning. |
-| **`jac create <name> --kind web-app`** | Creates a new full-stack Jac project with frontend support. |
-| **`jac plugins`** | Manages Jac plugins (enable/disable byllm, jac-mcp, etc.). |
-
----
-
-## Awesome Jaseci Projects
-
-Explore these impressive projects built with Jaseci! These innovative applications showcase the power and versatility of the Jaseci ecosystem. Consider supporting these projects or getting inspired to build your own.
-
-| Project | Description | Link |
-|---------|-------------|------|
-| **Tobu** | Your AI-powered memory keeper that captures the stories behind your photos and videos | [Website](https://tobu.life/) |
-| **TrueSelph** | A Platform Built on Jivas for building Production-grade Scalable Agentic Conversational AI solutions | [Website](https://trueselph.com/) |
-| **Myca** | An AI-powered productivity tool designed for high-performing individuals | [Website](https://www.myca.ai/) |
-| **Pocketnest Birdy AI** | A Commercial Financial AI Empowered by Your Own Financial Journey | [Website](https://www.pocketnest.com/) |
-
----
-
-## Join the Community & Contribute
-
-We are building the future of AI development, and we welcome all contributors.
-
-- **`` Join our Discord:** The best place to ask questions, share ideas, and collaborate is our [**Discord Server**](https://discord.gg/6j3QNdtcN6).
-- **`` Report Bugs:** Find a bug? Please create an issue in this repository with a clear description.
-- **`` Submit PRs:** Check out our [**Contributing Guide**](https://www.jac-lang.org/internals/contrib/) for details on our development process.
-
-<br>
+If Jac looks useful to you, [**star the repo**](https://github.com/jaseci-labs/jaseci/stargazers). It helps other developers discover the project.
 
 ## License
 
-All Jaseci open source software is distributed under the terms of both the MIT license with a few other open source projects vendored
-within with various other licenses that are very permissive.
+Jac and the Jaseci stack are [MIT licensed](LICENSE). Vendored third-party components retain their own permissive licenses.
 
-See [LICENSE-MIT](.github/LICENSE) for details.
+<div align="center">
+  <a href="https://star-history.com/#jaseci-labs/jaseci&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date&theme=dark">
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date">
+      <img alt="Star history of jaseci-labs/jaseci" src="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date" width="600">
+    </picture>
+  </a>
+</div>

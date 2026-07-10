@@ -134,8 +134,10 @@ vim.filetype.add({ extension = { jac = "jac" } })
 -- ---------------------------------------------------------------- mini.nvim
 local ascii = vim.env.JAC_NINJA_ASCII == "1"
 require("mini.icons").setup(ascii and { style = "ascii" } or {})
--- Stock look; easy mode swaps in the VSCode Dark+ theme (ninja/theme.lua).
+-- Stock look (ninja/theme.lua).
 require("ninja.theme").default()
+-- Base16 theme switcher (:"Theme <name>" or <Leader>t).
+require("ninja.themes").setup()
 
 require("mini.statusline").setup()
 require("mini.tabline").setup()
@@ -181,6 +183,7 @@ clue.setup({
     clue.gen_clues.windows(),
     { mode = "n", keys = "<Leader>a", desc = "+agent" },
     { mode = "n", keys = "<Leader>f", desc = "+find" },
+    { mode = "n", keys = "<Leader>t", desc = "+theme" },
     { mode = "n", keys = "<Leader>j", desc = "+jac" },
     { mode = "n", keys = "<Leader>l", desc = "+lsp" },
   },
@@ -210,7 +213,7 @@ starter.setup({
       { name = "Quit", action = "qall", section = "Actions" },
     },
   },
-  footer = "space = leader  ·  space-f-f find  ·  space-a agent  ·  space-j jac tools",
+  footer = "space = leader  ·  space-f-f find  ·  space-t theme  ·  space-a agent  ·  space-j jac tools",
 })
 
 -- -------------------------------------------------------------- tree-sitter
@@ -304,18 +307,20 @@ local function jac_file_cmd(subcmd)
 end
 map("n", "<Leader>jr", jac_file_cmd("run"), { desc = "jac run file" })
 map("n", "<Leader>jt", jac_file_cmd("test"), { desc = "jac test file" })
-map("n", "<Leader>jc", jac_file_cmd("check"), { desc = "jac check file" })
 map("n", "<Leader>jd", jac_file_cmd("dot"), { desc = "jac dot graph" })
+-- Check: populate quickfix list + output scratch buffer.
+map("n", "<Leader>jc", function() require("ninja.check").check_current() end, { desc = "jac check file" })
+map("n", "<Leader>jC", function() require("ninja.check").check_project() end, { desc = "jac check project" })
+map("n", "<Leader>jo", function() require("ninja.check").toggle_output() end, { desc = "jc check: toggle output" })
 
 -- -------------------------------------------------------------------- agent
 -- The binary's own coding agent (`jac ai`), orchestrated in managed splits:
 -- space-a-a session, space-a-q ask, space-a-d fix diagnostics, ...
 require("ninja.agent").setup()
 
--- ---------------------------------------------------------------- easy mode
--- VSCode-style input layer (`jac ninja --easy` or :NinjaEasy on): CUA keys,
--- shift-arrow selection, insert-first buffers. Persists via a state marker.
-require("ninja.easy").setup()
+-- ------------------------------------------------------------ jac check
+-- Run `jac check` and populate the quickfix list with parsed errors/warnings.
+require("ninja.check").setup()
 
 -- ------------------------------------------------------------- autocommands
 vim.api.nvim_create_autocmd("TextYankPost", {

@@ -13,7 +13,6 @@ import from jaclang.cli.shadcn.shadcn_handler { load_registry }
 import from jaclang.cli.shadcn.shadcn_handler { parse_style_css }
 import from jaclang.cli.shadcn.shadcn_handler { resolve_component }
 import from jaclang.cli.shadcn.shadcn_handler { resolve_single_component }
-import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
 
 
 # The jac-shadcn template dir, resolved from the installed package (robust to
@@ -212,7 +211,7 @@ test "remove multiple components" {
 }
 
 test "remove resolves registry filename mismatch" {
-    # `jac add --shadcn input-otp` installs as otp_input.cl.jac (registry file
+    # `jac install --shadcn input-otp` installs as otp_input.cl.jac (registry file
     # `otp-input.cl.jac`, dashes → underscores); remove by the registry name
     # must resolve to that file, not input_otp.cl.jac.
     with tempfile.TemporaryDirectory() as tmpdir {

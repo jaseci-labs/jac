@@ -326,7 +326,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_vars: bool,
         coll_release_op: str,
         range_start: (ir.Value | None) = None,
-        elem_cast: (ir.Type | None) = None
+        elem_cast: (ir.Type | None) = None,
+        unpack_target: (uni.TupleVal | None) = None
     ) -> None;
 
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
@@ -580,7 +581,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(
         targets: list, tuple_val: ir.Value, tuple_node: (object | None)
-    ) -> None;
+    ) -> bool;
 
     def _codegen_tuple_index(
         tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
@@ -741,7 +742,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _foreign_model -> dict;
     def _foreign_fns -> dict;
     def _foreign_fields_of(name: str) -> list;
-    def _classify_clib_struct(name: str) -> dict;
     def _clib_has_nested(name: str) -> bool;
     def _clib_c_type(name: str) -> ir.Type;
     def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;

@@ -34,7 +34,7 @@ byLLM supports image inputs through the `Image` type. Images can be provided as 
 !!! tip "Model for vision tasks"
     Vision tasks require a vision-capable model like `gpt-4o`. Set it in your `jac.toml`:
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "gpt-4o"
     ```
 

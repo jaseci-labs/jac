@@ -26,9 +26,6 @@ class NameScope(object) {
         }
         return name;
     }
-    def get_child(self: NameScope) -> object {
-        return `type(self)(parent=self);
-    }
 }
 class _StrCaching(object) {
     def _clear_string_cache(self: _StrCaching) -> object {

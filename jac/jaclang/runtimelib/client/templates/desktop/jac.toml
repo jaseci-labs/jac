@@ -19,9 +19,9 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 
-[plugins.desktop]
+[desktop]
 name = "{{name}}"
 identifier = "com.example.{{name}}"
 version = "1.0.0"

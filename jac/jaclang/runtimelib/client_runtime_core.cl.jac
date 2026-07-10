@@ -67,3 +67,11 @@ def:pub __jacReportError(
 ) -> None;
 
 def:pub __jacInstallErrorHandlers -> None;
+
+def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
+
+def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+
+def:pub __jacReactErrorHandler(error: any, info: any) -> None;
+
+def:pub __unwrapFormSchema(schema: any) -> any;

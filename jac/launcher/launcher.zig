@@ -30,6 +30,7 @@ extern fn nvim_main(argc: c_int, argv: [*]?[*:0]const u8) c_int;
 
 // Same libc prototype embed.zig uses (std.c has no setenv in Zig 0.16).
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
 /// The validated boot dance: pin `sys.executable` to *this* binary, install the
 /// lazy `.jac` finder, then hand off to the jaclang CLI, which reads `sys.argv`.
@@ -72,20 +73,55 @@ pub fn main(init: std.process.Init) !void {
     var b_exe: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const exe_z = std.fmt.bufPrintZ(&b_exe, "{s}", .{exe_path}) catch die("path too long");
 
-    // `jac ninja` is dispatched HERE, before any Python bring-up: the editor
-    // is nvim statically linked into this stub, so it needs the payload only
-    // for its runtime files (materialize, no dlopen) and boots with zero
-    // interpreter cost. Python starts later only if the editor spawns
-    // `jac lsp` as a child.
-    //
-    // The argv[0]=="nvim" route is load-bearing, not a convenience: nvim 0.13's
-    // TUI is a CLIENT process that re-execs its own binary (v:progpath == this
-    // jac binary) with {argv[0], "--embed", ...} as the server -- that
-    // re-invocation must land back in nvim_main, never the jac CLI. runNinja
-    // passes argv[0]="nvim" precisely so the server hop routes here. It also
-    // makes a `nvim -> jac` symlink behave as a plain nvim.
-    if (isNvimArgv0(init)) runNinja(init, exe_path, exe_z, .verbatim);
-    if (isNinjaInvocation(init)) runNinja(init, exe_path, exe_z, .ninja);
+    // Resolve a trailing `.jab` overlay ONCE, and branch the whole pre-Python
+    // dispatch on it. An overlay means this is a `jac build --as binary` app
+    // binary: the app owns ALL of argv, so the jac-CLI/editor/build verbs below
+    // are NOT honored (running `myapp ninja` must reach the app, not the
+    // editor), and we export the overlay's [offset,len] so the CPython boot
+    // (cli_boot's _run_bundled_app) can slice its image out of this binary and
+    // mount it. A plain jac (no overlay) honors those verbs and, crucially,
+    // CLEARS any inherited JAC_APP_OVERLAY_* -- those vars inherit across
+    // process boundaries, so an app binary that shells out to a plain jac would
+    // otherwise leave the child with stale coordinates that make it mis-slice
+    // its own binary (same discipline the interpreter config follows for
+    // PYTHONHOME/PYTHONPATH, #7047). Worker mode (a python re-spawn) is still
+    // selected later in boot(), independent of this branch.
+    if (runtime.overlayForPath(io, exe_path)) |ovl| {
+        var b_off: [24]u8 = undefined;
+        var b_len: [24]u8 = undefined;
+        const off_z = std.fmt.bufPrintZ(&b_off, "{d}", .{ovl.off}) catch die("overlay offset too long");
+        const len_z = std.fmt.bufPrintZ(&b_len, "{d}", .{ovl.len}) catch die("overlay len too long");
+        if (setenv("JAC_APP_OVERLAY_OFF", off_z.ptr, 1) != 0 or
+            setenv("JAC_APP_OVERLAY_LEN", len_z.ptr, 1) != 0)
+            die("app-overlay environment setup failed (setenv)");
+    } else {
+        _ = unsetenv("JAC_APP_OVERLAY_OFF");
+        _ = unsetenv("JAC_APP_OVERLAY_LEN");
+
+        // `jac ninja` is dispatched HERE, before any Python bring-up: the editor
+        // is nvim statically linked into this stub, so it needs the payload only
+        // for its runtime files (materialize, no dlopen) and boots with zero
+        // interpreter cost. Python starts later only if the editor spawns
+        // `jac lsp` as a child.
+        //
+        // The argv[0]=="nvim" route is load-bearing, not a convenience: nvim
+        // 0.13's TUI is a CLIENT process that re-execs its own binary
+        // (v:progpath == this jac binary) with {argv[0], "--embed", ...} as the
+        // server -- that re-invocation must land back in nvim_main, never the
+        // jac CLI. runNinja passes argv[0]="nvim" precisely so the server hop
+        // routes here. It also makes a `nvim -> jac` symlink behave as plain nvim.
+        if (isNvimArgv0(init)) runNinja(init, exe_path, exe_z, .verbatim);
+        if (isNinjaInvocation(init)) runNinja(init, exe_path, exe_z, .ninja);
+
+        // Build-time INTERNAL verbs, pure-Zig trailer surgery that `jac build
+        // --as binary` (__appjab), the desktop builder (__graftrt), and the
+        // eligibility pre-check (__hasruntime) shell out to. Keeping them in Zig
+        // is what lets runtime.zig own the trailer format outright -- Python
+        // never parses or writes a trailer.
+        if (isInternalVerb(init, "__hasruntime")) std.process.exit(0);
+        if (isInternalVerb(init, "__appjab")) runAppjab(init, exe_path);
+        if (isInternalVerb(init, "__graftrt")) runGraftRt(init, exe_path);
+    }
 
     // 2. Shared bring-up: materialize the runtime and dlopen the bundled
     //    libpython. Identical to what the desktop host does.
@@ -151,6 +187,51 @@ fn isNinjaInvocation(init: std.process.Init) bool {
     _ = it.next(); // skip argv[0]
     if (it.next()) |a| return std.mem.eql(u8, a, "ninja");
     return false;
+}
+
+/// True when argv[1] is exactly `verb` (an internal `__`-prefixed build verb).
+fn isInternalVerb(init: std.process.Init, verb: []const u8) bool {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // skip argv[0]
+    if (it.next()) |a| return std.mem.eql(u8, a, verb);
+    return false;
+}
+
+fn diePackVerb(comptime verb: []const u8, e: anyerror) noreturn {
+    std.debug.print("jac ({s}): {s}\n", .{ verb, @errorName(e) });
+    std.process.exit(70); // EX_SOFTWARE
+}
+
+/// `jac __appjab <app.jab> <out>`: copy this binary verbatim and append the
+/// `.jab` as an overlay, producing a self-contained app binary. Pure Zig, no
+/// interpreter. The base is THIS running binary (guaranteed a bundled jac);
+/// runtime.appendOverlay rejects a base that is not (a source/pip jac).
+fn runAppjab(init: std.process.Init, exe_path: []const u8) noreturn {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // argv[0]
+    _ = it.next(); // "__appjab"
+    const jab = it.next() orelse die("__appjab: missing <app.jab>");
+    const out = it.next() orelse die("__appjab: missing <out>");
+    runtime.appendOverlay(init.io, init.gpa, exe_path, jab, out) catch |e| diePackVerb("__appjab", e);
+
+    // Mark the produced binary executable (createFile made it 0644). Fail loud
+    // rather than emit a success exit with a non-executable artifact.
+    var b_out: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const out_z = std.fmt.bufPrintZ(&b_out, "{s}", .{out}) catch die("__appjab: path too long");
+    if (std.c.chmod(out_z.ptr, 0o755) != 0) die("__appjab: could not mark the output executable");
+    std.process.exit(0);
+}
+
+/// `jac __graftrt <host>`: append this binary's `[ payload ][ trailer ]` runtime
+/// suffix onto `host` in place, fusing the bundled runtime into the desktop host
+/// binary. Pure Zig, no interpreter.
+fn runGraftRt(init: std.process.Init, exe_path: []const u8) noreturn {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // argv[0]
+    _ = it.next(); // "__graftrt"
+    const host = it.next() orelse die("__graftrt: missing <host>");
+    runtime.graftRuntime(init.io, init.gpa, exe_path, host) catch |e| diePackVerb("__graftrt", e);
+    std.process.exit(0);
 }
 
 /// True when we were invoked AS nvim (argv[0] basename == "nvim"): the TUI
@@ -273,17 +354,6 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
             _ = it.next(); // argv[0]
             _ = it.next(); // "ninja"
             while (it.next()) |arg| {
-                // jac-level flags, consumed here (nvim never sees them):
-                // --easy / --no-easy toggle the VSCode-style input layer
-                // (ninja/lua/ninja/easy.lua reads the env and persists).
-                if (std.mem.eql(u8, arg, "--easy")) {
-                    if (setenv("JAC_NINJA_EASY", "1", 1) != 0) die("ninja environment setup failed (setenv)");
-                    continue;
-                }
-                if (std.mem.eql(u8, arg, "--no-easy")) {
-                    if (setenv("JAC_NINJA_EASY", "0", 1) != 0) die("ninja environment setup failed (setenv)");
-                    continue;
-                }
                 if (argc >= argv_storage.len - 1) die("too many arguments");
                 argv_storage[argc] = arg.ptr;
                 argc += 1;

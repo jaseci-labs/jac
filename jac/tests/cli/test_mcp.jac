@@ -601,7 +601,7 @@ test "unknown prompt returns error" {
 }
 
 # ── jac.toml Config Resolution Tests ──
-#   CLI (explicit) > [plugins.mcp] in jac.toml > CLI default. The resolution
+#   CLI (explicit) > [mcp] in jac.toml > CLI default. The resolution
 #   lives in the `mcp_cmd` command body; JacMcpServer is patched so the server
 #   never actually starts -- we only capture the constructor kwargs.
 glob _MCP_TOML_CFG: dict = {

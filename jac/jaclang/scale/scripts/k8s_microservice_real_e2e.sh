@@ -20,15 +20,15 @@ if ! grep -q "e2e-harness overlay" "${PROJECT_DIR}/jac.toml"; then
     cat >> "${PROJECT_DIR}/jac.toml" <<'TOML'
 
 # --- e2e-harness overlay (appended by k8s_microservice_real_e2e.sh) ---
-[plugins.scale.microservices.logs]
+[scale.microservices.logs]
 enabled = true
 
-[plugins.scale.microservices.ingress]
+[scale.microservices.ingress]
 enabled = true
 host = "jac-shop.local"
 ingress_class_name = "nginx"
 
-[plugins.scale.microservices.cors]
+[scale.microservices.cors]
 allow_origins = ["http://app.example.com"]
 allow_methods = ["GET", "POST", "OPTIONS"]
 allow_headers = ["Authorization", "Content-Type"]
@@ -203,20 +203,20 @@ import logging, os, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
-from jaclang.scale.config.dev_config import DevDeploy, CHANNEL_DEV
+from jaclang.scale.config.dev_config import BINARY_PATH_ENV
 
-_want = os.path.realpath("${REPO_ROOT}/jac")
-_got = os.path.realpath(os.path.dirname(os.path.dirname(jaclang.__file__)))
-if _got != _want:
+# JAC_SCALE_BINARY_PATH makes the deploy resolve to the LOCAL channel and ship
+# the jac built from THIS checkout, so the e2e validates the code under test
+# rather than a published release.
+_local = os.environ.get(BINARY_PATH_ENV, "")
+if not _local or not os.path.isfile(_local):
     print(
-        f"FATAL: host jac is running jaclang from {_got}, not the checkout at "
-        f"{_want}. The editable dev overlay did not activate, so this run would "
-        f"validate the wrong code. Set [dev] jaclang_source (or use a -Ddev "
-        f"binary) before running.",
+        f"FATAL: {BINARY_PATH_ENV} must point at the jac binary built from this "
+        f"checkout so the pod runs the code under test; got {_local!r}.",
         file=sys.stderr,
     )
     sys.exit(1)
-print(f"host jaclang overlay active: {_got}", file=sys.stderr)
+print(f"shipping local jac binary to pods: {_local}", file=sys.stderr)
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
@@ -245,7 +245,6 @@ result = target.deploy(
     AppConfig(
         code_folder=".",
         app_name="jac-e2e",
-        dev=DevDeploy(channel=CHANNEL_DEV, jaclang_source="${REPO_ROOT}/jac"),
     )
 )
 if not result.success:
@@ -284,12 +283,12 @@ done
 
 _t "pods Ready"
 
-echo "=== first-boot compile stats (jir-seed adoption per pod) ==="
+echo "=== first-boot compile stats (per pod) ==="
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
     # `|| true` throughout: pods without a jac-bootstrap container (mongo,
     # observability) and no-match greps must not trip `set -e`.
     line=$( (kubectl logs -n "${NAMESPACE}" "${pod}" -c jac-bootstrap 2>/dev/null || true) \
-        | (grep -E "adopted [0-9]+ host-precompiled|modules compiled and cached|adoption failed" || true) | tail -2)
+        | (grep -E "modules compiled and cached" || true) | tail -2)
     [ -n "${line}" ] && echo "  ${pod}: $(echo "${line}" | tr '\n' ' ')" || true
 done
 echo "=== port-forward gateway + curl /health ==="
@@ -329,7 +328,7 @@ done
 
 _t "routing OK"
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
-# When [plugins.scale.microservices.logs].enabled = true (the fixture
+# When [scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which
 # adds Prometheus + Grafana + Loki + Alloy + kube-state-metrics +
 # node-exporter to the namespace. Verify each Deployment + the Alloy

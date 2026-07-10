@@ -1,7 +1,7 @@
 """byLLM Package."""
 import from jaclang.byllm.llm { MockLLM, Model, ModelPool }
 import from jaclang.byllm.mtir { MTIR, MTRuntime }
-import from jaclang.byllm.plugin { JacRuntime }
+import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.byllm.types {
     Image,
     IterationAction,
@@ -22,7 +22,6 @@ import from jaclang.byllm.exceptions {
     RateLimitError,
     ModelNotFoundError,
     OutputConversionError,
-    UnknownToolError,
     FinishToolError,
     ConfigurationError,
     McpError
@@ -39,7 +38,6 @@ glob by = JacRuntime.by ,
          'RateLimitError',
          'ModelNotFoundError',
          'OutputConversionError',
-         'UnknownToolError',
          'FinishToolError',
          'ConfigurationError',
          'McpError',
