@@ -2668,9 +2668,39 @@ impl PyastGenPass._remove_lambda_param_annotations(
     }
 }
 
+impl PyastGenPass._emit_jobj_ref(nd: uni.UnaryExpr) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.Call(
+                func=self.builtin_name('jobj'),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg='id', value=cast(ast3.expr, self.py_ast_val(nd.operand))
+                        )
+                    )
+                ]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    if is_borrow_kind(nd.ownership) {
-        nd.gen.py_ast = nd.operand.gen.py_ast;
+    if nd.op.name == Tok.BW_AND {
+        if is_borrow_kind(nd.ownership) {
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.builtin_name('jref'),
+                        args=[cast(ast3.expr, self.py_ast_val(nd.operand))],
+                        keywords=[]
+                    )
+                )
+            ];
+        } else {
+            self._emit_jobj_ref(nd);
+        }
         return;
     }
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;

@@ -1243,8 +1243,16 @@ impl Parser.parse_unpack -> Expr {
 
 impl Parser.parse_ref -> Expr {
     if self.match_tok(TokenKind.BW_AND) {
-        op = self.make_uni_token(self.previous());
+        raw_tok = self.previous();
+        op = self.make_uni_token(raw_tok);
         kids: list = [op];
+
+        if self.check(TokenKind.LPAREN)
+        or (not self.at_end() and self.current().loc.pos_start > raw_tok.loc.pos_end) {
+            target = self.parse_await_expr();
+            kids.append(target);
+            return UnaryExpr(operand=target, op=op, kid=kids);
+        }
 
         is_mut = False;
         if self.check(TokenKind.NAME)
