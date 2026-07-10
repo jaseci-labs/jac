@@ -1,11 +1,17 @@
-# TEMPORARY throwaway workflow — measures how long the admin-console
+# TEMPORARY / DO NOT MERGE — measures how long the admin-console
 # build+package (the `admin-dist` job in build-binaries.yml) takes.
 # Runs the real build steps 3x in a loop and prints per-run timing.
-# Does NOT upload, release, or publish anything. Delete after use.
+# Does NOT upload, release, or publish any artifact. Delete after use.
 name: time-admin-dist (temp)
 
 on:
   workflow_dispatch:
+  # Scoped to this throwaway branch only so it does not run on other PRs.
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/time-admin-dist.yml
 
 jobs:
   time-admin-dist:
