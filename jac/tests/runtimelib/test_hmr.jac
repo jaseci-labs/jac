@@ -330,6 +330,50 @@ test "process change settles to ok unless an error was recorded" {
     }
 }
 
+# --- TestExportChangeReload ---
+# Fast Refresh boundaries hot-swap component edits silently, so an edit that
+# changes a module's export set (removing `:pub`, renaming a component) leaves
+# importers with a stale reference and no error. The reloader compares the
+# emitted .js exports before/after a recompile and forces a full reload so the
+# link error surfaces at load.
+test "extract js exports reads the compiled export list" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        js = temp_dir / "mod.js";
+        js.write_text(
+            "function Page() {}\nconst page = Page;\nexport {page, Card as c};\n"
+        );
+        assert reloader._extract_js_exports(js) == {"page", "c"};
+        # A module that dropped its export (e.g. `:pub` removed) reads as empty
+        js.write_text("function Page() {}\n");
+        assert reloader._extract_js_exports(js) == set();
+        # Missing file is empty, never an exception
+        assert reloader._extract_js_exports(temp_dir / "gone.js") == set();
+    }
+}
+
+test "signal full reload bumps the watched nonce file" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        client_dir = temp_dir / ".jac" / "client";
+        client_dir.mkdir(parents=True);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        signal = client_dir / ".jac-force-reload";
+        reloader._signal_full_reload();
+        first = signal.read_text();
+        # Each signal writes a distinct value so the Vite watcher sees a change
+        reloader._signal_full_reload();
+        assert signal.read_text() != first;
+    }
+}
+
 # --- TestHMRIntegration ---
 test "file change triggers callback" {
     with tempfile.TemporaryDirectory() as tmp {
