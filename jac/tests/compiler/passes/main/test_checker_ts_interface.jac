@@ -15,6 +15,7 @@ import from .checker_npm_harness {
     make_relational_npm_project,
     make_generic_npm_project,
     make_cyclic_npm_project,
+    make_callable_npm_project,
     pretty_checker_errors
 }
 
@@ -437,5 +438,48 @@ test "cyclic interface heritage degrades without crashing" {
         (program, err_codes, _) = check_npm_file(f);
         assert len(program.errors_had) == 0 , "Cyclic heritage should degrade without crashing; own member must resolve. Got "
         f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "callable interface is callable with a typed return and keeps its fields" {
+    # `interface Handler { (x: string): number; label: string; }` carries a
+    # call signature synthesized as `__call__`, so the instance is callable
+    # with a float (number) return while `label` stays a precise str.
+    with TemporaryDirectory() as td {
+        proj = make_callable_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "call_ok.cl.jac";
+        f.write_text(
+            'cl import from "callpkg" { getHandler }\n\n'
+            'def:pub use() -> float {\n'
+            '    h = getHandler();\n'
+            '    n: float = h("x");\n'
+            '    s: str = h.label;\n'
+            '    return n;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) == 0 , "Callable interface should call cleanly with a typed return and str field. Got "
+        f"{len(program.errors_had)} diagnostic(s):\n{pretty_checker_errors(program)}";
+    }
+}
+
+test "callable interface enforces its call-signature return type" {
+    # The `__call__` return is `number` -> float, so assigning it to a str
+    # must be rejected -- proving the call signature is modeled with a real
+    # type rather than dropped to gradual any.
+    with TemporaryDirectory() as td {
+        proj = make_callable_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "call_bad.cl.jac";
+        f.write_text(
+            'cl import from "callpkg" { getHandler }\n\n'
+            'def:pub bad() -> str {\n'
+            '    h = getHandler();\n'
+            '    s: str = h("x");\n'
+            '    return s;\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert len(program.errors_had) > 0 , "Assigning a float call-return to a str must error; got none:"
+        f"\n{pretty_checker_errors(program)}";
     }
 }

@@ -340,7 +340,7 @@ impl TypeEvaluator._ts_synth_class_types(
             if (not m.name or not m.name.isidentifier()) {
                 continue;
             }
-            if m.is_static or m.access in ('private', 'protected') {
+            if m.is_static or m.access in (TsAccess.PRIVATE, TsAccess.PROTECTED) {
                 continue;
             }
             kept_by_name.setdefault(m.name, []).append(m);
@@ -360,20 +360,14 @@ impl TypeEvaluator._ts_synth_class_types(
                     );
                 }
             }
-            field_node = uni.Name(
-                orig_src=synth_src,
-                name=Tok.NAME.value,
-                value=mname,
-                line=0,
-                end_line=0,
-                col_start=0,
-                col_end=0,
-                pos_start=0,
-                pos_end=0,
-            );
-            field_node.type = member_type;
-            scope.names_in_scope[mname] = uni.Symbol(
-                defn=field_node, access=SymbolAccess.PUBLIC, parent_tab=scope
+            self._install_synth_member(scope, synth_src, mname, member_type);
+        }
+        if decl.call_sig is not None {
+            self._install_synth_member(
+                scope,
+                synth_src,
+                "__call__",
+                self._map_ts_type(decl.call_sig, decls, None, shells)
             );
         }
         base_classes: list[types.TypeBase] = [];
@@ -398,6 +392,26 @@ impl TypeEvaluator._ts_synth_class_types(
 
     self._ts_synth_class_cache[key] = shells;
     return shells;
+}
+
+impl TypeEvaluator._install_synth_member(
+    scope: uni.UniScopeNode, synth_src: uni.Source, mname: str, member_type: TypeBase
+) -> None {
+    field_node = uni.Name(
+        orig_src=synth_src,
+        name=Tok.NAME.value,
+        value=mname,
+        line=0,
+        end_line=0,
+        col_start=0,
+        col_end=0,
+        pos_start=0,
+        pos_end=0,
+    );
+    field_node.type = member_type;
+    scope.names_in_scope[mname] = uni.Symbol(
+        defn=field_node, access=SymbolAccess.PUBLIC, parent_tab=scope
+    );
 }
 
 impl TypeEvaluator._synthesize_ts_decl_class(

@@ -27,6 +27,7 @@ import from jaclang.compiler.type_system.ts_decl_parser {
     TsType,
     TsTypeKind,
     TsDeclKind,
+    TsAccess,
     TsMember
 }
 
@@ -241,6 +242,13 @@ obj TypeEvaluator {
     def _synthesize_ts_decl_class(
         decls: dict[str, TsDecl], item_name: str
     ) -> (TypeBase | None);
+
+    def _install_synth_member(
+        scope: uni.UniScopeNode,
+        synth_src: uni.Source,
+        mname: str,
+        member_type: TypeBase
+    ) -> None;
 
     def _ts_synth_class_types(
         decls: dict[str, TsDecl]

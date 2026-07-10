@@ -6,7 +6,8 @@ import from jaclang.compiler.type_system.ts_decl_parser {
     TsDecl,
     TsType,
     TsTypeKind,
-    TsDeclKind
+    TsDeclKind,
+    TsAccess
 }
 
 def _decl_ty(decl: TsDecl) -> TsType {
@@ -309,9 +310,11 @@ test "class modifiers are captured on members" {
     by_name = {m.name: m for m in d.members};
     assert set(by_name.keys()) == {"version", "secret", "internal", "value"};
     assert by_name["version"].is_static;
-    assert by_name["secret"].access == "private";
-    assert by_name["internal"].access == "protected";
-    assert (not by_name["value"].is_static and by_name["value"].access == "public");
+    assert by_name["secret"].access == TsAccess.PRIVATE;
+    assert by_name["internal"].access == TsAccess.PROTECTED;
+    assert (
+        not by_name["value"].is_static and by_name["value"].access == TsAccess.PUBLIC
+    );
 }
 
 test "overloaded methods are kept as separate members" {

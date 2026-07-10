@@ -331,3 +331,34 @@ def make_cyclic_npm_project(proj_dir: Path) -> Path {
     );
     return proj_dir;
 }
+
+"""Materialize a client project with a callable interface d.ts.
+
+``Handler`` carries a call signature plus a named member. The call signature
+is synthesized as a ``__call__`` method so the instance is callable with a
+typed return, while ``label`` stays a precise ``str`` field.
+"""
+def make_callable_npm_project(proj_dir: Path) -> Path {
+    nm = client_node_modules(proj_dir);
+    install_npm_pkg(
+        nm,
+        "callpkg",
+        '{"name":"callpkg","version":"1.0.0",'
+        '"exports":{".":{"types":"./dist/index.d.ts",'
+        '"import":"./dist/index.mjs"}}}',
+        {
+            "dist/index.mjs": "export function getHandler() {}\n",
+            "dist/index.d.ts": (
+                "export interface Handler {\n"
+                "    (x: string): number;\n"
+                "    label: string;\n"
+                "}\n"
+                "export declare function getHandler(): Handler;\n"
+            )
+        }
+    );
+    write_client_jac_project(
+        proj_dir, "callfixture", "lib/app.cl.jac", 'callpkg = "^1.0.0"\n'
+    );
+    return proj_dir;
+}

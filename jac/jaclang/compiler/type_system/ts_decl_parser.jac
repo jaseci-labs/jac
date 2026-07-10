@@ -25,6 +25,8 @@ enum TsDeclKind {
     REEXPORT = "reexport"
 }
 
+enum TsAccess { PUBLIC = "public", PRIVATE = "private", PROTECTED = "protected" }
+
 obj TsParam {
     has name: str = "",
         ty: (TsType | None) = None,
@@ -47,7 +49,7 @@ obj TsMember {
         readonly: bool = False,
         is_method: bool = False,
         is_static: bool = False,
-        access: str = "public";
+        access: TsAccess = TsAccess.PUBLIC;
 }
 
 obj TsDecl {
@@ -687,7 +689,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 continue;
             }
             is_static = False;
-            access = "public";
+            access = TsAccess.PUBLIC;
             while (
                 is_id('public')
                 or is_id('private')
@@ -699,11 +701,11 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 if is_id('static') {
                     is_static = True;
                 } elif is_id('private') {
-                    access = "private";
+                    access = TsAccess.PRIVATE;
                 } elif is_id('protected') {
-                    access = "protected";
+                    access = TsAccess.PROTECTED;
                 } elif is_id('public') {
-                    access = "public";
+                    access = TsAccess.PUBLIC;
                 }
                 advance();
             }
@@ -912,60 +914,11 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             if handled {
                 continue;
             }
-            if eat_id('function') {
-                record(parse_function_decl(), is_export);
-            } elif (is_id('const') or is_id('let') or is_id('var')) {
-                advance();
-                if eat_id('enum') {
-                    _parse_enum_decl(is_export);
-                    continue;
+            common = _parse_common_decl();
+            if common is not None {
+                for d in common {
+                    record(d, is_export);
                 }
-                while kind_at() == 'id' {
-                    vname = val_at();
-                    advance();
-                    vty: TsType = TsType(kind=TsTypeKind.ANY);
-                    if eat_p(':') {
-                        vty = parse_type_full();
-                    }
-                    record(
-                        TsDecl(name=vname, kind=TsDeclKind.CONST, ty=vty), is_export
-                    );
-                    if not eat_p(',') {
-                        break;
-                    }
-                }
-                eat_p(';');
-            } elif eat_id('type') {
-                tname = val_at();
-                advance();
-                has_generics = is_p('<');
-                if has_generics {
-                    collect_generics();
-                }
-                expect_p('=');
-                if has_generics {
-                    skip_to_semi();
-                    record(
-                        TsDecl(
-                            name=tname,
-                            kind=TsDeclKind.TYPEALIAS,
-                            ty=TsType(kind=TsTypeKind.ANY)
-                        ),
-                        is_export
-                    );
-                } else {
-                    aty = parse_type_full();
-                    eat_p(';');
-                    record(
-                        TsDecl(name=tname, kind=TsDeclKind.TYPEALIAS, ty=aty), is_export
-                    );
-                }
-            } elif eat_id('interface') {
-                record(_parse_struct_decl(TsDeclKind.INTERFACE), is_export);
-            } elif eat_id('class') {
-                record(_parse_struct_decl(TsDeclKind.CLASS), is_export);
-            } elif eat_id('enum') {
-                _parse_enum_decl(is_export);
             } elif (is_id('namespace') or is_id('module')) {
                 advance();
                 if kind_at() == 'str' {
@@ -1016,75 +969,12 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             while (eat_id('export') or eat_id('declare')) {
                 ;
             }
-            if eat_id('function') {
-                d = parse_function_decl();
-                if (d.name and d.name not in ns_decls) {
-                    ns_decls[d.name] = d;
-                }
-            } elif (is_id('const') or is_id('let') or is_id('var')) {
-                advance();
-                while kind_at() == 'id' {
-                    vname = val_at();
-                    advance();
-                    vty: TsType = TsType(kind=TsTypeKind.ANY);
-                    if eat_p(':') {
-                        vty = parse_type_full();
+            common = _parse_common_decl();
+            if common is not None {
+                for d in common {
+                    if (d.name and d.name not in ns_decls) {
+                        ns_decls[d.name] = d;
                     }
-                    if vname not in ns_decls {
-                        ns_decls[vname] = TsDecl(
-                            name=vname, kind=TsDeclKind.CONST, ty=vty
-                        );
-                    }
-                    if not eat_p(',') {
-                        break;
-                    }
-                }
-                eat_p(';');
-            } elif eat_id('type') {
-                tname = val_at();
-                advance();
-                if is_p('<') {
-                    collect_generics();
-                    expect_p('=');
-                    skip_to_semi();
-                    ns_decls.setdefault(
-                        tname,
-                        TsDecl(
-                            name=tname,
-                            kind=TsDeclKind.TYPEALIAS,
-                            ty=TsType(kind=TsTypeKind.ANY)
-                        )
-                    );
-                } else {
-                    expect_p('=');
-                    aty = parse_type_full();
-                    eat_p(';');
-                    ns_decls.setdefault(
-                        tname, TsDecl(name=tname, kind=TsDeclKind.TYPEALIAS, ty=aty)
-                    );
-                }
-            } elif eat_id('interface') {
-                sd = _parse_struct_decl(TsDeclKind.INTERFACE);
-                if sd.name {
-                    ns_decls.setdefault(sd.name, sd);
-                }
-            } elif eat_id('class') {
-                sd = _parse_struct_decl(TsDeclKind.CLASS);
-                if sd.name {
-                    ns_decls.setdefault(sd.name, sd);
-                }
-            } elif eat_id('enum') {
-                ename = val_at() if kind_at() == 'id' else '';
-                if ename {
-                    advance();
-                }
-                if is_p('{') {
-                    skip_balanced('{', '}');
-                }
-                if ename {
-                    ns_decls.setdefault(
-                        ename, TsDecl(name=ename, kind=TsDeclKind.ENUM)
-                    );
                 }
             } elif (is_id('namespace') or is_id('module')) {
                 advance();
@@ -1102,7 +992,69 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         }
     }
 
-    def _parse_enum_decl(is_export: bool) {
+    def _parse_common_decl -> (list[TsDecl] | None) {
+        nonlocal pos;
+        if eat_id('function') {
+            return [parse_function_decl()];
+        }
+        if (is_id('const') or is_id('let') or is_id('var')) {
+            advance();
+            if eat_id('enum') {
+                ed = _parse_enum_body();
+                return [ed] if ed is not None else [];
+            }
+            out: list[TsDecl] = [];
+            while kind_at() == 'id' {
+                vname = val_at();
+                advance();
+                vty: TsType = TsType(kind=TsTypeKind.ANY);
+                if eat_p(':') {
+                    vty = parse_type_full();
+                }
+                out.append(TsDecl(name=vname, kind=TsDeclKind.CONST, ty=vty));
+                if not eat_p(',') {
+                    break;
+                }
+            }
+            eat_p(';');
+            return out;
+        }
+        if eat_id('type') {
+            tname = val_at();
+            advance();
+            has_generics = is_p('<');
+            if has_generics {
+                collect_generics();
+            }
+            expect_p('=');
+            if has_generics {
+                skip_to_semi();
+                return [
+                    TsDecl(
+                        name=tname,
+                        kind=TsDeclKind.TYPEALIAS,
+                        ty=TsType(kind=TsTypeKind.ANY)
+                    )
+                ];
+            }
+            aty = parse_type_full();
+            eat_p(';');
+            return [TsDecl(name=tname, kind=TsDeclKind.TYPEALIAS, ty=aty)];
+        }
+        if eat_id('interface') {
+            return [_parse_struct_decl(TsDeclKind.INTERFACE)];
+        }
+        if eat_id('class') {
+            return [_parse_struct_decl(TsDeclKind.CLASS)];
+        }
+        if eat_id('enum') {
+            ed = _parse_enum_body();
+            return [ed] if ed is not None else [];
+        }
+        return None;
+    }
+
+    def _parse_enum_body -> (TsDecl | None) {
         nonlocal pos;
         ename = val_at() if kind_at() == 'id' else '';
         if ename {
@@ -1112,8 +1064,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             skip_balanced('{', '}');
         }
         if ename {
-            record(TsDecl(name=ename, kind=TsDeclKind.ENUM), is_export);
+            return TsDecl(name=ename, kind=TsDeclKind.ENUM);
         }
+        return None;
     }
 
     def _parse_export_list {
