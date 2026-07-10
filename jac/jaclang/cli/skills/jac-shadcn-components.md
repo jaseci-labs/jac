@@ -69,13 +69,13 @@ Most file names are the underscored registry name (`jac install --shadcn alert-d
 | Multi-line text | `Textarea` |
 | Dropdown select | `Select` + `SelectTrigger` + `SelectContent` + `SelectGroup` + `SelectItem` + `SelectValue` |
 | Searchable dropdown | `Combobox` + `ComboboxInput` + `ComboboxContent` + `ComboboxItem` (file `combobox`) |
-| Native `<select>` | `NativeSelect` + `NativeSelectOption` (file `native-select`) |
+| Native `<select>` | `NativeSelect` + `NativeSelectOption` (file `native_select`) |
 | Toggle / check | `Switch`, `Checkbox`, `RadioGroup` + `RadioGroupItem` |
 | Single toggle button | `Toggle` |
-| 2–5 option toggle | `ToggleGroup` + `ToggleGroupItem` (file `toggle-group`; never a Button loop) |
+| 2 to 5 option toggle | `ToggleGroup` + `ToggleGroupItem` (file `toggle_group`; never a Button loop) |
 | Form field layout | `Field` + `FieldLabel` (never raw div with `space-y-*`) |
 | Form group / fieldset | `FieldGroup`, `FieldSet`, `FieldLegend` |
-| Input with prefix/suffix | `InputGroup` + `InputGroupAddon` + `InputGroupInput` (file `input-group`) |
+| Input with prefix/suffix | `InputGroup` + `InputGroupAddon` + `InputGroupInput` (file `input_group`) |
 | Data table | `Table` + `TableHeader` + `TableBody` + `TableRow` + `TableHead` + `TableCell` |
 | Data card | `Card` + `CardHeader` + `CardTitle` (+ optional `CardDescription`, `CardContent`, `CardFooter`) |
 | Status label | `Badge` |
@@ -87,12 +87,12 @@ Most file names are the underscored registry name (`jac install --shadcn alert-d
 | Side panel | `Sheet` + `SheetTrigger` + `SheetContent` + `SheetHeader` + `SheetTitle` |
 | Bottom drawer | `Drawer` |
 | Confirmation | `AlertDialog` + `AlertDialogTrigger` + `AlertDialogContent` + `AlertDialogTitle` + `AlertDialogAction` + `AlertDialogCancel` (file `alert_dialog`) |
-| Dropdown menu | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuGroup` + `DropdownMenuItem` (file `dropdown-menu`) |
-| Right-click menu | `ContextMenu` + `ContextMenuTrigger` + `ContextMenuContent` + `ContextMenuGroup` + `ContextMenuItem` (file `context-menu`) |
+| Dropdown menu | `DropdownMenu` + `DropdownMenuTrigger` + `DropdownMenuContent` + `DropdownMenuGroup` + `DropdownMenuItem` (file `dropdown_menu`) |
+| Right-click menu | `ContextMenu` + `ContextMenuTrigger` + `ContextMenuContent` + `ContextMenuGroup` + `ContextMenuItem` (file `context_menu`) |
 | Horizontal menu bar | `Menubar` + `MenubarMenu` + `MenubarTrigger` + `MenubarContent` + `MenubarItem` |
 | Tooltip | `Tooltip` + `TooltipTrigger` + `TooltipContent` |
 | Floating panel | `Popover` + `PopoverTrigger` + `PopoverContent` |
-| Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` (file `hover-card`) |
+| Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` (file `hover_card`) |
 | Loading skeleton | `Skeleton` |
 | Loading spinner | `Spinner` |
 | Empty state | `Empty` + `EmptyHeader` + `EmptyMedia` + `EmptyTitle` + `EmptyDescription` + `EmptyContent` |
@@ -102,13 +102,13 @@ Most file names are the underscored registry name (`jac install --shadcn alert-d
 | Date picker | `Calendar` |
 | Slider | `Slider` |
 | Chart | `Chart` (wraps Recharts) |
-| Scrollable container | `ScrollArea` + `ScrollBar` (file `scroll-area`) |
-| Fixed aspect box | `AspectRatio` (file `aspect-ratio`) |
+| Scrollable container | `ScrollArea` + `ScrollBar` (file `scroll_area`) |
+| Fixed aspect box | `AspectRatio` (file `aspect_ratio`) |
 | Divider | `Separator` |
 | Command palette | `Command` + `CommandInput` + `CommandList` + `CommandItem` |
-| Grouped buttons | `ButtonGroup` + `ButtonGroupSeparator` (file `button-group`) |
+| Grouped buttons | `ButtonGroup` + `ButtonGroupSeparator` (file `button_group`) |
 | App shell navigation | `Sidebar` (⚠ never pass `className` to `Sidebar*` sub-components - className spread bug; wrap with `<div>` instead) |
-| Top navigation | `NavigationMenu` + `NavigationMenuList` + `NavigationMenuItem` + `NavigationMenuTrigger` + `NavigationMenuContent` (file `navigation-menu`) |
+| Top navigation | `NavigationMenu` + `NavigationMenuList` + `NavigationMenuItem` + `NavigationMenuTrigger` + `NavigationMenuContent` (file `navigation_menu`) |
 | Expandable section | `Collapsible` + `CollapsibleTrigger` + `CollapsibleContent` |
 | Drag-resize panels | `Resizable` + `ResizablePanelGroup` + `ResizablePanel` + `ResizableHandle` |
 | Page navigation | `Pagination` + `PaginationContent` + `PaginationItem` + `PaginationPrevious` + `PaginationNext` |
