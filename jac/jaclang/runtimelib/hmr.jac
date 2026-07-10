@@ -32,6 +32,7 @@ obj HotReloader {
     def stop -> None;
     def on_file_change(event: any) -> None;
     def build_status -> dict;
+    def _dev_status_error -> (dict | None);
     def record_ok -> None;
     def record_error(file_path: str, message: str) -> None;
     def _process_change(file_path: str, is_directory: bool = False) -> None;
