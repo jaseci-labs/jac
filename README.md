@@ -1,9 +1,5 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/logo.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/logo.png">
-    <img alt="Jac logo" src="docs/docs/assets/logo.png" width="80px">
-  </picture>
+  <img alt="Jac logo" src="docs/docs/assets/logo.png" width="80px">
 
   <h1>The Jac Programming Language</h1>
   <h3>The Only Language You Need to Build Anything</h3>
@@ -20,8 +16,14 @@
     <a href="https://codecov.io/gh/Jaseci-Labs/jaseci">
       <img src="https://img.shields.io/codecov/c/github/Jaseci-Labs/jaseci?style=flat-square" alt="Code coverage">
     </a>
+    <a href="https://github.com/jaseci-labs/jaseci/stargazers">
+      <img src="https://img.shields.io/github/stars/jaseci-labs/jaseci?style=flat-square&logo=github&label=stars&color=f7b731" alt="GitHub stars">
+    </a>
+    <a href="https://github.com/jaseci-labs/jaseci/releases">
+      <img src="https://img.shields.io/github/downloads/jaseci-labs/jaseci/total?style=flat-square&label=downloads" alt="Release downloads">
+    </a>
     <a href="https://discord.gg/6j3QNdtcN6">
-      <img src="https://img.shields.io/badge/Discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord">
+      <img src="https://img.shields.io/discord/1105093583750574120?style=flat-square&logo=discord&logoColor=white&label=discord&color=5865F2" alt="Discord members online">
     </a>
     <a href="LICENSE">
       <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license">
@@ -38,7 +40,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/demo-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/demo-light.svg">
-    <img alt="Install jac, create a web app, and serve it in three commands" src="docs/docs/assets/readme/demo-dark.svg" width="880">
+    <img alt="Install jac, create a web app, and serve it in three commands" src="docs/docs/assets/readme/demo-light.svg" width="880">
   </picture>
 </div>
 
@@ -91,6 +93,28 @@ Now run it again: the people accumulate. The graph hanging off `root` **persists
 >
 > Prebuilt binaries ship for **macOS and Linux**; on Windows, use WSL (a native PowerShell installer is coming soon). See the [installation guide](https://docs.jaseci.org/quick-guide/install/) for versions, upgrading, and IDE setup.
 
+## For AI agents
+
+Jac is designed for humans and AI to build together, and that includes your coding agent. The `jac` binary ships an MCP server with Jac validation, formatting, docs, and examples built in. Wire it into Claude Code with one command:
+
+```bash
+claude mcp add jac -- jac mcp
+```
+
+For Cursor, Windsurf, or any other MCP client, add this to your MCP config (use `jac mcp --mode lite` for smaller models):
+
+```json
+{ "mcpServers": { "jac": { "command": "jac", "args": ["mcp"] } } }
+```
+
+Or skip the setup entirely and paste this into your agent's chat; it will install Jac and configure itself:
+
+```text
+Fetch https://raw.githubusercontent.com/jaseci-labs/jaseci/main/SKILL.md and follow its instructions.
+```
+
+LLM-friendly docs pointers live at [docs.jaseci.org/llms.txt](https://docs.jaseci.org/llms.txt), and `jac ai` gives you a Jac-fluent coding agent in your terminal with no setup at all.
+
 ## One binary, your whole toolchain
 
 One download replaces the interpreter, the JS runtime, the compilers and linker, the package managers, the server, and the deployer:
@@ -99,7 +123,7 @@ One download replaces the interpreter, the JS runtime, the compilers and linker,
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/one-binary-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/one-binary-light.svg">
-    <img alt="The jac binary bundles CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src="docs/docs/assets/readme/one-binary-dark.svg" width="880">
+    <img alt="The jac binary bundles CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src="docs/docs/assets/readme/one-binary-light.svg" width="880">
   </picture>
 </div>
 
@@ -285,7 +309,7 @@ The official VS Code extension lives at [jaseci-labs/jac-vscode](https://github.
 
 ## Research
 
-Jac's core ideas are peer-reviewed research, not just design taste. Meaning-Typed Programming, the foundation of `by llm()`, is described in [*"Meaning-Typed Programming: Language Abstractions and Compilation for AI-Integrated Applications"*](https://arxiv.org/abs/2405.08965). The project grew out of research at the University of Michigan and is now developed in the open by a global community.
+Jac's core ideas are peer-reviewed research, not just design taste. The project grew out of research at the University of Michigan and is now developed in the open by a global community. Citing Jac in your own work? GitHub's "Cite this repository" button (powered by [CITATION.cff](CITATION.cff)) gives a ready-made reference.
 
 ## Built with Jac
 
@@ -298,6 +322,8 @@ Jac's core ideas are peer-reviewed research, not just design taste. Meaning-Type
 
 Building something with Jac? Tell us on [Discord](https://discord.gg/6j3QNdtcN6) and we'll add it here.
 
+Jaseci is a member of the [NVIDIA Inception Program](https://www.nvidia.com/en-us/startups/) for cutting-edge AI startups.
+
 ## Contributing
 
 We welcome contributions of every size, from typo fixes to compiler passes.
@@ -306,6 +332,18 @@ We welcome contributions of every size, from typo fixes to compiler passes.
 - **Report bugs** via [GitHub issues](https://github.com/jaseci-labs/jaseci/issues)
 - **Send PRs**: start with the [contributing guide](https://docs.jaseci.org/community/contributing/) and [CONTRIBUTING.md](CONTRIBUTING.md); `bash scripts/fresh_env.sh` sets up a dev environment
 
+If Jac looks useful to you, [**star the repo**](https://github.com/jaseci-labs/jaseci/stargazers). It helps other developers discover the project.
+
 ## License
 
 Jac and the Jaseci stack are [MIT licensed](LICENSE). Vendored third-party components retain their own permissive licenses.
+
+<div align="center">
+  <a href="https://star-history.com/#jaseci-labs/jaseci&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date&theme=dark">
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date">
+      <img alt="Star history of jaseci-labs/jaseci" src="https://api.star-history.com/svg?repos=jaseci-labs/jaseci&type=Date" width="600">
+    </picture>
+  </a>
+</div>
