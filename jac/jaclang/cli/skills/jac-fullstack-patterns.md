@@ -21,6 +21,8 @@ cl {
 }
 ```
 
+That no-argument `app()` is the single-page / manual-routing shape. With file-based routing (a `pages/` directory) `app` must instead take `children` and render it - `def:pub app(children: any) -> JsxElement { return children as JsxElement; }` - or every route is silently dropped. See `jac-cl-routing`.
+
 ## Two call styles: function RPC vs walker spawn
 
 The client reaches the server two ways, with OPPOSITE argument rules:
@@ -60,7 +62,7 @@ Return `node`/`obj` instances (or `report` them from walkers) directly - no manu
 - **Write-then-refetch is the canonical mutation handler:** call the writer, then re-spawn/re-call every reader whose data it changed and assign the fresh reports into state (post a tweet, then reload feed + profile + trending). The writer call already invalidated the read cache, so the refetches hit the server.
 - **Contract drift is a `jac check` away.** After editing a server endpoint's signature or types, run `jac check` across the project: a W1101 `Cannot import name` / W1051 at the stale client `sv import` or spawn line is the cross-boundary drift signal, at the exact stale line (a conventional tsc+mypy stack sees nothing across that seam). Debugging workflow: `jac-debugging`.
 - **`[serve] base_route_app = "app"` serves the client at `/`.** Without it the app lives at `/cl/app` and `/` stays the JSON API index. Scaffolded client projects set it by default. The server's SPA catch-all then serves the app HTML for clean URLs (BrowserRouter), excluding API prefixes (`cl/`, `walker/`, `function/`, `user/`, `static/`).
-- **Client entry is `def:pub app()`** - lowercase `app`. Not `App()`, `ClientApp()`. Runtime mounts the literal name. Don't wrap it in `with entry { }`.
+- **Client entry is `def:pub app`** - lowercase `app`. Not `App()`, `ClientApp()`. Runtime mounts the literal name. Don't wrap it in `with entry { }`. The export is always required; its signature depends on the routing system - `app()` for manual/single-page, `app(children)` rendering `children` for file-based (`jac-cl-routing`).
 - **Wrap the client section in a `cl { ... }` block.** The braces bracket exactly the client region; server is the default context so server imports above the block need no wrapper. (`to cl:` section headers also work and are a flatter alternative for a mostly-client file.)
 - **Global vs scoped CSS:** import app-wide CSS once in `main.jac`'s `cl { }` block (`import ".styles.global.css";` for the Tailwind import and custom CSS variables). For component-specific classes, add a same-basename `Comp.style.css` beside the `.cl.jac` - it auto-scopes and needs no import. No `*` reset in Tailwind projects (breaks Preflight spacing). See `jac-cl-styling`.
 - **Start with `jac start --dev main.jac`** (NOT deprecated `jac serve`). HMR reloads only `.cl.jac` files - server-module / `glob` changes need a full restart (endpoints and `glob`s evaluate once at server boot). Kill stale `jac start` processes first: a held port makes the new server grab the next port while Vite's proxy still points at the old one → all RPC calls fail. `pkill -f "jac start"` then restart. `jac start` exits when stdin closes - launch background/long-running servers with `< /dev/null`.

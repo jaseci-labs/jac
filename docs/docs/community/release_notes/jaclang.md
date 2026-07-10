@@ -2,7 +2,26 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.31.1 (Latest Release)
+## jaclang 0.31.2 (Latest Release)
+
+### Breaking Changes
+
+- **Breaking: `jac add` merged into `jac install`**: The `jac add` verb is removed; running it now errors with a pointer to the new spelling. `jac install <pkg>` absorbs it and now **records the dependency in `jac.toml`** (auto-pinning `~=X.Y` when no version is given) instead of installing untracked; the new `--no-save` flag restores the untracked behavior, and `--global`/`--dry-run` continue to never touch `jac.toml`. The `--git`, `--npm`, and `--shadcn` flags move onto `jac install` (`jac add --npm <pkg>` becomes `jac install --npm <pkg>`, etc.), and `--dev` with package names records under `[dev-dependencies]`. `jac remove` and `jac update` are unchanged. Update scripts calling `jac add` to `jac install`, and add `--no-save` to any `jac install <pkg>` call that relied on `jac.toml` staying unmodified.
+
+### New Features
+
+- **Scale deploy: the admin console ships as its own release asset**: every binary release now also publishes `jac-<version>-admin-dist.tar.gz` (and the rolling dev prerelease `jac-dev-admin-dist.tar.gz`), built once per release with that release's own compiler. The deploy driver downloads it per channel exactly like the jac binary (checksum-verified, cached beside the binary cache) and stages it into the app bundle at `.jac/admin`, so the gateway serves it directly instead of spending ~148s building it from source on every pod boot, restart, and scale-up. On releases without the asset, without network, or on the local dev channel, the gateway builds on boot exactly as before.
+
+### Bug Fixes
+
+- **Pods share pip/bun caches over the bundle PVC**: dependency downloads (the dominant remaining boot cost) now hit a shared cache on the already-mounted RWX bundle volume - the first pod warms it, siblings/restarts/redeploys reuse it. Unwritable PVCs silently degrade to plain installs.
+- **Bugfix: dev build-health endpoint sees all layers**: `/__build_status` now reports Vite resolve failures and browser module-load failures (with a `source` field) instead of returning `ok` over a blank page.
+
+### Documentation
+
+- **Skills: correct the client `app` export contract**: `jac-cl-routing` said the `main.jac` `app` export was optional; it is required, and an `app` that ignores its `children` parameter silently discards every file-based route.  Four other skills asserted `def:pub app()` as the universal signature and now defer to the routing system.
+
+## jaclang 0.31.1
 
 ### Breaking Changes
 

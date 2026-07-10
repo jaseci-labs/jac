@@ -1,9 +1,9 @@
 ---
 name: jac-config
-description: The jac.toml control plane - every section ([project], [dependencies], [serve], [run], [check.lint], [test], [scripts], [environments], capability tables ([byllm], [scale], [client] incl. app_meta_data, [desktop]), [jac-shadcn], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/add/install/remove/update/x). Load before editing jac.toml or wiring project settings, dependencies, scripts, or environment profiles.
+description: The jac.toml control plane - every section ([project], [dependencies], [serve], [run], [check.lint], [test], [scripts], [environments], capability tables ([byllm], [scale], [client] incl. app_meta_data, [desktop]), [jac-shadcn], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/install/remove/update/x). Load before editing jac.toml or wiring project settings, dependencies, scripts, or environment profiles.
 ---
 
-`jac.toml` is the single config file (think `pyproject.toml` + `package.json`). Commands find it by walking up from cwd. Generate it with `jac create`, then edit sections directly or via `jac config set` / `jac add` - hand-editing is normal and expected.
+`jac.toml` is the single config file (think `pyproject.toml` + `package.json`). Commands find it by walking up from cwd. Generate it with `jac create`, then edit sections directly or via `jac config set` / `jac install <pkg>` - hand-editing is normal and expected.
 
 ## Section map
 
@@ -28,16 +28,17 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the `cl` target emits; `[client.routing] auth_redirect = "/path"` for unauthenticated redirects |
 | `[client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
 | `[desktop]` / `[desktop.plugins]` | desktop app identity + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
-| `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac add --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
+| `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac install --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |
 
 ## Dependency verbs (don't pip-install into a Jac project by hand)
 
 ```
-jac add requests              # install + record requests = "~=2.32" (auto-pinned to installed major.minor)
-jac add pytest --dev          # -> [dev-dependencies]
-jac add mylib --git https://github.com/user/repo.git
+jac install requests          # install + record requests = "~=2.32" (auto-pinned to installed major.minor)
+jac install pytest --dev      # -> [dev-dependencies]
+jac install mylib --git https://github.com/user/repo.git
+jac install numpy --no-save   # install into .jac/venv without recording in jac.toml
 jac install                   # install everything in jac.toml (incl. npm deps)
 jac install --dev --extras data
 jac install -e /path/to/lib   # editable install of a sibling Jac package
@@ -91,7 +92,7 @@ byLLM, scale, the client/desktop framework, and the MCP server all ship inside t
 ## Pitfalls
 
 - **Hyphen vs underscore is per-key and unforgiving**: `entry-point`, `requires-python`, `jac-version` (hyphens) but `fail_fast`, `max_failures`, `cl_route_prefix`, `base_route_app` (underscores). A wrong form is silently ignored - verify with `jac config get <key>`.
-- **`jac add` without a version pins `~=major.minor`** of whatever pip resolved - pass an explicit spec (`jac add "requests>=2.28"`) when you need a different constraint.
+- **`jac install <pkg>` without a version pins `~=major.minor`** of whatever pip resolved - pass an explicit spec (`jac install "requests>=2.28"`) when you need a different constraint.
 - **CLI flags override jac.toml for that run** (`jac start --port 3000`, `jac test -v`, `jac run -e all`); jac.toml only sets defaults.
 - **After editing `[dependencies*]`, run `jac install`** - editing the file alone installs nothing.
 
