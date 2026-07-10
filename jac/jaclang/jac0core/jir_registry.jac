@@ -47,306 +47,1797 @@ obj NodeSpec {
 
 """Registry data: node specs, name/index lookup tables."""
 glob NODE_SPECS: tuple = (
-    NodeSpec(type_idx=0, class_name="Ability", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="body", kind=5), FieldDesc(name="is_async", kind=2), FieldDesc(name="doc", kind=6), FieldDesc(name="access", kind=6), FieldDesc(name="name_ref", kind=6), FieldDesc(name="is_override", kind=2), FieldDesc(name="is_static", kind=2), FieldDesc(name="is_classmethod", kind=2), FieldDesc(name="is_abstract", kind=2), FieldDesc(name="signature", kind=6), FieldDesc(name="decorators", kind=5), FieldDesc(name="type_params", kind=5), FieldDesc(name="accessor_kind", kind=0), FieldDesc(name="event_triggers", kind=5))),
-    NodeSpec(type_idx=1, class_name="ArchBlockStmt", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=2, class_name="ArchHas", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="access", kind=6), FieldDesc(name="is_static", kind=2), FieldDesc(name="vars", kind=5), FieldDesc(name="is_frozen", kind=2))),
-    NodeSpec(type_idx=3, class_name="ArchSpec", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="is_async", kind=2), FieldDesc(name="decorators", kind=5))),
-    NodeSpec(type_idx=4, class_name="Archetype", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="is_async", kind=2), FieldDesc(name="body", kind=5), FieldDesc(name="access", kind=6), FieldDesc(name="decorators", kind=5), FieldDesc(name="name", kind=4), FieldDesc(name="arch_type", kind=4), FieldDesc(name="base_classes", kind=5), FieldDesc(name="type_params", kind=5), FieldDesc(name="src_endpoint", kind=6), FieldDesc(name="tgt_endpoint", kind=6))),
-    NodeSpec(type_idx=5, class_name="AssertStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="condition", kind=4), FieldDesc(name="error_msg", kind=6))),
-    NodeSpec(type_idx=6, class_name="AssignCompr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="assigns", kind=5),)),
-    NodeSpec(type_idx=7, class_name="Assignment", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="is_enum_stmt", kind=2), FieldDesc(name="type_tag", kind=6), FieldDesc(name="target", kind=5), FieldDesc(name="value", kind=6), FieldDesc(name="mutable", kind=2), FieldDesc(name="aug_op", kind=6), FieldDesc(name="na_move_lowerable", kind=2))),
-    NodeSpec(type_idx=8, class_name="AstAccessNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="access", kind=6),)),
-    NodeSpec(type_idx=9, class_name="AstAsyncNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="is_async", kind=2),)),
-    NodeSpec(type_idx=10, class_name="AstDocNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6),)),
-    NodeSpec(type_idx=11, class_name="AstElseBodyNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6),)),
-    NodeSpec(type_idx=12, class_name="AstImplNeedingNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="body", kind=6),)),
-    NodeSpec(type_idx=13, class_name="AstSymbolNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=14, class_name="AstSymbolStubNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=15, class_name="AstTypedVarNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="type_tag", kind=6),)),
-    NodeSpec(type_idx=16, class_name="AtomExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=17, class_name="AtomTrailer", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="target", kind=4), FieldDesc(name="right", kind=4), FieldDesc(name="is_attr", kind=2), FieldDesc(name="is_null_ok", kind=2), FieldDesc(name="is_genai", kind=2))),
-    NodeSpec(type_idx=18, class_name="AtomUnit", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="value", kind=4),)),
-    NodeSpec(type_idx=19, class_name="AwaitExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="target", kind=4),)),
-    NodeSpec(type_idx=20, class_name="AwaitingClause", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="body", kind=5),)),
-    NodeSpec(type_idx=21, class_name="BinaryExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="left", kind=4), FieldDesc(name="right", kind=4), FieldDesc(name="op", kind=4))),
-    NodeSpec(type_idx=22, class_name="Bool", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=23, class_name="BoolExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="op", kind=4), FieldDesc(name="values", kind=5))),
-    NodeSpec(type_idx=24, class_name="BuiltinType", is_scope=False, is_cfg=False, is_name_atom=True, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1), FieldDesc(name="is_enum_stmt", kind=2), FieldDesc(name="is_kwesc", kind=2))),
-    NodeSpec(type_idx=25, class_name="CastExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="value", kind=4), FieldDesc(name="cast_type", kind=4))),
-    NodeSpec(type_idx=26, class_name="CfgExpr", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="sc_true_target", kind=6), FieldDesc(name="sc_false_target", kind=6), FieldDesc(name="expr", kind=4))),
-    NodeSpec(type_idx=27, class_name="ClientBlock", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5), FieldDesc(name="implicit", kind=2))),
-    NodeSpec(type_idx=28, class_name="CodeBlockStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=29, class_name="CommentToken", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1), FieldDesc(name="is_inline", kind=2))),
-    NodeSpec(type_idx=30, class_name="CompareExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="left", kind=4), FieldDesc(name="rights", kind=5), FieldDesc(name="ops", kind=5))),
-    NodeSpec(type_idx=31, class_name="ConcurrentExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="tok", kind=6), FieldDesc(name="target", kind=4))),
-    NodeSpec(type_idx=32, class_name="ConditionalNode", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="sc_true_target", kind=6), FieldDesc(name="sc_false_target", kind=6))),
-    NodeSpec(type_idx=33, class_name="ConnectOp", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="conn_type", kind=6), FieldDesc(name="conn_assign", kind=6), FieldDesc(name="edge_dir", kind=3))),
-    NodeSpec(type_idx=34, class_name="ContextAwareNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=35, class_name="CtrlStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="ctrl", kind=4),)),
-    NodeSpec(type_idx=36, class_name="DeleteStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="target", kind=4),)),
-    NodeSpec(type_idx=37, class_name="DictCompr", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="kv_pair", kind=4), FieldDesc(name="compr", kind=5))),
-    NodeSpec(type_idx=38, class_name="DictVal", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="kv_pairs", kind=5),)),
-    NodeSpec(type_idx=39, class_name="DisconnectOp", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="edge_spec", kind=4),)),
-    NodeSpec(type_idx=40, class_name="DisengageStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=41, class_name="EdgeOpRef", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="filter_cond", kind=6), FieldDesc(name="edge_dir", kind=3))),
-    NodeSpec(type_idx=42, class_name="EdgeRefTrailer", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="chain", kind=5), FieldDesc(name="edges_only", kind=2), FieldDesc(name="is_async", kind=2))),
-    NodeSpec(type_idx=43, class_name="ElementStmt", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6),)),
-    NodeSpec(type_idx=44, class_name="Ellipsis", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=45, class_name="ElseIf", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6), FieldDesc(name="condition", kind=4), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=46, class_name="ElseStmt", is_scope=True, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="body", kind=5),)),
-    NodeSpec(type_idx=47, class_name="EmptyToken", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=6),)),
-    NodeSpec(type_idx=48, class_name="Enum", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="is_async", kind=2), FieldDesc(name="body", kind=5), FieldDesc(name="access", kind=6), FieldDesc(name="decorators", kind=5), FieldDesc(name="name", kind=4), FieldDesc(name="value_type", kind=6), FieldDesc(name="base_classes", kind=5))),
-    NodeSpec(type_idx=49, class_name="EnumBlockStmt", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="is_enum_stmt", kind=2),)),
-    NodeSpec(type_idx=50, class_name="EventSignature", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="event", kind=4), FieldDesc(name="arch_tag_info", kind=6))),
-    NodeSpec(type_idx=51, class_name="Except", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="ex_type", kind=4), FieldDesc(name="name", kind=6), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=52, class_name="Expr", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=53, class_name="ExprAsItem", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="expr", kind=4), FieldDesc(name="alias", kind=6))),
-    NodeSpec(type_idx=54, class_name="ExprStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="expr", kind=4), FieldDesc(name="in_fstring", kind=2))),
-    NodeSpec(type_idx=55, class_name="FString", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="start", kind=6), FieldDesc(name="parts", kind=5), FieldDesc(name="end", kind=6))),
-    NodeSpec(type_idx=56, class_name="FilterCompr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="f_type", kind=6), FieldDesc(name="compares", kind=5))),
-    NodeSpec(type_idx=57, class_name="FinallyStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="body", kind=5),)),
-    NodeSpec(type_idx=58, class_name="Float", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=59, class_name="FormattedValue", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="format_part", kind=4), FieldDesc(name="conversion", kind=1), FieldDesc(name="format_spec", kind=6))),
-    NodeSpec(type_idx=60, class_name="FuncCall", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="target", kind=4), FieldDesc(name="params", kind=5), FieldDesc(name="genai_call", kind=6), FieldDesc(name="call_kind", kind=7))),
-    NodeSpec(type_idx=61, class_name="FuncSignature", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="posonly_params", kind=5), FieldDesc(name="params", kind=5), FieldDesc(name="varargs", kind=6), FieldDesc(name="kwonlyargs", kind=5), FieldDesc(name="kwargs", kind=6), FieldDesc(name="return_type", kind=6))),
-    NodeSpec(type_idx=62, class_name="GenCompr", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="out_expr", kind=4), FieldDesc(name="compr", kind=5))),
-    NodeSpec(type_idx=63, class_name="GlobalStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="target", kind=5),)),
-    NodeSpec(type_idx=64, class_name="GlobalVars", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="access", kind=6), FieldDesc(name="doc", kind=6), FieldDesc(name="assignments", kind=5), FieldDesc(name="is_frozen", kind=2))),
-    NodeSpec(type_idx=65, class_name="HasVar", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="type_tag", kind=6), FieldDesc(name="name", kind=4), FieldDesc(name="value", kind=6), FieldDesc(name="defer", kind=2), FieldDesc(name="accessors", kind=11))),
-    NodeSpec(type_idx=66, class_name="IfElseExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="condition", kind=4), FieldDesc(name="value", kind=4), FieldDesc(name="else_value", kind=4))),
-    NodeSpec(type_idx=67, class_name="IfStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6), FieldDesc(name="condition", kind=4), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=68, class_name="ImplDef", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="decorators", kind=5), FieldDesc(name="target", kind=5), FieldDesc(name="spec", kind=5), FieldDesc(name="body", kind=5), FieldDesc(name="decl_link", kind=6))),
-    NodeSpec(type_idx=69, class_name="Import", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="from_loc", kind=6), FieldDesc(name="items", kind=5), FieldDesc(name="is_absorb", kind=2), FieldDesc(name="is_typed", kind=2), FieldDesc(name="clib_decls", kind=5))),
-    NodeSpec(type_idx=70, class_name="InForStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6), FieldDesc(name="is_async", kind=2), FieldDesc(name="target", kind=4), FieldDesc(name="collection", kind=4), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=71, class_name="IndexSlice", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="slices", kind=5), FieldDesc(name="is_range", kind=2))),
-    NodeSpec(type_idx=72, class_name="InnerCompr", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="is_async", kind=2), FieldDesc(name="target", kind=4), FieldDesc(name="collection", kind=4), FieldDesc(name="conditional", kind=5))),
-    NodeSpec(type_idx=73, class_name="Int", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=74, class_name="IterForStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6), FieldDesc(name="is_async", kind=2), FieldDesc(name="iter", kind=4), FieldDesc(name="condition", kind=4), FieldDesc(name="count_by", kind=4), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=75, class_name="JsxAttribute", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=76, class_name="JsxChild", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=77, class_name="JsxComment", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="value", kind=4),)),
-    NodeSpec(type_idx=78, class_name="JsxElement", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="name", kind=6), FieldDesc(name="attributes", kind=5), FieldDesc(name="children", kind=5), FieldDesc(name="is_self_closing", kind=2), FieldDesc(name="is_fragment", kind=2), FieldDesc(name="dynamic_tag", kind=6))),
-    NodeSpec(type_idx=79, class_name="JsxElementName", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="parts", kind=5),)),
-    NodeSpec(type_idx=80, class_name="JsxExpression", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="expr", kind=4),)),
-    NodeSpec(type_idx=81, class_name="JsxNormalAttribute", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="name", kind=4), FieldDesc(name="value", kind=6), FieldDesc(name="is_shorthand", kind=2))),
-    NodeSpec(type_idx=82, class_name="JsxSlot", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="body", kind=5),)),
-    NodeSpec(type_idx=83, class_name="JsxSpreadAttribute", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="expr", kind=4),)),
-    NodeSpec(type_idx=84, class_name="JsxText", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="value", kind=4),)),
-    NodeSpec(type_idx=85, class_name="KVPair", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="key", kind=6), FieldDesc(name="value", kind=4))),
-    NodeSpec(type_idx=86, class_name="KWPair", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="key", kind=6), FieldDesc(name="value", kind=4))),
-    NodeSpec(type_idx=87, class_name="LambdaExpr", is_scope=True, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="body", kind=4), FieldDesc(name="signature", kind=6))),
-    NodeSpec(type_idx=88, class_name="ListCompr", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="out_expr", kind=4), FieldDesc(name="compr", kind=5))),
-    NodeSpec(type_idx=89, class_name="ListVal", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="values", kind=5),)),
-    NodeSpec(type_idx=90, class_name="Literal", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=91, class_name="MatchArch", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="name", kind=4), FieldDesc(name="arg_patterns", kind=5), FieldDesc(name="kw_patterns", kind=5))),
-    NodeSpec(type_idx=92, class_name="MatchAs", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="name", kind=4), FieldDesc(name="pattern", kind=6))),
-    NodeSpec(type_idx=93, class_name="MatchCase", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="pattern", kind=4), FieldDesc(name="guard", kind=6), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=94, class_name="MatchKVPair", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="key", kind=4), FieldDesc(name="value", kind=4))),
-    NodeSpec(type_idx=95, class_name="MatchMapping", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="values", kind=5),)),
-    NodeSpec(type_idx=96, class_name="MatchOr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="patterns", kind=5),)),
-    NodeSpec(type_idx=97, class_name="MatchPattern", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=98, class_name="MatchSequence", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="values", kind=5),)),
-    NodeSpec(type_idx=99, class_name="MatchSingleton", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="value", kind=4),)),
-    NodeSpec(type_idx=100, class_name="MatchStar", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="name", kind=4), FieldDesc(name="is_list", kind=2))),
-    NodeSpec(type_idx=101, class_name="MatchStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="target", kind=4), FieldDesc(name="cases", kind=5))),
-    NodeSpec(type_idx=102, class_name="MatchValue", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="value", kind=4),)),
-    NodeSpec(type_idx=103, class_name="MatchWild", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=104, class_name="Module", is_scope=True, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="name", kind=0), FieldDesc(name="source", kind=4), FieldDesc(name="body", kind=5), FieldDesc(name="terminals", kind=5), FieldDesc(name="stub_only", kind=2), FieldDesc(name="src_terminals", kind=5), FieldDesc(name="is_raised_from_py", kind=2))),
-    NodeSpec(type_idx=105, class_name="ModuleCode", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="is_enum_stmt", kind=2), FieldDesc(name="doc", kind=6), FieldDesc(name="name", kind=6), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=106, class_name="ModuleItem", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="name", kind=4), FieldDesc(name="alias", kind=6))),
-    NodeSpec(type_idx=107, class_name="ModulePath", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="path", kind=5), FieldDesc(name="level", kind=1), FieldDesc(name="alias", kind=6))),
-    NodeSpec(type_idx=108, class_name="MultiString", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="strings", kind=5),)),
-    NodeSpec(type_idx=109, class_name="Name", is_scope=False, is_cfg=False, is_name_atom=True, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1), FieldDesc(name="is_enum_stmt", kind=2), FieldDesc(name="is_kwesc", kind=2))),
-    NodeSpec(type_idx=110, class_name="NameAtom", is_scope=False, is_cfg=False, is_name_atom=True, fields=(FieldDesc(name="is_enum_stmt", kind=2), FieldDesc(name="is_getattr_resolved", kind=2))),
-    NodeSpec(type_idx=111, class_name="NativeBlock", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5), FieldDesc(name="implicit", kind=2))),
-    NodeSpec(type_idx=112, class_name="NonLocalStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="target", kind=5),)),
-    NodeSpec(type_idx=113, class_name="Null", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=114, class_name="ParamVar", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="type_tag", kind=6), FieldDesc(name="name", kind=4), FieldDesc(name="unpack", kind=6), FieldDesc(name="value", kind=6))),
-    NodeSpec(type_idx=115, class_name="ProgramModule", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="main_mod", kind=6),)),
-    NodeSpec(type_idx=116, class_name="PyInlineCode", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="is_enum_stmt", kind=2), FieldDesc(name="doc", kind=6), FieldDesc(name="code", kind=4))),
-    NodeSpec(type_idx=117, class_name="PythonModuleAst", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="ast", kind=10), FieldDesc(name="orig_src", kind=4))),
-    NodeSpec(type_idx=118, class_name="RaiseStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="cause", kind=6), FieldDesc(name="from_target", kind=6))),
-    NodeSpec(type_idx=119, class_name="RegionStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="body", kind=5),)),
-    NodeSpec(type_idx=120, class_name="ReportStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="expr", kind=4),)),
-    NodeSpec(type_idx=121, class_name="ReturnStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="expr", kind=6),)),
-    NodeSpec(type_idx=122, class_name="SemDef", is_scope=True, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="target", kind=5), FieldDesc(name="value", kind=4))),
-    NodeSpec(type_idx=123, class_name="Semi", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=124, class_name="ServerBlock", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5), FieldDesc(name="implicit", kind=2))),
-    NodeSpec(type_idx=125, class_name="SetCompr", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="out_expr", kind=4), FieldDesc(name="compr", kind=5))),
-    NodeSpec(type_idx=126, class_name="SetVal", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="values", kind=5),)),
-    NodeSpec(type_idx=127, class_name="Slice", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="start", kind=6), FieldDesc(name="stop", kind=6), FieldDesc(name="step", kind=6))),
-    NodeSpec(type_idx=128, class_name="Source", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="source", kind=0), FieldDesc(name="mod_path", kind=0))),
-    NodeSpec(type_idx=129, class_name="SpecialVarRef", is_scope=False, is_cfg=False, is_name_atom=True, fields=(FieldDesc(name="name", kind=0), FieldDesc(name="is_enum_stmt", kind=2), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1), FieldDesc(name="is_kwesc", kind=2))),
-    NodeSpec(type_idx=130, class_name="String", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=131, class_name="SubTag", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="tag", kind=4), FieldDesc(name="ownership", kind=3))),
-    NodeSpec(type_idx=132, class_name="SwitchCase", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="pattern", kind=6), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=133, class_name="SwitchStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="target", kind=4), FieldDesc(name="cases", kind=5))),
-    NodeSpec(type_idx=134, class_name="Test", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="name", kind=4), FieldDesc(name="body", kind=5), FieldDesc(name="description", kind=6), FieldDesc(name="decorators", kind=5))),
-    NodeSpec(type_idx=135, class_name="Token", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="orig_src", kind=4), FieldDesc(name="name", kind=0), FieldDesc(name="value", kind=0), FieldDesc(name="line", kind=1), FieldDesc(name="end_line", kind=1), FieldDesc(name="col_start", kind=1), FieldDesc(name="col_end", kind=1), FieldDesc(name="pos_start", kind=1), FieldDesc(name="pos_end", kind=1))),
-    NodeSpec(type_idx=136, class_name="TryStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6), FieldDesc(name="body", kind=5), FieldDesc(name="excepts", kind=5), FieldDesc(name="awaiting_body", kind=6), FieldDesc(name="finally_body", kind=6))),
-    NodeSpec(type_idx=137, class_name="TupleVal", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="values", kind=5),)),
-    NodeSpec(type_idx=138, class_name="TypeAlias", is_scope=True, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="access", kind=6), FieldDesc(name="name", kind=4), FieldDesc(name="type_params", kind=5), FieldDesc(name="value", kind=4))),
-    NodeSpec(type_idx=139, class_name="TypeParam", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="name", kind=4), FieldDesc(name="bound", kind=6), FieldDesc(name="default_val", kind=6))),
-    NodeSpec(type_idx=140, class_name="TypedCtxBlock", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="type_ctx", kind=4), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=141, class_name="UnaryExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="operand", kind=4), FieldDesc(name="op", kind=4), FieldDesc(name="ownership", kind=3))),
-    NodeSpec(type_idx=142, class_name="UniCFGNode", is_scope=False, is_cfg=True, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=143, class_name="UniScopeNode", is_scope=True, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=144, class_name="VisitStmt", is_scope=False, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6), FieldDesc(name="insert_loc", kind=6), FieldDesc(name="target", kind=4))),
-    NodeSpec(type_idx=145, class_name="WalkerStmtOnlyNode", is_scope=False, is_cfg=False, is_name_atom=False, fields=()),
-    NodeSpec(type_idx=146, class_name="WhileStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="else_body", kind=6), FieldDesc(name="condition", kind=4), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=147, class_name="WithStmt", is_scope=True, is_cfg=True, is_name_atom=False, fields=(FieldDesc(name="is_async", kind=2), FieldDesc(name="exprs", kind=5), FieldDesc(name="body", kind=5))),
-    NodeSpec(type_idx=148, class_name="YieldExpr", is_scope=False, is_cfg=False, is_name_atom=False, fields=(FieldDesc(name="expr", kind=6), FieldDesc(name="with_from", kind=2))),
-),
+         NodeSpec(
+             type_idx=0,
+             class_name="Ability",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="access", kind=6),
+                 FieldDesc(name="name_ref", kind=6),
+                 FieldDesc(name="is_override", kind=2),
+                 FieldDesc(name="is_static", kind=2),
+                 FieldDesc(name="is_classmethod", kind=2),
+                 FieldDesc(name="is_abstract", kind=2),
+                 FieldDesc(name="signature", kind=6),
+                 FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="type_params", kind=5),
+                 FieldDesc(name="accessor_kind", kind=0),
+                 FieldDesc(name="event_triggers", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=1,
+             class_name="ArchBlockStmt",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=2,
+             class_name="ArchHas",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="access", kind=6),
+                 FieldDesc(name="is_static", kind=2),
+                 FieldDesc(name="vars", kind=5),
+                 FieldDesc(name="is_frozen", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=3,
+             class_name="ArchSpec",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="decorators", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=4,
+             class_name="Archetype",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="access", kind=6),
+                 FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="arch_type", kind=4),
+                 FieldDesc(name="base_classes", kind=5),
+                 FieldDesc(name="type_params", kind=5),
+                 FieldDesc(name="src_endpoint", kind=6),
+                 FieldDesc(name="tgt_endpoint", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=5,
+             class_name="AssertStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="condition", kind=4),
+                 FieldDesc(name="error_msg", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=6,
+             class_name="AssignCompr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="assigns", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=7,
+             class_name="Assignment",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="type_tag", kind=6),
+                 FieldDesc(name="target", kind=5),
+                 FieldDesc(name="value", kind=6),
+                 FieldDesc(name="mutable", kind=2),
+                 FieldDesc(name="aug_op", kind=6),
+                 FieldDesc(name="na_move_lowerable", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=8,
+             class_name="AstAccessNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="access", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=9,
+             class_name="AstAsyncNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="is_async", kind=2), )
+         ),
+         NodeSpec(
+             type_idx=10,
+             class_name="AstDocNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="doc", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=11,
+             class_name="AstElseBodyNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="else_body", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=12,
+             class_name="AstImplNeedingNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=13,
+             class_name="AstSymbolNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=14,
+             class_name="AstSymbolStubNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=15,
+             class_name="AstTypedVarNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="type_tag", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=16,
+             class_name="AtomExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=17,
+             class_name="AtomTrailer",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="target", kind=4),
+                 FieldDesc(name="right", kind=4),
+                 FieldDesc(name="is_attr", kind=2),
+                 FieldDesc(name="is_null_ok", kind=2),
+                 FieldDesc(name="is_genai", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=18,
+             class_name="AtomUnit",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="value", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=19,
+             class_name="AwaitExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=20,
+             class_name="AwaitingClause",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=21,
+             class_name="BinaryExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="left", kind=4),
+                 FieldDesc(name="right", kind=4),
+                 FieldDesc(name="op", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=22,
+             class_name="Bool",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=23,
+             class_name="BoolExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="op", kind=4), FieldDesc(name="values", kind=5))
+         ),
+         NodeSpec(
+             type_idx=24,
+             class_name="BuiltinType",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=True,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1),
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="is_kwesc", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=25,
+             class_name="CastExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="value", kind=4),
+                 FieldDesc(name="cast_type", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=26,
+             class_name="CfgExpr",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="sc_true_target", kind=6),
+                 FieldDesc(name="sc_false_target", kind=6),
+                 FieldDesc(name="expr", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=27,
+             class_name="ClientBlock",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="implicit", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=28,
+             class_name="CodeBlockStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=29,
+             class_name="CommentToken",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1),
+                 FieldDesc(name="is_inline", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=30,
+             class_name="CompareExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="left", kind=4),
+                 FieldDesc(name="rights", kind=5),
+                 FieldDesc(name="ops", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=31,
+             class_name="ConcurrentExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="tok", kind=6), FieldDesc(name="target", kind=4))
+         ),
+         NodeSpec(
+             type_idx=32,
+             class_name="ConditionalNode",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="sc_true_target", kind=6),
+                 FieldDesc(name="sc_false_target", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=33,
+             class_name="ConnectOp",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="conn_type", kind=6),
+                 FieldDesc(name="conn_assign", kind=6),
+                 FieldDesc(name="edge_dir", kind=3)
+             )
+         ),
+         NodeSpec(
+             type_idx=34,
+             class_name="ContextAwareNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=35,
+             class_name="CtrlStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="ctrl", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=36,
+             class_name="DeleteStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=37,
+             class_name="DictCompr",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="kv_pair", kind=4), FieldDesc(name="compr", kind=5))
+         ),
+         NodeSpec(
+             type_idx=38,
+             class_name="DictVal",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="kv_pairs", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=39,
+             class_name="DisconnectOp",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="edge_spec", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=40,
+             class_name="DisengageStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=41,
+             class_name="EdgeOpRef",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="filter_cond", kind=6),
+                 FieldDesc(name="edge_dir", kind=3)
+             )
+         ),
+         NodeSpec(
+             type_idx=42,
+             class_name="EdgeRefTrailer",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="chain", kind=5),
+                 FieldDesc(name="edges_only", kind=2),
+                 FieldDesc(name="is_async", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=43,
+             class_name="ElementStmt",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="doc", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=44,
+             class_name="Ellipsis",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=45,
+             class_name="ElseIf",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="else_body", kind=6),
+                 FieldDesc(name="condition", kind=4),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=46,
+             class_name="ElseStmt",
+             is_scope=True,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=47,
+             class_name="EmptyToken",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="orig_src", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=48,
+             class_name="Enum",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="access", kind=6),
+                 FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="value_type", kind=6),
+                 FieldDesc(name="base_classes", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=49,
+             class_name="EnumBlockStmt",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="is_enum_stmt", kind=2), )
+         ),
+         NodeSpec(
+             type_idx=50,
+             class_name="EventSignature",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="event", kind=4),
+                 FieldDesc(name="arch_tag_info", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=51,
+             class_name="Except",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="ex_type", kind=4),
+                 FieldDesc(name="name", kind=6),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=52,
+             class_name="Expr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=53,
+             class_name="ExprAsItem",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="expr", kind=4), FieldDesc(name="alias", kind=6))
+         ),
+         NodeSpec(
+             type_idx=54,
+             class_name="ExprStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="expr", kind=4),
+                 FieldDesc(name="in_fstring", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=55,
+             class_name="FString",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="start", kind=6),
+                 FieldDesc(name="parts", kind=5),
+                 FieldDesc(name="end", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=56,
+             class_name="FilterCompr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="f_type", kind=6),
+                 FieldDesc(name="compares", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=57,
+             class_name="FinallyStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=58,
+             class_name="Float",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=59,
+             class_name="FormattedValue",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="format_part", kind=4),
+                 FieldDesc(name="conversion", kind=1),
+                 FieldDesc(name="format_spec", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=60,
+             class_name="FuncCall",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="target", kind=4),
+                 FieldDesc(name="params", kind=5),
+                 FieldDesc(name="genai_call", kind=6),
+                 FieldDesc(name="call_kind", kind=7)
+             )
+         ),
+         NodeSpec(
+             type_idx=61,
+             class_name="FuncSignature",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="posonly_params", kind=5),
+                 FieldDesc(name="params", kind=5),
+                 FieldDesc(name="varargs", kind=6),
+                 FieldDesc(name="kwonlyargs", kind=5),
+                 FieldDesc(name="kwargs", kind=6),
+                 FieldDesc(name="return_type", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=62,
+             class_name="GenCompr",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="out_expr", kind=4),
+                 FieldDesc(name="compr", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=63,
+             class_name="GlobalStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=64,
+             class_name="GlobalVars",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="access", kind=6),
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="assignments", kind=5),
+                 FieldDesc(name="is_frozen", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=65,
+             class_name="HasVar",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="type_tag", kind=6),
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="value", kind=6),
+                 FieldDesc(name="defer", kind=2),
+                 FieldDesc(name="accessors", kind=11)
+             )
+         ),
+         NodeSpec(
+             type_idx=66,
+             class_name="IfElseExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="condition", kind=4),
+                 FieldDesc(name="value", kind=4),
+                 FieldDesc(name="else_value", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=67,
+             class_name="IfStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="else_body", kind=6),
+                 FieldDesc(name="condition", kind=4),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=68,
+             class_name="ImplDef",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="decorators", kind=5),
+                 FieldDesc(name="target", kind=5),
+                 FieldDesc(name="spec", kind=5),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="decl_link", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=69,
+             class_name="Import",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="from_loc", kind=6),
+                 FieldDesc(name="items", kind=5),
+                 FieldDesc(name="is_absorb", kind=2),
+                 FieldDesc(name="is_typed", kind=2),
+                 FieldDesc(name="clib_decls", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=70,
+             class_name="InForStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="else_body", kind=6),
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="target", kind=4),
+                 FieldDesc(name="collection", kind=4),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=71,
+             class_name="IndexSlice",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="slices", kind=5),
+                 FieldDesc(name="is_range", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=72,
+             class_name="InnerCompr",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="target", kind=4),
+                 FieldDesc(name="collection", kind=4),
+                 FieldDesc(name="conditional", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=73,
+             class_name="Int",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=74,
+             class_name="IterForStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="else_body", kind=6),
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="iter", kind=4),
+                 FieldDesc(name="condition", kind=4),
+                 FieldDesc(name="count_by", kind=4),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=75,
+             class_name="JsxAttribute",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=76,
+             class_name="JsxChild",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=77,
+             class_name="JsxComment",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="value", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=78,
+             class_name="JsxElement",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="name", kind=6),
+                 FieldDesc(name="attributes", kind=5),
+                 FieldDesc(name="children", kind=5),
+                 FieldDesc(name="is_self_closing", kind=2),
+                 FieldDesc(name="is_fragment", kind=2),
+                 FieldDesc(name="dynamic_tag", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=79,
+             class_name="JsxElementName",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="parts", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=80,
+             class_name="JsxExpression",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="expr", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=81,
+             class_name="JsxNormalAttribute",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="value", kind=6),
+                 FieldDesc(name="is_shorthand", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=82,
+             class_name="JsxSlot",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=83,
+             class_name="JsxSpreadAttribute",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="expr", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=84,
+             class_name="JsxText",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="value", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=85,
+             class_name="KVPair",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="key", kind=6), FieldDesc(name="value", kind=4))
+         ),
+         NodeSpec(
+             type_idx=86,
+             class_name="KWPair",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="key", kind=6), FieldDesc(name="value", kind=4))
+         ),
+         NodeSpec(
+             type_idx=87,
+             class_name="LambdaExpr",
+             is_scope=True,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="body", kind=4),
+                 FieldDesc(name="signature", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=88,
+             class_name="ListCompr",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="out_expr", kind=4),
+                 FieldDesc(name="compr", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=89,
+             class_name="ListVal",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="values", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=90,
+             class_name="Literal",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=91,
+             class_name="MatchArch",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="arg_patterns", kind=5),
+                 FieldDesc(name="kw_patterns", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=92,
+             class_name="MatchAs",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="name", kind=4), FieldDesc(name="pattern", kind=6))
+         ),
+         NodeSpec(
+             type_idx=93,
+             class_name="MatchCase",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="pattern", kind=4),
+                 FieldDesc(name="guard", kind=6),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=94,
+             class_name="MatchKVPair",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="key", kind=4), FieldDesc(name="value", kind=4))
+         ),
+         NodeSpec(
+             type_idx=95,
+             class_name="MatchMapping",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="values", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=96,
+             class_name="MatchOr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="patterns", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=97,
+             class_name="MatchPattern",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=98,
+             class_name="MatchSequence",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="values", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=99,
+             class_name="MatchSingleton",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="value", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=100,
+             class_name="MatchStar",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="name", kind=4), FieldDesc(name="is_list", kind=2))
+         ),
+         NodeSpec(
+             type_idx=101,
+             class_name="MatchStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=4), FieldDesc(name="cases", kind=5))
+         ),
+         NodeSpec(
+             type_idx=102,
+             class_name="MatchValue",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="value", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=103,
+             class_name="MatchWild",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=104,
+             class_name="Module",
+             is_scope=True,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="source", kind=4),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="terminals", kind=5),
+                 FieldDesc(name="stub_only", kind=2),
+                 FieldDesc(name="src_terminals", kind=5),
+                 FieldDesc(name="is_raised_from_py", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=105,
+             class_name="ModuleCode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="name", kind=6),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=106,
+             class_name="ModuleItem",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="name", kind=4), FieldDesc(name="alias", kind=6))
+         ),
+         NodeSpec(
+             type_idx=107,
+             class_name="ModulePath",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="path", kind=5),
+                 FieldDesc(name="level", kind=1),
+                 FieldDesc(name="alias", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=108,
+             class_name="MultiString",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="strings", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=109,
+             class_name="Name",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=True,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1),
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="is_kwesc", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=110,
+             class_name="NameAtom",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=True,
+             fields=(
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="is_getattr_resolved", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=111,
+             class_name="NativeBlock",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="implicit", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=112,
+             class_name="NonLocalStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=113,
+             class_name="Null",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=114,
+             class_name="ParamVar",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="type_tag", kind=6),
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="unpack", kind=6),
+                 FieldDesc(name="value", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=115,
+             class_name="ProgramModule",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="main_mod", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=116,
+             class_name="PyInlineCode",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="code", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=117,
+             class_name="PythonModuleAst",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="ast", kind=10), FieldDesc(name="orig_src", kind=4))
+         ),
+         NodeSpec(
+             type_idx=118,
+             class_name="RaiseStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="cause", kind=6),
+                 FieldDesc(name="from_target", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=119,
+             class_name="RegionStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=120,
+             class_name="ReportStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="expr", kind=4), )
+         ),
+         NodeSpec(
+             type_idx=121,
+             class_name="ReturnStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="expr", kind=6), )
+         ),
+         NodeSpec(
+             type_idx=122,
+             class_name="SemDef",
+             is_scope=True,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="target", kind=5),
+                 FieldDesc(name="value", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=123,
+             class_name="Semi",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=124,
+             class_name="ServerBlock",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="implicit", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=125,
+             class_name="SetCompr",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="out_expr", kind=4),
+                 FieldDesc(name="compr", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=126,
+             class_name="SetVal",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="values", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=127,
+             class_name="Slice",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="start", kind=6),
+                 FieldDesc(name="stop", kind=6),
+                 FieldDesc(name="step", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=128,
+             class_name="Source",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="source", kind=0),
+                 FieldDesc(name="mod_path", kind=0)
+             )
+         ),
+         NodeSpec(
+             type_idx=129,
+             class_name="SpecialVarRef",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=True,
+             fields=(
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="is_enum_stmt", kind=2),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1),
+                 FieldDesc(name="is_kwesc", kind=2)
+             )
+         ),
+         NodeSpec(
+             type_idx=130,
+             class_name="String",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=131,
+             class_name="SubTag",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="tag", kind=4), FieldDesc(name="ownership", kind=3))
+         ),
+         NodeSpec(
+             type_idx=132,
+             class_name="SwitchCase",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="pattern", kind=6), FieldDesc(name="body", kind=5))
+         ),
+         NodeSpec(
+             type_idx=133,
+             class_name="SwitchStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="target", kind=4), FieldDesc(name="cases", kind=5))
+         ),
+         NodeSpec(
+             type_idx=134,
+             class_name="Test",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="description", kind=6),
+                 FieldDesc(name="decorators", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=135,
+             class_name="Token",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="orig_src", kind=4),
+                 FieldDesc(name="name", kind=0),
+                 FieldDesc(name="value", kind=0),
+                 FieldDesc(name="line", kind=1),
+                 FieldDesc(name="end_line", kind=1),
+                 FieldDesc(name="col_start", kind=1),
+                 FieldDesc(name="col_end", kind=1),
+                 FieldDesc(name="pos_start", kind=1),
+                 FieldDesc(name="pos_end", kind=1)
+             )
+         ),
+         NodeSpec(
+             type_idx=136,
+             class_name="TryStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="else_body", kind=6),
+                 FieldDesc(name="body", kind=5),
+                 FieldDesc(name="excepts", kind=5),
+                 FieldDesc(name="awaiting_body", kind=6),
+                 FieldDesc(name="finally_body", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=137,
+             class_name="TupleVal",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="values", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=138,
+             class_name="TypeAlias",
+             is_scope=True,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="doc", kind=6),
+                 FieldDesc(name="access", kind=6),
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="type_params", kind=5),
+                 FieldDesc(name="value", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=139,
+             class_name="TypeParam",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="bound", kind=6),
+                 FieldDesc(name="default_val", kind=6)
+             )
+         ),
+         NodeSpec(
+             type_idx=140,
+             class_name="TypedCtxBlock",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="type_ctx", kind=4), FieldDesc(name="body", kind=5))
+         ),
+         NodeSpec(
+             type_idx=141,
+             class_name="UnaryExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="operand", kind=4),
+                 FieldDesc(name="op", kind=4),
+                 FieldDesc(name="ownership", kind=3)
+             )
+         ),
+         NodeSpec(
+             type_idx=142,
+             class_name="UniCFGNode",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=143,
+             class_name="UniScopeNode",
+             is_scope=True,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=144,
+             class_name="VisitStmt",
+             is_scope=False,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="else_body", kind=6),
+                 FieldDesc(name="insert_loc", kind=6),
+                 FieldDesc(name="target", kind=4)
+             )
+         ),
+         NodeSpec(
+             type_idx=145,
+             class_name="WalkerStmtOnlyNode",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=()
+         ),
+         NodeSpec(
+             type_idx=146,
+             class_name="WhileStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="else_body", kind=6),
+                 FieldDesc(name="condition", kind=4),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=147,
+             class_name="WithStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="is_async", kind=2),
+                 FieldDesc(name="exprs", kind=5),
+                 FieldDesc(name="body", kind=5)
+             )
+         ),
+         NodeSpec(
+             type_idx=148,
+             class_name="YieldExpr",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(
+                 FieldDesc(name="expr", kind=6),
+                 FieldDesc(name="with_from", kind=2)
+             )
+         ),
+
+     ),
      NAME_TO_IDX: dict[str, int] = {
-    "Ability": 0,
-    "ArchBlockStmt": 1,
-    "ArchHas": 2,
-    "ArchSpec": 3,
-    "Archetype": 4,
-    "AssertStmt": 5,
-    "AssignCompr": 6,
-    "Assignment": 7,
-    "AstAccessNode": 8,
-    "AstAsyncNode": 9,
-    "AstDocNode": 10,
-    "AstElseBodyNode": 11,
-    "AstImplNeedingNode": 12,
-    "AstSymbolNode": 13,
-    "AstSymbolStubNode": 14,
-    "AstTypedVarNode": 15,
-    "AtomExpr": 16,
-    "AtomTrailer": 17,
-    "AtomUnit": 18,
-    "AwaitExpr": 19,
-    "AwaitingClause": 20,
-    "BinaryExpr": 21,
-    "Bool": 22,
-    "BoolExpr": 23,
-    "BuiltinType": 24,
-    "CastExpr": 25,
-    "CfgExpr": 26,
-    "ClientBlock": 27,
-    "CodeBlockStmt": 28,
-    "CommentToken": 29,
-    "CompareExpr": 30,
-    "ConcurrentExpr": 31,
-    "ConditionalNode": 32,
-    "ConnectOp": 33,
-    "ContextAwareNode": 34,
-    "CtrlStmt": 35,
-    "DeleteStmt": 36,
-    "DictCompr": 37,
-    "DictVal": 38,
-    "DisconnectOp": 39,
-    "DisengageStmt": 40,
-    "EdgeOpRef": 41,
-    "EdgeRefTrailer": 42,
-    "ElementStmt": 43,
-    "Ellipsis": 44,
-    "ElseIf": 45,
-    "ElseStmt": 46,
-    "EmptyToken": 47,
-    "Enum": 48,
-    "EnumBlockStmt": 49,
-    "EventSignature": 50,
-    "Except": 51,
-    "Expr": 52,
-    "ExprAsItem": 53,
-    "ExprStmt": 54,
-    "FString": 55,
-    "FilterCompr": 56,
-    "FinallyStmt": 57,
-    "Float": 58,
-    "FormattedValue": 59,
-    "FuncCall": 60,
-    "FuncSignature": 61,
-    "GenCompr": 62,
-    "GlobalStmt": 63,
-    "GlobalVars": 64,
-    "HasVar": 65,
-    "IfElseExpr": 66,
-    "IfStmt": 67,
-    "ImplDef": 68,
-    "Import": 69,
-    "InForStmt": 70,
-    "IndexSlice": 71,
-    "InnerCompr": 72,
-    "Int": 73,
-    "IterForStmt": 74,
-    "JsxAttribute": 75,
-    "JsxChild": 76,
-    "JsxComment": 77,
-    "JsxElement": 78,
-    "JsxElementName": 79,
-    "JsxExpression": 80,
-    "JsxNormalAttribute": 81,
-    "JsxSlot": 82,
-    "JsxSpreadAttribute": 83,
-    "JsxText": 84,
-    "KVPair": 85,
-    "KWPair": 86,
-    "LambdaExpr": 87,
-    "ListCompr": 88,
-    "ListVal": 89,
-    "Literal": 90,
-    "MatchArch": 91,
-    "MatchAs": 92,
-    "MatchCase": 93,
-    "MatchKVPair": 94,
-    "MatchMapping": 95,
-    "MatchOr": 96,
-    "MatchPattern": 97,
-    "MatchSequence": 98,
-    "MatchSingleton": 99,
-    "MatchStar": 100,
-    "MatchStmt": 101,
-    "MatchValue": 102,
-    "MatchWild": 103,
-    "Module": 104,
-    "ModuleCode": 105,
-    "ModuleItem": 106,
-    "ModulePath": 107,
-    "MultiString": 108,
-    "Name": 109,
-    "NameAtom": 110,
-    "NativeBlock": 111,
-    "NonLocalStmt": 112,
-    "Null": 113,
-    "ParamVar": 114,
-    "ProgramModule": 115,
-    "PyInlineCode": 116,
-    "PythonModuleAst": 117,
-    "RaiseStmt": 118,
-    "RegionStmt": 119,
-    "ReportStmt": 120,
-    "ReturnStmt": 121,
-    "SemDef": 122,
-    "Semi": 123,
-    "ServerBlock": 124,
-    "SetCompr": 125,
-    "SetVal": 126,
-    "Slice": 127,
-    "Source": 128,
-    "SpecialVarRef": 129,
-    "String": 130,
-    "SubTag": 131,
-    "SwitchCase": 132,
-    "SwitchStmt": 133,
-    "Test": 134,
-    "Token": 135,
-    "TryStmt": 136,
-    "TupleVal": 137,
-    "TypeAlias": 138,
-    "TypeParam": 139,
-    "TypedCtxBlock": 140,
-    "UnaryExpr": 141,
-    "UniCFGNode": 142,
-    "UniScopeNode": 143,
-    "VisitStmt": 144,
-    "WalkerStmtOnlyNode": 145,
-    "WhileStmt": 146,
-    "WithStmt": 147,
-    "YieldExpr": 148,
+         "Ability": 0,
+         "ArchBlockStmt": 1,
+         "ArchHas": 2,
+         "ArchSpec": 3,
+         "Archetype": 4,
+         "AssertStmt": 5,
+         "AssignCompr": 6,
+         "Assignment": 7,
+         "AstAccessNode": 8,
+         "AstAsyncNode": 9,
+         "AstDocNode": 10,
+         "AstElseBodyNode": 11,
+         "AstImplNeedingNode": 12,
+         "AstSymbolNode": 13,
+         "AstSymbolStubNode": 14,
+         "AstTypedVarNode": 15,
+         "AtomExpr": 16,
+         "AtomTrailer": 17,
+         "AtomUnit": 18,
+         "AwaitExpr": 19,
+         "AwaitingClause": 20,
+         "BinaryExpr": 21,
+         "Bool": 22,
+         "BoolExpr": 23,
+         "BuiltinType": 24,
+         "CastExpr": 25,
+         "CfgExpr": 26,
+         "ClientBlock": 27,
+         "CodeBlockStmt": 28,
+         "CommentToken": 29,
+         "CompareExpr": 30,
+         "ConcurrentExpr": 31,
+         "ConditionalNode": 32,
+         "ConnectOp": 33,
+         "ContextAwareNode": 34,
+         "CtrlStmt": 35,
+         "DeleteStmt": 36,
+         "DictCompr": 37,
+         "DictVal": 38,
+         "DisconnectOp": 39,
+         "DisengageStmt": 40,
+         "EdgeOpRef": 41,
+         "EdgeRefTrailer": 42,
+         "ElementStmt": 43,
+         "Ellipsis": 44,
+         "ElseIf": 45,
+         "ElseStmt": 46,
+         "EmptyToken": 47,
+         "Enum": 48,
+         "EnumBlockStmt": 49,
+         "EventSignature": 50,
+         "Except": 51,
+         "Expr": 52,
+         "ExprAsItem": 53,
+         "ExprStmt": 54,
+         "FString": 55,
+         "FilterCompr": 56,
+         "FinallyStmt": 57,
+         "Float": 58,
+         "FormattedValue": 59,
+         "FuncCall": 60,
+         "FuncSignature": 61,
+         "GenCompr": 62,
+         "GlobalStmt": 63,
+         "GlobalVars": 64,
+         "HasVar": 65,
+         "IfElseExpr": 66,
+         "IfStmt": 67,
+         "ImplDef": 68,
+         "Import": 69,
+         "InForStmt": 70,
+         "IndexSlice": 71,
+         "InnerCompr": 72,
+         "Int": 73,
+         "IterForStmt": 74,
+         "JsxAttribute": 75,
+         "JsxChild": 76,
+         "JsxComment": 77,
+         "JsxElement": 78,
+         "JsxElementName": 79,
+         "JsxExpression": 80,
+         "JsxNormalAttribute": 81,
+         "JsxSlot": 82,
+         "JsxSpreadAttribute": 83,
+         "JsxText": 84,
+         "KVPair": 85,
+         "KWPair": 86,
+         "LambdaExpr": 87,
+         "ListCompr": 88,
+         "ListVal": 89,
+         "Literal": 90,
+         "MatchArch": 91,
+         "MatchAs": 92,
+         "MatchCase": 93,
+         "MatchKVPair": 94,
+         "MatchMapping": 95,
+         "MatchOr": 96,
+         "MatchPattern": 97,
+         "MatchSequence": 98,
+         "MatchSingleton": 99,
+         "MatchStar": 100,
+         "MatchStmt": 101,
+         "MatchValue": 102,
+         "MatchWild": 103,
+         "Module": 104,
+         "ModuleCode": 105,
+         "ModuleItem": 106,
+         "ModulePath": 107,
+         "MultiString": 108,
+         "Name": 109,
+         "NameAtom": 110,
+         "NativeBlock": 111,
+         "NonLocalStmt": 112,
+         "Null": 113,
+         "ParamVar": 114,
+         "ProgramModule": 115,
+         "PyInlineCode": 116,
+         "PythonModuleAst": 117,
+         "RaiseStmt": 118,
+         "RegionStmt": 119,
+         "ReportStmt": 120,
+         "ReturnStmt": 121,
+         "SemDef": 122,
+         "Semi": 123,
+         "ServerBlock": 124,
+         "SetCompr": 125,
+         "SetVal": 126,
+         "Slice": 127,
+         "Source": 128,
+         "SpecialVarRef": 129,
+         "String": 130,
+         "SubTag": 131,
+         "SwitchCase": 132,
+         "SwitchStmt": 133,
+         "Test": 134,
+         "Token": 135,
+         "TryStmt": 136,
+         "TupleVal": 137,
+         "TypeAlias": 138,
+         "TypeParam": 139,
+         "TypedCtxBlock": 140,
+         "UnaryExpr": 141,
+         "UniCFGNode": 142,
+         "UniScopeNode": 143,
+         "VisitStmt": 144,
+         "WalkerStmtOnlyNode": 145,
+         "WhileStmt": 146,
+         "WithStmt": 147,
+         "YieldExpr": 148,
+
      },
      IDX_TO_SPEC: dict[int, NodeSpec] = {spec.type_idx: spec for spec in NODE_SPECS};
 
