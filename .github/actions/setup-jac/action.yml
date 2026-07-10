@@ -16,7 +16,7 @@ runs:
   using: composite
   steps:
     # typeshed stdlib stubs are vendored as plain files now (no submodule);
-    # third-party stubs are installed per-project by `jac add` (PEP 561 types-*).
+    # third-party stubs are installed per-project by `jac install` (PEP 561 types-*).
     #
     # Restore/save split with the SAVE GATED TO MAIN, same as the read-mostly
     # caches below. The binary key changes on every jaclang/launcher edit, so a
