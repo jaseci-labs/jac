@@ -1,0 +1,51 @@
+# TEMPORARY throwaway workflow — measures how long the admin-console
+# build+package (the `admin-dist` job in build-binaries.yml) takes.
+# Runs the real build steps 3x in a loop and prints per-run timing.
+# Does NOT upload, release, or publish anything. Delete after use.
+name: time-admin-dist (temp)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  time-admin-dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      # Pull the existing dev-channel binary — same source the real
+      # dev-channel admin-dist leg uses.
+      - name: Fetch dev linux-x86_64 binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p jacbin
+          gh release download dev --repo "$GITHUB_REPOSITORY" \
+            --pattern "jac-dev-linux-x86_64" --dir jacbin --clobber
+          BIN="$PWD/$(ls jacbin/jac-*linux-x86_64)"
+          chmod +x "$BIN"
+          echo "JAC_BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Build + package the console 3x, timed
+        run: |
+          set -uo pipefail
+          BIN="$JAC_BIN"
+          DIST=jac/jaclang/scale/admin/ui/.jac/client/dist
+          echo "=== timing admin console build+package (3 runs) ==="
+          for i in 1 2 3; do
+            # Clean prior build output so each run is a cold build.
+            rm -rf jac/jaclang/scale/admin/ui/.jac
+            rm -rf dist && mkdir -p dist
+
+            start=$(date +%s)
+            ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac )
+            test -f "$DIST/index.html"
+            tar -C "$DIST" -czf "dist/jac-timing-admin-dist.tar.gz" .
+            ( cd dist && shasum -a 256 "jac-timing-admin-dist.tar.gz" > "jac-timing-admin-dist.tar.gz.sha256" )
+            end=$(date +%s)
+
+            size=$(du -h dist/jac-timing-admin-dist.tar.gz | cut -f1)
+            echo "RUN $i: $((end - start))s  (tarball $size)"
+          done
+          echo "=== done — nothing uploaded or published ==="
