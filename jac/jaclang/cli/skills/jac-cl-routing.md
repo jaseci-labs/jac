@@ -130,7 +130,7 @@ cl {
 ⚠ Two failure modes, both easy to hit:
 
 - **Omitting the export** fails the build: `"app" is not exported by "compiled/main.js"` (in dev, the browser shows `SyntaxError: ... does not provide an export named 'app'`). Dropping the whole `cl { }` block instead is worse: `main.jac`'s client section is what turns on the client build, so without it `jac build` quietly produces a server-only app and ignores `pages/` entirely. A `pages/` directory on its own does NOT make a client app.
-- ⚠ **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { return <Home/>; }` - **silently drops every route.** `jac check` passes, the bundle builds, the server starts, no error anywhere, and `pages/` simply never renders. This is the most common way a file-based app ends up stuck showing one stale page.
+- **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { return <Home/>; }` - **silently drops every route.** `jac check` passes, the bundle builds, the server starts, no error anywhere, and `pages/` simply never renders. This is the most common way a file-based app ends up stuck showing one stale page.
 
 Also note `return children;` alone fails `jac check` with `E1002: Cannot return Any, expected JsxElement` - cast it (`children as JsxElement`) or wrap it in JSX.
 
@@ -155,7 +155,7 @@ page = int(searchParams.get("page") or "1");
 
 ## Manual routing (secondary)
 
-Explicit route table in one `.cl.jac` component (e.g. `AppShell.cl.jac`) which `main.jac` mounts with the no-argument `def:pub app() -> JsxElement { return <AppShell/>; }`. There is no `pages/` directory, so `children` is empty and `app` may ignore it. Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
+Explicit route table in one `.cl.jac` component (e.g. `AppShell.cl.jac`) which `main.jac` mounts with the no-argument `def:pub app() -> JsxElement { return <AppShell/>; }`. With no `pages/` directory the generated entry renders `app` directly (`React.createElement(App, null)`) instead of wrapping a router in it, so the no-argument form is correct and `children` need not be declared. Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
 
 ```jac
 import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }
