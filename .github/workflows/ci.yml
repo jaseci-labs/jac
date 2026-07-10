@@ -330,7 +330,7 @@ jobs:
               echo "No .jac files changed in this PR; skipping format check."
               exit 0
             fi
-            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|/ai_tui_na/|_err\.jac$)' changed-jac.txt || true)"
             if [ -z "$FILES" ]; then
               echo "No formattable .jac files changed (all excluded); skipping."
               exit 0
@@ -341,7 +341,10 @@ jobs:
             # Sweep only git-tracked files: the build materializes generated
             # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
             # own sample .jac files), and a bare `find .` walks those too.
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
+            # /ai_tui_na/ is excluded because `jac fmt --lintfix` rewrites the
+            # truthiness ternaries these native files need into `x or y`, which
+            # ICEs the native compiler (see jac.toml [check.lint].exclude).
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|/ai_tui_na/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       - name: Verify jir_registry.jac is up to date

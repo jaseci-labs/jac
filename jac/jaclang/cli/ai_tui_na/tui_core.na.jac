@@ -44,7 +44,7 @@ def tui_populate_state(
     state: TuiState, project: str, files_env: str, presets_env: str
 ) {
     cwd_now = os.getcwd();
-    state.cwd = project or cwd_now;
+    state.cwd = project if project else cwd_now;
     state.files.extend(_nonempty_lines(files_env));
     state.model_presets.extend(_nonempty_lines(presets_env));
 }

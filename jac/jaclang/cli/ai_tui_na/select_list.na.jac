@@ -33,7 +33,7 @@ obj SelectList {
     }
 
     def _display_value(item: SelectItem) -> str {
-        return item.label or item.value;
+        return item.label if item.label else item.value;
     }
 
     def _matches(item: SelectItem, prefix: str) -> bool {

@@ -295,7 +295,7 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
     out.extend(_transcript_section(state, t_draw_h, cols));
 
     if show_warn {
-        env = state.key_env or "API_KEY";
+        env = state.key_env if state.key_env else "API_KEY";
         out.append(_warn_row(env, cols));
     }
 

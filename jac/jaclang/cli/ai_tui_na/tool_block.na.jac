@@ -17,7 +17,7 @@ glob _CALL_ICON: str = "⚙ ",
 glob _MIN_ARGS_COLS: int = 2;
 
 def tool_call_rows(tool_name: str, text: str, width: int, out: list[DisplayRow]) {
-    name = tool_name or "tool";
+    name = tool_name if tool_name else "tool";
     header_vis = visible_width(_CALL_ICON) + visible_width(name) + visible_width(
         _NAME_ARGS_GAP
     );
@@ -44,7 +44,7 @@ def tool_result_rows(tool_name: str, text: str, width: int, out: list[DisplayRow
     icon = _ERR_ICON if is_err else _OK_ICON;
     icon_sgr = TH_SGR_ERROR_BOLD if is_err else TH_SGR_OK_BOLD;
     dim_sgr = TH_SGR_REASON_DIM;
-    body = text or "(empty)";
+    body = text if text else "(empty)";
     avail = max(1, width - visible_width(_RESULT_INDENT));
 
     for (i, line) in enumerate(body.split("\n")) {

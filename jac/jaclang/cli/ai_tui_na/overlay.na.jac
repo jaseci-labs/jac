@@ -180,7 +180,7 @@ def overlay_build_modal(state: TuiState, cols: int, rows: int) -> list[str] {
     modal_w = _modal_width(cols);
     inner_w = max(_MODAL_INNER_MIN_W, modal_w - 4);
     content = _modal_content(state, inner_w);
-    title = state.overlay_title or "Commands";
+    title = state.overlay_title if state.overlay_title else "Commands";
     boxed = _frame_box(content, title, modal_w, inner_w);
     return _center_rows(boxed, modal_w, cols, rows);
 }
@@ -192,7 +192,7 @@ def overlay_composite(
     for i in range(rows) {
         base_line = base[i] if i < len(base) else "";
         modal_line = modal_rows[i] if i < len(modal_rows) else "";
-        out.append(modal_line or base_line);
+        out.append(modal_line if modal_line else base_line);
     }
     return out;
 }
