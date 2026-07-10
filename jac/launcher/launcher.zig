@@ -161,8 +161,14 @@ fn boot(emb: *const embed.Embed, exe_z: [*:0]const u8, init: std.process.Init) u
     // behave exactly like `python` (parse_argv) instead of booting the jac CLI.
     const worker = isPythonInvocation(init);
 
-    emb.initInterpreter(exe_z, .{ .argv = argv, .parse_argv = worker }) catch
-        die("interpreter initialization failed");
+    // A non-null result means the interpreter handled a print-and-exit flag
+    // (worker mode -h/-V/--help): exit with the code CPython requested, never the
+    // boot path. Nothing was initialized, so there is nothing to run or finalize.
+    if (emb.initInterpreter(exe_z, .{ .argv = argv, .parse_argv = worker }) catch
+        die("interpreter initialization failed")) |exit_code|
+    {
+        return exit_code;
+    }
 
     if (worker) {
         const Py_RunMain = emb.symOrErr(embed.Py_RunMain_t, "Py_RunMain") catch die("libpython missing symbol: Py_RunMain");
