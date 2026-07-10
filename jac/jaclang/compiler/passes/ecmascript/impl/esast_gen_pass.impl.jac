@@ -3256,6 +3256,14 @@ impl EsastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     nd.gen.es_ast = while_stmt;
 }
 
+impl EsastGenPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    body = self._build_block_statement(nd, nd.body);
+    forever_stmt = self.sync_loc(
+        es.WhileStatement(`test=es.Literal(value=True), body=body), jac_node=nd
+    );
+    nd.gen.es_ast = forever_stmt;
+}
+
 impl EsastGenPass.exit_else_stmt(nd: uni.ElseStmt) -> None {
     stmts = self._collect_stmt_body(nd.body);
     stmts = self._prepend_hoisted(nd, stmts);

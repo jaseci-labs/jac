@@ -371,6 +371,14 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
             return;
         }
 
+        js_path = self._client_js_path(file_path);
+        old_exports: set[str] = set();
+        had_js = False;
+        if js_path is not None and js_path.exists() {
+            had_js = True;
+            old_exports = self._extract_js_exports(js_path);
+        }
+
         program = Jac.program;
         if program is not None {
             for key in {file_path, str(source_path)} {
@@ -387,6 +395,17 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         console.success(
             f"Recompiled: {file_path} -> {self._get_js_filename(file_path)}"
         );
+
+        if had_js
+        and js_path is not None
+        and self._extract_js_exports(js_path) != old_exports {
+            console.print(
+                f"  ↻ Export set of {self._get_js_filename(
+                    file_path
+                )} changed; full reload"
+            );
+            self._signal_full_reload();
+        }
     } except ClientBundleError as e {
         base_prefix = str(Path(self.base_path).resolve()) + '/';
         errors = str(e).replace(base_prefix, '');
@@ -396,6 +415,50 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         console.error(f"Compile error in {file_path}: {e}");
         self.record_error(file_path, str(e));
     }
+}
+
+impl HotReloader._client_js_path(file_path: str) -> (Path | None) {
+    if not self.client_compiler {
+        return None;
+    }
+    try {
+        jcc = self.client_compiler.jac_client_compiler;
+        source_path = Path(file_path).resolve();
+        return Path(
+            str(jcc._output_path_for(source_path, Path(self.base_path).resolve()))
+        );
+    } except Exception {
+        return None;
+    }
+}
+
+impl HotReloader._extract_js_exports(js_path: Path) -> set[str] {
+    import re;
+    names: set[str] = set();
+    try {
+        code = js_path.read_text(encoding='utf-8');
+    } except OSError {
+        return names;
+    }
+    for block in re.findall(r'export\s*\{([^}]*)\}', code) {
+        for part in block.split(',') {
+            token = part.strip();
+            if token {
+                names.add(token.split(' as ')[-1].strip());
+            }
+        }
+    }
+    return names;
+}
+
+impl HotReloader._signal_full_reload -> None {
+    self._reload_nonce += 1;
+    signal_file = self._error_file_path().parent / '.jac-force-reload';
+    try {
+        if signal_file.parent.is_dir() {
+            signal_file.write_text(str(self._reload_nonce), encoding='utf-8');
+        }
+    } except OSError { }
 }
 
 impl HotReloader._recompile_client_code(
