@@ -53,6 +53,7 @@ obj NativeBuildConfig {
 obj BuildConfig {
     has typecheck: bool = False,
         dir: str = ".jac",
+        exclude: list[str] = [],
         native: NativeBuildConfig = NativeBuildConfig();
 }
 

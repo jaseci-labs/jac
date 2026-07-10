@@ -50,7 +50,17 @@ glob _EXCLUDE_SUFFIXES: tuple = (
      );
 
 
-def is_excluded(rel: Path) -> bool {
+def _config_excludes(base: Path) -> set[str] {
+    # User-declared [build] exclude dirs from jac.toml (never sealed or packed).
+    import from jaclang.project.config { get_config_for_path }
+    cfg = get_config_for_path(base);
+    if cfg is None {
+        return set();
+    }
+    return set([str(x) for x in cfg.build.exclude]);
+}
+
+def is_excluded(rel: Path, extra_dirs: (set[str] | None) = None) -> bool {
     parts = rel.parts;
     if (
         len(parts) >= 3
@@ -60,8 +70,9 @@ def is_excluded(rel: Path) -> bool {
     ) {
         return False;
     }
+    dirs = _EXCLUDE_DIRS if extra_dirs is None else (_EXCLUDE_DIRS | extra_dirs);
     for part in parts {
-        if part in _EXCLUDE_DIRS {
+        if part in dirs {
             return True;
         }
     }
@@ -196,11 +207,12 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
     # Seal the app's modules with the pod binary into _precompiled/MANIFEST.json
     # so the deploy artifact is a valid .jab. The seal is mandatory: an
     # incomplete seal raises rather than shipping a cold-compile fallback.
+    xtra = _config_excludes(base);
     stage_root = Path(tempfile.mkdtemp(prefix="jac-app-precompile-"));
     stage = stage_root / "app";
     try {
         for path in sorted(base.rglob("*")) {
-            if not path.is_file() or is_excluded(path.relative_to(base)) {
+            if not path.is_file() or is_excluded(path.relative_to(base), xtra) {
                 continue;
             }
             dest = stage / path.relative_to(base);
@@ -253,6 +265,7 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
         );
     }
     base = Path(project_dir).resolve();
+    xtra = _config_excludes(base);
     staged = _precompile_app(base, pod_binary);
     # staged is <stage_root>/app; the whole mkdtemp tree must be removed even if
     # a tar.add below raises, or a full project copy leaks in /tmp on every
@@ -267,7 +280,7 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
                         continue;
                     }
                     rel = path.relative_to(base);
-                    if is_excluded(rel) {
+                    if is_excluded(rel, xtra) {
                         continue;
                     }
                     tar.add(str(path), arcname=str(rel), filter=det_tar_member);

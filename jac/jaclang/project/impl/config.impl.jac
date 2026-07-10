@@ -751,7 +751,8 @@ impl _parse_toml_data(
         build_data = data["build"];
         config.build = BuildConfig(
             typecheck=build_data.get("typecheck", False),
-            dir=build_data.get("dir", ".jac")
+            dir=build_data.get("dir", ".jac"),
+            exclude=build_data.get("exclude", [])
         );
     }
     if "test" in data {

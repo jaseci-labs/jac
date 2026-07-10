@@ -1400,7 +1400,9 @@ def _bundle_wheel(config: any, output: str) -> int {
     return 0;
 }
 
-def _seal_copy_ignore(_dir: str, items: list) -> list {
+def _seal_copy_ignore(
+    _dir: str, items: list, extra: (list[str] | None) = None
+) -> list {
     drop = [
         "__pycache__",
         "node_modules",
@@ -1414,6 +1416,9 @@ def _seal_copy_ignore(_dir: str, items: list) -> list {
         ".mypy_cache",
         ".pytest_cache"
     ];
+    if extra {
+        drop = drop + extra;
+    }
     return [
         it
         for it in items
@@ -1733,8 +1738,10 @@ def _make_sealed_image(
         } except ValueError { }
     }
 
+    seal_excludes = config.build.exclude or [];
+
     def copy_ignore(d: str, items: list) -> list {
-        skipped = _seal_copy_ignore(d, items);
+        skipped = _seal_copy_ignore(d, items, seal_excludes);
         if out_names and Path(d).resolve() == Path(proj_root).resolve() {
             skipped = list(
                 set(skipped) | {
