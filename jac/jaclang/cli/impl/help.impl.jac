@@ -38,7 +38,7 @@ impl HelpFormatter.format_main_help(
 
     lines: list[str] = [];
 
-    lines.append(_help_color("Jac programming language", _HELP_TITLE));
+    lines.append(_help_color("The Jac programming language", _HELP_TITLE));
     lines.append("");
     lines.append(
         f"{_help_color('Usage:', _HELP_HEADER)} "
@@ -114,7 +114,7 @@ impl HelpFormatter.format_curated_help(
     import from jaclang.cli.command { CommandSpec }
     lines: list[str] = [];
 
-    lines.append(_help_color("Jac programming language", _HELP_TITLE));
+    lines.append(_help_color("The Jac programming language", _HELP_TITLE));
     lines.append("");
     lines.append(
         f"{_help_color('Usage:', _HELP_HEADER)} "

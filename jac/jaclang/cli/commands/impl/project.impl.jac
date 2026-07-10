@@ -911,17 +911,12 @@ impl remove(
     }
     python = get_python_provider();
     ctx = InstallContext();
-    failed = False;
     for name in packages {
         if python.remove_package(config, name, dev, ctx) {
             console.success(f"Removed {name} from jac.toml");
         } else {
             console.error(f"Package {name} not found in dependencies");
-            failed = True;
         }
-    }
-    if failed {
-        return 1;
     }
     try {
         config.save();
