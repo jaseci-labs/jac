@@ -172,13 +172,11 @@ impl MicroserviceGateway.bootstrap_admin_ui -> None {
     }
     logger.info("No staged admin console - building it from source.");
     try {
-        built = self.build_admin_client();
+        self.build_admin_client();
     } except (ImportError, ModuleNotFoundError) {
         logger.debug("Admin module not available, skipping admin UI bootstrap");
-        return;
-    }
-    if not built {
-        logger.warning("Admin UI build failed - the static UI will be unavailable.");
+    } except Exception as e {
+        logger.warning(f"Admin UI build failed: {e}");
     }
 }
 

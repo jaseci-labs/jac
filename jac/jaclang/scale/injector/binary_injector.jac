@@ -20,10 +20,13 @@ obj BinaryInjector(PvcInjector) {
         _pod_binary_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        # Download the pod binary FIRST so pack_source can precompile the app's
-        # modules with it (#7179): .jir is version-locked to the compiling
-        # binary, so the driver's own jac cannot produce pod-valid seeds.
+        # Stage the console into the bundle first; it is independent of the
+        # binary and best-effort (a failure just falls back to the gateway's
+        # on-boot build), so it must not gate the download below.
         stage_admin_dist(project_dir, self.channel.value);
+        # Download the pod binary before pack_source runs so it can precompile
+        # the app's modules with it: .jir is version-locked to the compiling
+        # binary, so the driver's own jac cannot produce pod-valid seeds.
         payload = download_release_binary(self.channel.value, node_arch());
         self._pod_binary_bytes = payload;
         super.prepare(app_name, namespace, project_dir);

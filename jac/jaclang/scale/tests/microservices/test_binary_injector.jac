@@ -421,3 +421,22 @@ test "local channel never downloads the admin console" {
         assert not (Path(proj) / ".jac" / "admin").exists();
     }
 }
+
+
+def _dist_url_but_no_checksum(channel: str) -> tuple[str, str] {
+    return (_fake_urls["url"], "");
+}
+
+
+test "no published checksum refuses to stage without touching the network" {
+    _fake_urls["url"] = "http://127.0.0.1:1/jac-x-admin-dist.tar.gz";
+    with unittest.mock.patch.object(
+        binary_mod, "_admin_dist_urls", _dist_url_but_no_checksum
+    ) {
+        with unittest.mock.patch.object(binary_mod, "_http_get_bytes", _no_http) {
+            proj = tempfile.mkdtemp();
+            assert not stage_admin_dist(proj, "stable");
+            assert not (Path(proj) / ".jac" / "admin").exists();
+        }
+    }
+}

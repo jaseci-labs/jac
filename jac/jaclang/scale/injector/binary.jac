@@ -289,6 +289,16 @@ def download_admin_dist(channel: str) -> bytes | None {
         if not dist_url {
             return None;
         }
+        # The console is extracted straight to disk, so never fetch it without
+        # a checksum to verify against: a release missing its .sha256 falls
+        # back to the gateway's on-boot build rather than an unverified asset.
+        if not checksum_url {
+            logger.warning(
+                f"No checksum published for the {channel} admin console; "
+                "skipping the download so nothing unverified is staged."
+            );
+            return None;
+        }
         return _fetch_verified_asset(
             dist_url,
             checksum_url,
