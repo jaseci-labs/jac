@@ -7,6 +7,15 @@ Two routing systems, both client-side (URL changes, no full reload). **File-base
 
 > **Pick ONE system and stay with it - do NOT mix them or switch mid-build.** Default to file-based routing. If you choose manual `<Router>`, keep route components OUT of `pages/`: a `pages/` directory and a manual `<Router>` fight over the URL, and manually importing `pages/foo.jac` breaks (the compiled JS resolves `./pages/foo.js`, which file-based routing never emits).
 
+**The choice decides `main.jac`'s `app` export** (see below). The `web-app` template ships the single-page shape - `main.jac` exports `def:pub app` returning `<ClientApp/>` from `frontend.cl.jac` - which is NOT routing. Converting it:
+
+| | `main.jac` exports | route components live in | delete |
+|---|---|---|---|
+| **File-based** (default) | `def:pub app(children)` that renders `children` | `pages/` (shell = `pages/layout.jac`) | `frontend.cl.jac`, `frontend.impl.jac` |
+| **Manual** | `def:pub app()` returning your `<Router>` shell | anywhere OUTSIDE `pages/` | - (repurpose `frontend.cl.jac` as the shell) |
+
+Keeping the template's `app()` while adding `pages/` is the classic mix: it compiles, it serves, and every route is silently discarded.
+
 ## File-based routing (recommended)
 
 ```
@@ -94,11 +103,21 @@ The default redirect for unauthenticated users is `/login`. To change it, set `a
 auth_redirect = "/signin"
 ```
 
-**Global providers (`app` export)** - export `def:pub app` from `main.jac` to wrap the entire router with global providers (theme, query client, auth context, etc.). The router tree is passed as `children`:
+**`main.jac` MUST export `def:pub app(children)`.** The generated client entry does `import { app as AppWrapper } from "./main.js"` and renders `<AppWrapper>{<App/>}</AppWrapper>`, where `<App/>` is the router built from `pages/`. So `app` receives the router tree as `children` and **must render it**. With no global providers, that is the whole file:
+
+```
+# main.jac - server imports at top (if any), then:
+cl {
+    def:pub app(children: any) -> JsxElement {
+        return children as JsxElement;    # `children` is `any`; the cast satisfies -> JsxElement
+    }
+}
+```
+
+Wrap `children` to add global providers (theme, query client, auth context, etc.):
 
 ```
 # main.jac
-cl import from "@jac/runtime" { ... }
 cl import from .providers.ThemeProvider { ThemeProvider }
 
 cl {
@@ -108,7 +127,12 @@ cl {
 }
 ```
 
-Without this export the router mounts directly. With it, `AppWrapper` wraps `<App/>` (the router tree).
+⚠ Two failure modes, both easy to hit:
+
+- **Omitting the export** fails the build: `"app" is not exported by "compiled/main.js"` (in dev, the browser shows `SyntaxError: ... does not provide an export named 'app'`). Dropping the whole `cl { }` block instead is worse: `main.jac`'s client section is what turns on the client build, so without it `jac build` quietly produces a server-only app and ignores `pages/` entirely. A `pages/` directory on its own does NOT make a client app.
+- **An `app` that ignores `children`** - e.g. the single-page shape `def:pub app -> JsxElement { return <Home/>; }` - **silently drops every route.** `jac check` passes, the bundle builds, the server starts, no error anywhere, and `pages/` simply never renders. This is the most common way a file-based app ends up stuck showing one stale page.
+
+Also note `return children;` alone fails `jac check` with `E1002: Cannot return Any, expected JsxElement` - cast it (`children as JsxElement`) or wrap it in JSX.
 
 > **Do not place a `layout.jac` inside `(auth)/`.** Route groups do not add a URL segment, so `pages/(auth)/layout.jac` maps to the same layout key (`"/"`) as `pages/layout.jac`. Having both causes a **layout collision error** at build time. If only `pages/(auth)/layout.jac` exists, it becomes the root layout and wraps all routes - including public ones like `/login` - behind `AuthGuard`, causing an infinite redirect loop.
 
@@ -131,7 +155,7 @@ page = int(searchParams.get("page") or "1");
 
 ## Manual routing (secondary)
 
-Explicit route table in one `.cl.jac` component (e.g. `AppShell.cl.jac`). Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
+Explicit route table in one `.cl.jac` component (e.g. `AppShell.cl.jac`) which `main.jac` mounts with the no-argument `def:pub app() -> JsxElement { return <AppShell/>; }`. With no `pages/` directory the generated entry renders `app` directly (`React.createElement(App, null)`) instead of wrapping a router in it, so the no-argument form is correct and `children` need not be declared. Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
 
 ```jac
 import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }

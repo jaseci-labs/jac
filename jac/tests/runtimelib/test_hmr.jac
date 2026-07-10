@@ -210,13 +210,80 @@ test "build status records errors and recovers" {
         );
         # Fresh reloader is healthy
         assert reloader.build_status() == {"status": "ok", "error": None};
-        # An error carries the failing file and message
+        # An error carries the failing file, message and layer
         reloader.record_error("app.cl.jac", "Missing ';'");
         status = reloader.build_status();
         assert status["status"] == "error";
-        assert status["error"] == {"file": "app.cl.jac", "message": "Missing ';'"};
+        assert status["error"] == {
+            "file": "app.cl.jac",
+            "message": "Missing ';'",
+            "source": "jac"
+        };
         # Recovery clears the error completely
         reloader.record_ok();
+        assert reloader.build_status() == {"status": "ok", "error": None};
+    }
+}
+
+test "build status folds in vite and browser-load layers with jac precedence" {
+    import json;
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        status_dir = temp_dir / ".jac" / "client";
+        status_dir.mkdir(parents=True);
+        status_file = status_dir / ".jac-dev-status.json";
+        # A Vite resolve failure recorded by the dev-status plugin surfaces
+        # even though the Jac transpile layer is clean (#7286)
+        status_file.write_text(
+            json.dumps(
+                {
+                    "vite": {
+                        "message": 'Failed to resolve import "totally-missing-pkg"',
+                        "file": "compiled/pages/index.js"
+                    },
+                    "client": None
+                }
+            )
+        );
+        status = reloader.build_status();
+        assert status["status"] == "error";
+        assert status["error"]["source"] == "vite";
+        assert "totally-missing-pkg" in status["error"]["message"];
+        # Browser-load slot surfaces when it is the only failure
+        status_file.write_text(
+            json.dumps(
+                {
+                    "vite": None,
+                    "client": {
+                        "message": "does not provide an export named 'nope'",
+                        "file": "/compiled/pages/index.js"
+                    }
+                }
+            )
+        );
+        assert reloader.build_status()["error"]["source"] == "client";
+        # Vite outranks client; a Jac error outranks both (most upstream cause)
+        status_file.write_text(
+            json.dumps(
+                {
+                    "vite": {"message": "vite broke", "file": ""},
+                    "client": {"message": "load broke", "file": ""}
+                }
+            )
+        );
+        assert reloader.build_status()["error"]["source"] == "vite";
+        reloader.record_error("app.cl.jac", "syntax");
+        assert reloader.build_status()["error"]["source"] == "jac";
+        reloader.record_ok();
+        assert reloader.build_status()["error"]["source"] == "vite";
+        # Recovery: plugin removes the file -> healthy; corrupt file is ignored
+        status_file.unlink();
+        assert reloader.build_status() == {"status": "ok", "error": None};
+        status_file.write_text("{not json");
         assert reloader.build_status() == {"status": "ok", "error": None};
     }
 }
