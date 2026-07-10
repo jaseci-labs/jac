@@ -57,18 +57,6 @@ impl JServer.add_endpoint(self: JServer, endpoint: JEndPoint) -> None {
 }
 
 """
-Return the list of registered endpoints.
-This method should return only the endpoints that have been registered
-with this server implementation, not create new ones.
-
-Returns:
-List[JEndPoint]: List of registered endpoint definitions
-"""
-impl JServer.get_endpoints(self: JServer) -> list[JEndPoint] {
-    return self._endpoints;
-}
-
-"""
 Initialize the server with a list of endpoints.
 Args:
 end_points (list[JEndPoint]): List of endpoint definitions to register

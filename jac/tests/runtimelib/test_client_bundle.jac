@@ -61,3 +61,40 @@ test "dev vite config registers the port reporter; build config does not" {
         assert "jac-build-error-overlay" not in build_content;
     }
 }
+
+test "dev vite config registers error reporter; overlay is gated to module-load errors only" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_cfg.read_text();
+        assert "jac-error-reporter" in dev_content;
+        # Overlay must only fire for module-load failures, not every runtime error
+        assert 'phase === "load"' in dev_content;
+        build_cfg = bundler.create_vite_config(entry, is_dev=False);
+        build_content = build_cfg.read_text();
+        assert "jac-error-reporter" not in build_content;
+    }
+}
+
+test "dev index.html loads entry via dynamic import and tags load errors with phase flag" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        bundler._ensure_dev_index_html(Path(tmp));
+        content = (Path(tmp) / "index.html").read_text();
+        # Entry must load via dynamic import so the error handler is installed first
+        assert 'import("/compiled/_entry.js")' in content;
+        assert '<script type="module" src="/compiled/_entry.js">' not in content;
+        assert 'import.meta.hot' in content;
+        assert 'window.addEventListener("error"' in content;
+        assert 'window.addEventListener("unhandledrejection"' in content;
+        # Load errors must carry the phase flag so the overlay is not triggered
+        # for unrelated runtime errors that fire after the app has loaded
+        assert 'phase: "load"' in content;
+        assert '.catch(function() {})' in content;
+    }
+}

@@ -98,7 +98,7 @@ test "per-file source map resolves a deep JS line to the exact .jac line" {
         sm = SourceMap(
             sources=data["sources"],
             source_comments={},
-            _index=_parse_mappings(data["mappings"], len(data["sources"]))
+            _index=_parse_mappings(data["mappings"])
         );
         # Find the generated JS line carrying the `marker` assignment.
         js_lines = (out_dir / "app.js").read_text().splitlines();

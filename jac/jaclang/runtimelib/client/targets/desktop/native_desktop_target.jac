@@ -7,7 +7,7 @@ obj NativeDesktopTarget(WebTarget) {
     has name: str = TargetType.DESKTOP.value,
         default: bool = False,
         requires_setup: bool = False,
-        config_section: str = "plugins.desktop",
+        config_section: str = "desktop",
         output_dir: Path = Path(".jac/client/desktop");
 
     override def setup(project_dir: Path) -> None;

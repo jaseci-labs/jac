@@ -337,7 +337,7 @@ test "cli js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path],
+        [sys.executable, "-m", "jaclang.cli.cli", "tool", "jac2js", fixture_file_path],
         capture_output=True,
         text=True,
         env=env,
@@ -357,7 +357,15 @@ test "cl only js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path, ],
+        [
+            sys.executable,
+            "-m",
+            "jaclang.cli.cli",
+            "tool",
+            "jac2js",
+            fixture_file_path,
+
+        ],
         capture_output=True,
         text=True,
         env=env,

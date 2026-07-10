@@ -1023,7 +1023,7 @@ test "google sso provider initiate auth" {
         mock_inner_sso = unittest.mock.Mock();
         mock_cls.return_value = mock_inner_sso;
         provider = GoogleSSOProvider("id", "secret", "uri");
-        assert provider._google_sso == mock_inner_sso;
+        assert provider._sso == mock_inner_sso;
         expected_response = unittest.mock.Mock();
         mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
             return_value=expected_response
@@ -1210,7 +1210,7 @@ test "apple sso provider initiate auth" {
         mock_inner_sso = unittest.mock.Mock();
         mock_cls.return_value = mock_inner_sso;
         provider = AppleSSOProvider("id", "secret", "uri");
-        assert provider._apple_sso == mock_inner_sso;
+        assert provider._sso == mock_inner_sso;
         expected_response = unittest.mock.Mock();
         mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
             return_value=expected_response
@@ -1436,7 +1436,7 @@ test "github sso provider initiate auth" {
         mock_inner_sso = unittest.mock.Mock();
         mock_cls.return_value = mock_inner_sso;
         provider = GithubSSOProvider("id", "secret", "uri");
-        assert provider._github_sso == mock_inner_sso;
+        assert provider._sso == mock_inner_sso;
         expected_response = unittest.mock.Mock();
         mock_inner_sso.get_login_redirect = unittest.mock.AsyncMock(
             return_value=expected_response

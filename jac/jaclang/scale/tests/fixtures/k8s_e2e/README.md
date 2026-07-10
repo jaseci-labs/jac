@@ -23,13 +23,10 @@ to the gateway.
 
 ## Dev setup
 
-Microservice mode lives in jac-scale 0.2.14+ and depends on a hookspec
-that isn't on PyPI yet. Editable install both:
-
-```bash
-pip install -e /path/to/jaseci/jac
-jac install -e /path/to/jaseci/jac-scale
-```
+Microservice mode is built into jaclang core (`jaclang.scale`) -- there is no
+separate package to install. Deploys ship a prebuilt `jac` binary: a `[dev]`
+stanza in `jac.toml` selects the rolling `dev` (main HEAD) binary, and its
+absence selects the latest published release. Then run below.
 
 ## Run
 

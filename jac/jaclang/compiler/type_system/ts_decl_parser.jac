@@ -647,7 +647,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                     nxt_val = val_at(1);
                     if (nxt_kind == 'punct' and nxt_val == '{') {
                         advance();
-                        _parse_export_list(False);
+                        _parse_export_list();
                         handled = True;
                         break;
                     }
@@ -689,7 +689,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                     ) {
                         advance();
                         advance();
-                        _parse_export_list(True);
+                        _parse_export_list();
                         handled = True;
                         break;
                     }
@@ -906,7 +906,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         }
     }
 
-    def _parse_export_list(type_only: bool) {
+    def _parse_export_list {
         nonlocal pos , saw_export;
         saw_export = True;
         expect_p('{');

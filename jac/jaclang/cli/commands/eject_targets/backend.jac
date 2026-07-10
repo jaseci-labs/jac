@@ -119,7 +119,7 @@ def emit_backend(
         entry_module
     );
 
-    import from jaclang.publish.runtime_vendor { vendor_runtime, llm_requirements }
+    import from jaclang.publish.runtime_vendor { vendor_runtime }
     uses_llm = _uses_llm(emitted_codes);
     sql_seeds = ["jaclang.runtimelib.storage.sqlalchemy_memory"] if sql else [];
     try {
@@ -146,24 +146,45 @@ def emit_backend(
         }
     }
 
-    reqs: list[str] = [];
+    detected_caps: set = set();
     if sql {
-        reqs.append("SQLAlchemy>=2.0");
+        detected_caps.add("data.sql");
     }
     if uses_llm {
-        reqs.extend(llm_requirements());
-    }
-    for dep in (project_deps or []) {
-        reqs.append(str(dep));
+        detected_caps.add("llm");
     }
     if has_env {
-        reqs.append("python-dotenv>=1.0");
+        detected_caps.add("env");
     }
     if uses_upload {
-        reqs.append("python-multipart>=0.0.9");
+        detected_caps.add("upload");
     }
+    reqs: list[str] = [str(dep) for dep in (project_deps or [])];
+    reqs.extend(_capability_requirements(detected_caps));
     _emit_requirements(backend_dir, reqs);
     return 0;
+}
+
+
+def _capability_requirements(caps: set) -> list[str] {
+    import from jaclang.project.capabilities {
+        RUNTIME,
+        get_capability_registry,
+        resolve_closure
+    }
+    import from jaclang.project.pyvenv { make_pip_spec }
+    if not caps {
+        return [];
+    }
+    closure = resolve_closure(caps, RUNTIME);
+    registry = get_capability_registry();
+    lines: list[str] = [];
+    for cap_name in closure.capabilities {
+        for (pkg, ver) in sorted(registry[cap_name].deps.items()) {
+            lines.append(f"{make_pip_spec(pkg, ver)}  # via capability:{cap_name}");
+        }
+    }
+    return lines;
 }
 
 
@@ -535,7 +556,7 @@ def _emit_main_py(
 
     if sql {
         lines += [
-            'from jaclang.jac0core.runtime import hookimpl, plugin_manager',
+            'from jaclang.jac0core.runtime import JacRuntime as _Jac',
             'from jaclang.runtimelib.storage.sqlalchemy_memory import SqlAlchemyMemory',
             '',
             '_DB_URL = os.environ.get("JAC_DB_URL") or (',
@@ -545,13 +566,9 @@ def _emit_main_py(
             ')',
             '',
             '',
-            'class _EjectSqlPlugin:',
-            '    @hookimpl',
-            '    def get_persistent_memory(self, config):',
-            '        return SqlAlchemyMemory(_DB_URL)',
-            '',
-            '',
-            'plugin_manager.register(_EjectSqlPlugin())'
+            '_Jac.set_persistent_memory_provider(',
+            '    lambda config: SqlAlchemyMemory(_DB_URL)',
+            ')'
         ];
     }
 

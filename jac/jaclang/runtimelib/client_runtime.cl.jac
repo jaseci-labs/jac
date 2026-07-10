@@ -49,7 +49,11 @@ import from jaclang.runtimelib.client_runtime_core {
     __invalidateEndpoint as ___invalidateEndpoint,
     __overlaps as ___overlaps,
     __jacReportError as ___jacReportError,
-    __jacInstallErrorHandlers as ___jacInstallErrorHandlers
+    __jacInstallErrorHandlers as ___jacInstallErrorHandlers,
+    ErrorFallback as ___ErrorFallback,
+    errorOverlay as ___errorOverlay,
+    __jacReactErrorHandler as ___jacReactErrorHandler,
+    __unwrapFormSchema as ___unwrapFormSchema
 }
 
 glob:pub __createJacSchema = ___createJacSchema,
@@ -78,6 +82,11 @@ glob:pub __createJacSchema = ___createJacSchema,
      __overlaps = ___overlaps,
      __jacReportError = ___jacReportError,
      __jacInstallErrorHandlers = ___jacInstallErrorHandlers;
+
+glob:pub ErrorFallback = ___ErrorFallback,
+     errorOverlay = ___errorOverlay,
+     __jacReactErrorHandler = ___jacReactErrorHandler,
+     __unwrapFormSchema = ___unwrapFormSchema;
 
 def:pub navigate(path: str) -> None;
 def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
@@ -117,14 +126,10 @@ glob:pub useState = reactUseState,
 
 def:pub useRouter -> dict;
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
-def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
 
 def:pub JacAwaiting(props: dict) -> JsxElement;
-def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
 def:pub useJacForm(
     form_mode: str = "onTouched", schema: any, onSubmit: any = None
 ) -> any;
 
 def:pub JacForm(props: dict) -> JsxElement;
-
-def:pub __jacReactErrorHandler(error: any, info: any) -> None;

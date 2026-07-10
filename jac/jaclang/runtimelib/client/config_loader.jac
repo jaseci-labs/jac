@@ -24,8 +24,6 @@ class JacClientConfig(PluginConfigBase) {
     def get_paths_config(self: JacClientConfig) -> dict[str, str];
     def get_pwa_config(self: JacClientConfig) -> dict[str, any];
     def is_pwa_enabled(self: JacClientConfig) -> bool;
-    def check_runtime_version(self: JacClientConfig) -> tuple[bool, str, str];
-    def sync_runtime_version(self: JacClientConfig) -> None;
     def get_mobile_config(self: JacClientConfig) -> dict[str, any];
     def get_react_native_config(self: JacClientConfig) -> dict[str, any];
 }

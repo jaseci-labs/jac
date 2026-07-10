@@ -83,7 +83,7 @@ useEffect(lambda {
 
 ## Browser globals
 
-`localStorage.getItem/setItem/removeItem`, `window.addEventListener`, `document.querySelector`, `setTimeout`/`setInterval`/`clearInterval`, `requestAnimationFrame`, `JSON.parse/stringify`, `URLSearchParams`, `encodeURIComponent`, `globalThis.*` (including `[plugins.client.vite.define]` build-time constants) - all available directly, no import. See the `jac check` note above.
+`localStorage.getItem/setItem/removeItem`, `window.addEventListener`, `document.querySelector`, `setTimeout`/`setInterval`/`clearInterval`, `requestAnimationFrame`, `JSON.parse/stringify`, `URLSearchParams`, `encodeURIComponent`, `globalThis.*` (including `[client.vite.define]` build-time constants) - all available directly, no import. See the `jac check` note above.
 
 ## Timing patterns (all use `Ref` value fields - see `jac-npm-packages`)
 

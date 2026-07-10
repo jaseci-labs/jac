@@ -69,7 +69,7 @@ jac db recover-all --app app.jac
 ### Server Configuration
 
 ```toml
-[plugins.scale.server]
+[scale.server]
 port = 8000
 host = "0.0.0.0"
 docs_enabled = true                  # Enable /docs, /redoc, /openapi.json (default: true)
@@ -84,13 +84,13 @@ Set `suppress_health_check_logs = true` to suppress access log entries for healt
 
 In single-process `jac start` mode the FastAPI app installs a permissive
 CORS middleware (`allow_origins=['*']`, all methods/headers); there is
-no `[plugins.scale.cors]` knob to tune it.
+no `[scale.cors]` knob to tune it.
 
-In **microservice mode** (`[plugins.scale.microservices] enabled = true`),
+In **microservice mode** (`[scale.microservices] enabled = true`),
 the gateway exposes a configurable CORS section:
 
 ```toml
-[plugins.scale.microservices.cors]
+[scale.microservices.cors]
 allow_origins = ["https://example.com"]
 allow_methods = ["GET", "POST", "PUT", "DELETE"]
 allow_headers = ["*"]
@@ -367,7 +367,7 @@ Both backends implement the same `IdentityStorage` interface. Application code (
 
 ```toml
 # jac.toml -- use MongoDB
-[plugins.scale.database]
+[scale.database]
 mongodb_uri = "mongodb://localhost:27017"
 ```
 
@@ -536,7 +536,7 @@ JWT tokens use `user_id` (UUID) as the primary claim, not the username. This mea
 Configure JWT via `jac.toml` or environment variables:
 
 ```toml
-[plugins.scale.jwt]
+[scale.jwt]
 secret = "your-secret-key-here"
 algorithm = "HS256"
 exp_delta_days = 7
@@ -612,19 +612,19 @@ jac-scale supports SSO with **Google**, **Apple**, and **GitHub**. SSO accounts 
 **Configuration via `jac.toml`:**
 
 ```toml
-[plugins.scale.sso]
+[scale.sso]
 host = "http://localhost:8000"  # Your server's public URL
 client_auth_callback_url = ""   # Optional: redirect to frontend after SSO
 
-[plugins.scale.sso.google]
+[scale.sso.google]
 client_id = "your-google-client-id"
 client_secret = "your-google-client-secret"
 
-[plugins.scale.sso.apple]
+[scale.sso.apple]
 client_id = "your-apple-client-id"
 client_secret = "your-apple-client-secret"
 
-[plugins.scale.sso.github]
+[scale.sso.github]
 client_id = "your-github-client-id"
 client_secret = "your-github-client-secret"
 ```
@@ -647,7 +647,7 @@ Where `{platform}` is `google`, `apple`, or `github`.
 For browser-based OAuth flows, configure `client_auth_callback_url` in `jac.toml` to redirect the SSO callback to your frontend application instead of returning JSON:
 
 ```toml
-[plugins.scale.sso]
+[scale.sso]
 client_auth_callback_url = "http://localhost:3000/auth/callback"
 ```
 
@@ -753,7 +753,7 @@ In addition to the static identities supplied at registration, users can attach 
 Configure TTLs and the URLs the emails should point at:
 
 ```toml
-[plugins.scale.auth]
+[scale.auth]
 verify_token_ttl_seconds = 86400    # 24h
 reset_token_ttl_seconds  = 1800     # 30min
 verify_url_template      = "https://app.example.com/verify?token={token}"
@@ -920,7 +920,7 @@ jac-scale's `Emailer` is a thin abstraction (`jaclang.scale.emailer.emailer.Emai
 ### Configuration
 
 ```toml
-[plugins.scale.emailer]
+[scale.emailer]
 provider     = "smtp"                   # 'smtp', a registered short name, or 'pkg.module:ClassName'
 from_address = "no-reply@example.com"
 enabled      = true                     # set false to disable email features without removing config
@@ -936,7 +936,7 @@ enabled      = true                     # set false to disable email features wi
 
 The factory resolves `provider` in this order:
 
-1. `"smtp"` → built-in `SMTPEmailer` (uses the `[plugins.scale.emailer.smtp]` table).
+1. `"smtp"` → built-in `SMTPEmailer` (uses the `[scale.emailer.smtp]` table).
 2. A name registered programmatically via `emailer_factory.register(name, cls)`.
 3. A `"pkg.module:ClassName"` (or fallback `"pkg.module.ClassName"`) string is imported via `importlib`, validated as a subclass of `Emailer`, and instantiated with the resolved config dict.
 
@@ -945,11 +945,11 @@ If `provider` is empty or import/validation fails, the factory returns `None` an
 ### Built-in SMTP
 
 ```toml
-[plugins.scale.emailer]
+[scale.emailer]
 provider     = "smtp"
 from_address = "no-reply@example.com"
 
-[plugins.scale.emailer.smtp]
+[scale.emailer.smtp]
 host     = "smtp.example.com"
 port     = 587
 username = "apikey"
@@ -989,12 +989,12 @@ class SendGridEmailer(Emailer):
 ```
 
 ```toml
-[plugins.scale.emailer]
+[scale.emailer]
 provider     = "myapp.email:SendGridEmailer"
 from_address = "no-reply@example.com"
 ```
 
-The constructor receives the resolved config dict, so any extra TOML keys you put under `[plugins.scale.emailer.<your_section>]` are available via `self.config`. Keep secrets (API keys, passwords) in environment variables -- the constructor can read `os.environ` directly.
+The constructor receives the resolved config dict, so any extra TOML keys you put under `[scale.emailer.<your_section>]` are available via `self.config`. Keep secrets (API keys, passwords) in environment variables -- the constructor can read `os.environ` directly.
 
 ### Examples
 
@@ -1004,17 +1004,17 @@ Use this when you have an SMTP relay already (Gmail, AWS SES SMTP interface, you
 
 ```toml
 # jac.toml
-[plugins.scale.emailer]
+[scale.emailer]
 provider     = "smtp"
 from_address = "no-reply@example.com"
 
-[plugins.scale.emailer.smtp]
+[scale.emailer.smtp]
 host     = "smtp.gmail.com"
 port     = 587
 username = "no-reply@example.com"
 use_tls  = true
 
-[plugins.scale.auth]
+[scale.auth]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds  = 1800
 verify_url_template      = "https://app.example.com/verify?token={token}"
@@ -1093,11 +1093,11 @@ class SendGridEmailer(Emailer):
 
 ```toml
 # jac.toml
-[plugins.scale.emailer]
+[scale.emailer]
 provider     = "myapp.email:SendGridEmailer"
 from_address = "no-reply@example.com"
 
-[plugins.scale.auth]
+[scale.auth]
 verify_token_ttl_seconds = 86400
 reset_token_ttl_seconds  = 1800
 verify_url_template      = "https://app.example.com/verify?token={token}"
@@ -1126,7 +1126,7 @@ Navigate to `http://localhost:8000/admin` to access the admin dashboard. On firs
 ### Configuration
 
 ```toml
-[plugins.scale.admin]
+[scale.admin]
 enabled = true
 username = "admin"
 session_expiry_hours = 24
@@ -1289,7 +1289,7 @@ Webhooks allow external services (payment processors, CI/CD systems, messaging p
 Webhook configuration is managed via the `jac.toml` file in your project root.
 
 ```toml
-[plugins.scale.webhook]
+[scale.webhook]
 secret = "your-webhook-secret-key"
 signature_header = "X-Webhook-Signature"
 verify_signature = true
@@ -1753,10 +1753,10 @@ Overrides for `sv_walker_call` must end by returning the rehydrated walker insta
 | `jac start app.jac --scale --build` | Build image and deploy |
 | `jac start app.jac --scale --target kubernetes` | Explicit deployment target (default) |
 | `jac start app.jac --scale --enable-tls` | Enable HTTPS on a live deployment (no redeploy) |
-| `jac status app.jac` | Show live deployment status |
-| `jac status app.jac --target kubernetes` | Status for a specific target |
-| `jac destroy app.jac` | Remove Kubernetes deployment (prompts for confirmation) |
-| `jac destroy app.jac --target kubernetes` | Destroy a specific target |
+| `jac scale status app.jac` | Show live deployment status |
+| `jac scale status app.jac --target kubernetes` | Status for a specific target |
+| `jac scale destroy app.jac` | Remove Kubernetes deployment (prompts for confirmation) |
+| `jac scale destroy app.jac --target kubernetes` | Destroy a specific target |
 
 ---
 

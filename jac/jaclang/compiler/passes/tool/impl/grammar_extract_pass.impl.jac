@@ -1843,11 +1843,3 @@ impl GrammarExtractPass.emit_ebnf -> str {
     }
     return "\n\n".join(lines);
 }
-
-impl GrammarExtractPass.emit_lark -> str {
-    lines: list = [];
-    for rule in self.rules {
-        lines.append(self.format_rule_pretty(rule, ":", 88));
-    }
-    return "\n\n".join(lines);
-}

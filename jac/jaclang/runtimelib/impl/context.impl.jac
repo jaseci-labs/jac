@@ -3,7 +3,7 @@ import from dataclasses { MISSING }
 import from typing { Callable, cast }
 import from uuid { UUID }
 
-import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.jac0core.archetype { NodeAnchor, Root }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.exceptions { MissingAnchorError }
 import from jaclang.runtimelib.memory { TieredMemory }

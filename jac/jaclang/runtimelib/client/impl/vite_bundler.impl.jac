@@ -303,27 +303,6 @@ impl ViteBundler._format_config_object(
     return '\n'.join(items);
 }
 
-impl ViteBundler._format_plugin_options(self: ViteBundler, options: dict) -> str {
-    if not options {
-        return '';
-    }
-    items = [];
-    for (key, value) in options.items() {
-        if isinstance(value, str) {
-            items.append(f"{key}: '{value}'");
-        } elif isinstance(value, bool) {
-            items.append(f"{key}: {str(value).lower()}");
-        } elif isinstance(value, (int, float)) {
-            items.append(f"{key}: {value}");
-        } elif isinstance(value, list) {
-            items.append(f"{key}: [{', '.join(repr(v) for v in value)}]");
-        } else {
-            items.append(f"{key}: {repr(value)}");
-        }
-    }
-    return '{ ' + ', '.join(items) + ' }';
-}
-
 impl ViteBundler._resolve_api_base_url(
     self: ViteBundler, api_base_url_override: str = ""
 ) -> str {
@@ -333,13 +312,6 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
-
-impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
-    name = plugin_name.split('/')[-1];
-    name = name.replace('-', '_').replace('.', '_');
-    name = name.lstrip('@');
-    return name;
-}
 
 def _to_js_expr(value: any) -> str {
     if value is None {
@@ -622,7 +594,7 @@ import {{ fileURLToPath }} from "url";
 const buildDir = path.resolve(__dirname, "..");
 const projectRoot = path.resolve(__dirname, "../../..");
 
-// Vite plugin: forward client-side runtime errors to the terminal via WebSocket
+// Vite plugin: forward client-side runtime errors to the terminal and browser overlay
 function jacErrorReporter() {{
   const seen = new Map();
   return {{
@@ -646,6 +618,18 @@ function jacErrorReporter() {{
           }} catch(e) {{}}
         }}
         console.error("Client error: " + data.type + ": " + data.message + loc);
+        if (data.phase === "load") {{
+          server.ws.send({{
+            type: "error",
+            err: {{
+              message: data.message,
+              stack: data.stack || "",
+              id: data.source || "compiled/_entry.js",
+              frame: "",
+              plugin: "jac-error-reporter",
+            }},
+          }});
+        }}
       }});
     }},
   }};
@@ -994,10 +978,6 @@ impl ViteBundler.create_vite_config(
     return config_path;
 }
 
-impl ViteBundler._has_typescript_support(self: ViteBundler) -> bool {
-    return True;
-}
-
 impl ViteBundler.read_bundle(self: ViteBundler) -> tuple[str, str] {
     bundle_file = self.find_bundle();
     if not bundle_file {
@@ -1283,7 +1263,6 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/compiled/_entry.js"></script>
     <script type="module">
     if (import.meta.hot) {
       function report(d) {
@@ -1308,6 +1287,17 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
           source: null, line: null, column: null
         });
       });
+      import("/compiled/_entry.js").catch(function(err) {
+        report({
+          type: err instanceof Error ? err.constructor.name : "Error",
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : null,
+          source: null, line: null, column: null,
+          phase: "load"
+        });
+      });
+    } else {
+      import("/compiled/_entry.js").catch(function() {});
     }
     </script>
   </body>

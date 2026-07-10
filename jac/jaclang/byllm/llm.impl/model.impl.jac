@@ -180,6 +180,33 @@ def _stream_with_telemetry(
     }
 }
 
+"""Map a provider exception to a byllm error and raise.
+
+Shared by the model_call_* methods: known litellm/openai authentication,
+rate-limit and not-found errors are logged and re-raised as byllm exception
+types; anything else is logged and re-raised unchanged. Must be called from
+an active `except` block.
+"""
+impl Model._raise_mapped_provider_error(e: Exception) -> None {
+    if isinstance(e, litellm.exceptions.AuthenticationError)
+    or isinstance(e, openai.AuthenticationError) {
+        logger.error(f"LLM AuthenticationError: {e}");
+        raise AuthenticationError(str(e));
+    }
+    if isinstance(e, litellm.exceptions.RateLimitError)
+    or isinstance(e, openai.RateLimitError) {
+        logger.error(f"LLM RateLimitError: {e}");
+        raise RateLimitError(str(e));
+    }
+    if isinstance(e, litellm.exceptions.NotFoundError)
+    or isinstance(e, openai.NotFoundError) {
+        logger.error(f"LLM ModelNotFoundError: {e}");
+        raise ModelNotFoundError(str(e));
+    }
+    logger.error(f"LLM call failed with {type(e).__name__}: {e}");
+    raise;
+}
+
 """Make a direct model call without streaming.
 
 Uses OpenAI client if proxy mode is enabled, otherwise uses LiteLLM.
@@ -202,27 +229,8 @@ impl Model.model_call_no_stream(params: dict) -> dict {
             require_optional("litellm", "llm");
             response = litellm.completion(api_key=self.api_key or None, **params);
         }
-    } except litellm.exceptions.AuthenticationError as e {
-        logger.error(f"LLM AuthenticationError: {e}");
-        raise AuthenticationError(str(e));
-    } except openai.AuthenticationError as e {
-        logger.error(f"LLM AuthenticationError: {e}");
-        raise AuthenticationError(str(e));
-    } except litellm.exceptions.RateLimitError as e {
-        logger.error(f"LLM RateLimitError: {e}");
-        raise RateLimitError(str(e));
-    } except openai.RateLimitError as e {
-        logger.error(f"LLM RateLimitError: {e}");
-        raise RateLimitError(str(e));
-    } except litellm.exceptions.NotFoundError as e {
-        logger.error(f"LLM ModelNotFoundError: {e}");
-        raise ModelNotFoundError(str(e));
-    } except openai.NotFoundError as e {
-        logger.error(f"LLM ModelNotFoundError: {e}");
-        raise ModelNotFoundError(str(e));
     } except Exception as e {
-        logger.error(f"LLM call failed with {type(e).__name__}: {e}");
-        raise;
+        self._raise_mapped_provider_error(e);
     }
     return response;
 }
@@ -303,27 +311,8 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
                 api_key=self.api_key or None, **params
             );
         }
-    } except litellm.exceptions.AuthenticationError as e {
-        logger.error(f"LLM AuthenticationError: {e}");
-        raise AuthenticationError(str(e));
-    } except openai.AuthenticationError as e {
-        logger.error(f"LLM AuthenticationError: {e}");
-        raise AuthenticationError(str(e));
-    } except litellm.exceptions.RateLimitError as e {
-        logger.error(f"LLM RateLimitError: {e}");
-        raise RateLimitError(str(e));
-    } except openai.RateLimitError as e {
-        logger.error(f"LLM RateLimitError: {e}");
-        raise RateLimitError(str(e));
-    } except litellm.exceptions.NotFoundError as e {
-        logger.error(f"LLM ModelNotFoundError: {e}");
-        raise ModelNotFoundError(str(e));
-    } except openai.NotFoundError as e {
-        logger.error(f"LLM ModelNotFoundError: {e}");
-        raise ModelNotFoundError(str(e));
     } except Exception as e {
-        logger.error(f"LLM call failed with {type(e).__name__}: {e}");
-        raise;
+        self._raise_mapped_provider_error(e);
     }
     return response;
 }
@@ -357,27 +346,8 @@ impl Model.model_call_with_stream_async(params: dict) {
                 stream=True, api_key=self.api_key or None, **params
             );
         }
-    } except litellm.exceptions.AuthenticationError as e {
-        logger.error(f"LLM AuthenticationError: {e}");
-        raise AuthenticationError(str(e));
-    } except openai.AuthenticationError as e {
-        logger.error(f"LLM AuthenticationError: {e}");
-        raise AuthenticationError(str(e));
-    } except litellm.exceptions.RateLimitError as e {
-        logger.error(f"LLM RateLimitError: {e}");
-        raise RateLimitError(str(e));
-    } except openai.RateLimitError as e {
-        logger.error(f"LLM RateLimitError: {e}");
-        raise RateLimitError(str(e));
-    } except litellm.exceptions.NotFoundError as e {
-        logger.error(f"LLM ModelNotFoundError: {e}");
-        raise ModelNotFoundError(str(e));
-    } except openai.NotFoundError as e {
-        logger.error(f"LLM ModelNotFoundError: {e}");
-        raise ModelNotFoundError(str(e));
     } except Exception as e {
-        logger.error(f"LLM call failed with {type(e).__name__}: {e}");
-        raise;
+        self._raise_mapped_provider_error(e);
     }
     return response;
 }

@@ -7,7 +7,6 @@ include jaclang.compiler.passes.native.llvm.binding.options;
 include jaclang.compiler.passes.native.llvm.binding.newpassmanagers;
 include jaclang.compiler.passes.native.llvm.binding.targets;
 include jaclang.compiler.passes.native.llvm.binding.value;
-include jaclang.compiler.passes.native.llvm.binding.typeref;
 include jaclang.compiler.passes.native.llvm.binding.analysis;
 include jaclang.compiler.passes.native.llvm.binding.object_file;
 include jaclang.compiler.passes.native.llvm.binding.context;

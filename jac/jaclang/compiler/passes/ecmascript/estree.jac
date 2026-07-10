@@ -1,8 +1,7 @@
 import from typing { TypeAlias }
 import from typing { Literal as TypingLiteral }
 
-glob SourceType: TypeAlias = TypingLiteral[('script', 'module')],
-     VariableDeclarationKind: TypeAlias = TypingLiteral[('var', 'let', 'const')],
+glob VariableDeclarationKind: TypeAlias = TypingLiteral[('var', 'let', 'const')],
      PropertyKind: TypeAlias = TypingLiteral[('init', 'get', 'set')],
      MethodDefinitionKind: TypeAlias = TypingLiteral[
          ('constructor', 'method', 'get', 'set')
@@ -37,13 +36,11 @@ obj PrivateIdentifier(Node) {
 obj Literal(Node) {
     has value: str | bool | None | int | float = None,
         raw: (str | None) = None,
-        bigint: (str | None) = None,
         `type: TypingLiteral['Literal'] = 'Literal';
 }
 
 obj Program(Node) {
     has body: list[(Statement | ModuleDeclaration)] = [],
-        sourceType: SourceType = 'script',
         `type: TypingLiteral['Program'] = 'Program';
 }
 

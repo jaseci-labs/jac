@@ -372,7 +372,7 @@ impl JacScaleUserManager.firebase_token_auth_with_id_token(
             code='SSO_NOT_CONFIGURED',
             message=(
                 "Firebase Auth SSO is not configured. Set "
-                "[plugins.scale.sso.firebase] project_id in jac.toml or "
+                "[scale.sso.firebase] project_id in jac.toml or "
                 f"{firebase_project_id_env_hint()}"
             ),
             meta=Meta(extra={'http_status': 501})

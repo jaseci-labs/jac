@@ -227,7 +227,7 @@ jac add --npm --dev tailwindcss @tailwindcss/vite
 tailwindcss = "latest"
 "@tailwindcss/vite" = "latest"
 
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 ```
