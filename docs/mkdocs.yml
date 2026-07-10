@@ -20,6 +20,7 @@ nav:
           - Why Jac vs a Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
           - Core Concepts: "quick-guide/what-makes-jac-different.md"
           - Install: "quick-guide/install.md"
+          - One Binary, Build Anything: "quick-guide/one-binary.md"
       - Build Anything: "quick-guide/project-kinds.md"
       - I like to build…:
           - CLI tools & native binaries: "build/cli-and-native.md"

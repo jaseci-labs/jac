@@ -153,13 +153,13 @@ def create(
 
 @registry.command(
     name="install",
-    help="Install project dependencies, or 'jac install <pkg>' to add a package to the project venv",
+    help="Install project dependencies, or 'jac install <pkg>' to add package(s) to jac.toml and install them",
     args=[
         Arg.create(
             "packages",
             kind=ArgKind.MULTI,
             default=[],
-            help="Package(s) to install into the project's venv (.jac/venv)"
+            help="Package(s) to add to jac.toml and install into the project's venv (.jac/venv)"
         ),
         Arg.create(
             "editable",
@@ -170,7 +170,11 @@ def create(
             metavar="PATH"
         ),
         Arg.create(
-            "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
+            "dev",
+            typ=bool,
+            default=False,
+            help="Include dev dependencies, or record named package(s) as dev dependencies",
+            short="d"
         ),
         Arg.create(
             "extras",
@@ -178,6 +182,31 @@ def create(
             default=[],
             help="Optional dependency groups to install (e.g. data monitoring)",
             short="x"
+        ),
+        Arg.create(
+            "no-save",
+            typ=bool,
+            default=False,
+            help="Install named package(s) without recording them in jac.toml",
+            short=""
+        ),
+        Arg.create(
+            "git",
+            default="",
+            help="Git repository URL to install and record as a git dependency",
+            short="g"
+        ),
+        Arg.create(
+            "npm",
+            typ=bool,
+            default=False,
+            help="Install npm (client-side) package(s); with no names, install all npm deps from jac.toml"
+        ),
+        Arg.create(
+            "shadcn",
+            typ=bool,
+            default=False,
+            help="Install shadcn UI component(s) from the bundled registry"
         ),
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
@@ -266,11 +295,19 @@ def create(
             "jac install --scale",
             "Also install deploy-time capabilities (kubernetes/docker) for the operator machine"
         ),
-        ("jac install numpy", "Install numpy into the project venv"),
+        ("jac install requests", "Add requests to jac.toml and install it"),
         (
-            "jac install numpy pandas scipy",
-            "Install multiple packages into the project venv"
+            'jac install "numpy>=1.24" pandas',
+            "Add multiple packages with version constraints"
         ),
+        ("jac install pytest --dev", "Add a dev dependency"),
+        ("jac install numpy --no-save", "Install without recording in jac.toml"),
+        (
+            "jac install --git https://github.com/user/plugin.git",
+            "Install and record a git dependency"
+        ),
+        ("jac install --npm left-pad", "Add a client-side npm dependency"),
+        ("jac install --shadcn button card", "Add shadcn UI components"),
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         (
@@ -299,6 +336,10 @@ def install(
     editable: list = [],
     dev: bool = False,
     extras: list = [],
+    no_save: bool = False,
+    git: str = "",
+    npm: bool = False,
+    shadcn: bool = False,
     verbose: bool = False,
     force_reinstall: bool = False,
     no_cache_dir: bool = False,
@@ -311,51 +352,6 @@ def install(
     scale: bool = False,
     plan: bool = False,
     as_json: bool = False
-) -> int;
-
-@registry.command(
-    name="add",
-    help="Add a dependency to the project",
-    args=[
-        Arg.create(
-            "packages", kind=ArgKind.MULTI, default=[], help="Package specifications"
-        ),
-        Arg.create(
-            "dev", typ=bool, default=False, help="Add as dev dependency", short="d"
-        ),
-        Arg.create("git", default="", help="Git repository URL", short="g"),
-        Arg.create(
-            "verbose", typ=bool, default=False, help="Verbose output", short="v"
-        ),
-        Arg.create(
-            "npm", typ=bool, default=False, help="Add as npm (client-side) dependency"
-        ),
-        Arg.create(
-            "shadcn",
-            typ=bool,
-            default=False,
-            help="Add shadcn UI component(s) from registry"
-        ),
-
-    ],
-    examples=[
-        ("jac add requests", "Add a package"),
-        ('jac add "numpy>=1.24" pandas', "Add multiple packages with version"),
-        ("jac add pytest --dev", "Add dev dependency"),
-        ("jac add --git https://github.com/user/plugin.git", "Add from git"),
-        ("jac add --npm left-pad", "Add a client-side npm dependency"),
-        ("jac add --shadcn button card", "Add shadcn UI components"),
-
-    ],
-    group="project"
-)
-def add(
-    packages: list = [],
-    dev: bool = False,
-    git: str = "",
-    verbose: bool = False,
-    npm: bool = False,
-    shadcn: bool = False
 ) -> int;
 
 @registry.command(

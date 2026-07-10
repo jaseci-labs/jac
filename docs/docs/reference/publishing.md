@@ -77,21 +77,17 @@ mylib = ["templates/**/*", "data/*.json"]
 !!! warning "Single-file modules"
     `[project.include]` `packages` matches **directories**. A package that is a single top-level `.py`/`.jac` file is not currently collected -- put your code in a directory (a `__init__.jac` is enough) before bundling.
 
-### Console scripts and plugins
+### Console scripts
 
-Declare CLI commands and Jac plugin entry points with `[entrypoints]`:
+Declare CLI commands with `[entrypoints]`:
 
 ```toml
 [entrypoints.scripts]
 # `pip install mylib` adds a `mylib` command on PATH
 mylib = "mylib.cli:main"
-
-[entrypoints.jac]
-# Auto-discovered by Jac's plugin system at startup
-mylib = "mylib.plugin:JacRuntime"
 ```
 
-`[entrypoints.scripts]` is written as `[console_scripts]` in the wheel; `[entrypoints.jac]` is the `jac` entry-point group queried by the plugin loader.
+`[entrypoints.scripts]` is written as `[console_scripts]` in the wheel. Other `[entrypoints.<group>]` tables are written through to the wheel metadata verbatim for consumers that use `importlib.metadata.entry_points()`; Jac itself no longer loads any entry-point group at startup.
 
 Consumers who install your package into a Jac project (`jac install mylib`) can run its console-script with [`jac x mylib`](cli/index.md#jac-x) under the `jac` runtime, without it being on their shell `PATH`.
 

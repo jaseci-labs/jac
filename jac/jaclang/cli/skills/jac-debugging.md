@@ -1,6 +1,6 @@
 ---
 name: jac-debugging
-description: The Jac fix loop - reading `jac check` diagnostics (E/W code anatomy, `jac guide` pointers), `# jac:ignore[CODE]` suppression, stale-cache triage (`jac clean` vs `jac purge` vs `.jac/data`), cross-boundary drift after server-contract changes (W1101/W1051 in client files), `jac lint --fix` vs `jac format`, graph inspection with `jac dot`. Load when a build fails, errors look wrong, or behavior is stale/inexplicable.
+description: The Jac fix loop - reading `jac check` diagnostics (E/W code anatomy, `jac guide` pointers), `# jac:ignore[CODE]` suppression, stale-cache triage (`jac clean` vs `jac purge` vs `.jac/data`), cross-boundary drift after server-contract changes (W1101/W1051 in client files), `jac check --lint --fix` vs `jac fmt`, graph inspection with `jac dot`. Load when a build fails, errors look wrong, or behavior is stale/inexplicable.
 ---
 
 The core loop: write -> `jac check <paths>` -> read the diagnostic -> follow its guide pointer -> fix -> re-check -> `jac test`.
@@ -46,11 +46,11 @@ Compiled bytecode and persisted graph data both outlive your source edits. When 
 
 `jac clean` scopes: default = `.jac/data` only; `--cache` bytecode; `--all` data+cache+venv+client; `--force` skips the confirm prompt. `jac purge` clears the global (per-user) cache.
 
-## `jac lint --fix` vs `jac format`
+## `jac check --lint --fix` vs `jac fmt`
 
-- `jac format <paths>` - whitespace/layout only. `-s` previews to stdout; `--check` exits 1 if anything is unformatted (CI). If formatting would displace comments, it emits `E5051` and **refuses to save** - inspect with `-s`.
-- `jac lint <paths>` - reports rule violations with kebab names (`[combine-has]`, `[no-print]`); `--fix` applies the auto-fixable ones and reports the rest (`N fixed, M unfixable`).
-- `jac format -l` runs both in one pass.
+- `jac fmt <paths>` - whitespace/layout only. `-s` previews to stdout; `--check` exits 1 if anything is unformatted (CI). If formatting would displace comments, it emits `E5051` and **refuses to save** - inspect with `-s`.
+- `jac check <paths> --lint` - reports rule violations with kebab names (`[combine-has]`, `[no-print]`); add `--fix` to apply the auto-fixable ones and report the rest (`N fixed, M unfixable`).
+- `jac fmt <paths> -l` formats and lint-fixes in one pass.
 
 ## Inspecting the graph
 

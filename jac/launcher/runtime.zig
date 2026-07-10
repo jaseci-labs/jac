@@ -105,9 +105,9 @@ pub const RT_KEY_LEN = 16 + 1 + 16; // 33
 /// absolute dev-source paths, so the second checkout silently executed the
 /// first's source. Distinct binary paths now yield distinct `rt/<key>` trees.
 ///
-/// The `<hash16>-...` shape is deliberate: every key for a given payload version
-/// shares the `hash16` prefix, which `gcStale` uses to keep sibling checkouts
-/// while still reclaiming trees from previous versions.
+/// The `<hash16>-<pathhash>` shape is deliberate: `gcStale` reads the
+/// `<pathhash>` suffix to reclaim only THIS binary's own older versions while
+/// leaving other binaries' trees untouched.
 pub fn rtKey(hash16: *const [16]u8, exe_path: []const u8) [RT_KEY_LEN]u8 {
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(exe_path, &digest, .{});
@@ -376,7 +376,7 @@ pub fn materialize(
         return Error.PayloadHashMismatch;
 
     try extractPayload(io, gpa, zbuf, rt, pid);
-    gcStale(io, root, &trailer.hash16);
+    gcStale(io, root, &key);
     if (!builtin.is_test)
         std.debug.print("jac: one-time setup complete.\n", .{});
     return rt;
@@ -427,32 +427,30 @@ fn extractPayload(
     };
 }
 
-/// Best-effort GC of `rt/<old-hash>...` trees left by previous binary versions.
-/// Replaces the C launcher's `system("find ... -exec rm -rf")`.
+/// Best-effort GC of THIS binary's own older-version trees. Replaces the C
+/// launcher's `system("find ... -exec rm -rf")`.
 ///
-/// `keep_hash16` is the CURRENT payload version. Every co-located checkout of
-/// that version shares this prefix (`<hash16>-<pathhash>`, see `rtKey`), so we
-/// keep them all -- evicting a sibling here would force it to re-extract on its
-/// next run, churning the cache for no benefit. Trees whose prefix differs
-/// belong to a previous version and are reclaimed; so are pre-fix entries named
-/// by the bare `<hash16>` (a payload-only key), which no current binary looks
-/// up -- the length check evicts them on the first run after upgrading rather
-/// than letting them linger until the next version bump.
-fn gcStale(io: Io, root: []const u8, keep_hash16: *const [16]u8) void {
+/// `keep_key` is the CURRENT `<hash16>-<pathhash>` dir name. A tree is reclaimed
+/// only when its `<pathhash>` suffix matches this binary's (an older version of
+/// THIS binary) and its name differs from `keep_key`. A tree with a different
+/// `<pathhash>` belongs to another binary and is left untouched, so a cold start
+/// here can never evict a tree another binary is still reading from.
+fn gcStale(io: Io, root: []const u8, keep_key: *const [RT_KEY_LEN]u8) void {
     var rtbuf: [MAX_PATH]u8 = undefined;
     const rtdir = std.fmt.bufPrint(&rtbuf, "{s}/rt", .{root}) catch return;
     var dir = Io.Dir.cwd().openDir(io, rtdir, .{ .iterate = true }) catch return;
     defer dir.close(io);
+    // `<pathhash>` is the 16-char suffix after the '-' separator (see `rtKey`).
+    const my_pathhash = keep_key[17..RT_KEY_LEN];
     var it = dir.iterate();
     while (it.next(io) catch null) |entry| {
         if (entry.kind != .directory) continue;
-        // A current-version tree in the new key format -> keep. hash16 is a
-        // fixed 16-char hex string, so a prefix match is an exact version match;
-        // the length check excludes both other versions and the old bare-hash16
-        // format. (A live `.tmp.<pid>` extract is longer than RT_KEY_LEN, so it
-        // falls through to the explicit skip below rather than being kept here.)
-        if (entry.name.len == RT_KEY_LEN and std.mem.startsWith(u8, entry.name, keep_hash16)) continue;
         if (std.mem.indexOf(u8, entry.name, ".tmp.") != null) continue; // a live extract
+        if (entry.name.len != RT_KEY_LEN) continue; // not a current-format key
+        // A different binary's tree -> never evict.
+        if (!std.mem.eql(u8, entry.name[17..RT_KEY_LEN], my_pathhash)) continue;
+        // Our own current version -> keep; our own older versions -> reclaim.
+        if (std.mem.eql(u8, entry.name, keep_key)) continue;
         dir.deleteTree(io, entry.name) catch {};
     }
 }
@@ -627,11 +625,10 @@ test "materialize isolates co-located binaries with identical payloads" {
     }
 }
 
-// A pre-fix binary wrote the cache dir under the bare payload digest
-// (`rt/<hash16>`). After upgrading to a path-folded binary, that orphaned
-// old-format tree is never looked up again, so the cold-path GC must reclaim it
-// on the first run rather than leaving it until the next payload-version bump.
-test "materialize gc reclaims pre-fix bare-hash16 cache dirs" {
+// gcStale reclaims THIS binary's own older-version trees but must never evict a
+// tree that carries a different `<pathhash>` -- another binary sharing the cache
+// home, possibly a still-running deploy on another jac version.
+test "materialize gc reclaims own old versions but spares other binaries" {
     const io = testing.io;
     const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
     defer testing.allocator.free(payload);
@@ -648,25 +645,36 @@ test "materialize gc reclaims pre-fix bare-hash16 cache dirs" {
     var ebuf: [MAX_PATH]u8 = undefined;
     const exe = ebuf[0..try tmp.dir.realPathFile(io, "jacbin", &ebuf)];
 
-    // Pre-seed the old-format tree `<home>/jac/rt/<hash16>` (bare digest, the
-    // shape a pre-fix binary wrote), complete with its `.ok` marker.
-    var oldrel: [MAX_PATH]u8 = undefined;
-    const old_rel = std.fmt.bufPrint(&oldrel, "jac/rt/{s}", .{hex[0..16]}) catch unreachable;
-    try tmp.dir.createDirPath(io, old_rel);
-    var okrel: [MAX_PATH]u8 = undefined;
-    const ok_rel = std.fmt.bufPrint(&okrel, "{s}/.ok", .{old_rel}) catch unreachable;
-    try tmp.dir.writeFile(io, .{ .sub_path = ok_rel, .data = "" });
+    // This binary's `<pathhash>` (the suffix of its current key).
+    const my_key = rtKey(hex[0..16], exe);
+    const my_pathhash = my_key[17..RT_KEY_LEN];
 
-    var oldabs: [MAX_PATH]u8 = undefined;
-    const old_abs = std.fmt.bufPrint(&oldabs, "{s}/jac/rt/{s}", .{ home, hex[0..16] }) catch unreachable;
-    try testing.expect(pathExists(io, old_abs, ".ok")); // present before upgrade
+    // Seed two trees under `<home>/jac/rt/`, each with a `.ok` marker:
+    //  (a) an OLD version of THIS binary: our `<pathhash>`, a bogus `<hash16>`.
+    //  (b) ANOTHER binary's current-version tree: a foreign `<pathhash>`.
+    var b: [MAX_PATH]u8 = undefined;
+    const mine_old = std.fmt.bufPrint(&b, "0000000000000000-{s}", .{my_pathhash}) catch unreachable;
+    const other = "fedcba9876543210-ffffffffffffffff"; // foreign pathhash suffix
+    inline for (.{ mine_old, other }) |name| {
+        var d: [MAX_PATH]u8 = undefined;
+        const dd = std.fmt.bufPrint(&d, "jac/rt/{s}", .{name}) catch unreachable;
+        try tmp.dir.createDirPath(io, dd);
+        var r: [MAX_PATH]u8 = undefined;
+        const p = std.fmt.bufPrint(&r, "{s}/.ok", .{dd}) catch unreachable;
+        try tmp.dir.writeFile(io, .{ .sub_path = p, .data = "" });
+    }
 
-    // Cold-path materialize runs gcStale; the old-format tree must be gone and
-    // the new path-folded tree present.
     var rtbuf: [MAX_PATH]u8 = undefined;
     const rt = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf);
-    try testing.expect(std.mem.endsWith(u8, rt, &rtKey(hex[0..16], exe)));
-    try testing.expect(!pathExists(io, old_abs, ".ok")); // reclaimed on first run
+    try testing.expect(std.mem.endsWith(u8, rt, &my_key)); // current tree present
+
+    var abs: [MAX_PATH]u8 = undefined;
+    // (a) our own old version -> reclaimed
+    const mine_abs = std.fmt.bufPrint(&abs, "{s}/jac/rt/{s}", .{ home, mine_old }) catch unreachable;
+    try testing.expect(!pathExists(io, mine_abs, ".ok"));
+    // (b) another binary's tree -> spared (the concurrent-safety guard)
+    const other_abs = std.fmt.bufPrint(&abs, "{s}/jac/rt/{s}", .{ home, other }) catch unreachable;
+    try testing.expect(pathExists(io, other_abs, ".ok"));
 }
 
 // Join `<tmp>/<name>` into `buf`, returning an absolute path usable with

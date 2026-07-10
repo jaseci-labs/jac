@@ -35,7 +35,7 @@ test "fullstack client importing @jac/wasm_host builds" {
         jac_cmd = get_jac_command();
         env = get_env_with_bun();
         add_result = run(
-            [*jac_cmd, "add", "--npm"],
+            [*jac_cmd, "install", "--npm"],
             cwd=project_dir,
             capture_output=True,
             text=True,
@@ -43,7 +43,7 @@ test "fullstack client importing @jac/wasm_host builds" {
         );
         if add_result.returncode != 0 {
             pytest.fail(
-                f"jac add --npm failed (bun/npm unavailable?)\n"
+                f"jac install --npm failed (bun/npm unavailable?)\n"
                 f"STDOUT:\n{add_result.stdout[:2000]}\n"
                 f"STDERR:\n{add_result.stderr[:2000]}\n"
             );

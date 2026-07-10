@@ -179,6 +179,7 @@ test "cluster type detects aws by provider" {
 test "check pods restarted selector and return values" {
     app_name = "myapp";
     namespace = "test-ns";
+    current_hash = "abc123";
     expected_labels = [
         app_name,
         f"{app_name}-redis",
@@ -189,12 +190,19 @@ test "check pods restarted selector and return values" {
         f"{app_name}-redis-insight"
     ];
 
+    fake_rs = unittest.mock.MagicMock();
+    fake_rs.metadata.labels = {"pod-template-hash": current_hash, "app": app_name};
+    fake_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "1"};
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [fake_rs];
+
     clean_container = unittest.mock.MagicMock();
     clean_container.state = unittest.mock.MagicMock();
     clean_container.state.waiting = None;
     clean_container.restart_count = 0;
 
     pod_clean = unittest.mock.MagicMock();
+    pod_clean.metadata.labels = {"pod-template-hash": current_hash};
     pod_clean.status.container_statuses = [clean_container];
     pod_clean.status.init_container_statuses = None;
 
@@ -206,7 +214,11 @@ test "check pods restarted selector and return values" {
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
         with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
-            result_false = check_pods_restarted(namespace, app_name);
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result_false = check_pods_restarted(namespace, app_name);
+            }
         }
     }
 
@@ -226,6 +238,7 @@ test "check pods restarted selector and return values" {
     crash_container.restart_count = 1;
 
     pod_crash = unittest.mock.MagicMock();
+    pod_crash.metadata.labels = {"pod-template-hash": current_hash};
     pod_crash.status.container_statuses = [crash_container];
     pod_crash.status.init_container_statuses = None;
 
@@ -236,7 +249,11 @@ test "check pods restarted selector and return values" {
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
         with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
-            result_true = check_pods_restarted(namespace, app_name);
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result_true = check_pods_restarted(namespace, app_name);
+            }
         }
     }
 
@@ -246,9 +263,11 @@ test "check pods restarted selector and return values" {
     stabilised_container.state = unittest.mock.MagicMock();
     stabilised_container.state.waiting = None;
     stabilised_container.state.running = unittest.mock.MagicMock();
+    stabilised_container.state.terminated = None;
     stabilised_container.restart_count = 1;
 
     pod_stabilised = unittest.mock.MagicMock();
+    pod_stabilised.metadata.labels = {"pod-template-hash": current_hash};
     pod_stabilised.status.container_statuses = [stabilised_container];
     pod_stabilised.status.init_container_statuses = None;
 
@@ -259,11 +278,200 @@ test "check pods restarted selector and return values" {
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
         with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
-            result_stabilised = check_pods_restarted(namespace, app_name);
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result_stabilised = check_pods_restarted(namespace, app_name);
+            }
         }
     }
 
     assert result_stabilised is False , "pod that restarted once but is now running should not be flagged as crashed";
+}
+
+test "check pods restarted ignores stale replicaset pod" {
+    app_name = "myapp";
+    namespace = "test-ns";
+    current_hash = "86587b99c";
+    stale_hash = "755f56699b";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": app_name};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
+
+    healthy_container = unittest.mock.MagicMock();
+    healthy_container.state = unittest.mock.MagicMock();
+    healthy_container.state.running = unittest.mock.MagicMock();
+    healthy_container.state.waiting = None;
+    healthy_container.state.terminated = None;
+    healthy_container.restart_count = 0;
+
+    pod_new = unittest.mock.MagicMock();
+    pod_new.metadata.labels = {"pod-template-hash": current_hash};
+    pod_new.status.container_statuses = [healthy_container];
+    pod_new.status.init_container_statuses = None;
+
+    stale_container = unittest.mock.MagicMock();
+    crash_state = unittest.mock.MagicMock();
+    crash_state.reason = "CrashLoopBackOff";
+    stale_container.state = unittest.mock.MagicMock();
+    stale_container.state.waiting = crash_state;
+    stale_container.state.running = None;
+    stale_container.state.terminated = None;
+    stale_container.restart_count = 164;
+
+    pod_stale = unittest.mock.MagicMock();
+    pod_stale.metadata.labels = {"pod-template-hash": stale_hash};
+    pod_stale.status.container_statuses = [stale_container];
+    pod_stale.status.init_container_statuses = None;
+
+    resp = unittest.mock.MagicMock();
+    resp.items = [pod_new, pod_stale];
+
+    fake_v1 = unittest.mock.MagicMock();
+    fake_v1.list_namespaced_pod.return_value = resp;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result = check_pods_restarted(namespace, app_name);
+            }
+        }
+    }
+
+    assert result is False , "stale crashed pod from old RS must not fail a healthy new deploy";
+}
+
+test "check pods restarted still detects a crash-looping StatefulSet pod with no pod-template-hash" {
+    app_name = "myapp";
+    namespace = "test-ns";
+    current_hash = "86587b99c";
+
+    current_rs = unittest.mock.MagicMock();
+    current_rs.metadata.labels = {"pod-template-hash": current_hash, "app": app_name};
+    current_rs.metadata.annotations = {"deployment.kubernetes.io/revision": "2"};
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.return_value.items = [current_rs];
+
+    healthy_container = unittest.mock.MagicMock();
+    healthy_container.state = unittest.mock.MagicMock();
+    healthy_container.state.running = unittest.mock.MagicMock();
+    healthy_container.state.waiting = None;
+    healthy_container.state.terminated = None;
+    healthy_container.restart_count = 0;
+
+    pod_deployment = unittest.mock.MagicMock();
+    pod_deployment.metadata.labels = {"pod-template-hash": current_hash};
+    pod_deployment.status.container_statuses = [healthy_container];
+    pod_deployment.status.init_container_statuses = None;
+
+    crash_container = unittest.mock.MagicMock();
+    crash_state = unittest.mock.MagicMock();
+    crash_state.reason = "CrashLoopBackOff";
+    crash_container.state = unittest.mock.MagicMock();
+    crash_container.state.waiting = crash_state;
+    crash_container.state.running = None;
+    crash_container.state.terminated = None;
+    crash_container.restart_count = 12;
+
+    pod_mongodb = unittest.mock.MagicMock();
+    pod_mongodb.metadata.labels = {"controller-revision-hash": "mongodb-abc123"};
+    pod_mongodb.status.container_statuses = [crash_container];
+    pod_mongodb.status.init_container_statuses = None;
+
+    resp = unittest.mock.MagicMock();
+    resp.items = [pod_deployment, pod_mongodb];
+
+    fake_v1 = unittest.mock.MagicMock();
+    fake_v1.list_namespaced_pod.return_value = resp;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result = check_pods_restarted(namespace, app_name);
+            }
+        }
+    }
+
+    assert result is True , "a crash-looping StatefulSet pod (no pod-template-hash) must still fail the deploy, even while Deployment companions are on the current RS";
+}
+
+# Exercises the RS-lookup exception fallback, not the hash-scoping fix
+# itself: it passes as long as the plain broad selector still detects
+# crashes, independent of whether RS scoping exists at all.
+test "check pods restarted falls back to broad selector when RS lookup fails" {
+    app_name = "myapp";
+    namespace = "test-ns";
+
+    fake_apps_v1 = unittest.mock.MagicMock();
+    fake_apps_v1.list_namespaced_replica_set.side_effect = ApiException(status=403);
+
+    clean_container = unittest.mock.MagicMock();
+    clean_container.state = unittest.mock.MagicMock();
+    clean_container.state.waiting = None;
+    clean_container.state.running = unittest.mock.MagicMock();
+    clean_container.state.terminated = None;
+    clean_container.restart_count = 0;
+
+    pod_clean = unittest.mock.MagicMock();
+    pod_clean.status.container_statuses = [clean_container];
+    pod_clean.status.init_container_statuses = None;
+
+    resp_clean = unittest.mock.MagicMock();
+    resp_clean.items = [pod_clean];
+
+    fake_v1 = unittest.mock.MagicMock();
+    fake_v1.list_namespaced_pod.return_value = resp_clean;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result = check_pods_restarted(namespace, app_name);
+            }
+        }
+    }
+
+    assert result is False , "should not raise when RS lookup fails; falls back to broad selector";
+
+    crash_container = unittest.mock.MagicMock();
+    crash_state = unittest.mock.MagicMock();
+    crash_state.reason = "CrashLoopBackOff";
+    crash_container.state = unittest.mock.MagicMock();
+    crash_container.state.waiting = crash_state;
+    crash_container.state.running = None;
+    crash_container.state.terminated = None;
+    crash_container.restart_count = 3;
+
+    pod_crash = unittest.mock.MagicMock();
+    pod_crash.status.container_statuses = [crash_container];
+    pod_crash.status.init_container_statuses = None;
+
+    resp_crash = unittest.mock.MagicMock();
+    resp_crash.items = [pod_crash];
+
+    fake_v1.list_namespaced_pod.return_value = resp_crash;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result_crash = check_pods_restarted(namespace, app_name);
+            }
+        }
+    }
+
+    assert result_crash is True , "crash must still be detected when RS lookup falls back to broad selector";
 }
 
 test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
