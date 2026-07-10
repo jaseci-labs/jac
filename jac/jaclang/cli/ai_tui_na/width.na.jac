@@ -1,14 +1,3 @@
-"""Byte-oriented visible-width math for ANSI-styled terminal strings.
-
-The package contract is deliberately byte-oriented (len(str) is bytes on
-na): printable ASCII counts one column, ANSI escape sequences count zero,
-and any UTF-8 lead byte >= 194 counts exactly one column with its
-continuation bytes skipped — no East-Asian double-width handling.
-Every widget's truncate/pad cell math relies on these exact semantics.
-"""
-
-# --- byte codes and thresholds ---
-
 glob _ESC_BYTE: int = 27,
      _BEL_BYTE: int = 7,
      _CSI_INTRO: int = 91,
@@ -21,7 +10,6 @@ glob _ASCII_PRINT_LO: int = 32,
      _CSI_FINAL_LO: int = 64,
      _CSI_FINAL_HI: int = 126;
 
-# UTF-8 lead-byte thresholds; >= _UTF8_LEAD_MIN is one visible column.
 glob _UTF8_LEAD_MIN: int = 194,
      _UTF8_LEAD_4: int = 240,
      _UTF8_LEAD_3: int = 224,
@@ -29,13 +17,6 @@ glob _UTF8_LEAD_MIN: int = 194,
 
 glob _TRUNC_MARK: str = "~";
 
-# --- exported helpers ---
-
-"""Integer division that returns 0 for any non-positive divisor.
-
-Callers (editor/screen layout math) divide by terminal dimensions that
-can legitimately be 0 during startup or resize — the guard is contract.
-"""
 def idiv(a: int, b: int) -> int {
     if b <= 0 {
         return 0;
@@ -43,12 +24,10 @@ def idiv(a: int, b: int) -> int {
     return a // b;
 }
 
-"""True when byte code c ('@'..'~') terminates a CSI sequence."""
 def _is_csi_final(c: int) -> bool {
     return c >= _CSI_FINAL_LO and c <= _CSI_FINAL_HI;
 }
 
-"""Total byte length (1-4) of the UTF-8 sequence starting with lead."""
 def _utf8_seq_len(lead: int) -> int {
     if lead >= _UTF8_LEAD_4 {
         return 4;
@@ -62,11 +41,6 @@ def _utf8_seq_len(lead: int) -> int {
     return 1;
 }
 
-"""Return the index just past the escape sequence whose ESC is at s[i].
-
-Handles CSI (ESC [ .. final byte), OSC/APC (ESC ]/_ .. BEL or ESC \\),
-and treats anything else as a two-byte ESC+char sequence.
-"""
 def _skip_ansi_at(s: str, i: int) -> int {
     n = len(s);
     if i + 1 >= n {
@@ -97,11 +71,6 @@ def _skip_ansi_at(s: str, i: int) -> int {
     return i + 2;
 }
 
-"""Count the terminal columns s occupies, ignoring ANSI escapes.
-
-Byte-oriented package contract: printable ASCII and each UTF-8 lead
-byte >= 194 count one column; control and continuation bytes count zero.
-"""
 def visible_width(s: str) -> int {
     n = len(s);
     if n == 0 {
@@ -109,7 +78,7 @@ def visible_width(s: str) -> int {
     }
     w: int = 0;
     i: int = 0;
-    # Manual index walk: advance is variable-length (escapes, UTF-8 runs).
+
     while i < n {
         c = ord(s[i]);
         if c == _ESC_BYTE {
@@ -131,12 +100,6 @@ def visible_width(s: str) -> int {
     return w;
 }
 
-"""Truncate s to at most width visible columns, preserving ANSI escapes.
-
-Strings that already fit are returned unchanged; otherwise the last
-column is spent on the "~" truncation marker. Escape sequences before
-the cut point are kept intact so styling survives truncation.
-"""
 def ansi_trunc(s: str, width: int) -> str {
     if width <= 0 {
         return "";
@@ -144,7 +107,7 @@ def ansi_trunc(s: str, width: int) -> str {
     if visible_width(s) <= width {
         return s;
     }
-    target = width - 1;  # reserve one column for the truncation marker
+    target = width - 1;
     parts: list[str] = [];
     vis: int = 0;
     i: int = 0;
@@ -175,11 +138,10 @@ def ansi_trunc(s: str, width: int) -> str {
     return "".join(parts) + _TRUNC_MARK;
 }
 
-"""Right-pad s with spaces to width visible columns (no-op if it fits)."""
 def ansi_pad(s: str, width: int) -> str {
     vw = visible_width(s);
     if vw >= width {
-        return s;  # also guards the negative-count repetition below
+        return s;
     }
     return s + " " * (width - vw);
 }

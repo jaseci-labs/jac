@@ -1,6 +1,3 @@
-"""Keyboard dispatch for the TUI: routes parsed keys to the overlay,
-autocomplete popup, Ctrl-chord, cursor-movement, and text-editing handlers.
-Every handler returns True only when the app should quit."""
 import from .state { TuiState, EventKind, TuiStatus, AcKind }
 import from .ipc_schema { CMD_SEND, CMD_STOP, CMD_RESET, CMD_QUIT }
 import from .runtime { TuiRuntime }
@@ -15,37 +12,26 @@ import from .overlay {
 }
 import from .commands { slash_submit, CmdResult }
 
-glob _EDITOR_CHROME_COLS: int = 6,  # frame/prompt columns around the editor text
-    _EDITOR_CHROME_ROWS: int = 6,  # header/status rows around the editor box
-    _INPUT_EDITOR_MAX_ROWS: int = 10,  # editor viewport height cap
-    _PAGE_CHROME_ROWS: int = 4,  # rows excluded from a PageUp/PageDown jump
-    _MOUSE_SCROLL_LINES: int = 3,  # feed lines per mouse wheel tick
-    _MAX_INPUT_LEN: int = 4096;  # editor content byte cap
+glob _EDITOR_CHROME_COLS: int = 6,
+     _EDITOR_CHROME_ROWS: int = 6,
+     _INPUT_EDITOR_MAX_ROWS: int = 10,
+     _PAGE_CHROME_ROWS: int = 4,
+     _MOUSE_SCROLL_LINES: int = 3,
+     _MAX_INPUT_LEN: int = 4096;
 
-# --- editor geometry ---
-
-"""Usable editor text width for the current terminal size (>= 1)."""
 def _editor_width(state: TuiState) -> int {
     return max(1, state.term_cols - _EDITOR_CHROME_COLS);
 }
 
-"""Editor viewport row budget for the current terminal size, clamped to
-[1, _INPUT_EDITOR_MAX_ROWS]."""
 def _editor_max_rows(state: TuiState) -> int {
     return max(1, min(_INPUT_EDITOR_MAX_ROWS, state.term_rows - _EDITOR_CHROME_ROWS));
 }
 
-"""Post-edit epilogue: re-clamp the editor viewport to the cursor and mark
-the frame dirty."""
 def _sync_editor_view(state: TuiState) {
     state.editor.update_scroll(_editor_width(state), _editor_max_rows(state));
     state.dirty = True;
 }
 
-# --- submit ---
-
-"""True when the character left of the cursor is a backslash, i.e. the user
-asked for a line continuation instead of a submit."""
 def _pending_continuation(state: TuiState) -> bool {
     ed = state.editor;
     if not ed.lines {
@@ -58,9 +44,6 @@ def _pending_continuation(state: TuiState) -> bool {
     return cur_line[ed.cursor_col - 1] == "\\";
 }
 
-"""Submit the editor buffer: backslash continuation turns Enter into a
-newline; slash commands dispatch locally; anything else is echoed to the
-feed and sent over IPC (unless a run is already in flight)."""
 def _handle_submit(rt: TuiRuntime) -> bool {
     state = rt.state;
     ed = state.editor;
@@ -101,15 +84,10 @@ def _handle_submit(rt: TuiRuntime) -> bool {
     state.upsert_event(-1, EventKind.USER, text, "");
     state.scroll_to_bottom();
 
-    # Concat, not an f-string: text may be up to _MAX_INPUT_LEN bytes and
-    # f-strings truncate at 1024.
     rt.cmd_queue.send(state.ipc_fd, CMD_SEND + ":" + text);
     return False;
 }
 
-# --- per-mode handlers ---
-
-"""Handle keys while the autocomplete popup is open."""
 def _handle_ac_key(k: Key, rt: TuiRuntime) -> bool {
     state = rt.state;
 
@@ -147,7 +125,6 @@ def _handle_ac_key(k: Key, rt: TuiRuntime) -> bool {
     return _handle_edit_key(k, rt);
 }
 
-"""Handle Ctrl+<char> chords: app control, overlay open, and line editing."""
 def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
     state = rt.state;
     ed = state.editor;
@@ -200,9 +177,6 @@ def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
     return False;
 }
 
-"""Handle cursor-movement and page-scroll keys. Returns True when the key
-was a movement key (handled); False tells the caller to try the edit
-handler. Movement never quits the app."""
 def _handle_movement_key(k: Key, rt: TuiRuntime) -> bool {
     state = rt.state;
     ed = state.editor;
@@ -273,7 +247,6 @@ def _handle_movement_key(k: Key, rt: TuiRuntime) -> bool {
     return False;
 }
 
-"""Handle text-editing keys and mouse scroll."""
 def _handle_edit_key(k: Key, rt: TuiRuntime) -> bool {
     state = rt.state;
     ed = state.editor;
@@ -324,10 +297,6 @@ def _handle_edit_key(k: Key, rt: TuiRuntime) -> bool {
     return False;
 }
 
-# --- entry point ---
-
-"""Top-level key dispatch: overlay first, then autocomplete popup, Ctrl
-chords, movement, and finally text editing. Returns True on quit."""
 def handle_key(k: Key, rt: TuiRuntime) -> bool {
     state = rt.state;
     if k.kind == KeyKind.UNKNOWN {

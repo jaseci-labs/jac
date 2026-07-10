@@ -1,10 +1,3 @@
-"""Feed layout: wraps the event log into styled DisplayRow lines.
-
-Dispatches each event on its kind's RenderMode (markdown, tool call/result,
-inline image, or plain prefixed text) and memoizes the wrapped rows on the
-Event itself, keyed by exactly (len(text), width), so streaming appends only
-re-wrap the event that grew.
-"""
 import from .state { Event, DisplayRow, TuiState, EventKind, kind_style, RenderMode }
 import from .markdown { md_render }
 import from .tool_block { tool_call_rows, tool_result_rows }
@@ -12,11 +5,10 @@ import from .terminal_image { image_rows }
 import from .util { parse_int_or, split_kv }
 
 glob _FEED_MARGIN_COLS: int = 4,
-    _MIN_FEED_WIDTH: int = 20,
-    _DEFAULT_IMAGE_MIME: str = "image/png",
-    _CONT_PREFIX: str = "    ";
+     _MIN_FEED_WIDTH: int = 20,
+     _DEFAULT_IMAGE_MIME: str = "image/png",
+     _CONT_PREFIX: str = "    ";
 
-"""Display body for an event: PHASE events show their node name when set."""
 def event_text(ev: Event) -> str {
     if ev.kind == EventKind.PHASE and ev.node {
         return ev.node;
@@ -24,12 +16,6 @@ def event_text(ev: Event) -> str {
     return ev.text;
 }
 
-"""Hard-wrap text at width, appending rows into out.
-
-The first row carries first_pre, continuations carry cont_pre; each row
-keeps at least one body byte even when a prefix leaves no room. Empty text
-still emits one prefix-only row.
-"""
 def _wrap_line(
     text: str,
     width: int,
@@ -59,16 +45,7 @@ def _wrap_line(
     }
 }
 
-"""Append pre-styled rows into out, marking all but the first as continuations.
-
-Kept index-based on purpose: storing an enumerate loop-var string into a
-DisplayRow corrupts it later on the na pathway (verified against golden).
-"""
-def _append_styled_rows(
-    rows: list[str],
-    kind: EventKind,
-    out: list[DisplayRow]
-) -> None {
+def _append_styled_rows(rows: list[str], kind: EventKind, out: list[DisplayRow]) {
     for i in range(len(rows)) {
         out.append(
             DisplayRow(text=rows[i], kind=kind, is_continuation=i > 0, pre_styled=True)
@@ -76,19 +53,9 @@ def _append_styled_rows(
     }
 }
 
-"""Decode IMG metadata and append rendered image rows into out.
-
-meta is the event's node field in the wire format mime[:w[:h]]; missing or
-unparsable parts fall back to image/png and 0x0 (protocol auto-size). The
-re-parse must stay wire-compatible with the ipc producer.
-"""
 def _image_event_rows(
-    meta: str,
-    body: str,
-    width: int,
-    kind: EventKind,
-    out: list[DisplayRow]
-) -> None {
+    meta: str, body: str, width: int, kind: EventKind, out: list[DisplayRow]
+) {
     mime: str = _DEFAULT_IMAGE_MIME;
     img_w: int = 0;
     img_h: int = 0;
@@ -104,7 +71,6 @@ def _image_event_rows(
     _append_styled_rows(image_rows(body, mime, img_w, img_h, width), kind, out);
 }
 
-"""Render one event into display rows according to its kind's RenderMode."""
 def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
     kind = ev.kind;
     style = kind_style(kind);
@@ -133,11 +99,6 @@ def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
     }
 }
 
-"""Re-wrap ev into its row memo when the exact (len(text), width) key is stale.
-
-This key is the streaming-append contract: growing text or a layout width
-change invalidates; anything else reuses the cached rows untouched.
-"""
 def _refresh_row_cache(ev: Event, width: int) -> None {
     if ev.cache_text_len == len(ev.text) and ev.cache_width == width {
         return;
@@ -149,7 +110,6 @@ def _refresh_row_cache(ev: Event, width: int) -> None {
     ev.cached_rows = event_rows;
 }
 
-"""Rebuild state.display_rows from the event log, separator rows included."""
 def build_rows(state: TuiState) {
     width = max(_MIN_FEED_WIDTH, state.term_cols - _FEED_MARGIN_COLS);
     rows: list[DisplayRow] = [];

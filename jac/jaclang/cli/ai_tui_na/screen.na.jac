@@ -1,24 +1,8 @@
-"""Full-frame renderer: composes transcript, key warning, autocomplete,
-editor, and footer sections into one list of ANSI row strings per frame.
-screen_render is the only export; DiffEngine aliases its result, so it
-must return a fresh list on every call."""
-import from .state {
-    TuiState,
-    DisplayRow,
-    EventKind,
-    TuiStatus,
-    kind_style
-}
+import from .state { TuiState, DisplayRow, EventKind, TuiStatus, kind_style }
 import from .editor { EditorState }
 import from .feed { build_rows }
 import from .overlay { overlay_build_modal, overlay_composite }
-import from .terminal {
-    ANSI_INVERSE,
-    ANSI_RESET,
-    ansi_sgr,
-    term_spaces,
-    term_dashes
-}
+import from .terminal { ANSI_INVERSE, ANSI_RESET, ansi_sgr, term_spaces, term_dashes }
 import from .width { visible_width, ansi_trunc, ansi_pad, idiv }
 import from .theme {
     TH_BG,
@@ -42,37 +26,27 @@ glob _MIN_COLS: int = 10,
      _AC_MAX_VISIBLE: int = 8,
      _AC_LABEL_MAX: int = 20;
 
-# --- row builders ---
-
-"""Bordered row whose content style owns the gap before the right border."""
 def _framed_row(body: str) -> str {
     return TH_SGR_BORDER + "│ " + body + " " + TH_SGR_BORDER + "│" + ANSI_RESET;
 }
 
-"""Bordered row whose right gap is drawn in the border style."""
 def _framed_row_border_gap(body: str) -> str {
     return TH_SGR_BORDER + "│ " + body + TH_SGR_BORDER + " │" + ANSI_RESET;
 }
 
-"""Blank bordered row spanning the full frame width."""
 def _empty_border_row(cols: int) -> str {
     return TH_SGR_BORDER + "│" + term_spaces(cols - 2) + "│" + ANSI_RESET;
 }
 
-"""Horizontal divider row with the given junction characters."""
 def _divider_row(left: str, right: str, cols: int) -> str {
     return TH_SGR_BORDER + left + term_dashes(max(0, cols - 2)) + right + ANSI_RESET;
 }
 
-# --- transcript ---
-
-"""SGR escape for a transcript event kind, on the standard background."""
 def _kind_sgr(kind: EventKind) -> str {
     s = kind_style(kind);
     return ansi_sgr(s.color, TH_BG, s.attrs);
 }
 
-"""Render one transcript display row inside the frame borders."""
 def _transcript_row(dr: DisplayRow, cols: int) -> str {
     if dr.kind == EventKind.SEP {
         return _empty_border_row(cols);
@@ -89,7 +63,6 @@ def _transcript_row(dr: DisplayRow, cols: int) -> str {
     return _framed_row(_kind_sgr(dr.kind) + ansi_trunc(dr.text, inner_w));
 }
 
-"""One-line missing-API-key warning row."""
 def _warn_row(env: str, cols: int) -> str {
     warn_text = ansi_trunc(
         f"  Missing API key: {env}  (/settings to configure)", cols - 4
@@ -97,14 +70,12 @@ def _warn_row(env: str, cols: int) -> str {
     return _framed_row(TH_SGR_ERROR + warn_text);
 }
 
-"""Rebuild wrapped display rows when the layout is stale for this width."""
 def _sync_display_rows(state: TuiState, cols: int) {
     if state.layout_dirty or state.layout_cols != cols {
         build_rows(state);
     }
 }
 
-"""Clamp viewport_top into [0, max_top], honoring and re-arming follow-tail."""
 def _clamp_viewport(state: TuiState, t_draw_h: int) {
     max_top = max(0, len(state.display_rows) - t_draw_h);
     if state.follow_tail {
@@ -116,7 +87,6 @@ def _clamp_viewport(state: TuiState, t_draw_h: int) {
     }
 }
 
-"""Visible transcript slice, blank-padded to exactly t_draw_h rows."""
 def _transcript_section(state: TuiState, t_draw_h: int, cols: int) -> list[str] {
     drows = state.display_rows;
     total = len(drows);
@@ -132,9 +102,6 @@ def _transcript_section(state: TuiState, t_draw_h: int, cols: int) -> list[str] 
     return rows;
 }
 
-# --- autocomplete ---
-
-"""Autocomplete row: marker + fixed-width label column + dim description."""
 def _ac_item_row(label: str, desc: str, selected: bool, cols: int) -> str {
     inner_w = cols - 4;
     if inner_w < 4 {
@@ -153,12 +120,12 @@ def _ac_item_row(label: str, desc: str, selected: bool, cols: int) -> str {
     marker = "▸ " if selected else "  ";
     desc_sgr = TH_SGR_AC_SEL_DESC if selected else TH_SGR_AC_DESC_DIM;
 
-    body = item_sgr + marker + label_trunc + term_spaces(pad_after)
-        + "  " + desc_sgr + desc_trunc + term_spaces(trail);
+    body = item_sgr + marker + label_trunc + term_spaces(pad_after) + "  " + desc_sgr + desc_trunc + term_spaces(
+        trail
+    );
     return _framed_row_border_gap(body);
 }
 
-"""Autocomplete popup rows for the first ac_h items."""
 def _ac_section(state: TuiState, ac_h: int, cols: int) -> list[str] {
     shown = state.ac.items[:ac_h];
     rows: list[str] = [];
@@ -169,9 +136,6 @@ def _ac_section(state: TuiState, ac_h: int, cols: int) -> list[str] {
     return rows;
 }
 
-# --- editor ---
-
-"""Visual (wrapped) line count of a logical line of line_len bytes at width."""
 def _ed_vl_count(line_len: int, width: int) -> int {
     if width <= 0 or line_len == 0 {
         return 1;
@@ -179,17 +143,14 @@ def _ed_vl_count(line_len: int, width: int) -> int {
     return idiv(line_len + width - 1, width);
 }
 
-"""Total wrapped visual lines across the whole editor buffer."""
 def _ed_total_vlines(ed: EditorState, width: int) -> int {
     return sum(_ed_vl_count(len(line), width) for line in ed.lines);
 }
 
-"""Usable editor text width inside the border, gutter, and prompt columns."""
 def _editor_text_width(cols: int) -> int {
     return max(1, cols - 6);
 }
 
-"""Wrap logical editor lines into text_w-wide chunks, one per visual line."""
 def _wrap_editor_lines(ed: EditorState, text_w: int) -> list[str] {
     chunks: list[str] = [];
     for line in ed.lines {
@@ -203,7 +164,6 @@ def _wrap_editor_lines(ed: EditorState, text_w: int) -> list[str] {
     return chunks;
 }
 
-"""Cursor position as (visual line index, column within it); (-1, -1) when hidden."""
 def _cursor_vline_col(ed: EditorState, text_w: int) -> tuple[int, int] {
     if ed.cursor_line < 0 or ed.cursor_line >= len(ed.lines) {
         return (-1, -1);
@@ -219,7 +179,6 @@ def _cursor_vline_col(ed: EditorState, text_w: int) -> tuple[int, int] {
     return (vline, ed.cursor_col - sub * text_w);
 }
 
-"""Overlay an inverse-video cursor cell at vcol within the chunk."""
 def _render_cursor(chunk: str, vcol: int) -> str {
     before = chunk[:vcol];
     if vcol < len(chunk) {
@@ -230,7 +189,6 @@ def _render_cursor(chunk: str, vcol: int) -> str {
     return before + ANSI_INVERSE + " " + ANSI_RESET;
 }
 
-"""Render exactly max_rows editor rows from the wrapped buffer at the scroll offset."""
 def _editor_rows(
     ed: EditorState, cols: int, max_rows: int, is_running: bool
 ) -> list[str] {
@@ -251,23 +209,20 @@ def _editor_rows(
             display = _render_cursor(chunk, cur_vcol);
         }
         display = ansi_pad(display, text_w);
-        prefix = (prompt_sgr + "› " + TH_SGR_ANSWER) if k == 0
+        prefix = (prompt_sgr + "› " + TH_SGR_ANSWER)
+            if k == 0
             else (TH_SGR_ANSWER + "  ");
         result.append(_framed_row(prefix + display));
     }
     return result;
 }
 
-"""Editor pane height: grows with wrapped content, capped by frame and _EDITOR_MAX_ROWS."""
 def _editor_height(ed: EditorState, cols: int, rows: int) -> int {
     total_vl = max(1, _ed_total_vlines(ed, _editor_text_width(cols)));
     max_h = min(_EDITOR_MAX_ROWS, max(1, rows - 3));
     return min(total_vl, max_h);
 }
 
-# --- footer ---
-
-"""Abbreviate a cwd path to '~' plus its last two components."""
 def _cwd_short(cwd: str) -> str {
     last = cwd.rfind("/");
     if last <= 0 {
@@ -281,7 +236,6 @@ def _cwd_short(cwd: str) -> str {
     return "~" + cwd[prev:];
 }
 
-"""Bottom frame row: active phase, dashed fill, cwd, and model name."""
 def _status_footer_row(state: TuiState, cols: int) -> str {
     inner_w = cols - 4;
 
@@ -295,8 +249,7 @@ def _status_footer_row(state: TuiState, cols: int) -> str {
         }
     }
 
-    model_s = state.model_name if visible_width(state.model_name) > 0
-        else "no model";
+    model_s = state.model_name if visible_width(state.model_name) > 0 else "no model";
     model_len = visible_width(model_s);
 
     cwd_avail = max(0, inner_w - act_len - model_len - 3);
@@ -317,16 +270,10 @@ def _status_footer_row(state: TuiState, cols: int) -> str {
     if cwd_len > 0 {
         parts.append(TH_SGR_CWD + cwd_disp + " ");
     }
-    parts.append(
-        TH_SGR_MODEL_DIM + model_s + " " + TH_SGR_BORDER + "│" + ANSI_RESET
-    );
+    parts.append(TH_SGR_MODEL_DIM + model_s + " " + TH_SGR_BORDER + "│" + ANSI_RESET);
     return "".join(parts);
 }
 
-# --- top-level render ---
-
-"""Render the full frame for the given terminal size. Returns a FRESH list
-of rows every call — DiffEngine aliases the previous frame's list."""
 def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
     if cols < _MIN_COLS or rows < _MIN_ROWS {
         return ["" for _ in range(rows)];
@@ -337,7 +284,6 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
     is_running = state.status == TuiStatus.RUNNING;
     ac_h = min(_AC_MAX_VISIBLE, len(state.ac.items)) if state.ac.active else 0;
 
-    # frame = transcript [+ warn row] [+ autocomplete] + divider + editor + footer
     transcript_h = max(0, rows - 1 - editor_h - ac_h - 1);
     show_warn = state.needs_key;
     t_draw_h = max(0, transcript_h - 1) if show_warn else transcript_h;
@@ -349,7 +295,7 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
     out.extend(_transcript_section(state, t_draw_h, cols));
 
     if show_warn {
-        env = state.key_env if state.key_env else "API_KEY";
+        env = state.key_env or "API_KEY";
         out.append(_warn_row(env, cols));
     }
 

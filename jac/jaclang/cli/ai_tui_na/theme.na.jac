@@ -1,24 +1,10 @@
-"""Color palette and precomposed SGR styles for the TUI.
-
-Colors are Rgb records (terminal.na.jac owns the Rgb type and the escape
-composers). The TH_SGR_* globs are fully composed escape strings for the
-fixed fg/bg/attr combinations the widgets paint with; they are composed
-HERE, in theme's own glob init, because an imported obj glob is still None
-while another module's glob init runs (na cross-module init-order hazard).
-Consumers must only touch the Rgb globs at function scope.
-"""
-
 import from .terminal { Rgb, ansi_sgr, ansi_bg }
-
-# --- attribute bitflags (wire values frozen; ansi_sgr maps 1->;1 2->;2 4->;3) ---
 
 glob TH_NONE: int = 0,
      TH_BOLD: int = 1,
      TH_DIM: int = 2,
      TH_ITALIC: int = 4;
-glob TH_DIM_ITALIC: int = 6;  # TH_DIM | TH_ITALIC, precomputed literal
-
-# --- palette ---
+glob TH_DIM_ITALIC: int = 6;
 
 glob TH_BG: Rgb = Rgb(r=18, g=18, b=28),
      TH_BORDER: Rgb = Rgb(r=70, g=70, b=100),
@@ -55,8 +41,6 @@ glob TH_MD_H1: Rgb = Rgb(r=255, g=215, b=100),
      TH_MD_BQ: Rgb = Rgb(r=170, g=190, b=210),
      TH_MD_BQ_BAR: Rgb = Rgb(r=80, g=120, b=160),
      TH_MD_HR: Rgb = Rgb(r=70, g=70, b=100);
-
-# --- precomposed SGR styles (escape bytes frozen — see module docstring) ---
 
 glob TH_SGR_BG: str = ansi_bg(TH_BG),
      TH_SGR_BORDER: str = ansi_sgr(TH_BORDER, TH_BG, TH_NONE),

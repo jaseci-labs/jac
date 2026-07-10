@@ -1,17 +1,8 @@
-"""Autocomplete: fuzzy-ranked slash-command and @file suggestions.
-
-Detects a trigger under the editor cursor (a `/command` on the first
-line, or an `@path` token), ranks candidates with `fuzzy_score`, and
-splices the accepted suggestion back into the editor line. Siblings
-consume only `ac_update` / `ac_apply` (input.na.jac).
-"""
-
 import from .state { TuiState, AcKind }
 import from .editor { EditorState }
 import from .commands { slash_ac_catalog }
 import from .select_list { SelectItem }
 
-"""Sentinel returned by fuzzy_score when query is not a subsequence of text."""
 glob FUZZY_NO_MATCH: int = -9999;
 
 glob _CONSEC_BONUS: int = 5,
@@ -24,16 +15,6 @@ glob _CONSEC_BONUS: int = 5,
 
 glob _WORD_BOUNDARY_CHARS: str = "/-_. ";
 
-# --- fuzzy scoring ---
-
-"""Score `query` as a case-insensitive subsequence of `text`; lower is better.
-
-Returns FUZZY_NO_MATCH when `query` is not a subsequence of `text`.
-Bonuses subtract from the score: consecutive matches, matches at the
-start or just after a word-boundary char, and an exact full match.
-Gaps between matches add. The ordering this induces is golden-tested
-behavior — do not retune the weights.
-"""
 def fuzzy_score(query: str, text: str) -> int {
     qn = len(query);
     tn = len(text);
@@ -83,19 +64,11 @@ def fuzzy_score(query: str, text: str) -> int {
     return score;
 }
 
-# --- ranking ---
-
-"""A select-list item paired with its fuzzy rank."""
 obj _ScoredItem {
     has item: SelectItem = SelectItem(),
         score: int = 0;
 }
 
-"""Sort `entries` ascending by score (in place) and return their items.
-
-Manual insertion sort on purpose: na's sort()/sorted() silently ignore
-`key=`, and the stable ranking (ties keep source order) is behavior.
-"""
 def _sort_entries_by_score(entries: list[_ScoredItem]) -> list[SelectItem] {
     for i in range(1, len(entries)) {
         cur = entries[i];
@@ -109,21 +82,12 @@ def _sort_entries_by_score(entries: list[_ScoredItem]) -> list[SelectItem] {
     return [e.item for e in entries];
 }
 
-# --- trigger detection ---
-
-"""Trigger found under the cursor: its kind, raw prefix, and match query."""
 obj AutocompleteTrigger {
     has kind: AcKind = AcKind.NONE,
         prefix: str = "",
         query: str = "";
 }
 
-"""Detect an autocomplete trigger at the editor cursor.
-
-Slash commands fire only on line 0 while the cursor is still inside the
-first word; @file fires for an '@' at a token start with no whitespace
-between it and the cursor.
-"""
 def _extract_trigger(ed: EditorState) -> AutocompleteTrigger {
     if not ed.lines {
         return AutocompleteTrigger();
@@ -154,9 +118,6 @@ def _extract_trigger(ed: EditorState) -> AutocompleteTrigger {
     return AutocompleteTrigger(kind=AcKind.AT_FILE, prefix=prefix, query=prefix[1:]);
 }
 
-# --- candidate sources ---
-
-"""Return the final path component (bytes after the last '/')."""
 def _basename(path: str) -> str {
     slash_at = path.rfind("/");
     if slash_at < 0 {
@@ -165,7 +126,6 @@ def _basename(path: str) -> str {
     return path[slash_at + 1:];
 }
 
-"""Rank the slash-command catalog against `query`; empty query keeps catalog order."""
 def _slash_items(query: str, state: TuiState) -> list[SelectItem] {
     catalog = slash_ac_catalog(state);
     if not query {
@@ -183,19 +143,16 @@ def _slash_items(query: str, state: TuiState) -> list[SelectItem] {
     return _sort_entries_by_score(entries);
 }
 
-"""Rank candidate file paths against `query`.
-
-Scans at most _FILE_SCAN_CAP files and returns at most _MAX_AC_RESULTS
-rows. Basename matches outrank full-path-only matches (the path
-fallback carries a fixed penalty).
-"""
 def _file_items(state: TuiState, query: str) -> list[SelectItem] {
     files = state.files;
     limit = min(len(files), _FILE_SCAN_CAP);
 
     if not query {
         head = min(limit, _MAX_AC_RESULTS);
-        return [SelectItem(value=path, label=_basename(path), description=path) for path in files[:head]];
+        return [
+            SelectItem(value=path, label=_basename(path), description=path)
+            for path in files[:head]
+        ];
     }
 
     entries: list[_ScoredItem] = [];
@@ -223,13 +180,6 @@ def _file_items(state: TuiState, query: str) -> list[SelectItem] {
     return ranked[:keep];
 }
 
-# --- public API ---
-
-"""Refresh autocomplete state from the editor; dismiss when no trigger or items.
-
-Selection survives same-kind updates (so arrowing survives typing) and
-resets otherwise, or when it falls off the end of a shrunken item list.
-"""
 def ac_update(state: TuiState) {
     trigger = _extract_trigger(state.editor);
     if trigger.kind == AcKind.NONE {
@@ -239,8 +189,8 @@ def ac_update(state: TuiState) {
 
     items: list[SelectItem] = (
         _slash_items(trigger.query, state)
-        if trigger.kind == AcKind.SLASH
-        else _file_items(state, trigger.query)
+            if trigger.kind == AcKind.SLASH
+            else _file_items(state, trigger.query)
     );
     if not items {
         state.ac.dismiss();
@@ -258,7 +208,6 @@ def ac_update(state: TuiState) {
     }
 }
 
-"""Splice the selected suggestion into the editor, replacing the trigger prefix."""
 def ac_apply(state: TuiState) {
     if not state.ac.active or not state.ac.items {
         return;
@@ -276,8 +225,6 @@ def ac_apply(state: TuiState) {
     before = cur_line[:prefix_start];
     after = cur_line[ed.cursor_col:];
 
-    # pre-declared: na infers LiteralString from branch assigns and then
-    # rejects the other branch's str
     new_text: str = "";
     if state.ac.kind == AcKind.SLASH {
         new_text = item.value + " ";
