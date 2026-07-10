@@ -1450,12 +1450,17 @@ export default function jacDevStatus() {
 
       // The dev index.html sends this after the entry module loads cleanly:
       // the only reliable "browser recovered" signal a server can get.
-      server.ws.on("jac:client-ready", () => {
+      const onReady = () => {
         if (state.client) {
           state.client = null;
           flush();
         }
-      });
+      };
+      server.ws.on("jac:client-ready", onReady);
+      // mirror wrap(): register on the HMR channel too if it is distinct
+      if (server.hot && server.hot !== server.ws && typeof server.hot.on === "function") {
+        try { server.hot.on("jac:client-ready", onReady); } catch (e) {}
+      }
     },
   };
 }

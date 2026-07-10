@@ -38,6 +38,7 @@ impl HotReloader.stop -> None {
 }
 
 impl HotReloader.build_status -> dict {
+    dev_error = self._dev_status_error();
     with HotReloader._build_lock {
         status = self._build_status;
         if status is BuildStatus.ERROR {
@@ -50,15 +51,11 @@ impl HotReloader.build_status -> dict {
                 }
             };
         }
-    }
-
-    if status is BuildStatus.OK {
-        dev_error = self._dev_status_error();
-        if dev_error {
+        if status is BuildStatus.OK and dev_error {
             return {"status": BuildStatus.ERROR.value, "error": dev_error};
         }
+        return {"status": status.value, "error": None};
     }
-    return {"status": status.value, "error": None};
 }
 
 impl HotReloader._dev_status_error -> (dict | None) {
