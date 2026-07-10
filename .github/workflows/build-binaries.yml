@@ -348,3 +348,87 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}" \
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
+
+  # Publishes ghcr.io/<owner>/jaclang from the binaries this run produced:
+  #   <version> + latest on the release channel, dev on the rolling prerelease.
+  # The image bakes the extracted runtime (see docker/jaclang.Dockerfile), so
+  # containers skip jac's one-time setup.
+  docker-image:
+    needs: build
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.tag || github.event.release.tag_name }}
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # Dev-channel legs keep no workflow artifact; that path pulls the
+      # binaries this run just re-published on the rolling prerelease instead.
+      - name: Fetch this run's linux-x86_64 binary (release channel)
+        if: inputs.channel != 'dev'
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-${{ steps.ver.outputs.version }}-linux-x86_64
+          path: ctx/amd64
+
+      - name: Fetch this run's linux-aarch64 binary (release channel)
+        if: inputs.channel != 'dev'
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-${{ steps.ver.outputs.version }}-linux-aarch64
+          path: ctx/arm64
+
+      - name: Stage binaries into the build context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p ctx/amd64 ctx/arm64
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            gh release download dev --repo "$GITHUB_REPOSITORY" \
+              --pattern "jac-dev-linux-x86_64" --dir ctx/amd64 --clobber
+            gh release download dev --repo "$GITHUB_REPOSITORY" \
+              --pattern "jac-dev-linux-aarch64" --dir ctx/arm64 --clobber
+          fi
+          mv ctx/amd64/jac-* ctx/amd64/jac
+          mv ctx/arm64/jac-* ctx/arm64/jac
+          chmod +x ctx/amd64/jac ctx/arm64/jac
+          cp docker/jaclang.Dockerfile ctx/Dockerfile
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/jaclang"
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            TAGS="$IMAGE:dev"
+          else
+            TAGS="$IMAGE:${{ steps.ver.outputs.version }},$IMAGE:latest"
+          fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ctx
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
