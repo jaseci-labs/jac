@@ -24,6 +24,7 @@ def member_names() -> list[str] {
 with entry {
     names_ok: list[str] = Tokens._member_names_;
     members_ok: dict[str, Tokens] = Tokens._member_map_;
+    v2m_ok: dict[str, Tokens] = Tokens._value2member_map_;
     val_ok: str = Tokens.__members__["A"].value;
     # __members__ is dict[str, Tokens], not int: this must error.
     bad: int = Tokens.__members__;
