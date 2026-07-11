@@ -288,7 +288,7 @@ impl CGenPass.resolve_introducer(cls: str, m: str) -> str {
     return found;
 }
 
-impl CGenPass.layout_fields(name: str) -> list {
+impl CGenPass.layout_fields(name: str) -> list[FieldInfo] {
     if self.layout is not None {
         lay = self.layout.get_layout(name);
         if lay is not None {
@@ -393,6 +393,9 @@ impl CGenPass.gen_vtable(arch: uni.Archetype) -> str {
         return "";
     }
     lay = self.layout.get_layout(name);
+    if lay is None {
+        return "";
+    }
 
     slots: list[str] = [];
     for ms in lay.methods {
@@ -488,17 +491,17 @@ impl CGenPass.gen_dtor(arch: uni.Archetype) -> str {
     return "\n".join(lines);
 }
 
-impl CGenPass.all_fields(arch: uni.Archetype) -> list {
+impl CGenPass.all_fields(arch: uni.Archetype) -> list[tuple[str, str]] {
     name = arch.name.value;
     lfields = self.layout_fields(name);
     if lfields {
-        out: list = [];
+        out: list[tuple[str, str]] = [];
         for fi in lfields {
             out.append((fi.name, fi.type_tag));
         }
         return out;
     }
-    out2: list = [];
+    out2: list[tuple[str, str]] = [];
     for hv in self.field_list(arch) {
         out2.append((hv.name.value, self.type_name(hv.type_tag)));
     }
@@ -534,8 +537,8 @@ impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
     return "\n".join(lines);
 }
 
-impl CGenPass.field_defaults(arch: uni.Archetype) -> list {
-    out: list = [];
+impl CGenPass.field_defaults(arch: uni.Archetype) -> list[tuple[str, uni.Expr]] {
+    out: list[tuple[str, uni.Expr]] = [];
     for cname in reversed(self.mro_of(arch.name.value)) {
         anode = self.arch_nodes.get(cname);
         if anode is None {
@@ -809,7 +812,9 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
         }
         return rendered;
     }
-    self._unsupported(st, "E4301", stype=type(st).__name__);
+    if isinstance(st, uni.UniNode) {
+        self._unsupported(st, "E4301", stype=type(st).__name__);
+    }
     return pad + f"/* jac2c: unsupported statement {type(st).__name__} */";
 }
 
@@ -1061,7 +1066,7 @@ impl CGenPass.gen_expr(e: object) -> str {
         }
         return " ".join(pieces);
     }
-    if isinstance(e, uni.BinaryExpr) {
+    if isinstance(e, uni.BinaryExpr) and isinstance(e.op, uni.Token) {
         if e.op.value == "+"
         and (
             self.expr_type_name(e.left) == "str"
@@ -1101,7 +1106,9 @@ impl CGenPass.gen_expr(e: object) -> str {
     if isinstance(e, uni.FuncCall) {
         return self.gen_call(e);
     }
-    self._unsupported(e, "E4302", etype=type(e).__name__);
+    if isinstance(e, uni.UniNode) {
+        self._unsupported(e, "E4302", etype=type(e).__name__);
+    }
     return f"/* jac2c: unsupported expr {type(e).__name__} */";
 }
 
@@ -1148,7 +1155,7 @@ impl CGenPass.gen_call(e: uni.FuncCall) -> str {
     return self.gen_expr(tgt) + "(" + ", ".join(args) + ")";
 }
 
-impl CGenPass.gen_args(e: uni.FuncCall, callee_key: str) -> list {
+impl CGenPass.gen_args(e: uni.FuncCall, callee_key: str) -> list[str] {
     args: list[str] = [];
     idx = 0;
     for p in (e.params or []) {
@@ -1190,7 +1197,7 @@ impl CGenPass.emit_arg(p: uni.Expr, callee_key: str, idx: int) -> str {
 }
 
 impl CGenPass.virtual_call(
-    recv_ty: str, mname: str, recv: str, slot: int, args: list
+    recv_ty: str, mname: str, recv: str, slot: int, args: list[str]
 ) -> str {
     intro = self.resolve_introducer(recv_ty, mname);
     ab = self.method_defs[intro][mname];
@@ -1253,7 +1260,10 @@ impl direct_import_paths(mod: uni.Module) -> list[str] {
 }
 
 impl discover_import_graph(
-    main_path: str, main_mod: uni.Module, prog: any, strict_c: bool = False
+    main_path: str,
+    main_mod: uni.Module,
+    prog: JacProgram | None,
+    strict_c: bool = False
 ) -> list[tuple[str, uni.Module]] {
     import from jaclang.jac0core.program { JacProgram }
     seen: dict[str, uni.Module] = {main_path: main_mod};
@@ -1285,7 +1295,7 @@ impl discover_import_graph(
 }
 
 impl emit_translation_units(
-    main_path: str, main_mod: uni.Module, prog: any
+    main_path: str, main_mod: uni.Module, prog: JacProgram
 ) -> list[tuple[str, str]] {
     graph = discover_import_graph(main_path, main_mod, prog, strict_c=True);
     mods = [m for (_, m) in graph];

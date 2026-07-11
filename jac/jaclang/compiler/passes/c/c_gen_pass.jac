@@ -1,9 +1,11 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes.main.layout_pass {
     get_layout_registry,
     get_shared_layout_registry,
-    LayoutRegistry
+    LayoutRegistry,
+    FieldInfo
 }
 import from jaclang.compiler.passes.main.ownership_facts_pass {
     get_ownership_facts,
@@ -76,7 +78,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def mro_of(name: str) -> list[str];
     def resolve_override(cls: str, m: str) -> str;
     def resolve_introducer(cls: str, m: str) -> str;
-    def layout_fields(name: str) -> list;
+    def layout_fields(name: str) -> list[FieldInfo];
     def c_type(jac_ty: str) -> str;
     def type_name(type_tag: uni.SubTag[uni.Expr] | None) -> str;
     def ret_type_name(ret: uni.Expr | None) -> str;
@@ -91,9 +93,9 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def ref_protos(arch: uni.Archetype) -> list[str];
     def gen_ref_defs(arch: uni.Archetype) -> list[str];
     def gen_dtor(arch: uni.Archetype) -> str;
-    def all_fields(arch: uni.Archetype) -> list;
+    def all_fields(arch: uni.Archetype) -> list[tuple[str, str]];
     def gen_ctor(arch: uni.Archetype) -> str;
-    def field_defaults(arch: uni.Archetype) -> list;
+    def field_defaults(arch: uni.Archetype) -> list[tuple[str, uni.Expr]];
     def gen_method(arch: uni.Archetype, ab: uni.Ability) -> str;
     def enter_method(cls: str);
     def func_head(ab: uni.Ability) -> str;
@@ -117,10 +119,10 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def gen_compare_clause(left: object, op_val: str, right: object) -> str;
     def gen_expr(e: object) -> str;
     def gen_call(e: uni.FuncCall) -> str;
-    def gen_args(e: uni.FuncCall, callee_key: str) -> list;
+    def gen_args(e: uni.FuncCall, callee_key: str) -> list[str];
     def emit_arg(p: uni.Expr, callee_key: str, idx: int) -> str;
     def virtual_call(
-        recv_ty: str, mname: str, recv: str, slot: int, args: list
+        recv_ty: str, mname: str, recv: str, slot: int, args: list[str]
     ) -> str;
 
     def attr_name(nd: object) -> str;
@@ -131,9 +133,12 @@ def import_path(mp: uni.ModulePath) -> (str | None);
 def direct_import_paths(mod: uni.Module) -> list[str];
 
 def discover_import_graph(
-    main_path: str, main_mod: uni.Module, prog: any, strict_c: bool = False
+    main_path: str,
+    main_mod: uni.Module,
+    prog: JacProgram | None,
+    strict_c: bool = False
 ) -> list[tuple[str, uni.Module]];
 
 def emit_translation_units(
-    main_path: str, main_mod: uni.Module, prog: any
+    main_path: str, main_mod: uni.Module, prog: JacProgram
 ) -> list[tuple[str, str]];

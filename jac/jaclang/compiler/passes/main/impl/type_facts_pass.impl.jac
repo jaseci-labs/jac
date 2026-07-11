@@ -55,14 +55,17 @@ impl TypeFactsPass.ret_name(ret: uni.Expr | None) -> str {
 }
 
 impl get_type_facts(module: uni.Module, prog: JacProgram | None = None) -> TypeFacts {
-    cached: TypeFacts | None = module.gen.type_facts;
-    if cached is not None {
+    cached = module.gen.type_facts;
+    if isinstance(cached, TypeFacts) {
         return cached;
     }
     if prog is not None {
         TypeFactsPass(ir_in=module, prog=prog);
-        result: TypeFacts | None = module.gen.type_facts;
-        return result or TypeFacts();
+        result = module.gen.type_facts;
+        if isinstance(result, TypeFacts) {
+            return result;
+        }
+        return TypeFacts();
     }
     raise ValueError(
         "get_type_facts: prog is None and this module has no cached facts; "

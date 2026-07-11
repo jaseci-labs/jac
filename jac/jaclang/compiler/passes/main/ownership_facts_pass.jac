@@ -33,18 +33,18 @@ obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
     def analyze(mod: uni.Module);
     def tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str;
     def analyze_ability(ab: uni.Ability, cls: str);
-    def compute_consumed(ab: uni.Ability, cls: str, body: list);
+    def compute_consumed(ab: uni.Ability, cls: str, body: list[uni.UniNode]);
     def callee_key(ab: uni.Ability, cls: str) -> str;
-    def sole_field_store(body: list, pname: str) -> (uni.UniNode | None);
-    def count_name(body: list, pname: str) -> int;
+    def sole_field_store(body: list[uni.UniNode], pname: str) -> (uni.UniNode | None);
+    def count_name(body: list[uni.UniNode], pname: str) -> int;
     def count_in_expr(e: object, pname: str) -> int;
-    def is_straight_line(body: list) -> bool;
+    def is_straight_line(body: list[uni.UniNode]) -> bool;
     def categorize_stmt(st: object);
     def note_local_type(a: uni.Assignment);
     def categorize(e: object);
     def ownership_of(e: uni.Expr) -> Ownership;
     def is_str_concat(e: uni.Expr) -> bool;
     def type_of(e: object) -> str;
-    def mark_last_uses(body: list);
-    def collect_reads(e: object, last_read: dict);
+    def mark_last_uses(body: list[uni.UniNode]);
+    def collect_reads(e: object, last_read: dict[str, uni.UniNode]);
 }
