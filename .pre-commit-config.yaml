@@ -8,6 +8,7 @@ exclude: |
         ^jac/jaclang/vendor/|
         ^jac/jaclang/compiler/passes/native/llvm/|
         ^jac/jaclang/compiler/passes/native/wasm_rt/vendor/|
+        ^jac/tests/golden/|
         ^$
     )
 
