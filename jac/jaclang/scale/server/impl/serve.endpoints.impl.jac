@@ -587,19 +587,15 @@ impl JacAPIServerEndpoints.get_ws_manager -> WebSocketConnectionManager {
     return self._ws_manager;
 }
 
-"""Shared factory for walker and function WebSocket handlers."""
+"""Shared factory for walker and function WebSocket handlers. `kind` is
+'walker' or 'function'; `execute` is the async runner (spawn_walker /
+execute_function) invoked as execute(target, data, username)."""
 impl JacAPIServerEndpoints._create_websocket_target_handler(
-    descriptor: WebSocketTargetHandler
+    target_name: str, target: any, requires_auth: bool, execute: Callable, kind: str
 ) -> Callable {
     ws_manager = self.get_ws_manager();
-    restspec = (
-        descriptor.target.restspec
-            if descriptor.target?.restspec and descriptor.target.restspec
-            else None
-    );
+    restspec = target.restspec if target?.restspec and target.restspec else None;
     is_broadcast = restspec.broadcast if restspec and restspec?.broadcast else False;
-    target_name = descriptor.name;
-    kind = descriptor.kind.value;
     async def websocket_handler(websocket: WebSocket) {
         await ws_manager.connect(websocket, target_name);
         try {
@@ -607,7 +603,7 @@ impl JacAPIServerEndpoints._create_websocket_target_handler(
                 data = await websocket.receive_json();
 
                 username: (str | None) = None;
-                if descriptor.requires_auth {
+                if requires_auth {
                     token = data.pop('token', None)
                     or websocket.query_params.get('token');
                     if token {
@@ -628,9 +624,7 @@ impl JacAPIServerEndpoints._create_websocket_target_handler(
                 }
 
                 try {
-                    result = await descriptor.execute(
-                        descriptor.target, data, (username or Con.GUEST.value)
-                    );
+                    result = await execute(target, data, (username or Con.GUEST.value));
                     if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
                         await _ws_stream_result(
                             websocket,
@@ -690,13 +684,11 @@ impl JacAPIServerEndpoints._create_websocket_target_handler(
 
 impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callable {
     return self._create_websocket_target_handler(
-        WebSocketTargetHandler(
-            name=walker_name,
-            target=self.get_walkers()[walker_name],
-            requires_auth=self.introspector.is_auth_required_for_walker(walker_name),
-            execute=self.execution_manager.spawn_walker,
-            kind=WebSocketTargetKind.WALKER
-        )
+        walker_name,
+        self.get_walkers()[walker_name],
+        self.introspector.is_auth_required_for_walker(walker_name),
+        self.execution_manager.spawn_walker,
+        'walker'
     );
 }
 
@@ -705,13 +697,11 @@ impl JacAPIServerEndpoints.create_websocket_function_handler(
     func_name: str
 ) -> Callable {
     return self._create_websocket_target_handler(
-        WebSocketTargetHandler(
-            name=func_name,
-            target=self.get_functions()[func_name],
-            requires_auth=self.introspector.is_auth_required_for_function(func_name),
-            execute=self.execution_manager.execute_function,
-            kind=WebSocketTargetKind.FUNCTION
-        )
+        func_name,
+        self.get_functions()[func_name],
+        self.introspector.is_auth_required_for_function(func_name),
+        self.execution_manager.execute_function,
+        'function'
     );
 }
 

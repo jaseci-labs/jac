@@ -147,7 +147,7 @@ impl JacClientCompiler._copy_js_file(
     }
 }
 
-impl JacClientCompiler.compiled_output_path(
+impl JacClientCompiler._output_path_for(
     self: JacClientCompiler, module_path: Path, source_root: Path
 ) -> Path {
     try {
@@ -156,50 +156,6 @@ impl JacClientCompiler.compiled_output_path(
     } except ValueError {
         return self.compiled_dir / self._jac_path_to_js(module_path.name);
     }
-}
-
-impl JacClientCompiler._output_path_for(
-    self: JacClientCompiler, module_path: Path, source_root: Path
-) -> Path {
-    return self.compiled_output_path(module_path, source_root);
-}
-
-def _exports_metadata_path(output_path: Path) -> Path {
-    return output_path.with_suffix('.exports.json');
-}
-
-impl JacClientCompiler.read_compiled_exports(
-    self: JacClientCompiler, output_path: Path
-) -> set[str] {
-    import json;
-    meta_path = _exports_metadata_path(output_path);
-    try {
-        data = json.loads(meta_path.read_text(encoding='utf-8'));
-    } except (OSError, ValueError) {
-        return set();
-    }
-    if not isinstance(data, dict) {
-        return set();
-    }
-    exports = data.get('exports');
-    if not isinstance(exports, list) {
-        return set();
-    }
-    return {
-        str(name)
-        for name in exports
-        if name
-    };
-}
-
-def _write_exports_metadata(output_path: Path, exports: list[str]) {
-    import json;
-    meta_path = _exports_metadata_path(output_path);
-    try {
-        meta_path.write_text(
-            json.dumps({'exports': sorted(exports)}), encoding='utf-8'
-        );
-    } except OSError { }
 }
 
 impl JacClientCompiler.compile_dependencies_recursively(
@@ -263,7 +219,6 @@ impl JacClientCompiler.compile_dependencies_recursively(
     output_path.parent.mkdir(parents=True, exist_ok=True);
     source_header = f"/* Source: {module_path} */\n";
     output_path.write_text(source_header + combined_js, encoding='utf-8');
-    _write_exports_metadata(output_path, exports_list);
     self._write_source_map(
         mod, str(module_path), output_path, source_header + combined_js
     );
@@ -289,7 +244,7 @@ impl JacClientCompiler.compile_dependencies_recursively(
         }
         if (path_obj.suffix == '.jac') {
             if skip_existing
-            and self.compiled_output_path(path_obj, source_root).exists() {
+            and self._output_path_for(path_obj, source_root).exists() {
                 continue;
             }
             self.compile_dependencies_recursively(
@@ -623,7 +578,7 @@ impl JacClientCompiler.rescan_pages(self: JacClientCompiler) -> bool {
     self._route_scanner = scanner;
 
     for page_file in scanner.get_page_files() {
-        if self.compiled_output_path(page_file, self.project_dir).exists() {
+        if self._output_path_for(page_file, self.project_dir).exists() {
             continue;
         }
         try {

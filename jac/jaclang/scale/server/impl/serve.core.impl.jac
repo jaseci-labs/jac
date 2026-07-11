@@ -476,7 +476,7 @@ impl JacAPIServerCore.register_health_endpoint -> None {
 impl JacAPIServerCore.register_build_status_endpoint -> None {
     async def build_status -> dict {
         import from jaclang.runtimelib.hmr { get_build_status }
-        return get_build_status().to_dict();
+        return get_build_status();
     }
 
     self.server.add_endpoint(

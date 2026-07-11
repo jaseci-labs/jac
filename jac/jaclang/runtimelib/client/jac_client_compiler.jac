@@ -64,11 +64,6 @@ class JacClientCompiler {
         skip_existing: bool = False
     ) -> None;
 
-    def compiled_output_path(
-        self: JacClientCompiler, module_path: Path, source_root: Path
-    ) -> Path;
-
-    def read_compiled_exports(self: JacClientCompiler, output_path: Path) -> set[str];
     def _output_path_for(
         self: JacClientCompiler, module_path: Path, source_root: Path
     ) -> Path;
