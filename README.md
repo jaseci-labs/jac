@@ -103,25 +103,33 @@ One download replaces the interpreter, the JS runtime, the compilers and linker,
   </picture>
 </div>
 
-<details>
+<details open>
 <summary><strong>What's inside the binary (and what you can uninstall)</strong></summary>
 
 <br>
 
-| Capability | What it replaces | How you use it |
+"Bundled" undersells it, so here is the actual anatomy. The `jac` you download is a small native **launcher stub** with the entire **runtime payload** appended to the same file. The first run unpacks the payload into a per-version cache; every run after that is instant.
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/binary-anatomy-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/binary-anatomy-light.svg">
+    <img alt="Anatomy of the jac binary: a native launcher stub plus a runtime payload carrying a private CPython, the precompiled Jac compiler and runtime, a statically linked LLVM, the Bun executable, vendored typeshed stubs, and static libc archives" src="docs/docs/assets/readme/binary-anatomy-light.svg" width="880">
+  </picture>
+</div>
+
+| Component | How it's in the binary | What you can uninstall |
 |---|---|---|
-| **CPython 3.14** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
-| **Bun** | Node.js, npm, npx | Bundled -- compiles `cl` code to JS, manages npm deps |
-| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build --as native` produces real binaries |
-| **Package manager** | pip, npm, pipx | `jac install` for PyPI *and* npm, in one `jac.toml` |
-| **Universal tool runner** | npx, pipx run | `jac x` runs any installed PyPI or npm CLI tool |
-| **REST server** | Flask, FastAPI, Express | `jac start` -- walkers become API endpoints |
-| **Kubernetes deployer** | Docker + kubectl + Helm | `jac start --scale` -- one-command K8s deployment |
-| **AI integration** | LangChain, prompt libraries | `by llm()` -- built into the language |
-| **MCP server** | Separate MCP packages | `jac mcp` -- AI-assisted development, built in |
-| **Type checker** | mypy, pyright, tsc | `jac check` |
-| **Formatter & test runner** | black, ruff, pytest, jest | `jac fmt`, `jac test` |
-| **Language server** | Separate LSP packages | `jac lsp` -- IDE support built in |
+| **Launcher stub** | The `jac` file itself: native machine code linked against libc only; everything below rides in the appended payload | -- |
+| **CPython 3.14** | A private [python-build-standalone](https://github.com/astral-sh/python-build-standalone) build (PGO+LTO, stripped), `dlopen`ed by the launcher at startup -- your system Python is never consulted | Python, pyenv, conda |
+| **Jac compiler + runtime** | Precompiled to JIR in the payload's private site -- includes the REST server (`jac start`), client framework, K8s deployer (`--scale`), and byLLM (`by llm()`); their optional third-party deps (litellm, pymongo, ...) resolve per-project via `jac install` | Flask, FastAPI, Express · Docker, kubectl, Helm · LangChain |
+| **Bun** | The real Bun executable, carried inside the payload and invoked by absolute path -- never on your `PATH` | Node.js, npm, npx, yarn |
+| **LLVM 22** | Statically linked into a single `jacllvm` shared library behind the llvmlite ABI | gcc, clang |
+| **Linker + C floor** | Jac's own linker emits ELF / Mach-O / PE / wasm directly; static libc + crt archives, a musl runtime (Linux), and wasm32 libc bitcode are vendored in the payload | ld, lld, make, cmake, emscripten |
+| **Package manager** | pip runs inside the private interpreter, npm resolution goes through the carried Bun -- one `jac.toml`, an automatic `.jac/venv`, and `jac x` to run any installed CLI tool | pip, pipx, uv, poetry, venv/virtualenv |
+| **Type checker** | Built into the compiler (`jac check`), with the typeshed stdlib stubs vendored at a pinned commit | mypy, pyright, tsc |
+| **Dev tooling** | Formatter, test runner, language server, and MCP server are modules of the same site (`jac fmt` / `jac test` / `jac lsp` / `jac mcp`) | black, ruff, pytest, jest |
+| **`jac ninja` editor** | A pinned Neovim fork statically linked into the launcher itself -- boots in milliseconds, with `jac lsp` pre-wired | a separate editor + LSP setup |
 
 Full story: [One Binary, Build Anything](https://docs.jaseci.org/quick-guide/one-binary/).
 

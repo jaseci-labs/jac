@@ -2290,7 +2290,7 @@ impl EsastGenPass._is_collection_expr(expr_node: uni.UniNode) -> bool {
 }
 
 impl EsastGenPass._build_jac_ref(
-    path: list[str], jac_node: uni.UniNode
+    path: list[str], jac_node: (uni.UniNode | None)
 ) -> es.Expression {
     ref: es.Expression = self.sync_loc(es.Identifier(name=path[0]), jac_node=jac_node);
     for name in path[1:] {
@@ -2832,6 +2832,15 @@ impl EsastGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
     nd.gen.es_ast = if_stmt;
 }
 
+impl EsastGenPass._jac_exc_ref(
+    member: str, jac_node: (uni.UniNode | None)
+) -> es.MemberExpression {
+    self.needs_jac_runtime = True;
+    return cast(
+        es.MemberExpression, self._build_jac_ref(['_jac', 'exc', member], jac_node)
+    );
+}
+
 impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
     argument: es.Expression = cast(es.Expression, nd.cause.gen.es_ast)
         if (nd.cause and nd.cause.gen.es_ast)
@@ -2849,28 +2858,11 @@ impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if callee is not None and isinstance(callee, es.Identifier) {
         if JAC_TYPE_REGISTRY.is_exception(callee.name) {
-            self.needs_jac_runtime = True;
-            exc_ref = self.sync_loc(
-                es.MemberExpression(
-                    object=self.sync_loc(
-                        es.MemberExpression(
-                            object=self.sync_loc(
-                                es.Identifier(name='_jac'), jac_node=nd
-                            ),
-                            property=self.sync_loc(
-                                es.Identifier(name='exc'), jac_node=nd
-                            )
-                        ),
-                        jac_node=nd
-                    ),
-                    property=self.sync_loc(es.Identifier(name=callee.name), jac_node=nd)
-                ),
-                jac_node=nd
-            );
+            exc_ref = self._jac_exc_ref(callee.name, nd);
             argument = self.sync_loc(
                 es.NewExpression(callee=exc_ref, arguments=call_args or []), jac_node=nd
             );
-        } elif callee.name in {'Error'} {
+        } elif callee.name == 'Error' {
             argument = self.sync_loc(
                 es.NewExpression(
                     callee=self.sync_loc(es.Identifier(name='Error'), jac_node=nd),
@@ -3037,33 +3029,9 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
 
             test_expr: (es.Expression | None) = None;
             if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
-                self.needs_jac_runtime = True;
-
                 test_expr = self.sync_loc(
                     es.CallExpression(
-                        callee=self.sync_loc(
-                            es.MemberExpression(
-                                object=self.sync_loc(
-                                    es.MemberExpression(
-                                        object=self.sync_loc(
-                                            es.Identifier(name='_jac'),
-                                            jac_node=except_node
-                                        ),
-                                        property=self.sync_loc(
-                                            es.Identifier(name='exc'),
-                                            jac_node=except_node
-                                        ),
-                                        computed=False
-                                    ),
-                                    jac_node=except_node
-                                ),
-                                property=self.sync_loc(
-                                    es.Identifier(name='matches'), jac_node=except_node
-                                ),
-                                computed=False
-                            ),
-                            jac_node=except_node
-                        ),
+                        callee=self._jac_exc_ref('matches', except_node),
                         arguments=[
                             self.sync_loc(
                                 es.Identifier(name=catch_param_name),
@@ -3573,10 +3541,8 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
                     deps_elements.append(cast(es.Expression, item.gen.es_ast));
                 }
             }
-        } else {
-            if arch_tag.gen.es_ast {
-                deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
-            }
+        } elif arch_tag.gen.es_ast {
+            deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
         }
     }
     effect = Effect(
@@ -4590,10 +4556,17 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     }
     class_body = self.sync_loc(es.ClassBody(body=body_stmts), jac_node=nd);
     super_class: (es.Expression | None) = None;
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if nd.base_classes {
         base = nd.base_classes[0];
         if base.gen.es_ast {
             super_class = cast(es.Expression, base.gen.es_ast);
+            if (
+                isinstance(super_class, es.Identifier)
+                and JAC_TYPE_REGISTRY.is_exception(super_class.name)
+            ) {
+                super_class = self._jac_exc_ref(super_class.name, base);
+            }
         }
     }
     class_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
