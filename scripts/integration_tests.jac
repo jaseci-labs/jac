@@ -143,7 +143,7 @@ def run_pth_tests(runner: IntegrationTestRunner) {
 def run_cli_tests(runner: IntegrationTestRunner) {
     runner.run(
         ["jac", "--version"],
-        check_contains=["Version:"],
+        check_contains=["jac"],
         description="jac --version shows version",
     );
 

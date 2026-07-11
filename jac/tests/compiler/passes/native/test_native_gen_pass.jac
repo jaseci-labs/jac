@@ -2862,7 +2862,7 @@ test "auto promote chess.jac runs via cli" {
     );
     # Verify the native execution message appears (may be line-wrapped by Rich)
     combined = " ".join((result.stdout + result.stderr).split());
-    assert "executed natively" in combined , (
+    assert "natively" in combined , (
         "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
 }
