@@ -397,6 +397,7 @@ impl NaIRGenPass._codegen_string_slice(
 
     null_ptr = self.builder.gep(new_str, [slice_len], name="ss.null");
     self.builder.store(ir.Constant(i8, 0), null_ptr);
+    self._mark_owned(new_str);
     return new_str;
 }
 
@@ -568,13 +569,15 @@ impl NaIRGenPass._codegen_str_split(
     self._set_rc_ctx("str_split", "");
     token_ptr = self.builder.call(self.rc_alloc_fn, [alloc_len], name="token.ptr");
     self._clear_rc_ctx();
+    self._mark_owned(token_ptr);
     src = self.builder.gep(str_val, [ts], name="token.src");
     self.builder.call(memcpy, [token_ptr, src, token_len]);
     null_pos = self.builder.gep(token_ptr, [token_len], name="token.null");
     self.builder.store(ir.Constant(i8, 0), null_pos);
-
     self._rc_call_with_ctx(helpers["append"], [new_list, token_ptr], op="str_split");
-
+    if isinstance(token_ptr.type, ir.PointerType) and self._is_owned(token_ptr) {
+        self._emit_rc_release_simple(token_ptr, op="str_split");
+    }
     new_i = self.builder.add(cur_i, sep_len, name="new.i");
     self.builder.store(new_i, i_alloca);
     self.builder.store(new_i, token_start_alloca);
@@ -592,11 +595,15 @@ impl NaIRGenPass._codegen_str_split(
     self._set_rc_ctx("str_split", "");
     last_ptr = self.builder.call(self.rc_alloc_fn, [last_alloc], name="last.ptr");
     self._clear_rc_ctx();
+    self._mark_owned(last_ptr);
     last_src = self.builder.gep(str_val, [final_ts], name="last.src");
     self.builder.call(memcpy, [last_ptr, last_src, last_len]);
     last_null = self.builder.gep(last_ptr, [last_len], name="last.null");
     self.builder.store(ir.Constant(i8, 0), last_null);
     self._rc_call_with_ctx(helpers["append"], [new_list, last_ptr], op="str_split");
+    if isinstance(last_ptr.type, ir.PointerType) and self._is_owned(last_ptr) {
+        self._emit_rc_release_simple(last_ptr, op="str_split");
+    }
     return new_list;
 }
 
