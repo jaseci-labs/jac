@@ -455,6 +455,9 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
     if left is None or not nd.rights or not nd.ops {
         return None;
     }
+    if len(nd.ops) > 1 and len(nd.rights) == len(nd.ops) {
+        return self._codegen_compare_chain(nd, left);
+    }
     right = self._codegen_expr(nd.rights[0]);
     if right is None {
         return None;
@@ -793,6 +796,56 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
         );
     }
     return _cmp_result;
+}
+
+impl NaIRGenPass._codegen_compare_chain(
+    nd: uni.CompareExpr, left: ir.Value
+) -> (ir.Value | None) {
+    _plain = (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE);
+    op_names: list[str] = [];
+    for _o in nd.ops {
+        _name = _o.name if isinstance(_o, uni.Token) else str(_o);
+        if _name not in _plain {
+            self.emit(
+                E5090, node_override=nd, kind="chained comparison operator", name=_name
+            );
+            return None;
+        }
+        op_names.append(_name);
+    }
+    operands: list = [left];
+    result: (ir.Value | None) = None;
+    cur = left;
+    for (i, op_name) in enumerate(op_names) {
+        right = self._codegen_required(nd.rights[i]);
+        if right is None {
+            return None;
+        }
+        operands.append(right);
+        (l2, r2) = (cur, right);
+        is_float = isinstance(l2.type, ir.DoubleType)
+        or isinstance(r2.type, ir.DoubleType);
+        if is_float {
+            (l2, r2) = self._promote_to_float(l2, r2);
+        }
+        link = self._emit_comparison(op_name, l2, r2, is_float);
+        if link is None {
+            return None;
+        }
+        link = self._to_bool(link);
+        result = link
+            if result is None
+            else self.builder.and_(result, link, name=f"chain.and.{i}");
+        cur = right;
+    }
+    for _ov in operands {
+        if isinstance(_ov.type, ir.PointerType) and self._is_owned(_ov) {
+            self._emit_rc_release_simple(
+                _ov, op="cmp_chain", loc=getattr(_ov, 'jac_loc', '')
+            );
+        }
+    }
+    return result;
 }
 
 impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
