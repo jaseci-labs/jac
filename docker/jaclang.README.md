@@ -44,8 +44,11 @@ FROM jaseci/jaclang:latest
 WORKDIR /app
 COPY . .
 RUN jac install
-CMD ["jac", "start", "main.jac"]
+CMD ["start", "main.jac"]
 ```
+
+(`CMD` supplies arguments to the image's inherited `jac` entrypoint, so
+`start main.jac` runs as `jac start main.jac`.)
 
 This image is also the default pod base for `jac scale` Kubernetes
 deployments: deploys pick the tag matching their release channel automatically
