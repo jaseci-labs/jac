@@ -5647,9 +5647,14 @@ test "bare_list_flow_inference" {
     # mismatched). The declaration now flow-infers its element type from the
     # mutations that follow: append/insert args, extend/`+=` operands'
     # element types, and index-store values, widened out of literal types.
-    # Mixed evidence collapses to the heterogeneous `any` element (backends
-    # lower `list[any]` as the boxed layout; a union would silently lower as
-    # its first member). No evidence leaves the list bare, and an explicit
+    # Only concrete scalar evidence refines: mixed scalars (or None beside a
+    # scalar) collapse to the heterogeneous `any` element (backends lower
+    # `list[any]` as the boxed layout; a union would silently lower as its
+    # first member), while `any`/Unknown/object evidence aborts the
+    # inference - a dynamic value is absence of information, not proof of
+    # heterogeneity, and native code (the OSP kernel's handle lists) relies
+    # on the bare default. Multi-target assignments pool evidence from every
+    # bound name. No evidence leaves the list bare, and an explicit
     # `list[T]` annotation still wins over usage.
     program = JacProgram();
     mod = program.compile(
@@ -5668,9 +5673,16 @@ test "bare_list_flow_inference" {
         "flow_aug": "list[str]",
         "flow_idx": "list[str]",
         "flow_unann": "list[str]",
-        "flow_none": "list[Any]",
+        "flow_none": "list",
+        "flow_nonemix": "list[Any]",
+        "flow_dyn": "list",
+        "flow_poison": "list",
+        "flow_obj": "list",
         "flow_bare": "list",
-        "flow_pinned": "list[int]"
+        "flow_pinned": "list[int]",
+        "flow_multi_a": "list[str]",
+        "flow_multi_b": "list[str]",
+        "flow_rebound": "list[Any]"
     };
     seen: dict[str, str] = {};
     for nm in mod.get_all_sub_nodes(uni.Name) {

@@ -509,26 +509,26 @@ impl TypeEvaluator._infer_list_elem_from_mutations(
     ) {
         return None;
     }
-    target_sym: uni.Symbol | None = None;
+    refs: list[uni.NameAtom] = [];
     for tgt in asg.target {
         if isinstance(tgt, uni.Name) and tgt.sym is not None {
-            target_sym = tgt.sym;
-            break;
+            refs.extend(tgt.sym.uses);
+            refs.extend(tgt.sym.defn);
         }
     }
-    if target_sym is None {
+    if not refs {
         return None;
     }
     elem_types: list[types.TypeBase] = [];
     seen_refs: set[int] = set();
     saw_none = False;
-    for ref in target_sym.uses + target_sym.defn {
+    for ref in refs {
         if id(ref) in seen_refs {
             continue;
         }
         seen_refs.add(id(ref));
         contrib = self._list_mutation_elem_contrib(ref);
-        if contrib is None or isinstance(contrib, types.UnknownType) {
+        if contrib is None {
             continue;
         }
         widened = self._widen_literal_for_declaration(contrib);
@@ -539,11 +539,17 @@ impl TypeEvaluator._infer_list_elem_from_mutations(
             saw_none = True;
             continue;
         }
+        if not (
+            isinstance(widened, types.ClassType)
+            and widened.is_builtin(["int", "float", "str", "bool"])
+        ) {
+            return None;
+        }
         if not self._type_in_list(widened, elem_types) {
             elem_types.append(widened);
         }
     }
-    if not elem_types and not saw_none {
+    if not elem_types {
         return None;
     }
     if len(elem_types) == 1 and not saw_none {
