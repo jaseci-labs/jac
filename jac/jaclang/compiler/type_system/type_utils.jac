@@ -23,7 +23,9 @@ obj ClassMember {
         overloads: list[Symbol];
 }
 
-def compute_mro_linearization(cls: types.ClassType) -> None;
+def compute_mro_linearization(
+    cls: types.ClassType, _visiting: (set | None) = None
+) -> None;
 
 def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
 
