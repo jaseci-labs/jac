@@ -114,7 +114,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     backend_dir.mkdir(parents=True);
     frontend_src_dir.mkdir(parents=True);
 
-    console.print(f"\n📦 Ejecting '{project_name}' → FastAPI app", style="bold cyan");
+    console.print(f"\nEjecting '{project_name}' → FastAPI app", style="bold cyan");
     console.print(f"  Source: {src}");
     console.print(f"  Output: {out}\n");
 

@@ -231,13 +231,13 @@ cl {
 
 ```bash
 # Add a package
-jac add --npm lodash
+jac install --npm lodash
 
 # Add dev dependency
-jac add --npm --dev @types/react
+jac install --npm --dev @types/react
 
 # Install all dependencies
-jac add --npm
+jac install --npm
 ```
 
 Or in `jac.toml`:
@@ -251,7 +251,7 @@ axios = "^1.6.0"
 Then use in frontend:
 
 !!! note "npm imports and `jac check`"
-    npm packages bundle correctly at build time, but the static checker has no `.d.ts`-like stubs for them yet, so `jac check` reports their attributes as Unknown. The code below runs as written under `jac start`.
+    `jac check` reads installed npm `.d.ts` files for client imports when available; packages or constructs without declarations still type as foreign `any`. The code below runs as written under `jac start`.
 
 ```jac
 cl {

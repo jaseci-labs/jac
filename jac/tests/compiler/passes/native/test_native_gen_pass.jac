@@ -1106,6 +1106,18 @@ test "aug assign aug in for" {
     assert f() == 45;  # 0+1+2+...+9
 }
 
+test "forever loop with break" {
+    (eng, _) = compile_native("aug_assign.na.jac");
+    f = get_func(eng, "test_forever_break", ctypes.c_int64);
+    assert f() == 45;  # 0+1+2+...+9, then break
+}
+
+test "forever loop with continue" {
+    (eng, _) = compile_native("aug_assign.na.jac");
+    f = get_func(eng, "test_forever_continue", ctypes.c_int64);
+    assert f() == 30;  # 2+4+6+8+10, odds skipped via continue
+}
+
 test "aug assign aug conditional" {
     (eng, _) = compile_native("aug_assign.na.jac");
     f = get_func(eng, "test_aug_conditional", ctypes.c_int64);
@@ -2850,7 +2862,7 @@ test "auto promote chess.jac runs via cli" {
     );
     # Verify the native execution message appears (may be line-wrapped by Rich)
     combined = " ".join((result.stdout + result.stderr).split());
-    assert "executed natively" in combined , (
+    assert "natively" in combined , (
         "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
 }

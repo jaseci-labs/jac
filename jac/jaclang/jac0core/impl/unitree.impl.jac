@@ -746,6 +746,7 @@ impl UniCFGNode.get_head -> UniCFGNode {
                 InForStmt,
                 IterForStmt,
                 WhileStmt,
+                ForeverStmt,
                 ConditionalNode,
                 InnerCompr,
                 LoopExitNode
@@ -757,6 +758,7 @@ impl UniCFGNode.get_head -> UniCFGNode {
                 InForStmt,
                 IterForStmt,
                 WhileStmt,
+                ForeverStmt,
                 ConditionalNode,
                 InnerCompr,
                 LoopExitNode
@@ -781,6 +783,7 @@ impl UniCFGNode.get_tail -> UniCFGNode {
                 InForStmt,
                 IterForStmt,
                 WhileStmt,
+                ForeverStmt,
                 ConditionalNode,
                 InnerCompr,
                 LoopExitNode
@@ -792,6 +795,7 @@ impl UniCFGNode.get_tail -> UniCFGNode {
                 InForStmt,
                 IterForStmt,
                 WhileStmt,
+                ForeverStmt,
                 ConditionalNode,
                 InnerCompr,
                 LoopExitNode
@@ -1709,6 +1713,14 @@ impl WhileStmt.postinit -> None {
 }
 
 
+impl ForeverStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl WithStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1861,12 +1873,16 @@ impl MultiString.postinit -> None {
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.STRING);
 }
 
-impl MultiString.lit_value.getter -> str {
-    parts: list[str] = [];
+impl MultiString.lit_value.getter -> str | bytes {
+    parts: list[str | bytes] = [];
     for s in self.strings {
         if isinstance(s, String) {
             parts.append(s.lit_value);
         }
+    }
+
+    if parts and isinstance(parts[0], `bytes) {
+        return b"".join(parts);
     }
     return "".join(parts);
 }

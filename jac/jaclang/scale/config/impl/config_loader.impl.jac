@@ -30,7 +30,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_max_connections': 20,
             'redis_enable_keyspace_notifications': False,
             'redis_l1_invalidation_enabled': True,
-            'redis_l1_invalidation_channel': 'jac:anchor:invalidate'
+            'redis_l1_invalidation_channel': 'jac:anchor:invalidate',
+            'redis_cpu_request': '100m',
+            'redis_cpu_limit': '500m',
+            'redis_memory_request': '128Mi',
+            'redis_memory_limit': '1Gi'
         },
         'kubernetes': {
             'app_name': 'jaseci',
@@ -215,7 +219,11 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
         ),
         'redis_l1_invalidation_channel': db_config.get(
             'redis_l1_invalidation_channel', 'jac:anchor:invalidate'
-        )
+        ),
+        'redis_cpu_request': db_config.get('redis_cpu_request', '100m'),
+        'redis_cpu_limit': db_config.get('redis_cpu_limit', '500m'),
+        'redis_memory_request': db_config.get('redis_memory_request', '128Mi'),
+        'redis_memory_limit': db_config.get('redis_memory_limit', '1Gi')
     };
 }
 

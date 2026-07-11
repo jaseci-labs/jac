@@ -897,7 +897,16 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
             processed_parts = self._handle_paren_comments(items, processed_parts);
         }
         if isinstance(
-            ctx, (uni.IfStmt, uni.ElseIf, uni.ElseStmt, uni.WhileStmt, uni.InForStmt)
+            ctx,
+            (
+                uni.IfStmt,
+                uni.ElseIf,
+                uni.ElseStmt,
+                uni.WhileStmt,
+                uni.ForeverStmt,
+                uni.InForStmt,
+                uni.IterForStmt
+            )
         ) {
             processed_parts = self._handle_empty_body_comments(ctx, processed_parts);
         }

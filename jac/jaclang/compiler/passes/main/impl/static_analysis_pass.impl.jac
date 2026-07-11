@@ -224,6 +224,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
         uni.ElseStmt,
         uni.ElseIf,
         uni.WhileStmt,
+        uni.ForeverStmt,
         uni.InForStmt,
         uni.IterForStmt
     ];

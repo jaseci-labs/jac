@@ -211,7 +211,7 @@ test "remove multiple components" {
 }
 
 test "remove resolves registry filename mismatch" {
-    # `jac add --shadcn input-otp` installs as otp_input.cl.jac (registry file
+    # `jac install --shadcn input-otp` installs as otp_input.cl.jac (registry file
     # `otp-input.cl.jac`, dashes → underscores); remove by the registry name
     # must resolve to that file, not input_otp.cl.jac.
     with tempfile.TemporaryDirectory() as tmpdir {
@@ -342,5 +342,83 @@ test "add components fails without shadcn config" {
         config = MockConfig(project_root=tmpdir, _raw_data={});
         result = add_shadcn_components(config, ["button"]);
         assert result == False;
+    }
+}
+
+test "add hyphenated component installs underscored file name" {
+    # GUARD: a hyphen cannot appear in a Jac module name, so `install --shadcn
+    # dropdown-menu` MUST write `dropdown_menu.cl.jac`. A hyphenated file is not
+    # importable (unquoted = parse error, quoted = unresolved). Do not drop the
+    # install-side dash-to-underscore conversion.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["dropdown-menu"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        assert (ui_dir / "dropdown_menu.cl.jac").exists();
+        assert not (ui_dir / "dropdown-menu.cl.jac").exists();
+        for installed in ui_dir.glob("*.cl.jac") {
+            assert "-" not in installed.name;
+        }
+    }
+}
+
+test "add double-stem-mismatch component installs underscored file name" {
+    # `input-otp` -> registry file `otp-input.cl.jac` -> installed `otp_input.cl.jac`.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["input-otp"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        assert (ui_dir / "otp_input.cl.jac").exists();
+        assert not (ui_dir / "otp-input.cl.jac").exists();
+    }
+}
+
+test "registry uses valid Jac module names throughout" {
+    # GUARD: a hyphen is the minus operator and cannot be a Jac module name, so
+    # no registry file may be hyphenated and no relative (dot-prefixed) import
+    # may contain a hyphen - else the import cannot match its file.
+    import from jaclang.cli.shadcn.shadcn_handler { _registry_dir }
+    import re;
+    ui_dir = _registry_dir() / "components" / "ui";
+    for source_file in ui_dir.glob("*.cl.jac") {
+        assert "-" not in source_file.name;
+        for spec in re.findall(r'import from "(\.[^"]*)"', source_file.read_text()) {
+            assert "-" not in spec;
+        }
+    }
+}
+
+test "component with a peer resolves to a matching underscored import" {
+    # combobox imports .input_group and declares input-group as a peer, so the
+    # peer installs and the import matches the installed file name.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(
+            '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
+        );
+        config = MockConfig(
+            project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
+        );
+        result = add_shadcn_components(config, ["combobox"]);
+        assert result == True;
+        ui_dir = Path(tmpdir) / "components" / "ui";
+        assert (ui_dir / "input_group.cl.jac").exists();
+        combobox_src = (ui_dir / "combobox.cl.jac").read_text();
+        assert 'import from ".input_group"' in combobox_src;
+        assert 'import from ".input-group"' not in combobox_src;
     }
 }

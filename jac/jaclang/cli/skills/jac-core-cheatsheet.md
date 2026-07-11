@@ -107,7 +107,7 @@ import from .button { Button }                        # relative (dots)
 import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 ```
 
-**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app()`.
+**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app` (no-arg for manual routing; `app(children)` that renders `children` for file-based routing - see `jac-cl-routing`).
 
 **No-dot imports are project-root absolute.** In server/native code (`.jac`, `.na.jac`, `.sv.jac`), `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root.
 

@@ -690,6 +690,14 @@ glob NODE_SPECS: tuple = (
          ),
          NodeSpec(
              type_idx=59,
+             class_name="ForeverStmt",
+             is_scope=True,
+             is_cfg=True,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
+         NodeSpec(
+             type_idx=60,
              class_name="FormattedValue",
              is_scope=False,
              is_cfg=False,
@@ -701,7 +709,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=60,
+             type_idx=61,
              class_name="FuncCall",
              is_scope=False,
              is_cfg=False,
@@ -714,7 +722,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=61,
+             type_idx=62,
              class_name="FuncSignature",
              is_scope=False,
              is_cfg=False,
@@ -729,7 +737,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=62,
+             type_idx=63,
              class_name="GenCompr",
              is_scope=True,
              is_cfg=True,
@@ -740,7 +748,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=63,
+             type_idx=64,
              class_name="GlobalStmt",
              is_scope=False,
              is_cfg=True,
@@ -748,7 +756,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="target", kind=5), )
          ),
          NodeSpec(
-             type_idx=64,
+             type_idx=65,
              class_name="GlobalVars",
              is_scope=False,
              is_cfg=False,
@@ -761,7 +769,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=65,
+             type_idx=66,
              class_name="HasVar",
              is_scope=False,
              is_cfg=False,
@@ -775,7 +783,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=66,
+             type_idx=67,
              class_name="IfElseExpr",
              is_scope=False,
              is_cfg=False,
@@ -787,7 +795,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=67,
+             type_idx=68,
              class_name="IfStmt",
              is_scope=True,
              is_cfg=True,
@@ -799,7 +807,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=68,
+             type_idx=69,
              class_name="ImplDef",
              is_scope=True,
              is_cfg=True,
@@ -814,7 +822,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=69,
+             type_idx=70,
              class_name="Import",
              is_scope=False,
              is_cfg=True,
@@ -829,7 +837,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=70,
+             type_idx=71,
              class_name="InForStmt",
              is_scope=True,
              is_cfg=True,
@@ -843,7 +851,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=71,
+             type_idx=72,
              class_name="IndexSlice",
              is_scope=False,
              is_cfg=False,
@@ -854,7 +862,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=72,
+             type_idx=73,
              class_name="InnerCompr",
              is_scope=True,
              is_cfg=True,
@@ -867,7 +875,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=73,
+             type_idx=74,
              class_name="Int",
              is_scope=False,
              is_cfg=False,
@@ -885,7 +893,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=74,
+             type_idx=75,
              class_name="IterForStmt",
              is_scope=True,
              is_cfg=True,
@@ -900,7 +908,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=75,
+             type_idx=76,
              class_name="JsxAttribute",
              is_scope=False,
              is_cfg=False,
@@ -908,7 +916,7 @@ glob NODE_SPECS: tuple = (
              fields=()
          ),
          NodeSpec(
-             type_idx=76,
+             type_idx=77,
              class_name="JsxChild",
              is_scope=False,
              is_cfg=False,
@@ -916,7 +924,7 @@ glob NODE_SPECS: tuple = (
              fields=()
          ),
          NodeSpec(
-             type_idx=77,
+             type_idx=78,
              class_name="JsxComment",
              is_scope=False,
              is_cfg=False,
@@ -924,7 +932,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="value", kind=4), )
          ),
          NodeSpec(
-             type_idx=78,
+             type_idx=79,
              class_name="JsxElement",
              is_scope=False,
              is_cfg=False,
@@ -939,7 +947,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=79,
+             type_idx=80,
              class_name="JsxElementName",
              is_scope=False,
              is_cfg=False,
@@ -947,7 +955,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="parts", kind=5), )
          ),
          NodeSpec(
-             type_idx=80,
+             type_idx=81,
              class_name="JsxExpression",
              is_scope=False,
              is_cfg=False,
@@ -955,7 +963,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="expr", kind=4), )
          ),
          NodeSpec(
-             type_idx=81,
+             type_idx=82,
              class_name="JsxNormalAttribute",
              is_scope=False,
              is_cfg=False,
@@ -967,7 +975,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=82,
+             type_idx=83,
              class_name="JsxSlot",
              is_scope=False,
              is_cfg=False,
@@ -975,7 +983,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="body", kind=5), )
          ),
          NodeSpec(
-             type_idx=83,
+             type_idx=84,
              class_name="JsxSpreadAttribute",
              is_scope=False,
              is_cfg=False,
@@ -983,7 +991,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="expr", kind=4), )
          ),
          NodeSpec(
-             type_idx=84,
+             type_idx=85,
              class_name="JsxText",
              is_scope=False,
              is_cfg=False,
@@ -991,7 +999,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="value", kind=4), )
          ),
          NodeSpec(
-             type_idx=85,
+             type_idx=86,
              class_name="KVPair",
              is_scope=False,
              is_cfg=False,
@@ -999,7 +1007,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="key", kind=6), FieldDesc(name="value", kind=4))
          ),
          NodeSpec(
-             type_idx=86,
+             type_idx=87,
              class_name="KWPair",
              is_scope=False,
              is_cfg=False,
@@ -1007,7 +1015,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="key", kind=6), FieldDesc(name="value", kind=4))
          ),
          NodeSpec(
-             type_idx=87,
+             type_idx=88,
              class_name="LambdaExpr",
              is_scope=True,
              is_cfg=False,
@@ -1018,7 +1026,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=88,
+             type_idx=89,
              class_name="ListCompr",
              is_scope=True,
              is_cfg=True,
@@ -1029,7 +1037,7 @@ glob NODE_SPECS: tuple = (
              )
          ),
          NodeSpec(
-             type_idx=89,
+             type_idx=90,
              class_name="ListVal",
              is_scope=False,
              is_cfg=False,
@@ -1037,7 +1045,7 @@ glob NODE_SPECS: tuple = (
              fields=(FieldDesc(name="values", kind=5), )
          ),
          NodeSpec(
-             type_idx=90,
+             type_idx=91,
              class_name="Literal",
              is_scope=False,
              is_cfg=False,
