@@ -92,7 +92,7 @@ cl {
                     <Text style={styles.value}>Count: {count}</Text>
                     <Pressable
                         style={styles.button}
-                        onPress={lambda { count = count + 1; }}
+                        onPress={lambda() { count = count + 1; }}
                     >
                         <Text style={styles.buttonLabel}>Increment</Text>
                     </Pressable>
@@ -103,7 +103,7 @@ cl {
                         style={styles.input}
                         value={name}
                         placeholder="Type your name"
-                        onChangeText={lambda t: str { name = t; }}
+                        onChangeText={lambda (t: str) { name = t; }}
                     />
                     <Text style={styles.value}>Hello, {name}</Text>
                 </View>

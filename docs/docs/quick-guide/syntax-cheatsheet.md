@@ -521,15 +521,15 @@ impl Calculator.multiply(n: int) -> int {
 # ============================================================
 
 with entry {
-    # Simple lambda (untyped params, colon body)
-    add = lambda x, y: x + y;
+    # Simple lambda (braced body; bare tail expression = implicit return)
+    add = lambda (x: int, y: int) { x + y; };
     print(add(3, 4));
 
     # Typed lambda with return type
-    mul = lambda (x: int, y: int) -> int : x * y;
+    mul = lambda (x: int, y: int) -> int { x * y };
     print(mul(3, 4));
 
-    # Multi-statement lambda (brace body)
+    # Multi-statement lambda (explicit return)
     classify = lambda (score: int) -> str {
         if score >= 90 { return "A"; }
         elif score >= 80 { return "B"; }
@@ -538,7 +538,7 @@ with entry {
     print(classify(85));
 
     # No-arg lambda
-    get_42 = lambda : 42;
+    get_42 = lambda () { 42; };
 
     # Void lambda (common in JSX event handlers)
     handler = lambda -> None { print("clicked"); };
@@ -1359,7 +1359,7 @@ cl {
         # Mount effect (runs once on component mount)
         async can with entry {
             data = await fetch("/api/data").then(
-                lambda r: any -> any { return r.json(); }
+                lambda (r: any) -> any { return r.json(); }
             );
             loading = False;
         }

@@ -627,7 +627,7 @@ class JacScalePlugin {
             log_file.close();
         }
 
-        if not wait_for_health(base_url, lambda : proc.poll() is None) {
+        if not wait_for_health(base_url, lambda() { proc.poll() is None; }) {
             proc.terminate();
             raise RuntimeError(
                 f"sv-to-sv service '{module_name}' did not become healthy at "

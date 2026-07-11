@@ -24,7 +24,7 @@ with entry {
     doubled: list[int] = [n * 2 for n in [1, 2, 3]];
     label: str = "adult" if age >= 18 else "minor";   # ternary: A if cond else B
 
-    inc = lambda x: int : x + 1;                      # typed expression lambda
+    inc = lambda (x: int) { x + 1; };                    # typed lambda, implicit return
     square = lambda(x: int) -> int { return x * x; }; # typed block lambda
     print(inc(4), square(5));
 

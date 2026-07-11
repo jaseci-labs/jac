@@ -87,7 +87,7 @@ node Post {
 
 def:pub feed() -> list[PostView] {
     posts = [p.to_view() for p in [root-->[?:Post]]];
-    posts.sort(key=lambda p: PostView : p.created_at, reverse=True);
+    posts.sort(key=lambda (p: PostView) { p.created_at; }, reverse=True);
     return posts;
 }
 ```
@@ -113,7 +113,7 @@ node Person {
 impl Person.__jac_schema__ -> None {
     schema_alias("name", stored="username"); # field rename: old value flows into new field
     schema_drop("legacy_bio");               # deleted field: preserve remains in the attic
-    schema_upgrade(fix_tags, when=(lambda doc: dict : isinstance(doc.get("tags"), str)));
+    schema_upgrade(fix_tags, when=(lambda (doc: dict) { isinstance(doc.get("tags"), str); }));
 }
 ```
 

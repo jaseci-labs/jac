@@ -29,7 +29,7 @@ def:pub PhaseGraph(
     # return a cleanup function or nothing, never null (null is then invoked as
     # a cleanup and throws).
     useEffect(
-        lambda { if containerRef.current and len(nodes) > 0 and not cyRef.current {
+        lambda() { if containerRef.current and len(nodes) > 0 and not cyRef.current {
             els: list = [];
             # Rank each node by its position in the (BFS-ordered) node list so an
             # edge spanning more than one rank can be told apart from an adjacent
@@ -160,25 +160,25 @@ def:pub PhaseGraph(
             cyRef.current = cy;
             # Clicking a node selects it -- the parent shows that state's full
             # definition in the phase inspector. A grab cursor hints it's clickable.
-            cy.on("tap", "node", lambda evt: any { onSelect(evt.target.id()); });
+            cy.on("tap", "node", lambda (evt: any) { onSelect(evt.target.id()); });
             cy.on(
                 "mouseover",
                 "node",
-                lambda { if containerRef.current {
+                lambda() { if containerRef.current {
                     containerRef.current.style.cursor = "pointer";
                 }}
             );
             cy.on(
                 "mouseout",
                 "node",
-                lambda { if containerRef.current {
+                lambda() { if containerRef.current {
                     # Background shows a grab cursor (the canvas pans on drag).
                     containerRef.current.style.cursor = "grab";
                 }}
             );
             # Re-fit after layout settles, in case the pane sized late.
             window.setTimeout(
-                lambda { if cyRef.current {
+                lambda() { if cyRef.current {
                     cyRef.current.resize();
                     cyRef.current.fit(cyRef.current.elements(), 36);
                 }},
@@ -192,26 +192,26 @@ def:pub PhaseGraph(
     # pane's dimensions the div resizes but cytoscape's canvas would not, so it
     # would crop -- a ResizeObserver re-syncs and refits on every size change.
     useEffect(
-        lambda -> any {
+        lambda() -> any {
             if not containerRef.current {
                 return None;
             }
             ro = new(
                 ResizeObserver,
-                lambda { if cyRef.current {
+                lambda() { if cyRef.current {
                     cyRef.current.resize();
                     cyRef.current.fit(cyRef.current.elements(), 36);
                 }}
             );
             ro.observe(containerRef.current);
-            return lambda { ro.disconnect(); };
+            return lambda() { ro.disconnect(); };
         },
         []
     );
 
     # Highlight the node the inspector is showing; rerun when the pick changes.
     useEffect(
-        lambda {
+        lambda() {
             cy = cyRef.current;
             if cy {
                 cy.nodes().removeClass("selected");
@@ -226,7 +226,7 @@ def:pub PhaseGraph(
     # Reflect the live walker position. Recreated each render, so it reads the
     # current `path`; rerun whenever the active node or run status changes.
     useEffect(
-        lambda {
+        lambda() {
             cy = cyRef.current;
             if cy {
                 cy.nodes().removeClass("active visited");

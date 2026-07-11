@@ -106,7 +106,7 @@ def:pub TracesPage -> JsxElement {
     }
 
     useEffect(
-        lambda {
+        lambda() {
             loadServices();
             loadTraces();
         },
@@ -116,9 +116,9 @@ def:pub TracesPage -> JsxElement {
     # Re-search when the dropdown filters change (debounced 250ms so
     # dragging through <select> options doesn't fire a request each).
     useEffect(
-        lambda -> any {
-            timer = setTimeout(lambda { loadTraces(); }, 250);
-            return lambda { clearTimeout(timer); };
+        lambda() -> any {
+            timer = setTimeout(lambda() { loadTraces(); }, 250);
+            return lambda() { clearTimeout(timer); };
         },
         [filterService, filterStatus, filterSince, filterMinDuration]
     );
@@ -214,12 +214,12 @@ def:pub TracesPage -> JsxElement {
             <PageHeader
                 icon={Workflow}
                 title="Distributed Traces"
-                onRefresh={lambda { loadTraces(); }}
+                onRefresh={lambda() { loadTraces(); }}
             />
             <div className="flex flex-wrap gap-3 items-end">
                 <select
                     value={filterService}
-                    onChange={lambda e: any { filterService = e.target.value; }}
+                    onChange={lambda (e: any) { filterService = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="">All services</option>
@@ -227,7 +227,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={filterStatus}
-                    onChange={lambda e: any { filterStatus = e.target.value; }}
+                    onChange={lambda (e: any) { filterStatus = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="">All statuses</option>
@@ -235,7 +235,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={String(filterMinDuration)}
-                    onChange={lambda e: any { filterMinDuration = Number(
+                    onChange={lambda (e: any) { filterMinDuration = Number(
                         e.target.value
                     ); }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
@@ -247,7 +247,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={filterSince}
-                    onChange={lambda e: any { filterSince = e.target.value; }}
+                    onChange={lambda (e: any) { filterSince = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="15m">Last 15 min</option>
@@ -285,7 +285,7 @@ def:pub TracesPage -> JsxElement {
                                     if (t["trace_id"] == selectedTraceId)
                                     else "border-line bg-surface hover:bg-surface-2"
                             )}
-                            onClick={lambda { openTrace(t["trace_id"]); }}
+                            onClick={lambda() { openTrace(t["trace_id"]); }}
                         >
                             <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium text-fg">

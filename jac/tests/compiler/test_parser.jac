@@ -106,7 +106,7 @@ test "all ast has normalize" {
         if issubclass(cls, uni.UniNode) and not issubclass(cls, uni.Token)
     ];
     ordered_classes = sorted(
-        uni_node_classes, key=lambda cls : source_code.find(f"class {cls.__name__}"),
+        uni_node_classes, key=lambda (cls) { source_code.find(f"class {cls.__name__}"); },
     );
     for cls in ordered_classes {
         if cls.__name__ not in exclude {
@@ -1054,6 +1054,6 @@ test "docstring attaches to all member types inside archetype body" {
 
 with entry {
     parametrize(
-        "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
+        "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda (f) { Path(f).stem; }
     );
 }

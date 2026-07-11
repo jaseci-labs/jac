@@ -61,15 +61,15 @@ def:pub LLMTracesPage -> JsxElement {
         }
     }
 
-    useEffect(lambda { loadTraces(); }, []);
+    useEffect(lambda() { loadTraces(); }, []);
 
     useEffect(
-        lambda -> any {
+        lambda() -> any {
             if not autoRefresh {
                 return undefined;
             }
-            interval = setInterval(lambda { loadTraces(); }, 15000);
-            return lambda { clearInterval(interval); };
+            interval = setInterval(lambda() { loadTraces(); }, 15000);
+            return lambda() { clearInterval(interval); };
         },
         [autoRefresh]
     );
@@ -135,7 +135,7 @@ def:pub LLMTracesPage -> JsxElement {
             <div className="space-y-4">
                 <div className="flex items-center gap-3">
                     <Button
-                        onClick={lambda {
+                        onClick={lambda() {
                             showDetail = False;
                             selectedTrace = {};
                         }}
@@ -219,7 +219,7 @@ def:pub LLMTracesPage -> JsxElement {
                                 <div className="text-faint mb-1">Parent Trace</div>
                                 <div
                                     className="text-teal-400 font-mono text-xs cursor-pointer hover:underline"
-                                    onClick={lambda { loadTraceDetail(
+                                    onClick={lambda() { loadTraceDetail(
                                         selectedTrace["parent_invocation_id"]
                                     ); }}
                                 >
@@ -346,7 +346,7 @@ def:pub LLMTracesPage -> JsxElement {
                                 <div
                                     key={child["invocation_id"]}
                                     className="bg-surface-2 border border-line rounded-lg p-4 cursor-pointer hover:border-teal-500/50 transition-colors"
-                                    onClick={lambda { loadTraceDetail(
+                                    onClick={lambda() { loadTraceDetail(
                                         child["invocation_id"]
                                     ); }}
                                 >
@@ -444,13 +444,13 @@ def:pub LLMTracesPage -> JsxElement {
                         <input
                             type="checkbox"
                             checked={autoRefresh}
-                            onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                            onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
                             className="rounded border-line bg-surface-2 text-teal-500 focus:ring-teal-500"
                         />
                         Auto-refresh
                     </label>
                     <Button
-                        onClick={lambda {
+                        onClick={lambda() {
                             isLoading = True;
                             loadTraces();
                         }}
@@ -491,14 +491,14 @@ def:pub LLMTracesPage -> JsxElement {
                         <div
                             className="flex-1 flex items-center gap-2 min-w-0"
                             style={{"paddingLeft": String(item["depth"] * 28) + "px"}}
-                            onClick={lambda { loadTraceDetail(
+                            onClick={lambda() { loadTraceDetail(
                                 item["trace"]["invocation_id"]
                             ); }}
                         >
                             {(item["trace"]["child_count"] or 0) > 0
                             and <button
                                 className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-muted hover:text-teal-400 rounded hover:bg-surface-2"
-                                onClick={lambda e: any {
+                                onClick={lambda (e: any) {
                                     e.stopPropagation();
                                     toggleExpand(item["trace"]["invocation_id"]);
                                 }}

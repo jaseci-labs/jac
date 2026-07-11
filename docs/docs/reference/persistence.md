@@ -282,7 +282,7 @@ impl User.__jac_schema__ -> None {
     schema_drop("legacy_bio");                # removed field: preserve its remains
     schema_upgrade(
         split_tags,
-        when=(lambda doc: dict : isinstance(doc.get("tags"), str))
+        when=(lambda (doc: dict) { isinstance(doc.get("tags"), str); })
     );
 }
 ```

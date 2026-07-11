@@ -33,8 +33,8 @@ def:pub RightSidebar(
                     className="rounded-full bg-muted pl-9 pr-9"
                     placeholder="Search Little-X"
                     value={searchQuery}
-                    onChange={lambda e: ChangeEvent { onSearchChange(e.target.value); }}
-                    onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter" {
+                    onChange={lambda (e: ChangeEvent) { onSearchChange(e.target.value); }}
+                    onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter" {
                         onSearch(searchQuery);
                     }}}
                 />
@@ -42,7 +42,7 @@ def:pub RightSidebar(
                     <button
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                         title="Clear search"
-                        onClick={lambda { onClearSearch(); }}
+                        onClick={lambda() { onClearSearch(); }}
                     >
                         <X size={16}/>
                     </button>
@@ -63,7 +63,7 @@ def:pub RightSidebar(
                             <button
                                 className="flex w-full flex-col items-start px-4 py-2 text-left transition-colors hover:bg-muted/50"
                                 key={t.tag}
-                                onClick={lambda { onTrendClick(t.tag); }}
+                                onClick={lambda() { onTrendClick(t.tag); }}
                             >
                                 <span className="font-semibold text-primary">
                                     {t.tag}
@@ -169,7 +169,7 @@ def:pub RightSidebar(
                                 <Button
                                     size="sm"
                                     className="shrink-0 rounded-full font-semibold"
-                                    onClick={lambda { onFollow(u.id); }}
+                                    onClick={lambda() { onFollow(u.id); }}
                                 >
                                     Follow
                                 </Button>
@@ -178,7 +178,7 @@ def:pub RightSidebar(
                         {if len(toFollow) > 5 {
                             <button
                                 className="w-full px-4 py-2 text-left text-sm text-primary hover:bg-muted/50"
-                                onClick={lambda { onShowMore(); }}
+                                onClick={lambda() { onShowMore(); }}
                             >
                                 Show more
                             </button>

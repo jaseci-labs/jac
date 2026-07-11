@@ -331,7 +331,7 @@ test "transpiled plugin files are importable Python" {
 """PathPlugin dispatch roundtrip: resolve home directory."""
 test "path plugin dispatch roundtrip" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -354,7 +354,7 @@ test "path plugin dispatch roundtrip" {
 """PluginHost.dispatch accepts libwebview bind arg arrays."""
 test "dispatch accepts webview bind arg arrays" {
     _with_plugins(
-        lambda {
+        lambda() {
             import plugin_host;
             import built_in.path_plugin;
             host = plugin_host.PluginHost();
@@ -369,7 +369,7 @@ test "dispatch accepts webview bind arg arrays" {
 """PathPlugin dispatch roundtrip: separator command."""
 test "path plugin separator command" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -391,7 +391,7 @@ test "path plugin separator command" {
 """PathPlugin dispatch roundtrip: resolve command."""
 test "path plugin resolve command" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -417,7 +417,7 @@ test "path plugin resolve command" {
 """PathPlugin returns temp directory."""
 test "path plugin temp command" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -437,7 +437,7 @@ test "path plugin temp command" {
 """PathPlugin returns data directory."""
 test "path plugin data command" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -457,7 +457,7 @@ test "path plugin data command" {
 """ShellPlugin deny-all: exec is blocked when no allow list configured."""
 test "shell plugin denies all commands by default" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             _ShellPlugin = _get_shell_plugin_class();
@@ -483,7 +483,7 @@ test "shell plugin denies all commands by default" {
 """ShellPlugin allow-list: matching commands execute, non-matching are blocked."""
 test "shell plugin allow-list matching" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             _ShellPlugin = _get_shell_plugin_class();
@@ -526,7 +526,7 @@ test "shell plugin allow-list matching" {
 """ShellPlugin blocks shell injection via glob-matched command strings."""
 test "shell plugin rejects shell injection in allowed commands" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             _ShellPlugin = _get_shell_plugin_class();
@@ -566,7 +566,7 @@ each pattern token against the corresponding argv token.
 """
 test "shell allow-list does not silently widen subcommands" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             _ShellPlugin = _get_shell_plugin_class();
@@ -654,7 +654,7 @@ test "shell allow-list does not silently widen subcommands" {
 """FsPlugin blocks reads when no allow_read is configured."""
 test "fs plugin blocks reads with empty allow list" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -685,7 +685,7 @@ test "fs plugin blocks reads with empty allow list" {
 """FsPlugin enforces allow_read for paths inside the allow list."""
 test "fs plugin allows reads within allowed paths" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -720,7 +720,7 @@ test "fs plugin allows reads within allowed paths" {
 """FsPlugin blocks reads outside the allowed directory."""
 test "fs plugin blocks reads outside allowed paths" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -752,7 +752,7 @@ test "fs plugin blocks reads outside allowed paths" {
 """FsPlugin write + read roundtrip inside an allowed directory."""
 test "fs plugin write and read roundtrip" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -803,7 +803,7 @@ test "fs plugin write and read roundtrip" {
 """FsPlugin exists command works within allowed paths."""
 test "fs plugin exists command" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -852,7 +852,7 @@ test "fs plugin exists command" {
 """FsPlugin list_dir returns entries."""
 test "fs plugin list_dir command" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.path_plugin;
@@ -894,7 +894,7 @@ test "fs plugin list_dir command" {
 """NotificationPlugin handles `notification = true` (not a dict)."""
 test "notification plugin accepts true config" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.notification_plugin;
@@ -929,7 +929,7 @@ test "notification plugin accepts true config" {
 """ClipboardPlugin handles `clipboard = true` and denies write by default."""
 test "clipboard plugin accepts true config with defaults" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.clipboard_plugin;
@@ -961,7 +961,7 @@ test "clipboard plugin accepts true config with defaults" {
 """ClipboardPlugin respects allow_read=false."""
 test "clipboard plugin blocks read when allow_read is false" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             import plugin_host;
             import built_in.clipboard_plugin;
@@ -1421,7 +1421,7 @@ test "build pipeline wires the runtime-imported bootstrap" {
 """Each built-in plugin exposes manifest() returning a PluginManifest."""
 test "all built-in plugins expose manifest and build" {
     _with_plugins(
-        lambda {
+        lambda() {
             import built_in.path_plugin;
             import built_in.fs_plugin;
             import built_in.clipboard_plugin;
@@ -1454,7 +1454,7 @@ test "all built-in plugins expose manifest and build" {
 """bootstrap_plugins() registers only enabled plugins."""
 test "bootstrap_plugins registers only enabled plugins" {
     _with_plugins(
-        lambda {
+        lambda() {
             import from manifest { PluginContext }
             import from registry { bootstrap_plugins }
             import plugin_host;
@@ -1476,7 +1476,7 @@ test "bootstrap_plugins registers only enabled plugins" {
 """bootstrap_plugins() with all plugins enabled."""
 test "bootstrap_plugins registers all plugins when all enabled" {
     _with_plugins(
-        lambda {
+        lambda() {
             import from manifest { PluginContext }
             import from registry { bootstrap_plugins }
             import plugin_host;
@@ -1505,7 +1505,7 @@ test "bootstrap_plugins registers all plugins when all enabled" {
 """bootstrap_plugins() with empty config registers nothing."""
 test "bootstrap_plugins registers nothing with empty config" {
     _with_plugins(
-        lambda {
+        lambda() {
             import from registry { bootstrap_plugins }
             import plugin_host;
             import sys;
@@ -1518,7 +1518,7 @@ test "bootstrap_plugins registers nothing with empty config" {
 """DesktopPlugin._coerce_config normalizes config values."""
 test "_coerce_config normalizes config values" {
     _with_plugins(
-        lambda {
+        lambda() {
             import desktop_plugin;
             assert desktop_plugin.DesktopPlugin._coerce_config(True) == {};
             assert desktop_plugin.DesktopPlugin._coerce_config(False) == {};

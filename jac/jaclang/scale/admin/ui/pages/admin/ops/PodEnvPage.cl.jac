@@ -52,7 +52,7 @@ def:pub PodEnvPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda { load(); }, []);
+    useEffect(lambda() { load(); }, []);
 
     # Resolve the currently-selected env list (this pod vs a named pod).
     def selectedEnv -> list {
@@ -75,7 +75,7 @@ def:pub PodEnvPage -> JsxElement {
                 icon={KeyRound}
                 title="Pod Environment"
                 namespace={namespace}
-                onRefresh={lambda { load(); }}
+                onRefresh={lambda() { load(); }}
             />
             <div className="flex items-center gap-2 text-xs text-faint">
                 <Lock className="w-3.5 h-3.5"/>
@@ -97,7 +97,7 @@ def:pub PodEnvPage -> JsxElement {
             />
             <select
                 value={selected}
-                onChange={lambda e: any { selected = e.target.value; }}
+                onChange={lambda (e: any) { selected = e.target.value; }}
                 className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
             >
                 <option value="__self__">This pod (gateway)</option>

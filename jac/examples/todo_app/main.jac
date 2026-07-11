@@ -142,8 +142,8 @@ cl {
                     <input
                         type="text"
                         value={inputValue}
-                        onChange={lambda e: any { inputValue = e.target.value; }}
-                        onKeyPress={lambda e: any { if e.key == "Enter" { addTodo(); }}}
+                        onChange={lambda (e: any) { inputValue = e.target.value; }}
+                        onKeyPress={lambda (e: any) { if e.key == "Enter" { addTodo(); }}}
                         placeholder="What needs to be done?"
                         style={{
                             "flex": "1",
@@ -179,7 +179,7 @@ cl {
                     }}
                 >
                     <button
-                        onClick={lambda { filter = "all"; }}
+                        onClick={lambda() { filter = "all"; }}
                         style={{
                             "padding": "8px 16px",
                             "background": ("#3b82f6" if filter == "all" else "#ffffff"),
@@ -194,7 +194,7 @@ cl {
                         All
                     </button>
                     <button
-                        onClick={lambda { filter = "active"; }}
+                        onClick={lambda() { filter = "active"; }}
                         style={{
                             "padding": "8px 16px",
                             "background": (
@@ -211,7 +211,7 @@ cl {
                         Active
                     </button>
                     <button
-                        onClick={lambda { filter = "completed"; }}
+                        onClick={lambda() { filter = "completed"; }}
                         style={{
                             "padding": "8px 16px",
                             "background": (
@@ -273,7 +273,7 @@ cl {
                                     <input
                                         type="checkbox"
                                         checked={todo.done}
-                                        onChange={lambda { toggleTodo(todo._jac_id); }}
+                                        onChange={lambda() { toggleTodo(todo._jac_id); }}
                                         style={{
                                             "width": "20px",
                                             "height": "20px",
@@ -295,7 +295,7 @@ cl {
                                         {todo.text}
                                     </span>
                                     <button
-                                        onClick={lambda { deleteTodo(todo._jac_id); }}
+                                        onClick={lambda() { deleteTodo(todo._jac_id); }}
                                         style={{
                                             "padding": "6px 12px",
                                             "background": "#ef4444",

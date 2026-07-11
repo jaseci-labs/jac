@@ -243,7 +243,7 @@ def:pub app -> JsxElement {
             }
             # Connection dropped (server restart, idle close) -- back off, reconnect.
             await new(
-                Promise, lambda resolve: any { window.setTimeout(resolve, 800); }
+                Promise, lambda (resolve: any) { window.setTimeout(resolve, 800); }
             );
         }
     }
@@ -324,10 +324,10 @@ def:pub app -> JsxElement {
 
     # Open the live stream; abort it on unmount.
     useEffect(
-        lambda -> any {
+        lambda() -> any {
             unmountedRef.current = False;
             streamLoop();
-            return lambda {
+            return lambda() {
                 unmountedRef.current = True;
                 if ctrlRef.current {
                     ctrlRef.current.abort();
@@ -349,13 +349,13 @@ def:pub app -> JsxElement {
                     {("agent control room" + (" · " + modelName if modelName else ""))}
                 </span>
                 <span className="spacer"/>
-                <button className="btn ghost" onClick={lambda { reset(); }}>
+                <button className="btn ghost" onClick={lambda() { reset(); }}>
                     New session
                 </button>
                 <button
                     className={"icon-btn attn" if needsKey else "icon-btn"}
                     title="Settings"
-                    onClick={lambda { openSettings(); }}
+                    onClick={lambda() { openSettings(); }}
                 >
                     ⚙
                 </button>
@@ -366,14 +366,14 @@ def:pub app -> JsxElement {
                         {events}
                         {status}
                         {draft}
-                        onDraftChange={lambda v: str { draft = v; }}
+                        onDraftChange={lambda (v: str) { draft = v; }}
                         onSend={send}
                         onStop={stop}
                     />
                 </div>
                 <ResizeHandle
                     vertical={True}
-                    onResize={lambda dx: float { leftW = max(
+                    onResize={lambda (dx: float) { leftW = max(
                         300, min(int(leftW + dx), int(win.innerWidth) - rightW - 320)
                     ); }}
                 />
@@ -387,7 +387,7 @@ def:pub app -> JsxElement {
                             {path}
                             {status}
                             {selected}
-                            onSelect={lambda id: str {
+                            onSelect={lambda (id: str) {
                                 selected = id;
                                 loadPhaseCtx(id);
                             }}
@@ -396,7 +396,7 @@ def:pub app -> JsxElement {
                 </div>
                 <ResizeHandle
                     vertical={True}
-                    onResize={lambda dx: float { rightW = max(
+                    onResize={lambda (dx: float) { rightW = max(
                         300, min(int(rightW - dx), int(win.innerWidth) - leftW - 320)
                     ); }}
                 />
@@ -406,7 +406,7 @@ def:pub app -> JsxElement {
             </div>
             <ResizeHandle
                 vertical={False}
-                onResize={lambda dy: float { bottomH = max(
+                onResize={lambda (dy: float) { bottomH = max(
                     90, min(int(bottomH - dy), int(win.innerHeight) - 260)
                 ); }}
             />
@@ -415,7 +415,7 @@ def:pub app -> JsxElement {
                     events={events}
                     live={status == "running"}
                     selected={selectedCall}
-                    onSelect={lambda id: int { openCall(id); }}
+                    onSelect={lambda (id: int) { openCall(id); }}
                 />
                 <LedgerPane {ledger}/>
                 <PhaseInspector {nodes} {selected} context={phaseCtx}/>
@@ -434,21 +434,21 @@ def:pub app -> JsxElement {
                 keyEnv={keyEnv}
                 error={sError}
                 busy={sBusy}
-                onModel={lambda v: str { sModel = v; }}
-                onKey={lambda v: str { sKey = v; }}
-                onBaseUrl={lambda v: str { sBaseUrl = v; }}
-                onTemp={lambda v: str { sTemp = v; }}
-                onNctx={lambda v: str { sNctx = v; }}
+                onModel={lambda (v: str) { sModel = v; }}
+                onKey={lambda (v: str) { sKey = v; }}
+                onBaseUrl={lambda (v: str) { sBaseUrl = v; }}
+                onTemp={lambda (v: str) { sTemp = v; }}
+                onNctx={lambda (v: str) { sNctx = v; }}
                 onApply={applySettings}
-                onClose={lambda { showSettings = False; }}
+                onClose={lambda() { showSettings = False; }}
             />
                 if showSettings
                 else <span/>}
             {<CallDetailModal
                 detail={callDetail}
-                onPrev={lambda { openCall(int(callDetail.prev_id)); }}
-                onNext={lambda { openCall(int(callDetail.next_id)); }}
-                onClose={lambda { openCall(-1); }}
+                onPrev={lambda() { openCall(int(callDetail.prev_id)); }}
+                onNext={lambda() { openCall(int(callDetail.next_id)); }}
+                onClose={lambda() { openCall(-1); }}
             />
                 if (selectedCall >= 0 and callDetail)
                 else <span/>}

@@ -4537,14 +4537,17 @@ test "jsx_step4_lambda_inference" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
 
-    e1032_errors = [
+    # `e` is inferred as MouseEvent, so accessing `.nonexistent` is a no-such-
+    # attribute error on a known type (E1030) -- stronger than E1032 (Unknown),
+    # which would mean the param type was never inferred.
+    attr_errors = [
         e
         for e in program.errors_had
-        if e.code and e.code.code == "E1032"
+        if e.code and e.code.code in ["E1030", "E1032"]
     ];
-    assert len(e1032_errors) >= 1 , f"Expected E1032 for e.nonexistent on inferred MouseEvent, got {len(
-        e1032_errors
-    )} E1032 errors. All errors:\n" + "\n---\n".join(
+    assert len(attr_errors) >= 1 , f"Expected an attribute error for e.nonexistent on inferred MouseEvent, got {len(
+        attr_errors
+    )}. All errors:\n" + "\n---\n".join(
         f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
         for err in program.errors_had
     );

@@ -57,7 +57,7 @@ def:pub ProfileTab(
                             rows={3}
                             placeholder="Write your bio..."
                             value={bioText}
-                            onChange={lambda e: ChangeEvent { onBioChange(
+                            onChange={lambda (e: ChangeEvent) { onBioChange(
                                 e.target.value
                             ); }}
                         />
@@ -65,14 +65,14 @@ def:pub ProfileTab(
                             <Button
                                 size="sm"
                                 className="font-semibold"
-                                onClick={lambda { onSaveBio(); }}
+                                onClick={lambda() { onSaveBio(); }}
                             >
                                 Save
                             </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={lambda { onCancelEditBio(); }}
+                                onClick={lambda() { onCancelEditBio(); }}
                             >
                                 Cancel
                             </Button>

@@ -54,7 +54,7 @@ def:pub NetworkPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda { load(); }, []);
+    useEffect(lambda() { load(); }, []);
 
     def portsLabel(ports: list) -> str {
         parts: list = [];
@@ -91,7 +91,7 @@ def:pub NetworkPage -> JsxElement {
                 icon={Network}
                 title="Endpoints & Storage"
                 namespace={namespace}
-                onRefresh={lambda { load(); }}
+                onRefresh={lambda() { load(); }}
             />
             <OpsUnavailableBanner
                 show={loadedOnce and not available}

@@ -41,7 +41,7 @@ def:pub app() -> JsxElement {
     return <div data-testid="form-root">
         <JacForm
             schema={schema}
-            onSubmit={lambda data: any { globalThis.__jacFormSubmitted = True; return; }}
+            onSubmit={lambda (data: any) { globalThis.__jacFormSubmitted = True; return; }}
             field_config={{
                 "email": {"type": "email", "label": "Email"},
                 "agree": {"type": "checkbox", "label": "I agree"},

@@ -18,7 +18,7 @@ def:pub Box(title: str, count: int, onClick: any) -> JsxElement {
 def:pub Page -> JsxElement {
     title = "Hello";
     count = 3;
-    onClick = lambda { print("click"); };
+    onClick = lambda() { print("click"); };
 
     return
         <main>

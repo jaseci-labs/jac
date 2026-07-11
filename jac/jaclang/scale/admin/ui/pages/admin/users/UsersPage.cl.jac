@@ -44,7 +44,7 @@ def:pub UsersPage -> JsxElement {
     }
 
     useEffect(
-        lambda {
+        lambda() {
             loadUsers();
             loadSSO();
         },
@@ -98,11 +98,11 @@ def:pub UsersPage -> JsxElement {
     }
 
     def makeEditHandler(username: str, role: str, resetRequired: bool) -> any {
-        return lambda e: any { openEditModal(username, role, resetRequired); };
+        return lambda (e: any) { openEditModal(username, role, resetRequired); };
     }
 
     def makeDeleteHandler(username: str) -> any {
-        return lambda e: any { handleDelete(username); };
+        return lambda (e: any) { handleDelete(username); };
     }
 
     totalUsers = len(users);
@@ -138,7 +138,7 @@ def:pub UsersPage -> JsxElement {
             <Card className="overflow-hidden">
                 <CardHeader
                     title="Users"
-                    action={<Button onClick={lambda { showCreateModal = True; }}>
+                    action={<Button onClick={lambda() { showCreateModal = True; }}>
                         Add User
                     </Button>}
                 />
@@ -184,12 +184,12 @@ def:pub UsersPage -> JsxElement {
             </Card>
             <CreateUserModal
                 isOpen={showCreateModal}
-                onClose={lambda { showCreateModal = False; }}
+                onClose={lambda() { showCreateModal = False; }}
                 onCreate={handleCreate}
             />
             <EditUserModal
                 isOpen={showEditModal}
-                onClose={lambda { showEditModal = False; }}
+                onClose={lambda() { showEditModal = False; }}
                 onUpdate={handleUpdate}
                 username={editUsername}
                 initialRole={editRole}

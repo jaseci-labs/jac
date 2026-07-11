@@ -51,13 +51,13 @@ def:pub ShoppingPanel -> JsxElement {
                 <input
                     class="input"
                     value={mealText}
-                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                     onKeyPress={handleKeyPress}
                     placeholder="e.g. 'chicken stir fry for 4'"
                 />
                 <button
                     class="btn-generate"
-                    onClick={lambda { generateList(); }}
+                    onClick={lambda() { generateList(); }}
                     disabled={generating}
                 >
                     {("Generating..." if generating else "Generate")}
@@ -73,7 +73,7 @@ def:pub ShoppingPanel -> JsxElement {
                 <IngredientItem key={ing.name} {ing}/>
             }<div class="shopping-footer">
                 <span class="total">Total: ${f"{totalCost:.2f}"}</span>
-                <button class="btn-clear" onClick={lambda { clearList(); }}>
+                <button class="btn-clear" onClick={lambda() { clearList(); }}>
                     Clear
                 </button>
             </div>}

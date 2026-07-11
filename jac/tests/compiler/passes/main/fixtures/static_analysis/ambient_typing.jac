@@ -24,7 +24,7 @@ obj Greeter(Protocol) {
 }
 
 with entry {
-    take_callback(lambda { print("hi"); });
+    take_callback(lambda() { print("hi"); });
     print(map_keys({"a": 1}));
     print(sum_iter([1, 2, 3]));
 }

@@ -24,15 +24,15 @@ def:pub LLMMetricsPage -> JsxElement {
         isLoading = False;
     }
 
-    useEffect(lambda { loadSummary(); }, []);
+    useEffect(lambda() { loadSummary(); }, []);
 
     useEffect(
-        lambda -> any {
+        lambda() -> any {
             if not autoRefresh {
                 return undefined;
             }
-            interval = setInterval(lambda { loadSummary(); }, 15000);
-            return lambda { clearInterval(interval); };
+            interval = setInterval(lambda() { loadSummary(); }, 15000);
+            return lambda() { clearInterval(interval); };
         },
         [autoRefresh]
     );
@@ -91,13 +91,13 @@ def:pub LLMMetricsPage -> JsxElement {
                         <input
                             type="checkbox"
                             checked={autoRefresh}
-                            onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                            onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
                             className="rounded border-line bg-surface-2 text-teal-500 focus:ring-teal-500"
                         />
                         Auto-refresh
                     </label>
                     <Button
-                        onClick={lambda {
+                        onClick={lambda() {
                             isLoading = True;
                             loadSummary();
                         }}

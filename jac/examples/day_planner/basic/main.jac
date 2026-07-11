@@ -169,8 +169,8 @@ def:pub TasksColumn -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
                         add_new_task();
                     }}}
                     placeholder="What needs to be done today?"
@@ -181,8 +181,8 @@ def:pub TasksColumn -> JsxElement {
                 <TaskItem
                     key={jid(t)}
                     task={t}
-                    onToggle={lambda { toggle(jid(t)); }}
-                    onDelete={lambda { remove(jid(t)); }}
+                    onToggle={lambda() { toggle(jid(t)); }}
+                    onDelete={lambda() { remove(jid(t)); }}
                 /> for t in tasks
             ]}
             <div class="count">
@@ -242,8 +242,8 @@ def:pub ShoppingColumn -> JsxElement {
                 <input
                     class="input"
                     value={meal_text}
-                    onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
+                    onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" {
                         generate_meal_list();
                     }}}
                     placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"

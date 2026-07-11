@@ -23,7 +23,7 @@ def _install_native(reply: dict) -> list {
     globalThis.__JAC_NATIVE__ = True;
     # The host JSON-parses its reply before resolving, so the runtime receives
     # an already-decoded object -- the mock resolves one directly (no stringify).
-    globalThis.__jac_invoke = lambda payload: any -> any {
+    globalThis.__jac_invoke = lambda (payload: any) -> any {
         seen.append(payload);
         return Promise.resolve(reply);
     };
@@ -39,7 +39,7 @@ def _clear_native {
 """Stub `window.location.reload` (the 401 path) and record each call."""
 def _install_window_reload -> list {
     reloads = [];
-    globalThis.window = {"location": {"reload": lambda { reloads.append(1); }}};
+    globalThis.window = {"location": {"reload": lambda() { reloads.append(1); }}};
     return reloads;
 }
 

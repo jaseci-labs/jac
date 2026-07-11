@@ -58,15 +58,15 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda { loadAll(); }, []);
+        useEffect(lambda() { loadAll(); }, []);
 
         useEffect(
-            lambda -> any {
+            lambda() -> any {
                 if not autoRefresh {
                     return undefined;
                 }
-                interval = setInterval(lambda { loadAll(); }, 10000);
-                return lambda { clearInterval(interval); };
+                interval = setInterval(lambda() { loadAll(); }, 10000);
+                return lambda() { clearInterval(interval); };
             },
             [autoRefresh]
         );
@@ -275,12 +275,12 @@ cl {
                 <input
                     type="checkbox"
                     checked={autoRefresh}
-                    onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                    onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
                     className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
                 />
                 Auto-refresh
             </label>
-            <Button variant="secondary" onClick={lambda { loadAll(); }}>
+            <Button variant="secondary" onClick={lambda() { loadAll(); }}>
                 <RefreshCw className="w-3.5 h-3.5"/>
                 Refresh
             </Button>
@@ -354,7 +354,7 @@ cl {
                                         if kindFilter == k
                                         else inactiveChipCls
                                 )}
-                                onClick={lambda e: any { kindFilter = k; }}
+                                onClick={lambda (e: any) { kindFilter = k; }}
                             >
                                 {k}
                             </button> for k in chipLabels

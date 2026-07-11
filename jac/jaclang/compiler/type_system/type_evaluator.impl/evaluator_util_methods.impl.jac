@@ -1637,6 +1637,17 @@ impl TypeEvaluator._infer_lambda_block_return_type(
     return_types: list[TypeBase] = [];
     always_returns = self._collect_return_types(body, return_types);
 
+    # A body that is a single expression statement is an implicit return.
+    non_semi = [s for s in body if not isinstance(s, uni.Semi)];
+    if (len(non_semi) == 1 and isinstance(non_semi[0], uni.ExprStmt)) {
+        return_types.append(
+            self._convert_to_instance(
+                self.get_type_of_expression(non_semi[0].expr)
+            )
+        );
+        always_returns = True;
+    }
+
     if not return_types {
         return none_type;
     }

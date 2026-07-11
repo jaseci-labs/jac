@@ -16,7 +16,7 @@ def:pub MobileNav(
                     item,
                     "text-primary" if activeTab == "feed" else "text-muted-foreground"
                 )}
-                onClick={lambda { onNavigate("feed"); }}
+                onClick={lambda() { onNavigate("feed"); }}
             >
                 <Home size={24}/>
             </button>
@@ -27,7 +27,7 @@ def:pub MobileNav(
                         if activeTab == "explore"
                         else "text-muted-foreground"
                 )}
-                onClick={lambda { onNavigate("explore"); }}
+                onClick={lambda() { onNavigate("explore"); }}
             >
                 <Compass size={24}/>
             </button>
@@ -38,7 +38,7 @@ def:pub MobileNav(
                         if activeTab == "channels"
                         else "text-muted-foreground"
                 )}
-                onClick={lambda { onNavigate("channels"); }}
+                onClick={lambda() { onNavigate("channels"); }}
             >
                 <Hash size={24}/>
             </button>
@@ -49,7 +49,7 @@ def:pub MobileNav(
                         if activeTab == "profile"
                         else "relative text-muted-foreground"
                 )}
-                onClick={lambda { onNavigate("profile"); }}
+                onClick={lambda() { onNavigate("profile"); }}
             >
                 <User size={24}/>
                 {if notifCount > 0 {

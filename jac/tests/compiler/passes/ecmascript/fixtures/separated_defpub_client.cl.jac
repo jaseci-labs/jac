@@ -33,7 +33,7 @@ def:pub app -> JsxElement {
         updated = await toggle_task(id);
         if updated {
             tasks = tasks.map(
-                lambda t: any -> any {
+                lambda (t: any) -> any {
                     return updated if t.id == id else t;
                 }
             );
@@ -45,13 +45,13 @@ def:pub app -> JsxElement {
             <h1>Tasks</h1>
             <input
                 value={taskText}
-                onChange={lambda e: any -> None { taskText = e.target.value; }}
+                onChange={lambda (e: any) -> None { taskText = e.target.value; }}
             />
             <button onClick={addTask}>Add</button>
             {[
                 <div key={t.id}>
                     <span>{t.title}</span>
-                    <button onClick={lambda -> None { toggleTask(t.id); }}>Toggle</button>
+                    <button onClick={lambda() -> None { toggleTask(t.id); }}>Toggle</button>
                 </div> for t in tasks
             ]}
         </div>;

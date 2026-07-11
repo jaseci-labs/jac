@@ -9,7 +9,7 @@ def apply_int_op(a: int, b: int) -> int {
 
 # Lambda with no parameters
 def get_forty_two -> int {
-    f = lambda -> int { return 42; };
+    f = lambda() -> int { return 42; };
     return f();
 }
 
@@ -30,7 +30,7 @@ def add_offset(x: int, offset: int) -> int {
 
 # Lambda captures multiple variables
 def weighted_sum(a: int, b: int, wa: int, wb: int) -> int {
-    compute = lambda -> int { return a * wa + b * wb; };
+    compute = lambda() -> int { return a * wa + b * wb; };
     return compute();
 }
 

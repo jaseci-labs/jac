@@ -57,7 +57,7 @@ def:pub OpsPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda { loadHealth(); }, []);
+    useEffect(lambda() { loadHealth(); }, []);
 
     # ---- helpers -----------------------------------------------------
     # Per-step status icon as a DICT of pre-built elements (NOT a
@@ -155,7 +155,7 @@ def:pub OpsPage -> JsxElement {
     # loading, spinning icon - so it rides in the `right` slot.
     refreshBtn = <button
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors disabled:opacity-60"
-        onClick={lambda { loadHealth(); }}
+        onClick={lambda() { loadHealth(); }}
         disabled={isLoading}
     >
         <RefreshCw className={"w-3.5 h-3.5 " + (isLoading and "animate-spin" or "")}/>

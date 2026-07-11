@@ -201,7 +201,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
             't': 1000 ** 4
         };
         for (suffix, mult) in sorted(
-            multipliers.items(), key=lambda kv : -len(kv[0])
+            multipliers.items(), key=lambda (kv) { -len(kv[0]); }
         ) {
             if text.endswith(suffix) {
                 try {

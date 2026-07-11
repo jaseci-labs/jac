@@ -17,7 +17,7 @@ def:pub SSOPage -> JsxElement {
         }
     }
 
-    useEffect(lambda { loadSSO(); }, []);
+    useEffect(lambda() { loadSSO(); }, []);
 
     columns = [
         {"key": "platform", "label": "Provider"},

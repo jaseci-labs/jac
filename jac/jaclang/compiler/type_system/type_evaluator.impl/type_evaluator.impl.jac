@@ -551,8 +551,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                 }
 
-                if seeded_param and isinstance(expr.body, uni.Expr) {
-                    self._invalidate_expr_type_cache(expr.body);
+                if seeded_param {
+                    seed_body_expr: uni.Expr | None = None;
+                    if isinstance(expr.body, uni.Expr) {
+                        seed_body_expr = expr.body;
+                    } else {
+                        seed_body_expr = expr.tail_return_expr();
+                    }
+                    if seed_body_expr is not None {
+                        self._invalidate_expr_type_cache(seed_body_expr);
+                    }
                 }
             }
 
@@ -2394,8 +2402,15 @@ impl TypeEvaluator._assign_callable(
     }
 
     if dest_func.return_type and src_func.return_type {
-        src_ret = self._convert_to_instance(src_func.return_type);
         dest_ret = self._convert_to_instance(dest_func.return_type);
+        # Void-return leniency: a callable returning any type is assignable to
+        # one whose return type is `None` -- the caller discards the value (as
+        # in TypeScript's `() => T` being assignable to `() => void`). This is
+        # what lets a single-expression lambda serve as a void event handler.
+        if self.is_none_type(dest_ret) {
+            return True;
+        }
+        src_ret = self._convert_to_instance(src_func.return_type);
         if not self.assign_type(src_ret, dest_ret, strict) {
             return False;
         }

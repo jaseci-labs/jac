@@ -307,7 +307,7 @@ cl def jac_rt_str_cl() -> dict {
 def jac_rt_list_py() -> dict {
     # sort with key
     nums: list = [3, 1, 4, 1, 5, 9, 2, 6];
-    nums.sort(key=lambda x: -x);
+    nums.sort(key=lambda (x) { -x; });
 
     # count
     items: list = [1, 2, 2, 3, 3, 3];
@@ -362,7 +362,7 @@ def jac_rt_list_py() -> dict {
 
 cl def jac_rt_list_cl() -> dict {
     nums: list = [3, 1, 4, 1, 5, 9, 2, 6];
-    nums.sort(key=lambda x: -x);
+    nums.sort(key=lambda (x) { -x; });
 
     items: list = [1, 2, 2, 3, 3, 3];
     cnt_2: int = items.count(2);
@@ -672,7 +672,7 @@ def jac_rt_builtin_py() -> dict {
 
     # sorted (basic, reverse, key)
     srt: list = sorted([3, 1, 4, 1, 5]);
-    srt_key: list = sorted(["banana", "apple", "kiwi"], key=lambda x: len(x));
+    srt_key: list = sorted(["banana", "apple", "kiwi"], key=lambda (x) { len(x); });
 
     # enumerate — use loop to convert tuples to lists
     raw_enum: list = list(enumerate(["a", "b", "c"]));
@@ -699,10 +699,10 @@ def jac_rt_builtin_py() -> dict {
     }
 
     # map
-    map_result: list = list(map(lambda x: x * 2, [1, 2, 3, 4]));
+    map_result: list = list(map(lambda (x) { x * 2; }, [1, 2, 3, 4]));
 
     # filter
-    filter_result: list = list(filter(lambda x: x > 2, [1, 2, 3, 4, 5]));
+    filter_result: list = list(filter(lambda (x) { x > 2; }, [1, 2, 3, 4, 5]));
 
     # pow
     pow_basic: int = pow(2, 10);
@@ -728,7 +728,7 @@ cl def jac_rt_builtin_cl() -> dict {
     s_start: int = sum([1, 2, 3], 10);
 
     srt: list = sorted([3, 1, 4, 1, 5]);
-    srt_key: list = sorted(["banana", "apple", "kiwi"], key=lambda x: len(x));
+    srt_key: list = sorted(["banana", "apple", "kiwi"], key=lambda (x) { len(x); });
 
     raw_enum: list = list(enumerate(["a", "b", "c"]));
     enum_result: list = [];
@@ -752,9 +752,9 @@ cl def jac_rt_builtin_cl() -> dict {
         zip_uneven.append([pair[0], pair[1]]);
     }
 
-    map_result: list = list(map(lambda x: x * 2, [1, 2, 3, 4]));
+    map_result: list = list(map(lambda (x) { x * 2; }, [1, 2, 3, 4]));
 
-    filter_result: list = list(filter(lambda x: x > 2, [1, 2, 3, 4, 5]));
+    filter_result: list = list(filter(lambda (x) { x > 2; }, [1, 2, 3, 4, 5]));
 
     pow_basic: int = pow(2, 10);
     pow_mod: int = pow(2, 10, 100);

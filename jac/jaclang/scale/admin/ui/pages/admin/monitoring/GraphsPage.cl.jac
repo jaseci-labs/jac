@@ -40,12 +40,12 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda { loadAll(); }, [rangeMinutes]);
+        useEffect(lambda() { loadAll(); }, [rangeMinutes]);
 
         useEffect(
-            lambda -> any {
-                interval = setInterval(lambda { loadAll(); }, 30000);
-                return lambda { clearInterval(interval); };
+            lambda() -> any {
+                interval = setInterval(lambda() { loadAll(); }, 30000);
+                return lambda() { clearInterval(interval); };
             },
             [rangeMinutes]
         );
@@ -209,7 +209,7 @@ cl {
 
         rangeSelect = <select
             value={str(rangeMinutes)}
-            onChange={lambda e: any { rangeMinutes = int(e.target.value); }}
+            onChange={lambda (e: any) { rangeMinutes = int(e.target.value); }}
             className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
         >
             <option value="60">Last 1 hour</option>

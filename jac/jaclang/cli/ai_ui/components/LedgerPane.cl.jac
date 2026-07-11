@@ -16,7 +16,7 @@ def:pub LedgerPane(ledger: any) -> JsxElement {
     notes = ledger.notes if ledger else [];
     n = len(changes) + len(notes);
     useEffect(
-        lambda { if endRef.current {
+        lambda() { if endRef.current {
             endRef.current.scrollIntoView({"block": "end"});
         }},
         [n]

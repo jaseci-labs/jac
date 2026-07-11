@@ -113,7 +113,7 @@ def:pub AuthProvider(children: any) -> JsxElement {
     }
 
     useEffect(
-        lambda {
+        lambda() {
             stored_token = getStorage("admin_token");
             stored_user = getStorage("admin_username");
             if stored_token and stored_user {
