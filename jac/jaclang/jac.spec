@@ -247,6 +247,7 @@ jsx_child ::=
           (
               "for"
               | "while"
+              | "forever"
               | "if"
               | "match"
               | "switch"
@@ -309,6 +310,7 @@ statement ::=
     | import_stmt
     | if_stmt
     | while_stmt
+    | forever_stmt
     | for_stmt
     | with_stmt
     | try_stmt
@@ -341,6 +343,8 @@ elif_stmt ::= "elif" expression "{" code_block_stmts "}" (elif_stmt | else_stmt)
 else_stmt ::= "else" "{" code_block_stmts "}"
 
 while_stmt ::= "while" expression "{" code_block_stmts "}" else_stmt?
+
+forever_stmt ::= "forever" "{" code_block_stmts "}"
 
 for_stmt ::=
     "async"? "for" atomic_chain (

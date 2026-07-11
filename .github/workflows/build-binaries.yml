@@ -286,3 +286,65 @@ jobs:
         with:
           name: ${{ steps.pkg.outputs.asset }}
           path: jac/dist/*
+
+  # The admin console is platform-independent, so build it once with the
+  # linux-x86_64 binary this run produced (same-commit compiler) and attach
+  # it to the release as its own asset for the deploy driver to download.
+  admin-dist:
+    needs: build
+    if: github.event_name == 'release' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.channel == 'dev' && github.sha || inputs.tag || github.event.release.tag_name }}
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # Dev-channel legs keep no workflow artifact; that path pulls the
+      # asset this run just re-published on the rolling prerelease instead.
+      - name: Fetch this run's linux-x86_64 binary (release channel)
+        if: inputs.channel != 'dev'
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-${{ steps.ver.outputs.version }}-linux-x86_64
+          path: jacbin
+
+      - name: Build the console and package the dist
+        id: pkg
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p jacbin
+          if [ "${{ inputs.channel }}" = "dev" ]; then
+            gh release download dev --repo "$GITHUB_REPOSITORY" \
+              --pattern "jac-dev-linux-x86_64" --dir jacbin --clobber
+            ASSET="jac-dev-admin-dist.tar.gz"
+          else
+            ASSET="jac-${{ steps.ver.outputs.version }}-admin-dist.tar.gz"
+          fi
+          BIN="$PWD/$(ls jacbin/jac-*linux-x86_64)"
+          chmod +x "$BIN"
+          ( cd jac/jaclang/scale/admin/ui && "$BIN" build main.jac )
+          DIST=jac/jaclang/scale/admin/ui/.jac/client/dist
+          test -f "$DIST/index.html"
+          mkdir -p dist
+          tar -C "$DIST" -czf "dist/$ASSET" .
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+          gh release upload "$TAG" \
+            "dist/${{ steps.pkg.outputs.asset }}" \
+            "dist/${{ steps.pkg.outputs.asset }}.sha256" \
+            --clobber

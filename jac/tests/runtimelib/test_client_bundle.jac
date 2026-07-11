@@ -56,9 +56,16 @@ test "dev vite config registers the port reporter; build config does not" {
         # Build errors surface through Vite's native overlay in dev mode
         assert "jac-build-error-overlay" in dev_content;
         assert ".jac-build-error.json" in dev_content;
+        # Force-reload plugin: rescues export-set edits that Fast Refresh would
+        # otherwise swallow, reloading (jacTriggered) when the jac dev server
+        # bumps .jac-force-reload
+        assert "jacForceReload()," in dev_content;
+        assert ".jac-force-reload" in dev_content;
+        assert 'type: "full-reload", path: "*", jacTriggered: true' in dev_content;
         build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
         assert "jac-port-reporter" not in build_content;
         assert "jac-build-error-overlay" not in build_content;
+        assert "jacForceReload" not in build_content;
     }
 }
 
@@ -128,5 +135,38 @@ test "dev config wires fast refresh and index.html installs the hook before the 
         );
         build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
         assert "jacFastRefresh" not in build_content;
+    }
+}
+
+test "dev config wires the layered dev-status bridge; build config does not" {
+    import tempfile;
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    with tempfile.TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        entry = Path(tmp) / "main.js";
+        dev_cfg = bundler.create_vite_config(entry, is_dev=True);
+        dev_content = dev_cfg.read_text();
+        assert 'import jacDevStatus, { reportClientLoad } from "./jac-dev-status.js"' in dev_content;
+        assert "jacDevStatus()," in dev_content;
+        # Browser load-phase failures feed the client slot via the reporter
+        assert "reportClientLoad(data)" in dev_content;
+        plugin_js = (dev_cfg.parent / "jac-dev-status.js").read_text();
+        # Vite slot: set from Vite's own error payloads, cleared on recovery
+        # payloads; jac-layer payloads are excluded (tracked in-process)
+        assert '".jac-dev-status.json"' in plugin_js;
+        assert '.startsWith("jac")' in plugin_js;
+        assert '"full-reload"' in plugin_js;
+        # Jac-recovery reloads must not clear a still-broken Vite layer, and
+        # clearing needs a connected client to re-arm a persisting error
+        assert "!payload.jacTriggered" in plugin_js;
+        assert "server.ws.clients.size > 0" in plugin_js;
+        assert "jacTriggered: true" in dev_content;
+        # Client slot clears only on the browser's clean-load beacon
+        assert '"jac:client-ready"' in plugin_js;
+        bundler._ensure_dev_index_html(Path(tmp));
+        html = (Path(tmp) / "index.html").read_text();
+        assert 'import.meta.hot.send("jac:client-ready")' in html;
+        build_content = bundler.create_vite_config(entry, is_dev=False).read_text();
+        assert "jacDevStatus" not in build_content;
     }
 }

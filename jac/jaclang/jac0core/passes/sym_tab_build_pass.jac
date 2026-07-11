@@ -64,6 +64,8 @@ class SymTabBuildPass(UniPass) {
     def exit_in_for_stmt(self: SymTabBuildPass, nd: uni.InForStmt) -> None;
     def enter_while_stmt(self: SymTabBuildPass, nd: uni.WhileStmt) -> None;
     def exit_while_stmt(self: SymTabBuildPass, nd: uni.WhileStmt) -> None;
+    def enter_forever_stmt(self: SymTabBuildPass, nd: uni.ForeverStmt) -> None;
+    def exit_forever_stmt(self: SymTabBuildPass, nd: uni.ForeverStmt) -> None;
     def enter_with_stmt(self: SymTabBuildPass, nd: uni.WithStmt) -> None;
     def exit_with_stmt(self: SymTabBuildPass, nd: uni.WithStmt) -> None;
     def exit_expr_as_item(self: SymTabBuildPass, nd: uni.ExprAsItem) -> None;

@@ -98,6 +98,7 @@ class ViteBundler {
 
     def _ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None;
     def _write_fast_refresh_plugin(self: ViteBundler, configs_dir: Path) -> None;
+    def _write_dev_status_plugin(self: ViteBundler, configs_dir: Path) -> None;
     def _ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None;
     def _start_vite_with_output_capture(
         self: ViteBundler, command: list[str], build_dir: Path, sys_module: any

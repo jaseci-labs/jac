@@ -74,6 +74,7 @@ pub const Py_RunMain_t = *const fn () callconv(.c) c_int;
 pub const PyInitConfig_Create_t = *const fn () callconv(.c) ?*anyopaque;
 pub const PyInitConfig_Free_t = *const fn (cfg: ?*anyopaque) callconv(.c) void;
 pub const PyInitConfig_GetError_t = *const fn (cfg: ?*anyopaque, err: *?[*:0]const u8) callconv(.c) c_int;
+pub const PyInitConfig_GetExitCode_t = *const fn (cfg: ?*anyopaque, exitcode: *c_int) callconv(.c) c_int;
 pub const PyInitConfig_SetInt_t = *const fn (cfg: ?*anyopaque, name: [*:0]const u8, value: i64) callconv(.c) c_int;
 pub const PyInitConfig_SetStr_t = *const fn (cfg: ?*anyopaque, name: [*:0]const u8, value: [*:0]const u8) callconv(.c) c_int;
 pub const PyInitConfig_SetStrList_t = *const fn (cfg: ?*anyopaque, name: [*:0]const u8, length: usize, items: [*]const [*:0]const u8) callconv(.c) c_int;
@@ -124,7 +125,15 @@ pub const Embed = struct {
     /// `use_environment=0` makes hermeticity total: ambient PYTHON* vars cannot
     /// perturb the bundled runtime either. `opts` carries the per-frontend argv
     /// split (CLI boot vs `python`-compatible worker mode vs desktop host).
-    pub fn initInterpreter(self: *const Embed, exe_z: [*:0]const u8, opts: InitOpts) Error!void {
+    ///
+    /// Returns `null` on a normal init (the caller proceeds to run its boot
+    /// script / Py_RunMain). Returns an exit code when the interpreter handled a
+    /// print-and-exit flag during config (`-h`, `-V`, `--help` under
+    /// parse_argv=1) and asked to quit: CPython already printed and did NOT
+    /// finish initializing, so the caller must exit with that code WITHOUT
+    /// running or finalizing anything. Without this the exit request surfaces as
+    /// a generic init failure (the launcher's exit 70) -- e.g. `jac -V`.
+    pub fn initInterpreter(self: *const Embed, exe_z: [*:0]const u8, opts: InitOpts) Error!?u8 {
         const Create = try self.symOrErr(PyInitConfig_Create_t, "PyInitConfig_Create");
         const Free = try self.symOrErr(PyInitConfig_Free_t, "PyInitConfig_Free");
         const GetError = try self.symOrErr(PyInitConfig_GetError_t, "PyInitConfig_GetError");
@@ -204,7 +213,28 @@ pub const Embed = struct {
         try check(GetError, cfg, SetInt(cfg, "parse_argv", @intFromBool(opts.parse_argv)));
         try check(GetError, cfg, SetInt(cfg, "safe_path", 0));
 
-        try check(GetError, cfg, InitFromConfig(cfg));
+        // The init call is special: a non-zero return can mean either a real
+        // error OR a requested clean exit (worker mode processed -h/-V/--help and
+        // already printed). PEP 741 reports the exit through PyInitConfig_GetExitCode
+        // (note the capital C -- the lowercase spelling silently misses via dlsym),
+        // which must be consulted FIRST -- otherwise the exit is misread as an init
+        // failure and the launcher dies with exit 70 instead of the code CPython
+        // asked for (0 for --help/--version, 2 for an unknown flag).
+        if (InitFromConfig(cfg) != 0) {
+            const GetExitCode = try self.symOrErr(PyInitConfig_GetExitCode_t, "PyInitConfig_GetExitCode");
+            var exitcode: c_int = 0;
+            if (GetExitCode(cfg, &exitcode) != 0) {
+                // Exit codes are 8-bit; truncate rather than @intCast (which panics
+                // on a negative/out-of-range c_int in checked builds).
+                return @truncate(@as(u32, @bitCast(exitcode)));
+            }
+            var err: ?[*:0]const u8 = null;
+            if (GetError(cfg, &err) != 0) {
+                if (err) |msg| std.debug.print("jac (embed): python init failed: {s}\n", .{msg});
+            }
+            return Error.InitFailed;
+        }
+        return null;
     }
 };
 

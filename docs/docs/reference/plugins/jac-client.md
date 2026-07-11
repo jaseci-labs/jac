@@ -87,6 +87,29 @@ import "./styles.css";
 import "./global.css";
 ```
 
+### npm import type checking (`jac check`)
+
+Client npm imports are type-checked from each package's TypeScript declarations. During `jac check`, Jac locates the `.d.ts` for a specifier (via `package.json` `types`/`typings`, the `exports` `types` condition, a sibling declaration file next to the resolved entry, or `@types/<package>` fallback) and ingests a pragmatic subset:
+
+- **Functions, constants, and type aliases** get their declared signatures.
+- **`interface` and `class` declarations** are synthesized into structural types, so member access on imported values and on locals annotated with an imported interface/class resolves with real field types, and **method calls** (`c.onChange(v)`) are checked against their declared parameter and return types.
+- **Unions, arrays, literals, optional/rest parameters, namespaces with `export =`, and `extends` heritage** are modeled where the parser supports them.
+
+```jac
+cl import from "cfgpkg" { getConfig, Config }
+
+def:pub use() -> str {
+    c: Config = getConfig();
+    theme: str = c.theme;   # field access is checked
+    c.onChange("ready");    # method call is checked against its signature
+    return theme;
+}
+```
+
+Constructs outside the supported subset (generics, conditional/mapped types, `export *`, and similar) degrade to a declared foreign `any` at that boundary rather than failing the whole module. Imports with no declarations at all carry foreign `any` and surface **`W1102`** once; set **`[check] untyped-external = "error"`** in `jac.toml` to escalate those to **`E1120`**. Synthesized interface values use their declared structure: field access and matching interface annotations are checked precisely; whole-object assignment into an unrelated Jac type is rejected. Individual `any` fields on an interface still flow gradually, like other foreign sources. Assignments *into* an imported interface annotation remain strict.
+
+This is a type-checker feature only; bundling under `jac start` / `jac build` is unchanged.
+
 ### Include Statements
 
 Include merges code directly (like C's `#include`):
@@ -1174,7 +1197,7 @@ cl {
 }
 ```
 
-> **Note:** In jac-shadcn projects `jac add --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
+> **Note:** In jac-shadcn projects `jac install --shadcn` / `jac create --use jac-shadcn` generate `lib/utils.cl.jac` for you. You can also write `cn()` by hand -- entirely in Jac (no TypeScript needed) with a variadic parameter:
 >
 > ```jac
 > # lib/utils.cl.jac
@@ -1379,7 +1402,7 @@ _authToken = "${NODE_AUTH_TOKEN}"
 
 The `${NODE_AUTH_TOKEN}` syntax is resolved via the existing jac.toml environment variable interpolation. If the variable is not set at config load time, it passes through as a literal `${NODE_AUTH_TOKEN}` in the generated `.npmrc`, which npm and bun also resolve natively.
 
-The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac add --npm`, `jac start`, or `jac build`).
+The generated `.npmrc` is placed in `.jac/client/configs/` and is automatically applied when Jac installs dependencies (e.g., via `jac install --npm`, `jac start`, or `jac build`).
 
 ### Import Path Aliases
 
@@ -1427,7 +1450,7 @@ These are written directly into the generated `vite.config.js` - `lib_imports` b
 **Example: Tailwind CSS v4**
 
 ```bash
-jac add --npm --dev tailwindcss @tailwindcss/vite
+jac install --npm --dev tailwindcss @tailwindcss/vite
 ```
 
 ```toml
@@ -1495,7 +1518,7 @@ cors = true
 **Example: Tailwind CSS v3 + PostCSS**
 
 ```bash
-jac add --npm --dev tailwindcss autoprefixer postcss
+jac install --npm --dev tailwindcss autoprefixer postcss
 ```
 
 ```toml
@@ -1528,11 +1551,11 @@ The `[jac-shadcn]` section configures the shadcn/ui component system, provided a
 
 - `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
 - `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
-- `jac add --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
+- `jac install --shadcn <name>` reads `style` to choose which style's Tailwind classes to emit.
 
 ```toml
 [jac-shadcn]
-style = "nova"            # Component style variant (read by `jac add`)
+style = "nova"            # Component style variant (read by `jac install --shadcn`)
 baseColor = "neutral"     # Base color palette
 theme = "amber"           # Accent color theme
 font = "inter"            # Font family
@@ -1543,7 +1566,7 @@ menuColor = "default"     # Menu color scheme
 
 | Key | Description | Examples |
 |-----|-------------|---------|
-| `style` | Component style variant -- read by `jac add` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
+| `style` | Component style variant -- read by `jac install --shadcn` to resolve bundled components | `"nova"`, `"vega"`, `"maia"`, `"lyra"`, `"mira"` |
 | `baseColor` | Base neutral color palette | `"neutral"`, `"stone"`, `"zinc"`, `"gray"` |
 | `theme` | Accent/primary color | `"amber"`, `"blue"`, `"green"`, `"red"` |
 | `font` | Typography font family | `"figtree"` (default), `"inter"`, `"geist"`, `"outfit"` |
@@ -1642,9 +1665,9 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac build --client static` | Build client-only app as a portable, self-contained page (opens from `file://`) |
 | `jac start --client static` | Serve a client-only app with a minimal static server |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
-| `jac add --npm <pkg>` | Add npm package |
-| `jac add --npm --dev <pkg>` | Add npm dev dependency |
-| `jac add --npm` | Install all npm dependencies from jac.toml |
+| `jac install --npm <pkg>` | Add npm package |
+| `jac install --npm --dev <pkg>` | Add npm dev dependency |
+| `jac install --npm` | Install all npm dependencies from jac.toml |
 | `jac remove --npm <pkg>` | Remove npm package |
 
 npm dependencies can also be declared in `jac.toml`:
@@ -1800,8 +1823,8 @@ jac-client extends several core commands:
 | `jac create` | `--use web-static` | Create full-stack project template |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
-| `jac add` | `--npm` | Add npm (client-side) dependency |
-| `jac add` | `--npm --dev` | Add npm dev dependency |
+| `jac install` | `--npm` | Add npm (client-side) dependency |
+| `jac install` | `--npm --dev` | Add npm dev dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
 ---
@@ -1912,7 +1935,7 @@ ios_destination = "platform=iOS Simulator,name=iPhone 16,OS=latest"
 - Android mobile dev auto-attempts `adb reverse` for Vite/API ports before launching Capacitor.
 - iOS device builds and App Store archives require Xcode provisioning profiles. Use `npx cap open ios` to open the project in Xcode for signing configuration.
 - Android release builds and signing require a keystore configured in `android/app/build.gradle`.
-- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac add --npm @capacitor/<plugin>` followed by `npx cap sync`.
+- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac install --npm @capacitor/<plugin>` followed by `npx cap sync`.
 
 For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullstack/mobile.md).
 
@@ -2249,7 +2272,7 @@ When client builds fail, jac-client displays structured error diagnostics instea
 
 | Code | Issue | Example Fix |
 |------|-------|-------------|
-| `JAC_CLIENT_001` | Missing npm dependency | `jac add --npm <package>` |
+| `JAC_CLIENT_001` | Missing npm dependency | `jac install --npm <package>` |
 | `JAC_CLIENT_003` | Syntax error in client code | Check source snippet |
 | `JAC_CLIENT_004` | Unresolved import | Verify import path |
 
