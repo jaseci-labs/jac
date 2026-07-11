@@ -37,7 +37,7 @@ impl build(
 
     if not no_typecheck {
         import from jaclang.cli.commands.analysis { check }
-        console.print("  Whole-program type-check gate...", style="muted");
+        console.print("  Running whole-program type-check", style="muted");
         gate_rc = check(
             paths=[project_root],
             ignore=[".jac", ".jachome", ".venv", "venv", "node_modules", ".git"]

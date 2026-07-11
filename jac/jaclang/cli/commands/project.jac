@@ -153,7 +153,7 @@ def create(
 
 @registry.command(
     name="install",
-    help="Install project dependencies, or 'jac install <pkg>' to add package(s) to jac.toml and install them",
+    help="Install project dependencies",
     args=[
         Arg.create(
             "packages",
