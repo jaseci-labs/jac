@@ -184,7 +184,7 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
             return (False, 1);
         }
     }
-    def lint_fix_file(file_path: str) -> tuple[bool, int, int] {
+    def lint_fix_file(file_path: str, covered: set[str]) -> tuple[bool, int, int] {
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -237,12 +237,16 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
             }
 
             import from jaclang.jac0core.bccache { discover_annex_files }
+            import os;
             annex_paths = (
                 discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
                     str(path_obj), '.test.jac'
                 )
             );
             for annex_path in annex_paths {
+                if os.path.realpath(annex_path) in covered {
+                    continue;
+                }
                 try {
                     annex_prog = JacProgram.jac_file_formatter(
                         annex_path, auto_lint=True
@@ -278,10 +282,12 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     total_errors = 0;
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    import os;
+    covered: set[str] = {os.path.realpath(f) for f in all_files};
     for file_path in all_files {
         total_files += 1;
         if fix {
-            (success, errors, unfixable) = lint_fix_file(file_path);
+            (success, errors, unfixable) = lint_fix_file(file_path, covered);
             total_unfixable += unfixable;
         } else {
             (success, errors) = lint_report_file(file_path);
@@ -314,7 +320,9 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     return 0;
 }
 
-def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> dict {
+def _format_single_file_worker(
+    file_path: str, lintfix: bool, check: bool, covered: (set[str] | None) = None
+) -> dict {
     import from jaclang.jac0core.program { JacProgram }
     path_obj = Path(file_path);
     result: dict = {
@@ -361,12 +369,17 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
 
             if lintfix {
                 import from jaclang.jac0core.bccache { discover_annex_files }
+                import os;
                 annex_paths = (
                     discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
                         file_path, '.test.jac'
                     )
                 );
                 for annex_path in annex_paths {
+                    if covered is not None
+                    and (os.path.realpath(annex_path) in covered) {
+                        continue;
+                    }
                     try {
                         annex_prog = JacProgram.jac_file_formatter(
                             annex_path, auto_lint=True
@@ -429,6 +442,9 @@ impl format(
         return 1 if had_path_errors else 0;
     }
 
+    import os;
+    covered: set[str] = {os.path.realpath(f) for f in all_files};
+
     use_parallel = total_files > 1 and not to_screen;
     max_workers = min(os.cpu_count() or 4, total_files, 8);
 
@@ -445,8 +461,9 @@ impl format(
             );
             with pool_cls(max_workers=max_workers) as executor {
                 futures = {
-                    executor.submit(_format_single_file_worker, fp, lintfix, check): fp
-                    for fp in all_files
+                    executor.submit(
+                        _format_single_file_worker, fp, lintfix, check, covered
+                    ): fp for fp in all_files
                 };
                 completed = 0;
                 for future in as_completed(futures) {
@@ -481,7 +498,7 @@ impl format(
     if not use_parallel {
         for fp in all_files {
             console.print(f"Formatting {fp}");
-            results.append(_format_single_file_worker(fp, lintfix, check));
+            results.append(_format_single_file_worker(fp, lintfix, check, covered));
         }
     }
 

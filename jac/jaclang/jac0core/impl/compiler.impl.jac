@@ -683,7 +683,7 @@ impl JacCompiler.compile(
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_ir_gen_sched(),
+            passes=get_ir_gen_sched(gen_mtir=not options.no_cgen),
             cancel_token=options.cancel_token
         );
     }

@@ -52,7 +52,9 @@ def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]]
     return [BoundaryAnalysisPass];
 }
 
-def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+def get_ir_gen_sched(
+    gen_mtir: bool = True
+) -> list[type[Transform[uni.Module, uni.Module]]] {
     global _ir_sched_loading;
     if _ir_sched_loading {
         return [
@@ -65,7 +67,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     _ir_sched_loading = True;
     try {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
-        import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
         import from jaclang.compiler.passes.main.capability_check_pass {
             CapabilityCheckPass
@@ -77,17 +78,21 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
 
-        return [
+        passes: list[type[Transform[uni.Module, uni.Module]]] = [
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
             SemanticAnalysisPass,
             SemDefMatchPass,
-            CFGBuildPass,
-            MTIRGenPass,
-            CapabilityCheckPass,
-            JsxIntrinsicGuardPass
+            CFGBuildPass
         ];
+        if gen_mtir {
+            import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
+            passes.append(MTIRGenPass);
+        }
+        passes.append(CapabilityCheckPass);
+        passes.append(JsxIntrinsicGuardPass);
+        return passes;
     } except ImportError {
         return [
             ASTValidationPass,
