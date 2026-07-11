@@ -197,6 +197,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
 
             skip_var: (str | None) = None;
             if isinstance(nd.expr, uni.Name)
+            and nd.expr.sym_name in self.local_vars
             and nd.expr.sym_name not in self.param_vars {
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
