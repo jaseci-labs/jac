@@ -423,6 +423,7 @@ def none_consume_check_py -> dict {
     f2: any = 2.5;
     bt: any = True;
     bf: any = False;
+    fnan: any = float("nan");
     le: list[any] = [];
     ln: list[any] = [];
     ln.append(1);
@@ -463,6 +464,7 @@ def none_consume_check_py -> dict {
         "t_f2": truthy_probe_py(f2),
         "t_bt": truthy_probe_py(bt),
         "t_bf": truthy_probe_py(bf),
+        "t_fnan": truthy_probe_py(fnan),
         "t_le": truthy_probe_py(la),
         "t_ln": truthy_probe_py(lb),
         "t_de": truthy_probe_py(da),
@@ -582,6 +584,7 @@ na {
         f2: any = 2.5;
         bt: any = True;
         bf: any = False;
+        fnan: any = float("nan");
         le: list[any] = [];
         ln: list[any] = [];
         ln.append(1);
@@ -622,6 +625,7 @@ na {
             "t_f2": truthy_probe_na(f2),
             "t_bt": truthy_probe_na(bt),
             "t_bf": truthy_probe_na(bf),
+            "t_fnan": truthy_probe_na(fnan),
             "t_le": truthy_probe_na(la),
             "t_ln": truthy_probe_na(lb),
             "t_de": truthy_probe_na(da),

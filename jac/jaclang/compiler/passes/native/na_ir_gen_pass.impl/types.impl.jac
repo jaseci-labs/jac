@@ -701,7 +701,7 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
         );
     }
     if isinstance(val.type, ir.DoubleType) {
-        return self.builder.fcmp_ordered(
+        return self.builder.fcmp_unordered(
             "!=", val, ir.Constant(val.type, 0.0), name="tobool"
         );
     }
@@ -821,7 +821,7 @@ impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
     is_none = b.icmp_unsigned("==", tag, ir.Constant(i8, 8), name="jv.truthy.isnone");
     is_float = b.icmp_unsigned("==", tag, ir.Constant(i8, 1), name="jv.truthy.isfloat");
     as_f64 = b.bitcast(payload, ir.DoubleType(), name="jv.truthy.f64");
-    f_nz = b.fcmp_ordered(
+    f_nz = b.fcmp_unordered(
         "!=", as_f64, ir.Constant(ir.DoubleType(), 0.0), name="jv.truthy.fnz"
     );
     p_nz = b.icmp_unsigned("!=", payload, ir.Constant(i64, 0), name="jv.truthy.pnz");

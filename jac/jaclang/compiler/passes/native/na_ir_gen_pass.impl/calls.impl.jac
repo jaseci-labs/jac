@@ -943,7 +943,11 @@ impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
         and len(nd.params) == 1
         and isinstance(nd.params[0], uni.Null)
     ) {
-        return "NoneType";
+        import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+        if classify_call(nd) == CallKind.BUILTIN {
+            return "NoneType";
+        }
+        return None;
     }
     return self._get_name(nd);
 }
