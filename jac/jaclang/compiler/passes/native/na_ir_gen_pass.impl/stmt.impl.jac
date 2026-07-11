@@ -56,6 +56,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_if(nd);
     } elif isinstance(nd, uni.WhileStmt) {
         self._codegen_while(nd);
+    } elif isinstance(nd, uni.ForeverStmt) {
+        self._codegen_forever(nd);
     } elif isinstance(nd, uni.InForStmt) {
         self._codegen_for(nd);
     } elif isinstance(nd, uni.IterForStmt) {
@@ -195,6 +197,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
 
             skip_var: (str | None) = None;
             if isinstance(nd.expr, uni.Name)
+            and nd.expr.sym_name in self.local_vars
             and nd.expr.sym_name not in self.param_vars {
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
@@ -411,6 +414,44 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
             loc=_while_loc
         );
         self.builder.branch(cond_bb);
+    }
+    self.loop_stack.pop();
+
+    self.builder.position_at_end(end_bb);
+}
+
+impl NaIRGenPass._codegen_forever(nd: uni.ForeverStmt) -> None {
+    func = self.builder.function;
+    body_bb = func.append_basic_block(name="forever.body");
+    end_bb = func.append_basic_block(name="forever.end");
+
+    self.builder.branch(body_bb);
+
+    self.loop_stack.append((body_bb, end_bb));
+    self.builder.position_at_end(body_bb);
+
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _forever_body_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
+
+    _forever_prebody = set(self.local_vars.keys());
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
+    }
+    if not self.builder.block.is_terminated {
+        _forever_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+            if nd.loc
+            else 0}";
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _forever_body_locals
+                if _v not in _forever_prebody
+            ],
+            loc=_forever_loc
+        );
+        self.builder.branch(body_bb);
     }
     self.loop_stack.pop();
 

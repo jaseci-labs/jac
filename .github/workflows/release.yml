@@ -2,8 +2,9 @@ name: Release
 
 # The release lifecycle in one workflow:
 #   - action=create-pr (dispatch): bump versions and open the release PR.
-#   - merge of a release/* PR (or action=publish): tag, cut the GitHub Release,
-#     and build + attach the native binaries (build-binaries.yml).
+#   - merge of a release/* PR (or action=publish): tag, cut a DRAFT Release,
+#     attach every native binary (build-binaries.yml), then publish as latest --
+#     so "Latest" never appears mid-build with assets missing.
 #   - action=create-github-release (dispatch): recovery -- cut a bare Release
 #     for an existing version; binaries attach via the release.published event.
 # jaclang ships as the native `jac` binary, not PyPI.
@@ -198,7 +199,11 @@ jobs:
             git push origin "refs/tags/${VTAG}"
           fi
 
-      - name: Create or update GitHub Release
+      # Draft: hidden from /releases/latest with no downloadable assets, so
+      # install.sh can't resolve it until `publish` reveals it complete. NOT
+      # --latest here. Recovery re-runs only refresh notes: never revert a
+      # published release to draft.
+      - name: Create or update draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -215,17 +220,16 @@ jobs:
           } > release_notes.md
 
           if gh release view "$VTAG" >/dev/null 2>&1; then
-            echo "Release $VTAG exists; updating in place."
+            echo "Release $VTAG exists; refreshing notes (leaving draft/latest state untouched)."
             gh release edit "$VTAG" \
               --verify-tag \
-              --latest \
               --title "Release: $SUMMARY" \
               --notes-file release_notes.md
           else
-            echo "Creating release $VTAG."
+            echo "Creating draft release $VTAG."
             gh release create "$VTAG" \
+              --draft \
               --verify-tag \
-              --latest \
               --title "Release: $SUMMARY" \
               --notes-file release_notes.md
           fi
@@ -240,8 +244,80 @@ jobs:
     with:
       tag: v${{ needs.resolve.outputs.version }}
 
-  summary:
+  # Reveal draft as published + latest once every asset is attached. Gated on
+  # build-binaries: a failed leg skips this, so a half-built draft never becomes
+  # latest. GITHUB_TOKEN publish emits no release.published, so no re-trigger.
+  publish:
     needs: [resolve, tag-and-release, build-binaries]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Verify all assets attached, then publish as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          VTAG="v${VERSION}"
+
+          # Completeness is guaranteed by `needs: build-binaries` (a failed leg
+          # fails that job and skips publish). This poll only absorbs the
+          # few-second assets-API lag before revealing the release. The platform
+          # list mirrors build-binaries.yml's build matrix -- keep them in sync.
+          deadline=$(( SECONDS + 120 ))
+          while :; do
+            # 2>&1 folds gh's error text into $assets on failure, so a transient
+            # release-API error (auth/throttle) is reported as such instead of
+            # being mistaken for assets that are genuinely still missing.
+            if ! assets="$(gh release view "$VTAG" --json assets --jq '.assets[].name' 2>&1)"; then
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::Could not query $VTAG assets within 120s (last error: ${assets})"
+                exit 1
+              fi
+              echo "release view failed, will retry: ${assets}"
+              sleep 5
+              continue
+            fi
+            missing=()
+            for p in linux-x86_64 linux-aarch64 macos-aarch64; do
+              printf '%s\n' "$assets" | grep -qx "jac-${VERSION}-${p}" || missing+=("jac-${VERSION}-${p}")
+            done
+            [ ${#missing[@]} -eq 0 ] && break
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Draft $VTAG still missing after 120s: ${missing[*]}; refusing to publish."
+              exit 1
+            fi
+            echo "Waiting for assets: ${missing[*]}"
+            sleep 5
+          done
+
+          # Flip draft -> published + latest in one PATCH, but only while it is
+          # still a draft. A re-run, or an action=publish dispatch from an older
+          # commit, must not drag `--latest` back onto an older version --
+          # install.sh resolves latest, so that would silently downgrade users.
+          # (Same idempotency tag-and-release applies to draft/latest state.)
+          is_draft="$(gh release view "$VTAG" --json isDraft --jq '.isDraft' 2>/dev/null || echo true)"
+          if [ "$is_draft" = "true" ]; then
+            gh release edit "$VTAG" \
+              --verify-tag \
+              --draft=false \
+              --latest
+            echo "Published $VTAG as latest with all assets attached."
+          else
+            echo "$VTAG is already published; leaving the latest pointer untouched."
+          fi
+
+  # install.sh's real `curl | bash` path is verified out-of-band -- nightly.yml
+  # `installer-live` and ci.yml `installer-test` -- not as a blocking release
+  # gate: install.sh queries the GitHub API unauthenticated, and on shared macOS
+  # runners the anon rate limit routinely trips, which would fail a release
+  # whose assets uploaded fine.
+
+  summary:
+    needs: [resolve, tag-and-release, build-binaries, publish]
     if: always() && needs.resolve.result == 'success'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
@@ -251,18 +327,21 @@ jobs:
           SUMMARY: ${{ needs.resolve.outputs.summary }}
           RELEASE: ${{ needs.tag-and-release.result }}
           BINARIES: ${{ needs.build-binaries.result }}
+          PUBLISH: ${{ needs.publish.result }}
         run: |
           {
             echo "## Release: $SUMMARY"
             echo ""
             echo "| Step | Status |"
             echo "|------|--------|"
-            echo "| Tag + GitHub Release | $RELEASE |"
+            echo "| Draft tag + Release | $RELEASE |"
             echo "| Native binaries | $BINARIES |"
+            echo "| Publish (draft -> latest) | $PUBLISH |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$RELEASE" != "success" ] || [ "$BINARIES" != "success" ]; then
-            echo "::error::Release did not complete (tag/release: $RELEASE, binaries: $BINARIES)"
+          if [ "$RELEASE" != "success" ] || [ "$BINARIES" != "success" ] \
+             || [ "$PUBLISH" != "success" ]; then
+            echo "::error::Release did not complete (draft/release: $RELEASE, binaries: $BINARIES, publish: $PUBLISH)"
             exit 1
           fi
 

@@ -44,6 +44,26 @@ Each recipe name links to its guided **"I like to build…" track** -- a 5-minut
 
 Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 
+## Ship it: one file or one executable
+
+Whatever you build, two universal projections turn it into something you can hand to someone else.
+
+**A sealed app bundle (`.jab`)** -- a bare `jac build` type-checks the whole project (fail-closed) and emits one self-describing `.jab`: client dist, serve manifest, and native binaries baked in and hash-verified. Any machine with Jac installed runs or serves it with zero live compilation, kind-aware:
+
+```bash
+jac build                  # -> dist/<app>.jab
+jac run dist/<app>.jab     # cli kinds execute
+jac start dist/<app>.jab   # servable kinds production-serve
+```
+
+**A self-contained executable** -- `jac build --as binary` appends that same sealed `.jab` onto a copy of the `jac` launcher, producing one file that carries the full runtime. Hand it to a machine with no Jac, no Python, no Node:
+
+```bash
+jac build --as binary      # -> one executable, full runtime included
+```
+
+How is `--as binary` different from the [Native binary](#native-binary) recipe below? `--as native` compiles the restricted `na` subset through LLVM into a small, dependency-free binary. `--as binary` packages *any* app -- walkers, Python imports, a full web client -- with the runtime included; the trade is a larger file. Details and the other projections (wheel, npm, source): [`jac build`](../reference/cli/index.md#jac-build).
+
 ---
 
 ## Backend & CLI
@@ -120,7 +140,7 @@ jac nacompile sum.na.jac -o sum
 Sum of 1 to 10: 55
 ```
 
-The result is a real native binary (a few KB here) you can ship without Python or Jac installed.
+The result is a real native binary (a few KB here) you can ship without Python or Jac installed. To ship a *full* app (walkers, Python imports, a web client) as one executable instead, see [Ship it](#ship-it-one-file-or-one-executable).
 
 :octicons-arrow-right-24: Full tutorial: [Build a Chess Engine](../tutorials/native/chess.md) · Reference: [Native pathway](../reference/language/native-pathway.md)
 
@@ -520,4 +540,4 @@ These aren't missing "kinds" -- they're **capability combinations that aren't wi
 - **Full-stack package** (`sv` + `cl` + *attach*) -- An installable feature that brings its own routes, UI components, and data models into your app (think "drop in payments and get a checkout button + endpoints + models"). `sv import` composes *services* over HTTP, but there's no attachable in-process package yet. This needs a no-entry "package" artifact and conflict-resolution semantics across the three runtimes.
 
 !!! info "Want to follow the design?"
-    The unified build/artifact work that would close these gaps is tracked in the Jac repo's `jac build` / `.jab` proposals.
+    The unified `jac build` verb and the sealed `.jab` artifact have shipped ([see Ship it](#ship-it-one-file-or-one-executable)). What remains for this row is the attachable *package* form: a no-entry `.jab` a host app can mount, plus its conflict-resolution semantics, tracked in the Jac repo's proposals and issues.

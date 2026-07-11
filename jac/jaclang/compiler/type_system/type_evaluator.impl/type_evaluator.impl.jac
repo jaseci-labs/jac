@@ -166,6 +166,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                     if expected_elem is not None {
                         list_inst.private.type_args = [expected_elem];
+                    } else {
+                        flow_elem = self._infer_list_elem_from_mutations(expr);
+                        if flow_elem is not None {
+                            list_inst.private.type_args = [flow_elem];
+                        }
                     }
                 }
                 if isinstance(list_inst, types.ClassType) and expr.values {
@@ -2129,7 +2134,27 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     ) {
                         return self._resolve_type_alias_rhs(node_.parent.value);
                     }
-                    return self._convert_to_instance(annotation_type);
+                    declared_inst = self._convert_to_instance(annotation_type);
+
+                    if (
+                        isinstance(declared_inst, types.ClassType)
+                        and declared_inst.is_builtin("list")
+                        and not declared_inst.private.type_args
+                        and isinstance(node_.parent.value, uni.ListVal)
+                        and not node_.parent.value.values
+                    ) {
+                        value_type = self.get_type_of_expression(
+                            node_.parent.value, expected_type=declared_inst
+                        );
+                        if (
+                            isinstance(value_type, types.ClassType)
+                            and value_type.is_builtin("list")
+                            and value_type.private.type_args
+                        ) {
+                            return value_type;
+                        }
+                    }
+                    return declared_inst;
                 } else {
                     if node_.parent.value is not None {
                         return self._widen_literal_for_declaration(
@@ -3616,7 +3641,7 @@ impl TypeEvaluator._get_type_from_flow_node(
     }
 
     is_loop_header: bool = isinstance(
-        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)
+        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt, uni.ForeverStmt)
     );
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
@@ -3635,6 +3660,8 @@ impl TypeEvaluator._get_type_from_flow_node(
                 ancestor = pred.find_parent_of_type(uni.InForStmt);
             } elif isinstance(flow_node, uni.IterForStmt) {
                 ancestor = pred.find_parent_of_type(uni.IterForStmt);
+            } elif isinstance(flow_node, uni.ForeverStmt) {
+                ancestor = pred.find_parent_of_type(uni.ForeverStmt);
             } else {
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }

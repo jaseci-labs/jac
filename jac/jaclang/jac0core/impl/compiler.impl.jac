@@ -12,7 +12,7 @@ impl _SetupProgress._get_jaclang_root -> str {
 impl _SetupProgress._atexit_handler -> None {
     if (self._banner_shown and (self._compile_count > 0)) {
         sys.stderr.write(
-            f"Jac setup complete! ({self._compile_count} modules compiled and cached)\n"
+            f"Jac setup complete ({self._compile_count} modules compiled and cached)\n"
         );
         sys.stderr.flush();
     }
@@ -114,6 +114,13 @@ impl JacCompiler.get_bytecode(
     actual_program = self._resolve_program(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
 
+    if (
+        (not rebuild)
+        and (full_target in actual_program.mod.hub)
+        and not actual_program.is_hub_entry_fresh(full_target)
+    ) {
+        actual_program.invalidate_module(full_target);
+    }
     if (
         (not rebuild)
         and (full_target in actual_program.mod.hub)
@@ -231,6 +238,7 @@ impl JacCompiler.get_bytecode(
         file_path=full_target, target_program=actual_program, options=options
     );
     if result.gen.py_bytecode {
+        actual_program.hub_cache_stamp(full_target);
         try {
             import from jaclang.jac0core.jir_passes { JirWriter }
             import pickle;

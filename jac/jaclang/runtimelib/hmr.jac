@@ -23,7 +23,8 @@ obj HotReloader {
         _running: bool = False,
         _build_status: BuildStatus = BuildStatus.OK,
         _build_error_file: str = "",
-        _build_error: str = "";
+        _build_error: str = "",
+        _reload_nonce: int = 0;
 
     static has _active: any = None,
         _build_lock: any = threading.Lock();
@@ -32,6 +33,7 @@ obj HotReloader {
     def stop -> None;
     def on_file_change(event: any) -> None;
     def build_status -> dict;
+    def _dev_status_error -> (dict | None);
     def record_ok -> None;
     def record_error(file_path: str, message: str) -> None;
     def _process_change(file_path: str, is_directory: bool = False) -> None;
@@ -42,6 +44,9 @@ obj HotReloader {
     ) -> None;
 
     def _recompile_client_unified(file_path: str) -> None;
+    def _client_js_path(file_path: str) -> (Path | None);
+    def _extract_js_exports(js_path: Path) -> set[str];
+    def _signal_full_reload -> None;
     def _remove_compiled_output(file_path: str) -> None;
     def _remove_compiled_dir(file_path: str) -> None;
     def _refresh_routing(file_path: str) -> None;

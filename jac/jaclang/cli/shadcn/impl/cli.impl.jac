@@ -15,7 +15,8 @@ impl run_shadcn_add(packages: list) -> int {
 
     if not packages {
         console.error(
-            "No components specified", hint="Usage: jac add --shadcn button card dialog"
+            "No components specified",
+            hint="Usage: jac install --shadcn button card dialog"
         );
         return 1;
     }

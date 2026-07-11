@@ -158,6 +158,9 @@ impl JacAPIServerEndpoints.register_functions_endpoints -> None {
         if func_obj?.schedule_spec {
             continue;
         }
+        if self.get_function_protocol(func_name) == APIProtocol.WEBSOCKET {
+            continue;
+        }
         restspec = func_obj.restspec if func_obj?.restspec else None;
         spec_method = restspec.method if restspec else HTTPMethod.POST;
         spec_path = restspec.path if restspec else None;
@@ -286,6 +289,20 @@ impl JacAPIServerEndpoints.get_walker_protocol(walker_name: str) -> str {
     }
     walker_cls = walkers[walker_name];
     restspec = walker_cls.restspec if walker_cls?.restspec else None;
+    if restspec?.protocol {
+        return restspec.protocol;
+    }
+    return APIProtocol.HTTP;
+}
+
+"""Get the API protocol for a function by checking its restspec."""
+impl JacAPIServerEndpoints.get_function_protocol(func_name: str) -> str {
+    functions = self.get_functions();
+    if func_name not in functions {
+        return APIProtocol.HTTP;
+    }
+    func_obj = functions[func_name];
+    restspec = func_obj.restspec if func_obj?.restspec else None;
     if restspec?.protocol {
         return restspec.protocol;
     }
@@ -570,17 +587,17 @@ impl JacAPIServerEndpoints.get_ws_manager -> WebSocketConnectionManager {
     return self._ws_manager;
 }
 
-impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callable {
+"""Shared factory for walker and function WebSocket handlers. `kind` is
+'walker' or 'function'; `execute` is the async runner (spawn_walker /
+execute_function) invoked as execute(target, data, username)."""
+impl JacAPIServerEndpoints._create_websocket_target_handler(
+    target_name: str, target: any, requires_auth: bool, execute: Callable, kind: str
+) -> Callable {
     ws_manager = self.get_ws_manager();
-    requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-
-    walker_cls = self.get_walkers()[walker_name];
-    restspec = walker_cls.restspec
-        if walker_cls?.restspec and walker_cls.restspec
-        else None;
+    restspec = target.restspec if target?.restspec and target.restspec else None;
     is_broadcast = restspec.broadcast if restspec and restspec?.broadcast else False;
     async def websocket_handler(websocket: WebSocket) {
-        await ws_manager.connect(websocket, walker_name);
+        await ws_manager.connect(websocket, target_name);
         try {
             while True {
                 data = await websocket.receive_json();
@@ -607,19 +624,23 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
                 }
 
                 try {
-                    result = await self.execution_manager.spawn_walker(
-                        self.get_walkers()[walker_name],
-                        data,
-                        (username or Con.GUEST.value)
-                    );
-                    if isinstance(result, dict) and 'error' in result {
+                    result = await execute(target, data, (username or Con.GUEST.value));
+                    if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+                        await _ws_stream_result(
+                            websocket,
+                            ws_manager,
+                            target_name,
+                            bool(is_broadcast),
+                            result
+                        );
+                    } elif isinstance(result, dict) and 'error' in result {
                         await websocket.send_json(
                             {
                                 'ok': False,
                                 'error': {
                                     'code': 'EXECUTION_ERROR',
                                     'message': result.get(
-                                        'error', 'Walker execution failed'
+                                        'error', f"{kind.capitalize()} execution failed"
                                     )
                                 }
                             }
@@ -627,41 +648,87 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
                     } else {
                         response = {'ok': True, 'data': result};
                         if is_broadcast {
-                            await ws_manager.broadcast(walker_name, response);
+                            await ws_manager.broadcast(target_name, response);
                         } else {
                             await websocket.send_json(response);
                         }
                     }
+                } except WebSocketDisconnect {
+                    raise;
                 } except Exception as e {
                     logger.error(
-                        f"WebSocket walker execution error for '{walker_name}': {e}"
+                        f"WebSocket {kind} execution error for '{target_name}': {e}"
                     );
 
-                    await websocket.send_json(
-                        {
-                            'ok': False,
-                            'error': {'code': 'INTERNAL_ERROR', 'message': str(e)}
-                        }
-                    );
+                    try {
+                        await websocket.send_json(
+                            {
+                                'ok': False,
+                                'error': {'code': 'INTERNAL_ERROR', 'message': str(e)}
+                            }
+                        );
+                    } except Exception {
+                        raise WebSocketDisconnect;
+                    }
                 }
             }
         } except WebSocketDisconnect {
-            ws_manager.disconnect(websocket, walker_name);
+            ws_manager.disconnect(websocket, target_name);
         } except Exception as e {
-            logger.error(f"WebSocket error for walker '{walker_name}': {e}");
-            ws_manager.disconnect(websocket, walker_name);
+            logger.error(f"WebSocket error for {kind} '{target_name}': {e}");
+            ws_manager.disconnect(websocket, target_name);
         }
     }
     return websocket_handler;
+}
+
+impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callable {
+    return self._create_websocket_target_handler(
+        walker_name,
+        self.get_walkers()[walker_name],
+        self.introspector.is_auth_required_for_walker(walker_name),
+        self.execution_manager.spawn_walker,
+        'walker'
+    );
+}
+
+"""Create a WebSocket handler for a specific def/function."""
+impl JacAPIServerEndpoints.create_websocket_function_handler(
+    func_name: str
+) -> Callable {
+    return self._create_websocket_target_handler(
+        func_name,
+        self.get_functions()[func_name],
+        self.introspector.is_auth_required_for_function(func_name),
+        self.execution_manager.execute_function,
+        'function'
+    );
 }
 
 impl JacAPIServerEndpoints.register_websocket_endpoints -> None {
     for walker_name in self.get_walkers() {
         protocol = self.get_walker_protocol(walker_name);
         if protocol == APIProtocol.WEBSOCKET {
-            handler = self.create_websocket_handler(walker_name);
-            self.server.app.websocket(f"/ws/{walker_name}")(handler);
-            logger.info(f"Registered WebSocket endpoint: /ws/{walker_name}");
+            self.server.app.websocket(f"/ws/walker/{walker_name}")(
+                self.create_websocket_handler(walker_name)
+            );
+            self.server.app.websocket(f"/ws/{walker_name}")(
+                self.create_websocket_handler(walker_name)
+            );
+            logger.info(
+                f"Registered WebSocket walker endpoint: /ws/walker/{walker_name} "
+                f"(+ legacy /ws/{walker_name})"
+            );
+        }
+    }
+    for func_name in self.get_functions() {
+        protocol = self.get_function_protocol(func_name);
+        if protocol == APIProtocol.WEBSOCKET {
+            handler = self.create_websocket_function_handler(func_name);
+            self.server.app.websocket(f"/ws/function/{func_name}")(handler);
+            logger.info(
+                f"Registered WebSocket function endpoint: /ws/function/{func_name}"
+            );
         }
     }
 }
