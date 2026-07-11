@@ -7,7 +7,6 @@ import glob;
 import shutil;
 import socket;
 import subprocess;
-import sys;
 import time;
 import unittest.mock;
 import requests;
@@ -52,9 +51,9 @@ def _cleanup {
 
 def _start_server(port: int) -> subprocess.Popen {
     base_url = f"http://localhost:{port}";
-    jac_exe = Path(sys.executable).parent / "jac";
+    import from jaclang.scale.runtime.context.util { jac_executable }
     proc = subprocess.Popen(
-        [str(jac_exe), "start", "test_api.jac", "--port", str(port)],
+        [jac_executable(), "start", "test_api.jac", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

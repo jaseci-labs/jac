@@ -1,5 +1,4 @@
 import from jaclang.scale.config.app_config { AppConfig }
-import from jaclang.scale.config.dev_config { DevDeploy }
 import from jaclang.scale.models.deploy_context { DeployContext }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -25,7 +24,6 @@ obj MicroserviceManifestBuilder {
         deploy_context: DeployContext = DeployContext(),
         logger: any = None,
         no_image: bool = True,
-        dev: DevDeploy = DevDeploy(),
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
@@ -53,7 +51,6 @@ obj MicroserviceManifestBuilder {
         proj = self.project_dir or app_config.code_folder;
         self._build_client_bundle(proj);
         selection = select_injector(
-            self.dev,
             self.k8s_config.bundle_storage_class,
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
@@ -69,7 +66,7 @@ obj MicroserviceManifestBuilder {
         import os;
         import subprocess;
         import from jaclang.cli.console { console }
-        import from jaclang.scale.injector.binary { jac_executable }
+        import from jaclang.scale.runtime.context.util { jac_executable }
         client_entry = self._client_entry();
         if not client_entry {
             return;
@@ -82,7 +79,7 @@ obj MicroserviceManifestBuilder {
         console.print(f"Building the client bundle on the host ({client_entry}).");
         try {
             subprocess.run(
-                [jac_executable(), "build", client_entry],
+                [jac_executable(), "build", client_entry, "--client", "web"],
                 cwd=project_dir,
                 check=True,
                 timeout=900
@@ -175,7 +172,7 @@ obj MicroserviceManifestBuilder {
         } elif getattr(self.k8s_config, "ops_console_mutations", False) {
             if self.logger {
                 self.logger.warning(
-                    "[plugins.scale.kubernetes].ops_console_mutations is set but "
+                    "[scale.kubernetes].ops_console_mutations is set but "
                     "ops_console is false; no Ops Console RBAC will be provisioned. "
                     "Set ops_console = true to enable it."
                 );
@@ -190,7 +187,7 @@ obj MicroserviceManifestBuilder {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
         # Auto-discover services from `sv import` so a microservice app deploys
-        # with no [plugins.scale.microservices.routes] section (explicit routes
+        # with no [scale.microservices.routes] section (explicit routes
         # still win). Mirrors the local-serve path; cache the result so the
         # gateway's JAC_SV_ROUTES env and the ingress rules see the same routes.
         import from jaclang.scale.runtime.discovery.discovery { resolve_routes }
@@ -203,7 +200,7 @@ obj MicroserviceManifestBuilder {
         if not routes {
             raise ValueError(
                 "No microservices found to deploy: declare "
-                "[plugins.scale.microservices.routes] in jac.toml, or add "
+                "[scale.microservices.routes] in jac.toml, or add "
                 "`sv import` / `to sv:` services under the project root so they "
                 "can be auto-discovered."
             );
@@ -864,7 +861,6 @@ obj MicroserviceManifestBuilder {
             build_bootstrap_init_container(
                 self.k8s_config,
                 self.k8s_config.python_image,
-                self.dev.overlays_source(),
                 is_gateway=(svc_name == GATEWAY_NAME)
             )
         );

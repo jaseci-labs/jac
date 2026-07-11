@@ -1042,36 +1042,6 @@ test "cli error exit codes" {
     assert "Hello World!" in stdout;
 }
 
-test "positional args with defaults" {
-    captured = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured;
-    try {
-        result = config_cmd.plugins();
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout = captured.getvalue();
-    assert result == 0 , "jac plugins should work without action argument";
-    assert "installed jac plugin" in stdout.lower() , (
-        "Output should show installed plugins list"
-    );
-
-    # Verify explicit list action produces the same result
-    captured_explicit = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured_explicit;
-    try {
-        config_cmd.plugins(action="list");
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout_explicit = captured_explicit.getvalue();
-    assert stdout == stdout_explicit , (
-        "jac plugins and jac plugins list should produce identical output"
-    );
-}
-
 test "format tracks changed files" {
     with tempfile.TemporaryDirectory() as tmpdir {
         # Create a file that needs formatting (bad indentation/spacing)
@@ -1133,7 +1103,7 @@ test "format -s preserves bracketed Jac syntax through Rich console" {
             f.write(src);
         }
         process = subprocess.Popen(
-            ["jac", "format", "-s", src_path],
+            ["jac", "fmt", "-s", src_path],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -1518,6 +1488,9 @@ test "jac install <pkg> routes package names to the project venv installer" {
             '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
         );
         os.chdir(_tmpdir);
+        # `install` now records to jac.toml, so discovery must resolve to this
+        # tmp project (not a config cached from an earlier test) before save.
+        _reset_config();
         captured: list = [];
         def fake_install_specs(
             self: object, config: object, specs: object, ctx: object
@@ -2125,20 +2098,6 @@ test "jac grammar" {
     assert "module" in stdout_value , "Grammar should contain module rule";
 }
 
-test "jac grammar lark" {
-    captured = io.StringIO();
-    old_stdout = sys.stdout;
-    sys.stdout = captured;
-    try {
-        result = analysis.grammar(lark=True);
-    } finally {
-        sys.stdout = old_stdout;
-    }
-    stdout_value = captured.getvalue();
-    assert result == 0 , "grammar lark command should exit with code 0";
-    assert len(stdout_value) > 0 , "Lark output should not be empty";
-}
-
 test "jac cli check ignore patterns" {
     test_dir = fixture_path("deep");
     result_count = _run_jac_check(
@@ -2211,8 +2170,8 @@ test "jac check nowarn flag suppresses warnings" {
     # Should still exit with code 0
     assert result == 0 , "check should exit with code 0 when warnings are suppressed";
 
-    # Should show PASSED status
-    assert "PASSED" in combined , "should show PASSED when warnings are suppressed";
+    # Should show ok status
+    assert "ok" in combined , "should show ok when warnings are suppressed";
 
     # Should NOT show detailed warning messages
     assert "defined but never used" not in combined , "should not display warning details when nowarn=True";

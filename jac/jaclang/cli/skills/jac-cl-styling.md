@@ -8,12 +8,12 @@ description: Styling patterns in Jac - Tailwind v4 setup from scratch, condition
 jac-shadcn projects ship Tailwind pre-wired - skip this section. For any other client project, three steps:
 
 ```bash
-jac add --npm --dev tailwindcss @tailwindcss/vite
+jac install --npm --dev tailwindcss @tailwindcss/vite
 ```
 
 ```toml
 # jac.toml - registers the Vite plugin
-[plugins.client.vite]
+[client.vite]
 plugins = ["tailwindcss()"]
 lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 ```

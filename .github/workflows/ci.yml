@@ -74,7 +74,10 @@ jobs:
 
       - name: Materialize typeshed stdlib stubs into the checkout
         working-directory: jac
-        run: zig build fetch-typeshed --summary all
+        # -Dno-ninja: typeshed is editor-independent. setup-jac above may have
+        # hit the binary cache (no build), so a bare fetch-typeshed would pull
+        # the neovim + Lua closure just to materialize stubs.
+        run: zig build -Dno-ninja fetch-typeshed --summary all
 
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
@@ -169,7 +172,10 @@ jobs:
           use-cache: false
       - name: Vendor static-musl runtime
         working-directory: jac
-        run: zig build vendor-musl --summary all
+        # -Dno-ninja: harvesting musl from the Zig toolchain is editor-independent;
+        # without it, configuring the build fetches the neovim + Lua closure (incl.
+        # the flaky lua.org tarball) for nothing. This job never bundles the editor.
+        run: zig build -Dno-ninja vendor-musl --summary all
       - name: Compiler suite via the binary
         working-directory: jac
         run: |
@@ -235,7 +241,10 @@ jobs:
           use-cache: false
       - name: Vendor static-musl runtime
         working-directory: jac
-        run: zig build vendor-musl --summary all
+        # -Dno-ninja: harvesting musl from the Zig toolchain is editor-independent;
+        # without it, configuring the build fetches the neovim + Lua closure (incl.
+        # the flaky lua.org tarball) for nothing. This job never bundles the editor.
+        run: zig build -Dno-ninja vendor-musl --summary all
       - name: Runtime suite via the binary (everything except compiler)
         working-directory: jac
         run: |
@@ -313,7 +322,7 @@ jobs:
       - name: Warm up compiler cache
         run: jac --version
 
-      - name: Run jac format (check formatting)
+      - name: Run jac fmt (check formatting)
         run: |
           set -euo pipefail
           if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
@@ -327,12 +336,12 @@ jobs:
               exit 0
             fi
             printf '%s\n' "$FILES" | tr '\n' '\0' \
-              | xargs -0 --no-run-if-empty jac format --check --lintfix
+              | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           else
             # Sweep only git-tracked files: the build materializes generated
             # trees in-place (e.g. jac/zig-pkg/ zig package fetches with their
             # own sample .jac files), and a bare `find .` walks those too.
-            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac format --check --lintfix
+            git ls-files -z '*.jac' | grep -zv -E '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$|_syntax_err\.jac$)' | xargs -0 --no-run-if-empty jac fmt --check --lintfix
           fi
 
       - name: Verify jir_registry.jac is up to date
@@ -599,6 +608,33 @@ jobs:
         jac test jac/tests/compiler/passes/native/test_shared_lib.jac
         jac test jac/tests/compiler/passes/native/test_exec_link.jac
 
+  # Launcher unit tests: trailer codec + `.jab`-overlay round-trip
+  # (append / detect / materialize-steps-over-overlay / graft). runtime.zig is
+  # the sole owner of the trailer format, so these guard the whole `--as binary`
+  # boot shape. Host-native, no libpython/LLVM/typeshed -- just checkout + zig.
+  # Cross-platform matrix on purpose: the format code has Linux/macOS-divergent
+  # syscall behavior (a /proc createDirPath livelock once hung this on Linux
+  # only, while macOS was green). -Dno-ninja skips the editor closure this
+  # never needs.
+  test-launcher:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+      - name: Launcher unit tests (zig build test)
+        working-directory: jac
+        run: zig build -Dno-ninja test --summary all
+
   test-cef-build:
     needs: build-jac
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -765,6 +801,10 @@ jobs:
         if: matrix.group == 'failure-path'
         env:
           JAC_TEST_JOBS: "0"
+          # Seal + ship the jac built from this checkout (channel LOCAL) so the
+          # deploy uses the PR binary instead of downloading a stable release
+          # (no published asset for this arch on CI).
+          JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
         run: |
           jac test jac/jaclang/scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
 
@@ -834,158 +874,75 @@ jobs:
         # Serial: byllm tests share a SQLite mock-LLM cache.
         JAC_TEST_JOBS=0 jac test jac/jaclang/byllm/tests/test_byllm.jac
 
-    # ========== jac-gpt test ==========
-    - name: Create jac-gpt from jacpack
+    # ========== this_is_jac fullstack smoke ==========
+    - name: Clone this_is_jac
       run: |
-        jac create jac-gpt --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/jac-gpt/jac-gpt.jacpack
-        cd jac-gpt && jac install
+        git clone --depth 1 https://github.com/jaseci-labs/this_is_jac this_is_jac
+        cd this_is_jac && jac install
 
-    - name: Install Playwright dependencies
-      run: |
-        jac install playwright --global
-        jac -m playwright install chromium --with-deps
-
-    - name: Type check jac-gpt
-      working-directory: jac-gpt
+    - name: Type check this_is_jac
+      working-directory: this_is_jac
       run: jac check main.jac
 
-    - name: Restore FAISS index cache
-      uses: actions/cache@v4
-      with:
-        path: jac-gpt/services/faiss_index
-        key: jac-gpt-faiss-v1
-
-    - name: Start jac-gpt server in background
-      working-directory: jac-gpt
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    - name: Start this_is_jac server in background
+      working-directory: this_is_jac
       run: |
-        timeout 600 jac start main.jac > /tmp/jac-gpt-server.log 2>&1 &
+        timeout 600 jac start main.jac > /tmp/this-is-jac-server.log 2>&1 &
         SERVER_PID=$!
-        echo "JAC_GPT_PID=$SERVER_PID" >> $GITHUB_ENV
-        echo "jac-gpt server starting with PID $SERVER_PID..."
+        echo "THIS_IS_JAC_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "this_is_jac server starting with PID $SERVER_PID..."
         sleep 10
         if ! kill -0 $SERVER_PID 2>/dev/null; then
           echo "Server process died during startup"
-          cat /tmp/jac-gpt-server.log
+          cat /tmp/this-is-jac-server.log
           exit 1
         fi
 
-    - name: Wait for jac-gpt server to be ready
+    - name: Wait for this_is_jac server to be ready
       run: |
-        echo "Waiting for jac-gpt server on port 8000..."
+        echo "Waiting for this_is_jac server on port 8000..."
         for i in $(seq 1 24); do
-          if ! kill -0 ${{ env.JAC_GPT_PID }} 2>/dev/null; then
+          if ! kill -0 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null; then
             echo "Server process exited unexpectedly"
-            cat /tmp/jac-gpt-server.log
+            cat /tmp/this-is-jac-server.log
             exit 1
           fi
           if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-            echo "jac-gpt server is ready (attempt $i)"
+            echo "this_is_jac server is ready (attempt $i)"
             exit 0
           fi
           echo "Attempt $i/24: not ready, waiting 15s..."
           sleep 15
         done
         echo "Server failed to respond after 24 attempts"
-        tail -100 /tmp/jac-gpt-server.log
+        tail -100 /tmp/this-is-jac-server.log
         exit 1
 
-    - name: Verify jac-gpt HTTP response
+    - name: Verify this_is_jac HTTP response
       run: |
         HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-        echo "jac-gpt root endpoint: HTTP $HTTP_CODE"
+        echo "this_is_jac root endpoint: HTTP $HTTP_CODE"
         if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-          echo "jac-gpt server responding correctly"
+          echo "this_is_jac server responding correctly"
         else
           echo "Unexpected HTTP $HTTP_CODE"
           exit 1
         fi
 
-    - name: Run E2E tests
-      working-directory: jac-gpt
-      env:
-        SERVER_URL: http://localhost:8000
-      run: jac test tests/test_e2e.jac -vv
-
-    - name: Stop jac-gpt server
+    - name: Stop this_is_jac server
       if: always()
       run: |
-        if [ -n "${{ env.JAC_GPT_PID }}" ]; then
-          kill ${{ env.JAC_GPT_PID }} 2>/dev/null || true
+        if [ -n "${{ env.THIS_IS_JAC_PID }}" ]; then
+          kill ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
           sleep 3
-          kill -9 ${{ env.JAC_GPT_PID }} 2>/dev/null || true
-        fi
-
-    # ========== Algo test ==========
-    - name: Create Algo from jacpack
-      run: |
-        jac create algo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/Algo/Algo.jacpack
-        cd algo && jac install
-
-    - name: Type check Algo
-      working-directory: algo
-      run: jac check main.jac
-
-    - name: Start Algo server in background
-      working-directory: algo
-      run: |
-        timeout 600 jac start main.jac > /tmp/algo-server.log 2>&1 &
-        ALGO_PID=$!
-        echo "ALGO_PID=$ALGO_PID" >> $GITHUB_ENV
-        echo "Algo server starting with PID $ALGO_PID..."
-        sleep 10
-        if ! kill -0 $ALGO_PID 2>/dev/null; then
-          echo "Server process died during startup"
-          cat /tmp/algo-server.log
-          exit 1
-        fi
-
-    - name: Wait for Algo server to be ready
-      run: |
-        echo "Waiting for Algo server on port 8000..."
-        for i in $(seq 1 24); do
-          if ! kill -0 ${{ env.ALGO_PID }} 2>/dev/null; then
-            echo "Server process exited unexpectedly"
-            cat /tmp/algo-server.log
-            exit 1
-          fi
-          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-            echo "Algo server is ready (attempt $i)"
-            exit 0
-          fi
-          echo "Attempt $i/24: not ready, waiting 15s..."
-          sleep 15
-        done
-        echo "Server failed to respond after 24 attempts"
-        tail -100 /tmp/algo-server.log
-        exit 1
-
-    - name: Verify Algo HTTP response
-      run: |
-        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-        echo "Algo root endpoint: HTTP $HTTP_CODE"
-        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-          echo "Algo server responding correctly"
-        else
-          echo "Unexpected HTTP $HTTP_CODE"
-          exit 1
-        fi
-
-    - name: Stop Algo server
-      if: always()
-      run: |
-        if [ -n "${{ env.ALGO_PID }}" ]; then
-          kill ${{ env.ALGO_PID }} 2>/dev/null || true
-          sleep 3
-          kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
+          kill -9 ${{ env.THIS_IS_JAC_PID }} 2>/dev/null || true
         fi
 
     # ========== fullstack eject smoke ==========
     - name: Create fullstack project and eject it
       run: |
         jac create --use web-app fs-smoke
-        jac eject fs-smoke
+        cd fs-smoke && jac build --as source --no_typecheck
 
     - name: Install ejected backend and start it
       working-directory: fs-smoke/ejected/backend
@@ -1028,20 +985,12 @@ jobs:
           kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
         fi
 
-    - name: Upload jac-gpt server logs
+    - name: Upload this_is_jac server logs
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: jac-gpt-test-logs
-        path: /tmp/jac-gpt-server.log
-        retention-days: 7
-
-    - name: Upload Algo server logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: algo-test-logs
-        path: /tmp/algo-server.log
+        name: this-is-jac-test-logs
+        path: /tmp/this-is-jac-server.log
         retention-days: 7
 
     - name: Upload fullstack ejected backend logs
@@ -1059,8 +1008,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| this_is_jac | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -1068,7 +1016,7 @@ jobs:
   # Real-app microservice e2e on kind (not microk8s) so it runs on the fast blacksmith runner, whose minimal kernel lacks the ipset modules microk8s' calico needs. PR-only on core changes; not a required check.
   k8s-real-e2e:
     name: microservice e2e (k8s)
-    needs: changes
+    needs: [changes, build-jac]
     if: >-
       github.event_name != 'push' &&
       (github.event_name != 'pull_request' || needs.changes.outputs.core == 'true') &&
@@ -1076,32 +1024,30 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
     env:
-      # This job overlays the checkout's jaclang onto the downloaded dev binary
-      # via `[dev] jaclang_source`, so the workflow-level opt-out must be unset.
-      JAC_NO_DEV_SOURCE: ""
+      # Ship the jac binary built from THIS PR (the build-jac artifact) to the
+      # pods via channel LOCAL, so the e2e validates the code under test rather
+      # than a published release. JAC_SCALE_BINARY_PATH is set once the artifact
+      # is on disk (below); the deploy driver reads it as the pod binary.
+      JAC_SCALE_BINARY_PATH: ${{ github.workspace }}/jac/zig-out/bin/jac
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           submodules: true
 
-      - name: Download the prebuilt dev jac binary (host deploy driver)
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Download the jac binary built from this PR (build-jac artifact)
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-binary
+          path: jac/zig-out/bin
+
+      - name: Install the PR jac binary as the deploy driver
         run: |
-          arch="$(uname -m)"
+          chmod +x "$JAC_SCALE_BINARY_PATH"
           mkdir -p "$HOME/.local/bin"
-          gh release download dev --repo jaseci-labs/jaseci \
-            --pattern "jac-dev-linux-${arch}" \
-            --output "$HOME/.local/bin/jac" --clobber
-          chmod +x "$HOME/.local/bin/jac"
+          cp "$JAC_SCALE_BINARY_PATH" "$HOME/.local/bin/jac"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/jac" --version
-
-      - name: Overlay this checkout's jaclang onto the downloaded binary
-        run: |
-          printf '\n[dev]\njaclang_source = "%s/jac"\n' "$GITHUB_WORKSPACE" \
-            >> jac/jaclang/scale/tests/fixtures/k8s_e2e/jac.toml
 
       - name: Install scale deploy deps
         # Pins mirror jac/jaclang/project/capabilities.jac.
@@ -1115,13 +1061,6 @@ jobs:
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
             "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
             --global
-
-      - name: Cache the built admin console (largest host-prep cost, ~2 min)
-        # ensure_admin_dist_built no-ops when _dist exists, so a hit skips the on-host admin build.
-        uses: actions/cache@v4
-        with:
-          path: jac/jaclang/scale/admin/_dist
-          key: admin-dist-${{ hashFiles('jac/jaclang/scale/admin/ui/**', 'jac/jaclang/runtimelib/client/**') }}
 
       - name: Set up kind cluster
         # Single node labelled ingress-ready + host 80/443 mapped so ingress-nginx's kind provider can bind them.

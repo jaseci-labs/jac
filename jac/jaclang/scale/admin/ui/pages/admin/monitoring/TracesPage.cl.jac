@@ -261,7 +261,7 @@ def:pub TracesPage -> JsxElement {
             >
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
                 <span className="text-muted">
-                    Trace backend unavailable. Enable tracing with [plugins.scale.microservices.tracing].enabled = true and redeploy so Tempo + the Alloy OTLP lane come up.
+                    Trace backend unavailable. Enable tracing with [scale.microservices.tracing].enabled = true and redeploy so Tempo + the Alloy OTLP lane come up.
                 </span>
             </div>
                 if backendOffline

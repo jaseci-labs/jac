@@ -375,7 +375,7 @@ def package_missing_error(package: str) -> str {
     if cap is None {
         return (
             f"'{package}' is required but not installed. "
-            f"Add it with 'jac add {package}' and run 'jac install'."
+            f"Add it with 'jac install {package}'."
         );
     }
     return f"'{package}' is missing. {missing_capability_error(cap)}";

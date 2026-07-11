@@ -21,7 +21,6 @@ import contextlib;
 import gc;
 import os;
 import subprocess;
-import sys;
 import time;
 import from pathlib { Path }
 import from typing { cast }
@@ -72,9 +71,8 @@ def login(base_url: str, username: str) -> str {
 def start_pod(
     fixtures_dir: Path, jac_file: Path, port: int, env_extra: dict
 ) -> subprocess.Popen {
-    import shutil;
-    jac_executable = shutil.which("jac") or str(Path(sys.executable).parent / "jac");
-    cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    cmd = [jac_executable(), "start", str(jac_file.name), "--port", str(port)];
     env = os.environ.copy();
     env.update(env_extra);
     server = subprocess.Popen(

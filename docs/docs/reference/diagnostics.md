@@ -284,6 +284,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
 | `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `E1120` | Import of '{name}' from untyped external module '{module}' (no type declarations found) |
 | `W1103` | '{name}' is ambient and does not need to be imported from '{module}' |
 | `W1104` | Use the lowercase `any` keyword instead of importing `Any` from typing |
 
@@ -342,7 +343,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ## Lint Rules (W3xxx / E3xxx)
 
-Emitted by `jac lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
+Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 
 | Code | Rule Name | Message | Group |
 |------|-----------|---------|-------|

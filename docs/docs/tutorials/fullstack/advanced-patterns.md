@@ -239,7 +239,7 @@ localStorage.getItem("auth_token");
 localStorage.setItem("auth_token", token);
 localStorage.removeItem("auth_token");
 
-# Build-time injected constants (from [plugins.client.vite.define])
+# Build-time injected constants (from [client.vite.define])
 version = globalThis.__APP_VERSION__;
 apiBase = globalThis.__API_BASE_URL__;
 
@@ -448,7 +448,7 @@ When client builds fail, Jac provides structured error messages:
 
 | Code | Issue | Fix |
 |------|-------|-----|
-| `JAC_CLIENT_001` | Missing npm dependency | `jac add --npm <package>` |
+| `JAC_CLIENT_001` | Missing npm dependency | `jac install --npm <package>` |
 | `JAC_CLIENT_003` | Syntax error in client code | Check the source snippet in the error |
 | `JAC_CLIENT_004` | Unresolved import | Verify import path and package name |
 
@@ -456,7 +456,7 @@ Enable debug mode for raw Vite output:
 
 ```toml
 # jac.toml
-[plugins.client]
+[client]
 debug = true
 ```
 

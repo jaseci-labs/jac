@@ -172,5 +172,4 @@ obj GrammarExtractPass(UniPass) {
     ) -> str;
 
     def emit_ebnf -> str;
-    def emit_lark -> str;
 }
