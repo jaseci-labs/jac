@@ -8,10 +8,12 @@ impl SemDefMatchPass.connect_sems(
         semdef = sym.decl.name_of;
         target_sym = self.resolve_sem_target(semdef, target_sym_tab);
 
-        sem_value = semdef.value.lit_value;
-        if (target_sym is not None and isinstance(sem_value, str)) {
-            target_sym.decl.name_of.semstr = sem_value;
-            target_sym.semstr = sem_value;
+        if (target_sym is not None) {
+            sem_value = semdef.value.lit_value;
+            if (isinstance(sem_value, str)) {
+                target_sym.decl.name_of.semstr = sem_value;
+                target_sym.semstr = sem_value;
+            }
         }
     }
 }
