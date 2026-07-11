@@ -16,7 +16,7 @@ concurrency:
 permissions:
   contents: read
 
-# Test the SHIPPED binary, not the checkout's `[dev] jaclang_source` dev loop.
+# Test the SHIPPED binary, not the checkout's `[dev] jac_editable_redirect` dev loop.
 env:
   JAC_NO_DEV_SOURCE: "1"
 
@@ -189,7 +189,7 @@ jobs:
         # The suite's cross-module tests build fixture paths under jac/tests/
         # from jaclang.__file__, which only resolve in the checkout, not in the
         # binary's bundled site copy. Run this one step through the checkout's
-        # `[dev] jaclang_source` loop (as k8s-real-e2e does) so the suite
+        # `[dev] jac_editable_redirect` loop (as k8s-real-e2e does) so the suite
         # exercises THIS checkout's compiler and harness.
         env:
           JAC_NO_DEV_SOURCE: ""
@@ -1084,7 +1084,7 @@ jobs:
     timeout-minutes: 45
     env:
       # This job overlays the checkout's jaclang onto the downloaded dev binary
-      # via `[dev] jaclang_source`, so the workflow-level opt-out must be unset.
+      # via `[dev] jac_editable_redirect`, so the workflow-level opt-out must be unset.
       JAC_NO_DEV_SOURCE: ""
     steps:
       - name: Checkout
@@ -1107,7 +1107,7 @@ jobs:
 
       - name: Overlay this checkout's jaclang onto the downloaded binary
         run: |
-          printf '\n[dev]\njaclang_source = "%s/jac"\n' "$GITHUB_WORKSPACE" \
+          printf '\n[dev]\njac_editable_redirect = "%s/jac"\n' "$GITHUB_WORKSPACE" \
             >> jac/jaclang/scale/tests/fixtures/k8s_e2e/jac.toml
 
       - name: Install scale deploy deps

@@ -143,7 +143,7 @@ obj ClientConfig {
 }
 
 obj DevConfig {
-    has jaclang_source: str = "",
+    has jac_editable_redirect: str = "",
         test_jobs: str = "auto";
 }
 

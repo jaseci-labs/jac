@@ -91,7 +91,7 @@ def build_runtime_install_commands(
         overlay_rel = overlay_pod_path();
         commands.append(
             f"grep -q '^\\[dev\\]' {APP_MOUNT_PATH}/jac.toml || "
-            f"printf '\\n[dev]\\njaclang_source = \"{overlay_rel}\"\\n' "
+            f"printf '\\n[dev]\\njac_editable_redirect = \"{overlay_rel}\"\\n' "
             f'>> {APP_MOUNT_PATH}/jac.toml'
         );
     }

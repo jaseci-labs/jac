@@ -60,7 +60,7 @@ def _baked_source_dir() -> str | None:
 
 
 def _dev_source_from_toml() -> str | None:
-    """Resolve ``[dev] jaclang_source`` from the nearest ``jac.toml``, or ``None``.
+    """Resolve ``[dev] jac_editable_redirect`` from the nearest ``jac.toml``, or ``None``.
 
     The stanza is read from the NEAREST ``jac.toml`` -- the same project root
     every other config setting resolves against (see ``_find_project_toml``), so
@@ -75,14 +75,14 @@ def _dev_source_from_toml() -> str | None:
     with open(toml, "rb") as handle:
         raw = handle.read()
     # Fast path: skip the tomllib import/parse entirely unless the key exists.
-    if b"jaclang_source" not in raw:
+    if b"jac_editable_redirect" not in raw:
         return None
     import tomllib
 
     section = tomllib.loads(raw.decode("utf-8")).get("dev")
     if not isinstance(section, dict):
         return None
-    src = section.get("jaclang_source")
+    src = section.get("jac_editable_redirect")
     if not isinstance(src, str) or not src:
         return None
     return os.path.abspath(os.path.join(os.path.dirname(toml), src))
@@ -93,10 +93,10 @@ def apply_dev_source_override() -> None:
 
     The source dir comes from one of two places, in order:
 
-    1. ``[dev] jaclang_source`` from the nearest ``jac.toml``::
+    1. ``[dev] jac_editable_redirect`` from the nearest ``jac.toml``::
 
            [dev]
-           jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
+           jac_editable_redirect = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
 
        This wins: inside a repo that declares its own compiler source, THAT
        source is the developer's intent -- even when the running binary is a

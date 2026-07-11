@@ -146,7 +146,7 @@ def _override_result(
 
 test "dev override prefers the repo's own toml stanza over a baked link" {
     # A binary linked to checkout A, run inside checkout B whose jac.toml
-    # declares [dev] jaclang_source: B's own compiler must win -- that is
+    # declares [dev] jac_editable_redirect: B's own compiler must win -- that is
     # the whole point of the per-repo dev stanza. The baked link is the
     # fallback for directories with no stanza in scope.
     baked = _fake_source();

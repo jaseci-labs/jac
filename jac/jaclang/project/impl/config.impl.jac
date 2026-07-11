@@ -884,7 +884,7 @@ impl _parse_toml_data(
         dev_data = data["dev"];
 
         config.dev = DevConfig(
-            jaclang_source=str(dev_data.get("jaclang_source", "")),
+            jac_editable_redirect=str(dev_data.get("jac_editable_redirect", "")),
             test_jobs=str(dev_data.get("test_jobs", "auto"))
         );
     }

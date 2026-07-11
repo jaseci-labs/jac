@@ -131,18 +131,18 @@ def _clone_jac_source(repo: str, branch: str) -> tuple[Path, Path] {
 
 
 def resolve_overlay_source(
-    repo: str, branch: str, jaclang_source: str, project_dir: str
+    repo: str, branch: str, jac_editable_redirect: str, project_dir: str
 ) -> tuple[Path, (Path | None)] {
     if repo {
         return _clone_jac_source(repo, branch or "main");
     }
-    if jaclang_source {
-        local = (Path(project_dir) / jaclang_source).resolve();
+    if jac_editable_redirect {
+        local = (Path(project_dir) / jac_editable_redirect).resolve();
         if (local / "jaclang").is_dir() {
             return (local, None);
         }
         logger.warning(
-            f"[dev] jaclang_source '{jaclang_source}' has no 'jaclang/' package "
+            f"[dev] jac_editable_redirect '{jac_editable_redirect}' has no 'jaclang/' package "
             f"under {local}; overlaying a fresh {_JASECI_REPO}@main clone instead."
         );
     }

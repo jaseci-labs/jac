@@ -40,4 +40,4 @@ height = 800
 min_width = 800
 
 [dev]
-jaclang_source = "../.."
+jac_editable_redirect = "../.."

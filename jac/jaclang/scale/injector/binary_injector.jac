@@ -25,7 +25,7 @@ obj BinaryInjector(PvcInjector) {
         payload = download_release_binary(self.dev.channel, node_arch());
         if self.dev.overlays_source() {
             (src, cleanup) = resolve_overlay_source(
-                self.dev.repo, self.dev.branch, self.dev.jaclang_source, project_dir
+                self.dev.repo, self.dev.branch, self.dev.jac_editable_redirect, project_dir
             );
             try {
                 raw = pack_overlay(payload, src);
@@ -65,7 +65,7 @@ def _blurb(dev: DevDeploy) -> str {
     where = (
         f"{dev.repo}@{dev.branch}"
             if dev.repo
-            else (dev.jaclang_source or "jaseci main")
+            else (dev.jac_editable_redirect or "jaseci main")
     );
     return f"downloading the dev binary + overlaying jaclang source ({where})";
 }

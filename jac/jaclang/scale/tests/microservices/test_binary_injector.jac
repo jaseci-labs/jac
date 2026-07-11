@@ -52,7 +52,7 @@ test "bare [dev] is the dev channel but ships bare (no redundant main overlay)" 
     dev = resolve_dev_deploy(d);
     assert dev.channel == CHANNEL_DEV;
     assert dev.repo == "";
-    assert dev.jaclang_source == "";
+    assert dev.jac_editable_redirect == "";
     assert not dev.overlays_source();
 }
 
@@ -83,12 +83,12 @@ test "[dev] repo without branch defaults the branch to main" {
 }
 
 
-test "[dev] jaclang_source overlays the local checkout" {
-    d = _write_toml("[dev]\njaclang_source = \"jac\"\n");
+test "[dev] jac_editable_redirect overlays the local checkout" {
+    d = _write_toml("[dev]\njac_editable_redirect = \"jac\"\n");
     dev = resolve_dev_deploy(d);
     assert dev.channel == CHANNEL_DEV;
     assert dev.overlays_source();
-    assert dev.jaclang_source == "jac";
+    assert dev.jac_editable_redirect == "jac";
 }
 
 
@@ -103,7 +103,7 @@ test "no-overlay bootstrap installs the shipped binary; no [dev], no build" {
 }
 
 
-test "overlay bootstrap injects [dev] jaclang_source; pod compiles on boot" {
+test "overlay bootstrap injects [dev] jac_editable_redirect; pod compiles on boot" {
     cmds = build_runtime_install_commands(KubernetesConfig(), True);
     joined = " && ".join(cmds);
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
@@ -206,7 +206,7 @@ test "pack_overlay tars the binary plus the jaclang source tree" {
 }
 
 
-test "resolve_overlay_source prefers a local jaclang_source dir, no cleanup" {
+test "resolve_overlay_source prefers a local jac_editable_redirect dir, no cleanup" {
     proj = Path(tempfile.mkdtemp());
     (proj / "jac" / "jaclang").mkdir(parents=True);
     (resolved, cleanup) = resolve_overlay_source("", "", "jac", str(proj));

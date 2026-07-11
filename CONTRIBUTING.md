@@ -59,7 +59,7 @@ Without help, a change to `jac/jaclang` would only take effect after another `zi
 
 ```toml
 [dev]
-jaclang_source = "jac"   # dir containing jaclang/, relative to this jac.toml
+jac_editable_redirect = "jac"   # dir containing jaclang/, relative to this jac.toml
 ```
 
 With this enabled, `import jaclang` resolves to `jac/jaclang` (it's prepended to `sys.path` at startup), so edits to jaclang's `.py` and `.jac` source -- the compiler, passes, CLI, runtime -- run live. The per-module compile cache is content-keyed, so edits self-invalidate; the dev loop also skips the binary's shipped precompiled bundle automatically (no manual cache clearing needed). Comment the stanza out to fall back to the binary's bundled jaclang.

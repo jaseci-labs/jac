@@ -444,17 +444,17 @@ test "serve on_conflict default and normalization" {
 
 test "dev section parsing" {
     config_mod._config = None;
-    # Absent -> defaults (test_jobs 'auto', jaclang_source empty).
+    # Absent -> defaults (test_jobs 'auto', jac_editable_redirect empty).
     base = JacConfig.from_toml_str("\n[project]\nname = \"x\"\n");
     assert base.dev.test_jobs == "auto";
-    assert base.dev.jaclang_source == "";
+    assert base.dev.jac_editable_redirect == "";
 
     # Explicit string values pass through.
     config_mod._config = None;
     cfg = JacConfig.from_toml_str(
-        "\n[dev]\njaclang_source = \"jac\"\ntest_jobs = \"4\"\n"
+        "\n[dev]\njac_editable_redirect = \"jac\"\ntest_jobs = \"4\"\n"
     );
-    assert cfg.dev.jaclang_source == "jac";
+    assert cfg.dev.jac_editable_redirect == "jac";
     assert cfg.dev.test_jobs == "4";
 
     # A bare integer test_jobs is coerced to str so it flows into pytest's `-n`.

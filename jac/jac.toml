@@ -22,7 +22,7 @@ Documentation = "https://docs.jaseci.org"
 # when running from this dir (e.g. `cd jac && jac test tests`). `"."` is this
 # dir, which contains `jaclang/`. Set JAC_NO_DEV_SOURCE=1 to force it off.
 [dev]
-jaclang_source = "."
+jac_editable_redirect = "."
 
 # `jac test` discovers the suite here (mirrors pytest's testpaths).
 [test]

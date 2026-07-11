@@ -9,7 +9,7 @@ name = "jaclang"
 # sitecustomize.py -- which reads this key -- ships inside the binary payload.
 # Comment this stanza out to fall back to the binary's bundled jaclang.
 [dev]
-jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
+jac_editable_redirect = "jac"   # dir CONTAINING jaclang/, relative to this file
 
 # The pre-commit hook (`jac precommit --staged --verify`) gates commits on
 # formatting/lint only: the compiler tree itself is not yet `jac check`-clean,

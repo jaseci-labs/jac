@@ -1009,7 +1009,7 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
     try env.put("PATH", "/usr/bin:/bin");
     // Pin the precompiler to the bundled (staged-site) jaclang, NOT a dev-source
     // tree. The build runs inside the repo whose jac.toml carries
-    // [dev] jaclang_source, so _jac_finder's apply_dev_source_override would
+    // [dev] jac_editable_redirect, so _jac_finder's apply_dev_source_override would
     // otherwise reroute `import jaclang` to the source tree and stamp every JIR's
     // module key with the source's (often stale) egg-info version. The shipped
     // binary reports jac.toml's version, so a dev-source stamp makes the whole

@@ -78,7 +78,7 @@ if _got != _want:
     print(
         f"FATAL: host jac is running jaclang from {_got}, not the checkout at "
         f"{_want}. The editable dev overlay did not activate, so this run would "
-        f"validate the wrong code. Set [dev] jaclang_source (or use a -Ddev "
+        f"validate the wrong code. Set [dev] jac_editable_redirect (or use a -Ddev "
         f"binary) before running.",
         file=sys.stderr,
     )
@@ -112,7 +112,7 @@ result = target.deploy(
     AppConfig(
         code_folder=".",
         app_name="jac-e2e",
-        dev=DevDeploy(channel=CHANNEL_DEV, jaclang_source="${REPO_ROOT}/jac"),
+        dev=DevDeploy(channel=CHANNEL_DEV, jac_editable_redirect="${REPO_ROOT}/jac"),
     )
 )
 if not result.success:

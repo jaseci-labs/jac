@@ -20,7 +20,7 @@ permissions:
 env:
   ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPOSITORY: jac-lang-website
-  # Build/serve docs through the SHIPPED binary, not the `[dev] jaclang_source`
+  # Build/serve docs through the SHIPPED binary, not the `[dev] jac_editable_redirect`
   # dev loop (which would skip the precompiled JIR bundle and slow every jac call).
   JAC_NO_DEV_SOURCE: "1"
 
