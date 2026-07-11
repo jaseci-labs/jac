@@ -463,16 +463,3 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
-
-      # The Docker Hub repo overview, kept in git next to the Dockerfile and
-      # re-synced on every publish. Ordered after the push so a sync failure
-      # can never block the image itself.
-      - name: Sync the Docker Hub repo overview
-        if: env.DOCKERHUB_USERNAME != ''
-        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: jaseci/jaclang
-          short-description: "Official Jac image: the jac binary with its runtime pre-extracted and the serve stack baked in"
-          readme-filepath: docker/jaclang.README.md

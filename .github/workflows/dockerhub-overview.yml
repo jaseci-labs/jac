@@ -1,0 +1,30 @@
+# Publishes docker/jaclang.README.md as the Docker Hub repo overview for
+# jaseci/jaclang. No build, no image push - just the Hub description API.
+# Runs on manual dispatch, and automatically when the README (or this
+# workflow) changes on main - so merging an overview edit is the trigger.
+name: Sync Docker Hub overview
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - docker/jaclang.README.md
+      - .github/workflows/dockerhub-overview.yml
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      # SHA-pinned: this job sees the Docker Hub org token.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: jaseci/jaclang
+          short-description: "Official Jac image: the jac binary with its runtime pre-extracted and the serve stack baked in"
+          readme-filepath: docker/jaclang.README.md
