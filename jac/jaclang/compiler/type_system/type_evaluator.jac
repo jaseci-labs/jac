@@ -101,6 +101,7 @@ obj PrefetchedTypes {
         html_common_props_class: types.ClassType | None = None,
         jsx_intrinsic_elements_class: types.ClassType | None = None,
         enum_class: types.ClassType | None = None,
+        mappingproxy_class: types.ClassType | None = None,
         set_class: types.ClassType | None = None;
 }
 

@@ -3285,6 +3285,7 @@ impl TypeEvaluator._prefetch_types{
 
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
     self.prefetch.function_class = get_types_class("FunctionType");
+    self.prefetch.mappingproxy_class = get_types_class("MappingProxyType");
 
     self.prefetch.tuple_class = get_builtin_class("tuple");
     self.prefetch.bool_class = get_builtin_class("bool");

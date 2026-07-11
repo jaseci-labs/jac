@@ -443,7 +443,20 @@ impl TypeEvaluator._synthesize_enum_metaclass_attr(
         list_type = self.prefetch.list_class.specialize_generics([str_inst]);
         return self._convert_to_instance(list_type);
     }
-    if attr_name in ("__members__", "_member_map_") {
+    if attr_name == "__members__" {
+        member_inst = enum_type.clone_as_instance();
+        if self.prefetch.mappingproxy_class {
+            proxy_type = self.prefetch.mappingproxy_class.specialize_generics(
+                [str_inst, member_inst]
+            );
+            return self._convert_to_instance(proxy_type);
+        }
+        dict_type = self.prefetch.dict_class.specialize_generics(
+            [str_inst, member_inst]
+        );
+        return self._convert_to_instance(dict_type);
+    }
+    if attr_name == "_member_map_" {
         member_inst = enum_type.clone_as_instance();
         dict_type = self.prefetch.dict_class.specialize_generics(
             [str_inst, member_inst]
