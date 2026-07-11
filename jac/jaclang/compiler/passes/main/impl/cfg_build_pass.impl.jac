@@ -675,9 +675,9 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     self._link_body_tails_to_header(nd);
 
     if post_loop_target is not None {
-        j = self._loop_exit(nd);
-        if j is not None {
-            self.link_bbs(j, post_loop_target);
+        exit_node = self._loop_exit(nd);
+        if exit_node is not None {
+            self.link_bbs(exit_node, post_loop_target);
         }
     }
 }
@@ -704,24 +704,24 @@ impl CFGBuildPass._link_body_tails_to_header(
         self._connect_tails(stmt, nd);
     }
 
-    j = self._loop_exit(nd);
-    if j is not None {
-        self.link_bbs(nd, j);
+    exit_node = self._loop_exit(nd);
+    if exit_node is not None {
+        self.link_bbs(nd, exit_node);
     }
 }
 
 impl CFGBuildPass._make_loop_exit(
     nd: uni.WhileStmt | uni.InForStmt | uni.IterForStmt
 ) -> uni.LoopExitNode {
-    j = uni.LoopExitNode(loop=nd);
-    nd.add_kids_right([j], pos_update=False, parent_update=True);
-    return j;
+    exit_node = uni.LoopExitNode(loop=nd);
+    nd.add_kids_right([exit_node], pos_update=False, parent_update=True);
+    return exit_node;
 }
 
 impl CFGBuildPass._loop_exit(nd: uni.UniCFGNode) -> (uni.LoopExitNode | None) {
-    for k in nd.kid {
-        if isinstance(k, uni.LoopExitNode) {
-            return k;
+    for kid in nd.kid {
+        if isinstance(kid, uni.LoopExitNode) {
+            return kid;
         }
     }
     return None;
