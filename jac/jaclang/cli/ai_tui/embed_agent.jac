@@ -183,16 +183,24 @@ def poll -> str {
     global _poll_count;
     _poll_count += 1;
     import from jaclang.cli.ai_tui.tui_shared { _debug_log }
-    if _poll_count <= 5 or _poll_count % 100 == 0 {
-        _debug_log(f"poll called #{_poll_count} qsize={_q.qsize()}");
+
+    parts = [];
+    while True {
+        try {
+            parts.append(_q.get_nowait());
+        } except Empty {
+            break;
+        }
     }
-    try {
-        blob = _q.get_nowait();
-        _debug_log(f"poll: returning blob len={len(blob)} first80={blob[:80]!r}");
-        return blob;
-    } except Empty {
+    if not parts {
         return "";
     }
+    if _poll_count <= 5 or _poll_count % 100 == 0 {
+        _debug_log(
+            f"poll called #{_poll_count} batched={len(parts)} qsize={_q.qsize()}"
+        );
+    }
+    return "\n".join(parts);
 }
 
 

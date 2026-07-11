@@ -7,6 +7,8 @@ import from .libc_tty {
     tty_read_line
 }
 import from .blob_reader { read_blob }
+import from .ipc_schema { FRAME_SEP, FIELD_LEN }
+import from .util { parse_int_or, split_kv }
 
 import from jacpyembed {
     def jpy_PyEval_SaveThread -> int;  def jpy_PyEval_RestoreThread(s: int) -> None;  def jpy_PyObject_CallNoArgs(
@@ -17,6 +19,46 @@ import from jacpyembed {
         pyobj: int
     ) -> None;
 }
+
+def split_frames(payload: str) -> list[str] {
+    # Re-segment a coalesced multi-frame payload using the L:<n> length header
+    # (the same counted framing blob_reader._read_counted uses over the TTY
+    # path). Reading exactly n body lines is robust *by construction*: a body
+    # line that happens to equal FRAME_SEP can never forge a boundary, and a
+    # stray line desyncs only the frame that produced it, not the whole batch.
+    frames: list[str] = [];
+    lines = payload.split("\n");
+    total = len(lines);
+    i: int = 0;
+    while i < total {
+        header = lines[i].strip();
+        i += 1;
+        if not header {
+            continue;
+        }
+        (key, val) = split_kv(header, ":");
+        if key != FIELD_LEN {
+            continue;
+        }
+        count = parse_int_or(val, -1);
+        if count < 0 {
+            continue;
+        }
+        body: list[str] = [];
+        taken: int = 0;
+        while taken < count and i < total {
+            body.append(lines[i]);
+            i += 1;
+            taken += 1;
+        }
+        if i < total and lines[i].strip() == FRAME_SEP {
+            i += 1;
+        }
+        frames.append("\n".join(body));
+    }
+    return frames;
+}
+
 
 obj CmdQueue {
     has _items: list[str] = [];
@@ -58,8 +100,29 @@ obj Transport {
         return "";
     }
 
+    def recv_frames(cap: int) -> list[str] {
+        # Default drain: pull one frame per recv_blob() up to cap, stopping on
+        # EOF or an empty read. Overridden by transports that can batch.
+        out: list[str] = [];
+        for _ in range(cap) {
+            blob = self.recv_blob();
+            if self.stdin_eof() {
+                break;
+            }
+            if not blob {
+                break;
+            }
+            out.append(blob);
+        }
+        return out;
+    }
+
     def flush_outbound_cmds(cmd_queue: CmdQueue) { }
     def stdin_eof -> bool {
+        return False;
+    }
+
+    def backend_dead -> bool {
         return False;
     }
 }
@@ -100,12 +163,20 @@ obj TtyFdTransport(Transport) {
 
 obj EmbedPyTransport(TtyFdTransport) {
     has py_poll_fn: int = 0,
-        py_send_fn: int = 0;
+        py_send_fn: int = 0,
+        _frame_buf: list[str] = [],
+        _backend_dead: bool = False;
 
     def bind_py(dict_ptr: int, poll_fn: int, send_fn: int) {
         self.py_poll_fn = poll_fn;
         self.py_send_fn = send_fn;
         self.stdin_eof = False;
+        self._frame_buf = [];
+        self._backend_dead = False;
+    }
+
+    def backend_dead -> bool {
+        return self._backend_dead;
     }
 
     def close_py {
@@ -135,10 +206,34 @@ obj EmbedPyTransport(TtyFdTransport) {
         }
         pyobj: int = jpy_PyObject_CallNoArgs(self.py_poll_fn);
         if pyobj == 0 {
+            # A bound poll() returning NULL means it raised or the interpreter
+            # is torn down — the backend is gone. An empty queue returns a valid
+            # "" object (non-zero), so this is unambiguous. Flag it so the loop
+            # quits gracefully instead of spinning on perpetual empties.
+            self._backend_dead = True;
             return "";
         }
         out: str = jpy_PyUnicode_AsUTF8(pyobj);
         jpy_Py_DecRef(pyobj);
+        return out;
+    }
+
+    def recv_frames(cap: int) -> list[str] {
+        # One C-API crossing drains the *whole* Python-side queue into a local
+        # buffer; we then hand back at most `cap` frames per iteration and keep
+        # the remainder for the next. This makes `cap` (_FRAME_DRAIN_CAP) the
+        # single per-iteration authority — the loop stays responsive under a
+        # burst, no frame is dropped, and Python does not poll again until the
+        # buffer drains (implicit backpressure). No re-poll while buffered keeps
+        # frame ordering strict across iterations.
+        if not self._frame_buf {
+            payload: str = self.recv_blob();
+            if payload {
+                self._frame_buf = split_frames(payload);
+            }
+        }
+        out: list[str] = self._frame_buf[:cap];
+        self._frame_buf = self._frame_buf[cap:];
         return out;
     }
 

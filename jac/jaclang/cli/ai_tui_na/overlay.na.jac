@@ -1,4 +1,4 @@
-import from .state { TuiState, OverlayKind }
+import from .state { TuiState, OverlayKind, OverlayContent, OverlaySpec, Anchor }
 import from .keys { Key }
 import from .commands {
     palette_commands,
@@ -23,7 +23,7 @@ glob _MODAL_MAX_W: int = 64,
      _MODAL_INNER_MIN_W: int = 8;
 
 def overlay_is_active(state: TuiState) -> bool {
-    return state.overlay_active;
+    return state.overlay_stack.is_active();
 }
 
 def _overlay_show(
@@ -39,10 +39,9 @@ def _overlay_show(
     sl.max_visible = _LIST_ROWS_SMALL
         if state.term_rows < _SMALL_TERM_ROWS
         else _LIST_ROWS;
-    state.overlay_kind = kind;
-    state.overlay_filter = initial_filter;
-    state.overlay_title = title;
-    state.overlay_active = True;
+    st = state.overlay_stack;
+    st.clear();
+    st.push(OverlaySpec(content=OverlayContent.SELECT_LIST, role=kind, title=title));
     state.overlay_full_redraw = True;
     state.dirty = True;
 }
@@ -62,19 +61,20 @@ def overlay_open_file(state: TuiState) {
 }
 
 def overlay_close(state: TuiState) {
-    if not state.overlay_active {
+    st = state.overlay_stack;
+    if not st.is_active() {
         return;
     }
-    state.overlay_active = False;
-    state.overlay_kind = OverlayKind.PALETTE;
-    state.overlay_filter = "";
-    state.overlay_title = "";
+    st.pop();
     state.overlay_full_redraw = True;
     state.dirty = True;
 }
 
 def overlay_handle_key(k: Key, rt: TuiRuntime) -> bool {
     state = rt.state;
+    if not state.overlay_stack.is_active() {
+        return False;
+    }
     sl = state.select_list;
     action = sl.handle_key(k);
     if action == SelectAction.CANCEL {
@@ -82,7 +82,6 @@ def overlay_handle_key(k: Key, rt: TuiRuntime) -> bool {
         return False;
     }
     if action == SelectAction.CHANGED {
-        state.overlay_filter = sl.filter_text;
         state.dirty = True;
         return False;
     }
@@ -91,7 +90,7 @@ def overlay_handle_key(k: Key, rt: TuiRuntime) -> bool {
         if item is None {
             return False;
         }
-        kind = state.overlay_kind;
+        kind = state.overlay_stack.active_spec().role;
 
         if kind == OverlayKind.MODEL {
             apply_model(item.value, rt);
@@ -121,7 +120,11 @@ def overlay_handle_key(k: Key, rt: TuiRuntime) -> bool {
     return False;
 }
 
-def _modal_width(cols: int) -> int {
+def _modal_width(cols: int, width_pct: int) -> int {
+    if width_pct > 0 {
+        w = cols * width_pct // 100;
+        return max(_MODAL_MIN_W, min(w, cols - 2));
+    }
     w = min(cols - 4, _MODAL_MAX_W);
     if w < _MODAL_COMFORT_W {
         w = max(cols - 2, _MODAL_MIN_W);
@@ -131,10 +134,11 @@ def _modal_width(cols: int) -> int {
 
 def _modal_content(state: TuiState, inner_w: int) -> list[str] {
     content = state.select_list.render(inner_w);
-    if not state.overlay_filter {
+    ft = state.select_list.filter_text;
+    if not ft {
         return content;
     }
-    filt = ansi_trunc(f"filter: {state.overlay_filter}", inner_w);
+    filt = ansi_trunc(f"filter: {ft}", inner_w);
     header = ansi_pad(TH_SGR_BORDER_DIM + filt + ANSI_RESET, inner_w);
     return [header] + content;
 }
@@ -159,16 +163,54 @@ def _frame_box(
     return boxed;
 }
 
-def _center_rows(boxed: list[str], modal_w: int, cols: int, rows: int) -> list[str] {
-    pad_left = term_spaces(max(0, (cols - modal_w) // 2));
-    padded = [ansi_pad(pad_left + row, cols) for row in boxed];
-    modal_h = len(padded);
-    start_row = max(1, (rows - modal_h) // 2);
+def _anchor_left(anchor: Anchor, modal_w: int, cols: int, ox: int) -> int {
+    left = (cols - modal_w) // 2;
+    if anchor == Anchor.TOP_LEFT or anchor == Anchor.BOTTOM_LEFT or anchor == Anchor.LEFT {
+        left = 0;
+    }
+    if anchor == Anchor.TOP_RIGHT or anchor == Anchor.BOTTOM_RIGHT or anchor == Anchor.RIGHT {
+        left = cols - modal_w;
+    }
+    left = left + ox;
+    if left < 0 {
+        left = 0;
+    }
+    if left > cols - modal_w {
+        left = max(0, cols - modal_w);
+    }
+    return left;
+}
+
+def _anchor_top(anchor: Anchor, modal_h: int, rows: int, oy: int) -> int {
+    top = (rows - modal_h) // 2;
+    if anchor == Anchor.TOP or anchor == Anchor.TOP_LEFT or anchor == Anchor.TOP_RIGHT {
+        top = 0;
+    }
+    if anchor == Anchor.BOTTOM or anchor == Anchor.BOTTOM_LEFT or anchor == Anchor.BOTTOM_RIGHT {
+        top = rows - modal_h;
+    }
+    top = top + oy;
+    if top < 1 {
+        top = 1;
+    }
+    if top > rows - modal_h {
+        top = max(1, rows - modal_h);
+    }
+    return top;
+}
+
+def _anchor_place(
+    boxed: list[str], anchor: Anchor, modal_w: int, cols: int, rows: int, ox: int, oy: int
+) -> list[str] {
+    modal_h = len(boxed);
+    left = _anchor_left(anchor, modal_w, cols, ox);
+    top = _anchor_top(anchor, modal_h, rows, oy);
+    pad_left = term_spaces(left);
 
     placed: list[str] = [];
     for ri in range(rows) {
-        if ri >= start_row and ri < start_row + modal_h {
-            placed.append(padded[ri - start_row]);
+        if ri >= top and ri < top + modal_h {
+            placed.append(ansi_pad(pad_left + boxed[ri - top], cols));
         } else {
             placed.append("");
         }
@@ -177,12 +219,16 @@ def _center_rows(boxed: list[str], modal_w: int, cols: int, rows: int) -> list[s
 }
 
 def overlay_build_modal(state: TuiState, cols: int, rows: int) -> list[str] {
-    modal_w = _modal_width(cols);
+    spec = state.overlay_stack.active_spec();
+    modal_w = _modal_width(cols, spec.width_pct);
     inner_w = max(_MODAL_INNER_MIN_W, modal_w - 4);
     content = _modal_content(state, inner_w);
-    title = state.overlay_title if state.overlay_title else "Commands";
+    title = spec.title;
+    if not title {
+        title = "Commands";
+    }
     boxed = _frame_box(content, title, modal_w, inner_w);
-    return _center_rows(boxed, modal_w, cols, rows);
+    return _anchor_place(boxed, spec.anchor, modal_w, cols, rows, spec.offset_x, spec.offset_y);
 }
 
 def overlay_composite(

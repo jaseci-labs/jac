@@ -48,14 +48,14 @@ obj CmdDef {
         if self.kind == CmdKind.SCROLL_TOP {
             state.viewport_top = 0;
             state.follow_tail = False;
-            state.dirty = True;
+            state.mark_layout_dirty();
             return CmdResult.HANDLED;
         }
 
         if self.kind == CmdKind.IPC_RESET {
             rt.cmd_queue.send(state.ipc_fd, self.ipc_name);
             state.reset_events();
-            state.dirty = True;
+            state.mark_layout_dirty();
             return CmdResult.HANDLED;
         }
 
@@ -64,7 +64,7 @@ obj CmdDef {
             if self.ipc_name == CMD_QUIT {
                 return CmdResult.QUIT;
             }
-            state.dirty = True;
+            state.mark_layout_dirty();
             return CmdResult.HANDLED;
         }
 
@@ -289,7 +289,7 @@ def apply_model(model: str, rt: TuiRuntime) {
     state = rt.state;
 
     rt.cmd_queue.send(state.ipc_fd, CMD_APPLY + ":model=" + model);
-    state.dirty = True;
+    state.mark_layout_dirty();
 }
 
 def palette_commands(state: TuiState) -> list[SelectItem] {

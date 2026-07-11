@@ -1,7 +1,6 @@
 import from .state { TuiState, DisplayRow, EventKind, TuiStatus, kind_style }
 import from .editor { EditorState }
 import from .feed { build_rows }
-import from .overlay { overlay_build_modal, overlay_composite }
 import from .terminal { ANSI_INVERSE, ANSI_RESET, ansi_sgr, term_spaces, term_dashes }
 import from .width { visible_width, ansi_trunc, ansi_pad, idiv }
 import from .theme {
@@ -274,43 +273,75 @@ def _status_footer_row(state: TuiState, cols: int) -> str {
     return "".join(parts);
 }
 
-def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
-    if cols < _MIN_COLS or rows < _MIN_ROWS {
-        return ["" for _ in range(rows)];
-    }
+def _render_transcript(state: TuiState, cols: int, height: int) -> list[str] {
+    return _transcript_section(state, height, cols);
+}
 
-    ed = state.editor;
-    editor_h = _editor_height(ed, cols, rows);
+def _render_warn(state: TuiState, cols: int, height: int) -> list[str] {
+    env = state.key_env if state.key_env else "API_KEY";
+    return [_warn_row(env, cols)];
+}
+
+def _render_ac(state: TuiState, cols: int, height: int) -> list[str] {
+    return _ac_section(state, height, cols);
+}
+
+def _render_editor(state: TuiState, cols: int, height: int) -> list[str] {
     is_running = state.status == TuiStatus.RUNNING;
-    ac_h = min(_AC_MAX_VISIBLE, len(state.ac.items)) if state.ac.active else 0;
+    return _editor_rows(state.editor, cols, height, is_running);
+}
 
-    transcript_h = max(0, rows - 1 - editor_h - ac_h - 1);
-    show_warn = state.needs_key;
-    t_draw_h = max(0, transcript_h - 1) if show_warn else transcript_h;
+def _render_status(state: TuiState, cols: int, height: int) -> list[str] {
+    return [_status_footer_row(state, cols)];
+}
 
-    _sync_display_rows(state, cols);
-    _clamp_viewport(state, t_draw_h);
+obj ScreenLayout {
+    has editor_h: int = 0,
+        ac_h: int = 0,
+        transcript_h: int = 0,
+        show_warn: bool = False,
+        t_draw_h: int = 0;
+}
 
-    out: list[str] = [];
-    out.extend(_transcript_section(state, t_draw_h, cols));
+obj Screen {
+    def layout(state: TuiState, cols: int, rows: int) -> ScreenLayout {
+        ed = state.editor;
+        editor_h = _editor_height(ed, cols, rows);
+        ac_h = min(_AC_MAX_VISIBLE, len(state.ac.items)) if state.ac.active else 0;
+        transcript_h = max(0, rows - 1 - editor_h - ac_h - 1);
+        show_warn = state.needs_key;
+        t_draw_h = max(0, transcript_h - 1) if show_warn else transcript_h;
 
-    if show_warn {
-        env = state.key_env if state.key_env else "API_KEY";
-        out.append(_warn_row(env, cols));
+        _sync_display_rows(state, cols);
+        _clamp_viewport(state, t_draw_h);
+
+        return ScreenLayout(
+            editor_h=editor_h,
+            ac_h=ac_h,
+            transcript_h=transcript_h,
+            show_warn=show_warn,
+            t_draw_h=t_draw_h
+        );
     }
 
-    if state.ac.active and ac_h > 0 {
-        out.extend(_ac_section(state, ac_h, cols));
+    def render(state: TuiState, cols: int, rows: int) -> list[str] {
+        if cols < _MIN_COLS or rows < _MIN_ROWS {
+            return ["" for _ in range(rows)];
+        }
+        ly = self.layout(state, cols, rows);
+
+        out: list[str] = [];
+        out.extend(_render_transcript(state, cols, ly.t_draw_h));
+        if ly.show_warn {
+            out.extend(_render_warn(state, cols, 1));
+        }
+        if state.ac.active and ly.ac_h > 0 {
+            out.extend(_render_ac(state, cols, ly.ac_h));
+        }
+        out.append(_divider_row("├", "┤", cols));
+        out.extend(_render_editor(state, cols, ly.editor_h));
+        out.extend(_render_status(state, cols, 1));
+
+        return out;
     }
-
-    out.append(_divider_row("├", "┤", cols));
-    out.extend(_editor_rows(ed, cols, editor_h, is_running));
-    out.append(_status_footer_row(state, cols));
-
-    if state.overlay_active {
-        modal = overlay_build_modal(state, cols, rows);
-        out = overlay_composite(out, modal, cols, rows);
-    }
-
-    return out;
 }

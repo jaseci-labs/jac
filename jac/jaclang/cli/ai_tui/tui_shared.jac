@@ -102,10 +102,10 @@ def _frame_blob(frame: any) -> str {
         parts.append(f"{FIELD_TYPE}:{FTYPE_DELTA}");
     }
     parts.append(f"{FIELD_STATUS}:{frame.get('status', '')}");
-    parts.append(f"{FIELD_ACTIVE}:{frame.get('active', '')}");
-    parts.append(f"{FIELD_MODEL}:{frame.get('model_name', '')}");
+    parts.append(f"{FIELD_ACTIVE}:{_esc_text(str(frame.get('active', '')))}");
+    parts.append(f"{FIELD_MODEL}:{_esc_text(str(frame.get('model_name', '')))}");
     parts.append(f"{FIELD_NEEDS_KEY}:{'1' if frame.get('needs_key') else '0'}");
-    parts.append(f"{FIELD_KEY_ENV}:{frame.get('key_env', '')}");
+    parts.append(f"{FIELD_KEY_ENV}:{_esc_text(str(frame.get('key_env', '')))}");
 
     if frame.get("full") {
         for ev in (frame.get("events") or []) {

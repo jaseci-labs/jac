@@ -238,5 +238,5 @@ def ac_apply(state: TuiState) {
     ed.cursor_col = prefix_start + len(new_text);
 
     state.ac.dismiss();
-    state.dirty = True;
+    state.mark_layout_dirty();
 }

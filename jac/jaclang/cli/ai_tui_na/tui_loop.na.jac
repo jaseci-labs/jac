@@ -3,6 +3,7 @@ import from .input { handle_key }
 import from .keys { parse_key }
 import from .tui_core { tui_render_once, tui_sync_size }
 import from .runtime { TuiRuntime }
+import from .state { EventKind }
 
 glob _FRAME_DRAIN_CAP: int = 64;
 
@@ -22,18 +23,24 @@ def tui_process_keys(rt: TuiRuntime) {
 
 def tui_drain_blobs(rt: TuiRuntime) -> bool {
     state = rt.state;
-    for _ in range(_FRAME_DRAIN_CAP) {
-        blob: str = rt.transport.recv_blob();
-        if rt.transport.stdin_eof() {
-            return False;
-        }
-        if not blob {
-            break;
-        }
+    frames = rt.transport.recv_frames(_FRAME_DRAIN_CAP);
+    for blob in frames {
         if not ipc_parse_frame(state, blob) {
             return False;
         }
+    }
+    if frames {
         tui_sync_size(state);
+    }
+    if rt.transport.stdin_eof() {
+        return False;
+    }
+    if rt.transport.backend_dead() {
+        state.upsert_event(
+            -101, EventKind.ERROR, "agent backend stopped responding", "host"
+        );
+        state.dirty = True;
+        return False;
     }
     return True;
 }
@@ -43,6 +50,7 @@ def tui_loop_once(rt: TuiRuntime) -> bool {
     tui_process_keys(rt);
     if not tui_drain_blobs(rt) {
         rt.state.quit_flag = True;
+        tui_render_once(rt);
         return False;
     }
     tui_render_once(rt);

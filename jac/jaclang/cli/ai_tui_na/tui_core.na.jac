@@ -10,7 +10,7 @@ import from .terminal {
     term_disable_mouse
 }
 import from .state { TuiState }
-import from .screen { screen_render }
+import from .overlay { overlay_build_modal, overlay_composite, overlay_is_active }
 
 import from .diff { DiffEngine }
 import from .runtime { TuiRuntime }
@@ -23,7 +23,7 @@ def tui_sync_size(state: TuiState) {
     if new_cols != state.term_cols {
         state.mark_layout_dirty();
     } elif new_rows != state.term_rows {
-        state.dirty = True;
+        state.mark_layout_dirty();
     }
     state.term_rows = new_rows;
     state.term_cols = new_cols;
@@ -55,7 +55,7 @@ def tui_enter_screen(state: TuiState) {
     term_enable_mouse(state.render_fd);
 
     tui_sync_size(state);
-    state.dirty = True;
+    state.mark_layout_dirty();
 }
 
 def tui_leave_screen(state: TuiState) {
@@ -73,7 +73,11 @@ def tui_render_once(rt: TuiRuntime) -> bool {
         rt.diff.invalidate();
         state.overlay_full_redraw = False;
     }
-    lines = screen_render(state, state.term_cols, state.term_rows);
+    lines = rt.screen.render(state, state.term_cols, state.term_rows);
+    if overlay_is_active(state) {
+        modal = overlay_build_modal(state, state.term_cols, state.term_rows);
+        lines = overlay_composite(lines, modal, state.term_cols, state.term_rows);
+    }
     rt.diff.paint(lines, state.term_cols, state.render_fd, rt.paint_buf);
     state.dirty = False;
     return True;

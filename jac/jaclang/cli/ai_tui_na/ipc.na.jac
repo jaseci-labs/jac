@@ -126,17 +126,17 @@ def ipc_apply_line(state: TuiState, key: str, val: str) {
     if key == FIELD_STATUS {
         state.status = parse_tui_status(val);
     } elif key == FIELD_ACTIVE {
-        state.active = val;
+        state.active = _unescape(val);
     } elif key == FIELD_MODEL {
-        state.model_name = val;
+        state.model_name = _unescape(val);
     } elif key == FIELD_NEEDS_KEY {
         state.needs_key = val == "1";
     } elif key == FIELD_KEY_ENV {
-        state.key_env = val;
+        state.key_env = _unescape(val);
     } else {
         return;
     }
-    state.dirty = True;
+    state.mark_layout_dirty();
 }
 
 def ipc_parse_frame(state: TuiState, blob: str) -> bool {

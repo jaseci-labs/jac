@@ -95,6 +95,66 @@ enum TuiStatus { IDLE = 0, RUNNING = 1, UNKNOWN = 2 }
 
 enum OverlayKind { PALETTE = 0, MODEL = 1, FILE = 2 }
 
+enum OverlayContent { SELECT_LIST = 0 }
+
+enum Anchor {
+    CENTER = 0,
+    TOP = 1,
+    BOTTOM = 2,
+    TOP_LEFT = 3,
+    TOP_RIGHT = 4,
+    BOTTOM_LEFT = 5,
+    BOTTOM_RIGHT = 6,
+    LEFT = 7,
+    RIGHT = 8
+}
+
+obj OverlaySpec {
+    has content: OverlayContent = OverlayContent.SELECT_LIST,
+        role: OverlayKind = OverlayKind.PALETTE,
+        title: str = "",
+        anchor: Anchor = Anchor.CENTER,
+        width_pct: int = 0,
+        offset_x: int = 0,
+        offset_y: int = 0;
+}
+
+obj OverlayStack {
+    has entries: list[OverlaySpec] = [];
+
+    def push(spec: OverlaySpec) {
+        self.entries.append(spec);
+    }
+
+    def pop -> bool {
+        n = len(self.entries);
+        if n > 0 {
+            kept: list[OverlaySpec] = [];
+            for i in range(n - 1) {
+                kept.append(self.entries[i]);
+            }
+            self.entries = kept;
+        }
+        return len(self.entries) == 0;
+    }
+
+    def clear {
+        self.entries = [];
+    }
+
+    def is_active -> bool {
+        return len(self.entries) > 0;
+    }
+
+    def active_spec -> OverlaySpec {
+        n = len(self.entries);
+        if n == 0 {
+            return OverlaySpec();
+        }
+        return self.entries[n - 1];
+    }
+}
+
 enum AcKind { NONE = 0, SLASH = 1, AT_FILE = 2 }
 
 obj AcState {
@@ -168,10 +228,7 @@ obj TuiState {
         layout_cols: int = -1,
         layout_dirty: bool = True,
         follow_tail: bool = True,
-        overlay_active: bool = False,
-        overlay_kind: OverlayKind = OverlayKind.PALETTE,
-        overlay_title: str = "",
-        overlay_filter: str = "",
+        overlay_stack: OverlayStack = OverlayStack(),
         overlay_full_redraw: bool = False,
         select_list: SelectList = SelectList(),
         files: list[str] = [],

@@ -29,7 +29,7 @@ def _editor_max_rows(state: TuiState) -> int {
 
 def _sync_editor_view(state: TuiState) {
     state.editor.update_scroll(_editor_width(state), _editor_max_rows(state));
-    state.dirty = True;
+    state.mark_layout_dirty();
 }
 
 def _pending_continuation(state: TuiState) -> bool {
@@ -51,12 +51,12 @@ def _handle_submit(rt: TuiRuntime) -> bool {
     if _pending_continuation(state) {
         ed.backspace();
         ed.newline();
-        state.dirty = True;
+        state.mark_layout_dirty();
         return False;
     }
 
     text = ed.submit();
-    state.dirty = True;
+    state.mark_layout_dirty();
     if not text {
         return False;
     }
@@ -107,7 +107,7 @@ def _handle_ac_key(k: Key, rt: TuiRuntime) -> bool {
         did_nav = False;
     }
     if did_nav {
-        state.dirty = True;
+        state.mark_layout_dirty();
         return False;
     }
     if k.kind == KeyKind.ENTER {
@@ -135,13 +135,13 @@ def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
     }
     if ch == "g" {
         rt.cmd_queue.send(state.ipc_fd, CMD_STOP);
-        state.dirty = True;
+        state.mark_layout_dirty();
         return False;
     }
     if ch == "r" {
         rt.cmd_queue.send(state.ipc_fd, CMD_RESET);
         state.reset_events();
-        state.dirty = True;
+        state.mark_layout_dirty();
         return False;
     }
     if ch == "o" {
