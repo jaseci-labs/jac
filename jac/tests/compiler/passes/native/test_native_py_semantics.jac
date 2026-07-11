@@ -170,3 +170,21 @@ test "pow honors the modulus argument" {
     # pow(3,4,5)=1, pow(2,10,1000)=24
     assert result == 1024 , f"Expected 1024, got {result}";
 }
+
+# --- 2f: f-strings size their buffer and honor format specs ---
+test "fstring: output larger than 1024 bytes is not truncated" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_long", ctypes.c_int64);
+    result = fn();
+    assert result == 1204 , f"Expected 1204, got {result}";
+}
+
+test "fstring: numeric and string format specs render like CPython" {
+    (eng, _) = compile_native("py_fstring.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "fstring_specs", ctypes.c_int64);
+    result = fn();
+    # .2f, 04d, x, and >4/<4 alignment all correct
+    assert result == 1111 , f"Expected 1111, got {result}";
+}

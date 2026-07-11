@@ -349,6 +349,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
     def _codegen_string(nd: uni.String) -> (ir.Value | None);
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
+    def _fstring_spec_text(spec: uni.Expr) -> (str | None);
+    def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None);
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
