@@ -31,6 +31,10 @@ glob MANUAL_FIELDS: dict[str, list] = {
          "OPT_NODE_LIST": 11,
 
      },
+     POSTINIT_FIELDS: dict[str, list] = {
+         "FuncCall": [('callee_decl', FIELD_KINDS["OPT_NODE_REF"])],
+
+     },
      ENUM_TYPES: set = {"SymbolType", "SymbolAccess", "EdgeDir", "CodeContext"},
      SKIP_PARAMS: set = {"self", "kid", "parent"};
 
@@ -217,6 +221,10 @@ def generate -> str {
                     ;
                 }
             }
+        }
+
+        for (fname, fkind) in POSTINIT_FIELDS.get(name, []) {
+            field_parts.append(f'FieldDesc(name="{fname}", kind={fkind})');
         }
 
         if name in MANUAL_FIELDS {

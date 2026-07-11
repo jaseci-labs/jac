@@ -718,7 +718,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="target", kind=4),
                  FieldDesc(name="params", kind=5),
                  FieldDesc(name="genai_call", kind=6),
-                 FieldDesc(name="call_kind", kind=7)
+                 FieldDesc(name="call_kind", kind=7),
+                 FieldDesc(name="callee_decl", kind=6)
              )
          ),
          NodeSpec(

@@ -2521,6 +2521,111 @@ test "jir reload preserves FuncCall callee_decl and call_kind" {
 }
 
 
+"""Regression: JIR round-trip must preserve FuncCall.callee_decl.
+
+jaseci-labs/jaseci#6666: `callee_decl` is the checker-stamped pointer from a
+FuncCall to its resolved Ability. The client (cl/JS) backend reads it to lower
+keyword arguments to ordered positional args -- especially for method calls.
+Previously this field was declared ``by postinit`` and therefore dropped from
+the JIR schema, so a module reloaded from the JIR cache had it reset to None
+and lowered a kwarg method call as a packed object (`x.m({b: 1, a: 10})`)
+instead of positional (`x.m(10, 1)`), diverging from the cold build.
+
+The fix is at the serialization layer: the JIR registry now serializes
+FuncCall.callee_decl, so a warm module round-trips with the pointer intact and
+no re-inference sweep is required for warm == cold.
+"""
+test "jir round-trip preserves FuncCall.callee_decl for kwarg method calls" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core { unitree as uni }
+    import from jaclang.jac0core.jir_passes { JirWriter, JirReader }
+    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        lib_path = os.path.join(tmpdir, "lib.cl.jac");
+        with open(lib_path, "w") as f {
+            f.write(
+                "cl obj Box {\n"
+                "    has v: int = 0;\n"
+                "    def m(a: int, b: int) -> int { return a - b; }\n"
+                "}\n"
+                "cl def use() -> int {\n"
+                "    x = Box();\n"
+                "    return x.m(b=1, a=10);\n"
+                "}\n"
+            );
+        }
+        # Resolve the `x.m(...)` FuncCall in a module so we can compare cold
+        # vs warm callee_decl pointers.
+        def method_call(mod: uni.Module) -> (uni.FuncCall | None) {
+            for fc in mod.get_all_sub_nodes(uni.FuncCall) {
+                if isinstance(fc.target, uni.AtomTrailer)
+                and isinstance(fc.target.right, uni.Name)
+                and fc.target.right.value == "m" {
+                    return fc;
+                }
+            }
+            return None;
+        }
+        prog = JacProgram();
+        # Cold compile of the lib: inference stamps callee_decl on the call.
+        lib_fresh = prog.compile(file_path=lib_path);
+        cold_call = method_call(lib_fresh);
+        # If type inference is unavailable (e.g. no vendored typeshed in a bare
+        # clone), callee_decl is never stamped cold either; the warm/cold parity
+        # this test guards is then vacuously true, so skip the assertions.
+        if cold_call is not None and cold_call.callee_decl is not None {
+            # Round-trip the lib through JIR. callee_decl is now a serialized
+            # field, so the warm module must retain the pointer (previously it
+            # reset to None, which #6665/#6666 patched around with a
+            # re-inference sweep).
+            warm_lib = JirReader(_source_path=lib_path).read_module(
+                JirWriter().write_module(lib_fresh)
+            );
+            assert warm_lib is not None;
+            warm_call = method_call(warm_lib);
+            assert warm_call is not None , "warm module lost the `x.m` call";
+            assert warm_call.callee_decl is not None , (
+                "warm FuncCall.callee_decl not preserved across JIR round-trip (#6666)"
+            );
+            # Locate the warm module's own Box.m Ability and confirm the
+            # restamped pointer resolves to it (round-trip builds fresh node
+            # objects, so we compare against the warm Ability, not the cold one).
+            warm_box_m: (uni.Ability | None) = None;
+            for ab in warm_lib.get_all_sub_nodes(uni.Ability) {
+                if isinstance(ab.name_ref, uni.Name) and ab.name_ref.value == "m" {
+                    warm_box_m = ab;
+                    break;
+                }
+            }
+            assert warm_box_m is not None , "warm module lost the Box.m Ability";
+            assert warm_call.callee_decl is warm_box_m , (
+                "warm callee_decl does not resolve to the warm Box.m Ability"
+            );
+
+            # The emitted JS must lower the kwarg method call to ordered
+            # positional args, identical to the cold build.
+            cold_js = es_to_js(
+                EsastGenPass(ir_in=lib_fresh, prog=prog).ir_out.gen.es_ast
+            );
+            warm_js = es_to_js(
+                EsastGenPass(ir_in=warm_lib, prog=prog).ir_out.gen.es_ast
+            );
+            assert "x.m(10, 1)" in warm_js , (
+                f"warm build mis-lowered kwarg method call (#6666):\n{warm_js}"
+            );
+            assert "x.m({" not in warm_js , (
+                f"warm build packed kwargs instead of ordering them (#6666):\n{warm_js}"
+            );
+            assert cold_js == warm_js , (
+                f"cold and warm JS diverge (#6666):\n--cold--\n{cold_js}\n--warm--\n{warm_js}"
+            );
+        }
+    }
+}
+
+
 """Regression: JIR cache must compute MRO for subtype checking.
 
 When a module is loaded from JIR cache, class types may have empty MRO lists.
