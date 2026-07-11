@@ -5696,3 +5696,35 @@ test "bare_list_flow_inference" {
         )}";
     }
 }
+
+test "final_immutability_enforcement" {
+    # Issue #7354: reassigning a Final binding must raise E1121 at every
+    # write form, while declarations, constructor kwargs, and no-default
+    # init assignment stay legal.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_final_reassignment.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Expected errors (7 total, in file order):
+    #   1. self.tag = "u"   — Final with default reassigned in init
+    #   2. c.name = "b"     — Final attribute reassigned
+    #   3. y = 2            — Final local reassigned
+    #   4. y += 1           — augmented assignment
+    #   5. (y, w) = (1, 2)  — unpacking into a Final
+    #   6. del y            — deleting a Final
+    #   7. RATE = 2.0       — Final glob reassigned
+    assert len(program.errors_had) == 7 , "Expected 7 errors, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    for err in program.errors_had {
+        assert "E1121" in err.pretty_print() , f"Expected only E1121 diagnostics:\n{err.pretty_print()}";
+        assert "declared Final" in err.pretty_print();
+    }
+    expected_names = ["tag", "name", "y", "y", "y", "y", "RATE"];
+    for (i, want) in enumerate(expected_names) {
+        assert f"'{want}'" in program.errors_had[i].pretty_print() , f"Error {i}: expected '{want}' in:\n{program.errors_had[
+            i
+        ].pretty_print()}";
+    }
+}

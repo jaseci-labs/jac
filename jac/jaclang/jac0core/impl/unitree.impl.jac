@@ -278,6 +278,7 @@ impl Symbol.init(
     self.access = access;
     self.parent_tab = parent_tab;
     self.semstr = '';
+    self.is_immutable = False;
 }
 
 impl Symbol.decl.getter -> NameAtom {

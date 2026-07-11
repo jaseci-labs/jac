@@ -571,3 +571,33 @@ test "callable interface enforces its call-signature return type" {
         f"\n{pretty_checker_errors(program)}";
     }
 }
+
+test "readonly interface member rejects reassignment (issue #7354)" {
+    # `readonly label: string` on Config is parsed by the .d.ts parser and
+    # threaded into the synthesized member symbol as is_immutable; direct
+    # reassignment must raise E1121 while writable members stay assignable.
+    with TemporaryDirectory() as td {
+        proj = make_iface_npm_project(Path(cast(str, td)));
+        f = proj / "lib" / "ro_member.cl.jac";
+        f.write_text(
+            'cl import from "cfgpkg" { getConfig }\n\n'
+            'def:pub bad() -> None {\n'
+            '    c = getConfig();\n'
+            '    c.label = "x";\n'
+            '    c.theme = "ok";\n'
+            '}\n'
+        );
+        (program, err_codes, _) = check_npm_file(f);
+        assert "E1121" in err_codes , f"Expected E1121 for readonly member write, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+        assert err_codes.count("E1121") == 1 , f"Writable member 'theme' must not be flagged, got codes {err_codes}:"
+        f"\n{pretty_checker_errors(program)}";
+        ro_err = [
+            e
+            for e in program.errors_had
+            if "E1121" in e.pretty_print()
+        ][0].pretty_print();
+        assert "label" in ro_err;
+        assert "read-only" in ro_err;
+    }
+}
