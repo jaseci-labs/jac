@@ -1,5 +1,9 @@
 impl primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None) {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    try {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    } except ImportError {
+        return None;
+    }
     if not isinstance(ty, types.ClassType) {
         return None;
     }
