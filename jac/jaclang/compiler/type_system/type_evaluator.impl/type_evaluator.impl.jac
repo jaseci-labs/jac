@@ -2483,9 +2483,7 @@ impl TypeEvaluator._assign_class(
                     return True;
                 }
             }
-        } except ImportError {
-            pass;
-        }
+        } except ImportError { }
     }
 
     is_protocol = False;
