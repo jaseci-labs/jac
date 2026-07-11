@@ -82,6 +82,7 @@ obj LayoutRegistry {
     def get_layout(name: str) -> (ArchetypeLayout | None);
     def get_mro(name: str) -> list[str];
     def get_topo_order -> list[str];
+    def get_method_slot(class_name: str, method_name: str) -> (int | None);
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 

@@ -378,6 +378,14 @@ impl LayoutRegistry.get_topo_order -> list[str] {
     return self.topo_order;
 }
 
+impl LayoutRegistry.get_method_slot(class_name: str, method_name: str) -> (int | None) {
+    layout = self.layouts.get(class_name);
+    if layout is None {
+        return None;
+    }
+    return layout.method_index.get(method_name);
+}
+
 impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {
     current = child;
     while current is not None {
