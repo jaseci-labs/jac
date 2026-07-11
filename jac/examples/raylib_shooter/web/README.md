@@ -61,5 +61,5 @@ This renders with a hand-written WebGL emulation of the rlgl subset the game use
 |------|------|
 | `main.jac` | `na {}` game (-> `main.wasm`) + `cl {}` page that mounts the canvas |
 | `raylib_shim.cl.jac` | WebGL/DOM shim: rlgl + input -> the wasm's `env` (app FFI) imports; `jac_host1` comes from `@jac/wasm_host` |
-| `jac.toml` | project + `[plugins.client]` + react deps |
+| `jac.toml` | project + `[client]` + react deps |
 | `.jac/client/dist/` | build output (git-ignored): `client.*.js` + `main.wasm` |

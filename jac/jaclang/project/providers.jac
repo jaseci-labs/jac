@@ -86,6 +86,20 @@ obj EcosystemProvider {
         raise NotImplementedError(f"provider '{self.name}' cannot add packages");
     }
 
+    def add_packages(
+        config: JacConfig, specs: list[tuple[str, str]], dev: bool, ctx: InstallContext
+    ) -> list[str] | None {
+        recorded: list[str] = [];
+        for (name, version) in specs {
+            one = self.add_package(config, name, version, dev, ctx);
+            if one is None {
+                return None;
+            }
+            recorded.append(one);
+        }
+        return recorded;
+    }
+
     def remove_package(
         config: JacConfig, name: str, dev: bool, ctx: InstallContext
     ) -> bool {
@@ -357,31 +371,45 @@ obj PythonProvider(EcosystemProvider) {
     override def add_package(
         config: JacConfig, name: str, version: str, dev: bool, ctx: InstallContext
     ) -> str | None {
-        install_spec = make_pip_spec(name, version) if version else name;
-        if not self.install_specs(config, [install_spec], ctx) {
+        recorded = self.add_packages(config, [(name, version)], dev, ctx);
+        return recorded[0] if recorded else None;
+    }
+
+    override def add_packages(
+        config: JacConfig, specs: list[tuple[str, str]], dev: bool, ctx: InstallContext
+    ) -> list[str] | None {
+        install_targets: list[str] = [
+            make_pip_spec(name, version) if version else name
+            for (name, version) in specs
+        ];
+        if not self.install_specs(config, install_targets, ctx) {
             return None;
         }
-        version_str = version;
-        if not version_str {
-            installed_version = self.get_installed_version(config, name);
-            if installed_version {
-                version_str = f"~={_major_minor(installed_version)}";
-                if ctx.verbose {
-                    console.print(
-                        f"Detected version: {installed_version}", style="muted"
-                    );
-                }
-            } else {
-                version_str = ">=0.0.0";
-                if ctx.verbose {
-                    console.warning(
-                        f"Could not detect version for {name}, using >=0.0.0"
-                    );
+        recorded: list[str] = [];
+        for (name, version) in specs {
+            version_str = version;
+            if not version_str {
+                installed_version = self.get_installed_version(config, name);
+                if installed_version {
+                    version_str = f"~={_major_minor(installed_version)}";
+                    if ctx.verbose {
+                        console.print(
+                            f"Detected version: {installed_version}", style="muted"
+                        );
+                    }
+                } else {
+                    version_str = ">=0.0.0";
+                    if ctx.verbose {
+                        console.warning(
+                            f"Could not detect version for {name}, using >=0.0.0"
+                        );
+                    }
                 }
             }
+            config.add_dependency(name, version_str, dev=dev, dep_type="python");
+            recorded.append(version_str);
         }
-        config.add_dependency(name, version_str, dev=dev, dep_type="python");
-        return version_str;
+        return recorded;
     }
 
     override def remove_package(
@@ -570,10 +598,14 @@ def reset_provider_registry {
 }
 
 def initialize_provider_registry -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_provider_registry();
 
-    results = JacRuntime.register_ecosystem_providers();
+    try {
+        import from jaclang.runtimelib.client.plugin_config { JacClientPluginConfig }
+    } except Exception {
+        return;
+    }
+    results = JacClientPluginConfig.register_ecosystem_providers();
     if results is None {
         return;
     }
@@ -616,6 +648,9 @@ def capability_dependencies(
         action = plan.action if plan else "execute";
     }
     intent = scale_intent_from_config(config);
+    if intent and action != "serve" {
+        action = "serve";
+    }
     caps = derive_capabilities(intent, command_capabilities(action, scale));
     caps |= byllm_intent_capabilities(config);
     caps |= set(detected_intents);

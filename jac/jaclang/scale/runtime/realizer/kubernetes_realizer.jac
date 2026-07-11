@@ -1,7 +1,6 @@
 import os;
 import pathlib;
 import from dotenv { load_dotenv }
-import from jaclang.cli.command { HookContext }
 import from jaclang.cli.console { console }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.observability.factory { UtilityFactory }
@@ -12,10 +11,14 @@ import from jaclang.scale.config.app_config { AppConfig }
 obj KubernetesRealizer {
     has ms_config: dict[str, any];
 
-    def realize(context: HookContext) -> None {
+    def realize(
+        filename: str,
+        target: str = "kubernetes",
+        enable_tls: bool = False,
+        dry_run: bool = False,
+        show_yaml: bool = False
+    ) -> int {
         enabled = self.ms_config.get("enabled", None);
-        filename = context.get_arg("filename");
-        target = context.get_arg("target", "kubernetes");
 
         if target == "kubernetes" and enabled is not False {
             scale_discovered: dict[str, str] = {};
@@ -43,7 +46,7 @@ obj KubernetesRealizer {
                     console.print(
                         f"Microservice mode ({label}): {len(merged_routes)} "
                         f"services [{names}], routes /<name>. Deploying to "
-                        f"kubernetes; set [plugins.scale.microservices] to customize.",
+                        f"kubernetes; set [scale.microservices] to customize.",
                         style="cyan"
                     );
                 }
@@ -67,23 +70,20 @@ obj KubernetesRealizer {
             target, target_config, logger
         );
 
-        enable_tls = context.get_arg("enable_tls", False);
         if enable_tls {
             if not target_config.get('domain', '') {
                 raise ValueError(
-                    "No domain configured. Set 'domain' under [plugins.scale.kubernetes] in jac.toml before running --enable-tls."
+                    "No domain configured. Set 'domain' under [scale.kubernetes] in jac.toml before running --enable-tls."
                 );
             }
             if not target_config.get('cert_manager_email', '') {
                 raise ValueError(
-                    "No cert_manager_email configured. Set 'cert_manager_email' under [plugins.scale.kubernetes] in jac.toml before running --enable-tls."
+                    "No cert_manager_email configured. Set 'cert_manager_email' under [scale.kubernetes] in jac.toml before running --enable-tls."
                 );
             }
             app_name = target_config.get('app_name', 'jaseci');
             deployment_target.enable_tls(app_name);
-            context.set_data("cancel_execution", True);
-            context.set_data("cancel_return_code", 0);
-            return;
+            return 0;
         }
 
         code_folder = os.path.relpath(code_folder);
@@ -92,22 +92,18 @@ obj KubernetesRealizer {
         deployment_target.secrets = scale_config.get_secrets_config();
 
         no_image = target == "kubernetes-microservice";
-        import from jaclang.scale.config.dev_config { resolve_dev_deploy }
         app_config = AppConfig(
-            code_folder=code_folder,
-            file_name=base_file_path,
-            no_image=no_image,
-            dev=resolve_dev_deploy(str(code_folder))
+            code_folder=code_folder, file_name=base_file_path, no_image=no_image
         );
         if no_image {
             deployment_target.no_image = True;
             console.warning(
                 "Copying local source into the cluster via PVC and installing "
-                "jac at pod startup. Keep secrets in [plugins.scale.secrets] "
+                "jac at pod startup. Keep secrets in [scale.secrets] "
                 "(synced as a K8s Secret) or in .env, never inline in source."
             );
             console.warning(
-                "Set [plugins.scale.microservices] in jac.toml to configure "
+                "Set [scale.microservices] in jac.toml to configure "
                 "resources, scaling, ingress, and secrets before going to production."
             );
         }
@@ -117,17 +113,13 @@ obj KubernetesRealizer {
             console.print("Installing Jaseci packages from PyPI...");
         }
 
-        dry_run = context.get_arg("dry_run", False);
         if dry_run {
             if target != "kubernetes-microservice" {
                 console.warning(
                     f"--dry-run only supported with kubernetes-microservice target (got {target!r})."
                 );
-                context.set_data("cancel_execution", True);
-                context.set_data("cancel_return_code", 1);
-                return;
+                return 1;
             }
-            show_yaml: bool = bool(context.get_arg("show_yaml", False));
             try {
                 import from jaclang.scale.runtime.cli.plan { print_plan }
                 import from jaclang.scale.runtime.cli.diagnostics { has_errors }
@@ -137,37 +129,28 @@ obj KubernetesRealizer {
                 exit_code = 2 if has_errors(diagnostics) else 0;
             } except Exception as e {
                 console.error(f"--dry-run failed: {e}", emoji=False);
-                context.set_data("cancel_execution", True);
-                context.set_data("cancel_return_code", 1);
-                return;
+                return 1;
             }
-            context.set_data("cancel_execution", True);
-            context.set_data("cancel_return_code", exit_code);
-            return;
+            return exit_code;
         }
 
         try {
             result = deployment_target.deploy(app_config);
         } except Exception as e {
             console.error(f"Deployment failed: {e}", emoji=False);
-            context.set_data("cancel_execution", True);
-            context.set_data("cancel_return_code", 1);
-            return;
+            return 1;
         }
         if not result.success {
             console.error(
                 f"Deployment failed: {result.message or 'unknown error'}", emoji=False
             );
-            context.set_data("cancel_execution", True);
-            context.set_data("cancel_return_code", 1);
-            return;
+            return 1;
         }
         if result.service_url {
             console.print(
                 f"Deployment complete! Service available at: {result.service_url}"
             );
         }
-        context.set_data("cancel_execution", True);
-        context.set_data("cancel_return_code", 0);
+        return 0;
     }
 }

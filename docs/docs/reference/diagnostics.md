@@ -73,7 +73,6 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `E0010` | '{keyword}' is not supported in Jac |
-| `E0011` | Jac does not allow this keyword in any syntactic position |
 | `E0012` | Use the `new(target, ...args)` ambient builtin to create new instances |
 | `E0013` | '{keyword}' is a keyword and cannot be used as a {context} name |
 
@@ -93,7 +92,6 @@ Emitted by the parser and lexer during source code parsing.
 | `E0030` | Unexpected semicolon at module level |
 | `E0031` | Module-level 'with' blocks only support 'entry', not 'exit' |
 | `E0032` | Unexpected '{token}' -- must follow its parent statement (if/try/match/switch) |
-| `E0033` | '{modifier}' is not a valid prefix modifier |
 | `E0034` | Expected 'with' after 'can' ability name (use 'def' for function-style declarations) |
 
 ### Block / Body Requirements
@@ -286,6 +284,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
 | `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `E1120` | Import of '{name}' from untyped external module '{module}' (no type declarations found) |
 | `W1103` | '{name}' is ambient and does not need to be imported from '{module}' |
 | `W1104` | Use the lowercase `any` keyword instead of importing `Any` from typing |
 
@@ -344,7 +343,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ## Lint Rules (W3xxx / E3xxx)
 
-Emitted by `jac lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
+Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 
 | Code | Rule Name | Message | Group |
 |------|-----------|---------|-------|
@@ -443,14 +442,6 @@ Emitted during code generation, formatting, and native compilation.
 | Code | Message |
 |------|---------|
 | `E5060` | C library import declaration '{name}' must not have a body |
-
-### Language Server
-
-| Code | Message |
-|------|---------|
-| `E5070` | Error during type check: {error} |
-| `E5071` | Error during formatting: {error} |
-| `W5072` | Attribute error when accessing node attributes: {error} |
 
 ---
 

@@ -24,8 +24,8 @@ watchdog = ">=3.0.0"
 [serve]
 base_route_app = "app"
 
-[plugins.client]
+[client]
 
-# NO [plugins.scale.*] config - deliberately: the zero-config example (#7137/#7140/#7144).
+# NO [scale.*] config - deliberately: the zero-config example (#7137/#7140/#7144).
 # Services/routes/database/client entry are all auto-derived; the e2e harness
 # appends its test-only opt-ins (ingress/logs/cors) at run time.

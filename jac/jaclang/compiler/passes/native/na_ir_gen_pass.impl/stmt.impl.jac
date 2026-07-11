@@ -56,6 +56,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_if(nd);
     } elif isinstance(nd, uni.WhileStmt) {
         self._codegen_while(nd);
+    } elif isinstance(nd, uni.ForeverStmt) {
+        self._codegen_forever(nd);
     } elif isinstance(nd, uni.InForStmt) {
         self._codegen_for(nd);
     } elif isinstance(nd, uni.IterForStmt) {
@@ -195,6 +197,7 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
 
             skip_var: (str | None) = None;
             if isinstance(nd.expr, uni.Name)
+            and nd.expr.sym_name in self.local_vars
             and nd.expr.sym_name not in self.param_vars {
                 skip_var = nd.expr.sym_name;
             } elif isinstance(nd.expr, uni.TupleVal) {
@@ -411,6 +414,44 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
             loc=_while_loc
         );
         self.builder.branch(cond_bb);
+    }
+    self.loop_stack.pop();
+
+    self.builder.position_at_end(end_bb);
+}
+
+impl NaIRGenPass._codegen_forever(nd: uni.ForeverStmt) -> None {
+    func = self.builder.function;
+    body_bb = func.append_basic_block(name="forever.body");
+    end_bb = func.append_basic_block(name="forever.end");
+
+    self.builder.branch(body_bb);
+
+    self.loop_stack.append((body_bb, end_bb));
+    self.builder.position_at_end(body_bb);
+
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _forever_body_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
+
+    _forever_prebody = set(self.local_vars.keys());
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
+    }
+    if not self.builder.block.is_terminated {
+        _forever_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+            if nd.loc
+            else 0}";
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _forever_body_locals
+                if _v not in _forever_prebody
+            ],
+            loc=_forever_loc
+        );
+        self.builder.branch(body_bb);
     }
     self.loop_stack.pop();
 
@@ -1447,7 +1488,10 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     }
 
     _for_errs0 = len(self.errors_had);
-    loop_var_name = self._get_name(nd.target);
+    _unpack_target = nd.target if isinstance(nd.target, uni.TupleVal) else None;
+    loop_var_name = "for.unpack"
+        if _unpack_target is not None
+        else self._get_name(nd.target);
 
     if isinstance(nd.target, uni.TupleVal)
     and isinstance(nd.collection, uni.FuncCall)
@@ -1663,7 +1707,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         var_types=[actual_elem_type],
         rc_vars=True,
         coll_release_op="forl_coll",
-        elem_cast=inner_type
+        elem_cast=inner_type,
+        unpack_target=_unpack_target
     );
 }
 
@@ -1677,7 +1722,8 @@ impl NaIRGenPass._codegen_for_indexed(
     rc_vars: bool,
     coll_release_op: str,
     range_start: (ir.Value | None) = None,
-    elem_cast: (ir.Type | None) = None
+    elem_cast: (ir.Type | None) = None,
+    unpack_target: (uni.TupleVal | None) = None
 ) -> None {
     i64 = ir.IntType(64);
     _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
@@ -1709,7 +1755,8 @@ impl NaIRGenPass._codegen_for_indexed(
         idx_alloca = self._entry_alloca(i64, "for.idx");
         self.builder.store(ir.Constant(i64, 0), idx_alloca);
         allocas = [];
-        for (vi, vname) in enumerate(var_names) {
+        _setup_names = [] if unpack_target is not None else var_names;
+        for (vi, vname) in enumerate(_setup_names) {
             vtype = var_types[vi];
 
             _existing = self.local_vars.get(vname);
@@ -1793,12 +1840,25 @@ impl NaIRGenPass._codegen_for_indexed(
             if elem_cast is not None {
                 elem_val = self.builder.bitcast(elem_val, elem_cast, name="for.cast");
             }
-            if rc_vars and isinstance(var_types[0], ir.PointerType) {
-                old_val = self.builder.load(allocas[0], name="for.old");
-                self._emit_rc_release_simple(old_val, op="for_elem", loc=_rc_loc);
-                self._emit_rc_retain(elem_val, op="for_elem", loc=_rc_loc);
+            if unpack_target is not None {
+                if not self._codegen_tuple_unpack(
+                    unpack_target.values, elem_val, None
+                ) {
+                    self.emit(
+                        E5090,
+                        node_override=unpack_target,
+                        kind="for-loop target",
+                        name=type(unpack_target).__name__
+                    );
+                }
+            } else {
+                if rc_vars and isinstance(var_types[0], ir.PointerType) {
+                    old_val = self.builder.load(allocas[0], name="for.old");
+                    self._emit_rc_release_simple(old_val, op="for_elem", loc=_rc_loc);
+                    self._emit_rc_retain(elem_val, op="for_elem", loc=_rc_loc);
+                }
+                self.builder.store(elem_val, allocas[0]);
             }
-            self.builder.store(elem_val, allocas[0]);
         } else {
             self.emit(
                 E9002,

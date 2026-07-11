@@ -43,7 +43,7 @@ test "db inspect prints a summary with counts" {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
         app.write_text(V1_LEGACY);
-        (rc, _, err) = _jac(tmpdir, ["enter", str(app), "create"]);
+        (rc, _, err) = _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         assert rc == 0 , f"create failed: {err}";
         (rc, out, err) = _jac(tmpdir, ["db", "inspect"]);
         assert rc == 0 , f"inspect failed: {err}";
@@ -71,7 +71,7 @@ test "db alias add/list/remove round-trip works" {
         app = Path(tmpdir) / "app.jac";
         app.write_text(V1_LEGACY);
         # Need a DB to act on.
-        _jac(tmpdir, ["enter", str(app), "create"]);
+        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         # Initially empty: console.info() line is plain text, not Rich,
         # so this assertion is stable across terminal widths.
         (rc, out, _) = _jac(tmpdir, ["db", "alias", "list"]);
@@ -119,11 +119,11 @@ test "db recover-all rescues quarantined rows after CLI alias add" {
         app = Path(tmpdir) / "app.jac";
         # v1: LegacyPerson is the live class.
         app.write_text(V1_LEGACY);
-        _jac(tmpdir, ["enter", str(app), "create"]);
+        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         # Swap to v2: Person, with NO @archetype_alias. Old anchors quarantine
         # when the v2 walker tries to traverse them.
         app.write_text(V2_PERSON);
-        _jac(tmpdir, ["enter", str(app), "dump"]);
+        _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
         # Confirm quarantine populated. The cascade fix quarantines both the
         # 2 LegacyPerson nodes AND their 2 connecting GenericEdge anchors = 4.
         (rc, out, _) = _jac(tmpdir, ["db", "inspect"]);
@@ -174,7 +174,7 @@ test "db recover-all rescues quarantined rows after CLI alias add" {
             f"root data.edges must have 2 re-linked edges after recover-all, got: {root_edge_count}"
         );
         # Final smoke: the dump walker now finds the recovered data.
-        (rc, out, err) = _jac(tmpdir, ["enter", str(app), "dump"]);
+        (rc, out, err) = _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
         assert rc == 0 , f"dump failed: {err}";
         assert "alice" in out and "bob" in out;
     }
@@ -186,10 +186,10 @@ test "db quarantine list and show return data, never silently empty" {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
         app.write_text(V1_LEGACY);
-        _jac(tmpdir, ["enter", str(app), "create"]);
+        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         # Force quarantine.
         app.write_text(V2_PERSON);
-        _jac(tmpdir, ["enter", str(app), "dump"]);
+        _jac(tmpdir, ["run", "--entry", "dump", str(app)]);
         # `quarantine list` renders via Rich print_table (terminal-width
         # sensitive in CI), so assert only on exit code -- the fact that
         # rows exist is verified via direct DB query below.
@@ -226,7 +226,7 @@ test "db rejects bad sub-actions with helpful errors" {
         tmpdir = str(raw_tmpdir);
         app = Path(tmpdir) / "app.jac";
         app.write_text(V1_LEGACY);
-        _jac(tmpdir, ["enter", str(app), "create"]);
+        _jac(tmpdir, ["run", "--entry", "create", str(app)]);
         (rc, _, err) = _jac(tmpdir, ["db", "alias", "frobnicate"]);
         assert rc != 0;
         assert "alias" in err.lower() or "expected" in err.lower();

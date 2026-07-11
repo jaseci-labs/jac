@@ -1,34 +1,21 @@
 """Shared utilities for release scripts.
 
 This module provides the single source of truth for package metadata,
-version bumping logic, PyPI availability checks, and GitHub Actions output helpers.
+version bumping logic, and GitHub Actions output helpers.
 All release-related scripts import from here to ensure consistency.
 """
 import from __future__ { annotations }
 import os;
 import re;
 import tomllib;
-import urllib.error;
-import urllib.request;
 import from pathlib { Path }
 import from typing { NamedTuple }
 """Package metadata for release scripts."""
 class PackageInfo(NamedTuple) {
     has dir: str;
     has pypi: str;
-    has tier: int;
     has release_notes: str = "";
     has notes_display: str = "";
-    has submodules: bool = False;
-    has extra_build_cmd: str = "";
-    has needs_nodejs: bool = False;
-    has extra_build_deps: str = "";
-    # jaclang ships as the native `jac` binary, not a PyPI wheel. It does not
-    # publish to PyPI (publish_pypi=False) and it anchors the GitHub Release
-    # (is_anchor=True): a release that bumps jaclang creates the v<version> tag,
-    # which fires build-binaries.yml to build + attach the binaries.
-    has publish_pypi: bool = True;
-    has is_anchor: bool = False;
 }
 
 glob PACKAGES: dict[(str, PackageInfo)] = {
@@ -36,31 +23,13 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
          "jaclang": PackageInfo(
              dir="jac",
              pypi="jaclang",
-             tier=0,
              release_notes="docs/docs/community/release_notes/jaclang.md",
              notes_display="jaclang",
-             submodules=True,
-             publish_pypi=False,
-             is_anchor=True
          )
          # byLLM was Tier 2 (published to PyPI as `byllm`); it is now folded into
          # jaclang (jaclang.byllm) and ships inside the binary, so it no longer
          # releases separately -- same as the earlier scale fold-in.
-     },
-     # Internal version pins between released packages. Plugins consume jaclang
-     # as a host dependency (provided by the binary), not a PyPI pin, and no
-     # longer depend on each other now that the jaseci meta-package is gone, so
-     # there are no cross-package version pins to sync.
-     INTERNAL_DEPS: dict[(str, list[str])] = {"jaclang": []},
-     DEPENDENTS: dict[(str, list[str])] = {};
-
-with entry {
-    for (_pkg_key, _pkg_info) in PACKAGES.items() {
-        for _dep in INTERNAL_DEPS.get(_pkg_info.pypi, []) {
-            DEPENDENTS.setdefault(_dep, []).append(_pkg_key);
-        }
-    }
-}
+     };
 
 """Read the current version from a package's manifest.
 
@@ -105,25 +74,6 @@ def bump_version(current: str, bump_type: str) -> str {
         );
     }
     return f"{major}.{minor}.{patch}";
-}
-
-"""Check if a specific package version already exists on PyPI.
-
-    Used to prevent publishing duplicate versions and to wait for packages
-    to become available between tier publishes. Returns True if the version
-    exists, False if it doesn't or if PyPI is unreachable (fail-open for polling).
-    """
-def check_pypi(pypi_name: str, version: str) -> bool {
-    url = f"https://pypi.org/pypi/{pypi_name}/{version}/json";
-    try {
-        urllib.request.urlopen(url, timeout=10);
-        return True;
-    } except urllib.error.HTTPError as e {
-        return (e.code != 404);
-    } except urllib.error.URLError {
-        print(f"Warning: Could not reach PyPI to check {pypi_name} {version}");
-        return False;
-    }
 }
 
 """Write a workflow output variable for GitHub Actions.

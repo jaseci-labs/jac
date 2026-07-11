@@ -32,26 +32,8 @@ def print_version_banner(version: str) {
         platform_short = platform_info;
     }
     print_logo(version, platform_short);
-    console.print(f'\n📚 Documentation: {JAC_DOCS_URL}');
-    console.print(f'💬 Community:     {JAC_DISCORD_URL}');
-    console.print(f'🐛 Issues:        {JAC_ISSUES_URL}');
-
-    try {
-        import from jaclang.jac0core.runtime { plugin_manager }
-        seen: dict[str, str] = {};
-        for (plugin, dist_facade) in plugin_manager.list_plugin_distinfo() {
-            name = dist_facade.project_name;
-            ver = dist_facade.version;
-            if name not in seen {
-                seen[name] = ver;
-            }
-        }
-        if seen {
-            console.print('\n🔌 Plugins Detected:');
-            for name in sorted(seen.keys()) {
-                console.print(f'   {name}=={seen[name]}');
-            }
-        }
-    } except Exception { }
+    console.print(f'\nDocs:      {JAC_DOCS_URL}', style='dim');
+    console.print(f'Community: {JAC_DISCORD_URL}', style='dim');
+    console.print(f'Issues:    {JAC_ISSUES_URL}', style='dim');
     console.print();
 }

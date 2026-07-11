@@ -9,7 +9,7 @@ impl ModelPool.postinit -> None {
     if not self.models {
         raise ValueError("ModelPool requires at least one model.");
     }
-    # Apply jac.toml [plugins.byllm.fallback] defaults for any field the user did not set.
+    # Apply jac.toml [byllm.fallback] defaults for any field the user did not set.
     # None sentinels in the has-fields distinguish "user supplied" from "config default".
     _fallback_cfg = _byllm_config.get_fallback_config();
     if self.strategy is None {

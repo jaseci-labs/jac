@@ -2,7 +2,6 @@ import ast as ast3;
 import copy;
 import textwrap;
 import from collections.abc { Sequence }
-import from dataclasses { dataclass }
 import from typing { ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext, EdgeDir }
@@ -196,6 +195,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;

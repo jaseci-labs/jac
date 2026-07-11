@@ -5,7 +5,7 @@ import from queue { Queue }
 import from typing { Callable, cast }
 import from uuid { UUID }
 
-import from jaclang.jac0core.archetype { Anchor, NodeAnchor, PermissionDenied, Root }
+import from jaclang.jac0core.archetype { NodeAnchor, PermissionDenied, Root }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, TieredMemory }
 

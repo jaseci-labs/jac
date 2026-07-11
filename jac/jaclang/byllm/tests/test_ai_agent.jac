@@ -199,7 +199,7 @@ test "the process toolbox runs shell commands and jac_check" {
     arm(proj, events);
 
     assert "HELLO_FROM_TOOL" in ai.agent.proc.run_command("echo HELLO_FROM_TOOL");
-    assert "PASSED" in ai.agent.proc.jac_check("model.jac");
+    assert "ok" in ai.agent.proc.jac_check("model.jac");
 
     shutil.rmtree(proj, ignore_errors=True);
 }

@@ -24,8 +24,6 @@ class ViteClientBundleBuilder(ClientBundleBuilder) {
     def _compile_bundle(
         self: ViteClientBundleBuilder, module: ModuleType, module_path: Path
     ) -> ClientBundle;
-
-    def cleanup_temp_dir(self: ViteClientBundleBuilder) -> None;
 }
 
 def make_client_bundle_builder(

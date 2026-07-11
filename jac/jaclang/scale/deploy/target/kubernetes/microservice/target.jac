@@ -14,7 +14,9 @@ import from jaclang.scale._optdeps.kubernetes {
 import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
-    get_cluster_provider
+    get_cluster_provider,
+    _resolve_current_rs_hashes,
+    _refresh_rs_hashes
 }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
@@ -136,6 +138,44 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return DeploymentResult(success=True, message=success_msg, details=bundle);
     }
 
+    def _scan_for_crash_loop(
+        core_v1: any, ns: str, current_hashes: set, fleet_app_names: set
+    ) -> tuple[str, list[str]] {
+        # current_hashes only covers the fleet's own microservice Deployments
+        # (resolved from `names`); companions (Redis, Prometheus, Grafana, ...)
+        # and observability pods share this namespace but were never part of
+        # that resolution, so the hash filter must not apply to them - doing
+        # so would silently exempt a crash-looping companion from detection.
+        crash = "";
+        phases: list[str] = [];
+        try {
+            for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                labels = p.metadata.labels or {};
+                app = str(labels.get("app", ""));
+                if current_hashes and app in fleet_app_names {
+                    pod_hash = labels.get("pod-template-hash");
+                    if pod_hash is not None and pod_hash not in current_hashes {
+                        continue;
+                    }
+                }
+                for cs in (p.status.container_statuses or []) {
+                    if (cs.restart_count or 0) >= 3 {
+                        crash = (
+                            f"pod '{p.metadata.name}' crash-looping "
+                            f"({cs.restart_count} restarts)"
+                        );
+                    }
+                }
+                if app {
+                    phases.append(f"{app}={p.status.phase or '?'}");
+                }
+            }
+        } except Exception {
+            _ = 0;
+        }
+        return (crash, phases);
+    }
+
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
         import time;
         import from kubernetes { client }
@@ -157,6 +197,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # console.status is an in-place spinner that never streams on a non-TTY log (CI); fall back to plain lines so progress isn't stuck at "0/{total}".
         interactive = bool(getattr(console, "is_terminal", False));
         last_line = "";
+
+        app_names = [
+            (dep["metadata"]["labels"] or {}).get("app")
+            for dep in bundle.get("deployments", {}).values()
+        ];
+        selector = "app in ({})".format(", ".join(app_names));
+        fleet_app_names: set = set(app_names);
+        current_hashes: set = set();
+        try {
+            current_hashes = _resolve_current_rs_hashes(ns, selector);
+        } except Exception as exc {
+            console.print(
+                f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
+            );
+        }
 
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
@@ -180,29 +235,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     return;
                 }
 
-                crash = "";
-                phases: list[str] = [];
-                try {
-                    for p in core_v1.list_namespaced_pod(namespace=ns).items {
-                        for cs in (p.status.container_statuses or []) {
-                            if (cs.restart_count or 0) >= 3 {
-                                crash = (
-                                    f"pod '{p.metadata.name}' crash-looping "
-                                    f"({cs.restart_count} restarts)"
-                                );
-                            }
-                        }
-                        labels = p.metadata.labels or {};
-                        app = str(labels.get("app", ""));
-                        if app {
-                            phases.append(f"{app}={p.status.phase or '?'}");
-                        }
-                    }
-                } except Exception {
-                    _ = 0;
-                }
+                (crash, phases) = self._scan_for_crash_loop(
+                    core_v1, ns, current_hashes, fleet_app_names
+                );
                 if crash {
-                    raise Exception(crash);
+                    # A hash set captured before the new RS's revision annotation
+                    # was stamped can still point at the old RS; re-verify against
+                    # a freshly resolved set before actually failing the rollout,
+                    # mirroring check_deployment_status's crash re-verification.
+                    current_hashes = _refresh_rs_hashes(ns, selector, current_hashes);
+                    (crash, _) = self._scan_for_crash_loop(
+                        core_v1, ns, current_hashes, fleet_app_names
+                    );
+                    if crash {
+                        raise Exception(crash);
+                    }
                 }
                 detail = ", ".join(phases) if phases else "scheduling pods";
                 line = (
@@ -320,7 +367,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception as e {
             if self.logger {
                 self.logger.warn(
-                    f"Could not read [plugins.scale.microservices.logs] - "
+                    f"Could not read [scale.microservices.logs] - "
                     f"observability stack will not be deployed: {e}"
                 );
             }
@@ -335,7 +382,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception as e {
             if self.logger {
                 self.logger.warn(
-                    f"Could not read [plugins.scale.microservices.tracing] - "
+                    f"Could not read [scale.microservices.tracing] - "
                     f"tracing stack will not be deployed: {e}"
                 );
             }
@@ -350,7 +397,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             deploy_context=self._deploy_context,
             logger=self.logger,
             no_image=True,
-            dev=app_config.dev,
             project_dir=app_config.code_folder,
             microservices_config=self.microservices_config
         );
@@ -445,7 +491,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
             if self.logger {
                 self.logger.info(
-                    f"Applied Secret for user-defined [plugins.scale.secrets] "
+                    f"Applied Secret for user-defined [scale.secrets] "
                     f"({len(user_secret['stringData'])} keys)",
                     {"name": user_secret["metadata"]["name"]}
                 );

@@ -1,7 +1,4 @@
-import from jaclang.jac0core.runtime { hookimpl }
-
 class JacScalePluginConfig {
-    @hookimpl
     static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "scale",
@@ -10,7 +7,6 @@ class JacScalePluginConfig {
         };
     }
 
-    @hookimpl
     static def get_config_schema -> dict[str, any] {
         return {
             "section": "scale",
@@ -95,6 +91,26 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": ".jac/data/anchor_store.db",
                             "description": "File-based storage path for ShelfDB fallback"
+                        },
+                        "redis_cpu_request": {
+                            "type": "string",
+                            "default": "100m",
+                            "description": "K8s CPU request for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 100m or 1."
+                        },
+                        "redis_cpu_limit": {
+                            "type": "string",
+                            "default": "500m",
+                            "description": "K8s CPU limit for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 500m or 1."
+                        },
+                        "redis_memory_request": {
+                            "type": "string",
+                            "default": "128Mi",
+                            "description": "K8s memory request (scheduling reservation) for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 128Mi or 512Mi (not 128mb). Raise it alongside redis_memory_limit for a cache whose working set is large enough that eviction under node memory pressure would hurt."
+                        },
+                        "redis_memory_limit": {
+                            "type": "string",
+                            "default": "1Gi",
+                            "description": "K8s memory limit (cgroup) for the jac-scale provisioned Redis pod. Used verbatim in the Deployment, so it must be a valid Kubernetes quantity, e.g. 1Gi or 512Mi (not 1gb, which the API server rejects at apply time). Must exceed redis_max_memory with headroom for BGSAVE fork copy-on-write, fragmentation, and buffers, or the pod is OOMKilled."
                         }
                     }
                 },
@@ -188,7 +204,7 @@ class JacScalePluginConfig {
                         "extra_triggers": {
                             "type": "list",
                             "default": [],
-                            "description": "(KEDA only) Additional KEDA trigger dicts applied to every service. Each entry: `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). For per-service triggers use [[plugins.scale.microservices.services.NAME.triggers]] instead."
+                            "description": "(KEDA only) Additional KEDA trigger dicts applied to every service. Each entry: `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). For per-service triggers use [[scale.microservices.services.NAME.triggers]] instead."
                         },
 
                     }
@@ -228,7 +244,7 @@ class JacScalePluginConfig {
                         "enabled": {
                             "type": "bool",
                             "default": False,
-                            "description": "Enable microservice mode (auto-derived from sv imports; set [plugins.scale.microservices] to customize)."
+                            "description": "Enable microservice mode (auto-derived from sv imports; set [scale.microservices] to customize)."
                         },
                         "gateway_port": {
                             "type": "int",
@@ -248,7 +264,7 @@ class JacScalePluginConfig {
                         "http_forward_timeout": {
                             "type": "float",
                             "default": 30.0,
-                            "description": "Gateway-to-service forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from `services.NAME.rpc_timeout`, which controls inter-service `sv import` calls. Override per-service with `[plugins.scale.microservices.services.NAME].http_forward_timeout`."
+                            "description": "Gateway-to-service forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from `services.NAME.rpc_timeout`, which controls inter-service `sv import` calls. Override per-service with `[scale.microservices.services.NAME].http_forward_timeout`."
                         },
                         "ingress": {
                             "type": "dict",
@@ -263,7 +279,7 @@ class JacScalePluginConfig {
                         "services": {
                             "type": "dict",
                             "default": {},
-                            "description": "Per-service overrides keyed by module name. Subkeys (all optional): `rpc_timeout` (float, default 10s, inter-service sv-import calls), `http_forward_timeout` (float, default 30s, gateway-to-service forward), `replicas` (int, default 1, K8s Deployment.spec.replicas), `cpu_request` / `cpu_limit` (str, e.g. \"100m\", K8s container resources), `memory_request` / `memory_limit` (str, e.g. \"128Mi\"), `env` (dict[str,str], extra container env vars merged with auto-set JAC_SV_NAME), `image_tag` (str, override global image tag for canary), and nested `hpa` / `pdb` sub-tables. `hpa` keys: `enabled` (bool, default true), `min` (int, default 1), `max` (int, default 3), `cpu_target` (int percent, default 70). `pdb` keys: `enabled` (bool, default true), `max_unavailable` (int, default 1). Gateway uses the `__gateway__` key. `[[services.NAME.triggers]]` array (KEDA only): per-service event-driven triggers; each entry has `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = \"keda\"` in [plugins.scale.kubernetes]. Example: [plugins.scale.microservices.services.llm_app] rpc_timeout = 120.0, replicas = 2, cpu_limit = \"2000m\", memory_limit = \"4Gi\", env = { LOG_LEVEL = \"DEBUG\" }, [plugins.scale.microservices.services.llm_app.hpa] max = 20, cpu_target = 60"
+                            "description": "Per-service overrides keyed by module name. Subkeys (all optional): `rpc_timeout` (float, default 10s, inter-service sv-import calls), `http_forward_timeout` (float, default 30s, gateway-to-service forward), `replicas` (int, default 1, K8s Deployment.spec.replicas), `cpu_request` / `cpu_limit` (str, e.g. \"100m\", K8s container resources), `memory_request` / `memory_limit` (str, e.g. \"128Mi\"), `env` (dict[str,str], extra container env vars merged with auto-set JAC_SV_NAME), `image_tag` (str, override global image tag for canary), and nested `hpa` / `pdb` sub-tables. `hpa` keys: `enabled` (bool, default true), `min` (int, default 1), `max` (int, default 3), `cpu_target` (int percent, default 70). `pdb` keys: `enabled` (bool, default true), `max_unavailable` (int, default 1). Gateway uses the `__gateway__` key. `[[services.NAME.triggers]]` array (KEDA only): per-service event-driven triggers; each entry has `type` (str), `metadata` (dict[str,str]), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = \"keda\"` in [scale.kubernetes]. Example: [scale.microservices.services.llm_app] rpc_timeout = 120.0, replicas = 2, cpu_limit = \"2000m\", memory_limit = \"4Gi\", env = { LOG_LEVEL = \"DEBUG\" }, [scale.microservices.services.llm_app.hpa] max = 20, cpu_target = 60"
                         },
                         "rate_limit": {
                             "type": "dict",
@@ -383,7 +399,7 @@ class JacScalePluginConfig {
                         "url": {
                             "type": "string",
                             "default": None,
-                            "description": "Redis connection URL. If unset, falls back to [plugins.scale.database].redis_url. If neither is set or `redis` extra is missing, LocalBroker (in-memory) is used."
+                            "description": "Redis connection URL. If unset, falls back to [scale.database].redis_url. If neither is set or `redis` extra is missing, LocalBroker (in-memory) is used."
                         },
                         "consumer_group": {
                             "type": "string",
