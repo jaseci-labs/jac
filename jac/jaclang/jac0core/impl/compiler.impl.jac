@@ -117,6 +117,13 @@ impl JacCompiler.get_bytecode(
     if (
         (not rebuild)
         and (full_target in actual_program.mod.hub)
+        and not actual_program.is_hub_entry_fresh(full_target)
+    ) {
+        actual_program.invalidate_module(full_target);
+    }
+    if (
+        (not rebuild)
+        and (full_target in actual_program.mod.hub)
         and actual_program.mod.hub[full_target].gen.py_bytecode
     ) {
         codeobj = actual_program.mod.hub[full_target].gen.py_bytecode;
@@ -231,6 +238,7 @@ impl JacCompiler.get_bytecode(
         file_path=full_target, target_program=actual_program, options=options
     );
     if result.gen.py_bytecode {
+        actual_program.hub_cache_stamp(full_target);
         try {
             import from jaclang.jac0core.jir_passes { JirWriter }
             import pickle;

@@ -11,7 +11,6 @@ import from concurrent.futures { Future, ThreadPoolExecutor }
 import from contextvars { ContextVar }
 import dataclasses;
 import from dataclasses { dataclass, field }
-import from functools { wraps }
 import from http.server { HTTPServer }
 import from inspect { getfile }
 import from logging { getLogger }
