@@ -161,8 +161,14 @@ fn boot(emb: *const embed.Embed, exe_z: [*:0]const u8, init: std.process.Init) u
     // behave exactly like `python` (parse_argv) instead of booting the jac CLI.
     const worker = isPythonInvocation(init);
 
-    emb.initInterpreter(exe_z, .{ .argv = argv, .parse_argv = worker }) catch
-        die("interpreter initialization failed");
+    // A non-null result means the interpreter handled a print-and-exit flag
+    // (worker mode -h/-V/--help): exit with the code CPython requested, never the
+    // boot path. Nothing was initialized, so there is nothing to run or finalize.
+    if (emb.initInterpreter(exe_z, .{ .argv = argv, .parse_argv = worker }) catch
+        die("interpreter initialization failed")) |exit_code|
+    {
+        return exit_code;
+    }
 
     if (worker) {
         const Py_RunMain = emb.symOrErr(embed.Py_RunMain_t, "Py_RunMain") catch die("libpython missing symbol: Py_RunMain");
@@ -370,17 +376,48 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
 
 /// True if argv[1] is a Python interpreter short flag (`-c`, `-u`, `-m`, `-`,
 /// ...). Single-dash short flags mean "act like python"; jac subcommands (`run`,
-/// `test`) and long flags (`--version`) keep the jac CLI. This dispatch is a
-/// CONTRACT: the jac CLI must never accept a single-dash short flag as its
-/// first argument, or execnet/xdist worker re-spawns (`jac -u -c ...`) would
-/// be misrouted.
+/// `test`), long flags (`--version`), and the `-h` help alias keep the jac CLI.
+/// This dispatch is a CONTRACT: the jac CLI must never accept a single-dash short
+/// flag (other than `-h`) as its first argument, or execnet/xdist worker re-spawns
+/// (`jac -u -c ...`) would be misrouted. See `isPythonFirstArg` for the rule.
 fn isPythonInvocation(init: std.process.Init) bool {
     var it = init.minimal.args.iterate();
     _ = it.next(); // skip argv[0]
-    if (it.next()) |a| {
-        return a.len >= 1 and a[0] == '-' and (a.len == 1 or a[1] != '-');
-    }
+    if (it.next()) |a| return isPythonFirstArg(a);
     return false;
+}
+
+/// Pure classifier for `isPythonInvocation`'s first-arg decision (factored out so
+/// the routing contract is unit-testable without a `std.process.Init`).
+///
+/// A bare `-` or any single-dash short flag (`-c`, `-u`, `-m`, ...) means "act
+/// like python" (worker re-spawns). `-h` is the ONE exception: it is a jac CLI
+/// help alias handled in cli.impl.jac (alongside `--help`), and a human types it
+/// expecting jac's help, not the embedded interpreter's. No
+/// execnet/xdist/multiprocessing worker ever re-spawns with `-h` (a print-and-exit
+/// flag), so exempting it cannot misroute a worker. Without the exemption `-h`
+/// routes to parse_argv worker mode, where CPython prints its own interpreter
+/// usage and the config read requests a clean exit that the embed layer misreports
+/// as an init failure (exit 70).
+fn isPythonFirstArg(a: []const u8) bool {
+    if (std.mem.eql(u8, a, "-h")) return false;
+    return a.len >= 1 and a[0] == '-' and (a.len == 1 or a[1] != '-');
+}
+
+test "isPythonFirstArg routes worker flags to python, keeps jac verbs and -h" {
+    const t = std.testing;
+    // Worker re-spawn flags -> python.
+    try t.expect(isPythonFirstArg("-c"));
+    try t.expect(isPythonFirstArg("-u"));
+    try t.expect(isPythonFirstArg("-m"));
+    try t.expect(isPythonFirstArg("-")); // bare stdin marker
+    // `-h` is a jac CLI help alias -> jac CLI, not python.
+    try t.expect(!isPythonFirstArg("-h"));
+    // Long flags and jac subcommands -> jac CLI.
+    try t.expect(!isPythonFirstArg("--help"));
+    try t.expect(!isPythonFirstArg("--version"));
+    try t.expect(!isPythonFirstArg("run"));
+    try t.expect(!isPythonFirstArg("test"));
 }
 
 test {

@@ -214,9 +214,7 @@ test "start without main jac error" {
 
             output = captured_output.getvalue();
             assert "main.jac" in output;
-            assert "not found" in output.lower();
-            assert "Current directory" in output;
-            assert "Please specify a file" in output;
+            assert "No such file or directory" in output;
         } finally {
             os.chdir(original_cwd);
         }
@@ -263,7 +261,7 @@ test "start with nonexistent file error" {
             assert result == 1;
 
             output = captured_output.getvalue();
-            assert "not found" in output.lower();
+            assert "No such file or directory" in output;
         } finally {
             os.chdir(original_cwd);
         }

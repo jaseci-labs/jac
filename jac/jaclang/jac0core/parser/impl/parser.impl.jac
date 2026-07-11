@@ -32,6 +32,7 @@ import from jaclang.jac0core.unitree {
     ElseIf,
     ElseStmt,
     WhileStmt,
+    ForeverStmt,
     InForStmt,
     IterForStmt
 }
@@ -336,6 +337,7 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_TO,
         TokenKind.KW_BY,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
         TokenKind.KW_CASE,
@@ -592,6 +594,7 @@ impl Parser.synchronize{
         if self.check_any(
             TokenKind.KW_IF,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_FOR,
             TokenKind.KW_DEF,
             TokenKind.KW_CAN,
@@ -3185,6 +3188,7 @@ impl Parser.parse_jsx_child -> Expr {
         if self.check_any(
             TokenKind.KW_FOR,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_IF,
             TokenKind.KW_MATCH,
             TokenKind.KW_SWITCH,
@@ -3813,6 +3817,7 @@ impl Parser.parse_statement{
     and self.check_peek_any(
         TokenKind.KW_FOR,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_IF,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
@@ -3870,6 +3875,9 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.KW_WHILE) {
         return self.parse_while_stmt();
+    }
+    if self.check(TokenKind.KW_FOREVER) {
+        return self.parse_forever_stmt();
     }
 
     if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR) {
@@ -4130,6 +4138,17 @@ impl Parser.parse_while_stmt -> WhileStmt {
         kid.append(else_body);
     }
     return WhileStmt(condition=condition, body=body, else_body=else_body, kid=kid);
+}
+
+impl Parser.parse_forever_stmt -> ForeverStmt {
+    forever_uni = self.consume_uni(TokenKind.KW_FOREVER);
+    lb_uni = self.consume_uni(TokenKind.LBRACE);
+    body = self.parse_code_block_stmts();
+    rb_uni = self.consume_uni(TokenKind.RBRACE);
+    kid: list = [forever_uni, lb_uni];
+    kid.extend(body);
+    kid.append(rb_uni);
+    return ForeverStmt(body=body, kid=kid);
 }
 
 impl Parser.parse_for_stmt{

@@ -165,53 +165,18 @@ impl MicroserviceGateway.serve_spa_fallback -> Response | None {
 }
 
 impl MicroserviceGateway.bootstrap_admin_ui -> None {
-    admin_dist = Path(self.admin_dist_dir);
-    dest_index = admin_dist / "index.html";
-
+    # The deploy driver stages the console at admin_dist_dir; building from
+    # source is the fallback when nothing was staged.
+    if (Path(self.admin_dist_dir) / "index.html").is_file() {
+        return;
+    }
+    logger.info("No staged admin console - building it from source.");
     try {
-        import from jaclang.scale.admin { admin_portal }
-        admin_pkg_dir = Path(admin_portal.__file__).parent;
-        bundled_dist = admin_pkg_dir / "_dist";
-        src_index = bundled_dist / "index.html";
-
-        if not (bundled_dist.exists() and src_index.exists()) {
-            if dest_index.exists() {
-                return;
-            }
-            logger.info(
-                "No pre-built admin _dist - building from source via "
-                "JacAPIServerAdmin.build_admin_client"
-            );
-            if not self.build_admin_client() {
-                logger.warning(
-                    "Admin UI build failed - the static UI will be "
-                    "unavailable. Install bun + jac-client, or use a "
-                    "wheel install of jac-scale."
-                );
-            }
-            return;
-        }
-
-        if dest_index.exists()
-        and dest_index.stat().st_mtime >= src_index.stat().st_mtime {
-            return;
-        }
-
-        logger.info("Deploying pre-built admin UI to gateway");
-        admin_dist.mkdir(parents=True, exist_ok=True);
-        for item in bundled_dist.iterdir() {
-            dest = admin_dist / item.name;
-            if item.is_dir() {
-                if dest.exists() {
-                    shutil.rmtree(dest);
-                }
-                shutil.copytree(item, dest);
-            } else {
-                shutil.copy2(item, dest);
-            }
-        }
+        self.build_admin_client();
     } except (ImportError, ModuleNotFoundError) {
         logger.debug("Admin module not available, skipping admin UI bootstrap");
+    } except Exception as e {
+        logger.warning(f"Admin UI build failed: {e}");
     }
 }
 

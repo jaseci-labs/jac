@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac fmt`, `jac check --lint`), managing dependencies (`jac add`, `jac install`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`, or `jac build --as native`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
+The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac fmt`, `jac check --lint`), managing dependencies (`jac install`, `jac remove`, `jac update`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`, or `jac build --as native`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
 
 Every capability ships built into the core binary. The `scale` subsystem (formerly the `jac-scale` plugin) provides deployment commands and flags -- for example, `jac start --scale` for Kubernetes deployment. The full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins) contributes others, such as `jac build --client desktop` for desktop app packaging. byLLM likewise ships built in, contributing `jac model` and the AI language features.
 
@@ -20,7 +20,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | Set up / build a client shell (web, desktop, mobile) | `jac setup` · `jac build --client <target>` |
 | Compile a native binary or C-ABI shared library | `jac nacompile` · `jac build --as native` |
 | Build one distributable artifact (.jab, wheel, npm, source) | `jac build --as {jab,wheel,npm,source,…}` |
-| Add, remove, or update dependencies | `jac add` · `jac remove` · `jac update` |
+| Add, remove, or update dependencies | `jac install <pkg>` · `jac remove` · `jac update` |
 | Install project dependencies (preview with `--plan`) | `jac install` · `jac install --plan` |
 | Run an installed CLI tool under Jac | `jac x` |
 | Type-check, format, or lint | `jac check` · `jac fmt` · `jac check --lint` · `jac precommit` |
@@ -62,8 +62,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
 | `jac scale` | Manage local microservices (status/stop/restart/logs) and platform deployments (status/destroy) |
-| `jac add` | Add packages to project |
-| `jac install` | Install project dependencies from `jac.toml` (`--plan` to preview the resolved plan), or `jac install <pkg>` to install packages into the project's `.jac/venv` |
+| `jac install` | Install project dependencies from `jac.toml` (`--plan` to preview the resolved plan), or `jac install <pkg>` to add packages to `jac.toml` and install them (`--no-save` to skip recording) |
 | `jac x` | Run an installed CLI tool (Python console-script or npm tool) under the `jac` runtime |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
@@ -1305,84 +1304,44 @@ jac scale destroy app.jac
 
 ## Package Management
 
-### jac add
-
-Add packages to your project's dependencies. Requires at least one package argument (use `jac install` to install all existing dependencies). When no version is specified, the package is installed unconstrained and then the installed version is queried to record a `~=X.Y` compatible-release spec in `jac.toml`.
-
-```bash
-jac add [-h] [-d] [-g GIT] [-v] [packages ...]
-```
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `packages` | Package specifications (required) | None |
-| `-d, --dev` | Add as dev dependency | `False` |
-| `-g, --git` | Git repository URL | None |
-| `-v, --verbose` | Show detailed output | `False` |
-
-**With the built-in client framework:**
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--npm` | Add as client-side (npm) package | `False` |
-
-**Examples:**
-
-```bash
-# Add a package (records ~=2.32 based on installed version)
-jac add requests
-
-# Add with explicit version constraint
-jac add "numpy>=1.24"
-
-# Add multiple packages
-jac add numpy pandas scipy
-
-# Add as dev dependency
-jac add pytest --dev
-
-# Add from git repository
-jac add --git https://github.com/user/package.git
-
-# Add npm package (client framework built into jaclang core)
-jac add react --npm
-```
-
-For private packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
-
----
-
 ### jac install
 
 `jac install` has two modes depending on whether package names are passed. Pass `--plan` (optionally with `--json`) to preview the resolved dependency plan without installing anything -- this absorbs the former `jac deps`.
 
 **No-argument mode** - sync the project environment to `jac.toml`. Installs all Python (pip), git, and npm dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`. Requires a `jac.toml` in the current (or a parent) directory.
 
-**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages into the project's virtual environment at `.jac/venv/`, without reading or modifying `jac.toml`. It is the Jac-native equivalent of `pip install <pkg>`, run through the `jac` binary's bundled pip. By default it requires a `jac.toml` in the current (or a parent) directory and installs into that project's `.jac/venv`. Pass `--global` to install into the binary's own jac-owned site instead -- a location that is on `sys.path` from **any** project, for a tool you install once and use everywhere. Either target is fully self-contained: the bundled pip and the binary's own site, never the host Python or its `site-packages`.
+**Package mode** - `jac install <pkg> [pkg ...]` adds one or more packages to `jac.toml` and installs them into the project's virtual environment at `.jac/venv/` -- this absorbs the former `jac add`. When no version is specified, the package is installed unconstrained and the installed version is queried to record a `~=X.Y` compatible-release spec in `jac.toml`. Pass `--no-save` to install without reading or modifying `jac.toml` (the Jac-native equivalent of `pip install <pkg>`), or `--global` to install into the binary's own jac-owned site instead -- a location that is on `sys.path` from **any** project, for a tool you install once and use everywhere (`--global` never records to `jac.toml` and works outside a project). Either target is fully self-contained: the bundled pip and the binary's own site, never the host Python or its `site-packages`.
 
-> **`jac install <pkg>` vs `jac add <pkg>`**
+Ecosystem flags select what kind of dependency is recorded: `--dev` records under `[dev-dependencies]`, `--git <url>` installs from a git repository and records under `[dependencies.git]`, `--npm` adds a client-side npm package (with no names, installs all npm deps from `jac.toml`), and `--shadcn` installs shadcn UI components from the bundled offline registry.
+
+> **Recorded vs ad-hoc installs**
 >
-> | | `jac install <pkg>` | `jac install <pkg> --global` | `jac add <pkg>` |
+> | | `jac install <pkg>` | `jac install <pkg> --no-save` | `jac install <pkg> --global` |
 > |---|---|---|---|
-> | Target | Project `.jac/venv/` | Binary's global site | Project `.jac/venv/` |
-> | Updates `jac.toml` | No | No | Yes |
-> | Requires a project | Yes | No | Yes |
-> | Importable from other projects | No | Yes | No |
+> | Target | Project `.jac/venv/` | Project `.jac/venv/` | Binary's global site |
+> | Updates `jac.toml` | Yes | No | No |
+> | Requires a project | Yes | Yes | No |
+> | Importable from other projects | No | No | Yes |
 >
-> Use `jac add` when you want the dependency recorded in `jac.toml` for reproducible installs, plain `jac install <pkg>` for an ad-hoc package scoped to this project, and `jac install <pkg> --global` for a tool you want available everywhere.
+> The default records the dependency in `jac.toml` for reproducible installs. Use `--no-save` for an ad-hoc package scoped to this project, and `--global` for a tool you want available everywhere.
 
 ```bash
-jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
-            [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
-            [--no-deps] [--quiet] [--prefer-binary] [--global] [--plan] [--json]
+jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [--no-save]
+            [-g GIT] [--npm] [--shadcn] [-v] [--force-reinstall] [--no-cache-dir]
+            [--pre] [--dry-run] [--no-deps] [--quiet] [--prefer-binary]
+            [--global] [--plan] [--json]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `packages` | Package(s) to install into the project's `.jac/venv` (or the global site with `--global`). When provided, skips `jac.toml`. | `[]` |
+| `packages` | Package(s) to add to `jac.toml` and install into the project's `.jac/venv` (recording is skipped with `--no-save`, `--global`, or `--dry-run`). | `[]` |
 | `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). The target package's own `jac.toml` (read from `PATH`) supplies its dependencies; the package and those deps are linked/installed into the **current** project's `.jac/venv` (or the global site with `--global`). Cannot be combined with `packages`. Repeatable. | `None` |
-| `-d, --dev` | Include dev dependencies (no-arg mode only) | `False` |
+| `-d, --dev` | Include dev dependencies (no-arg mode), or record named package(s) under `[dev-dependencies]` | `False` |
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups (no-arg mode only) | `[]` |
+| `--no-save` | Install named package(s) without recording them in `jac.toml` | `False` |
+| `-g, --git URL` | Git repository URL to install and record under `[dependencies.git]` | None |
+| `--npm` | Install npm (client-side) package(s); with no names, install all npm deps from `jac.toml` | `False` |
+| `--shadcn` | Install shadcn UI component(s) from the bundled registry | `False` |
 | `-v, --verbose` | Show detailed output | `False` |
 | `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
 | `--no-cache-dir` | Disable the pip download cache | `False` |
@@ -1398,14 +1357,26 @@ jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
 **Examples:**
 
 ```bash
-# Install a single package into the project's .jac/venv
-jac install numpy
+# Add a package to jac.toml and install it (records ~=2.32 based on installed version)
+jac install requests
 
-# Install multiple packages at once
-jac install numpy pandas scipy
+# Add multiple packages, with version constraints
+jac install "numpy>=1.24" pandas scipy
 
-# Install with version constraints
-jac install "requests>=2.28" "pydantic>=2.0"
+# Add as a dev dependency
+jac install pytest --dev
+
+# Install without recording in jac.toml (ad-hoc, like pip install)
+jac install numpy --no-save
+
+# Install and record a git dependency
+jac install --git https://github.com/user/package.git
+
+# Add npm (client-side) packages
+jac install --npm react
+
+# Add shadcn UI components (offline, bundled registry)
+jac install --shadcn button card
 
 # Install all dependencies from jac.toml (no-arg mode)
 jac install
@@ -1445,9 +1416,11 @@ jac install --plan
 jac install --plan --json
 ```
 
+For private npm packages from custom registries (e.g., GitHub Packages), configure scoped registries and auth tokens in `jac.toml` under `[client.npm]`. See [NPM Registry Configuration](../plugins/jac-client.md#npm-registry-configuration).
+
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
-> **Self-contained installs:** `jac install` (and `jac add`, `jac remove`, `jac update`) run through the `jac` binary's own bundled pip against the project's `.jac/venv`. No system Python, `pip`, or external package manager (such as `uv`) is required or consulted -- behaviour is identical regardless of what is installed on the host.
+> **Self-contained installs:** `jac install` (and `jac remove`, `jac update`) run through the `jac` binary's own bundled pip against the project's `.jac/venv`. No system Python, `pip`, or external package manager (such as `uv`) is required or consulted -- behaviour is identical regardless of what is installed on the host.
 >
 > **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip. Use `jac update` to upgrade packages to their latest versions.
 >
@@ -1459,7 +1432,7 @@ Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See 
 
 `jac x <tool>` runs an installed command-line tool under the `jac` runtime -- the Jac-native, cross-ecosystem equivalent of `pipx run` / `npx`. It resolves a **Python console-script** (from an installed package's entry points) or an **npm tool** (from `node_modules/.bin`) and runs it. Python tools execute in-process under the bundled interpreter; npm tools run through the jac-managed **bun** runtime -- so **neither a system Python nor a system Node is required**.
 
-The CLI tools you install with `jac install` / `jac add` are therefore runnable without putting anything on your shell `PATH`, and resolution is project-aware: inside a project, a tool installed in that project shadows a global one of the same name. `jac x <name>` also runs custom scripts defined in the `[scripts]` section of `jac.toml` -- this absorbs the former `jac script`. A bare `jac x` (or `jac x --list`) lists everything runnable.
+The CLI tools you install with `jac install` are therefore runnable without putting anything on your shell `PATH`, and resolution is project-aware: inside a project, a tool installed in that project shadows a global one of the same name. `jac x <name>` also runs custom scripts defined in the `[scripts]` section of `jac.toml` -- this absorbs the former `jac script`. A bare `jac x` (or `jac x --list`) lists everything runnable.
 
 > **Resolution order (first match wins).** By default `jac x` searches tiers **locality-first**:
 >
@@ -1658,7 +1631,8 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 | `--as` | Emits | Replaces |
 |--------|-------|----------|
 | `jab` (default) | A sealed `.jab` app bundle (deterministic `tar.gz` of the sealed image) | -- |
-| `sealed` / `binary` | Sealed image / native binary form | -- |
+| `sealed` | The sealed image as an unpacked directory (exactly what a `.jab` archives) | -- |
+| `binary` | A self-contained app executable: a copy of the `jac` launcher with your sealed `.jab` appended as an overlay | -- |
 | `wheel` | A `pip install`-ready Python wheel in `dist/` | `jac bundle` |
 | `npm` | An npm tarball | `jac bundle --target npm` |
 | `source` | An editable FastAPI + JavaScript source tree (zero `.jac` files) | `jac eject` |
@@ -1667,6 +1641,11 @@ jac build [-h] [--as {jab,sealed,binary,wheel,npm,source,native}] [-o OUTPUT] [-
 **The type-check gate.** `jac build` refuses to emit an artifact if the program fails the whole-program type check. Pass `--no_typecheck` to skip the gate, or `--check_only` to run the gate and emit nothing (useful in CI).
 
 **The `.jab` artifact.** A `.jab` is a single self-describing sealed app bundle: client dist, serve manifest, and native binaries are baked in and hash-verified at load, so [`jac run app.jab`](#jac-run) / [`jac start app.jab`](#jac-start) execute or serve it with **zero live compilation**. It is kind-aware: `cli` kinds execute, servable kinds production-serve, and attachable packages refuse to run standalone.
+
+**Shipping an executable: `binary` vs `native`.** These two projections solve different problems and are easy to confuse:
+
+- `--as binary` packages **any** app (walkers, Python imports, a full web client) into one executable by appending the sealed `.jab` onto a copy of the running `jac` launcher. The file carries the full runtime and boots through the same path as `jac run app.jab`, with zero live compilation. Because it embeds the runtime, the artifact is large but complete: hand it to a machine with no Jac, Python, or Node installed. The entry point resolves the same way `jac run` does (a `main.jac` or the `[project]` entry-point in `jac.toml`); an entry-less package is rejected at build time.
+- `--as native` AOT-compiles the restricted `na` subset through LLVM into a **small, dependency-free** binary (no walkers, no async, no Python imports). Reach for it when your program fits the [native pathway](../language/native-pathway.md) and you want the smallest possible artifact.
 
 **Building a wheel (publish to PyPI):**
 
@@ -2100,7 +2079,7 @@ jac setup mobile --platform all
 | `jac create` | `--kind web-app` | Create full-stack project template |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
-| `jac add` | `--npm` | Add npm (client-side) dependency |
+| `jac install` | `--npm` | Add npm (client-side) dependency |
 | `jac remove` | `--npm` | Remove npm (client-side) dependency |
 
 ### Desktop builds

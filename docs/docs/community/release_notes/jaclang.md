@@ -2,7 +2,82 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.31.0 (Latest Release)
+## jaclang 0.31.3 (Latest Release)
+
+### Breaking Changes
+
+- **shadcn: primitive imports must use underscored names**: shadcn `components/ui/` files install with underscored names (`dropdown_menu.cl.jac`); the registry and docs now match that. Apps created before the installer began underscoring (#6461) may have hyphenated files (`dropdown-menu.cl.jac`) that they import with hyphens (`import from ".ui.dropdown-menu"`) - that pairing still builds as-is, but `components/ui/` is registry-managed, so the next `jac install --shadcn <name>` (or a jaclang upgrade that reinstalls) rewrites them to underscores and the hyphenated imports stop resolving. Migration: re-run `jac install --shadcn <name>` for the components you use and change any hyphenated primitive import to the underscore form (`".ui.dropdown-menu"` -> `.ui.dropdown_menu`). `combobox` and `command`, previously un-buildable, now import `.input_group` and pull the `input-group` peer automatically.
+
+### New Features
+
+- **Feature: TypeScript interface and class declarations from npm `.d.ts` files**: `jac check` now synthesizes structural types for `interface` and `class` declarations found in a package's TypeScript declarations, so field access on values imported from npm (for example `c.theme` on a `Config` returned by a typed helper) resolves with real types instead of collapsing to foreign `any`. Heritage (`extends`), optional members, and method signatures are honored where the pragmatic `.d.ts` parser models them; constructs outside that subset still degrade gracefully.
+- **Feature: callable `.d.ts` interfaces are callable**: an interface with a call signature (for example `interface Handler { (x: string): number; label: string; }`) is synthesized with a `__call__` member carrying the signature's type, so the imported value is callable with a checked return type while its named members stay precise.
+- **Feature: `forever {}` loop keyword**: Adds `forever { ... }` as first-class sugar for an unconditional infinite loop (equivalent to `while True { }`), modeled as a dedicated `ForeverStmt` node. It takes no condition and no `else` clause, supports `break`/`continue`, round-trips through the formatter as `forever`, and compiles on all three backends (Python, native/LLVM, and JavaScript `while (true)`).
+
+### Bug Fixes
+
+- **Fix: custom exceptions subclassing a builtin base load correctly on the ECMAScript/client target**: `obj MyError(Exception)` previously compiled to `class MyError extends Exception {}`, but the builtin exception classes live only inside the `_jac.exc` IIFE (there is no global `Exception` binding), so the emitted module threw `ReferenceError: Exception is not defined` at load time and made custom exception classes unusable. The archetype base is now routed through the same `_jac.exc.<name>` mapping that `raise`/`except` already use, emitting `class MyError extends _jac.exc.Exception {}` instead. (jaseci-labs/jaseci#6663)
+- **Fix: .d.ts declaration kinds and member access are enums, not strings**: `TsType.kind`, `TsDecl.kind`, and `TsMember.access` are now `TsTypeKind`/`TsDeclKind`/`TsAccess` enums instead of raw strings, so the parser→type-system seam is compile-checked. A typo in a kind or access level can no longer silently degrade a mapped type to foreign `any` (the worst failure mode for a type checker). All parser construction sites and evaluator switches use enum members.
+- **Fix: .d.ts heritage preserves the fully-qualified base name**: `parse_heritage` recorded only the first identifier of an `extends`/`implements` base, so `interface Props extends React.HTMLAttributes<HTMLDivElement>` was stored as `["React"]`. It now keeps the full qualified name (e.g. `React.HTMLAttributes`; generic args are consumed and dropped). Local single-name bases resolve exactly as before, and external qualified bases still degrade gracefully at synthesis.
+- **Fix: cyclic .d.ts heritage no longer overflows the stack**: `compute_mro_linearization` recursed into base classes with no in-progress guard, so a malformed or cyclic inheritance graph (self-referential, or A→B→A) recursed indefinitely instead of degrading. An in-progress guard keyed on the class now detects the cycle and falls back to a best-effort MRO.
+- **Fix: Stale in-memory module cache on .impl.jac annex edits**: `get_bytecode` now checks whether a module in the in-memory hub is still fresh before reusing it. Previously, editing a `.impl.jac` file within the same persistent process would return stale bytecode from the hub.
+- **Bugfix: export-changing edits no longer hot-swap silently**: removing or renaming a client component export now forces a reload so the resulting error surfaces, instead of leaving the dev server running stale code.
+- **shadcn: correct hyphenated component imports end to end**: installed primitive files are underscored (`dropdown_menu.cl.jac`), but the skill and tutorial taught hyphenated imports and the registry itself shipped hyphenated file names and internal peer imports (`combobox`/`command` imported `.input-group`), so those components failed to build after install. Corrected the docs to teach the underscored import, renamed the registry files and imports to underscores, and declared the missing `input-group` peer so the components build out of the box.
+- **Fix: native pathway no longer frees module globs returned from defs or tuple fields bound by unpack**: two ownership gaps in the na refcount model corrupted memory on idiomatic code (jaseci-labs/jaseci#7320, Cluster 1). Returning a module glob (`return APP_NAME`, or a `list` cache accessor used as `for c in cmd_defs()` / `len(cmd_defs())`) skipped the +1 retain the calling convention promises, so the caller's release freed the global's only reference and the second use read freed memory. And `for (k, v) in list_of_tuples` bound borrowed tuple fields into named locals without retaining them, so scope exit and early returns freed strings the list still owned, corrupting it for later reads. Glob returns now take the borrow-retain path, and tuple unpack retains borrowed pointer fields on bind, releases rebound locals' old values alias-safely after all stores, and null-initializes fresh allocas so a zero-iteration loop's cleanup never releases stack garbage.
+- **Fix: bare `list = []` flow-infers its element type from mutations (#6943 NA-7)**: an empty bare-list declaration now adopts its element type from the appends/inserts/extends/index-stores that follow, so native code like `"/".join(x)` over an appended bare list compiles and matches CPython instead of failing on a defaulted `List.i64` layout; int-only evidence keeps the unboxed layout, mixed evidence collapses to `list[any]`, and explicit `list[T]` annotations still win.
+
+### Refactors
+
+- **CLI: General output overhaul**: Removed emojis from all user-facing CLI output; `jac --version` now prints a single line matching cargo/go/rustc convention; `jac --help` layout rewritten to match cargo's style; warnings routed through `console.warning()` instead of `console.error()`; `jac remove` now exits non-zero on missing packages; unknown commands exit with code 2; hardcoded ANSI escape codes replaced with the console abstraction; trailing `...` stripped from progress messages; `"Error:"` prefix removed from `console.error()` calls; help text shortened to match cargo's ~6-word convention.
+
+### Documentation
+
+- **Skills: correct the Jac's new(...) builtin**: in `jac-cl-routing` guide taught constructing `URLSearchParams` via Jac's new(...) builtin
+
+## jaclang 0.31.2
+
+### Breaking Changes
+
+- **Breaking: `jac add` merged into `jac install`**: The `jac add` verb is removed; running it now errors with a pointer to the new spelling. `jac install <pkg>` absorbs it and now **records the dependency in `jac.toml`** (auto-pinning `~=X.Y` when no version is given) instead of installing untracked; the new `--no-save` flag restores the untracked behavior, and `--global`/`--dry-run` continue to never touch `jac.toml`. The `--git`, `--npm`, and `--shadcn` flags move onto `jac install` (`jac add --npm <pkg>` becomes `jac install --npm <pkg>`, etc.), and `--dev` with package names records under `[dev-dependencies]`. `jac remove` and `jac update` are unchanged. Update scripts calling `jac add` to `jac install`, and add `--no-save` to any `jac install <pkg>` call that relied on `jac.toml` staying unmodified.
+
+### New Features
+
+- **Scale deploy: the admin console ships as its own release asset**: every binary release now also publishes `jac-<version>-admin-dist.tar.gz` (and the rolling dev prerelease `jac-dev-admin-dist.tar.gz`), built once per release with that release's own compiler. The deploy driver downloads it per channel exactly like the jac binary (checksum-verified, cached beside the binary cache) and stages it into the app bundle at `.jac/admin`, so the gateway serves it directly instead of spending ~148s building it from source on every pod boot, restart, and scale-up. On releases without the asset, without network, or on the local dev channel, the gateway builds on boot exactly as before.
+
+### Bug Fixes
+
+- **Pods share pip/bun caches over the bundle PVC**: dependency downloads (the dominant remaining boot cost) now hit a shared cache on the already-mounted RWX bundle volume - the first pod warms it, siblings/restarts/redeploys reuse it. Unwritable PVCs silently degrade to plain installs.
+- **Bugfix: dev build-health endpoint sees all layers**: `/__build_status` now reports Vite resolve failures and browser module-load failures (with a `source` field) instead of returning `ok` over a blank page.
+
+### Documentation
+
+- **Skills: correct the client `app` export contract**: `jac-cl-routing` said the `main.jac` `app` export was optional; it is required, and an `app` that ignores its `children` parameter silently discards every file-based route.  Four other skills asserted `def:pub app()` as the universal signature and now defer to the routing system.
+
+## jaclang 0.31.1
+
+### Breaking Changes
+
+- **Breaking: scale deploy supports only stable and dev binary channels**: The `[dev] repo=`, `[dev] branch=`, and `[dev] jaclang_source=` source-overlay deploy variants have been removed, along with the on-pod `.jir` seed adoption they relied on. A deploy now ships a prebuilt `jac` binary chosen solely by the presence of a `[dev]` stanza in `jac.toml`: no `[dev]` uses the latest published release binary, and a `[dev]` stanza uses the rolling `dev` prerelease (main HEAD) binary. Both run the binary as-is with no source overlay. Projects that deployed an unreleased jaclang via a repo/branch/local checkout must instead publish a release or use the `dev` channel.
+- **Breaking: scale K8s deploys ship a sealed `.jab` app artifact (mandatory seal)**: The Kubernetes deploy bundle is now a sealed `.jab` (`bundles/{app}/{digest}.jab`) instead of an ad-hoc `.tar.gz`. The app is sealed into a `_precompiled/MANIFEST.json` image with the pod binary, and the seal is now **mandatory** - a deploy that cannot complete the seal fails loudly rather than silently shipping a source-only bundle that cold-compiles on the pod's first boot. Pods still extract the artifact to `/app` and run their entrypoint (`jac start <file>` / `jac scale gateway`); the compiler auto-loads the sibling `_precompiled/` sealed image, so both single-app and microservice deploys get the precompiled modules with no cold-compile step. Deploys of a project with a module that cannot be sealed now abort instead of degrading.
+
+### New Features
+
+- **WebSocket function endpoints and streaming**: `def` functions marked `@restspec(protocol=APIProtocol.WEBSOCKET)` are now served at `/ws/function/{name}`, walkers gain the canonical `/ws/walker/{name}` path (with `/ws/{name}` kept as a legacy alias), and generator results stream as `chunk`/`done` frames over the socket for both walkers and functions.
+- **Scale deploy: ship a local jac binary with `JAC_SCALE_BINARY_PATH`**: Set `JAC_SCALE_BINARY_PATH` to a jac binary you built (or an air-gapped mirror) and the deploy ships that exact file to pods instead of downloading a published release. This selects the new `local` binary channel and takes precedence over the `[dev]` stanza. The real-app K8s e2e uses it to ship the binary built from the PR under test.
+- **Langserve: docstrings in completions**: Completion items now carry the declaration's docstring as `documentation`, shown in the editor's completion popup for objects, enums, abilities, modules, and `has` fields. Hover reuses the same extraction and now renders docstrings via their parsed literal value (quotes stripped).
+- **Feature: React Fast Refresh in the dev server**: editing a client component under `jac start --dev` now hot-swaps it in place with component state preserved instead of full-page reloading.
+
+### Bug Fixes
+
+- **Fix: fleet-wait false-fails on stale ReplicaSet pods during redeploy (#7046)**: both single-app deploys (`check_pods_restarted`/`check_deployment_status`) and microservice fleet deploys (`_wait_for_fleet_rollout`) selected pods using only the `app` label, which matches pods across all ReplicaSets (current and superseded). When redeploying over a crash-looping revision, the old pod (still in `CrashLoopBackOff`) remained briefly visible while Kubernetes garbage-collected it, causing fleet-wait to report failure even though the new pod was already `1/1 Running`. Both paths now resolve the current ReplicaSet per deployment (`AppsV1Api.list_namespaced_replica_set`, grouped by `app` label, highest `deployment.kubernetes.io/revision` wins) and restrict the crash check to pods on those current RSes' `pod-template-hash`, making stale pods from superseded RSes invisible to the detector. StatefulSet companions such as MongoDB (which carry `controller-revision-hash` instead of `pod-template-hash`) and Deployment-based companions such as Redis, Prometheus, and Grafana are explicitly exempted from the hash filter so a crash there is still caught rather than silently passed. If the RS lookup fails (e.g. 403 Forbidden) or is captured in the brief window before a new RS's revision annotation is stamped, both paths fall back to / re-verify against a fresh scan rather than either silently passing a bad deploy or getting stuck on a stale read. The RS hash resolution is also hoisted before the retry/poll loop in both paths, eliminating up to 95 redundant API round-trips per fleet-wait call.
+- **Fix: cross-arch `jac start --scale` deploys**: the pod `jac` binary architecture now defaults to the cluster's node architecture instead of the deploy host's, so deploying from an arm64 Mac to amd64 nodes no longer crashloops with `Exec format error`. `JAC_NODE_ARCH` remains an explicit override.
+- **Fix: jac-scale Redis pod resources are configurable and no longer OOMKilled by default**: The provisioned Redis pod's container CPU/memory requests and limits were hardcoded, and the `256Mi` memory limit was too small for real RSS once BGSAVE fork copy-on-write, fragmentation, and buffers pushed it past the cgroup limit, causing recurring OOMKills and client `Connection refused` errors. You can now size the pod from `jac.toml` `[scale.database]` via `redis_cpu_request`, `redis_cpu_limit`, `redis_memory_request`, and `redis_memory_limit`. Only the memory limit's default changes (`256Mi` to `1Gi`) to give headroom above the default `redis_max_memory` of 200mb; CPU and the memory request keep their previous values so no extra cluster capacity is reserved. A warning is logged at deploy time when `redis_memory_limit` leaves less than roughly 2x that headroom.
+
+### Documentation
+
+- **Docs: guide skills and mkdocs aligned with the plugin-system removal**: The shipped `jac guide` skills no longer teach removed verbs or plugin-era config -- `jac bundle` is now `jac build --as wheel|npm`, `jac format`/`jac lint` are `jac fmt`/`jac check --lint --fix`, `jac jacpack` folded into `jac create --pack/--list_jacpacks`, platform teardown is `jac scale status/destroy`, and the `[plugins]` table, `jac plugins` command, and `JAC_DISABLED_PLUGINS` references are gone in favor of the top-level capability tables (`[byllm]`, `[scale.*]`, `[client]`, `[desktop]`). The docs site gets the same sweep plus a new "One Binary, Build Anything" quick-guide page and a Breaking Changes entry for the `[plugins.*]` config flattening.
+
+## jaclang 0.31.0
 
 ### Breaking Changes
 

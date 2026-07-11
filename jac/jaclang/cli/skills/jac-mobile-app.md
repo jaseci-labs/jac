@@ -62,7 +62,7 @@ Android release signing needs a keystore configured in `android/app/build.gradle
 ## Capacitor plugins (camera, geolocation, push, ...)
 
 ```bash
-jac add --npm @capacitor/camera
+jac install --npm @capacitor/camera
 npx cap sync                       # re-sync native projects after ANY plugin change
 ```
 
