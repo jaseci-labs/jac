@@ -1,5 +1,5 @@
 import from .width { visible_width, ansi_trunc }
-import from .terminal { ansi_reset, term_spaces }
+import from .terminal { ANSI_RESET, term_spaces }
 import from .keys { Key, KeyKind }
 import from .theme { TH_SGR_TITLE, TH_SGR_BORDER_DIM }
 
@@ -105,9 +105,9 @@ obj SelectList {
         desc_disp = ansi_trunc(desc, desc_max);
         sp = term_spaces(gap);
         if is_selected {
-            return TH_SGR_TITLE + prefix + val_disp + sp + desc_disp + ansi_reset();
+            return TH_SGR_TITLE + prefix + val_disp + sp + desc_disp + ANSI_RESET;
         }
-        return prefix + val_disp + TH_SGR_BORDER_DIM + sp + desc_disp + ansi_reset();
+        return prefix + val_disp + TH_SGR_BORDER_DIM + sp + desc_disp + ANSI_RESET;
     }
 
     def _render_item(item: SelectItem, is_selected: bool, inner_w: int) -> str {
@@ -124,7 +124,7 @@ obj SelectList {
         max_val = max(1, inner_w - visible_width(prefix) - _ROW_RIGHT_MARGIN);
         line = prefix + ansi_trunc(val, max_val);
         if is_selected {
-            return TH_SGR_TITLE + line + ansi_reset();
+            return TH_SGR_TITLE + line + ANSI_RESET;
         }
         return line;
     }
@@ -132,7 +132,7 @@ obj SelectList {
     def render(inner_w: int) -> list[str] {
         n = len(self.filtered);
         if n == 0 {
-            return [TH_SGR_BORDER_DIM + "  No matches" + ansi_reset()];
+            return [TH_SGR_BORDER_DIM + "  No matches" + ANSI_RESET];
         }
         mv = max(1, self.max_visible);
         start = max(0, self.selected - mv // 2);
@@ -146,7 +146,7 @@ obj SelectList {
         }
         if start > 0 or end < n {
             info = f"  ({self.selected + 1}/{n})";
-            lines.append(TH_SGR_BORDER_DIM + ansi_trunc(info, inner_w) + ansi_reset());
+            lines.append(TH_SGR_BORDER_DIM + ansi_trunc(info, inner_w) + ANSI_RESET);
         }
         return lines;
     }

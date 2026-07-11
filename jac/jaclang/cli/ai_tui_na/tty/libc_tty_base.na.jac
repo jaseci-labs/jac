@@ -124,15 +124,7 @@ def _tty_device_path -> str {
 }
 
 def tty_open -> int {
-    return tty_open_dev("");
-}
-
-def tty_fd -> int {
-    return g_tty.fd;
-}
-
-def tty_open_dev(dev: str) -> int {
-    path: str = dev if len(dev) > 0 else _tty_device_path();
+    path: str = _tty_device_path();
     fd: int = open(path, O_RDWR, 0);
     if fd < 0 {
         return -1;
@@ -334,34 +326,4 @@ def tty_read_key -> str {
         }
     }
     return seq;
-}
-
-glob RENDER_FD: int = 1,
-     IPC_FD: int = 3;
-
-obj TtyStdioContract {
-    has ok: bool = False,
-        render_fd: int = RENDER_FD,
-        ipc_fd: int = IPC_FD;
-}
-
-def tty_setup_stdio_contract -> TtyStdioContract {
-    contract = TtyStdioContract();
-    if dup2(1, contract.ipc_fd) < 0 {
-        return contract;
-    }
-    if dup2(2, contract.render_fd) < 0 {
-        dup2(contract.ipc_fd, 1);
-        return contract;
-    }
-    g_tty.fd_saved = True;
-    contract.ok = True;
-    return contract;
-}
-
-def tty_restore_stdio {
-    if g_tty.fd_saved {
-        dup2(IPC_FD, 1);
-        g_tty.fd_saved = False;
-    }
 }

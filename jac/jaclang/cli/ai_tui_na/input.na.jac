@@ -96,18 +96,17 @@ def _handle_ac_key(k: Key, rt: TuiRuntime) -> bool {
         _sync_editor_view(state);
         return False;
     }
+    did_nav = True;
     if k.kind == KeyKind.ESCAPE {
         state.ac.dismiss();
-        state.dirty = True;
-        return False;
-    }
-    if k.kind == KeyKind.UP {
+    } elif k.kind == KeyKind.UP {
         state.ac.nav_up();
-        state.dirty = True;
-        return False;
-    }
-    if k.kind == KeyKind.DOWN {
+    } elif k.kind == KeyKind.DOWN {
         state.ac.nav_down();
+    } else {
+        did_nav = False;
+    }
+    if did_nav {
         state.dirty = True;
         return False;
     }
@@ -149,30 +148,22 @@ def _handle_ctrl_key(k: Key, rt: TuiRuntime) -> bool {
         overlay_open_palette(state, "");
         return False;
     }
+    did_edit = True;
     if ch == "a" {
         ed.move_line_start();
-        _sync_editor_view(state);
-        return False;
-    }
-    if ch == "e" {
+    } elif ch == "e" {
         ed.move_line_end();
-        _sync_editor_view(state);
-        return False;
-    }
-    if ch == "k" {
+    } elif ch == "k" {
         ed.delete_to_line_end();
-        _sync_editor_view(state);
-        return False;
-    }
-    if ch == "u" {
+    } elif ch == "u" {
         ed.delete_to_line_start();
-        _sync_editor_view(state);
-        return False;
-    }
-    if ch == "w" {
+    } elif ch == "w" {
         ed.delete_word_back();
+    } else {
+        did_edit = False;
+    }
+    if did_edit {
         _sync_editor_view(state);
-        return False;
     }
     return False;
 }
@@ -206,33 +197,23 @@ def _handle_movement_key(k: Key, rt: TuiRuntime) -> bool {
         _sync_editor_view(state);
         return True;
     }
+    moved = True;
     if k.kind == KeyKind.LEFT {
         ed.move_left();
-        _sync_editor_view(state);
-        return True;
-    }
-    if k.kind == KeyKind.RIGHT {
+    } elif k.kind == KeyKind.RIGHT {
         ed.move_right();
-        _sync_editor_view(state);
-        return True;
-    }
-    if k.kind == KeyKind.HOME {
+    } elif k.kind == KeyKind.HOME {
         ed.move_line_start();
-        _sync_editor_view(state);
-        return True;
-    }
-    if k.kind == KeyKind.END {
+    } elif k.kind == KeyKind.END {
         ed.move_line_end();
-        _sync_editor_view(state);
-        return True;
-    }
-    if k.kind == KeyKind.WORD_LEFT {
+    } elif k.kind == KeyKind.WORD_LEFT {
         ed.word_left();
-        _sync_editor_view(state);
-        return True;
-    }
-    if k.kind == KeyKind.WORD_RIGHT {
+    } elif k.kind == KeyKind.WORD_RIGHT {
         ed.word_right();
+    } else {
+        moved = False;
+    }
+    if moved {
         _sync_editor_view(state);
         return True;
     }

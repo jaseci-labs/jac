@@ -51,10 +51,6 @@ def ansi_move(x: int, y: int) -> str {
     return f"\033[{y + 1};{x + 1}H";
 }
 
-def ansi_reset -> str {
-    return "\033[0m";
-}
-
 def ansi_bg(c: Rgb) -> str {
     return f"\033[48;2;{c.r};{c.g};{c.b}m";
 }

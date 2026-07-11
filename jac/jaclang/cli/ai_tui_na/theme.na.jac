@@ -27,10 +27,7 @@ glob TH_AC_SEL_BG: Rgb = Rgb(r=36, g=36, b=60),
      TH_AC_SEL_DESC: Rgb = Rgb(r=180, g=180, b=220),
      TH_AC_DESC: Rgb = Rgb(r=100, g=100, b=100);
 
-glob TH_STATUS_IDLE: Rgb = Rgb(r=140, g=140, b=140),
-     TH_STATUS_RUN: Rgb = Rgb(r=255, g=200, b=50),
-     TH_STATUS_OK: Rgb = Rgb(r=80, g=200, b=80),
-     TH_STATUS_STOP: Rgb = Rgb(r=255, g=80, b=80);
+glob TH_STATUS_OK: Rgb = Rgb(r=80, g=200, b=80);
 
 glob TH_MD_H1: Rgb = Rgb(r=255, g=215, b=100),
      TH_MD_H2: Rgb = Rgb(r=130, g=200, b=255),

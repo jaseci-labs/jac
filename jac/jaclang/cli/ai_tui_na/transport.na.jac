@@ -58,7 +58,6 @@ obj Transport {
         return "";
     }
 
-    def send_cmd(cmd: str) { }
     def flush_outbound_cmds(cmd_queue: CmdQueue) { }
     def stdin_eof -> bool {
         return False;
@@ -97,8 +96,6 @@ obj TtyFdTransport(Transport) {
         }
         return result.text;
     }
-
-    def send_cmd(cmd: str) { }
 }
 
 obj EmbedPyTransport(TtyFdTransport) {

@@ -11,7 +11,7 @@ import from .commands {
 import from .runtime { TuiRuntime }
 import from .select_list { SelectItem, SelectAction }
 import from .width { visible_width, ansi_trunc, ansi_pad }
-import from .terminal { ansi_reset, term_spaces, term_dashes }
+import from .terminal { ANSI_RESET, term_spaces, term_dashes }
 import from .theme { TH_SGR_BORDER, TH_SGR_BORDER_DIM, TH_SGR_TITLE }
 
 glob _LIST_ROWS: int = 8,
@@ -135,7 +135,7 @@ def _modal_content(state: TuiState, inner_w: int) -> list[str] {
         return content;
     }
     filt = ansi_trunc(f"filter: {state.overlay_filter}", inner_w);
-    header = ansi_pad(TH_SGR_BORDER_DIM + filt + ansi_reset(), inner_w);
+    header = ansi_pad(TH_SGR_BORDER_DIM + filt + ANSI_RESET, inner_w);
     return [header] + content;
 }
 
@@ -145,7 +145,7 @@ def _frame_box(
     title_disp = ansi_trunc(title, max(1, inner_w - 2));
     top_fill = max(0, inner_w - visible_width(title_disp));
     border = TH_SGR_BORDER;
-    reset = ansi_reset();
+    reset = ANSI_RESET;
 
     top = (
         border + "┌─ " + TH_SGR_TITLE + title_disp + border + term_dashes(top_fill) + "┐" + reset

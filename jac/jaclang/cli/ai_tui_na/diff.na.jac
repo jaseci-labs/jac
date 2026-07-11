@@ -18,16 +18,6 @@ obj PaintBuf {
     def append(s: str) {
         self.parts.append(s);
     }
-
-    def take -> str {
-        buffered: str = "".join(self.parts);
-        self.parts = [];
-        return buffered;
-    }
-}
-
-def diff_take_buf(paint_buf: PaintBuf) -> str {
-    return paint_buf.take();
 }
 
 def _emit(fd: int, text: str, paint_buf: PaintBuf) {
