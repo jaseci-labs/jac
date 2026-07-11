@@ -1,17 +1,40 @@
 import threading;
 import from enum { StrEnum }
 import from pathlib { Path }
-import type from jaclang.runtimelib.watcher {
-    JacFileWatcher,
-    FileChangeEvent,
-    ChangeType
-}
 
 enum BuildStatus(StrEnum) {
     OK = "ok",
     COMPILING = "compiling",
     ERROR = "error",
     UNAVAILABLE = "unavailable"
+}
+
+enum BuildErrorSource(StrEnum) { JAC = "jac", VITE = "vite", CLIENT = "client" }
+
+obj BuildError {
+    has file: str,
+        message: str,
+        source: BuildErrorSource;
+
+    def to_dict -> dict {
+        return {
+            "file": self.file,
+            "message": self.message,
+            "source": self.source.value
+        };
+    }
+}
+
+obj BuildStatusSnapshot {
+    has status: BuildStatus,
+        error: (BuildError | None) = None;
+
+    def to_dict -> dict {
+        return {
+            "status": self.status.value,
+            "error": self.error.to_dict() if self.error else None
+        };
+    }
 }
 
 obj HotReloader {
@@ -32,8 +55,8 @@ obj HotReloader {
     def start -> None;
     def stop -> None;
     def on_file_change(event: any) -> None;
-    def build_status -> dict;
-    def _dev_status_error -> (dict | None);
+    def build_status -> BuildStatusSnapshot;
+    def _dev_status_error -> (BuildError | None);
     def record_ok -> None;
     def record_error(file_path: str, message: str) -> None;
     def _process_change(file_path: str, is_directory: bool = False) -> None;
@@ -45,7 +68,7 @@ obj HotReloader {
 
     def _recompile_client_unified(file_path: str) -> None;
     def _client_js_path(file_path: str) -> (Path | None);
-    def _extract_js_exports(js_path: Path) -> set[str];
+    def _compiled_exports_for(file_path: str, js_path: (Path | None)) -> set[str];
     def _signal_full_reload -> None;
     def _remove_compiled_output(file_path: str) -> None;
     def _remove_compiled_dir(file_path: str) -> None;
@@ -59,4 +82,4 @@ obj HotReloader {
     def _copy_frontend_files(file_path: str) -> None;
 }
 
-def get_build_status -> dict;
+def get_build_status -> BuildStatusSnapshot;

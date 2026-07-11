@@ -28,6 +28,8 @@ import from jaclang.scale.observability.metrics { MetricsCollector }
 import from jaclang.scale.events.broker { EventStreamBroker }
 import from jaclang.scale.websocket.websocket {
     WebSocketConnectionManager,
+    WebSocketTargetHandler,
+    WebSocketTargetKind,
     _ws_stream_result
 }
 import from typing { AsyncGenerator }
@@ -177,7 +179,7 @@ obj JacAPIServerEndpoints {
     def create_webhook_parameters(walker_name: str) -> list[APIParameter];
     def get_ws_manager -> WebSocketConnectionManager;
     def _create_websocket_target_handler(
-        target_name: str, target: any, requires_auth: bool, execute: Callable, kind: str
+        descriptor: WebSocketTargetHandler
     ) -> Callable;
 
     def create_websocket_handler(walker_name: str) -> Callable;

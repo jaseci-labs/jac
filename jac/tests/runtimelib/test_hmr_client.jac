@@ -498,7 +498,7 @@ test "jacjsx import added in real compilation" {
         error_data = json.loads(error_file.read_text());
         assert error_data["message"] , "mirrored build error must carry a non-empty message";
         assert "app.jac" in str(error_data["message"]) , "mirrored error must reference the failing source location";
-        assert reloader.build_status()["status"] == "error";
+        assert reloader.build_status().to_dict()["status"] == "error";
         # --- fix the error: recovery clears the mirrored error ---
         bad_file.write_text(
             "cl {\n"
@@ -510,7 +510,7 @@ test "jacjsx import added in real compilation" {
         reloader._recompile_client_code(str(bad_file));
         reloader.record_ok();  # _process_change settles to ok after a clean rebuild
         assert not error_file.exists() , ".jac-build-error.json must be removed on recovery";
-        assert reloader.build_status()["status"] == "ok";
+        assert reloader.build_status().to_dict()["status"] == "ok";
     }
 }
 
@@ -967,7 +967,7 @@ test "asset deletion removes the copy without touching the entry" {
         assert not copied.exists() , "deleted asset's copy must be removed";
         # Deletion is not an error and must not touch the app
         assert entry_file.stat().st_mtime_ns == entry_mtime , "asset deletion must not touch _entry.js";
-        assert reloader.build_status()["status"] == "ok" , "asset deletion must not be reported as a build error";
+        assert reloader.build_status().to_dict()["status"] == "ok" , "asset deletion must not be reported as a build error";
         assert not (compiled_dir.parent / ".jac-build-error.json").exists();
     }
 }
@@ -1021,7 +1021,7 @@ test "deleted client module drops its stale compiled output" {
         assert not footer_js.exists() , "stale compiled JS must be removed when its source is deleted";
         assert not (compiled_dir / "components" / "Footer.js.map").exists() , "stale source map must be removed with it";
         # Deleting a module is not a build error on the Jac side
-        assert reloader.build_status()["status"] == "ok";
+        assert reloader.build_status().to_dict()["status"] == "ok";
     }
 }
 

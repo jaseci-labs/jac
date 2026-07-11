@@ -209,10 +209,10 @@ test "build status records errors and recovers" {
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
         # Fresh reloader is healthy
-        assert reloader.build_status() == {"status": "ok", "error": None};
+        assert reloader.build_status().to_dict() == {"status": "ok", "error": None};
         # An error carries the failing file, message and layer
         reloader.record_error("app.cl.jac", "Missing ';'");
-        status = reloader.build_status();
+        status = reloader.build_status().to_dict();
         assert status["status"] == "error";
         assert status["error"] == {
             "file": "app.cl.jac",
@@ -221,7 +221,7 @@ test "build status records errors and recovers" {
         };
         # Recovery clears the error completely
         reloader.record_ok();
-        assert reloader.build_status() == {"status": "ok", "error": None};
+        assert reloader.build_status().to_dict() == {"status": "ok", "error": None};
     }
 }
 
@@ -249,7 +249,7 @@ test "build status folds in vite and browser-load layers with jac precedence" {
                 }
             )
         );
-        status = reloader.build_status();
+        status = reloader.build_status().to_dict();
         assert status["status"] == "error";
         assert status["error"]["source"] == "vite";
         assert "totally-missing-pkg" in status["error"]["message"];
@@ -265,7 +265,7 @@ test "build status folds in vite and browser-load layers with jac precedence" {
                 }
             )
         );
-        assert reloader.build_status()["error"]["source"] == "client";
+        assert reloader.build_status().to_dict()["error"]["source"] == "client";
         # Vite outranks client; a Jac error outranks both (most upstream cause)
         status_file.write_text(
             json.dumps(
@@ -275,16 +275,16 @@ test "build status folds in vite and browser-load layers with jac precedence" {
                 }
             )
         );
-        assert reloader.build_status()["error"]["source"] == "vite";
+        assert reloader.build_status().to_dict()["error"]["source"] == "vite";
         reloader.record_error("app.cl.jac", "syntax");
-        assert reloader.build_status()["error"]["source"] == "jac";
+        assert reloader.build_status().to_dict()["error"]["source"] == "jac";
         reloader.record_ok();
-        assert reloader.build_status()["error"]["source"] == "vite";
+        assert reloader.build_status().to_dict()["error"]["source"] == "vite";
         # Recovery: plugin removes the file -> healthy; corrupt file is ignored
         status_file.unlink();
-        assert reloader.build_status() == {"status": "ok", "error": None};
+        assert reloader.build_status().to_dict() == {"status": "ok", "error": None};
         status_file.write_text("{not json");
-        assert reloader.build_status() == {"status": "ok", "error": None};
+        assert reloader.build_status().to_dict() == {"status": "ok", "error": None};
     }
 }
 
@@ -292,19 +292,19 @@ test "get build status reflects the active reloader" {
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
         # No reloader running (non-dev mode) -> unavailable
-        assert get_build_status() == {"status": "unavailable", "error": None};
+        assert get_build_status().to_dict() == {"status": "unavailable", "error": None};
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
         reloader = HotReloader(
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
         reloader.start();
         # Running reloader's state is served, including errors
-        assert get_build_status()["status"] == "ok";
+        assert get_build_status().to_dict()["status"] == "ok";
         reloader.record_error("main.jac", "boom");
-        assert get_build_status()["status"] == "error";
+        assert get_build_status().to_dict()["status"] == "error";
         reloader.stop();
         # Stopped -> unavailable again
-        assert get_build_status() == {"status": "unavailable", "error": None};
+        assert get_build_status().to_dict() == {"status": "unavailable", "error": None};
     }
 }
 
@@ -320,11 +320,11 @@ test "process change settles to ok unless an error was recorded" {
         reloader.record_error("app.jac", "old failure");
         reloader._dispatch_change = lambda p , d : None ;
         reloader._process_change("app.jac");
-        assert reloader.build_status() == {"status": "ok", "error": None};
+        assert reloader.build_status().to_dict() == {"status": "ok", "error": None};
         # A change whose rebuild records an error stays broken.
         reloader._dispatch_change = lambda p , d : reloader.record_error(p, "boom");
         reloader._process_change("app.jac");
-        status = reloader.build_status();
+        status = reloader.build_status().to_dict();
         assert status["status"] == "error";
         assert status["error"]["file"] == "app.jac";
     }
@@ -333,26 +333,78 @@ test "process change settles to ok unless an error was recorded" {
 # --- TestExportChangeReload ---
 # Fast Refresh boundaries hot-swap component edits silently, so an edit that
 # changes a module's export set (removing `:pub`, renaming a component) leaves
-# importers with a stale reference and no error. The reloader compares the
-# emitted .js exports before/after a recompile and forces a full reload so the
+# importers with a stale reference and no error. The reloader compares compiler
+# export metadata before/after a recompile and forces a full reload so the
 # link error surfaces at load.
-test "extract js exports reads the compiled export list" {
+"""Client compiler stub: writes export metadata sidecars for HMR tests."""
+obj _FakeJcc {
+    has out_path: Path,
+        next_exports: list[str],
+        compiled_dir: str;
+
+    def compiled_output_path(source_path: any, base_dir: any) -> Path {
+        return self.out_path;
+    }
+
+    def read_compiled_exports(output_path: any) -> set[str] {
+        import json;
+        meta = Path(str(output_path)).with_suffix('.exports.json');
+        try {
+            data = json.loads(meta.read_text(encoding='utf-8'));
+        } except (OSError, ValueError) {
+            return set();
+        }
+        exports = data.get('exports') if isinstance(data, dict) else None;
+        if not isinstance(exports, list) {
+            return set();
+        }
+        return {
+            str(name)
+            for name in exports
+            if name
+        };
+    }
+
+    def compile_dependencies_recursively(
+        source_path: any, source_root: any = None, skip_existing: bool = False
+    ) {
+        import json;
+        self.out_path.write_text("/* compiled */");
+        self.out_path.with_suffix('.exports.json').write_text(
+            json.dumps({"exports": self.next_exports})
+        );
+    }
+}
+
+obj _FakeCompiler {
+    has jac_client_compiler: any;
+}
+
+test "compiled exports are read from compiler metadata sidecars" {
+    import json;
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
-        reloader = HotReloader(
-            base_path=str(temp_dir), module_name="test", watcher=watcher
-        );
         js = temp_dir / "mod.js";
-        js.write_text(
-            "function Page() {}\nconst page = Page;\nexport {page, Card as c};\n"
+        js.write_text("/* compiled */");
+        meta = js.with_suffix('.exports.json');
+        meta.write_text(json.dumps({"exports": ["page", "c"]}));
+        jcc = _FakeJcc(out_path=js, next_exports=[], compiled_dir=str(temp_dir));
+        reloader = HotReloader(
+            base_path=str(temp_dir),
+            module_name="test",
+            watcher=watcher,
+            client_compiler=_FakeCompiler(jac_client_compiler=jcc)
         );
-        assert reloader._extract_js_exports(js) == {"page", "c"};
-        # A module that dropped its export (e.g. `:pub` removed) reads as empty
-        js.write_text("function Page() {}\n");
-        assert reloader._extract_js_exports(js) == set();
-        # Missing file is empty, never an exception
-        assert reloader._extract_js_exports(temp_dir / "gone.js") == set();
+        assert reloader._compiled_exports_for(str(temp_dir / "mod.cl.jac"), js) == {
+            "page",
+            "c"
+        };
+        meta.write_text(json.dumps({"exports": []}));
+        assert reloader._compiled_exports_for(str(temp_dir / "mod.cl.jac"), js) == set();
+        assert reloader._compiled_exports_for(
+            str(temp_dir / "mod.cl.jac"), temp_dir / "gone.js"
+        ) == set();
     }
 }
 
@@ -374,28 +426,8 @@ test "signal full reload bumps the watched nonce file" {
     }
 }
 
-"""Client compiler stub: emits `next_code` as the module's compiled output."""
-obj _FakeJcc {
-    has out_path: Path,
-        next_code: str,
-        compiled_dir: str;
-
-    def _output_path_for(source_path: any, base_dir: any) -> Path {
-        return self.out_path;
-    }
-
-    def compile_dependencies_recursively(
-        source_path: any, source_root: any = None, skip_existing: bool = False
-    ) {
-        self.out_path.write_text(self.next_code);
-    }
-}
-
-obj _FakeCompiler {
-    has jac_client_compiler: any;
-}
-
 test "recompile signals a full reload only when the export set changes" {
+    import json;
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
         compiled = temp_dir / ".jac" / "client" / "compiled";
@@ -403,9 +435,11 @@ test "recompile signals a full reload only when the export set changes" {
         src = temp_dir / "widget.cl.jac";
         src.write_text("def:pub Widget() -> JsxElement { return <p>w</p>; }");
         js = compiled / "widget.js";
-        with_export = "function Widget() {}\nexport {Widget};\n";
-        js.write_text(with_export);
-        jcc = _FakeJcc(out_path=js, next_code=with_export, compiled_dir=str(compiled));
+        js.write_text("/* compiled */");
+        js.with_suffix('.exports.json').write_text(json.dumps({"exports": ["Widget"]}));
+        jcc = _FakeJcc(
+            out_path=js, next_exports=["Widget"], compiled_dir=str(compiled)
+        );
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
         reloader = HotReloader(
             base_path=str(temp_dir),
@@ -419,12 +453,12 @@ test "recompile signals a full reload only when the export set changes" {
         assert not signal.exists() , "a body-only edit must not force a reload";
         # Dropping `:pub` removes the export: importers hold a stale reference,
         # so the reloader must force a reload for the error to surface
-        jcc.next_code = "function Widget() {}\n";
+        jcc.next_exports = [];
         reloader._recompile_client_unified(str(src));
         assert signal.exists() , "a removed export must force a reload";
         # Renaming the component is a removal plus an addition
         signal.unlink();
-        jcc.next_code = "function Renamed() {}\nexport {Renamed};\n";
+        jcc.next_exports = ["Renamed"];
         reloader._recompile_client_unified(str(src));
         assert signal.exists() , "a renamed export must force a reload";
     }

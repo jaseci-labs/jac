@@ -37,28 +37,28 @@ impl HotReloader.stop -> None {
     logger.debug("Hot reloader stopped");
 }
 
-impl HotReloader.build_status -> dict {
+impl HotReloader.build_status -> BuildStatusSnapshot {
     dev_error = self._dev_status_error();
     with HotReloader._build_lock {
         status = self._build_status;
         if status is BuildStatus.ERROR {
-            return {
-                "status": status.value,
-                "error": {
-                    "file": self._build_error_file,
-                    "message": self._build_error,
-                    "source": "jac"
-                }
-            };
+            return BuildStatusSnapshot(
+                status=status,
+                error=BuildError(
+                    file=self._build_error_file,
+                    message=self._build_error,
+                    source=BuildErrorSource.JAC
+                )
+            );
         }
         if status is BuildStatus.OK and dev_error {
-            return {"status": BuildStatus.ERROR.value, "error": dev_error};
+            return BuildStatusSnapshot(status=BuildStatus.ERROR, error=dev_error);
         }
-        return {"status": status.value, "error": None};
+        return BuildStatusSnapshot(status=status, error=None);
     }
 }
 
-impl HotReloader._dev_status_error -> (dict | None) {
+impl HotReloader._dev_status_error -> (BuildError | None) {
     status_file = self._error_file_path().parent / '.jac-dev-status.json';
     try {
         data = json.loads(status_file.read_text(encoding='utf-8'));
@@ -68,14 +68,14 @@ impl HotReloader._dev_status_error -> (dict | None) {
     if not isinstance(data, dict) {
         return None;
     }
-    for source in ('vite', 'client') {
-        slot = data.get(source);
+    for source in (BuildErrorSource.VITE, BuildErrorSource.CLIENT) {
+        slot = data.get(source.value);
         if isinstance(slot, dict) and slot.get('message') {
-            return {
-                "file": str(slot.get('file') or ''),
-                "message": str(slot['message']),
-                "source": source
-            };
+            return BuildError(
+                file=str(slot.get('file') or ''),
+                message=str(slot['message']),
+                source=source
+            );
         }
     }
     return None;
@@ -126,10 +126,10 @@ impl HotReloader._sync_error_file -> None {
     } except OSError { }
 }
 
-impl get_build_status -> dict {
+impl get_build_status -> BuildStatusSnapshot {
     reloader = HotReloader._active;
     if not reloader {
-        return {"status": BuildStatus.UNAVAILABLE.value, "error": None};
+        return BuildStatusSnapshot(status=BuildStatus.UNAVAILABLE, error=None);
     }
     return reloader.build_status();
 }
@@ -216,9 +216,8 @@ impl HotReloader._remove_compiled_output(file_path: str) -> None {
         source_path = source_path.resolve();
     } except OSError { }
     if self.client_compiler {
-        output_path = self.client_compiler.jac_client_compiler._output_path_for(
-            source_path, base_dir
-        );
+        jcc = self.client_compiler.jac_client_compiler;
+        output_path = jcc.compiled_output_path(source_path, base_dir);
     } else {
         try {
             rel_dir = source_path.parent.relative_to(base_dir);
@@ -232,7 +231,12 @@ impl HotReloader._remove_compiled_output(file_path: str) -> None {
         );
     }
     removed = False;
-    for target in (Path(str(output_path)), Path(str(output_path) + '.map')) {
+    exports_meta = Path(str(output_path)).with_suffix('.exports.json');
+    for target in (
+        Path(str(output_path)),
+        Path(str(output_path) + '.map'),
+        exports_meta
+    ) {
         try {
             if target.exists() {
                 target.unlink();
@@ -372,12 +376,10 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
         }
 
         js_path = self._client_js_path(file_path);
-        old_exports: set[str] = set();
-        had_js = False;
-        if js_path is not None and js_path.exists() {
-            had_js = True;
-            old_exports = self._extract_js_exports(js_path);
-        }
+        had_js = js_path is not None and js_path.exists();
+        old_exports = (
+            self._compiled_exports_for(file_path, js_path) if had_js else set()
+        );
 
         program = Jac.program;
         if program is not None {
@@ -398,7 +400,7 @@ impl HotReloader._recompile_client_unified(file_path: str) -> None {
 
         if had_js
         and js_path is not None
-        and self._extract_js_exports(js_path) != old_exports {
+        and self._compiled_exports_for(file_path, js_path) != old_exports {
             console.print(
                 f"  ↻ Export set of {self._get_js_filename(
                     file_path
@@ -421,34 +423,30 @@ impl HotReloader._client_js_path(file_path: str) -> (Path | None) {
     if not self.client_compiler {
         return None;
     }
-    try {
-        jcc = self.client_compiler.jac_client_compiler;
-        source_path = Path(file_path).resolve();
-        return Path(
-            str(jcc._output_path_for(source_path, Path(self.base_path).resolve()))
-        );
-    } except Exception {
-        return None;
-    }
+    jcc = self.client_compiler.jac_client_compiler;
+    return jcc.compiled_output_path(
+        Path(file_path).resolve(), Path(self.base_path).resolve()
+    );
 }
 
-impl HotReloader._extract_js_exports(js_path: Path) -> set[str] {
-    import re;
-    names: set[str] = set();
-    try {
-        code = js_path.read_text(encoding='utf-8');
-    } except OSError {
-        return names;
+impl HotReloader._compiled_exports_for(
+    file_path: str, js_path: (Path | None)
+) -> set[str] {
+    if not self.client_compiler or js_path is None {
+        return set();
     }
-    for block in re.findall(r'export\s*\{([^}]*)\}', code) {
-        for part in block.split(',') {
-            token = part.strip();
-            if token {
-                names.add(token.split(' as ')[-1].strip());
-            }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    jcc = self.client_compiler.jac_client_compiler;
+    source_key = str(Path(file_path).resolve());
+    program = Jac.program;
+    if program is not None and source_key in program.mod.hub {
+        mod = program.mod.hub[source_key];
+        manifest = mod.gen.client_manifest if mod else None;
+        if manifest {
+            return set(jcc.jac_compiler.extract_exports(manifest));
         }
     }
-    return names;
+    return jcc.read_compiled_exports(js_path);
 }
 
 impl HotReloader._signal_full_reload -> None {

@@ -1849,7 +1849,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             }
             if (path == '/__build_status') {
                 import from jaclang.runtimelib.hmr { get_build_status }
-                Jac.send_json(self, 200, get_build_status());
+                Jac.send_json(self, 200, get_build_status().to_dict());
                 return;
             }
             is_static_path = path.startswith('/static/');
