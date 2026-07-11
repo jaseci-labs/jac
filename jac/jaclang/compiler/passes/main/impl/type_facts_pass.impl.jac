@@ -1,6 +1,86 @@
-import jaclang.jac0core.unitree as uni;
+impl TypeFacts.type_of(e: object, local_types: dict[str, str]) -> str {
+    return infer_type(
+        e,
+        local_types,
+        self.ref_types,
+        self.func_returns,
+        self.method_returns,
+        self.field_types
+    );
+}
 
-def is_ref_arch(arch: uni.Archetype) -> bool {
+impl TypeFacts.is_ref(name: str) -> bool {
+    return name in self.ref_types;
+}
+
+impl TypeFactsPass.transform(ir_in: uni.Module) -> uni.Module {
+    self.facts = TypeFacts();
+    try {
+        self.index_module(ir_in);
+        self.facts.ok = True;
+        ir_in.gen.type_facts = self.facts;
+    } except Exception {
+        ir_in.gen.type_facts = TypeFacts();
+    }
+    return ir_in;
+}
+
+impl TypeFactsPass.index_module(mod: uni.Module) {
+    for stmt in mod.body {
+        if isinstance(stmt, uni.Archetype) and is_ref_arch(stmt) {
+            self.facts.ref_types[stmt.name.value] = True;
+        }
+    }
+    for stmt in mod.body {
+        if isinstance(stmt, uni.Archetype) {
+            self.index_arch(stmt);
+        } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
+            sig = stmt.signature;
+            self.facts.func_returns[stmt.name_ref.sym_name] = self.ret_name(
+                sig.return_type if isinstance(sig, uni.FuncSignature) else None
+            );
+        }
+    }
+}
+
+impl TypeFactsPass.index_arch(arch: uni.Archetype) {
+    name = arch.name.value;
+    (fmap, rmap) = arch_type_maps(arch);
+    self.facts.field_types[name] = fmap;
+    self.facts.method_returns[name] = rmap;
+}
+
+impl TypeFactsPass.ret_name(ret: uni.Expr | None) -> str {
+    return ret_type_name(ret);
+}
+
+impl get_type_facts(module: uni.Module, prog: JacProgram | None = None) -> TypeFacts {
+    cached: TypeFacts | None = module.gen.type_facts;
+    if cached is not None {
+        return cached;
+    }
+    if prog is not None {
+        TypeFactsPass(ir_in=module, prog=prog);
+        result: TypeFacts | None = module.gen.type_facts;
+        return result or TypeFacts();
+    }
+    return TypeFacts();
+}
+
+impl ScopeTypes.for_ability(sig: object, self_type: str) -> dict[str, str] {
+    out: dict[str, str] = {};
+    if self_type {
+        out["self"] = self_type;
+    }
+    if isinstance(sig, uni.FuncSignature) and sig.params {
+        for p in sig.params {
+            out[p.name.value] = type_tag_name(p.type_tag);
+        }
+    }
+    return out;
+}
+
+impl is_ref_arch(arch: uni.Archetype) -> bool {
     for member in (arch.body or []) {
         if isinstance(member, uni.Ability) {
             return True;
@@ -9,7 +89,7 @@ def is_ref_arch(arch: uni.Archetype) -> bool {
     return arch.base_classes is not None and len(arch.base_classes) > 0;
 }
 
-def type_tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str {
+impl type_tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str {
     if type_tag is None {
         return "";
     }
@@ -20,7 +100,7 @@ def type_tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str {
     return tag.unparse();
 }
 
-def ret_type_name(ret: uni.Expr | None) -> str {
+impl ret_type_name(ret: uni.Expr | None) -> str {
     if ret is None {
         return "";
     }
@@ -30,7 +110,7 @@ def ret_type_name(ret: uni.Expr | None) -> str {
     return ret.unparse();
 }
 
-def arch_type_maps(arch: uni.Archetype) -> tuple[dict[str, str], dict[str, str]] {
+impl arch_type_maps(arch: uni.Archetype) -> tuple[dict[str, str], dict[str, str]] {
     fmap: dict[str, str] = {};
     rmap: dict[str, str] = {};
     for member in (arch.body or []) {
@@ -48,14 +128,14 @@ def arch_type_maps(arch: uni.Archetype) -> tuple[dict[str, str], dict[str, str]]
     return (fmap, rmap);
 }
 
-def _attr_name(nd: object) -> str {
+impl _attr_name(nd: object) -> str {
     if isinstance(nd, uni.Name) {
         return nd.value;
     }
     return "";
 }
 
-def infer_type(
+impl infer_type(
     e: object,
     local_types: dict[str, str],
     ref_types: object,
@@ -140,4 +220,38 @@ def infer_type(
         }
     }
     return "";
+}
+
+impl get_shared_type_facts(
+    modules: list[uni.Module], prog: JacProgram | None = None
+) -> TypeFacts {
+    merged = TypeFacts();
+    merged.ok = True;
+    for m in modules {
+        f = get_type_facts(m, prog);
+        if not f.ok {
+            merged.ok = False;
+        }
+        for (k, rv) in f.ref_types.items() {
+            if k not in merged.ref_types {
+                merged.ref_types[k] = rv;
+            }
+        }
+        for (k, fv) in f.func_returns.items() {
+            if k not in merged.func_returns {
+                merged.func_returns[k] = fv;
+            }
+        }
+        for (k, mv) in f.method_returns.items() {
+            if k not in merged.method_returns {
+                merged.method_returns[k] = dict(mv);
+            }
+        }
+        for (k, tv) in f.field_types.items() {
+            if k not in merged.field_types {
+                merged.field_types[k] = dict(tv);
+            }
+        }
+    }
+    return merged;
 }

@@ -271,6 +271,7 @@ jac/jaclang/compiler/c2jac/bindgen.jac
 jac/jaclang/compiler/cfront/c_common.jac
 jac/jaclang/compiler/cfront/c_dataflow.jac
 jac/jaclang/compiler/cfront/c_idioms.jac
+jac/jaclang/compiler/cfront/c_types.jac
 jac/jaclang/compiler/cfront/cbind_ir.jac
 jac/jaclang/compiler/cfront/clib_bind.jac
 jac/jaclang/compiler/cfront/enum_prepass.jac
@@ -282,6 +283,8 @@ jac/jaclang/compiler/passes/main/cast_load_pass.jac
 jac/jaclang/compiler/passes/main/impl/cast_load_pass.impl.jac
 jac/jaclang/compiler/passes/main/ownership_facts_pass.jac
 jac/jaclang/compiler/passes/main/impl/ownership_facts_pass.impl.jac
+jac/jaclang/compiler/passes/main/type_facts_pass.jac
+jac/jaclang/compiler/passes/main/impl/type_facts_pass.impl.jac
 # c2jac-generated demonstration output: lifted C double-pointer params
 # (`rotating_node_t **root`) surface as `object`, and the `typedef struct
 # rotating_node_s rotating_node_t` alias does not carry the struct's fields.

@@ -38,10 +38,7 @@ impl CGenPass.classify(mod: uni.Module) {
         if isinstance(stmt, uni.Archetype) {
             self.index_arch(stmt);
         } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
-            sig = stmt.signature;
-            self.func_returns[stmt.name_ref.sym_name] = self.ret_type_name(
-                sig.return_type if isinstance(sig, uni.FuncSignature) else None
-            );
+            self.local_funcs[stmt.name_ref.sym_name] = True;
         }
     }
     self.classify_imports(mod);
@@ -65,6 +62,9 @@ impl CGenPass.classify_imports(mod: uni.Module) {
                 continue;
             }
         }
+        if sub not in self.imported_mods {
+            self.imported_mods.append(sub);
+        }
         self.index_imported(sub);
     }
 }
@@ -83,13 +83,9 @@ impl CGenPass.index_imported(sub: uni.Module) {
             self.index_arch(stmt);
         } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
             fname = stmt.name_ref.sym_name;
-            if fname in self.func_returns {
+            if fname in self.local_funcs or fname in self.extern_func_defs {
                 continue;
             }
-            sig = stmt.signature;
-            self.func_returns[fname] = self.ret_type_name(
-                sig.return_type if isinstance(sig, uni.FuncSignature) else None
-            );
             self.extern_funcs.append(fname);
             self.extern_func_defs[fname] = stmt;
         }
@@ -99,7 +95,6 @@ impl CGenPass.index_imported(sub: uni.Module) {
 impl CGenPass.index_arch(arch: uni.Archetype) {
     name = arch.name.value;
     self.arch_nodes[name] = arch;
-    (fmap, rmap) = arch_type_maps(arch);
     omap: dict[str, str] = {};
     dmap: dict[str, uni.Ability] = {};
     for member in (arch.body or []) {
@@ -109,14 +104,19 @@ impl CGenPass.index_arch(arch: uni.Archetype) {
             dmap[mname] = member;
         }
     }
-    self.field_types[name] = fmap;
-    self.method_returns[name] = rmap;
     self.method_owners[name] = omap;
     self.method_defs[name] = dmap;
 }
 
 impl CGenPass.gen_module(mod: uni.Module) {
     self.classify(mod);
+    self.tf = self.shared_type_facts
+    or get_shared_type_facts([mod] + self.imported_mods, self.prog);
+    if self.strict_c and not self.tf.ok {
+        raise ValueError(
+            "jac2c: semantic type facts unavailable -- refusing strict C emission"
+        );
+    }
     self.load_layout(mod);
     try {
         self.facts = get_ownership_facts(mod, self.prog);
@@ -241,8 +241,11 @@ impl CGenPass.load_layout(mod: uni.Module) {
     for cname in self.type_ids.keys() {
         lay = self.layout.get_layout(cname);
         if lay is not None {
+            if cname not in self.tf.field_types {
+                self.tf.field_types[cname] = {};
+            }
             for fi in lay.fields {
-                self.field_types[cname][fi.name] = fi.type_tag;
+                self.tf.field_types[cname][fi.name] = fi.type_tag;
             }
         }
     }
@@ -520,11 +523,7 @@ impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
     }
     init = self.find_init(arch);
     if isinstance(init, uni.Ability) {
-        if isinstance(init.signature, uni.FuncSignature) and init.signature.params {
-            for p in init.signature.params {
-                self.local_types[p.name.value] = self.type_name(p.type_tag);
-            }
-        }
+        self.local_types = ScopeTypes.for_ability(init.signature, name);
         body = self.gen_block(init.body, 1);
         if body {
             lines.append(body);
@@ -561,11 +560,7 @@ impl CGenPass.gen_method(arch: uni.Archetype, ab: uni.Ability) -> str {
             sig.return_type if isinstance(sig, uni.FuncSignature) else None
         )
     );
-    if isinstance(sig, uni.FuncSignature) and sig.params {
-        for p in sig.params {
-            self.local_types[p.name.value] = self.type_name(p.type_tag);
-        }
-    }
+    self.local_types = ScopeTypes.for_ability(sig, cname);
     body = self.gen_block(ab.body, 1);
     return self.method_head(arch, ab) + " {\n" + body + "\n}";
 }
@@ -597,7 +592,6 @@ impl CGenPass.func_head(ab: uni.Ability) -> str {
 }
 
 impl CGenPass.gen_func(ab: uni.Ability) -> str {
-    self.local_types = {};
     self.owned_locals = [];
     self.cur_class = "";
     sig = ab.signature;
@@ -606,11 +600,7 @@ impl CGenPass.gen_func(ab: uni.Ability) -> str {
             sig.return_type if isinstance(sig, uni.FuncSignature) else None
         )
     );
-    if isinstance(sig, uni.FuncSignature) and sig.params {
-        for p in sig.params {
-            self.local_types[p.name.value] = self.type_name(p.type_tag);
-        }
-    }
+    self.local_types = ScopeTypes.for_ability(sig, "");
     body = self.gen_block(ab.body, 1);
     return self.func_head(ab) + " {\n" + body + "\n}";
 }
@@ -650,10 +640,11 @@ impl CGenPass.ref_field_store(st: uni.Assignment, pad: str) -> (str | None) {
         return None;
     }
     fname = self.attr_name(tgt.right);
-    if recv_ty not in self.field_types or fname not in self.field_types[recv_ty] {
+    if recv_ty not in self.tf.field_types
+    or fname not in self.tf.field_types[recv_ty] {
         return None;
     }
-    fty = self.field_types[recv_ty][fname];
+    fty = self.tf.field_types[recv_ty][fname];
     if fty not in self.type_ids {
         return None;
     }
@@ -1018,14 +1009,7 @@ impl CGenPass.gen_assign(a: uni.Assignment) -> str {
 }
 
 impl CGenPass.expr_type_name(e: object) -> str {
-    return infer_type(
-        e,
-        self.local_types,
-        self.type_ids,
-        self.func_returns,
-        self.method_returns,
-        self.field_types
-    );
+    return self.tf.type_of(e, self.local_types);
 }
 
 impl CGenPass.c_op(op_val: str) -> str {
@@ -1306,9 +1290,16 @@ impl emit_translation_units(
     graph = discover_import_graph(main_path, main_mod, prog, strict_c=True);
     mods = [m for (_, m) in graph];
     reg = get_shared_layout_registry(mods, prog);
+    reg_tf = get_shared_type_facts(mods, prog);
     out: list[tuple[str, str]] = [];
     for (path, m) in graph {
-        CGenPass(ir_in=m, prog=prog, shared_layout=reg, strict_c=True);
+        CGenPass(
+            ir_in=m,
+            prog=prog,
+            shared_layout=reg,
+            shared_type_facts=reg_tf,
+            strict_c=True
+        );
         out.append((path, m.gen.c_src or ""));
     }
     return out;

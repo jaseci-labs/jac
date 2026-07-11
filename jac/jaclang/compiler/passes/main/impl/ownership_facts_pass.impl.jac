@@ -33,21 +33,7 @@ impl OwnershipFactsPass.transform(ir_in: uni.Module) -> uni.Module {
 }
 
 impl OwnershipFactsPass.analyze(mod: uni.Module) {
-    for stmt in mod.body {
-        if isinstance(stmt, uni.Archetype) and arch_is_ref(stmt) {
-            self.ref_types[stmt.name.value] = True;
-        }
-    }
-    for stmt in mod.body {
-        if isinstance(stmt, uni.Archetype) {
-            self.index_arch(stmt);
-        } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
-            sig = stmt.signature;
-            self.func_returns[stmt.name_ref.sym_name] = self.ret_name(
-                sig.return_type if isinstance(sig, uni.FuncSignature) else None
-            );
-        }
-    }
+    self.tf = get_type_facts(mod, self.prog);
     for stmt in mod.body {
         if isinstance(stmt, uni.Ability) {
             self.analyze_ability(stmt, "");
@@ -61,32 +47,12 @@ impl OwnershipFactsPass.analyze(mod: uni.Module) {
     }
 }
 
-impl OwnershipFactsPass.index_arch(arch: uni.Archetype) {
-    name = arch.name.value;
-    (fmap, rmap) = arch_type_maps(arch);
-    self.field_types[name] = fmap;
-    self.method_returns[name] = rmap;
-}
-
 impl OwnershipFactsPass.tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str {
     return type_tag_name(type_tag);
 }
 
-impl OwnershipFactsPass.ret_name(ret: uni.Expr | None) -> str {
-    return sig_ret_name(ret);
-}
-
 impl OwnershipFactsPass.analyze_ability(ab: uni.Ability, cls: str) {
-    self.local_types = {};
-    if cls {
-        self.local_types["self"] = cls;
-    }
-    sig = ab.signature;
-    if isinstance(sig, uni.FuncSignature) and sig.params {
-        for p in sig.params {
-            self.local_types[p.name.value] = self.tag_name(p.type_tag);
-        }
-    }
+    self.local_types = ScopeTypes.for_ability(ab.signature, cls);
     body = list(ab.body or []);
     for st in body {
         self.categorize_stmt(st);
@@ -109,7 +75,7 @@ impl OwnershipFactsPass.compute_consumed(ab: uni.Ability, cls: str, body: list) 
     idx = 0;
     for p in sig.params {
         pname = p.name.value;
-        if self.tag_name(p.type_tag) in self.ref_types {
+        if self.tag_name(p.type_tag) in self.tf.ref_types {
             store = self.sole_field_store(body, pname);
             if store is not None and self.count_name(body, pname) == 1 {
                 s = self.facts.consumed_params.get(key, None);
@@ -293,14 +259,7 @@ impl OwnershipFactsPass.is_str_concat(e: uni.Expr) -> bool {
 }
 
 impl OwnershipFactsPass.type_of(e: object) -> str {
-    return infer_type(
-        e,
-        self.local_types,
-        self.ref_types,
-        self.func_returns,
-        self.method_returns,
-        self.field_types
-    );
+    return self.tf.type_of(e, self.local_types);
 }
 
 impl OwnershipFactsPass.mark_last_uses(body: list) {

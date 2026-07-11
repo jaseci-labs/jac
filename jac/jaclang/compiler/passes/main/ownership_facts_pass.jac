@@ -2,12 +2,11 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.ownership { Ownership, result_ownership }
-import from jaclang.compiler.arch_types {
-    is_ref_arch as arch_is_ref,
+import from jaclang.compiler.passes.main.type_facts_pass {
+    TypeFacts,
+    get_type_facts,
     type_tag_name,
-    ret_type_name as sig_ret_name,
-    arch_type_maps,
-    infer_type
+    ScopeTypes
 }
 
 obj OwnershipFacts {
@@ -26,18 +25,13 @@ def get_ownership_facts(
 ) -> OwnershipFacts;
 
 obj OwnershipFactsPass(Transform[uni.Module, uni.Module]) {
-    has ref_types: dict[str, bool] = {},
-        func_returns: dict[str, str] = {},
-        method_returns: dict[str, dict[str, str]] = {},
-        field_types: dict[str, dict[str, str]] = {},
+    has tf: TypeFacts = TypeFacts(),
         local_types: dict[str, str] = {},
         facts: OwnershipFacts = OwnershipFacts();
 
     def transform(ir_in: uni.Module) -> uni.Module;
     def analyze(mod: uni.Module);
-    def index_arch(arch: uni.Archetype);
     def tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str;
-    def ret_name(ret: uni.Expr | None) -> str;
     def analyze_ability(ab: uni.Ability, cls: str);
     def compute_consumed(ab: uni.Ability, cls: str, body: list);
     def callee_key(ab: uni.Ability, cls: str) -> str;

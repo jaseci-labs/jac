@@ -10,12 +10,13 @@ import from jaclang.compiler.passes.main.ownership_facts_pass {
     OwnershipFacts
 }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-import from jaclang.compiler.arch_types {
+import from jaclang.compiler.passes.main.type_facts_pass {
+    TypeFacts,
+    get_shared_type_facts,
+    ScopeTypes,
     is_ref_arch as arch_is_ref,
     type_tag_name,
-    ret_type_name as sig_ret_name,
-    arch_type_maps,
-    infer_type
+    ret_type_name as sig_ret_name
 }
 import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
 
@@ -33,12 +34,13 @@ glob C_FIRST_USER_TYPEID: int = 2;
 
 obj CGenPass(Transform[uni.Module, uni.Module]) {
     has type_ids: dict[str, int] = {},
-        field_types: dict[str, dict[str, str]] = {},
         method_owners: dict[str, dict[str, str]] = {},
-        method_returns: dict[str, dict[str, str]] = {},
         method_defs: dict[str, dict[str, uni.Ability]] = {},
-        func_returns: dict[str, str] = {},
         arch_nodes: dict[str, uni.Archetype] = {},
+        local_funcs: dict[str, bool] = {},
+        tf: TypeFacts = TypeFacts(),
+        shared_type_facts: TypeFacts | None = None,
+        imported_mods: list[uni.Module] = [],
         local_types: dict[str, str] = {},
         owned_locals: list[str] = [],
         cur_class: str = "",
