@@ -2,7 +2,39 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.31.2 (Latest Release)
+## jaclang 0.31.3 (Latest Release)
+
+### Breaking Changes
+
+- **shadcn: primitive imports must use underscored names**: shadcn `components/ui/` files install with underscored names (`dropdown_menu.cl.jac`); the registry and docs now match that. Apps created before the installer began underscoring (#6461) may have hyphenated files (`dropdown-menu.cl.jac`) that they import with hyphens (`import from ".ui.dropdown-menu"`) - that pairing still builds as-is, but `components/ui/` is registry-managed, so the next `jac install --shadcn <name>` (or a jaclang upgrade that reinstalls) rewrites them to underscores and the hyphenated imports stop resolving. Migration: re-run `jac install --shadcn <name>` for the components you use and change any hyphenated primitive import to the underscore form (`".ui.dropdown-menu"` -> `.ui.dropdown_menu`). `combobox` and `command`, previously un-buildable, now import `.input_group` and pull the `input-group` peer automatically.
+
+### New Features
+
+- **Feature: TypeScript interface and class declarations from npm `.d.ts` files**: `jac check` now synthesizes structural types for `interface` and `class` declarations found in a package's TypeScript declarations, so field access on values imported from npm (for example `c.theme` on a `Config` returned by a typed helper) resolves with real types instead of collapsing to foreign `any`. Heritage (`extends`), optional members, and method signatures are honored where the pragmatic `.d.ts` parser models them; constructs outside that subset still degrade gracefully.
+- **Feature: callable `.d.ts` interfaces are callable**: an interface with a call signature (for example `interface Handler { (x: string): number; label: string; }`) is synthesized with a `__call__` member carrying the signature's type, so the imported value is callable with a checked return type while its named members stay precise.
+- **Feature: `forever {}` loop keyword**: Adds `forever { ... }` as first-class sugar for an unconditional infinite loop (equivalent to `while True { }`), modeled as a dedicated `ForeverStmt` node. It takes no condition and no `else` clause, supports `break`/`continue`, round-trips through the formatter as `forever`, and compiles on all three backends (Python, native/LLVM, and JavaScript `while (true)`).
+
+### Bug Fixes
+
+- **Fix: custom exceptions subclassing a builtin base load correctly on the ECMAScript/client target**: `obj MyError(Exception)` previously compiled to `class MyError extends Exception {}`, but the builtin exception classes live only inside the `_jac.exc` IIFE (there is no global `Exception` binding), so the emitted module threw `ReferenceError: Exception is not defined` at load time and made custom exception classes unusable. The archetype base is now routed through the same `_jac.exc.<name>` mapping that `raise`/`except` already use, emitting `class MyError extends _jac.exc.Exception {}` instead. (jaseci-labs/jaseci#6663)
+- **Fix: .d.ts declaration kinds and member access are enums, not strings**: `TsType.kind`, `TsDecl.kind`, and `TsMember.access` are now `TsTypeKind`/`TsDeclKind`/`TsAccess` enums instead of raw strings, so the parser→type-system seam is compile-checked. A typo in a kind or access level can no longer silently degrade a mapped type to foreign `any` (the worst failure mode for a type checker). All parser construction sites and evaluator switches use enum members.
+- **Fix: .d.ts heritage preserves the fully-qualified base name**: `parse_heritage` recorded only the first identifier of an `extends`/`implements` base, so `interface Props extends React.HTMLAttributes<HTMLDivElement>` was stored as `["React"]`. It now keeps the full qualified name (e.g. `React.HTMLAttributes`; generic args are consumed and dropped). Local single-name bases resolve exactly as before, and external qualified bases still degrade gracefully at synthesis.
+- **Fix: cyclic .d.ts heritage no longer overflows the stack**: `compute_mro_linearization` recursed into base classes with no in-progress guard, so a malformed or cyclic inheritance graph (self-referential, or A→B→A) recursed indefinitely instead of degrading. An in-progress guard keyed on the class now detects the cycle and falls back to a best-effort MRO.
+- **Fix: Stale in-memory module cache on .impl.jac annex edits**: `get_bytecode` now checks whether a module in the in-memory hub is still fresh before reusing it. Previously, editing a `.impl.jac` file within the same persistent process would return stale bytecode from the hub.
+- **Bugfix: export-changing edits no longer hot-swap silently**: removing or renaming a client component export now forces a reload so the resulting error surfaces, instead of leaving the dev server running stale code.
+- **shadcn: correct hyphenated component imports end to end**: installed primitive files are underscored (`dropdown_menu.cl.jac`), but the skill and tutorial taught hyphenated imports and the registry itself shipped hyphenated file names and internal peer imports (`combobox`/`command` imported `.input-group`), so those components failed to build after install. Corrected the docs to teach the underscored import, renamed the registry files and imports to underscores, and declared the missing `input-group` peer so the components build out of the box.
+- **Fix: native pathway no longer frees module globs returned from defs or tuple fields bound by unpack**: two ownership gaps in the na refcount model corrupted memory on idiomatic code (jaseci-labs/jaseci#7320, Cluster 1). Returning a module glob (`return APP_NAME`, or a `list` cache accessor used as `for c in cmd_defs()` / `len(cmd_defs())`) skipped the +1 retain the calling convention promises, so the caller's release freed the global's only reference and the second use read freed memory. And `for (k, v) in list_of_tuples` bound borrowed tuple fields into named locals without retaining them, so scope exit and early returns freed strings the list still owned, corrupting it for later reads. Glob returns now take the borrow-retain path, and tuple unpack retains borrowed pointer fields on bind, releases rebound locals' old values alias-safely after all stores, and null-initializes fresh allocas so a zero-iteration loop's cleanup never releases stack garbage.
+- **Fix: bare `list = []` flow-infers its element type from mutations (#6943 NA-7)**: an empty bare-list declaration now adopts its element type from the appends/inserts/extends/index-stores that follow, so native code like `"/".join(x)` over an appended bare list compiles and matches CPython instead of failing on a defaulted `List.i64` layout; int-only evidence keeps the unboxed layout, mixed evidence collapses to `list[any]`, and explicit `list[T]` annotations still win.
+
+### Refactors
+
+- **CLI: General output overhaul**: Removed emojis from all user-facing CLI output; `jac --version` now prints a single line matching cargo/go/rustc convention; `jac --help` layout rewritten to match cargo's style; warnings routed through `console.warning()` instead of `console.error()`; `jac remove` now exits non-zero on missing packages; unknown commands exit with code 2; hardcoded ANSI escape codes replaced with the console abstraction; trailing `...` stripped from progress messages; `"Error:"` prefix removed from `console.error()` calls; help text shortened to match cargo's ~6-word convention.
+
+### Documentation
+
+- **Skills: correct the Jac's new(...) builtin**: in `jac-cl-routing` guide taught constructing `URLSearchParams` via Jac's new(...) builtin
+
+## jaclang 0.31.2
 
 ### Breaking Changes
 
