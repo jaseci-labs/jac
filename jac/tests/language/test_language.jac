@@ -616,6 +616,17 @@ test "while else" {
     assert "Completed" in lines[2];
 }
 
+test "forever loop" {
+    output = run_jac(os.path.join(FIXTURES, "forever_loop.jac"));
+    lines = output.split("\n");
+    assert "Iter:  1" in lines[0];
+    assert "Iter:  2" in lines[1];
+    assert "Iter:  3" in lines[2];
+    assert "Done:  3" in lines[3];
+    assert "Sum:  30" in lines[4];  # 2+4+6+8+10, odds skipped via continue
+    assert "Nested:  2 2" in lines[5];  # inner break exits inner loop only
+}
+
 test "funccall genexpr" {
     output = run_jac(os.path.join(FIXTURES, "funccall_genexpr.jac"));
     assert "Result: 30" in output.split("\n")[0];

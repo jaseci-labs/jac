@@ -2069,6 +2069,20 @@ impl PyastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     ];
 }
 
+impl PyastGenPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.While(
+                `test=self.sync(ast3.Constant(value=True)),
+                body=[
+                    cast(ast3.stmt, stmt) for stmt in self.resolve_stmt_block(nd.body)
+                ],
+                orelse=[]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_with_stmt(nd: uni.WithStmt) -> None {
     with_node = ast3.AsyncWith if nd.is_async else ast3.With;
     nd.gen.py_ast = [

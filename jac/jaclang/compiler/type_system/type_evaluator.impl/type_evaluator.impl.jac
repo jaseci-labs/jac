@@ -3631,7 +3631,7 @@ impl TypeEvaluator._get_type_from_flow_node(
     }
 
     is_loop_header: bool = isinstance(
-        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)
+        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt, uni.ForeverStmt)
     );
 
     pr_before = self._flow_pending_reads;
@@ -3685,6 +3685,8 @@ impl TypeEvaluator._merge_flow_preds(
                 ancestor = pred.find_parent_of_type(uni.InForStmt);
             } elif isinstance(flow_node, uni.IterForStmt) {
                 ancestor = pred.find_parent_of_type(uni.IterForStmt);
+            } elif isinstance(flow_node, uni.ForeverStmt) {
+                ancestor = pred.find_parent_of_type(uni.ForeverStmt);
             } else {
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }
