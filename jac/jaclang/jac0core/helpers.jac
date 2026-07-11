@@ -5,7 +5,6 @@ import pdb;
 import re;
 import from functools { lru_cache }
 import from traceback { TracebackException }
-import type from jaclang { plugin as pluggy }
 
 @lru_cache(maxsize=256)
 def pascal_to_snake(pascal_string: str) -> str {
@@ -307,12 +306,6 @@ def read_toml_with_encoding(file_path: str) -> dict {
     } except tomllib.TOMLDecodeError as exc {
         raise MalformedJacTomlError(file_path, exc);
     }
-}
-
-obj DistFacade {
-    has _dist: (object | None);
-    has project_name: str { getter; }
-    has version: str { getter; }
 }
 
 def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {

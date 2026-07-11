@@ -210,7 +210,7 @@ impl nacompile(
         }
     }
 
-    console.print(f"Compiling {filename} to native binary...");
+    console.print(f"Compiling {filename} to native binary");
 
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.compile_options { CompileOptions }
