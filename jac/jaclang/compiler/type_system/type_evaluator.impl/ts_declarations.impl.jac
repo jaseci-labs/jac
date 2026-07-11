@@ -360,9 +360,7 @@ impl TypeEvaluator._ts_synth_class_types(
                     );
                 }
             }
-            is_readonly = (
-                len(group) == 1 and group[0].readonly and not group[0].is_method
-            );
+            is_readonly = all(m.readonly and not m.is_method for m in group);
             self._install_synth_member(
                 scope, synth_src, mname, member_type, readonly=is_readonly
             );

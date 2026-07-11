@@ -68,6 +68,8 @@ impl TypeEvaluator._build_field_params(
                         param_type = self._convert_to_instance(
                             self.get_type_of_expression(has_var.value)
                         );
+                    } else {
+                        param_type = types.AnyType();
                     }
                 } else {
                     param_type = self._convert_to_instance(stripped);

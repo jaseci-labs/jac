@@ -21,6 +21,27 @@ obj Tagged {
     }
 }
 
+obj Pair {
+    has a: Final[int];
+
+    def init {
+        self.a = 1;                    # OK: first init write
+        self.a = 2;                    # <-- Error (second write in same init block)
+    }
+}
+
+obj Cond {
+    has v: Final[int];
+
+    def init(flag: bool) {
+        if flag {
+            self.v = 1;                # OK: each branch initializes once
+        } else {
+            self.v = 2;                # OK: distinct branch block
+        }
+    }
+}
+
 glob RATE: Final[float] = 1.5;
 
 with entry {

@@ -5706,22 +5706,24 @@ test "final_immutability_enforcement" {
         os.path.join(CHECKER_FIXTURES, "checker_final_reassignment.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    # Expected errors (7 total, in file order):
-    #   1. self.tag = "u"   — Final with default reassigned in init
-    #   2. c.name = "b"     — Final attribute reassigned
-    #   3. y = 2            — Final local reassigned
-    #   4. y += 1           — augmented assignment
-    #   5. (y, w) = (1, 2)  — unpacking into a Final
-    #   6. del y            — deleting a Final
-    #   7. RATE = 2.0       — Final glob reassigned
-    assert len(program.errors_had) == 7 , "Expected 7 errors, got " + f"{len(
+    # Expected errors (8 total, in file order):
+    #   1. self.tag = "u"   -- Final with default reassigned in init
+    #   2. self.a = 2       -- second write in the same init block
+    #   3. c.name = "b"     -- Final attribute reassigned
+    #   4. y = 2            -- Final local reassigned
+    #   5. y += 1           -- augmented assignment
+    #   6. (y, w) = (1, 2)  -- unpacking into a Final
+    #   7. del y            -- deleting a Final
+    #   8. RATE = 2.0       -- Final glob reassigned
+    # Branch-wise init (if/else each assigning once) must stay clean.
+    assert len(program.errors_had) == 8 , "Expected 8 errors, got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     for err in program.errors_had {
         assert "E1121" in err.pretty_print() , f"Expected only E1121 diagnostics:\n{err.pretty_print()}";
         assert "declared Final" in err.pretty_print();
     }
-    expected_names = ["tag", "name", "y", "y", "y", "y", "RATE"];
+    expected_names = ["tag", "a", "name", "y", "y", "y", "y", "RATE"];
     for (i, want) in enumerate(expected_names) {
         assert f"'{want}'" in program.errors_had[i].pretty_print() , f"Error {i}: expected '{want}' in:\n{program.errors_had[
             i
