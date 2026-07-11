@@ -30,6 +30,15 @@ def _facts(fixture: str) -> tuple {
     return (ir, get_ownership_facts(ir, prog));
 }
 
+def _compile(fixture: str) -> tuple {
+    prog = JacProgram();
+    ir = prog.compile(file_path=os.path.join(FIXTURES, fixture));
+    assert not prog.errors_had , f"errors in {fixture}: {[
+        str(e) for e in prog.errors_had
+    ]}";
+    return (ir, prog);
+}
+
 def _find_fn(mod: uni.Module, name: str) -> object {
     for s in mod.body {
         if isinstance(s, uni.Ability)
@@ -79,6 +88,25 @@ test "callee conventions mark escaping params consumed and read params borrowed"
     assert not facts.is_consumed("Keep", 0) , "Keep.init param should stay borrowed";
     # An unknown callee falls back to borrowed.
     assert not facts.is_consumed("Nope", 0) , "unknown callee must be borrowed";
+}
+
+test "get_ownership_facts with no prog and no cache raises" {
+    # A freshly compiled module has no cached ownership facts (the pass is lazy,
+    # not in the compile schedule). Asking for facts without a prog to build them
+    # must fail loudly rather than hand back silent empty facts, mirroring
+    # get_type_facts.
+    (ir, prog) = _compile("obj_rc.jac");
+    assert ir.gen.ownership_facts is None , "fresh module must start with no cached facts";
+    raised = False;
+    try {
+        get_ownership_facts(ir, None);
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , "None prog with no cache must raise ValueError";
+    # Once built with a real prog, the None-prog cache read succeeds.
+    built = get_ownership_facts(ir, prog);
+    assert get_ownership_facts(ir, None) is built , "cached read with None prog returns the built facts";
 }
 
 test "facts default to the conservative answer for unknown nodes" {

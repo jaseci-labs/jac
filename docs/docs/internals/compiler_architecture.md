@@ -242,6 +242,8 @@ and emit target code. The contract (tracked in jaseci-labs/jaseci#6542):
 | OSP archetype kind / event triggers | checker + unitree getters | `Archetype.arch_kind`, `Ability.event_triggers`, `Ability.event_trigger_type_names()` |
 | Closure captures | scope tables | `UniScopeNode.get_enclosing_captures`, `LambdaExpr.captures` |
 | Class hierarchy, MRO, vtable need | `LayoutPass` / `LayoutRegistry` | `get_layout_registry(module)` queries (no copies) |
+| Type-inference facts (jac2c / native lowering) | `TypeFactsPass` | `get_type_facts(mod, prog)` / `get_shared_type_facts(mods, prog)` -> `module.gen.type_facts` |
+| Move/borrow ownership facts (jac2c) | `OwnershipFactsPass` | `get_ownership_facts(mod, prog)` -> `module.gen.ownership_facts` (built on top of `TypeFacts`) |
 | Result ownership (+1 transfer) | `compiler/ownership.jac` | `result_ownership(expr)`, applied at one emission seam |
 | Borrowed-param promotion | `compiler/ownership.jac` | `param_plainly_rebound(sym)`, entry-block retain |
 | Loop-exit release lists | `compiler/ownership.jac` | `loop_body_locals(body)` |
@@ -256,6 +258,32 @@ temporaries (boxing, coercion buffers - their bookkeeping is driven by
 the central classification of their source expressions), and
 annotation-surface-shape decisions (what the user literally wrote,
 which stamped types deliberately erase).
+
+#### Shared-facts layering (jac2c / native)
+
+The C (`jac2c`) and native backends read two derived products that layer
+on each other rather than being stamped per node:
+
+1. **`TypeFacts`** is the base product -- ref-vs-value archetype
+   classification, function/method return types, and field types
+   (`TypeFactsPass`). `OwnershipFactsPass` and `CGenPass` both consume it;
+   `OwnershipFacts` is derived *from* `TypeFacts`, so type facts must
+   resolve first.
+2. **`OwnershipFacts`** adds move/borrow classification on top, consumed
+   by the C emitter's reference-semantic lowering.
+
+Both are computed lazily -- neither pass is in the default compile
+schedule, so a freshly compiled module carries no cached facts until a
+backend asks for them. The accessors (`get_type_facts`,
+`get_shared_type_facts`, `get_ownership_facts`) follow one build protocol:
+return the warm `module.gen.*` cache if present; otherwise, given a
+`JacProgram`, run the owning pass to build and cache the facts. Asking
+`get_type_facts` or `get_ownership_facts` for facts with **no** `prog` and
+**no** cache is a build-protocol violation and raises `ValueError` rather
+than handing back silent empty facts -- the "no fallbacks" rule (#2 above)
+applied to the derived products (jaseci-labs/jaseci#7230). `get_shared_type_facts` merges
+per-module facts first-wins across a module set for whole-program C
+emission (cross-module vtable / virtual dispatch).
 
 ### The end-state purity contract
 

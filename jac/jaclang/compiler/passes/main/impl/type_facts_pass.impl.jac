@@ -64,7 +64,10 @@ impl get_type_facts(module: uni.Module, prog: JacProgram | None = None) -> TypeF
         result: TypeFacts | None = module.gen.type_facts;
         return result or TypeFacts();
     }
-    return TypeFacts();
+    raise ValueError(
+        "get_type_facts: prog is None and this module has no cached facts; "
+        "pass a JacProgram to build facts, or call after facts were computed"
+    );
 }
 
 impl ScopeTypes.for_ability(sig: object, self_type: str) -> dict[str, str] {

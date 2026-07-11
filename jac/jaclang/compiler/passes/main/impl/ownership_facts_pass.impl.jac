@@ -331,5 +331,8 @@ impl get_ownership_facts(
         result: OwnershipFacts | None = module.gen.ownership_facts;
         return result or OwnershipFacts();
     }
-    return OwnershipFacts();
+    raise ValueError(
+        "get_ownership_facts: prog is None and this module has no cached facts; "
+        "pass a JacProgram to build facts, or call after facts were computed"
+    );
 }

@@ -160,6 +160,24 @@ test "shared facts merge free functions from every module" {
     assert merged.func_returns.get("run_move") == "int" , "obj_move function present";
 }
 
+test "get_type_facts with no prog and no cache raises" {
+    # A freshly compiled module has no cached facts (TypeFactsPass is lazy, not
+    # in the compile schedule). Asking for facts without a prog to build them
+    # must fail loudly rather than hand back silent empty facts.
+    (ir, prog) = _compile("obj_rc.jac");
+    assert ir.gen.type_facts is None , "fresh module must start with no cached facts";
+    raised = False;
+    try {
+        get_type_facts(ir, None);
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , "None prog with no cache must raise ValueError";
+    # Once built with a real prog, the None-prog cache read succeeds.
+    built = get_type_facts(ir, prog);
+    assert get_type_facts(ir, None) is built , "cached read with None prog returns the built facts";
+}
+
 test "shared merge is first-wins on colliding archetype names" {
     (a, pa) = _compile("obj_rc.jac");
     (b, pb) = _compile("obj_move.jac");
