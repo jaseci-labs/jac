@@ -122,6 +122,18 @@ test "lambda whitespace fmt" {
     compare_files(os.path.join(FIXTURES, "lambda_whitespace_fmt.jac"));
 }
 
+test "forever fmt" {
+    compare_files(os.path.join(FIXTURES, "forever_fmt.jac"));
+}
+
+test "forever keyword preserved not rewritten" {
+    path = os.path.join(FIXTURES, "forever_fmt.jac");
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+    assert "forever {" in formatted;
+    assert "while" not in formatted;
+}
+
 test "fstring comment not injected" {
     path = os.path.join(FIXTURES, "fstring_comment.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);

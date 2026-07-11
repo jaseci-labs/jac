@@ -224,6 +224,21 @@ test "while stmt structure" {
     assert "expression" in ebnf;
 }
 
+test "forever stmt structure" {
+    prog = JacProgram();
+    mod = prog.compile(PARSER_PATH, no_cgen=True);
+    assert not prog.errors_had;
+    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    rule_map = {r.name: r for r in extracted.rules};
+    assert "forever_stmt" in rule_map;
+    ebnf = fmt(rule_map["forever_stmt"].body);
+    assert '"forever"' in ebnf;
+    assert "code_block_stmts" in ebnf;
+    # forever has no condition and no else clause
+    assert "expression" not in ebnf;
+    assert "else_stmt" not in ebnf;
+}
+
 test "ebnf output nonempty" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);

@@ -518,6 +518,18 @@ impl SymTabBuildPass.exit_while_stmt(self: SymTabBuildPass, nd: uni.WhileStmt) -
     self.pop_scope();
 }
 
+impl SymTabBuildPass.enter_forever_stmt(
+    self: SymTabBuildPass, nd: uni.ForeverStmt
+) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_forever_stmt(
+    self: SymTabBuildPass, nd: uni.ForeverStmt
+) -> None {
+    self.pop_scope();
+}
+
 impl SymTabBuildPass.enter_with_stmt(self: SymTabBuildPass, nd: uni.WithStmt) -> None {
     self.push_scope_and_link(nd);
 }

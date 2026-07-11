@@ -447,71 +447,84 @@ impl ParamAssignmentTracker.postinit -> None {
     }
 }
 
-impl compute_mro_linearization(cls: types.ClassType) -> None {
+impl compute_mro_linearization(
+    cls: types.ClassType, _visiting: (set | None) = None
+) -> None {
     if cls.shared.mro {
         return;
     }
-
-    for base in cls.shared.base_classes {
-        if isinstance(base, types.ClassType) {
-            compute_mro_linearization(base);
-        }
+    if _visiting is None {
+        _visiting = set();
     }
-
-    linearizations: list[list[types.ClassType]] = [];
-    for base in cls.shared.base_classes {
-        if isinstance(base, types.ClassType) {
-            linearizations.append(base.shared.mro[:]);
-        }
+    key = id(cls.shared);
+    if key in _visiting {
+        return;
     }
-    base_list: list[types.ClassType] = [];
-    for base in cls.shared.base_classes {
-        if isinstance(base, types.ClassType) {
-            base_list.append(base);
-        }
-    }
-    if base_list {
-        linearizations.append(base_list);
-    }
-    result: list[types.ClassType] = [cls];
-    while linearizations {
-        candidate: (types.ClassType | None) = None;
-        for lin in linearizations {
-            if not lin {
-                continue;
+    _visiting.add(key);
+    try {
+        for base in cls.shared.base_classes {
+            if isinstance(base, types.ClassType) {
+                compute_mro_linearization(base, _visiting);
             }
-            head = lin[0];
-            in_tail = False;
-            for other_lin in linearizations {
-                if head in other_lin[1:] {
-                    in_tail = True;
+        }
+
+        linearizations: list[list[types.ClassType]] = [];
+        for base in cls.shared.base_classes {
+            if isinstance(base, types.ClassType) {
+                linearizations.append(base.shared.mro[:]);
+            }
+        }
+        base_list: list[types.ClassType] = [];
+        for base in cls.shared.base_classes {
+            if isinstance(base, types.ClassType) {
+                base_list.append(base);
+            }
+        }
+        if base_list {
+            linearizations.append(base_list);
+        }
+        result: list[types.ClassType] = [cls];
+        while linearizations {
+            candidate: (types.ClassType | None) = None;
+            for lin in linearizations {
+                if not lin {
+                    continue;
+                }
+                head = lin[0];
+                in_tail = False;
+                for other_lin in linearizations {
+                    if head in other_lin[1:] {
+                        in_tail = True;
+                        break;
+                    }
+                }
+                if not in_tail {
+                    candidate = head;
                     break;
                 }
             }
-            if not in_tail {
-                candidate = head;
+            if candidate is None {
                 break;
             }
-        }
-        if candidate is None {
-            break;
-        }
-        result.append(candidate);
+            result.append(candidate);
 
-        new_linearizations: list[list[types.ClassType]] = [];
-        for lin in linearizations {
-            new_lin = [
-                c
-                for c in lin
-                if c is not candidate
-            ];
-            if new_lin {
-                new_linearizations.append(new_lin);
+            new_linearizations: list[list[types.ClassType]] = [];
+            for lin in linearizations {
+                new_lin = [
+                    c
+                    for c in lin
+                    if c is not candidate
+                ];
+                if new_lin {
+                    new_linearizations.append(new_lin);
+                }
             }
+            linearizations = new_linearizations;
         }
-        linearizations = new_linearizations;
+        cls.shared.mro = result;
+    } finally {
+        _visiting.discard(key);
     }
-    cls.shared.mro = result;
 }
 
 impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
