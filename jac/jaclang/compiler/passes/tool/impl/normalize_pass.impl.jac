@@ -878,6 +878,19 @@ impl NormalizePass.enter_while_stmt(nd: uni.WhileStmt) -> None {
     self._normalize_cond_block(nd, Tok.KW_WHILE);
 }
 
+impl NormalizePass.enter_forever_stmt(nd: uni.ForeverStmt) -> None {
+    new_kid: list[uni.UniNode] = [
+        nd.gen_token(Tok.KW_FOREVER),
+        nd.gen_token(Tok.LBRACE),
+
+    ];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
+    nd.set_kids(nodes=new_kid);
+}
+
 impl NormalizePass.enter_with_stmt(nd: uni.WithStmt) -> None {
     new_kid: list[uni.UniNode] = [];
     if nd.is_async {

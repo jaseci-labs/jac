@@ -448,7 +448,7 @@ When client builds fail, Jac provides structured error messages:
 
 | Code | Issue | Fix |
 |------|-------|-----|
-| `JAC_CLIENT_001` | Missing npm dependency | `jac add --npm <package>` |
+| `JAC_CLIENT_001` | Missing npm dependency | `jac install --npm <package>` |
 | `JAC_CLIENT_003` | Syntax error in client code | Check the source snippet in the error |
 | `JAC_CLIENT_004` | Unresolved import | Verify import path and package name |
 

@@ -14,8 +14,8 @@ That's it. You now have a compiler, a runtime, a package manager, a server, a bu
 |---|---|---|
 | **CPython 3.14** | System Python, pyenv, venvs | Bundled -- runs your `.jac` files and PyPI imports |
 | **Bun** | Node.js, npm, npx | Bundled -- compiles `.cl.jac` to JS, manages npm deps |
-| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac nacompile` produces native binaries |
-| **Package manager** | pip, npm, pipx | `jac install` / `jac add` for PyPI and npm |
+| **LLVM + Zig linker** | gcc, clang, make, cmake | Bundled -- `jac build --as native` produces native binaries |
+| **Package manager** | pip, npm, pipx | `jac install` for PyPI and npm |
 | **REST server** | Flask, FastAPI, Express | `jac start` -- walkers become API endpoints |
 | **Kubernetes deployer** | Docker + kubectl + Helm | `jac start --scale` -- one-command K8s deployment |
 | **AI integration** | LangChain, prompt libraries | `by llm()` -- built into the language |
@@ -35,7 +35,7 @@ Dependencies declared in `jac.toml` and installed into the project's `.jac/venv/
 
 ```bash
 # Add a dependency to your project
-jac add numpy
+jac install numpy
 
 # Or declare it in jac.toml and install
 jac install
@@ -64,7 +64,7 @@ Global packages live in the binary's own jac-owned site, accessible from any dir
 
 ## `jac x` -- The Universal Tool Runner
 
-`jac x` runs any CLI tool installed via `jac install` / `jac add`, whether it came from PyPI or npm. Think of it as `npx` and `pipx run` combined:
+`jac x` runs any CLI tool installed via `jac install`, whether it came from PyPI or npm. Think of it as `npx` and `pipx run` combined:
 
 ```bash
 # Install and run Python CLI tools (global -- available anywhere)
@@ -76,7 +76,7 @@ jac install ruff         # installed into .jac/venv
 jac x ruff check .       # runs ruff within the project
 
 # npm CLI tools are project-scoped
-jac add prettier --npm
+jac install --npm prettier
 jac x prettier --check . # runs from the project's node_modules/.bin
 ```
 
@@ -89,7 +89,7 @@ With Jac installed, you no longer need these on your development machine:
 | Tool | Why it's replaced |
 |---|---|
 | Python / pyenv / conda | Jac bundles CPython 3.14 |
-| pip / pipx / uv / poetry | `jac install` / `jac add` manage Python deps |
+| pip / pipx / uv / poetry | `jac install` manages Python deps |
 | Node.js / npm / npx / yarn | Jac bundles Bun; `jac install` manages JS deps |
 | venv / virtualenv | `.jac/venv` is automatic and project-scoped |
 | gcc / clang / make / cmake | Jac bundles LLVM + Zig for native compilation |
@@ -97,6 +97,24 @@ With Jac installed, you no longer need these on your development machine:
 
 !!! note
     You only need these replacements if you're building with Jac. If you have other Python or Node projects, keep those toolchains installed for them.
+
+## Your App Ships as One Binary Too
+
+The one-binary idea applies to what you build, not just the toolchain. `jac build` type-checks the whole project (fail-closed) and emits a single sealed **`.jab`** app bundle: client dist, serve manifest, and native binaries baked in and hash-verified. Any machine with Jac installed runs or serves it with zero live compilation:
+
+```bash
+jac build                  # -> dist/<app>.jab
+jac run dist/<app>.jab     # cli kinds execute
+jac start dist/<app>.jab   # servable kinds production-serve
+```
+
+For machines with nothing installed at all -- no Jac, no Python, no Node -- project the same app to a **self-contained executable**. `jac build --as binary` appends the sealed `.jab` onto a copy of the `jac` launcher, producing one file that carries the full runtime:
+
+```bash
+jac build --as binary      # -> one executable, full runtime included
+```
+
+And when your program fits the restricted `na` subset, `jac build --as native` compiles it through LLVM into a small, dependency-free binary instead. See [`jac build`](../reference/cli/index.md#jac-build) for all artifact projections and the binary-vs-native trade-off.
 
 ## How It Works
 
