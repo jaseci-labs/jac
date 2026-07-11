@@ -89,10 +89,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
             continue;
         }
 
-        if (
-            (mod.parent_scope and name_nd.value in mod.parent_scope.names_in_scope)
-            or self._is_ambient_typing_name(name_nd.value)
-        ) {
+        if mod.parent_scope and name_nd.value in mod.parent_scope.names_in_scope {
             continue;
         }
 
@@ -147,21 +144,6 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         }
         self.emit(W2001, node_override=name_nd, name=name_nd.value, help_text=hint);
     }
-}
-
-
-impl StaticAnalysisPass._is_ambient_typing_name(name: str) -> bool {
-    if not self.prog.type_evaluator {
-        return False;
-    }
-
-    registry = self.prog.type_evaluator.ambient_typing_names_by_module;
-    if not registry {
-        return False;
-    }
-
-    ambient = registry.get("typing");
-    return ambient is not None and name in ambient;
 }
 
 
