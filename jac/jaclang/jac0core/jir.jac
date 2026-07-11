@@ -5,24 +5,16 @@ import sys;
 import zlib;
 import from pathlib { Path }
 
-glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 13,
-     HEADER_SIZE: int = 32,
-     HEADER_FMT: str = "<4sHHIIIIII",
-     EXTERNAL_REF: int = 0xFFFFFF,
-     SECTIONS_MAGIC: any = b"JIRX",
-     SEC_BYTECODE: int = 0x02,
-     SEC_MTIR: int = 0x03,
-     SEC_LLVM_IR: int = 0x04,
-     SEC_INTEROP: int = 0x05,
-     SEC_NATIVE_OBJ: int = 0x06,
-     SEC_SYMINDEX: int = 0x07,
-     SEC_MODKEY: int = 0x08,
-     SEC_DEBUG_SRC: int = 0x09,
-     SEC_TERMINATOR: int = 0xFF,
-     FLAG_PRECOMPILED: int = 0x02,
-     PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
-     FLAG_BOOTSTRAP: int = 0x04;
+# JIR container-format constants live in jir_format.py (a pure-Python leaf),
+# so jir.jac (writer) and sealed.py (the bootstrap section reader that must load
+# before any .jac) share one definition. Re-exported here: modules that already
+# do `import from ...jir { MAGIC, HEADER_SIZE, ... }` are unaffected.
+import from jaclang.jac0core.jir_format {
+    MAGIC, FORMAT_VERSION, HEADER_SIZE, HEADER_FMT, EXTERNAL_REF,
+    SECTIONS_MAGIC, SEC_BYTECODE, SEC_MTIR, SEC_LLVM_IR, SEC_INTEROP,
+    SEC_NATIVE_OBJ, SEC_SYMINDEX, SEC_MODKEY, SEC_DEBUG_SRC, SEC_TERMINATOR,
+    FLAG_PRECOMPILED, PRECOMPILE_SENTINEL, FLAG_BOOTSTRAP
+}
 
 obj JirHeader {
     has magic: any = b"JIR\x00",
