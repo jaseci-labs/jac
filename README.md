@@ -99,7 +99,7 @@ One download replaces the interpreter, the JS runtime, the compilers and linker,
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/docs/assets/readme/one-binary-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/docs/assets/readme/one-binary-light.svg">
-    <img alt="The jac binary bundles CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src="docs/docs/assets/readme/one-binary-light.svg" width="880">
+    <img alt="The jac binary links in CPython, Bun, LLVM and a Zig linker, a package manager, a REST server, and a Kubernetes deployer, and builds every kind of artifact" src="docs/docs/assets/readme/one-binary-light.svg" width="880">
   </picture>
 </div>
 
@@ -108,7 +108,7 @@ One download replaces the interpreter, the JS runtime, the compilers and linker,
 
 <br>
 
-"Bundled" undersells it, so here is the actual anatomy. The `jac` you download is a small native **launcher stub** with the entire **runtime payload** appended to the same file. The first run unpacks the payload into a per-version cache; every run after that is instant.
+Here is the actual anatomy. The `jac` you download is a small native **launcher stub** with the entire **runtime payload** appended to the same file. The first run unpacks the payload into a per-version cache; every run after that is instant.
 
 <div align="center">
   <picture>
@@ -179,7 +179,7 @@ Each of those deliverables is a **project kind**: `jac create myapp --kind <kind
 | `--kind` | What you ship | What Jac adds beyond a traditional language |
 |---|---|---|
 | `cli` | Terminal script / tool | Graph-native data modeling in a one-off script, a `root` graph that **persists between runs** (no database, no files), and `by llm()` AI with zero glue -- where a script normally means Python + SQLite + an LLM SDK |
-| `cli-native` | Compiled program, run in place | The same source compiled through **bundled LLVM** -- C-level speed with no gcc, clang, or rustc installed |
+| `cli-native` | Compiled program, run in place | The same source compiled through **statically linked LLVM** -- C-level speed with no gcc, clang, or rustc installed |
 | `native-binary` | Zero-dependency executable | Jac's own linker emits the ELF/Mach-O/PE file (no `ld` in the loop) -- ship to machines with no Jac and no Python, territory that normally means learning C, Rust, or Go |
 | `native-lib` | C-ABI shared library (`.so`/`.dylib`/`.dll`) | Expose Jac to **any language with a C FFI** (C, Rust, Go, Python `ctypes`) by marking functions `:pub` -- refcounted handles included, and `--target` **cross-builds for Linux/macOS/Windows** with no extra toolchain |
 | `service` | Headless REST API | `walker:pub` **is** the endpoint: request bodies map to its fields, `report` is the JSON response, Swagger at `/docs`, and per-user isolated persistence -- no FastAPI + SQLAlchemy + Pydantic + auth middleware to wire up |
