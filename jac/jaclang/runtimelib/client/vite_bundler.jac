@@ -31,7 +31,6 @@ class ViteBundler {
     def find_bundle(self: ViteBundler) -> Optional[Path];
     def find_css(self: ViteBundler) -> Optional[Path];
     def read_bundle(self: ViteBundler) -> tuple[str, str];
-    def _has_typescript_support(self: ViteBundler) -> bool;
     def _resolve_api_base_url(
         self: ViteBundler, api_base_url_override: str = ""
     ) -> str;
@@ -49,8 +48,6 @@ class ViteBundler {
         desktop_broker_port: int = 0
     ) -> Path;
 
-    def _get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str;
-    def _format_plugin_options(self: ViteBundler, options: dict) -> str;
     def _format_config_object(self: ViteBundler, config: dict, indent: int = 0) -> str;
     def _format_define_entries(
         self: ViteBundler, api_base_url: str, custom_defines: dict
@@ -100,6 +97,8 @@ class ViteBundler {
     ) -> any;
 
     def _ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> None;
+    def _write_fast_refresh_plugin(self: ViteBundler, configs_dir: Path) -> None;
+    def _write_dev_status_plugin(self: ViteBundler, configs_dir: Path) -> None;
     def _ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None;
     def _start_vite_with_output_capture(
         self: ViteBundler, command: list[str], build_dir: Path, sys_module: any

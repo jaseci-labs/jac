@@ -53,6 +53,9 @@ jac nacompile sum.na.jac -o sum
 
 Jac ships its own native linker, so there's no `gcc`/`ld` in the loop. The native subset requires a `with entry` block and allows no walkers/nodes/async or Python imports.
 
+!!! tip "Shipping a full app instead?"
+    The native subset is the price of the smallest possible artifact. To ship *any* Jac program (walkers, Python imports, even a web client) as one executable, use `jac build --as binary` -- it fuses your app's sealed `.jab` onto the `jac` launcher so the file carries the full runtime. A plain `jac build` emits the sealed `.jab` bundle itself, which any Jac install runs with zero live compilation. See [Ship it](../quick-guide/project-kinds.md#ship-it-one-file-or-one-executable) and [`jac build`](../reference/cli/index.md#jac-build).
+
 ## Run natively in place {#cli-native}
 
 Set `kind = "cli-native"` in `jac.toml` when you want the *program* to execute through the native pathway rather than producing a distributable artifact -- the same `.na.jac` subset, run as a command. A bare `jac run` then compiles-and-executes it. (`cli` runs on the Python VM; `cli-native` runs the native build; `native-binary` ships the executable.)

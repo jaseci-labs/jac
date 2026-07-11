@@ -146,6 +146,9 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     self._codegen_entry(_entry_nodes);
 
     if self.has_native_code {
+        if self.errors_had {
+            return self.ir_in;
+        }
         if "__jac_glob_init" not in self.func_symtab {
             self._emit_glob_init_func();
         }

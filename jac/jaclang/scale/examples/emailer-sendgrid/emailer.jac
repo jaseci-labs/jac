@@ -3,7 +3,7 @@
 Subclasses jaclang.scale.abstractions.emailer.Emailer. The factory imports this
 module at server startup via `provider = "emailer:SendGridEmailer"` in
 jac.toml. The constructor receives the resolved emailer config dict
-(everything under [plugins.scale.emailer]) plus from_address and enabled.
+(everything under [scale.emailer]) plus from_address and enabled.
 
 API key is read from the SENDGRID_API_KEY env var. If unset, sends are
 logged and dropped (the server keeps running with email features off).

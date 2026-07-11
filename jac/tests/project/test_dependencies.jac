@@ -1069,28 +1069,7 @@ test "install no toml" {
     }
 }
 
-test "add no args errors" {
-    reset_config();
-    import from jaclang.cli.commands { project as proj_cmds }
-    tmp = tempfile.mkdtemp(prefix="jac_test_");
-    try {
-        project_path = create_test_project(tmp);
-        original_cwd = os.getcwd();
-        os.chdir(project_path);
-        reset_config();
-        try {
-            result = proj_cmds.add();
-            assert result == 1;
-        } finally {
-            os.chdir(original_cwd);
-            reset_config();
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
-}
-
-test "add no toml errors" {
+test "install pkg no toml errors" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1098,7 +1077,7 @@ test "add no toml errors" {
     os.chdir(tmp);
     reset_config();
     try {
-        result = proj_cmds.add(packages=["requests"]);
+        result = proj_cmds.install(packages=["requests"]);
         assert result == 1;
     } finally {
         os.chdir(original_cwd);
@@ -1107,7 +1086,7 @@ test "add no toml errors" {
     }
 }
 
-test "add resolves version" {
+test "install pkg resolves version" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1129,7 +1108,7 @@ test "add resolves version" {
                     (0, "Successfully installed numpy-1.26.4", ""),
                     (0, "Name: numpy\nVersion: 1.26.4\nSummary: ...", "")
                 ];
-                result = proj_cmds.add(packages=["numpy"]);
+                result = proj_cmds.install(packages=["numpy"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
@@ -1144,7 +1123,7 @@ test "add resolves version" {
     }
 }
 
-test "add with explicit version" {
+test "install pkg with explicit version" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1158,7 +1137,7 @@ test "add with explicit version" {
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed numpy-1.24.0", "");
-                result = proj_cmds.add(packages=["numpy>=1.24"]);
+                result = proj_cmds.install(packages=["numpy>=1.24"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
@@ -1285,7 +1264,7 @@ test "update no toml errors" {
     }
 }
 
-test "add dev dependency" {
+test "install pkg dev dependency" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1306,7 +1285,7 @@ test "add dev dependency" {
                     (0, "Successfully installed pytest-cov-7.0.0", ""),
                     (0, "Name: pytest-cov\nVersion: 7.0.0", "")
                 ];
-                result = proj_cmds.add(packages=["pytest-cov"], dev=True);
+                result = proj_cmds.install(packages=["pytest-cov"], dev=True);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
@@ -1322,7 +1301,7 @@ test "add dev dependency" {
     }
 }
 
-test "add multiple packages" {
+test "install multiple pkgs records all" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1339,13 +1318,14 @@ test "add multiple packages" {
                 PythonProvider, "_snapshot_installed"
             ) as mock_snap {
                 mock_snap.return_value = (False, set());
+                # Packages install in a single batched pip call, then each
+                # version is resolved with its own `pip show`.
                 mock_pip.side_effect = [
-                    (0, "Successfully installed numpy-2.4.2", ""),
+                    (0, "Successfully installed numpy-2.4.2 pandas-3.0.0", ""),
                     (0, "Name: numpy\nVersion: 2.4.2", ""),
-                    (0, "Successfully installed pandas-3.0.0", ""),
                     (0, "Name: pandas\nVersion: 3.0.0", "")
                 ];
-                result = proj_cmds.add(packages=["numpy", "pandas"]);
+                result = proj_cmds.install(packages=["numpy", "pandas"]);
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
@@ -1360,7 +1340,68 @@ test "add multiple packages" {
     }
 }
 
-test "add pip failure no toml update" {
+test "install --git rejects multiple positional names" {
+    # A single positional is the git dependency alias; more than one is
+    # ambiguous and used to be silently dropped, so it must now error.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        project_path = create_test_project(tmp);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch.object(PythonProvider, "install_specs") as mock_install {
+                result = proj_cmds.install(
+                    packages=["mylib", "extra"], git="https://github.com/u/plugin.git"
+                );
+            }
+            assert result == 1;
+            # The guard fires before anything is installed.
+            mock_install.assert_not_called();
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install --npm warns when a venv-only save flag is ignored" {
+    # --no-save applies only to Python venv installs; on the npm path it is
+    # silently ineffective, so the command warns instead of quietly recording.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    import from jaclang.cli.console { console }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        project_path = create_test_project(tmp);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch("jaclang.runtimelib.client.cli.run_npm_add") as mock_npm, patch.object(
+                console, "warning"
+            ) as mock_warn {
+                mock_npm.return_value = 0;
+                result = proj_cmds.install(packages=["lodash"], npm=True, no_save=True);
+            }
+            assert result == 0;
+            mock_npm.assert_called_once();
+            warned = " ".join([str(c) for c in mock_warn.call_args_list]);
+            assert "--no-save" in warned , f"expected an ignored-flag warning, got: {warned}";
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install pkg pip failure no toml update" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1382,7 +1423,7 @@ test "add pip failure no toml update" {
                     "",
                     "ERROR: No matching distribution found for badpkg"
                 );
-                result = proj_cmds.add(packages=["badpkg"]);
+                result = proj_cmds.install(packages=["badpkg"]);
             }
             assert result == 1;
             f = open(toml_path);
@@ -1398,7 +1439,7 @@ test "add pip failure no toml update" {
     }
 }
 
-test "add git dependency" {
+test "install git dependency" {
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1412,12 +1453,50 @@ test "add git dependency" {
                 PythonProvider, "_run_project_pip"
             ) as mock_pip {
                 mock_pip.return_value = (0, "Successfully installed my-lib", "");
-                result = proj_cmds.add(git="https://github.com/user/my-lib.git");
+                result = proj_cmds.install(git="https://github.com/user/my-lib.git");
             }
             assert result == 0;
             config = JacConfig.load(Path(project_path) / "jac.toml");
             assert "my-lib" in config.git_dependencies;
             assert config.git_dependencies["my-lib"]["git"] == "https://github.com/user/my-lib.git";
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install pkg no save skips toml" {
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        project_path = create_test_project(tmp);
+        os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        toml_path = os.path.join(project_path, "jac.toml");
+        f = open(toml_path);
+        original_toml = f.read();
+        f.close();
+        try {
+            with patch("jaclang.project.providers.ensure_venv") as _ev, patch.object(
+                PythonProvider, "_run_project_pip"
+            ) as mock_pip, patch.object(
+                PythonProvider, "_snapshot_installed"
+            ) as mock_snap {
+                mock_snap.return_value = (False, set());
+                mock_pip.return_value = (0, "Successfully installed numpy-1.26.4", "");
+                result = proj_cmds.install(packages=["numpy"], no_save=True);
+            }
+            assert result == 0;
+            f = open(toml_path);
+            current_toml = f.read();
+            f.close();
+            assert current_toml == original_toml;
         } finally {
             os.chdir(original_cwd);
             reset_config();

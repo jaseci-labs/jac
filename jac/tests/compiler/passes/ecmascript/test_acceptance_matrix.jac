@@ -187,8 +187,8 @@ test "matrix zero-diff: preact view output matches react (seams are no-ops)" {
     );
     # Preact differs only in import sources; the read/view seams are identity on
     # both, so the component body (JSX + reads) must be byte-identical.
-    react_body = react_js.split("function view_app")[1];
-    preact_body = preact_js.split("function view_app")[1];
+    react_body = react_js.split("function View_app")[1];
+    preact_body = preact_js.split("function View_app")[1];
     assert react_body == preact_body , (
         "Preact body must be byte-identical to React (seam no-op invariant)"
     );

@@ -40,7 +40,8 @@ Sections are stateless `def:pub` functions over typed props: data flows down, ev
 
 ```
 my-app/
-├── main.jac                    # entry - mounts the shell (def:pub app)
+├── main.jac                    # entry - def:pub app; its shape depends on the
+│                               #   routing system you picked (jac-cl-routing)
 ├── pages/                      # route targets - each page is a stateful shell
 │   ├── index.jac               # with file-based routing these ARE the routes
 │   ├── RecipesPage.cl.jac      #   (see jac-cl-routing); else components/pages/
@@ -122,7 +123,7 @@ def:pub ThemeToggle() -> JsxElement {
 }
 ```
 
-Wire it in the entry: `def:pub app() -> JsxElement { return <AppProvider><AppShell /></AppProvider>; }`. Annotate the consumer's `ctx: any` - a bare `ctx = useContext(...)` is Unknown-typed and `ctx.user` fails `jac check` with E1032. In a shell-architected app the provider is rarely needed - the shell already sees everything; reach for context only when ≥2 *distant* consumers exist.
+Wire it in the entry: `def:pub app() -> JsxElement { return <AppProvider><AppShell /></AppProvider>; }`. (That no-argument shape is the manual/single-page entry. With file-based routing `app` instead takes `children` and must render it, so wrap `{children}` rather than a shell - see `jac-cl-routing`.) Annotate the consumer's `ctx: any` - a bare `ctx = useContext(...)` is Unknown-typed and `ctx.user` fails `jac check` with E1032. In a shell-architected app the provider is rarely needed - the shell already sees everything; reach for context only when ≥2 *distant* consumers exist.
 
 ## jac-shadcn project layout
 

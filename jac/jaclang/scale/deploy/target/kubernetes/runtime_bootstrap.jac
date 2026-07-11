@@ -4,7 +4,10 @@ import from jaclang.scale.injector.bundle {
     APP_MOUNT_PATH,
     TOOLCHAIN_SUBDIR
 }
-import from jaclang.scale.injector.binary { overlay_pod_path }
+import from jaclang.scale.injector.pvc_injector {
+    BUNDLE_VOLUME_NAME,
+    BUNDLE_MOUNT_PATH
+}
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -37,9 +40,7 @@ def build_service_apt_prefix(k8s_config: KubernetesConfig) -> str {
 }
 
 
-def build_runtime_install_commands(
-    k8s_config: KubernetesConfig, overlay_source: bool = False
-) -> list[str] {
+def build_runtime_install_commands(k8s_config: KubernetesConfig) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
 
@@ -48,7 +49,7 @@ def build_runtime_install_commands(
 
     commands.append('export DEBIAN_FRONTEND=noninteractive');
 
-    # apt only for declared packages: the binary bundles bun+python and the overlay ships as a tar, so the default boot needs nothing from apt.
+    # apt only for declared packages: the binary bundles bun+python and the bundle ships as a tar, so the default boot needs nothing from apt.
     if config.additional_packages {
         commands.append(
             'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
@@ -76,14 +77,6 @@ def build_runtime_install_commands(
         'redeploy)." >&2; exit 1; fi'
     );
 
-    if overlay_source {
-        overlay_rel = overlay_pod_path();
-        commands.append(
-            f"grep -q '^\\[dev\\]' {APP_MOUNT_PATH}/jac.toml || "
-            f"printf '\\n[dev]\\njaclang_source = \"{overlay_rel}\"\\n' "
-            f'>> {APP_MOUNT_PATH}/jac.toml'
-        );
-    }
     return commands;
 }
 
@@ -101,26 +94,10 @@ def runtime_container_env -> list[dict[str, str]] {
 }
 
 
-def _first_boot_install -> str {
-    # Adopt jir seeds via system python3 BEFORE any jac invocation (jac would compile the overlay first); best-effort fallback compiles as before (#7138).
-    adopt = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}/jir-seed/_adopt.py";
-    return (
-        f'if [ -f "{adopt}" ]; then '
-        f'python3 "{adopt}" '
-        f'|| echo "[jac-scale] jir-seed adoption failed; compiling from source"; '
-        f'fi; '
-        f'jac install'
-    );
-}
-
-
 def build_bootstrap_init_container(
-    k8s_config: KubernetesConfig,
-    base_image: str,
-    overlay_source: bool = False,
-    is_gateway: bool = True
+    k8s_config: KubernetesConfig, base_image: str, is_gateway: bool = True
 ) -> dict[str, any] {
-    commands = build_runtime_install_commands(k8s_config, overlay_source);
+    commands = build_runtime_install_commands(k8s_config);
     commands.append(f'cd {APP_MOUNT_PATH}');
     if not is_gateway {
         # npm deps exist only to build the client, which only the gateway
@@ -133,7 +110,24 @@ def build_bootstrap_init_container(
             "&& cat /tmp/jac.toml.nonpm > jac.toml"
         );
     }
-    commands.append(_first_boot_install());
+    # Point the pip cache at the shared RWX bundle PVC: the first pod warms it,
+    # every later pod (and every redeploy) downloads ~nothing. pip only - bun's
+    # cache is thousands of tiny files, pathological on EFS/NFS; it stays on
+    # the pod-local disk. Best-effort: an unwritable PVC skips the export.
+    cache = f"{BUNDLE_MOUNT_PATH}/.cache";
+    commands.append(
+        f'if mkdir -p {cache}/pip 2>/dev/null; then '
+        # Bound the cache so it cannot squeeze the bundles off the shared PVC
+        # (default size 1Gi): past ~512MB it is wiped and rewarmed by this boot.
+        f'if [ "$(du -sm {cache} 2>/dev/null | cut -f1)" -gt 512 ] 2>/dev/null; then '
+        f'rm -rf {cache}/pip && mkdir -p {cache}/pip; fi; '
+        f'export PIP_CACHE_DIR={cache}/pip; '
+        f'fi'
+    );
+    # The toolchain bundle ships the prebuilt jac binary and the app bundle
+    # ships source precompiled into .jir; first boot only needs to install the
+    # app's declared deps.
+    commands.append("jac install");
     script = ' && '.join(commands);
     return {
         "name": "jac-bootstrap",
@@ -149,6 +143,9 @@ def build_bootstrap_init_container(
             },
             "seccompProfile": {"type": "RuntimeDefault"}
         },
-        "volumeMounts": [{"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}]
+        "volumeMounts": [
+            {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH},
+            {"name": BUNDLE_VOLUME_NAME, "mountPath": BUNDLE_MOUNT_PATH}
+        ]
     };
 }

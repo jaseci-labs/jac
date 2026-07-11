@@ -59,7 +59,7 @@ def create(config: dict[str, Any]) -> Emailer | None {
     if not provider {
         logger.info(
             "No emailer provider configured - email features disabled. "
-            "Set [plugins.scale.emailer] provider = 'smtp' (or a custom "
+            "Set [scale.emailer] provider = 'smtp' (or a custom "
             "'module.path:ClassName') in jac.toml to enable."
         );
         return None;

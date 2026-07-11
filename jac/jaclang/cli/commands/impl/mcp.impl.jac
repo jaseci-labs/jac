@@ -45,7 +45,7 @@ impl _print_mcp_inventory -> None {
     prompts = PromptProvider().list_prompts();
 
     w = sys.stdout.write;
-    w("=== jac-mcp Inventory ===\n\n");
+    w("jac-mcp inventory\n\n");
     w(f"Resources ({len(resources)}):\n");
     for r in resources {
         w(f"  {r['uri']:40s} {r['name']}\n");

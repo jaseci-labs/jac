@@ -38,6 +38,7 @@ obj DocIRGenPass(UniPass) {
     def _assign_compr_doc_ir(nd: uni.UniNode) -> None;
     def _assign_else_doc_ir(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;
     def _emit_keyword_block(nd: uni.UniNode, kw: Tok) -> None;
+    def _assign_case_block_doc_ir(nd: uni.UniNode, case_cls: type) -> None;
     def intersperse(
         items: list[doc.DocType], separator: doc.DocType
     ) -> list[doc.DocType];
@@ -88,6 +89,7 @@ obj DocIRGenPass(UniPass) {
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_try_stmt(nd: uni.TryStmt) -> None;

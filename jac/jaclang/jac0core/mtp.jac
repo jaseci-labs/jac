@@ -75,32 +75,6 @@ def mk_tuple(*types: object) -> tuple {
     return (('tuple', ) + `tuple(types));
 }
 
-def mk_union(*types: object) -> tuple {
-    return (('union', ) + `tuple(types));
-}
-
-def is_list_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) >= 2) and (t[0] == 'list'));
-}
-
-def is_dict_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) == 3) and (t[0] == 'dict'));
-}
-
-def is_tuple_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) >= 2) and (t[0] == 'tuple'));
-}
-
-def is_union_type(t: object) -> bool {
-    return (isinstance(t, `tuple) and (len(t) >= 2) and (t[0] == 'union'));
-}
-
-def inner_types(t: object) -> tuple {
-    if (isinstance(t, `tuple) and (len(t) >= 2)) {
-        return t[1:];
-    }
-    return ();
-}
 
 def type_to_str(t: object) -> str {
     if (t is None) {
@@ -134,4 +108,45 @@ def type_to_str(t: object) -> str {
         return (head + '[' + ','.join(type_to_str(x) for x in t[1:]) + ']');
     }
     return str(t);
+}
+
+def fetch_mtir(func: Callable) -> Info | None {
+    import sys;
+    import from pathlib { Path }
+    import from jaclang.jac0core.runtime { JacRuntime }
+    module_name = None;
+    try {
+        module_name = getattr(func, "__module__");
+    } except AttributeError {
+        module_name = None;
+    }
+
+    if module_name and module_name == "__main__" {
+        main_mod = sys.modules.get("__main__");
+        main_file = main_mod?.__file__ if main_mod else None;
+        if main_file {
+            stem = Path(main_file).stem;
+
+            if stem.endswith(".impl") {
+                stem = stem[:-5];
+            } elif stem.endswith(".cl") or stem.endswith(".sv") {
+                stem = stem[:-3];
+            }
+            module = stem;
+        } else {
+            module = Path(sys.argv[0]).stem if sys.argv and sys.argv[0] else "__main__";
+        }
+    } elif module_name {
+        module = module_name;
+    } else {
+        module = "__main__";
+    }
+
+    try {
+        qualname = func.__qualname__;
+        current_scope = ".".join([module, qualname]);
+        return JacRuntime.get_mtir_from_map(current_scope);
+    } except (KeyError, AttributeError) {
+        return None;
+    }
 }
