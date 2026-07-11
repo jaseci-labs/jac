@@ -405,6 +405,8 @@ obj TypeEvaluator {
         expected_type: TypeBase | None, dict_class: TypeBase
     ) -> tuple[TypeBase, TypeBase] | None;
 
+    def _infer_list_elem_from_mutations(expr: uni.ListVal) -> TypeBase | None;
+    def _list_mutation_elem_contrib(ref: uni.NameAtom) -> TypeBase | None;
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
     ) -> types.TypeBase | None;
