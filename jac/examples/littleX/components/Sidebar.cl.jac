@@ -58,7 +58,7 @@ def:pub Sidebar(
                             if activeTab == "feed"
                             else "text-foreground"
                     )}
-                    onClick={lambda() { onNavigate("feed"); }}
+                    onClick={lambda { onNavigate("feed"); }}
                 >
                     <Home size={24}/>
                     <span className="hidden xl:inline">Home</span>
@@ -71,7 +71,7 @@ def:pub Sidebar(
                             if activeTab == "explore"
                             else "text-foreground"
                     )}
-                    onClick={lambda() { onNavigate("explore"); }}
+                    onClick={lambda { onNavigate("explore"); }}
                 >
                     <Compass size={24}/>
                     <span className="hidden xl:inline">Explore</span>
@@ -84,7 +84,7 @@ def:pub Sidebar(
                             if activeTab == "channels"
                             else "text-foreground"
                     )}
-                    onClick={lambda() { onNavigate("channels"); }}
+                    onClick={lambda { onNavigate("channels"); }}
                 >
                     <Hash size={24}/>
                     <span className="hidden xl:inline">Channels</span>
@@ -97,7 +97,7 @@ def:pub Sidebar(
                             if activeTab == "profile"
                             else "relative text-foreground"
                     )}
-                    onClick={lambda() { onNavigate("profile"); }}
+                    onClick={lambda { onNavigate("profile"); }}
                 >
                     <User size={24}/>
                     <span className="hidden xl:inline">Profile</span>
@@ -112,7 +112,7 @@ def:pub Sidebar(
             </nav>
             <Button
                 className="mt-3 h-12 w-12 rounded-full font-semibold shadow-lg shadow-primary/20 xl:w-full"
-                onClick={lambda() { onNavigate("feed"); }}
+                onClick={lambda { onNavigate("feed"); }}
             >
                 <Feather size={20}/>
                 <span className="hidden xl:inline">Post</span>
@@ -148,7 +148,7 @@ def:pub Sidebar(
                     <DropdownMenuGroup>
                         <DropdownMenuItem
                             variant="destructive"
-                            onClick={lambda() { onLogout(); }}
+                            onClick={lambda { onLogout(); }}
                         >
                             <LogOut size={15}/>
                             Log out @

@@ -1214,7 +1214,7 @@ test "W3037 auto-fix removes unnecessary -> None from lambdas" {
     assert "lambda (x: int" in formatted and "y: int) {" in formatted;
 
     # Lambda with no params: -> None removed
-    assert "lambda() {" in formatted;
+    assert "lambda {" in formatted;
 }
 
 # ── TestW3038UseStateToHas ────────────────────────────────────────────────

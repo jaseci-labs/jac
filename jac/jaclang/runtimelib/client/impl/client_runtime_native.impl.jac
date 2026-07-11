@@ -10,21 +10,21 @@ impl __jacWirePlatformAdapters -> None {
     globalThis.__jacGetLocalStorage__ = __getLocalStorage;
     globalThis.__jacSetLocalStorage__ = __setLocalStorage;
     globalThis.__jacRemoveLocalStorage__ = __removeLocalStorage;
-    globalThis.__jacSeedEndpointEffects__ = lambda() -> dict {
+    globalThis.__jacSeedEndpointEffects__ = lambda -> dict {
         seed = globalThis.__JAC_INIT__;
         if seed and seed.endpointEffects {
             return seed.endpointEffects;
         }
         return {};
     };
-    globalThis.__jacHandleWalkerUnauthorized__ = lambda() {
+    globalThis.__jacHandleWalkerUnauthorized__ = lambda {
         console.warn(
             "[jac-native-runtime] Walker returned 401; cleared token. "
             "Redirecting to login."
         );
         navigate("/login");
     };
-    globalThis.__jacDefaultErrorReportUrl__ = lambda() -> str { return ""; };
+    globalThis.__jacDefaultErrorReportUrl__ = lambda -> str { return ""; };
 }
 
 impl __jacGetRenderer -> any {
@@ -225,7 +225,7 @@ impl _makeNativeLink(props: dict, children: list) -> JsxElement {
         rest.pop("href", None);
     }
     if href {
-        rest["onPress"] = lambda() { if href.startswith("http://")
+        rest["onPress"] = lambda { if href.startswith("http://")
         or href.startswith("https://")
         or href.startswith("mailto:")
         or href.startswith("tel:") {
@@ -486,7 +486,7 @@ impl _collectNativeRoutes(
 impl _makeNativeRouteScreen(route: RouteDef) -> any {
     wrappers = route.wrappers or [];
     element = route.element or React.createElement(RNView, None);
-    return lambda() -> JsxElement {
+    return lambda -> JsxElement {
         content = element;
         idx = len(wrappers) - 1;
         while idx >= 0 {
@@ -502,7 +502,7 @@ impl _makeNativeRouteScreen(route: RouteDef) -> any {
 
 impl __nativeRouter(props: dict = {}) -> JsxElement {
     nav_ref = React.useRef(None);
-    React.useEffect(lambda() { globalThis.__jacNativeNavigationRef__ = nav_ref; }, []);
+    React.useEffect(lambda { globalThis.__jacNativeNavigationRef__ = nav_ref; }, []);
     def _flushPendingNavigation {
         pending = globalThis.__jacPendingNavigation__;
         if pending {
@@ -520,17 +520,17 @@ impl __nativeRouter(props: dict = {}) -> JsxElement {
 
 impl __nativeRoutes(props: dict = {}) -> JsxElement {
     routes = React.useMemo(
-        lambda() -> list {
+        lambda -> list {
             out: list[RouteDef] = [];
             _collectNativeRoutes(props.children, "/", [], out);
             return out;
         },
         []
     );
-    React.useEffect(lambda() { _cacheNativeRoutes(routes); }, [routes]);
+    React.useEffect(lambda { _cacheNativeRoutes(routes); }, [routes]);
 
     screens = React.useMemo(
-        lambda() -> list { return [
+        lambda -> list { return [
             React.createElement(
                 _JAC_NATIVE_STACK.Screen,
                 {
@@ -576,7 +576,7 @@ impl __nativeLink(props: dict = {}) -> JsxElement {
     }
     user_press = rest["onPress"] if rest["onPress"] else None;
     nav_fn = useNavigate();
-    rest["onPress"] = lambda() {
+    rest["onPress"] = lambda {
         if user_press {
             user_press();
         }
@@ -596,7 +596,7 @@ impl __nativeNavigate(props: dict = {}) -> (JsxElement | None) {
     should_replace = opts.get("replace", None) == True;
     nav_fn = useNavigate();
     reactUseEffect(
-        lambda() { nav_fn(
+        lambda { nav_fn(
             target, {"replace": should_replace, "state": opts.get("state", None)}
         ); },
         [target, should_replace]
@@ -763,7 +763,7 @@ impl __ensureNativeTokenPrimed -> any {
 impl AuthGuard(redirect: str = "/login") -> JsxElement {
     [ready, setReady] = useState(globalThis.__jacNativeTokenPrimed__ == True);
     React.useEffect(
-        lambda() {
+        lambda {
             if ready {
                 return None;
             }
@@ -771,7 +771,7 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
             __ensureNativeTokenPrimed().then(
                 lambda (_: any) { if mounted["v"] { setReady(True); }}
             );
-            return lambda() { mounted["v"] = False; };
+            return lambda { mounted["v"] = False; };
         },
         []
     );
@@ -927,7 +927,7 @@ def _renderSelectField(
                 RNPressable,
                 {
                     "key": f"{field_name}:{opt_value}",
-                    "onPress": lambda() { _setFormField(form, field_name, opt_value); },
+                    "onPress": lambda { _setFormField(form, field_name, opt_value); },
                     "style": {
                         "borderWidth": 1,
                         "borderColor": ("#2563eb" if is_selected else "#d1d5db"),
@@ -957,7 +957,7 @@ def _renderRadioField(
                 RNPressable,
                 {
                     "key": f"{field_name}:{opt_value}",
-                    "onPress": lambda() { _setFormField(form, field_name, opt_value); },
+                    "onPress": lambda { _setFormField(form, field_name, opt_value); },
                     "style": {
                         "flexDirection": "row",
                         "alignItems": "center",
@@ -1117,7 +1117,7 @@ impl JacForm(props: dict) -> JsxElement {
             input_row = _renderPasswordRow(
                 input_row,
                 is_visible,
-                lambda() {
+                lambda {
                     next_visible = {** passwordVisible};
                     next_visible[fieldName] = not is_visible;
                     setPasswordVisible(next_visible);
@@ -1145,7 +1145,7 @@ impl JacForm(props: dict) -> JsxElement {
         );
     }
     submit_button = _renderSubmitButton(
-        isSubmitting, isDirty, submitLabel, lambda() { form.handleSubmit(onSubmit)(); }
+        isSubmitting, isDirty, submitLabel, lambda { form.handleSubmit(onSubmit)(); }
     );
     return React.createElement(
         RNView, {"style": {"padding": 12}}, *(fields + [submit_button])
@@ -1164,7 +1164,7 @@ impl __jacInstallErrorHandlers -> None {
     try {
         prev = globalThis.ErrorUtils.getGlobalHandler();
         globalThis.ErrorUtils.setGlobalHandler(
-            lambda (error: any , isFatal: any) {
+            lambda (error: any, isFatal: any) {
                 message = error.message if error else "Unknown error";
                 stack = error.stack if error else "";
                 __jacReportError(message, stack, "", "ErrorUtils");

@@ -115,7 +115,7 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
                     </span>
                     <button
                         type="button"
-                        onClick={lambda() {
+                        onClick={lambda {
                             isSignup = not isSignup;
                             error = "";
                         }}

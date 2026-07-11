@@ -2403,10 +2403,7 @@ impl TypeEvaluator._assign_callable(
 
     if dest_func.return_type and src_func.return_type {
         dest_ret = self._convert_to_instance(dest_func.return_type);
-        # Void-return leniency: a callable returning any type is assignable to
-        # one whose return type is `None` -- the caller discards the value (as
-        # in TypeScript's `() => T` being assignable to `() => void`). This is
-        # what lets a single-expression lambda serve as a void event handler.
+
         if self.is_none_type(dest_ret) {
             return True;
         }

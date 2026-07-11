@@ -897,12 +897,8 @@ impl PyastBuildPass.proc_lambda(nd: py_ast.Lambda) -> uni.LambdaExpr {
     args = self.convert(nd.args);
     body = self.convert(nd.body);
     if (isinstance(args, uni.FuncSignature) and isinstance(body, uni.Expr)) {
-        # Python lambdas are expression-bodied; wrap as a braced body whose bare
-        # tail expression is the implicit return (Jac lambda bodies are lists).
         body_stmt = uni.ExprStmt(expr=body, in_fstring=False, kid=[body]);
-        return uni.LambdaExpr(
-            signature=args, body=[body_stmt], kid=[args, body_stmt]
-        );
+        return uni.LambdaExpr(signature=args, body=[body_stmt], kid=[args, body_stmt]);
     } else {
         raise self.ice();
     }

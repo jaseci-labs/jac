@@ -1161,7 +1161,10 @@ test "view body check warns on a keyless while (W2019)" {
 # ══════════════════════════════════════════════════════════════════
 with entry {
     parametrize(
-        "new reject", list(MUST_REJECT_NEW.items()), reject_test, id_fn=lambda (x) { x[0]; }
+        "new reject",
+        list(MUST_REJECT_NEW.items()),
+        reject_test,
+        id_fn=lambda (x) { x[0]; }
     );
     parametrize(
         "new validate reject",

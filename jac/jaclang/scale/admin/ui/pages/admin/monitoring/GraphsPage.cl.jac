@@ -40,12 +40,12 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda() { loadAll(); }, [rangeMinutes]);
+        useEffect(lambda { loadAll(); }, [rangeMinutes]);
 
         useEffect(
-            lambda() -> any {
-                interval = setInterval(lambda() { loadAll(); }, 30000);
-                return lambda() { clearInterval(interval); };
+            lambda -> any {
+                interval = setInterval(lambda { loadAll(); }, 30000);
+                return lambda { clearInterval(interval); };
             },
             [rangeMinutes]
         );

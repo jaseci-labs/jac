@@ -737,17 +737,17 @@ Before building the UI, you need to understand **lambdas** -- Jac's anonymous fu
 <!-- jac-skip -->
 ```jac
 # Lambda with typed parameters
-double = lambda x: int -> int { return x * 2; };
+double = lambda (x: int) -> int { return x * 2; };
 
 # Lambda with no parameters
 say_hi = lambda -> str { return "hi"; };
 ```
 
-The syntax is `lambda params -> return_type { body }`. In JSX, you'll use them inline to handle user events:
+The syntax is `lambda (params) -> return_type { body }`. In JSX, you'll use them inline to handle user events:
 
 <!-- jac-skip -->
 ```jac
-onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
 ```
 
 **Transparent Server Calls**
@@ -814,8 +814,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -873,8 +873,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -1009,8 +1009,8 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1062,7 +1062,7 @@ That last point deserves emphasis. You didn't write any code to save data or loa
 - **`cl import`** -- load CSS (or npm packages) in the browser
 - **`cl def:pub app -> JsxElement`** -- the main UI component
 - **`has`** (in components) -- reactive state that triggers re-renders on change
-- **`lambda`** -- anonymous functions: `lambda params -> type { body }`
+- **`lambda`** -- anonymous functions: `lambda (params) -> type { body }`
 - **`can with entry`** -- lifecycle hook that runs on component mount
 - **`await func()`** -- transparent server calls from the client (no HTTP code)
 - **`async`** -- marks functions that perform asynchronous operations
@@ -1350,8 +1350,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { add_new_task(); }
                             }}
                             placeholder="What needs to be done today?"
@@ -1387,8 +1387,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { generate_meal_list(); }
                             }}
                             placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1515,8 +1515,8 @@ cl def:pub TasksColumn -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -1596,8 +1596,8 @@ cl def:pub ShoppingColumn -> JsxElement {
                 <input
                     class="input"
                     value={meal_text}
-                    onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { generate_meal_list(); }
                     }}
                     placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1852,8 +1852,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1923,8 +1923,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={meal_text}
-                        onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { generate_meal_list(); }
                         }}
                         placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -2426,7 +2426,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -2436,7 +2436,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -2545,7 +2545,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -2658,7 +2658,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />
@@ -3422,7 +3422,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -3513,7 +3513,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />

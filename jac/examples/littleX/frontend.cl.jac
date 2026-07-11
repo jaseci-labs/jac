@@ -153,7 +153,7 @@ def:pub app -> JsxElement {
                         handleLogin();
                     }
                 }}
-                onToggleMode={lambda() {
+                onToggleMode={lambda {
                     isSignup = not isSignup;
                     authError = "";
                 }}
@@ -203,7 +203,7 @@ def:pub app -> JsxElement {
                                 variant="outline"
                                 size="sm"
                                 className="rounded-full"
-                                onClick={lambda() {
+                                onClick={lambda {
                                     editingBio = not editingBio;
                                     bioText = (
                                         myProfile.bio
@@ -221,7 +221,7 @@ def:pub app -> JsxElement {
                             size="icon"
                             className="rounded-full text-muted-foreground"
                             title="Toggle theme"
-                            onClick={lambda() { darkMode = not darkMode; }}
+                            onClick={lambda { darkMode = not darkMode; }}
                         >
                             {if darkMode {
                                 <Sun size={18}/>
@@ -284,7 +284,7 @@ def:pub app -> JsxElement {
                         {bioText}
                         onBioChange={lambda (v: str) { bioText = v; }}
                         onSaveBio={handleSaveBio}
-                        onCancelEditBio={lambda() { editingBio = False; }}
+                        onCancelEditBio={lambda { editingBio = False; }}
                         onLike={handleLike}
                         onComment={handleComment}
                         onDelete={handleDelete}
@@ -296,7 +296,7 @@ def:pub app -> JsxElement {
                 {searchQuery}
                 onSearchChange={lambda (v: str) { searchQuery = v; }}
                 onSearch={handleSearch}
-                onClearSearch={lambda() {
+                onClearSearch={lambda {
                     searchQuery = "";
                     handleSearch("");
                 }}
@@ -304,12 +304,12 @@ def:pub app -> JsxElement {
                 onTrendClick={handleTrendClick}
                 {toFollow}
                 onFollow={handleFollow}
-                onShowMore={lambda() { navigate("explore"); }}
+                onShowMore={lambda { navigate("explore"); }}
             />
             <MobileNav {activeTab} {notifCount} onNavigate={navigate}/>
             <Button
                 className="fixed bottom-20 right-4 z-40 size-14 rounded-full shadow-lg shadow-primary/30 md:hidden"
-                onClick={lambda() { navigate("feed"); }}
+                onClick={lambda { navigate("feed"); }}
             >
                 <Feather size={22}/>
             </Button>

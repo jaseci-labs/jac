@@ -108,7 +108,7 @@ def:pub TweetCard(
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                                         <AlertDialogAction
                                             className="bg-destructive text-white hover:bg-destructive/90"
-                                            onClick={lambda() { onDelete(tweet.id); }}
+                                            onClick={lambda { onDelete(tweet.id); }}
                                         >
                                             Delete
                                         </AlertDialogAction>
@@ -131,7 +131,7 @@ def:pub TweetCard(
                                     variant="ghost"
                                     size="sm"
                                     className="h-8 gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-reply/10 hover:text-reply"
-                                    onClick={lambda() { showComments = not showComments; }}
+                                    onClick={lambda { showComments = not showComments; }}
                                 >
                                     <MessageCircle size={16}/>
                                     {if comment_count > 0 {
@@ -149,7 +149,7 @@ def:pub TweetCard(
                                     variant="ghost"
                                     size="sm"
                                     className="h-8 gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-repost/10 hover:text-repost"
-                                    onClick={lambda() { onRepost(
+                                    onClick={lambda { onRepost(
                                         tweet.id, tweet.content, tweet.author_username
                                     ); }}
                                 >
@@ -169,7 +169,7 @@ def:pub TweetCard(
                                             if is_liked
                                             else "text-muted-foreground"
                                     )}
-                                    onClick={lambda() { onLike(tweet.id); }}
+                                    onClick={lambda { onLike(tweet.id); }}
                                 >
                                     <Heart
                                         size={16}
@@ -233,7 +233,7 @@ def:pub TweetCard(
                             <Button
                                 size="icon"
                                 disabled={not commentText.strip()}
-                                onClick={lambda() { if commentText.strip() {
+                                onClick={lambda { if commentText.strip() {
                                     onComment(tweet.id, commentText);
                                     commentText = "";
                                 }}}

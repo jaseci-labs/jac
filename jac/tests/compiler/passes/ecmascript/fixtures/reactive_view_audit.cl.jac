@@ -17,6 +17,6 @@ cl {
 
         # dynamic attribute value -> wraps; event handler -> never wraps;
         # static literal -> bypasses the seam; dynamic child -> wraps.
-        return <input type="text" value={count} onClick={lambda() { count; }}>{count}</input>;
+        return <input type="text" value={count} onClick={lambda { count; }}>{count}</input>;
     }
 }

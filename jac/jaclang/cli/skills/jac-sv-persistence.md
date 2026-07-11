@@ -64,7 +64,7 @@ Edge-type filter / creation / deletion syntax: see `jac-node-edge-patterns`.
 
 ## View models: report views, not raw nodes
 
-Give each node a `to_view()` returning an `obj` view model with `id=jid(self)` plus viewer-relative computed fields. Inside a node method running under a served request, `root` is the **calling user's** root - so `is_mine` computes per caller. Endpoints report the views (sorted with the typed expression lambda), never raw nodes:
+Give each node a `to_view()` returning an `obj` view model with `id=jid(self)` plus viewer-relative computed fields. Inside a node method running under a served request, `root` is the **calling user's** root - so `is_mine` computes per caller. Endpoints report the views (sorted with a typed lambda), never raw nodes:
 
 ```jac
 node User { has name: str; }

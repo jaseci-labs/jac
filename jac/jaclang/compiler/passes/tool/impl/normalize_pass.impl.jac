@@ -1101,7 +1101,6 @@ impl NormalizePass.enter_lambda_expr(nd: uni.LambdaExpr) -> None {
         new_kid.extend(nd.body);
         new_kid.append(nd.gen_token(Tok.RBRACE));
     } elif isinstance(nd.body, uni.Expr) {
-        # Error-recovery only: a non-braced body was consumed as an expression.
         new_kid += [nd.gen_token(Tok.LBRACE), nd.body, nd.gen_token(Tok.RBRACE)];
     }
     nd.set_kids(nodes=new_kid);

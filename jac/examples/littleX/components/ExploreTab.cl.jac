@@ -71,7 +71,7 @@ def:pub ExploreTab(
                             variant="outline"
                             size="sm"
                             className="group shrink-0 rounded-full hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-                            onClick={lambda() { onUnfollow(u.id); }}
+                            onClick={lambda { onUnfollow(u.id); }}
                         >
                             <span className="group-hover:hidden">Following</span>
                             <span className="hidden group-hover:inline">Unfollow</span>
@@ -80,7 +80,7 @@ def:pub ExploreTab(
                         <Button
                             size="sm"
                             className="shrink-0 rounded-full font-semibold"
-                            onClick={lambda() { onFollow(u.id); }}
+                            onClick={lambda { onFollow(u.id); }}
                         >
                             Follow
                         </Button>

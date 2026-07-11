@@ -188,7 +188,6 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     if isinstance(body, list) {
         tail = nd.tail_return_expr();
         if tail is not None {
-            # Single expression-statement body -> implicit return of its value.
             val = self._codegen_expr(tail);
             if val is not None {
                 self.builder.ret(self._coerce_type(val, ret_type));

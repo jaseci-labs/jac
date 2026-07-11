@@ -18,7 +18,7 @@ def:pub ActivityFeed(events: list[UiEvent], status: str) -> JsxElement {
         expandedTools: list[int] = [];
     endRef: any = useRef(None);
     useEffect(
-        lambda() { if endRef.current {
+        lambda { if endRef.current {
             endRef.current.scrollIntoView({"block": "end"});
         }},
         [len(events)]
@@ -98,7 +98,7 @@ def:pub ActivityFeed(events: list[UiEvent], status: str) -> JsxElement {
                                 <div className="think" key={r["id"]}>
                                     <button
                                         className="think-head"
-                                        onClick={lambda() { toggle(r["id"]); }}
+                                        onClick={lambda { toggle(r["id"]); }}
                                     >
                                         <span className="chev">
                                             {"▾" if r["id"] not in collapsed else "▸"}
@@ -125,7 +125,7 @@ def:pub ActivityFeed(events: list[UiEvent], status: str) -> JsxElement {
                                         <div className="evt tool toolrow" key={r["id"]}>
                                             <button
                                                 className="tool-head"
-                                                onClick={lambda() { toggleTool(
+                                                onClick={lambda { toggleTool(
                                                     r["id"]
                                                 ); }}
                                             >

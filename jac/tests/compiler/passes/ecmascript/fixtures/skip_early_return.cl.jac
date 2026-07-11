@@ -9,7 +9,7 @@ def:pub SkipTest() -> JsxElement {
     }
 
     return <div>
-        <button onClick={lambda() { handle_submit(); }}>{"Submit"}</button>
+        <button onClick={lambda { handle_submit(); }}>{"Submit"}</button>
         <p>{value}</p>
     </div>;
 }

@@ -305,7 +305,8 @@ with entry {
 
 ### 7 Lambda Expressions
 
-Lambda parameters are always parenthesized and the body is always braced. A body
+Lambda parameters are parenthesized and the body is always braced; a
+zero-parameter lambda may omit the parens entirely (`lambda { 42; }`). A body
 that is a single expression statement is the **implicit return**
 (`lambda (x: int) { x + 1; }` returns `x + 1`); a multi-statement body uses an
 explicit `return` (with no `return`, it returns `None`).
@@ -321,11 +322,11 @@ glob process = lambda (x: int) -> int {
     return result;
 };
 
-# Lambda without parameters
-glob get_value = lambda () { 42; };
+# Lambda without parameters (parens optional when there are none)
+glob get_value = lambda { 42; };
 
 # Lambda with return type only
-glob get_default = lambda () -> int { 100; };
+glob get_default = lambda -> int { 100; };
 
 # Lambda with default parameters
 glob power = lambda (x: int = 2, y: int = 3) { x ** y; };
@@ -418,7 +419,7 @@ with entry {
     | JS idiom | Jac equivalent |
     |---|---|
     | `x => x + 1` | `lambda (x: int) { x + 1; }` |
-    | `() => ({a: 1})` | `lambda () { {"a": 1}; }` |
+    | `() => ({a: 1})` | `lambda { {"a": 1}; }` |
     | `(() => 42)()` | `(def () -> int { return 42; })()` |
     | `x => y => x + y` | `lambda (x: int) { lambda (y: int) { x + y; }; }` |
     | anonymous `class { ... }` | not supported -- declare a named `obj` and return instances |

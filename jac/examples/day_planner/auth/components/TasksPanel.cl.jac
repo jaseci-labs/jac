@@ -64,7 +64,7 @@ def:pub TasksPanel -> JsxElement {
                     onKeyPress={handleKeyPress}
                     placeholder="What needs to be done today?"
                 />
-                <button class="btn-add" onClick={lambda() { addTask(); }}>Add</button>
+                <button class="btn-add" onClick={lambda { addTask(); }}>Add</button>
             </div>
             {if tasksLoading {
                 <div class="loading-msg">Loading tasks...</div>
@@ -76,8 +76,8 @@ def:pub TasksPanel -> JsxElement {
                 <TaskItem
                     key={jid(t)}
                     task={t}
-                    onToggle={lambda() { toggleTask(jid(t)); }}
-                    onDelete={lambda() { deleteTask(jid(t)); }}
+                    onToggle={lambda { toggleTask(jid(t)); }}
+                    onDelete={lambda { deleteTask(jid(t)); }}
                 />
             }}
             <div class="count">

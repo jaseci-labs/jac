@@ -24,15 +24,15 @@ def:pub LLMMetricsPage -> JsxElement {
         isLoading = False;
     }
 
-    useEffect(lambda() { loadSummary(); }, []);
+    useEffect(lambda { loadSummary(); }, []);
 
     useEffect(
-        lambda() -> any {
+        lambda -> any {
             if not autoRefresh {
                 return undefined;
             }
-            interval = setInterval(lambda() { loadSummary(); }, 15000);
-            return lambda() { clearInterval(interval); };
+            interval = setInterval(lambda { loadSummary(); }, 15000);
+            return lambda { clearInterval(interval); };
         },
         [autoRefresh]
     );
@@ -97,7 +97,7 @@ def:pub LLMMetricsPage -> JsxElement {
                         Auto-refresh
                     </label>
                     <Button
-                        onClick={lambda() {
+                        onClick={lambda {
                             isLoading = True;
                             loadSummary();
                         }}

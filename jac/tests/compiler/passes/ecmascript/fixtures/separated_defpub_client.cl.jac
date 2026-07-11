@@ -51,7 +51,7 @@ def:pub app -> JsxElement {
             {[
                 <div key={t.id}>
                     <span>{t.title}</span>
-                    <button onClick={lambda() -> None { toggleTask(t.id); }}>Toggle</button>
+                    <button onClick={lambda -> None { toggleTask(t.id); }}>Toggle</button>
                 </div> for t in tasks
             ]}
         </div>;

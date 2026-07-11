@@ -163,7 +163,7 @@ cl with entry {
     counter = (
         def create_counter() {
             count = 0;
-            return lambda () -> int { count = count + 1; return count; } ;
+            return lambda -> int { count = count + 1; return count; } ;
         }
     )();
 

@@ -181,8 +181,8 @@ def:pub TasksColumn -> JsxElement {
                 <TaskItem
                     key={jid(t)}
                     task={t}
-                    onToggle={lambda() { toggle(jid(t)); }}
-                    onDelete={lambda() { remove(jid(t)); }}
+                    onToggle={lambda { toggle(jid(t)); }}
+                    onDelete={lambda { remove(jid(t)); }}
                 /> for t in tasks
             ]}
             <div class="count">

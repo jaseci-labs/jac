@@ -2718,10 +2718,13 @@ impl Parser.parse_compr_clause -> InnerCompr {
 impl Parser.parse_lambda_expr -> Expr {
     lambda_tok = self.consume_uni(TokenKind.KW_LAMBDA);
 
-    # Lambda parameters are always parenthesized: `lambda (x: int) { ... }`.
-    sig_kid: list = [self.consume_uni(TokenKind.LPAREN)];
-    params = self.parse_func_params(sig_kid);
-    sig_kid.append(self.consume_uni(TokenKind.RPAREN));
+    sig_kid: list = [];
+    params: list = [];
+    if self.match_tok(TokenKind.LPAREN) {
+        sig_kid.append(self.make_uni_token(self.previous()));
+        params = self.parse_func_params(sig_kid);
+        sig_kid.append(self.consume_uni(TokenKind.RPAREN));
+    }
     return_type = None;
     ret_hint_uni: UniToken | None = None;
     if self.match_tok(TokenKind.RETURN_HINT) {
@@ -2736,8 +2739,6 @@ impl Parser.parse_lambda_expr -> Expr {
         body = self.parse_code_block_stmts();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
-        # Lambda bodies must be braced ('lambda (x) { expr; }'); a single
-        # expression statement is the implicit return.
         self.emit_diag(E0022);
         body = self.parse_expression();
     }
@@ -2767,7 +2768,6 @@ impl Parser.parse_lambda_expr -> Expr {
     }
 
     if not isinstance(body, list) {
-        # Error-recovery only: a non-braced body was consumed as an expression.
         kid.append(body);
     } else {
         if lbrace_uni {

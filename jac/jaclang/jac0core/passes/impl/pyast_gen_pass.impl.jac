@@ -2605,8 +2605,7 @@ impl PyastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
 impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     if isinstance(nd.body, `list) {
         tail = nd.tail_return_expr();
-        # A single expression-statement body compiles to a real ast3.Lambda --
-        # byte identical to the (removed) colon-body form.
+
         if tail is not None {
             self._emit_lambda_expr_body(nd, tail);
             return;

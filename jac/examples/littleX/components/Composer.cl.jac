@@ -74,7 +74,7 @@ def:pub Composer(
                     <Button
                         className="rounded-full px-5 font-semibold"
                         disabled={not value.strip() or over_limit}
-                        onClick={lambda() { onPost(); }}
+                        onClick={lambda { onPost(); }}
                     >
                         {buttonLabel}
                     </Button>

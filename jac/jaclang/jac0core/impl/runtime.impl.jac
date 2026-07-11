@@ -1082,7 +1082,7 @@ impl JacGraph.refs(
             last.nd = post_filter;
         } else {
             orig_nd = last.nd;
-            last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
+            last.nd = lambda (i: any) { orig_nd(i) and post_filter(i); };
         }
     }
 

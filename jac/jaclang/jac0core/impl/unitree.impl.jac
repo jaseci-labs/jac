@@ -1839,7 +1839,11 @@ impl LambdaExpr.tail_return_expr -> Expr | None {
     if not (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
         return None;
     }
-    stmts = [s for s in self.body if not isinstance(s, Semi)];
+    stmts = [
+        s
+        for s in self.body
+        if not isinstance(s, Semi)
+    ];
     if (len(stmts) == 1 and isinstance(stmts[0], ExprStmt)) {
         return stmts[0].expr;
     }

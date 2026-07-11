@@ -65,7 +65,7 @@ cl def:pub app -> JsxElement {
                 onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}}
                 placeholder="Add a todo..."
             />
-            <button onClick={lambda() { add(); }}>Add</button>
+            <button onClick={lambda { add(); }}>Add</button>
             {for t in todos {
                 <p key={jid(t)}>[{t.priority}]{t.title} ({t.category})</p>
             }}

@@ -54,7 +54,7 @@ def:pub DeployPage -> JsxElement {
         loadedOnce = True;
     }
 
-    useEffect(lambda() { load(); }, []);
+    useEffect(lambda { load(); }, []);
 
     # ---- helpers (return strings, never JSX) -------------------------
     def rolloutCls(status: str) -> str {
@@ -98,7 +98,7 @@ def:pub DeployPage -> JsxElement {
                 icon={Boxes}
                 title="Deploy Health"
                 namespace={namespace}
-                onRefresh={lambda() { load(); }}
+                onRefresh={lambda { load(); }}
             />
             <OpsUnavailableBanner
                 show={loadedOnce and not available}

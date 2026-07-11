@@ -1068,7 +1068,10 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         items.append(('comment', idx, comment));
     }
     items.sort(
-        key=lambda (`entry: any) { (`entry[2].loc.first_line, `entry[2].loc.col_start); }
+        key=lambda (`entry: any) { (
+            `entry[2].loc.first_line,
+            `entry[2].loc.col_start
+        ); }
     );
     inline: dict[(int, list[CommentInfo])] = {};
     standalone: list[CommentInfo] = [];

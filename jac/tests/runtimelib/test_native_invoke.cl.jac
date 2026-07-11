@@ -39,7 +39,7 @@ def _clear_native {
 """Stub `window.location.reload` (the 401 path) and record each call."""
 def _install_window_reload -> list {
     reloads = [];
-    globalThis.window = {"location": {"reload": lambda() { reloads.append(1); }}};
+    globalThis.window = {"location": {"reload": lambda { reloads.append(1); }}};
     return reloads;
 }
 

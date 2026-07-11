@@ -85,7 +85,7 @@ def:pub app -> any {
                     <h1 style={{"margin": "0", "color": "#1a1a2e"}}>Jac Shop</h1>
                     <div style={{"display": "flex", "gap": "0.5rem"}}>
                         <button
-                            onClick={lambda() {
+                            onClick={lambda {
                                 currentView = "products";
                                 fetchProducts();
                             }}
@@ -105,7 +105,7 @@ def:pub app -> any {
                             Products
                         </button>
                         <button
-                            onClick={lambda() {
+                            onClick={lambda {
                                 currentView = "cart";
                                 fetchCart();
                             }}
@@ -123,7 +123,7 @@ def:pub app -> any {
                             Cart
                         </button>
                         <button
-                            onClick={lambda() {
+                            onClick={lambda {
                                 currentView = "orders";
                                 fetchOrders();
                             }}
@@ -188,7 +188,7 @@ def:pub app -> any {
                                     </div>
                                 </div>
                                 <button
-                                    onClick={lambda() { addToCart(
+                                    onClick={lambda { addToCart(
                                         p.id, p.name, p.price
                                     ); }}
                                     style={{
@@ -241,7 +241,7 @@ def:pub app -> any {
                                     <strong>Total: ${cart.total or 0}</strong>
                                 </div>
                                 <button
-                                    onClick={lambda() { placeOrder(); }}
+                                    onClick={lambda { placeOrder(); }}
                                     style={{
                                         "marginTop": "1rem",
                                         "padding": "0.75rem 2rem",
@@ -311,7 +311,7 @@ def:pub app -> any {
             onUsernameChange={lambda (e: any) { authUsername = e.target.value; }}
             onPasswordChange={lambda (e: any) { authPassword = e.target.value; }}
             onSubmit={handleSubmit}
-            onToggleMode={lambda() {
+            onToggleMode={lambda {
                 isSignup = not isSignup;
                 error = "";
             }}

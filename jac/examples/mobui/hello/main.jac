@@ -92,7 +92,7 @@ cl {
                     <Text style={styles.value}>Count: {count}</Text>
                     <Pressable
                         style={styles.button}
-                        onPress={lambda() { count = count + 1; }}
+                        onPress={lambda { count = count + 1; }}
                     >
                         <Text style={styles.buttonLabel}>Increment</Text>
                     </Pressable>

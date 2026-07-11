@@ -14,8 +14,8 @@ def:pub Carousel(props: any) -> JsxElement {
     embla: any = useEmblaCarousel({"axis": axisOpt}, props["plugins"]);
     carouselRef = embla[0];
     api: any = embla[1];
-    scrollPrev = lambda() -> any { api and api.scrollPrev(); };
-    scrollNext = lambda() -> any { api and api.scrollNext(); };
+    scrollPrev = lambda -> any { api and api.scrollPrev(); };
+    scrollNext = lambda -> any { api and api.scrollNext(); };
     ctxValue = {
         "carouselRef": carouselRef,
         "api": api,

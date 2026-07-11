@@ -88,14 +88,16 @@ def:pub Conversation(
                     placeholder="Describe a change, e.g. 'add a dark-mode toggle'…"
                     value={draft}
                     disabled={busy}
-                    onChange={lambda (e: ChangeEvent) { onDraftChange(e.target.value); }}
+                    onChange={lambda (e: ChangeEvent) { onDraftChange(
+                        e.target.value
+                    ); }}
                     onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter"
                     and not e.shiftKey {
                         e.preventDefault();
                         onSend();
                     }}}
                 />
-                {<button className="btn stop" onClick={lambda() { onStop(); }}>
+                {<button className="btn stop" onClick={lambda { onStop(); }}>
                     Stop
                 </button>
                     if running

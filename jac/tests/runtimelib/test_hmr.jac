@@ -318,11 +318,11 @@ test "process change settles to ok unless an error was recorded" {
         # A change whose rebuild records no error ends healthy,
         # even when the build was previously broken.
         reloader.record_error("app.jac", "old failure");
-        reloader._dispatch_change = lambda (p , d) { None; } ;
+        reloader._dispatch_change = lambda (p, d) { None; };
         reloader._process_change("app.jac");
         assert reloader.build_status() == {"status": "ok", "error": None};
         # A change whose rebuild records an error stays broken.
-        reloader._dispatch_change = lambda (p , d) { reloader.record_error(p, "boom"); };
+        reloader._dispatch_change = lambda (p, d) { reloader.record_error(p, "boom"); };
         reloader._process_change("app.jac");
         status = reloader.build_status();
         assert status["status"] == "error";

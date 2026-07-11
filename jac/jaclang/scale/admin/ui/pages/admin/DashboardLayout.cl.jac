@@ -98,7 +98,7 @@ def:pub DashboardLayout -> JsxElement {
 
     # Restore the persisted theme once on mount.
     useEffect(
-        lambda() { if getStorage("jac-admin-theme") == "light" {
+        lambda { if getStorage("jac-admin-theme") == "light" {
             isLight = True;
             applyThemeClass(True);
         }},

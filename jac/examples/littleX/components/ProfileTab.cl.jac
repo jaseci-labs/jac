@@ -65,14 +65,14 @@ def:pub ProfileTab(
                             <Button
                                 size="sm"
                                 className="font-semibold"
-                                onClick={lambda() { onSaveBio(); }}
+                                onClick={lambda { onSaveBio(); }}
                             >
                                 Save
                             </Button>
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={lambda() { onCancelEditBio(); }}
+                                onClick={lambda { onCancelEditBio(); }}
                             >
                                 Cancel
                             </Button>

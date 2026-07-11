@@ -7,7 +7,7 @@ with entry {
     ok_callback = sorted(nums, key=lambda (x) { -x; });
     ok_callable: Callable[[int], int] = lambda (x) { x + 1; };
     ok_annot = (lambda (x: int) { x / 2; })(10);
-    ok_noargs = lambda() { 567; };
+    ok_noargs = lambda { 567; };
 
     # E1119: no annotation, no context to seed the param(s).
     bad_bare = lambda (y) { -y; };

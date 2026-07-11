@@ -32,7 +32,7 @@ def:pub TokenStream(
         }
     }
     useEffect(
-        lambda() { if endRef.current {
+        lambda { if endRef.current {
             endRef.current.scrollIntoView({"block": "end"});
         }},
         [len(calls)]
@@ -57,7 +57,7 @@ def:pub TokenStream(
                                         " sel" if e.id == selected else ""
                                     )}
                                     key={e.id}
-                                    onClick={lambda() { onSelect(e.id); }}
+                                    onClick={lambda { onSelect(e.id); }}
                                 >
                                     <span className={"tok-chip tok-" + e.node}>
                                         {e.node}

@@ -31,12 +31,12 @@ def:pub SettingsModal(
     keyLabel = ("API key (" + keyEnv + ")") if keyEnv else "API key";
     keyPlaceholder = "•••••••• set — leave blank to keep" if apiKeySet else "sk-…";
     return
-        <div className="modal-overlay" onClick={lambda() { onClose(); }}>
+        <div className="modal-overlay" onClick={lambda { onClose(); }}>
             <div className="modal" onClick={lambda (e: any) { e.stopPropagation(); }}>
                 <div className="modal-head">
                     <span>Settings</span>
                     <span className="spacer"/>
-                    <button className="modal-x" onClick={lambda() { onClose(); }}>
+                    <button className="modal-x" onClick={lambda { onClose(); }}>
                         ×
                     </button>
                 </div>
@@ -63,7 +63,7 @@ def:pub SettingsModal(
                                 <button
                                     className="preset"
                                     key={p}
-                                    onClick={lambda() { onModel(p); }}
+                                    onClick={lambda { onModel(p); }}
                                 >
                                     {p}
                                 </button> for p in presets
@@ -80,7 +80,9 @@ def:pub SettingsModal(
                             type="password"
                             value={keyDraft}
                             placeholder={keyPlaceholder}
-                            onChange={lambda (e: ChangeEvent) { onKey(e.target.value); }}
+                            onChange={lambda (e: ChangeEvent) { onKey(
+                                e.target.value
+                            ); }}
                         />
                     </div>
                     <div className="field">
@@ -121,13 +123,13 @@ def:pub SettingsModal(
                     {<div className="modal-err">{error}</div> if error else <span/>}
                 </div>
                 <div className="modal-foot">
-                    <button className="btn ghost" onClick={lambda() { onClose(); }}>
+                    <button className="btn ghost" onClick={lambda { onClose(); }}>
                         Cancel
                     </button>
                     <button
                         className="btn"
                         disabled={busy}
-                        onClick={lambda() { onApply(); }}
+                        onClick={lambda { onApply(); }}
                     >
                         {"Applying…" if busy else "Apply"}
                     </button>

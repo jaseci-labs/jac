@@ -23,7 +23,7 @@ def _resp(body: dict) -> dict {
     return {
         "ok": True,
         "status": 200,
-        "json": lambda() -> any { return Promise.resolve(body); }
+        "json": lambda -> any { return Promise.resolve(body); }
     };
 }
 
@@ -95,7 +95,7 @@ test "desktop jacLogout drops the broker session too (DELETE /__jac/session)" {
 
     urls = [];
     methods = [];
-    globalThis.fetch = lambda (url: any , opts: any) -> any {
+    globalThis.fetch = lambda (url: any, opts: any) -> any {
         urls.append(url);
         methods.append(opts["method"] if opts else "GET");
         return Promise.resolve(_resp({"ok": True}));

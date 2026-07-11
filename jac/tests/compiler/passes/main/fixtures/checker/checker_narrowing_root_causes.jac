@@ -387,7 +387,7 @@ def fail_object_typed_attr(model: object) -> dict {
 def fail_stdlib_method_on_assigned(svc: ServiceClass) -> Future {
     # ThreadPoolExecutor.submit should be recognized from stdlib
     executor = svc.pool;
-    return executor.submit(lambda() { None; });  # E1032 if executor type is Unknown
+    return executor.submit(lambda { None; });  # E1032 if executor type is Unknown
 }
 
 # ============================================================================

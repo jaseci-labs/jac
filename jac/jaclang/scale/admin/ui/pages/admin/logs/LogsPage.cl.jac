@@ -172,7 +172,7 @@ def:pub LogsPage -> JsxElement {
     }
 
     useEffect(
-        lambda() {
+        lambda {
             loadServices();
             loadLogs();
         },
@@ -184,20 +184,20 @@ def:pub LogsPage -> JsxElement {
     # is intentionally excluded - it stays Enter-to-submit to avoid
     # hammering Loki on every keystroke.
     useEffect(
-        lambda() -> any {
-            timer = setTimeout(lambda() { loadLogs(); }, 250);
-            return lambda() { clearTimeout(timer); };
+        lambda -> any {
+            timer = setTimeout(lambda { loadLogs(); }, 250);
+            return lambda { clearTimeout(timer); };
         },
         [filterService, filterLevel, filterSince]
     );
 
     useEffect(
-        lambda() -> any {
+        lambda -> any {
             if not autoRefresh {
                 return undefined;
             }
-            interval = setInterval(lambda() { loadLogs(); }, 10000);
-            return lambda() { clearInterval(interval); };
+            interval = setInterval(lambda { loadLogs(); }, 10000);
+            return lambda { clearInterval(interval); };
         },
         [autoRefresh]
     );
@@ -328,7 +328,7 @@ def:pub LogsPage -> JsxElement {
                         }}}
                     />
                 </div>
-                <Button onClick={lambda() { loadLogs(); }} variant="secondary">
+                <Button onClick={lambda { loadLogs(); }} variant="secondary">
                     <RefreshCw className="w-3.5 h-3.5"/>
                     Refresh
                 </Button>
@@ -393,7 +393,7 @@ def:pub LogsPage -> JsxElement {
                                 and "bg-accent-weak border-l-2 border-l-accent"
                                 or ""
                             )}
-                            onClick={lambda() { openPanel(idx, line); }}
+                            onClick={lambda { openPanel(idx, line); }}
                         >
                             <span className="text-faint text-xs whitespace-nowrap">
                                 {shortTime(line["ts"] or "")}
@@ -426,7 +426,7 @@ def:pub LogsPage -> JsxElement {
             and nextBefore
             and <div className="flex justify-center pt-1">
                 <Button
-                    onClick={lambda() { loadMore(); }}
+                    onClick={lambda { loadMore(); }}
                     variant="secondary"
                     disabled={isLoadingMore}
                 >
@@ -457,7 +457,7 @@ def:pub LogsPage -> JsxElement {
                     </div>
                     <button
                         className="text-muted hover:text-fg"
-                        onClick={lambda() { closePanel(); }}
+                        onClick={lambda { closePanel(); }}
                         title="Close"
                     >
                         <X className="w-4 h-4"/>

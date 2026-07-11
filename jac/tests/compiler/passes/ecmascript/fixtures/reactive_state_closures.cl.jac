@@ -14,10 +14,10 @@ cl {
 
         return <div>
             <button onClick={lambda (e: any) { seen = True; }}>direct</button>
-            <button onClick={lambda (e: any) { setTimeout(lambda() { armed = True; }, 0); }}>
+            <button onClick={lambda (e: any) { setTimeout(lambda { armed = True; }, 0); }}>
                 deferred
             </button>
-            <button onClick={lambda (e: any) { (lambda() { fired = True; })(); }}>
+            <button onClick={lambda (e: any) { (lambda { fired = True; })(); }}>
                 nested
             </button>
         </div>;

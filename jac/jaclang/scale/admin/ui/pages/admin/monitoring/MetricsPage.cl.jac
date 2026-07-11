@@ -47,15 +47,15 @@ def:pub MetricsPage -> JsxElement {
         isLoading = False;
     }
 
-    useEffect(lambda() { loadMetrics(); }, []);
+    useEffect(lambda { loadMetrics(); }, []);
 
     useEffect(
-        lambda() -> any {
+        lambda -> any {
             if not autoRefresh {
                 return undefined;
             }
-            interval = setInterval(lambda() { loadMetrics(); }, 3000);
-            return lambda() { clearInterval(interval); };
+            interval = setInterval(lambda { loadMetrics(); }, 3000);
+            return lambda { clearInterval(interval); };
         },
         [autoRefresh]
     );
@@ -301,7 +301,7 @@ def:pub MetricsPage -> JsxElement {
             />
             Auto-refresh
         </label>
-        <Button variant="secondary" onClick={lambda() { loadMetrics(); }}>
+        <Button variant="secondary" onClick={lambda { loadMetrics(); }}>
             <RefreshCw className="w-3.5 h-3.5"/>
             Refresh
         </Button>

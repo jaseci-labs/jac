@@ -58,15 +58,15 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda() { loadAll(); }, []);
+        useEffect(lambda { loadAll(); }, []);
 
         useEffect(
-            lambda() -> any {
+            lambda -> any {
                 if not autoRefresh {
                     return undefined;
                 }
-                interval = setInterval(lambda() { loadAll(); }, 10000);
-                return lambda() { clearInterval(interval); };
+                interval = setInterval(lambda { loadAll(); }, 10000);
+                return lambda { clearInterval(interval); };
             },
             [autoRefresh]
         );
@@ -280,7 +280,7 @@ cl {
                 />
                 Auto-refresh
             </label>
-            <Button variant="secondary" onClick={lambda() { loadAll(); }}>
+            <Button variant="secondary" onClick={lambda { loadAll(); }}>
                 <RefreshCw className="w-3.5 h-3.5"/>
                 Refresh
             </Button>

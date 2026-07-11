@@ -41,15 +41,15 @@ def useIsMobile -> any {
     isMobile = isMobileState[0];
     setIsMobile = isMobileState[1];
     useEffect(
-        lambda() -> any {
+        lambda -> any {
             mql: any = window.matchMedia("(max-width: 767px)");
-            onChange = lambda() -> any {
+            onChange = lambda -> any {
                 setIsMobile(window.innerWidth < 768);
                 return None;
             };
             mql.addEventListener("change", onChange);
             setIsMobile(window.innerWidth < 768);
-            return lambda() -> any {
+            return lambda -> any {
                 mql.removeEventListener("change", onChange);
                 return None;
             };
@@ -90,21 +90,21 @@ def:pub SidebarProvider(props: any) -> JsxElement {
         [setOpenProp, open]
     );
     toggleSidebar = useCallback(
-        lambda() -> any {
+        lambda -> any {
             isMobile and setOpenMobile(lambda (prev: any) -> any { return not prev; });
             isMobile or setOpen(lambda (prev: any) -> any { return not prev; });
         },
         [isMobile, setOpen, setOpenMobile]
     );
     useEffect(
-        lambda() -> any {
+        lambda -> any {
             handleKeyDown = lambda (event: any) -> any { if event.key == SIDEBAR_KEYBOARD_SHORTCUT
             and (event.metaKey or event.ctrlKey) {
                 event.preventDefault();
                 toggleSidebar();
             }};
             window.addEventListener("keydown", handleKeyDown);
-            return lambda() -> any { window.removeEventListener(
+            return lambda -> any { window.removeEventListener(
                 "keydown", handleKeyDown
             ); };
         },
@@ -496,7 +496,7 @@ def:pub SidebarMenuBadge(props: any) -> JsxElement {
 def:pub SidebarMenuSkeleton(props: any) -> JsxElement {
     attrs: dict[str, any] = {** props};
     showIcon = props["showIcon"] or False;
-    widthState = useState(lambda() -> any { return f"{int(Math.random() * 40 + 50)}%"; });
+    widthState = useState(lambda -> any { return f"{int(Math.random() * 40 + 50)}%"; });
     width = widthState[0];
     skeletonStyle = {"--skeleton-width": width};
     return

@@ -41,7 +41,7 @@ def:pub WelcomeBanner(onDismiss: Callable[[], None]) -> JsxElement {
                     variant="ghost"
                     size="icon"
                     className="size-7 text-muted-foreground hover:text-foreground"
-                    onClick={lambda() { onDismiss(); }}
+                    onClick={lambda { onDismiss(); }}
                 >
                     <X size={16}/>
                 </Button>

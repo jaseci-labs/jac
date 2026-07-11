@@ -152,10 +152,10 @@ impl grouped_guides -> list[tuple[str, list[Guide]]] {
     if start is not None {
         start.sort(
             key=lambda (g: Guide) { (
-                    _START_HERE_ORDER.index(g.name)
-                        if g.name in _START_HERE_ORDER
-                        else len(_START_HERE_ORDER)
-                ); }
+                _START_HERE_ORDER.index(g.name)
+                    if g.name in _START_HERE_ORDER
+                    else len(_START_HERE_ORDER)
+            ); }
         );
     }
     return [

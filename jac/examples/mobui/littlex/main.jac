@@ -227,7 +227,7 @@ cl {
                     useNativeDriver: True
                 }
             ).start();
-            setTimeout(lambda() { if screen == "splash" { screen = "auth"; }}, 1500);
+            setTimeout(lambda { if screen == "splash" { screen = "auth"; }}, 1500);
         }
 
         def newestFirst(xs: list) -> list {
@@ -355,12 +355,12 @@ cl {
         def TweetCard(t: any) -> JsxElement {
             return
                 <View style={styles.card} key={t._jac_id}>
-                    <Pressable onPress={lambda() { openProfile(t.author); }}>
+                    <Pressable onPress={lambda { openProfile(t.author); }}>
                         <Avatar seed={t.author} size={44}/>
                     </Pressable>
                     <View style={styles.cardBody}>
                         <View style={styles.cardHead}>
-                            <Pressable onPress={lambda() { openProfile(t.author); }}>
+                            <Pressable onPress={lambda { openProfile(t.author); }}>
                                 <Text style={styles.name}>{t.author}</Text>
                             </Pressable>
                             <Text style={styles.handle}>
@@ -371,7 +371,7 @@ cl {
                         <View style={styles.actions}>
                             <Pressable
                                 style={styles.action}
-                                onPress={lambda() { likeTweet(t._jac_id); }}
+                                onPress={lambda { likeTweet(t._jac_id); }}
                             >
                                 <Icon
                                     name="heart"
@@ -394,7 +394,7 @@ cl {
                             </Pressable>
                             <Pressable
                                 style={styles.action}
-                                onPress={lambda() { openComments(t._jac_id); }}
+                                onPress={lambda { openComments(t._jac_id); }}
                             >
                                 <Icon
                                     name="comment"
@@ -407,7 +407,7 @@ cl {
                             </Pressable>
                             <Pressable
                                 style={styles.action}
-                                onPress={lambda() { retweetTweet(t._jac_id); }}
+                                onPress={lambda { retweetTweet(t._jac_id); }}
                             >
                                 <Icon
                                     name="repeat"
@@ -702,7 +702,7 @@ cl {
             return
                 <Pressable
                     style={styles.tabItem}
-                    onPress={lambda() {
+                    onPress={lambda {
                         tab = tabKey;
                         if tabKey == "profile" {
                             profileUser = me;
@@ -737,7 +737,7 @@ cl {
                         </View>
                         <Pressable
                             style={styles.avatarBtn}
-                            onPress={lambda() { openProfile(me); }}
+                            onPress={lambda { openProfile(me); }}
                         >
                             <Avatar seed={me} size={32}/>
                         </Pressable>
@@ -859,7 +859,7 @@ cl {
                                 )}
                             </Text>
                             <Pressable
-                                onPress={lambda() {
+                                onPress={lambda {
                                     authMode = "login" if isSignup else "signup";
                                     authError = "";
                                 }}

@@ -615,7 +615,9 @@ test "if statement outside lambda still breaks" {
     );
 
     # Lambda `if` with else should NOT stay flat.
-    assert ("lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }") not in formatted , (
+    assert (
+        "lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }"
+    ) not in formatted , (
         f"lambda `if`/`else` must fall back to hard-line layout:\n{formatted}"
     );
 }

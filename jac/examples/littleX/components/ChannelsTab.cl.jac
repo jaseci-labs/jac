@@ -49,7 +49,7 @@ def:pub ChannelsTab(
                 <div className="p-4">
                     <Button
                         className="w-full font-semibold"
-                        onClick={lambda() { showCreateChannel = True; }}
+                        onClick={lambda { showCreateChannel = True; }}
                     >
                         <Plus size={16}/>
                         Create Channel
@@ -92,14 +92,14 @@ def:pub ChannelsTab(
                         <DialogFooter>
                             <Button
                                 variant="outline"
-                                onClick={lambda() { showCreateChannel = False; }}
+                                onClick={lambda { showCreateChannel = False; }}
                             >
                                 Cancel
                             </Button>
                             <Button
                                 className="font-semibold"
                                 disabled={not newChannelName.strip()}
-                                onClick={lambda() {
+                                onClick={lambda {
                                     onCreateChannel(
                                         newChannelName.strip(),
                                         newChannelDescription.strip()
@@ -141,7 +141,7 @@ def:pub ChannelsTab(
                     <div
                         className="lx-fade-up mx-4 mb-3 flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
                         key={ch.id}
-                        onClick={lambda() { onSelectChannel(ch.id); }}
+                        onClick={lambda { onSelectChannel(ch.id); }}
                     >
                         <div
                             className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary"
@@ -185,7 +185,7 @@ def:pub ChannelsTab(
                         variant="ghost"
                         size="sm"
                         className="-ml-2 mb-2 gap-1 text-muted-foreground"
-                        onClick={lambda() { onBackToChannels(); }}
+                        onClick={lambda { onBackToChannels(); }}
                     >
                         <ArrowLeft size={16}/>
                         Back
@@ -220,7 +220,7 @@ def:pub ChannelsTab(
                                 variant="outline"
                                 size="sm"
                                 className="shrink-0"
-                                onClick={lambda() { if selectedChannel {
+                                onClick={lambda { if selectedChannel {
                                     onLeaveChannel(selectedChannel.id);
                                 }}}
                             >
@@ -230,7 +230,7 @@ def:pub ChannelsTab(
                             <Button
                                 size="sm"
                                 className="shrink-0 font-semibold"
-                                onClick={lambda() { if selectedChannel {
+                                onClick={lambda { if selectedChannel {
                                     onJoinChannel(selectedChannel.id);
                                 }}}
                             >
@@ -251,7 +251,7 @@ def:pub ChannelsTab(
                         placeholder={"Post in #" + selectedChannel.name}
                         value={channelComposerText}
                         onChange={lambda (v: str) { channelComposerText = v; }}
-                        onPost={lambda() {
+                        onPost={lambda {
                             onChannelPost(channelComposerText);
                             channelComposerText = "";
                         }}

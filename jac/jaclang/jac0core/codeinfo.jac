@@ -204,13 +204,12 @@ obj InteropManifest {
         ),
         native_transitive_sources: list[str] = field(default_factory=`list),
         JAC_TO_CTYPES: dict[(str, str)] = field(
-            default_factory=lambda() :
-                {
-                    'int': 'ctypes.c_int64',
-                    'float': 'ctypes.c_double',
-                    'bool': 'ctypes.c_bool',
-                    'str': 'ctypes.c_char_p'
-                }
+            default_factory=lambda { return {
+                'int': 'ctypes.c_int64',
+                'float': 'ctypes.c_double',
+                'bool': 'ctypes.c_bool',
+                'str': 'ctypes.c_char_p'
+            }; }
         );
 
     has native_imports: list[InteropBinding] { getter; }

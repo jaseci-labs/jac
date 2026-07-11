@@ -45,7 +45,7 @@ with entry {
     f3: Callable[[int, int], None] = one_int;  # Ok
 
     # Zero-arg lambda -> Callable expecting an event
-    f4: Callable[[MouseEvent], None] = lambda() { };  # Ok
+    f4: Callable[[MouseEvent], None] = lambda { };  # Ok
 
     # Pass shorter callable through a higher-order call site
     takes_mouse_handler(no_args);  # Ok

@@ -75,7 +75,7 @@ def:pub CallDetailModal(
     newCount = detail.total - detail.shared;
     toolTokens = detail.tool_chars // 4;
     return
-        <div className="modal-overlay" onClick={lambda() { onClose(); }}>
+        <div className="modal-overlay" onClick={lambda { onClose(); }}>
             <div
                 className="modal cd-modal"
                 onClick={lambda (e: any) { e.stopPropagation(); }}
@@ -93,18 +93,18 @@ def:pub CallDetailModal(
                     <button
                         className="btn ghost sm"
                         disabled={detail.prev_id < 0}
-                        onClick={lambda() { onPrev(); }}
+                        onClick={lambda { onPrev(); }}
                     >
                         ‹ prev
                     </button>
                     <button
                         className="btn ghost sm"
                         disabled={detail.next_id < 0}
-                        onClick={lambda() { onNext(); }}
+                        onClick={lambda { onNext(); }}
                     >
                         next ›
                     </button>
-                    <button className="modal-x" onClick={lambda() { onClose(); }}>
+                    <button className="modal-x" onClick={lambda { onClose(); }}>
                         ×
                     </button>
                 </div>
@@ -132,7 +132,7 @@ def:pub CallDetailModal(
                                 <span className="spacer"/>
                                 <button
                                     className="btn ghost sm"
-                                    onClick={lambda() { showFull = not showFull; }}
+                                    onClick={lambda { showFull = not showFull; }}
                                 >
                                     {"show diff only"
                                         if showFull
@@ -191,7 +191,7 @@ def:pub CallDetailModal(
                             </div>
                             {<button
                                 className="cd-section-label cd-tools-head"
-                                onClick={lambda() { showTools = not showTools; }}
+                                onClick={lambda { showTools = not showTools; }}
                             >
                                 <span className="chev">
                                     {"▾" if showTools else "▸"}

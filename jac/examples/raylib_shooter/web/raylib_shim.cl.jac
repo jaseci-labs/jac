@@ -229,59 +229,61 @@ def _flush(sh: any) -> None {
 
 def _build_env(sh: any) -> dict {
     return {
-        "InitWindow": lambda (w: int , h: int , t: int) { document.title = _read_cstr(
+        "InitWindow": lambda (w: int, h: int, t: int) { document.title = _read_cstr(
             sh, t
         ); },
-        "WindowShouldClose": lambda() { return 0; },
-        "CloseWindow": lambda() { },
+        "WindowShouldClose": lambda { return 0; },
+        "CloseWindow": lambda { },
         "SetTargetFPS": lambda (f: int) { },
-        "BeginDrawing": lambda() { sh.gl.viewport(0, 0, 960, 600); },
-        "EndDrawing": lambda() { },
-        "EndMode3D": lambda() { _flush(sh); },
-        "GetFrameTime": lambda() { return sh.dt; },
-        "GetTime": lambda() { return sh.time; },
-        "DrawFPS": lambda (x: int , y: int) { },
+        "BeginDrawing": lambda { sh.gl.viewport(0, 0, 960, 600); },
+        "EndDrawing": lambda { },
+        "EndMode3D": lambda { _flush(sh); },
+        "GetFrameTime": lambda { return sh.dt; },
+        "GetTime": lambda { return sh.time; },
+        "DrawFPS": lambda (x: int, y: int) { },
         "IsKeyDown": lambda (k: int) { return sh.keys.get(k, 0); },
         "IsKeyPressed": lambda (k: int) { return sh.pressed.get(k, 0); },
-        "GetMouseX": lambda() { return sh.mouseX; },
-        "GetMouseY": lambda() { return sh.mouseY; },
+        "GetMouseX": lambda { return sh.mouseX; },
+        "GetMouseY": lambda { return sh.mouseY; },
         "IsMouseButtonPressed": lambda (b: int) { return sh.mpressed.get(b, 0); },
-        "DisableCursor": lambda() { sh.canvas.requestPointerLock(); },
-        "EnableCursor": lambda() { document.exitPointerLock(); },
-        "rlClearColor": lambda (r: int , g: int , b: int , a: int) { sh.gl.clearColor(
+        "DisableCursor": lambda { sh.canvas.requestPointerLock(); },
+        "EnableCursor": lambda { document.exitPointerLock(); },
+        "rlClearColor": lambda (r: int, g: int, b: int, a: int) { sh.gl.clearColor(
             float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0
         ); },
-        "rlClearScreenBuffers": lambda() { sh.gl.clear(16384 | 256); },
-        "rlEnableDepthTest": lambda() { sh.gl.enable(sh.gl.DEPTH_TEST); },
-        "rlDisableDepthTest": lambda() { sh.gl.disable(sh.gl.DEPTH_TEST); },
+        "rlClearScreenBuffers": lambda { sh.gl.clear(16384 | 256); },
+        "rlEnableDepthTest": lambda { sh.gl.enable(sh.gl.DEPTH_TEST); },
+        "rlDisableDepthTest": lambda { sh.gl.disable(sh.gl.DEPTH_TEST); },
         "rlMatrixMode": lambda (m: int) { sh.mode = m; },
-        "rlLoadIdentity": lambda() { _setcur(sh, _m_ident()); },
-        "rlPushMatrix": lambda() { if sh.mode == 0x1701 {
+        "rlLoadIdentity": lambda { _setcur(sh, _m_ident()); },
+        "rlPushMatrix": lambda { if sh.mode == 0x1701 {
             sh.pstack.append(sh.proj);
         } else {
             sh.mvstack.append(sh.mv);
         } },
-        "rlPopMatrix": lambda() { if sh.mode == 0x1701 {
+        "rlPopMatrix": lambda { if sh.mode == 0x1701 {
             sh.proj = sh.pstack.pop();
         } else {
             sh.mv = sh.mvstack.pop();
         } },
-        "rlTranslatef": lambda (x: float , y: float , z: float) { _setcur(
+        "rlTranslatef": lambda (x: float, y: float, z: float) { _setcur(
             sh, _m_mul(_cur(sh), _m_translate(x, y, z))
         ); },
-        "rlRotatef": lambda (a: float , x: float , y: float , z: float) { _setcur(
+        "rlRotatef": lambda (a: float, x: float, y: float, z: float) { _setcur(
             sh, _m_mul(_cur(sh), _m_rotate(a, x, y, z))
         ); },
-        "rlFrustum": lambda (l: float , r: float , b: float , t: float , n: float , f:
-            float) { _setcur(sh, _m_mul(_cur(sh), _m_frustum(l, r, b, t, n, f))); },
-        "rlOrtho": lambda (l: float , r: float , b: float , t: float , n: float , f:
-            float) { _setcur(sh, _m_mul(_cur(sh), _m_ortho(l, r, b, t, n, f))); },
+        "rlFrustum": lambda (
+            l: float, r: float, b: float, t: float, n: float, f: float
+        ) { _setcur(sh, _m_mul(_cur(sh), _m_frustum(l, r, b, t, n, f))); },
+        "rlOrtho": lambda (
+            l: float, r: float, b: float, t: float, n: float, f: float
+        ) { _setcur(sh, _m_mul(_cur(sh), _m_ortho(l, r, b, t, n, f))); },
         "rlBegin": lambda (m: int) {
             sh.bmode = m;
             sh.verts = [];
         },
-        "rlEnd": lambda() { _flush(sh); },
-        "rlVertex3f": lambda (x: float , y: float , z: float) {
+        "rlEnd": lambda { _flush(sh); },
+        "rlVertex3f": lambda (x: float, y: float, z: float) {
             sh.verts.append(x);
             sh.verts.append(y);
             sh.verts.append(z);
@@ -290,7 +292,7 @@ def _build_env(sh: any) -> dict {
             sh.verts.append(sh.color[2]);
             sh.verts.append(sh.color[3]);
         },
-        "rlColor4ub": lambda (r: int , g: int , b: int , a: int) { sh.color = [
+        "rlColor4ub": lambda (r: int, g: int, b: int, a: int) { sh.color = [
             float(r) / 255.0,
             float(g) / 255.0,
             float(b) / 255.0,
@@ -300,7 +302,7 @@ def _build_env(sh: any) -> dict {
         "FileExists": lambda (p: int) { return 0; },
         "LoadFileText": lambda (p: int) { return 0; },
         "TextToInteger": lambda (p: int) { return 0; },
-        "SaveFileText": lambda (p: int , t: int) { return 0; },
+        "SaveFileText": lambda (p: int, t: int) { return 0; },
 
     };
 }

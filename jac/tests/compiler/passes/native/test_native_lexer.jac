@@ -136,10 +136,10 @@ test "auto-marshal install_native_wrappers" {
 
     # Create a mock module with Python functions
     mock_mod = types.ModuleType("mock_arithmetic");
-    mock_mod.add = lambda (a: int , b: int) { a + b; };
-    mock_mod.multiply = lambda (a: int , b: int) { a * b; };
+    mock_mod.add = lambda (a: int, b: int) { a + b; };
+    mock_mod.multiply = lambda (a: int, b: int) { a * b; };
     mock_mod.negate = lambda (x: int) { -x; };
-    mock_mod.float_add = lambda (a: float , b: float) { a + b; };
+    mock_mod.float_add = lambda (a: float, b: float) { a + b; };
 
     # install_native_wrappers only accelerates bindings the module itself
     # defines (matching __module__) so it never clobbers imported foreign

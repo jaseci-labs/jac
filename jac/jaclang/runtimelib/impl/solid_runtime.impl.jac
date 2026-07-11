@@ -48,7 +48,7 @@ impl Route(props: dict) -> JsxElement {
     if props.component != undefined {
         routeProps["component"] = props.component;
     } elif props.element != undefined {
-        routeProps["component"] = lambda() -> any { return props.element; };
+        routeProps["component"] = lambda -> any { return props.element; };
     }
     if props.children != undefined {
         routeProps["children"] = props.children;
@@ -159,7 +159,7 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     if onSubmit {
         opts["onSubmit"] = lambda (args: any) { return onSubmit(args.value); };
     }
-    f = createForm(lambda() -> any { return opts; });
+    f = createForm(lambda -> any { return opts; });
     return f;
 }
 
@@ -277,7 +277,9 @@ impl JacForm(props: dict) -> JsxElement {
             return (
                 <select
                     value={fieldApi().state.value || ""}
-                    onInput={lambda (e: any) { fieldApi().handleChange(e.target.value); }}
+                    onInput={lambda (e: any) { fieldApi().handleChange(
+                        e.target.value
+                    ); }}
                     onChange={lambda (e: any) { fieldApi().handleChange(
                         e.target.value
                     ); }}
@@ -551,7 +553,7 @@ impl JacForm(props: dict) -> JsxElement {
             >
                 {lambda (snap: any) {
                     isDisabled = createMemo(
-                        lambda() -> any {
+                        lambda -> any {
                             _s = snap();
                             isSubmitting = _s[0];
                             isDirty = _s[1];
@@ -567,7 +569,7 @@ impl JacForm(props: dict) -> JsxElement {
                             );
                         }
                     );
-                    isSubmittingM = createMemo(lambda() -> any { return snap()[0]; });
+                    isSubmittingM = createMemo(lambda -> any { return snap()[0]; });
                     return (
                         <button
                             type="submit"

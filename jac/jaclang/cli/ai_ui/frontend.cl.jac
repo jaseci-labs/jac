@@ -324,10 +324,10 @@ def:pub app -> JsxElement {
 
     # Open the live stream; abort it on unmount.
     useEffect(
-        lambda() -> any {
+        lambda -> any {
             unmountedRef.current = False;
             streamLoop();
-            return lambda() {
+            return lambda {
                 unmountedRef.current = True;
                 if ctrlRef.current {
                     ctrlRef.current.abort();
@@ -349,13 +349,13 @@ def:pub app -> JsxElement {
                     {("agent control room" + (" · " + modelName if modelName else ""))}
                 </span>
                 <span className="spacer"/>
-                <button className="btn ghost" onClick={lambda() { reset(); }}>
+                <button className="btn ghost" onClick={lambda { reset(); }}>
                     New session
                 </button>
                 <button
                     className={"icon-btn attn" if needsKey else "icon-btn"}
                     title="Settings"
-                    onClick={lambda() { openSettings(); }}
+                    onClick={lambda { openSettings(); }}
                 >
                     ⚙
                 </button>
@@ -440,15 +440,15 @@ def:pub app -> JsxElement {
                 onTemp={lambda (v: str) { sTemp = v; }}
                 onNctx={lambda (v: str) { sNctx = v; }}
                 onApply={applySettings}
-                onClose={lambda() { showSettings = False; }}
+                onClose={lambda { showSettings = False; }}
             />
                 if showSettings
                 else <span/>}
             {<CallDetailModal
                 detail={callDetail}
-                onPrev={lambda() { openCall(int(callDetail.prev_id)); }}
-                onNext={lambda() { openCall(int(callDetail.next_id)); }}
-                onClose={lambda() { openCall(-1); }}
+                onPrev={lambda { openCall(int(callDetail.prev_id)); }}
+                onNext={lambda { openCall(int(callDetail.next_id)); }}
+                onClose={lambda { openCall(-1); }}
             />
                 if (selectedCall >= 0 and callDetail)
                 else <span/>}

@@ -160,7 +160,7 @@ def:pub FieldError(props: any) -> any {
     errors = props["errors"];
 
     content = useMemo(
-        lambda() -> any {
+        lambda -> any {
             if children {
                 return children;
             }
