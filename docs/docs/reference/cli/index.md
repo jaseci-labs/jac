@@ -508,6 +508,7 @@ jac fmt [-h] [-s] [-l] [-c] paths [paths ...]
 | `-s, --to_screen` | Print to stdout instead of writing | `False` |
 | `-l, --lintfix` | Also apply auto-lint fixes in the same pass | `False` |
 | `-c, --check` | Check if files are formatted without modifying them (exit 1 if unformatted) | `False` |
+| `-C, --cache` | Skip files already known to be formatted (keyed on content + effective config + formatter version) | `False` |
 
 **Examples:**
 
@@ -523,9 +524,14 @@ jac fmt .
 
 # Check formatting without modifying (useful in CI)
 jac fmt . --check
+
+# Skip already-formatted files (biggest win in pre-commit / CI)
+jac fmt . --cache
 ```
 
 > **Note**: For auto-linting (code corrections), use `jac check --lint --fix` instead. See [`jac check`](#jac-check) above.
+>
+> **Format cache**: `--cache` records each file proven clean under `<build dir>/<cache dir>/fmt-v1/` (default `.jac/cache/fmt-v1/`, already git-ignored). A later run skips such files entirely -- no parse, no format pass, no lint. An entry is only ever written for a fully successful, unchanged (or just-rewritten) result, so syntax errors and lint failures are never cached as clean. `jac precommit` enables the cache automatically and keys it on the **staged blob bytes**, so a clean staged file is a hit even over a dirty worktree. Changing the file content, the effective `[check.lint]` settings, or the formatter version invalidates the relevant entries. Disable with `--no-cache`.
 >
 > **Safety**: If the formatter detects that comments were displaced (e.g., moved to the end of the file), it emits error `E5051` and refuses to save the file. Run `jac fmt <file> -s` to inspect the output without writing.
 

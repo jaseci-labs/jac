@@ -314,7 +314,13 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     return 0;
 }
 
-def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> dict {
+def _format_single_file_worker(
+    file_path: str,
+    lintfix: bool,
+    check: bool,
+    cache_stamp: str = "",
+    cache_anchor: str = ""
+) -> dict {
     import from jaclang.jac0core.program { JacProgram }
     path_obj = Path(file_path);
     result: dict = {
@@ -326,12 +332,71 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
         'warnings_strs': [],
         'errors_strs': [],
         'formatted_code': None,
-        'impl_results': []
+        'impl_results': [],
+        'cache_status': 'off'
     };
     if not path_obj.exists() {
         result['syntax_errors'] = [f"File '{file_path}' does not exist."];
         return result;
     }
+
+    fcache = None;
+    cache_key = "";
+    cfg_fp = "";
+    cfg: any = None;
+
+    annex_paths: list[str] = [];
+    annex_formatted_map: dict[str, str] = {};
+    if lintfix {
+        import from jaclang.jac0core.bccache { discover_annex_files }
+        annex_paths = (
+            discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
+                file_path, '.test.jac'
+            )
+        );
+    }
+    if cache_stamp {
+        try {
+            import from jaclang.cli.format_cache {
+                FormatCache,
+                config_fingerprint,
+                frame_unit
+            }
+            import from jaclang.project.config { get_config_for_path }
+            discover_from = Path(cache_anchor) if cache_anchor else path_obj;
+            cfg = get_config_for_path(discover_from);
+            if cfg is not None {
+                cache_dir = cfg.get_cache_dir();
+                fcache = FormatCache(
+                    cache_dir, enabled=True, formatter_stamp=cache_stamp
+                );
+
+                unit_parts = [path_obj.read_bytes()];
+                for ap in annex_paths {
+                    ap_obj = Path(ap);
+                    if ap_obj.exists() {
+                        unit_parts.append(ap_obj.read_bytes());
+                    }
+                }
+                unit_bytes = frame_unit(unit_parts);
+                cfg_fp = config_fingerprint(cfg, lintfix);
+                cache_key = fcache.make_key(
+                    unit_bytes, lintfix=lintfix, config_fingerprint=cfg_fp
+                );
+                if fcache.is_clean(cache_key) {
+                    result['cache_status'] = 'hit';
+                    result['success'] = True;
+                    result['changed'] = False;
+                    result['errors'] = 0;
+                    return result;
+                }
+                result['cache_status'] = 'miss';
+            }
+        } except Exception {
+            fcache = None;
+        }
+    }
+
     try {
         prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
         if prog.errors_had {
@@ -360,12 +425,6 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
             }
 
             if lintfix {
-                import from jaclang.jac0core.bccache { discover_annex_files }
-                annex_paths = (
-                    discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
-                        file_path, '.test.jac'
-                    )
-                );
                 for annex_path in annex_paths {
                     try {
                         annex_prog = JacProgram.jac_file_formatter(
@@ -375,6 +434,9 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
                         annex_original = annex_prog.mod.main.source.code;
                     } except Exception {
                         continue;
+                    }
+                    if annex_formatted {
+                        annex_formatted_map[annex_path] = annex_formatted;
                     }
                     if (annex_formatted and annex_formatted != annex_original) {
                         result['changed'] = True;
@@ -403,6 +465,43 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
         }
         result['success'] = True;
         result['errors'] = lint_errors;
+
+        if (
+            fcache is not None
+            and cache_key
+            and result['success']
+            and not result['syntax_errors']
+            and result['errors'] == 0
+        ) {
+            try {
+                import from jaclang.cli.format_cache { frame_unit }
+
+                if not result['changed'] {
+                    fcache.mark_clean(cache_key);
+                } elif not check {
+                    main_clean = (
+                        formatted_code.encode() if changed else path_obj.read_bytes()
+                    );
+                    new_parts = [main_clean];
+                    for ap in annex_paths {
+                        if ap in annex_formatted_map {
+                            new_parts.append(annex_formatted_map[ap].encode());
+                        } elif Path(ap).exists() {
+                            new_parts.append(Path(ap).read_bytes());
+                        }
+                    }
+                    new_unit = frame_unit(new_parts);
+                    fcache.mark_clean(
+                        fcache.make_key(
+                            new_unit, lintfix=lintfix, config_fingerprint=cfg_fp
+                        )
+                    );
+                }
+            } except Exception {
+                ;
+            }
+        }
+
         return result;
     } except Exception as e {
         result['syntax_errors'] = [f"Error formatting '{file_path}': {e}"];
@@ -411,12 +510,28 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
 }
 
 impl format(
-    paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
+    paths: list,
+    to_screen: bool = False,
+    lintfix: bool = False,
+    check: bool = False,
+    cache: bool = False,
+    cache_anchor: str = ""
 ) -> int {
     import from concurrent.futures { ProcessPoolExecutor, as_completed }
     import os;
     if isinstance(paths, str) {
         paths = [paths];
+    }
+
+    cache_stamp = "";
+    if cache {
+        import from jaclang.cli.format_cache { FORMAT_CACHE_SCHEMA_VERSION }
+        import from jaclang.cli.cli { jac_version }
+        try {
+            cache_stamp = f"jfmt:{FORMAT_CACHE_SCHEMA_VERSION}:{jac_version()}";
+        } except Exception {
+            cache_stamp = "";
+        }
     }
 
     unformatted_files: list[str] = [];
@@ -445,8 +560,14 @@ impl format(
             );
             with pool_cls(max_workers=max_workers) as executor {
                 futures = {
-                    executor.submit(_format_single_file_worker, fp, lintfix, check): fp
-                    for fp in all_files
+                    executor.submit(
+                        _format_single_file_worker,
+                        fp,
+                        lintfix,
+                        check,
+                        cache_stamp,
+                        cache_anchor
+                    ): fp for fp in all_files
                 };
                 completed = 0;
                 for future in as_completed(futures) {
@@ -468,7 +589,8 @@ impl format(
                                 'warnings_strs': [],
                                 'errors_strs': [],
                                 'formatted_code': None,
-                                'impl_results': []
+                                'impl_results': [],
+                                'cache_status': 'off'
                             }
                         );
                     }
@@ -481,7 +603,30 @@ impl format(
     if not use_parallel {
         for fp in all_files {
             console.print(f"Formatting {fp}");
-            results.append(_format_single_file_worker(fp, lintfix, check));
+            results.append(
+                _format_single_file_worker(
+                    fp, lintfix, check, cache_stamp, cache_anchor
+                )
+            );
+        }
+    }
+
+    if cache_stamp {
+        try {
+            import from jaclang.cli.format_cache { record_run }
+            hits = sum(
+                1
+                for r in results
+                if r.get('cache_status') == 'hit'
+            );
+            misses = sum(
+                1
+                for r in results
+                if r.get('cache_status') == 'miss'
+            );
+            record_run(hits, misses);
+        } except Exception {
+            ;
         }
     }
 
@@ -695,7 +840,14 @@ impl precommit(
         }
     }
     console.print("precommit: formatting (--lintfix)", style="muted");
-    fmt_ret = format(fmt_targets, to_screen=False, lintfix=True, check=verify);
+    fmt_ret = format(
+        fmt_targets,
+        to_screen=False,
+        lintfix=True,
+        check=verify,
+        cache=True,
+        cache_anchor=git_root
+    );
     if tmp_root {
         shutil.rmtree(tmp_root, ignore_errors=True);
     }
