@@ -2466,16 +2466,25 @@ impl TypeEvaluator._assign_class(
     }
 
     if src_type.is_builtin() and dest_type.is_builtin() {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, NumericKind }
-        src_kind = JAC_TYPE_REGISTRY.numeric_kind_of(src_type.shared.class_name);
-        dest_kind = JAC_TYPE_REGISTRY.numeric_kind_of(dest_type.shared.class_name);
-        if src_kind != NumericKind.NotNumeric and dest_kind != NumericKind.NotNumeric {
-            if src_kind == dest_kind {
-                return True;
+        try {
+            import from jaclang.compiler.type_registry {
+                JAC_TYPE_REGISTRY,
+                NumericKind
             }
-            if src_kind == NumericKind.IntKind and dest_kind == NumericKind.FloatKind {
-                return True;
+            src_kind = JAC_TYPE_REGISTRY.numeric_kind_of(src_type.shared.class_name);
+            dest_kind = JAC_TYPE_REGISTRY.numeric_kind_of(dest_type.shared.class_name);
+            if src_kind != NumericKind.NotNumeric
+            and dest_kind != NumericKind.NotNumeric {
+                if src_kind == dest_kind {
+                    return True;
+                }
+                if src_kind == NumericKind.IntKind
+                and dest_kind == NumericKind.FloatKind {
+                    return True;
+                }
             }
+        } except ImportError {
+            pass;
         }
     }
 
