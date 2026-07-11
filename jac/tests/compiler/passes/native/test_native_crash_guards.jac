@@ -62,3 +62,21 @@ test "slice with zero step raises instead of looping" {
     result = fn();
     assert result == 1 , f"Expected 1 (caught ValueError), got {result}";
 }
+
+# --- String edge cases: negative repeat, empty-needle count ---
+test "str repeat with a negative count yields empty, not heap corruption" {
+    (eng, _) = compile_native("py_str_edge.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "repeat_negative", ctypes.c_int64);
+    result = fn();
+    assert result == 1111 , f"Expected 1111, got {result}";
+}
+
+test "str count with an empty needle returns len+1, not a hang" {
+    (eng, _) = compile_native("py_str_edge.na.jac");
+    get_func(eng, "jac_entry", None)();
+    fn = get_func(eng, "count_empty_needle", ctypes.c_int64);
+    result = fn();
+    # count('a') = 2, count('') = 7
+    assert result == 207 , f"Expected 207, got {result}";
+}

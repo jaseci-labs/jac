@@ -1060,6 +1060,13 @@ impl NaIRGenPass._emit_binary_op(
             strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
             memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
             slen = self.builder.call(strlen_fn, [str_val], name="rep.slen");
+
+            _rep_neg = self.builder.icmp_signed(
+                "<", int_val, ir.Constant(i64, 0), name="rep.neg"
+            );
+            int_val = self.builder.select(
+                _rep_neg, ir.Constant(i64, 0), int_val, name="rep.n"
+            );
             total = self.builder.mul(slen, int_val, name="rep.total");
             alloc = self.builder.add(total, ir.Constant(i64, 1), name="rep.alloc");
             self._set_rc_ctx("str_repeat", "");

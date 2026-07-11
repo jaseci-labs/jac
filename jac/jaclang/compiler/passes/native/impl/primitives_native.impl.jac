@@ -730,16 +730,25 @@ impl NativeStrEmitter.emit_count(
     sub_len = b.call(strlen_fn, [args[0]], name="cnt.sub.len");
     null_ptr = ir.Constant(i8p, None);
     func = b.basic_block.function;
-    entry_bb = b.basic_block;
+    empty_bb = func.append_basic_block(name="cnt.empty");
+    scan_bb = func.append_basic_block(name="cnt.scan");
     loop_bb = func.append_basic_block(name="cnt.loop");
     found_bb = func.append_basic_block(name="cnt.found");
     done_bb = func.append_basic_block(name="cnt.done");
+
+    is_empty = b.icmp_unsigned("==", sub_len, ir.Constant(i64, 0), name="cnt.isempty");
+    b.cbranch(is_empty, empty_bb, scan_bb);
+    b.position_at_start(empty_bb);
+    tgt_len = b.call(strlen_fn, [target], name="cnt.tgt.len");
+    empty_count = b.add(tgt_len, ir.Constant(i64, 1), name="cnt.empty.n");
+    b.branch(done_bb);
+    b.position_at_start(scan_bb);
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
     cur_ptr = b.phi(i8p, name="cnt.cur");
     count = b.phi(i64, name="cnt.count");
-    cur_ptr.add_incoming(target, entry_bb);
-    count.add_incoming(ir.Constant(i64, 0), entry_bb);
+    cur_ptr.add_incoming(target, scan_bb);
+    count.add_incoming(ir.Constant(i64, 0), scan_bb);
     found = b.call(strstr_fn, [cur_ptr, args[0]], name="cnt.found.ptr");
     is_null = b.icmp_unsigned("==", found, null_ptr, name="cnt.null");
     b.cbranch(is_null, done_bb, found_bb);
@@ -752,7 +761,10 @@ impl NativeStrEmitter.emit_count(
     count.add_incoming(new_count, found_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
-    return count;
+    result = b.phi(i64, name="cnt.result");
+    result.add_incoming(empty_count, empty_bb);
+    result.add_incoming(count, loop_bb);
+    return result;
 }
 
 impl NativeStrEmitter.emit_find(
