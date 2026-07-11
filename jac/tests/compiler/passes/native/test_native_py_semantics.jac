@@ -62,3 +62,30 @@ test "chained comparison: three-link chain with mixed directions" {
     result = chain();
     assert result == 1 , f"Expected 1 (1<2<3>2), got {result}";
 }
+
+# --- 2b: or/and yield the deciding operand value, not a truth bit ---
+test "bool ops: int or/and return the operand value" {
+    (eng, _) = compile_native("py_bool_ops.na.jac");
+    get_func(eng, "jac_entry", None)();
+    ops = get_func(eng, "bool_ops_int", ctypes.c_int64);
+    result = ops();
+    # 5 or 7 = 5; 0 or 7 = 7; 3 and 9 = 9; 0 and 9 = 0
+    assert result == 5790 , f"Expected 5790, got {result}";
+}
+
+test "bool ops: str or picks the fallback for empty strings" {
+    (eng, _) = compile_native("py_bool_ops.na.jac");
+    get_func(eng, "jac_entry", None)();
+    ops = get_func(eng, "bool_ops_str", ctypes.c_int64);
+    result = ops();
+    assert result == 1111 , f"Expected 1111 (all four str cases), got {result}";
+}
+
+test "bool ops: rhs is not evaluated when lhs decides" {
+    (eng, _) = compile_native("py_bool_ops.na.jac");
+    get_func(eng, "jac_entry", None)();
+    ops = get_func(eng, "bool_ops_short_circuit", ctypes.c_int64);
+    result = ops();
+    # v=5, w=0, zero bump() calls
+    assert result == 500 , f"Expected 500, got {result}";
+}

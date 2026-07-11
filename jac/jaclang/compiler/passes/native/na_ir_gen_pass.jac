@@ -319,6 +319,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
+    def _bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
     def _codegen_for_indexed(

@@ -904,6 +904,25 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     return None;
 }
 
+impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None) {
+    if a == b {
+        return a;
+    }
+    if isinstance(a, ir.DoubleType) and isinstance(b, ir.IntType) {
+        return a;
+    }
+    if isinstance(a, ir.IntType) and isinstance(b, ir.DoubleType) {
+        return b;
+    }
+    if isinstance(a, ir.IntType) and isinstance(b, ir.IntType) {
+        return ir.IntType(max(a.width, b.width));
+    }
+    if isinstance(a, ir.PointerType) and isinstance(b, ir.PointerType) {
+        return a;
+    }
+    return None;
+}
+
 impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
     if not nd.values {
         return None;
@@ -915,37 +934,48 @@ impl NaIRGenPass._codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None) {
     if result is None {
         return None;
     }
-    result = self._to_bool(result);
 
     for i in range(1, len(nd.values)) {
+        cond = self._to_bool(result);
         func = self.builder.function;
+        entry_bb = self.builder.block;
         rhs_bb = func.append_basic_block(name=f"bool.rhs.{i}");
         merge_bb = func.append_basic_block(name=f"bool.merge.{i}");
-        entry_bb = self.builder.block;
         if is_and {
-            self.builder.cbranch(result, rhs_bb, merge_bb);
+            self.builder.cbranch(cond, rhs_bb, merge_bb);
         } else {
-            self.builder.cbranch(result, merge_bb, rhs_bb);
+            self.builder.cbranch(cond, merge_bb, rhs_bb);
         }
 
         self.builder.position_at_end(rhs_bb);
         rhs_val = self._codegen_expr(nd.values[i]);
         if rhs_val is None {
-            rhs_val = ir.Constant(ir.IntType(1), 0);
+            rhs_val = ir.Constant(result.type, None)
+                if isinstance(result.type, ir.PointerType)
+                else ir.Constant(result.type, 0);
         }
-        rhs_val = self._to_bool(rhs_val);
+        target_t = self._bool_expr_unify_type(result.type, rhs_val.type);
+        if target_t is None {
+            rhs_val = self._to_bool(rhs_val);
+            result = cond;
+            target_t = ir.IntType(1);
+        }
+        if rhs_val.type != target_t {
+            rhs_val = self._coerce_type(rhs_val, target_t);
+        }
         rhs_end_bb = self.builder.block;
         if not self.builder.block.is_terminated {
             self.builder.branch(merge_bb);
         }
 
-        self.builder.position_at_end(merge_bb);
-        phi = self.builder.phi(ir.IntType(1), name="bool.result");
-        if is_and {
-            phi.add_incoming(ir.Constant(ir.IntType(1), 0), entry_bb);
-        } else {
-            phi.add_incoming(ir.Constant(ir.IntType(1), 1), entry_bb);
+        if result.type != target_t {
+            _entry_term = entry_bb.instructions[-1];
+            self.builder.position_before(_entry_term);
+            result = self._coerce_type(result, target_t);
         }
+        self.builder.position_at_end(merge_bb);
+        phi = self.builder.phi(target_t, name="bool.result");
+        phi.add_incoming(result, entry_bb);
         phi.add_incoming(rhs_val, rhs_end_bb);
         result = phi;
     }
