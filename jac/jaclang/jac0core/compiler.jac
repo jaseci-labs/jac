@@ -174,7 +174,9 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
-def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
+def get_py_code_gen(
+    native: bool = True
+) -> list[type[Transform[uni.Module, uni.Module]]] {
     global _codegen_sched_loading;
     if _codegen_sched_loading or _ir_sched_loading {
         return [PyastGenPass, PyBytecodeGenPass];
@@ -187,8 +189,14 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
         }
 
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
-        import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
-        passes.extend([NaIRGenPass, NativeCompilePass]);
+
+        if native {
+            import from jaclang.compiler.passes.native {
+                NaIRGenPass,
+                NativeCompilePass
+            }
+            passes.extend([NaIRGenPass, NativeCompilePass]);
+        }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
     } except ImportError {
