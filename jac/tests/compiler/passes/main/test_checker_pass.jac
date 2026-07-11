@@ -5640,3 +5640,59 @@ test "builtin_inference_regressions" {
     assert len(program.errors_had) == 0 , "round() results and **spread dict literals must infer cleanly, "
     f"got {len(program.errors_had)} diagnostic(s):\n{pretty}";
 }
+
+test "bare_list_flow_inference" {
+    # Issue #6943 NA-7: an empty bare `list = []` defaulted its element type
+    # (the native backend then locked in `List.i64` and a later `str.join`
+    # mismatched). The declaration now flow-infers its element type from the
+    # mutations that follow: append/insert args, extend/`+=` operands'
+    # element types, and index-store values, widened out of literal types.
+    # Only concrete scalar evidence refines: mixed scalars (or None beside a
+    # scalar) collapse to the heterogeneous `any` element (backends lower
+    # `list[any]` as the boxed layout; a union would silently lower as its
+    # first member), while `any`/Unknown/object evidence aborts the
+    # inference - a dynamic value is absence of information, not proof of
+    # heterogeneity, and native code (the OSP kernel's handle lists) relies
+    # on the bare default. Multi-target assignments pool evidence from every
+    # bound name. No evidence leaves the list bare, and an explicit
+    # `list[T]` annotation still wins over usage.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_list_flow_inference.jac"),
+        type_check=True
+    );
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n" + "\n---\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
+    expected = {
+        "flow_strs": "list[str]",
+        "flow_ints": "list[int]",
+        "flow_mixed": "list[Any]",
+        "flow_ext": "list[str]",
+        "flow_ins": "list[float]",
+        "flow_aug": "list[str]",
+        "flow_idx": "list[str]",
+        "flow_unann": "list[str]",
+        "flow_none": "list",
+        "flow_nonemix": "list[Any]",
+        "flow_dyn": "list",
+        "flow_poison": "list",
+        "flow_obj": "list",
+        "flow_bare": "list",
+        "flow_pinned": "list[int]",
+        "flow_multi_a": "list[str]",
+        "flow_multi_b": "list[str]",
+        "flow_rebound": "list[Any]"
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
+}
