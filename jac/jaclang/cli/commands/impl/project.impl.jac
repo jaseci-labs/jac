@@ -299,8 +299,6 @@ def _stamp_kind(config: dict, kind: str) -> None {
     if not proj.get("kind") {
         proj["kind"] = kind;
     }
-    import from jaclang.project.kinds { ensure_client_config_section }
-    ensure_client_config_section(config, kind);
 }
 
 def _plugin_available(pkg: str) -> bool {

@@ -1449,10 +1449,11 @@ test "client plus plugins client coexist on merge" {
     }
 }
 
-test "create custom template without client stamps section" {
+test "create custom template without client still needs client stack" {
     import os;
     import shutil;
     import from jaclang.cli.commands { project }
+    import from jaclang.project.kinds { project_needs_client_stack }
     import from jaclang.project.template_registry {
         get_template_registry,
         initialize_template_registry
@@ -1483,13 +1484,13 @@ test "create custom template without client stamps section" {
         assert rc == 0;
         proj = Path(d) / "app";
         toml = (proj / "jac.toml").read_text();
-        assert "[client]" in toml , (
-            "custom web-app template must stamp [client] when omitted"
-        );
         assert "jac-client-node" in toml , "npm deps from template must survive";
         assert "zod" in toml , "npm deps from template must survive";
         cfg = JacConfig.load(proj / "jac.toml");
         assert cfg.project.kind == "web-app";
+        assert project_needs_client_stack(cfg) , (
+            "web-app kind must need the client stack even without a [client] section"
+        );
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(d, ignore_errors=True);
@@ -1497,26 +1498,12 @@ test "create custom template without client stamps section" {
     }
 }
 
-test "stamp kind adds client section when template omits it" {
-    import copy;
-    import from jaclang.project.kinds { ensure_client_config_section }
-    render_config = {
-        "project": {"name": "app"},
-        "dependencies": {"npm": {"jac-client-node": "1.0.7"}}
-    };
-    stamped = copy.deepcopy(render_config);
-    ensure_client_config_section(stamped, "web-app");
-    assert "client" in stamped;
-    assert stamped["dependencies"]["npm"]["jac-client-node"] == "1.0.7";
-}
-
-test "stamp kind skips client section for non client kinds" {
-    import copy;
-    import from jaclang.project.kinds { ensure_client_config_section }
-    render_config = {"project": {"name": "svc"}};
-    stamped = copy.deepcopy(render_config);
-    ensure_client_config_section(stamped, "service");
-    assert "client" not in stamped;
+test "kind_has_client reflects client kinds" {
+    import from jaclang.project.kinds { kind_has_client }
+    assert kind_has_client("web-app");
+    assert kind_has_client("desktop");
+    assert not kind_has_client("service");
+    assert not kind_has_client("cli");
 }
 
 test "apply profile build section" {

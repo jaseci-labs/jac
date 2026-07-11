@@ -2,30 +2,25 @@ import os;
 import from jaclang.project.config { JacConfig }
 import from jaclang.jac0core.ext_registry { base_stem, codespace_of, MODULE_SUFFIXES }
 
-glob KIND_SPECS: dict[str, dict] = {
-         "cli": {"entry": "main.jac", "plugin": "", "client": False},
-         "cli-native": {"entry": "main.na.jac", "plugin": "", "client": False},
-         "native-binary": {"entry": "main.na.jac", "plugin": "", "client": False},
-         "native-lib": {"entry": "main.na.jac", "plugin": "", "client": False},
-         "service": {"entry": "main.sv.jac", "plugin": "", "client": False},
-         "service-mesh": {"entry": "main.sv.jac", "plugin": "", "client": False},
-         "py-package": {"entry": "lib.jac", "plugin": "", "client": False},
-         "js-package": {"entry": "lib.jac", "plugin": "", "client": False},
-         "web-app": {"entry": "main.jac", "plugin": "", "client": True},
-         "web-static": {"entry": "main.jac", "plugin": "", "client": True},
-         "desktop": {"entry": "main.jac", "plugin": "", "client": True},
-         "mobile": {"entry": "main.jac", "plugin": "", "client": True}
+glob KIND_SPECS: dict[str, dict[str, str]] = {
+         "cli": {"entry": "main.jac", "plugin": ""},
+         "cli-native": {"entry": "main.na.jac", "plugin": ""},
+         "native-binary": {"entry": "main.na.jac", "plugin": ""},
+         "native-lib": {"entry": "main.na.jac", "plugin": ""},
+         "service": {"entry": "main.sv.jac", "plugin": ""},
+         "service-mesh": {"entry": "main.sv.jac", "plugin": ""},
+         "py-package": {"entry": "lib.jac", "plugin": ""},
+         "js-package": {"entry": "lib.jac", "plugin": ""},
+         "web-app": {"entry": "main.jac", "plugin": ""},
+         "web-static": {"entry": "main.jac", "plugin": ""},
+         "desktop": {"entry": "main.jac", "plugin": ""},
+         "mobile": {"entry": "main.jac", "plugin": ""}
      },
-     VALID_KINDS: list[str] = list(KIND_SPECS.keys());
+     VALID_KINDS: list[str] = list(KIND_SPECS.keys()),
+     CLIENT_KINDS: set[str] = {"web-app", "web-static", "desktop", "mobile"};
 
 def kind_has_client(kind: str) -> bool {
-    return KIND_SPECS.get(kind, {}).get("client", False);
-}
-
-def ensure_client_config_section(config: dict, kind: str) {
-    if kind_has_client(kind) and "client" not in config {
-        config["client"] = {};
-    }
+    return kind in CLIENT_KINDS;
 }
 
 def kind_required_plugin(kind: str) -> str {
