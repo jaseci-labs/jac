@@ -467,6 +467,24 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
     _cmp_right_orig = right;
     op = nd.ops[0].name if isinstance(nd.ops[0], uni.Token) else str(nd.ops[0]);
 
+    if self?.jacval_type and op in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE) {
+        _none_negate = op in (Tok.KW_ISN, Tok.NE);
+        _right_node = nd.rights[0];
+        if isinstance(_right_node, uni.CfgExpr) {
+            _right_node = _right_node.expr;
+        }
+        _left_node = nd.left;
+        if isinstance(_left_node, uni.CfgExpr) {
+            _left_node = _left_node.expr;
+        }
+        if left.type == self.jacval_type and isinstance(_right_node, uni.Null) {
+            return self._jacval_is_none(left, _none_negate);
+        }
+        if right.type == self.jacval_type and isinstance(_left_node, uni.Null) {
+            return self._jacval_is_none(right, _none_negate);
+        }
+    }
+
     if op == Tok.KW_IN or op == Tok.KW_NIN {
         is_not_in = op == Tok.KW_NIN;
 
