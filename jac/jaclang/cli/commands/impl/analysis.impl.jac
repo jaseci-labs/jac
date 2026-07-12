@@ -12,7 +12,7 @@ def _maybe_malloc_trim {
     try {
         import ctypes;
         ctypes.CDLL("libc.so.6").malloc_trim(0);
-    } except (OSError, AttributeError, ValueError) { }
+    } except (ImportError, OSError, AttributeError, ValueError) { }
 }
 
 impl check(
