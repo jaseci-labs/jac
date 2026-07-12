@@ -48,12 +48,6 @@ glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
 
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
-# Object header layout, laid out at negative offsets below the object pointer.
-# BINARY-COMPATIBILITY NOTE: the cycle-collector work grew this header from 32 to
-# 48 bytes (adding HDR_TRACE_OFF and HDR_COLOR_OFF), which shifts every field
-# offset. It is a hard ABI break: native artifacts compiled before this change
-# misread their headers, so all native binaries must be recompiled together --
-# there is no cross-version header compatibility.
 glob HDR_ALLOC_ID_OFF: int = -48,
      HDR_TRACE_OFF: int = -40,
      HDR_COLOR_OFF: int = -32,

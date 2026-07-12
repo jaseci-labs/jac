@@ -72,9 +72,7 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
         [_obuf, b.mul(_ncap, ir.Constant(i64, 8), name="nbytes")],
         name="nbuf"
     );
-    # On OOM realloc returns null while the old buffer stays valid. Skip this
-    # push rather than clobbering roots_buf_gv with null (the next push would
-    # gep off it and crash) and leaking the old buffer.
+
     b.cbranch(
         b.icmp_signed("==", _nbuf, ir.Constant(i8_ptr, None), name="nbuf.null"),
         pr_done,

@@ -64,7 +64,7 @@ def _inuse_probe -> (object | None) {
     } except (OSError, AttributeError) {
         return None;
     }
-    return lambda : int(libc.mallinfo2().uordblks);
+    return lambda { int(libc.mallinfo2().uordblks); };
 }
 
 
