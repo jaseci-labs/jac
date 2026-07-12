@@ -128,6 +128,8 @@ impl JacCompiler.get_bytecode(
 ) -> (types.CodeType | None) {
     actual_program = self._resolve_program(full_target, target_program);
     (rebuild, no_precompile) = cache_mode();
+    modkey: (str | None) = None;
+    key_out: list[str] = [];
 
     if (
         (not rebuild)
@@ -169,7 +171,8 @@ impl JacCompiler.get_bytecode(
     }
 
     cache_path = get_module_cache_path(full_target);
-    if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
+    if (not rebuild)
+    and is_module_cache_valid(full_target, cache_path, modkey, key_out) {
         try {
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
@@ -206,15 +209,21 @@ impl JacCompiler.get_bytecode(
             ;
         }
     }
+    if key_out {
+        modkey = key_out[0];
+    }
 
     allow_unsealed = (not rebuild) and (not no_precompile);
-    precompiled_bc = self._get_precompiled_jir_bytecode(full_target, allow_unsealed);
+    if modkey is None {
+        modkey = compute_module_key(full_target);
+    }
+    precompiled_bc = self._get_precompiled_jir_bytecode(
+        full_target, allow_unsealed, modkey
+    );
     if precompiled_bc is not None {
         try {
             import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
-            jir_bytes = write_precompiled_jir(
-                precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
-            );
+            jir_bytes = write_precompiled_jir(precompiled_bc, modkey, FLAG_PRECOMPILED);
             cache_path.parent.mkdir(parents=True, exist_ok=True);
 
             import os as _os;
@@ -263,7 +272,7 @@ impl JacCompiler.get_bytecode(
                 import zlib;
                 sections: dict[int, bytes] = {};
                 sections[SEC_BYTECODE] = result.gen.py_bytecode;
-                sections[SEC_MODKEY] = compute_module_key(full_target).encode('utf-8');
+                sections[SEC_MODKEY] = modkey.encode('utf-8');
                 if actual_program.mtir_map {
                     sections[SEC_MTIR] = pickle.dumps(
                         actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
@@ -538,7 +547,7 @@ impl JacCompiler._sealed_jir_data(full_target: str) -> (tuple[bytes, str] | None
 }
 
 impl JacCompiler._get_precompiled_jir_bytecode(
-    full_target: str, allow_unsealed: bool = True
+    full_target: str, allow_unsealed: bool = True, module_key: (str | None) = None
 ) -> (bytes | None) {
     import from pathlib { Path as _Path }
     import from jaclang.jac0core.jir { PRECOMPILE_SENTINEL }
@@ -566,7 +575,7 @@ impl JacCompiler._get_precompiled_jir_bytecode(
                     jir_data = _Path(jir_path).read_bytes();
                     trusted = (
                         sealed_img is not None
-                        or jir_matches_source(jir_data, norm_file)
+                        or jir_matches_source(jir_data, norm_file, module_key)
                     );
                     if trusted {
                         bc = read_bytecode_only(jir_data);

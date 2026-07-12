@@ -39,6 +39,22 @@ obj JirHeader {
     def is_compatible -> bool;
 }
 
+glob _jaclang_pkg_version: (str | None) = None;
+
+def _get_jaclang_pkg_version -> str {
+    global _jaclang_pkg_version;
+    if _jaclang_pkg_version is not None {
+        return _jaclang_pkg_version;
+    }
+    import from importlib.metadata { version as pkg_version }
+    try {
+        _jaclang_pkg_version = pkg_version('jaclang');
+    } except Exception {
+        _jaclang_pkg_version = "0.0.0";
+    }
+    return _jaclang_pkg_version;
+}
+
 def create_header(
     source_hash: int,
     node_count: int,
@@ -46,12 +62,7 @@ def create_header(
     string_pool_size: int,
     flags: int = 0
 ) -> JirHeader {
-    import from importlib.metadata { version as pkg_version }
-    try {
-        jac_ver = pkg_version('jaclang');
-    } except Exception {
-        jac_ver = "0.0.0";
-    }
+    jac_ver = _get_jaclang_pkg_version();
     return JirHeader(
         magic=MAGIC,
         format_version=FORMAT_VERSION,
@@ -111,14 +122,13 @@ def compute_content_sha256(file_path: str) -> str {
     return h.hexdigest();
 }
 
-def _related_files(source_path: str) -> list[tuple[str, str]] {
+def _gather_related_paths(source_path: str) -> list[str] {
     import from jaclang.jac0core.bccache {
         discover_annex_files,
         discover_variant_files,
         discover_style_annex
     }
     src = Path(source_path).resolve();
-    base_dir = src.parent;
     paths: set = set();
     paths |= set(discover_annex_files(str(src), '.impl.jac'));
     paths |= set(discover_annex_files(str(src), '.test.jac'));
@@ -127,18 +137,34 @@ def _related_files(source_path: str) -> list[tuple[str, str]] {
     if style is not None {
         paths.add(style);
     }
+    return sorted(paths);
+}
+
+def _hash_related_paths(
+    source_path: str, related_paths: list[str]
+) -> list[tuple[str, str]] {
+    base_dir = Path(source_path).resolve().parent;
     result: list[tuple[str, str]] = [];
-    for p in sorted(paths) {
+    for p in related_paths {
         rel = os.path.relpath(p, str(base_dir)).replace(os.sep, '/');
         result.append((rel, compute_content_sha256(p)));
     }
     return result;
 }
 
-glob _client_kind_probe_active: bool = False;
+def _related_files(source_path: str) -> list[tuple[str, str]] {
+    return _hash_related_paths(source_path, _gather_related_paths(source_path));
+}
+
+glob _client_kind_probe_active: bool = False,
+     _client_kind_by_source: dict[str, str] = {};
 
 def _module_client_kind(source_path: str) -> str {
     global _client_kind_probe_active;
+    cached = _client_kind_by_source.get(source_path);
+    if cached is not None {
+        return cached;
+    }
     if _client_kind_probe_active {
         return "web";
     }
@@ -146,8 +172,10 @@ def _module_client_kind(source_path: str) -> str {
     try {
         import from jaclang.project.client_kind { resolve_client_kind_context }
         (kind, _) = resolve_client_kind_context(source_path);
+        _client_kind_by_source[source_path] = kind;
         return kind;
     } except Exception {
+        _client_kind_by_source[source_path] = "web";
         return "web";
     } finally {
         _client_kind_probe_active = False;
@@ -174,13 +202,10 @@ def schema_digest -> str {
     return _SCHEMA_DIGEST_CACHE[0];
 }
 
-def compute_module_key(source_path: str) -> str {
-    import from importlib.metadata { version as pkg_version }
-    try {
-        jac_ver = pkg_version('jaclang');
-    } except Exception {
-        jac_ver = "0.0.0";
-    }
+def compute_module_key(
+    source_path: str, related: (list[tuple[str, str]] | None) = None
+) -> str {
+    jac_ver = _get_jaclang_pkg_version();
     h = hashlib.sha256();
     h.update(jac_ver.encode());
     h.update(struct.pack('<H', (sys.version_info.major << 8) | sys.version_info.minor));
@@ -188,7 +213,8 @@ def compute_module_key(source_path: str) -> str {
     h.update(schema_digest().encode());
     h.update(_module_client_kind(source_path).encode());
     h.update(compute_content_sha256(source_path).encode());
-    for (rel, digest) in _related_files(source_path) {
+    related_files = related if related is not None else _related_files(source_path);
+    for (rel, digest) in related_files {
         h.update(rel.encode());
         h.update(digest.encode());
     }
@@ -210,12 +236,15 @@ def read_modkey(data: bytes) -> (str | None) {
     }
 }
 
-def jir_matches_source(jir_data: bytes, source_path: str) -> bool {
+def jir_matches_source(
+    jir_data: bytes, source_path: str, module_key: (str | None) = None
+) -> bool {
     stored = read_modkey(jir_data);
     if stored is None {
         return False;
     }
-    return stored == compute_module_key(source_path);
+    key = module_key if module_key is not None else compute_module_key(source_path);
+    return stored == key;
 }
 
 def cache_mode -> tuple[bool, bool] {
@@ -352,9 +381,8 @@ def write_precompiled_jir(
     flags: int = 0,
     extra_sections: (dict[int, bytes] | None) = None
 ) -> bytes {
-    import from importlib.metadata { version as pkg_version }
     try {
-        jac_hash = zlib.crc32(pkg_version('jaclang').encode()) & 0xFFFFFFFF;
+        jac_hash = zlib.crc32(_get_jaclang_pkg_version().encode()) & 0xFFFFFFFF;
     } except Exception {
         jac_hash = 0;
     }
@@ -397,12 +425,12 @@ def read_debug_source(data: bytes) -> (str | None) {
     }
 }
 
-def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
-    import from jaclang.jac0core.bccache {
-        discover_annex_files,
-        discover_variant_files,
-        discover_style_annex
-    }
+def is_module_cache_valid(
+    source_path: str,
+    cache_path: Path,
+    module_key: (str | None) = None,
+    key_out: (list[str] | None) = None
+) -> bool {
     if not cache_path.exists() {
         return False;
     }
@@ -413,16 +441,7 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
             return False;
         }
         cache_mtime = os.path.getmtime(cache_path);
-
-        related = (
-            discover_annex_files(source_path, '.impl.jac') + discover_annex_files(
-                source_path, '.test.jac'
-            ) + discover_variant_files(source_path)
-        );
-        style = discover_style_annex(source_path);
-        if style is not None {
-            related.append(style);
-        }
+        related = _gather_related_paths(source_path);
         fresh = cache_mtime > os.path.getmtime(source_path);
         if fresh {
             for f in related {
@@ -441,7 +460,16 @@ def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
             return True;
         }
 
-        return jir_matches_source(data, source_path);
+        key = module_key;
+        if key is None {
+            key = compute_module_key(
+                source_path, related=_hash_related_paths(source_path, related)
+            );
+            if key_out is not None {
+                key_out.append(key);
+            }
+        }
+        return jir_matches_source(data, source_path, key);
     } except OSError {
         return False;
     }
