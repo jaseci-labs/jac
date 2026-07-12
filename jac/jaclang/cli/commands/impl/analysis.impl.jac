@@ -8,6 +8,13 @@ import from jaclang.cli.check_report {
     print_final_summary
 }
 
+def _maybe_malloc_trim {
+    try {
+        import ctypes;
+        ctypes.CDLL("libc.so.6").malloc_trim(0);
+    } except (OSError, AttributeError, ValueError) { }
+}
+
 impl check(
     paths: list,
     print_errs: bool = True,
@@ -92,6 +99,11 @@ impl check(
                     suppress_codes=suppressed_codes
                 )
             );
+
+            for m in prog.mod.hub.values() {
+                m.terminals = [];
+                m.src_terminals = [];
+            }
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
 
@@ -141,6 +153,8 @@ impl check(
     total_to_check = len(all_files);
     for (idx, jac_file_path) in enumerate(all_files, 1) {
         process_file_result(jac_file_path, idx, total_to_check);
+
+        _maybe_malloc_trim();
     }
 
     if print_errs and len(failed_results) > 0 {
