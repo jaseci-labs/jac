@@ -224,7 +224,7 @@ cl {
         return <input
             type="text"
             value={query}
-            onChange={lambda e: ChangeEvent { query = e.target.value; }}
+            onChange={lambda (e: ChangeEvent) { query = e.target.value; }}
             placeholder="Search..."
         />;
     }
@@ -244,15 +244,15 @@ cl {
             print(f"Login: {username}");
         }
 
-        return <form onSubmit={lambda e: FormEvent { handle_submit(e); }}>
+        return <form onSubmit={lambda (e: FormEvent) { handle_submit(e); }}>
             <input
                 value={username}
-                onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
             />
             <input
                 type="password"
                 value={password}
-                onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
             />
             <button type="submit">Login</button>
         </form>;
@@ -658,7 +658,7 @@ for the full contract.
 | JSX element | `<div className="x">content</div>` |
 | Expression | `{expression}` |
 | Click handler | `onClick={lambda -> None { ... }}` |
-| Input handler | `onChange={lambda e: ChangeEvent { ... }}` |
+| Input handler | `onChange={lambda (e: ChangeEvent) { ... }}` |
 | List rendering | `{[<li>{x}</li> for x in items]}` |
 | Conditional | `{("A" if condition else "B")}` |
 | Children | `def:pub Card(children: any = None) { ... }` then `{children}` |

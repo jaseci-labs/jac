@@ -34,7 +34,7 @@ test "desktop SSO hands off to the broker, polls the session, stores jac_token" 
     __setLocalStorage("jac_token", "");
 
     calls = [];
-    globalThis.fetch = lambda url: any -> any {
+    globalThis.fetch = lambda (url: any) -> any {
         calls.append(url);
         if url.includes("oauth/start") {
             return Promise.resolve(_resp({"ok": True}));
@@ -95,7 +95,7 @@ test "desktop jacLogout drops the broker session too (DELETE /__jac/session)" {
 
     urls = [];
     methods = [];
-    globalThis.fetch = lambda url: any , opts: any -> any {
+    globalThis.fetch = lambda (url: any, opts: any) -> any {
         urls.append(url);
         methods.append(opts["method"] if opts else "GET");
         return Promise.resolve(_resp({"ok": True}));

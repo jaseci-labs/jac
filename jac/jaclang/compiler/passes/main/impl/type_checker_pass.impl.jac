@@ -131,13 +131,13 @@ impl TypeCheckPass.exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -
 }
 
 impl TypeCheckPass.enter_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None {
-    if isinstance(nd.body, uni.Expr) {
+    if (isinstance(nd.body, uni.Expr) or nd.tail_return_expr() is not None) {
         self._lambda_depth += 1;
     }
 }
 
 impl TypeCheckPass.exit_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None {
-    if isinstance(nd.body, uni.Expr) {
+    if (isinstance(nd.body, uni.Expr) or nd.tail_return_expr() is not None) {
         self._lambda_depth -= 1;
     }
 }

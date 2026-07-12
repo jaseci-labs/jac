@@ -57,7 +57,7 @@ def:pub ChannelsTab(
                 </div>
                 <Dialog
                     open={showCreateChannel}
-                    onOpenChange={lambda v: bool { showCreateChannel = v; }}
+                    onOpenChange={lambda (v: bool) { showCreateChannel = v; }}
                 >
                     <DialogContent>
                         <DialogHeader>
@@ -73,7 +73,7 @@ def:pub ChannelsTab(
                                     id="lx-ch-name"
                                     placeholder="e.g. jac-builders"
                                     value={newChannelName}
-                                    onChange={lambda e: ChangeEvent { newChannelName = e.target.value; }}
+                                    onChange={lambda (e: ChangeEvent) { newChannelName = e.target.value; }}
                                 />
                             </Field>
                             <Field>
@@ -85,7 +85,7 @@ def:pub ChannelsTab(
                                     rows={2}
                                     placeholder="What's this channel about? (optional)"
                                     value={newChannelDescription}
-                                    onChange={lambda e: ChangeEvent { newChannelDescription = e.target.value; }}
+                                    onChange={lambda (e: ChangeEvent) { newChannelDescription = e.target.value; }}
                                 />
                             </Field>
                         </div>
@@ -250,7 +250,7 @@ def:pub ChannelsTab(
                         avatarAlt={profileUsername}
                         placeholder={"Post in #" + selectedChannel.name}
                         value={channelComposerText}
-                        onChange={lambda v: str { channelComposerText = v; }}
+                        onChange={lambda (v: str) { channelComposerText = v; }}
                         onPost={lambda {
                             onChannelPost(channelComposerText);
                             channelComposerText = "";

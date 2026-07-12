@@ -36,7 +36,7 @@ def:pub app -> JsxElement {
                 <input
                     type="text"
                     value={author}
-                    onChange={lambda e: ChangeEvent { author = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { author = e.target.value; }}
                     placeholder="Name"
                     style={{
                         "flex": "1",
@@ -48,7 +48,7 @@ def:pub app -> JsxElement {
                 <input
                     type="text"
                     value={text}
-                    onChange={lambda e: ChangeEvent { text = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
                     placeholder="Say something..."
                     style={{
                         "flex": "2",

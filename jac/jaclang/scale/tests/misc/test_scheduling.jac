@@ -287,10 +287,10 @@ test "jobs validation and auth errors" {
 
         # Unauthenticated requests → ok=false / 401
         for req in [
-            lambda : requests.get(f"{base_url}/jobs", timeout=5),
-            lambda : requests.post(f"{base_url}/jobs", json={}, timeout=5),
-            lambda : requests.put(f"{base_url}/jobs/x", json={}, timeout=5),
-            lambda : requests.delete(f"{base_url}/jobs/x", timeout=5),
+            lambda { requests.get(f"{base_url}/jobs", timeout=5); },
+            lambda { requests.post(f"{base_url}/jobs", json={}, timeout=5); },
+            lambda { requests.put(f"{base_url}/jobs/x", json={}, timeout=5); },
+            lambda { requests.delete(f"{base_url}/jobs/x", timeout=5); },
 
         ] {
             body = req().json();

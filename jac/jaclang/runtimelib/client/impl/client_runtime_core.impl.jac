@@ -21,14 +21,14 @@ async def _awaitPlatformReady {
 
 impl __createJacSchema(zodLib: any) -> any {
     handler = {
-        "apply": lambda target: any , thisArg: any , argumentsList: any -> any { return zodLib.object.apply(
+        "apply": lambda (target: any, thisArg: any, argumentsList: any) -> any { return zodLib.object.apply(
             zodLib, argumentsList
         ); },
-        "get": lambda target: any , prop: any , receiver: any -> any { return zodLib[
+        "get": lambda (target: any, prop: any, receiver: any) -> any { return zodLib[
             prop
         ]; }
     };
-    dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
+    dummyFunc = lambda (schema: any) -> any { return zodLib.object(schema); };
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 

@@ -37,7 +37,7 @@ def make_fake_mt_run(
         _invocation_id=invocation_id,
         messages=[types.SimpleNamespace(), msg1],
         mtir=mtir,
-        get_msg_list=lambda : history
+        get_msg_list=lambda { history; }
     );
 
     return mt;

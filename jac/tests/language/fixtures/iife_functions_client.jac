@@ -75,7 +75,7 @@ cl with entry {
     # Test 6: IIFE returning a function
     adder = (
         def make_adder(x: int) {
-            return lambda  y: int: x + y;
+            return lambda  (y: int) { x + y; };
         }
     )(
         10
@@ -163,7 +163,7 @@ cl with entry {
     counter = (
         def create_counter() {
             count = 0;
-            return lambda () -> int { count = count + 1; return count; } ;
+            return lambda -> int { count = count + 1; return count; } ;
         }
     )();
 

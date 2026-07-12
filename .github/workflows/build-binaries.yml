@@ -21,6 +21,13 @@ on:
         required: false
         default: release
         type: string
+    # Called workflows do not see the caller's repo secrets unless passed
+    # explicitly; without these the docker-image job skips its push steps.
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
   release:
     types: [published]
   workflow_dispatch:
@@ -365,6 +372,9 @@ jobs:
       contents: read
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      # Presence flag ("true"/"false"): `secrets` is not available in step
+      # `if:` expressions, and the token value itself must not sit in env.
+      DOCKERHUB_TOKEN_SET: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -410,6 +420,15 @@ jobs:
           mv ctx/arm64/jac-* ctx/arm64/jac
           chmod +x ctx/amd64/jac ctx/arm64/jac
           cp docker/jaclang.Dockerfile ctx/Dockerfile
+
+      # Forks skip publishing quietly, but on the org repo missing secrets
+      # mean a misconfiguration (e.g. a caller not passing them through) --
+      # fail loudly instead of green-skipping the publish.
+      - name: Fail if publishing secrets are missing (org repo)
+        if: github.repository == 'Jaseci-Labs/jaseci' && (env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN_SET != 'true')
+        run: |
+          echo "::error::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN did not reach this job; workflow_call callers must pass them via 'secrets:'."
+          exit 1
 
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
         if: env.DOCKERHUB_USERNAME != ''
