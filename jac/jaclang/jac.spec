@@ -254,7 +254,6 @@ jsx_child ::=
 
 element_stmt ::=
     ";"
-    | "to" element_stmt*
     | "cl" (client_block | element_stmt)?
     | "sv" (server_block | element_stmt)?
     | "na" (native_block | element_stmt)?
@@ -410,10 +409,6 @@ global_stmt ::= "global" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 nonlocal_stmt ::= "nonlocal" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
 ownership_prefix ::= "own" | NAME | "&" "mut"?
-    # `own` and `mut` are reserved keywords; the `NAME` alternative is the
-    # contextual `val` marker (accepted only in this prefix position). An
-    # ownership prefix is optional and may only appear immediately after the
-    # `:` of a type annotation (or after `&` in a reference expression).
 
 assignment_with_target ::=
     (":" ownership_prefix pipe)? (

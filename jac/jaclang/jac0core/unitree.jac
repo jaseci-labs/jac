@@ -425,8 +425,7 @@ obj ClientBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -435,8 +434,7 @@ obj ServerBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -445,8 +443,7 @@ obj NativeBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }

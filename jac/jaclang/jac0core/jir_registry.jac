@@ -356,11 +356,7 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(
-                 FieldDesc(name="doc", kind=6),
-                 FieldDesc(name="body", kind=5),
-                 FieldDesc(name="implicit", kind=2)
-             )
+             fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
              type_idx=28,
@@ -1270,11 +1266,7 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(
-                 FieldDesc(name="doc", kind=6),
-                 FieldDesc(name="body", kind=5),
-                 FieldDesc(name="implicit", kind=2)
-             )
+             fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
              type_idx=113,
@@ -1414,11 +1406,7 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(
-                 FieldDesc(name="doc", kind=6),
-                 FieldDesc(name="body", kind=5),
-                 FieldDesc(name="implicit", kind=2)
-             )
+             fields=(FieldDesc(name="doc", kind=6), FieldDesc(name="body", kind=5))
          ),
          NodeSpec(
              type_idx=126,

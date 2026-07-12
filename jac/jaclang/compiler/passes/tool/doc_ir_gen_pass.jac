@@ -61,7 +61,6 @@ obj DocIRGenPass(UniPass) {
     def trim_trailing_line(parts: list[doc.DocType]) -> None;
     def jsx_whitespace -> doc.DocType;
     def jsx_mixed_child_parts(children: Sequence[uni.UniNode]) -> list[doc.DocType];
-    def emit_section_header_block(nd: uni.UniNode) -> None;
     def remove_all_spaces(doc_node: doc.DocType) -> doc.DocType;
     def exit_module(nd: uni.Module) -> None;
     def exit_import(nd: uni.Import) -> None;

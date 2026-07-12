@@ -3161,67 +3161,6 @@ impl Parser.parse_element_stmt{
         return None;
     }
 
-    if self.check(TokenKind.KW_TO)
-    and self.check_peek_any(
-        TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
-    )
-    and self.peek(2).kind == TokenKind.COLON {
-        to_tok = self.advance();
-        to_uni = self.make_uni_token(to_tok);
-        ctx_tok = self.advance();
-        ctx_uni = self.make_uni_token(ctx_tok);
-        colon_tok = self.advance();
-        colon_uni = self.make_uni_token(colon_tok);
-        section_ctx: CodeContext;
-        if ctx_tok.kind == TokenKind.KW_CLIENT {
-            section_ctx = CodeContext.CLIENT;
-        } elif ctx_tok.kind == TokenKind.KW_SERVER {
-            section_ctx = CodeContext.SERVER;
-        } else {
-            section_ctx = CodeContext.NATIVE;
-        }
-        body: list = [];
-        kid: list = [to_uni, ctx_uni, colon_uni];
-        while not self.at_end() {
-            if self.check(TokenKind.KW_TO)
-            and self.check_peek_any(
-                TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
-            )
-            and self.peek(2).kind == TokenKind.COLON {
-                break;
-            }
-            before = self.pos;
-            stmt = self.parse_element_stmt();
-            if stmt is not None {
-                has_explicit_prefix = (
-                    len(stmt.kid) > 0
-                    and isinstance(stmt.kid[0], UniToken)
-                    and (
-                        stmt.kid[0].name == Tok.KW_CLIENT
-                        or stmt.kid[0].name == Tok.KW_SERVER
-                        or stmt.kid[0].name == Tok.KW_NATIVE
-                    )
-                );
-                if stmt?.code_context and not has_explicit_prefix {
-                    stmt.code_context = section_ctx;
-                }
-                body.append(stmt);
-                kid.append(stmt);
-            }
-
-            if self.pos == before and not self.at_end() {
-                self.advance();
-            }
-        }
-        if section_ctx == CodeContext.CLIENT {
-            return ClientBlock(body=body, implicit=True, kid=kid);
-        } elif section_ctx == CodeContext.SERVER {
-            return ServerBlock(body=body, implicit=True, kid=kid);
-        } else {
-            return NativeBlock(body=body, implicit=True, kid=kid);
-        }
-    }
-
     if self.check(TokenKind.KW_CLIENT) {
         self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {

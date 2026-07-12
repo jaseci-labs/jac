@@ -132,104 +132,35 @@ impl NormalizePass.enter_module_code(nd: uni.ModuleCode) -> None {
 }
 
 impl NormalizePass.enter_client_block(nd: uni.ClientBlock) -> None {
-    import from jaclang.jac0core.ext_registry { is_client_module }
     new_kid: list[uni.UniNode] = [];
-    parent_mod = nd.find_parent_of_type(uni.Module);
-    is_implicit_top_level_cl_module = (
-        nd.implicit
-        and parent_mod is not None
-        and is_client_module(parent_mod.loc.mod_path)
-        and parent_mod.body == [nd]
-    );
-    if is_implicit_top_level_cl_module {
-        if nd.body {
-            new_kid.extend(nd.body);
-        } else {
-            new_kid.append(EmptyToken());
-        }
-    } elif nd.implicit {
-        new_kid.append(nd.gen_token(Tok.KW_TO));
-        new_kid.append(nd.gen_token(Tok.KW_CLIENT));
-        new_kid.append(nd.gen_token(Tok.COLON));
-        for stmt in nd.body {
-            new_kid.append(stmt);
-        }
-    } else {
-        new_kid.append(nd.gen_token(Tok.KW_CLIENT));
-        new_kid.append(nd.gen_token(Tok.LBRACE));
-        for stmt in nd.body {
-            new_kid.append(stmt);
-        }
-        new_kid.append(nd.gen_token(Tok.RBRACE));
+    new_kid.append(nd.gen_token(Tok.KW_CLIENT));
+    new_kid.append(nd.gen_token(Tok.LBRACE));
+    for stmt in nd.body {
+        new_kid.append(stmt);
     }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
 }
 
 impl NormalizePass.enter_server_block(nd: uni.ServerBlock) -> None {
-    import from jaclang.jac0core.ext_registry { codespace_of }
     new_kid: list[uni.UniNode] = [];
-    parent_mod = nd.find_parent_of_type(uni.Module);
-    is_implicit_top_level_sv_module = (
-        nd.implicit
-        and parent_mod is not None
-        and (codespace_of(parent_mod.loc.mod_path) == 'server')
-        and parent_mod.body == [nd]
-    );
-    if is_implicit_top_level_sv_module {
-        if nd.body {
-            new_kid.extend(nd.body);
-        } else {
-            new_kid.append(EmptyToken());
-        }
-    } elif nd.implicit {
-        new_kid.append(nd.gen_token(Tok.KW_TO));
-        new_kid.append(nd.gen_token(Tok.KW_SERVER));
-        new_kid.append(nd.gen_token(Tok.COLON));
-        for stmt in nd.body {
-            new_kid.append(stmt);
-        }
-    } else {
-        new_kid.append(nd.gen_token(Tok.KW_SERVER));
-        new_kid.append(nd.gen_token(Tok.LBRACE));
-        for stmt in nd.body {
-            new_kid.append(stmt);
-        }
-        new_kid.append(nd.gen_token(Tok.RBRACE));
+    new_kid.append(nd.gen_token(Tok.KW_SERVER));
+    new_kid.append(nd.gen_token(Tok.LBRACE));
+    for stmt in nd.body {
+        new_kid.append(stmt);
     }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
 }
 
 impl NormalizePass.enter_native_block(nd: uni.NativeBlock) -> None {
-    import from jaclang.jac0core.ext_registry { is_native_module }
     new_kid: list[uni.UniNode] = [];
-    parent_mod = nd.find_parent_of_type(uni.Module);
-    is_implicit_top_level_na_module = (
-        nd.implicit
-        and parent_mod is not None
-        and is_native_module(parent_mod.loc.mod_path)
-        and parent_mod.body == [nd]
-    );
-    if is_implicit_top_level_na_module {
-        if nd.body {
-            new_kid.extend(nd.body);
-        } else {
-            new_kid.append(EmptyToken());
-        }
-    } elif nd.implicit {
-        new_kid.append(nd.gen_token(Tok.KW_TO));
-        new_kid.append(nd.gen_token(Tok.KW_NATIVE));
-        new_kid.append(nd.gen_token(Tok.COLON));
-        for stmt in nd.body {
-            new_kid.append(stmt);
-        }
-    } else {
-        new_kid.append(nd.gen_token(Tok.KW_NATIVE));
-        new_kid.append(nd.gen_token(Tok.LBRACE));
-        for stmt in nd.body {
-            new_kid.append(stmt);
-        }
-        new_kid.append(nd.gen_token(Tok.RBRACE));
+    new_kid.append(nd.gen_token(Tok.KW_NATIVE));
+    new_kid.append(nd.gen_token(Tok.LBRACE));
+    for stmt in nd.body {
+        new_kid.append(stmt);
     }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
 }
 
