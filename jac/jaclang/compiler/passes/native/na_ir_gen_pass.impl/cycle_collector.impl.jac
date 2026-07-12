@@ -50,6 +50,7 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
 
     pr_entry = push_fn.append_basic_block("entry");
     pr_grow = push_fn.append_basic_block("grow");
+    pr_grow_ok = push_fn.append_basic_block("grow_ok");
     pr_store = push_fn.append_basic_block("store");
     pr_chk_thresh = push_fn.append_basic_block("chk_thresh");
     pr_trigger = push_fn.append_basic_block("trigger");
@@ -71,6 +72,16 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
         [_obuf, b.mul(_ncap, ir.Constant(i64, 8), name="nbytes")],
         name="nbuf"
     );
+    # On OOM realloc returns null while the old buffer stays valid. Skip this
+    # push rather than clobbering roots_buf_gv with null (the next push would
+    # gep off it and crash) and leaking the old buffer.
+    b.cbranch(
+        b.icmp_signed("==", _nbuf, ir.Constant(i8_ptr, None), name="nbuf.null"),
+        pr_done,
+        pr_grow_ok
+    );
+
+    b = ir.IRBuilder(pr_grow_ok);
     b.store(_nbuf, roots_buf_gv);
     b.store(_ncap, roots_cap_gv);
     b.branch(pr_store);

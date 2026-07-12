@@ -225,9 +225,11 @@ impl OwnershipCheckPass._stamp_ownership -> None {
             self.borrow_meta[borrow_id] = BorrowMeta(
                 name=target.sym_name,
                 owner=owner_id,
-                is_mut=is_mut_kind(nd.value.ownership)
+                is_mut=is_mut_kind(target.sym.ownership) or (
+                    is_mut_kind(nd.value.ownership)
                     if isinstance(nd.value, uni.UnaryExpr)
                     else False
+                )
             );
             self.borrow_created_at[borrow_id] = nd;
         }
