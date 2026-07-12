@@ -60,7 +60,7 @@ def:pub TasksPanel -> JsxElement {
                 <input
                     class="input"
                     value={taskText}
-                    onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                     onKeyPress={handleKeyPress}
                     placeholder="What needs to be done today?"
                 />

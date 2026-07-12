@@ -68,7 +68,15 @@ def build_runtime_install_commands(k8s_config: KubernetesConfig) -> list[str] {
     }
 
     tc = f"{APP_MOUNT_PATH}/{TOOLCHAIN_SUBDIR}";
-    commands.append(f'install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"');
+    # On the official base image /usr/local/bin/jac ships with its runtime
+    # pre-extracted; reuse it ONLY when it is byte-identical to the shipped
+    # binary (the .jab seal is version-locked), else install the bundle copy.
+    commands.append(
+        f'if [ -x /usr/local/bin/jac ] && [ "$(sha256sum /usr/local/bin/jac '
+        f"| cut -d' ' -f1)\" = \"$(sha256sum \"{tc}/bin/jac\" | cut -d' ' -f1)\" ]; "
+        f'then ln -sf /usr/local/bin/jac "$HOME/.local/bin/jac"; '
+        f'else install -m 0755 "{tc}/bin/jac" "$HOME/.local/bin/jac"; fi'
+    );
     commands.append('export PATH="$HOME/.local/bin:$PATH"');
     commands.append(
         'if ! command -v jac >/dev/null 2>&1; then echo "[jac-scale] FATAL: '
@@ -129,7 +137,7 @@ def build_bootstrap_init_container(
     # app's declared deps.
     commands.append("jac install");
     script = ' && '.join(commands);
-    return {
+    container: dict[str, any] = {
         "name": "jac-bootstrap",
         "image": base_image,
         "command": ["bash", "-c"],
@@ -148,4 +156,16 @@ def build_bootstrap_init_container(
             {"name": BUNDLE_VOLUME_NAME, "mountPath": BUNDLE_MOUNT_PATH}
         ]
     };
+    policy = image_pull_policy(base_image);
+    if policy {
+        container["imagePullPolicy"] = policy;
+    }
+    return container;
+}
+
+
+def image_pull_policy(image: str) -> str {
+    # The rolling `dev` tag is mutable: without Always a node keeps serving
+    # whatever it cached first. Versioned and `latest` tags keep k8s defaults.
+    return "Always" if image.endswith(":dev") else "";
 }

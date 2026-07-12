@@ -2266,7 +2266,7 @@ def summarize(text: str) -> str by llm();
 
 with entry {
     litellm.callbacks.append(UserTelemetryLogger());
-    register_agent_callback(lambda rec: agent_records.append(rec));
+    register_agent_callback(lambda (rec) { agent_records.append(rec); });
 
     result = summarize("Jac is a programming language built on top of Python.");
     print(f"Summary: {result}");

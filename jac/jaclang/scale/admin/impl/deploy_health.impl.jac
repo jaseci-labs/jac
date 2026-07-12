@@ -178,8 +178,8 @@ mocked lists."""
 def build_deploy_health(namespace: str, deployments: list, pods: list) -> dict {
     deps = [summarize_deployment(d) for d in deployments];
     pds = [summarize_pod(p) for p in pods];
-    deps.sort(key=lambda d : d.get("name", ""));
-    pds.sort(key=lambda p : p.get("name", ""));
+    deps.sort(key=lambda (d) { d.get("name", ""); });
+    pds.sort(key=lambda (p) { p.get("name", ""); });
     return {
         "available": True,
         "namespace": namespace,

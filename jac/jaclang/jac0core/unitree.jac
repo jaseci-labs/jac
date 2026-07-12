@@ -986,6 +986,7 @@ obj LambdaExpr(Expr, UniScopeNode) {
         signature: (FuncSignature | None) = None;
 
     def postinit -> None;
+    def tail_return_expr -> Expr | None;
 
     has captures: list[Symbol] { getter; }
 }
