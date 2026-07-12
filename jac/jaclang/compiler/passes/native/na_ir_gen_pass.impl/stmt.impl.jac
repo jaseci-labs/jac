@@ -1181,6 +1181,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 if nd.loc
                                 else 0}"
                         );
+                    } elif self._is_owned(value) {
+                        self.rc_ops_elided += 1;
                     }
                     old_val = self.builder.load(alloca, name=f"{var_name}.old");
                     self._emit_rc_release_typed(
@@ -1351,6 +1353,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             if nd.loc
                             else 0}"
                     );
+                } else {
+                    self.rc_ops_elided += 1;
                 }
                 old_glob = self.builder.load(global_var, name=f"glob.{var_name}.old");
                 self._emit_rc_release_typed(
@@ -1449,6 +1453,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 if nd.loc
                                 else 0}"
                         );
+                    } elif self._is_owned(value) {
+                        self.rc_ops_elided += 1;
                     }
                     old_val = self.builder.load(alloca, name=f"{var_name}.old");
                     self._emit_rc_release_typed(

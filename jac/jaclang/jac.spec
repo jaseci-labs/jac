@@ -65,7 +65,7 @@ spawn ::= "spawn" unpack | unpack ("spawn" unpack)*
 
 unpack ::= "*" ref | ref
 
-ref ::= "&" ("(" await_expr | NAME? await_expr) | await_expr
+ref ::= "&" ("(" await_expr | "mut"? await_expr) | await_expr
 
 await_expr ::= "await" pipe_call | pipe_call
 
@@ -409,7 +409,11 @@ global_stmt ::= "global" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
 nonlocal_stmt ::= "nonlocal" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
-ownership_prefix ::= NAME | "&" NAME?
+ownership_prefix ::= "own" | NAME | "&" "mut"?
+    # `own` and `mut` are reserved keywords; the `NAME` alternative is the
+    # contextual `val` marker (accepted only in this prefix position). An
+    # ownership prefix is optional and may only appear immediately after the
+    # `:` of a type annotation (or after `&` in a reference expression).
 
 assignment_with_target ::=
     (":" ownership_prefix pipe)? (

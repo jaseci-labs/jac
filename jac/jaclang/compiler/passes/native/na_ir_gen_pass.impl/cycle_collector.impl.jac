@@ -40,6 +40,11 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
     collect_fn.linkage = "internal";
     self.rc_collect_cycles_fn = collect_fn;
 
+    lookup_fnty = ir.FunctionType(i64, [i64]);
+    lookup_fn = ir.Function(self.llvm_module, lookup_fnty, name="__rc_trace_lookup");
+    lookup_fn.linkage = "internal";
+    self.rc_trace_lookup_fn = lookup_fn;
+
     realloc_fn = self._get_or_declare_extern("realloc", i8_ptr, [i8_ptr, i64]);
 
     push_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
@@ -122,21 +127,44 @@ impl NaIRGenPass._emit_rc_roots_globals -> None {
 impl NaIRGenPass._emit_rc_color_load(
     b: ir.IRBuilder, obj_i8: ir.Value
 ) -> tuple[ir.Value, ir.Value] {
+    i8 = ir.IntType(8);
     i64 = ir.IntType(64);
-    csp = b.gep(obj_i8, [ir.Constant(i64, HDR_COLOR_OFF)], name="csp");
-    cb = b.load(csp, name="cb");
+    i64_ptr = i64.as_pointer();
+    _slot = b.gep(obj_i8, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="csp.raw");
+    csp = b.bitcast(_slot, i64_ptr, name="csp");
+    _word = b.load(csp, name="cword");
+    _field = b.lshr(_word, ir.Constant(i64, RC_COLOR_SHIFT), name="cfield");
+    cb = b.trunc(b.and_(_field, ir.Constant(i64, 7), name="cbits"), i8, name="cb");
     return (csp, cb);
 }
 
 impl NaIRGenPass._emit_rc_color_store(
     b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
 ) -> None {
-    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    _word = b.load(csp, name="csw");
+    _cleared = b.and_(_word, ir.Constant(i64, ~(3 << RC_COLOR_SHIFT)), name="csw.clr");
     b.store(
-        b.or_(
-            b.and_(cb, ir.Constant(i8, 0xFC), name="clr"),
-            ir.Constant(i8, color),
-            name="ncolor"
+        b.or_(_cleared, ir.Constant(i64, color << RC_COLOR_SHIFT), name="csw.new"), csp
+    );
+}
+
+impl NaIRGenPass._emit_rc_color_reset(b: ir.IRBuilder, csp: ir.Value) -> None {
+    i64 = ir.IntType(64);
+    _word = b.load(csp, name="crw");
+    b.store(
+        b.and_(_word, ir.Constant(i64, ~(7 << RC_COLOR_SHIFT)), name="crw.new"), csp
+    );
+}
+
+impl NaIRGenPass._emit_rc_clear_buffered(b: ir.IRBuilder, csp: ir.Value) -> None {
+    i64 = ir.IntType(64);
+    _word = b.load(csp, name="cbw");
+    b.store(
+        b.and_(
+            _word,
+            ir.Constant(i64, ~(RC_BUFFERED_BIT << RC_COLOR_SHIFT)),
+            name="cbw.new"
         ),
         csp
     );
@@ -168,17 +196,26 @@ impl NaIRGenPass._emit_rc_trace_dispatch(
     trace_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr, i8_ptr]);
     trace_fn_ptype = trace_fnty.as_pointer();
 
+    lookup_block = fn.append_basic_block("trace_lookup");
     call_block = fn.append_basic_block("trace_call");
-    _ti = b.load(
+    _di = b.load(
         b.bitcast(
-            b.gep(obj_i8, [ir.Constant(i64, HDR_TRACE_OFF)], name="tsp"),
+            b.gep(obj_i8, [ir.Constant(i64, HDR_DTOR_OFF)], name="tdsp"),
             i64_ptr,
-            name="tptr"
+            name="tdptr"
         ),
-        name="ti"
+        name="tdi"
     );
     b.cbranch(
-        b.icmp_unsigned("==", _ti, ir.Constant(i64, 0), name="tnull"),
+        b.icmp_unsigned("==", _di, ir.Constant(i64, 0), name="tdnull"),
+        done_block,
+        lookup_block
+    );
+
+    lb = ir.IRBuilder(lookup_block);
+    _ti = lb.call(self.rc_trace_lookup_fn, [_di], name="ti");
+    lb.cbranch(
+        lb.icmp_unsigned("==", _ti, ir.Constant(i64, 0), name="tnull"),
         done_block,
         call_block
     );
@@ -470,7 +507,7 @@ impl NaIRGenPass._emit_rc_collect_white_phase -> ir.Function {
     b.cbranch(b.and_(_cw_is_white, _cw_unbuffered, name="cw.reclaim"), cw_set, cw_done);
     b = ir.IRBuilder(cw_set);
 
-    b.store(ir.Constant(i8, RC_COLOR_BLACK), _cw_csp);
+    self._emit_rc_color_reset(b, _cw_csp);
 
     cw_reclaim = self._emit_rc_collect_white_reclaim(cw_fn, cw_done, cw_fn.args[0]);
     self._emit_rc_trace_dispatch(cw_fn, b, cw_fn.args[0], cw_vis_fn, cw_reclaim);
@@ -554,7 +591,7 @@ impl NaIRGenPass._emit_rc_root_pass(
     optr = b.load(b.bitcast(slot, i8_ptr_ptr, name=f"{prefix}pp"), name=f"{prefix}obj");
     if clear_purple {
         (csp, cb) = self._emit_rc_color_load(b, optr);
-        b.store(b.and_(cb, ir.Constant(i8, 0xFB), name=f"{prefix}clr"), csp);
+        self._emit_rc_clear_buffered(b, csp);
     }
     b.call(phase_fn, [optr]);
     nxt = b.add(idx, ir.Constant(i64, 1), name=f"{prefix}next");

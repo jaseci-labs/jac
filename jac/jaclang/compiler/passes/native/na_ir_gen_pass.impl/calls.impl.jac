@@ -214,6 +214,9 @@ impl NaIRGenPass._codegen_rc_intrinsic(func_name: str) -> bool {
     if func_name not in RC_INTRINSIC_NAMES {
         return False;
     }
+    if func_name == "__rc_collect_cycles" and self._gc_mode() != "cycles" {
+        return True;
+    }
     if self.rc_alloc_fn is None {
         self._emit_rc_helpers();
     }

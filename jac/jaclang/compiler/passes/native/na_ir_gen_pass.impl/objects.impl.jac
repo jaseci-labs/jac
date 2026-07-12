@@ -907,12 +907,6 @@ impl NaIRGenPass._codegen_instantiation(
         }
         self._emit_trace_fn(type_name);
         _trace_fn_s = self.struct_trace_fns.get(type_name);
-        if _trace_fn_s is not None {
-            _obj_i8_tr = self.builder.bitcast(
-                obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tr"
-            );
-            self._emit_set_trace_fn(self.builder, _obj_i8_tr, _trace_fn_s);
-        }
         self._require_trace_fn(
             type_name, self._struct_has_ref_fields(type_name), _trace_fn_s is not None
         );

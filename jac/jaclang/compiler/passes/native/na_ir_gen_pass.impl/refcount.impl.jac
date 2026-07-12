@@ -1,15 +1,26 @@
+impl NaIRGenPass._gc_mode -> str {
+    _mode = getattr(self.prog._compile_options, "na_gc_mode", "cycles");
+    if _mode not in ("cycles", "rc", "none") {
+        return "cycles";
+    }
+    return _mode;
+}
+
 impl NaIRGenPass._emit_rc_helpers -> None {
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i64_ptr = i64.as_pointer();
+    _cycles_on = self._gc_mode() == "cycles";
 
     self.malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
     self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
 
     self._emit_rc_debug_globals();
-    self._emit_rc_roots_globals();
+    if _cycles_on {
+        self._emit_rc_roots_globals();
+    }
 
     rc_gc_disabled_gv = ir.GlobalVariable(
         self.llvm_module, i8, name="__rc_gc_disabled"
@@ -35,13 +46,15 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _b_en_gc.ret_void();
     self.rc_gc_enable_fn = en_gc_fn;
 
-    en_cyc_fn = self._define_function("__rc_cycles_enable", dis_gc_fnty);
-    en_cyc_fn.linkage = "internal";
-    _bb_en_cyc = en_cyc_fn.append_basic_block("entry");
-    _b_en_cyc = ir.IRBuilder(_bb_en_cyc);
-    _b_en_cyc.store(ir.Constant(i8, 1), self.rc_cycles_enabled_gv);
-    _b_en_cyc.ret_void();
-    self.rc_cycles_enable_fn = en_cyc_fn;
+    if _cycles_on {
+        en_cyc_fn = self._define_function("__rc_cycles_enable", dis_gc_fnty);
+        en_cyc_fn.linkage = "internal";
+        _bb_en_cyc = en_cyc_fn.append_basic_block("entry");
+        _b_en_cyc = ir.IRBuilder(_bb_en_cyc);
+        _b_en_cyc.store(ir.Constant(i8, 1), self.rc_cycles_enabled_gv);
+        _b_en_cyc.ret_void();
+        self.rc_cycles_enable_fn = en_cyc_fn;
+    }
 
     sf_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
     sf_fn = self._define_function("__rc_safe_free", sf_fnty);
@@ -61,7 +74,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _sf_b.ret_void();
     self.rc_safe_free_fn = sf_fn;
 
-    self._emit_rc_collect_cycles();
+    if _cycles_on {
+        self._emit_rc_collect_cycles();
+    }
 
     self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     self._get_or_declare_extern("strlen", i64, [i8_ptr]);
@@ -108,18 +123,6 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, 4294967295), name="aid.lo");
     _aid_magic = b.or_(_magic_base, _aid_lo32, name="aid.magic");
     b.store(_aid_magic, _aid_ptr);
-
-    _trace_raw = b.gep(
-        raw, [ir.Constant(i64, HDR_TOTAL + HDR_TRACE_OFF)], name="trace.raw"
-    );
-    _trace_slot = b.bitcast(_trace_raw, i64_ptr, name="trace.slot");
-    b.store(ir.Constant(i64, 0), _trace_slot);
-
-    _color_raw = b.gep(
-        raw, [ir.Constant(i64, HDR_TOTAL + HDR_COLOR_OFF)], name="color.raw"
-    );
-    _color_slot = b.bitcast(_color_raw, i64_ptr, name="color.slot");
-    b.store(ir.Constant(i64, 0), _color_slot);
 
     _tag_raw = b.gep(
         _raw_tag_str, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="tag.raw"
@@ -350,58 +353,66 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         release_fn, done_bb, release_fn.args[0], old_rc, new_rc
     );
     log_free_bb = self._emit_raw_free_bbs(release_fn, done_bb, release_fn.args[0]);
-    cycle_check_bb = release_fn.append_basic_block("cycle_check");
-    b.cbranch(is_zero, check_dtor_bb, cycle_check_bb);
+    if _cycles_on {
+        cycle_check_bb = release_fn.append_basic_block("cycle_check");
+        b.cbranch(is_zero, check_dtor_bb, cycle_check_bb);
 
-    b = ir.IRBuilder(cycle_check_bb);
-    _cy_dis_flag = b.load(self.rc_gc_disabled_gv, name="cy.dis.flag");
-    _cy_coll_flag = b.load(self.rc_collecting_gv, name="cy.coll.flag");
+        b = ir.IRBuilder(cycle_check_bb);
+        _cy_dis_flag = b.load(self.rc_gc_disabled_gv, name="cy.dis.flag");
+        _cy_coll_flag = b.load(self.rc_collecting_gv, name="cy.coll.flag");
 
-    _cy_cyc_flag = b.load(self.rc_cycles_enabled_gv, name="cy.cyc.flag");
-    _cy_skip = b.or_(
-        b.or_(
-            b.icmp_unsigned("!=", _cy_dis_flag, ir.Constant(i8, 0), name="cy.dis"),
-            b.icmp_unsigned("!=", _cy_coll_flag, ir.Constant(i8, 0), name="cy.coll"),
-            name="cy.skip.gc"
-        ),
-        b.icmp_unsigned("==", _cy_cyc_flag, ir.Constant(i8, 0), name="cy.cyc.off"),
-        name="cy.skip"
-    );
-    color_check_bb = release_fn.append_basic_block("color_check");
-    b.cbranch(_cy_skip, dbg_rel_bb, color_check_bb);
+        _cy_cyc_flag = b.load(self.rc_cycles_enabled_gv, name="cy.cyc.flag");
+        _cy_skip = b.or_(
+            b.or_(
+                b.icmp_unsigned("!=", _cy_dis_flag, ir.Constant(i8, 0), name="cy.dis"),
+                b.icmp_unsigned(
+                    "!=", _cy_coll_flag, ir.Constant(i8, 0), name="cy.coll"
+                ),
+                name="cy.skip.gc"
+            ),
+            b.icmp_unsigned("==", _cy_cyc_flag, ir.Constant(i8, 0), name="cy.cyc.off"),
+            name="cy.skip"
+        );
+        color_check_bb = release_fn.append_basic_block("color_check");
+        b.cbranch(_cy_skip, dbg_rel_bb, color_check_bb);
 
-    b = ir.IRBuilder(color_check_bb);
-    _cy_color_slot = b.gep(
-        release_fn.args[0], [ir.Constant(i64, HDR_COLOR_OFF)], name="cy.color.slot"
-    );
-    _cy_color_byte = b.load(_cy_color_slot, name="cy.color.byte");
-    _cy_color = b.and_(_cy_color_byte, ir.Constant(i8, 3), name="cy.color");
-    _cy_is_purple = b.icmp_unsigned(
-        "==", _cy_color, ir.Constant(i8, RC_COLOR_PURPLE), name="cy.is.purple"
-    );
-    set_root_bb = release_fn.append_basic_block("set_root");
-    b.cbranch(_cy_is_purple, dbg_rel_bb, set_root_bb);
+        b = ir.IRBuilder(color_check_bb);
+        (_cy_csp, _cy_cb) = self._emit_rc_color_load(b, release_fn.args[0]);
+        _cy_color = b.and_(_cy_cb, ir.Constant(i8, 3), name="cy.color");
+        _cy_is_purple = b.icmp_unsigned(
+            "==", _cy_color, ir.Constant(i8, RC_COLOR_PURPLE), name="cy.is.purple"
+        );
+        set_root_bb = release_fn.append_basic_block("set_root");
+        b.cbranch(_cy_is_purple, dbg_rel_bb, set_root_bb);
 
-    b = ir.IRBuilder(set_root_bb);
-    _cy_new_byte = b.or_(
-        b.and_(_cy_color_byte, ir.Constant(i8, 0xF8), name="cy.clear.bits"),
-        ir.Constant(i8, RC_COLOR_PURPLE | RC_BUFFERED_BIT),
-        name="cy.new.byte"
-    );
-    b.store(_cy_new_byte, _cy_color_slot);
-    if self.rc_push_root_fn is not None {
-        b.call(self.rc_push_root_fn, [release_fn.args[0]]);
+        b = ir.IRBuilder(set_root_bb);
+        _cy_word = b.load(_cy_csp, name="cy.word");
+        _cy_new_word = b.or_(
+            b.and_(
+                _cy_word, ir.Constant(i64, ~(7 << RC_COLOR_SHIFT)), name="cy.clear.bits"
+            ),
+            ir.Constant(i64, (RC_COLOR_PURPLE | RC_BUFFERED_BIT) << RC_COLOR_SHIFT),
+            name="cy.new.word"
+        );
+        b.store(_cy_new_word, _cy_csp);
+        if self.rc_push_root_fn is not None {
+            b.call(self.rc_push_root_fn, [release_fn.args[0]]);
+        }
+        b.branch(dbg_rel_bb);
+    } else {
+        b.cbranch(is_zero, check_dtor_bb, dbg_rel_bb);
     }
-    b.branch(dbg_rel_bb);
     b = ir.IRBuilder(check_dtor_bb);
 
-    _cd_is_buffered = self._emit_rc_is_buffered(
-        b, release_fn.args[0], name_prefix="cd"
-    );
-    reclaim_bb = release_fn.append_basic_block("do_reclaim");
-    b.cbranch(_cd_is_buffered, dbg_rel_bb, reclaim_bb);
+    if _cycles_on {
+        _cd_is_buffered = self._emit_rc_is_buffered(
+            b, release_fn.args[0], name_prefix="cd"
+        );
+        reclaim_bb = release_fn.append_basic_block("do_reclaim");
+        b.cbranch(_cd_is_buffered, dbg_rel_bb, reclaim_bb);
 
-    b = ir.IRBuilder(reclaim_bb);
+        b = ir.IRBuilder(reclaim_bb);
+    }
     dtor_raw = b.gep(
         release_fn.args[0], [ir.Constant(i64, HDR_DTOR_OFF)], name="dtor.raw"
     );
@@ -466,6 +477,7 @@ impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
         return False;
     }
     self.builder.store(ir.Constant(src_alloca.type.pointee, None), src_alloca);
+    self.rc_ops_elided += 1;
     return True;
 }
 
@@ -503,6 +515,7 @@ impl NaIRGenPass._emit_magic_check(
     _ptr = b.bitcast(_slot, i64_ptr, name=f"{name_prefix}.ptr");
     _val = b.load(_ptr, name=f"{name_prefix}.val");
     _hi = b.lshr(_val, ir.Constant(i64, 32), name=f"{name_prefix}.hi");
+    _hi = b.and_(_hi, ir.Constant(i64, 0xFFFF), name=f"{name_prefix}.hi.magic");
     return b.icmp_unsigned(
         "==", _hi, ir.Constant(i64, HDR_MAGIC), name=f"{name_prefix}.ok"
     );
@@ -531,6 +544,9 @@ impl NaIRGenPass._rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value {
 }
 
 impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None {
+    if self._gc_mode() == "none" {
+        return;
+    }
     if self.rc_retain_fn is None {
         self._emit_rc_helpers();
     }
@@ -542,6 +558,7 @@ impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> 
         return;
     }
 
+    self.rc_retains_emitted += 1;
     i8_ptr = ir.IntType(8).as_pointer();
     self._set_rc_ctx(op, loc);
     cast = self.builder.bitcast(ptr, i8_ptr, name="rc.retain.cast");
@@ -553,6 +570,9 @@ impl NaIRGenPass._emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> 
 impl NaIRGenPass._emit_rc_release_simple(
     ptr: ir.Value, op: str = "", loc: str = ""
 ) -> None {
+    if self._gc_mode() == "none" {
+        return;
+    }
     if self.rc_release_simple_fn is None {
         self._emit_rc_helpers();
     }
@@ -564,6 +584,7 @@ impl NaIRGenPass._emit_rc_release_simple(
         return;
     }
 
+    self.rc_releases_emitted += 1;
     i8_ptr = ir.IntType(8).as_pointer();
     self._set_rc_ctx(op, loc);
     cast = self.builder.bitcast(ptr, i8_ptr, name="rc.release.cast");
@@ -684,17 +705,24 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
         and field_indices.get(_fn, -1) >= 0 for (_fn, _ft) in field_types.items()
     );
     if _has_ref_fields {
-        if self.rc_collecting_gv is None {
+        _cycles_on = self._gc_mode() == "cycles";
+        if _cycles_on and self.rc_collecting_gv is None {
             self._emit_rc_helpers();
         }
         rel_fields_bb = release_fn.append_basic_block("release_fields");
         post_fields_bb = release_fn.append_basic_block("post_fields");
-        _rel_coll = b.load(self.rc_collecting_gv, name="rel.collecting");
-        b.cbranch(
-            b.icmp_unsigned("!=", _rel_coll, ir.Constant(i8, 0), name="rel.mid.coll"),
-            post_fields_bb,
-            rel_fields_bb
-        );
+        if _cycles_on {
+            _rel_coll = b.load(self.rc_collecting_gv, name="rel.collecting");
+            b.cbranch(
+                b.icmp_unsigned(
+                    "!=", _rel_coll, ir.Constant(i8, 0), name="rel.mid.coll"
+                ),
+                post_fields_bb,
+                rel_fields_bb
+            );
+        } else {
+            b.branch(rel_fields_bb);
+        }
         b = ir.IRBuilder(rel_fields_bb);
         for (fname, ftype) in field_types.items() {
             if fname in opaque_fields {

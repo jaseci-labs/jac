@@ -38,17 +38,13 @@ impl NaIRGenPass._emit_container_new_fn(
         for (i, dt) in enumerate(data_types)
         if isinstance(dt, ir.PointerType)
     ];
-    _cont_i8_tr = b.bitcast(
-        container_ptr, ir.IntType(8).as_pointer(), name="new.i8.tr"
-    );
     _cont_type_name = self._container_type_name(dtor_fn);
     _cont_has_trace = False;
-    if _ptr_data_fields {
+    if _ptr_data_fields and self._gc_mode() == "cycles" {
         _cont_trace_fn = self._emit_container_trace_fn(
             f"__rc_trace_{_cont_type_name}", container_ptr_type, _ptr_data_fields
         );
-        self._emit_set_trace_fn(b, _cont_i8_tr, _cont_trace_fn);
-        _cont_has_trace = True;
+        _cont_has_trace = self._register_trace_pair(dtor_fn, _cont_trace_fn);
     }
     self._require_trace_fn(_cont_type_name, bool(_ptr_data_fields), _cont_has_trace);
     b.ret(container_ptr);

@@ -48,19 +48,18 @@ glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
 
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
-glob HDR_ALLOC_ID_OFF: int = -48,
-     HDR_TRACE_OFF: int = -40,
-     HDR_COLOR_OFF: int = -32,
+glob HDR_ALLOC_ID_OFF: int = -32,
      HDR_TAG_OFF: int = -24,
      HDR_RC_OFF: int = -16,
      HDR_DTOR_OFF: int = -8,
-     HDR_TOTAL: int = 48;
+     HDR_TOTAL: int = 32;
 
 glob RC_COLOR_BLACK: int = 0,
      RC_COLOR_WHITE: int = 1,
      RC_COLOR_GRAY: int = 2,
      RC_COLOR_PURPLE: int = 3,
      RC_BUFFERED_BIT: int = 4,
+     RC_COLOR_SHIFT: int = 48,
      RC_CYCLE_THRESHOLD: int = 1000;
 
 glob LIVE_NODE_ID_OFF: int = 0,
@@ -200,6 +199,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_collecting_gv: object = None,
         rc_push_root_fn: (ir.Function | None) = None,
         rc_collect_cycles_fn: (ir.Function | None) = None,
+        rc_trace_lookup_fn: (ir.Function | None) = None,
+        rc_trace_pairs: dict[str, tuple] = {},
+        rc_retains_emitted: int = 0,
+        rc_releases_emitted: int = 0,
+        rc_ops_elided: int = 0,
         struct_trace_fns: dict[str, ir.Function] = {},
         struct_release_fns: dict[str, ir.Function] = {},
         list_release_fns: dict[str, ir.Function] = {},
@@ -813,13 +817,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _split_call_kwargs(nd: uni.FuncCall) -> dict;
+    def _gc_mode -> str;
     def _emit_rc_helpers -> None;
     def _emit_rc_roots_globals -> None;
     def _emit_trace_fn(arch_name: str) -> None;
-    def _emit_set_trace_fn(
-        b: ir.IRBuilder, obj_i8: ir.Value, trace_fn: ir.Function
-    ) -> None;
-
+    def _register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool;
+    def _finalize_trace_lookup -> None;
     def _require_trace_fn(type_name: str, participates: bool, has_trace: bool) -> None;
     def _struct_has_ref_fields(arch_name: str) -> bool;
     def _container_type_name(dtor_fn: object) -> str;
@@ -836,6 +839,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
     ) -> None;
 
+    def _emit_rc_color_reset(b: ir.IRBuilder, csp: ir.Value) -> None;
+    def _emit_rc_clear_buffered(b: ir.IRBuilder, csp: ir.Value) -> None;
     def _emit_rc_is_buffered(
         b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
     ) -> ir.Value;

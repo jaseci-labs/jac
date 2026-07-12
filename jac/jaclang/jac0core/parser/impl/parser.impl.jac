@@ -1258,9 +1258,7 @@ impl Parser.parse_ref -> Expr {
         }
 
         is_mut = False;
-        if self.check(TokenKind.NAME)
-        and self.current().value == "mut"
-        and self.check_peek_any(TokenKind.NAME, TokenKind.LPAREN) {
+        if self.check(TokenKind.KW_MUT) {
             mut_tok = self.advance();
             kids.append(self.make_uni_token(mut_tok));
             is_mut = True;
@@ -4890,10 +4888,7 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
 }
 
 impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
-    if self.check(TokenKind.NAME)
-    and self.current().value == "own"
-    and not self.check_peek(TokenKind.EQ)
-    and not self.check_peek(TokenKind.SEMI) {
+    if self.check(TokenKind.KW_OWN) {
         own_tok = self.advance();
         kids.append(self.make_uni_token(own_tok));
         return OwnershipKind.OWN;
@@ -4907,7 +4902,7 @@ impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
     } elif self.check(TokenKind.BW_AND) {
         amp_tok = self.advance();
         kids.append(self.make_uni_token(amp_tok));
-        if self.check(TokenKind.NAME) and self.current().value == "mut" {
+        if self.check(TokenKind.KW_MUT) {
             mut_tok = self.advance();
             kids.append(self.make_uni_token(mut_tok));
             return OwnershipKind.MUT_BORROW;

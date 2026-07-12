@@ -924,20 +924,20 @@ impl Module.unparse(requires_format: bool = True) -> str {
     import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
     import from jaclang.jac0core.program { JacProgram }
 
-    own = self.loc.mod_path;
+    own_path = self.loc.mod_path;
     saved_body = self.body;
     saved_kid = self.kid;
     head_kid = [
         k
         for k in saved_kid
-        if (not k.loc.mod_path) or (k.loc.mod_path == own)
+        if (not k.loc.mod_path) or (k.loc.mod_path == own_path)
     ];
     filtered = len(head_kid) != len(saved_kid);
     if filtered {
         self.body = [
             st
             for st in saved_body
-            if (not st.loc.mod_path) or (st.loc.mod_path == own)
+            if (not st.loc.mod_path) or (st.loc.mod_path == own_path)
         ];
         self.set_kids(nodes=head_kid or [EmptyToken()]);
     }
