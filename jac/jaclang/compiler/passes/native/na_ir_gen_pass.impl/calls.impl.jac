@@ -929,7 +929,27 @@ impl NaIRGenPass._jacval_tags_for_type(name: str) -> list[int] {
     if name == "set" {
         return [5];
     }
+    if name == "NoneType" {
+        return [8];
+    }
     return [];
+}
+
+impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
+    if (
+        isinstance(nd, uni.FuncCall)
+        and self._get_name(nd.target) == "type"
+        and nd.params
+        and len(nd.params) == 1
+        and isinstance(nd.params[0], uni.Null)
+    ) {
+        import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+        if classify_call(nd) == CallKind.BUILTIN {
+            return "NoneType";
+        }
+        return None;
+    }
+    return self._get_name(nd);
 }
 
 impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
@@ -949,13 +969,13 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
     names: list[str] = [];
     if isinstance(type_arg, uni.TupleVal) {
         for v in (type_arg.values or []) {
-            nm = self._get_name(v);
+            nm = self._isinstance_type_name(v);
             if nm is not None {
                 names.append(nm);
             }
         }
     } else {
-        nm = self._get_name(type_arg);
+        nm = self._isinstance_type_name(type_arg);
         if nm is not None {
             names.append(nm);
         }
