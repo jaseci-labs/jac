@@ -1341,15 +1341,10 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
      _JS_RESERVED_EXC_NAMES: set[str] = {"TypeError", "ReferenceError"};
 
 def _build_exc_runtime_js -> str {
-    try {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        _exc_entries = JAC_TYPE_REGISTRY.exception_entries();
-    } except ImportError {
-        _exc_entries = [];
-    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     lines: list[str] = ["(() => {"];
     exports: list[str] = [];
-    for (name, parent) in _exc_entries {
+    for (name, parent) in JAC_TYPE_REGISTRY.exception_entries() {
         local = (name + "_") if name in _JS_RESERVED_EXC_NAMES else name;
         parent_local = (
             "Error"

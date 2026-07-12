@@ -928,15 +928,10 @@ impl NaIRGenPass._ensure_emitters -> None {
     if self._native_emitters is not None {
         return;
     }
-    try {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        _emitter_items = JAC_TYPE_REGISTRY.emitter_items();
-    } except ImportError {
-        _emitter_items = [];
-    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.passes.native.primitives_native as _pn;
     self._native_emitters = {};
-    for (_tn, _suffix) in _emitter_items {
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pn, "Native" + _suffix, None);
         if _ecls is not None {
             self._native_emitters[_tn] = _ecls();

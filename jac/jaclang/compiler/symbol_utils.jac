@@ -48,12 +48,7 @@ def _is_user_symbol(sym: uni.Symbol) -> bool {
 }
 
 def classify_call(nd: uni.FuncCall) -> CallKind {
-    _type_registry = None;
-    try {
-        import from jaclang.compiler.type_registry {
-            JAC_TYPE_REGISTRY as _type_registry
-        }
-    } except ImportError { }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
     if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
         return CallKind.METHOD;
@@ -88,9 +83,8 @@ def classify_call(nd: uni.FuncCall) -> CallKind {
         return CallKind.FUNCTION;
     }
 
-    if _type_registry is not None
-    and isinstance(nd.target, uni.Name)
-    and _type_registry.is_builtin(nd.target.sym_name) {
+    if isinstance(nd.target, uni.Name)
+    and JAC_TYPE_REGISTRY.is_builtin(nd.target.sym_name) {
         return CallKind.BUILTIN;
     }
     return CallKind.FUNCTION;

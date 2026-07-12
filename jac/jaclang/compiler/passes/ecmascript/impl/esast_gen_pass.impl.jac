@@ -2202,16 +2202,11 @@ impl EsastGenPass._ensure_emitters -> None {
     if self._primitive_emitters is not None {
         return;
     }
-    try {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        _emitter_items = JAC_TYPE_REGISTRY.emitter_items();
-    } except ImportError {
-        _emitter_items = [];
-    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     import jaclang.compiler.passes.ecmascript.primitives_es as _pes;
     self._primitives_es_mod = _pes;
     self._primitive_emitters = {};
-    for (_tn, _suffix) in _emitter_items {
+    for (_tn, _suffix) in JAC_TYPE_REGISTRY.emitter_items() {
         _ecls = getattr(_pes, "ES" + _suffix, None);
         if _ecls is not None {
             self._primitive_emitters[_tn] = _ecls();
@@ -2863,16 +2858,9 @@ impl EsastGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
         callee = argument.callee;
         call_args = argument.arguments;
     }
-    try {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        _is_exc = callee is not None
-        and isinstance(callee, es.Identifier)
-        and JAC_TYPE_REGISTRY.is_exception(callee.name);
-    } except ImportError {
-        _is_exc = False;
-    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if callee is not None and isinstance(callee, es.Identifier) {
-        if _is_exc {
+        if JAC_TYPE_REGISTRY.is_exception(callee.name) {
             exc_ref = self._jac_exc_ref(callee.name, nd);
             argument = self.sync_loc(
                 es.NewExpression(callee=exc_ref, arguments=call_args or []), jac_node=nd
@@ -3040,16 +3028,10 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
                     exc_type_name = except_node.ex_type.value;
                 }
             }
-            try {
-                import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-                _is_exc = bool(exc_type_name)
-                and JAC_TYPE_REGISTRY.is_exception(exc_type_name);
-            } except ImportError {
-                _is_exc = False;
-            }
+            import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
             test_expr: (es.Expression | None) = None;
-            if _is_exc {
+            if exc_type_name and JAC_TYPE_REGISTRY.is_exception(exc_type_name) {
                 test_expr = self.sync_loc(
                     es.CallExpression(
                         callee=self._jac_exc_ref('matches', except_node),
@@ -4577,18 +4559,13 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
     }
     class_body = self.sync_loc(es.ClassBody(body=body_stmts), jac_node=nd);
     super_class: (es.Expression | None) = None;
-    try {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-    } except ImportError {
-        JAC_TYPE_REGISTRY = None;
-    }
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if nd.base_classes {
         base = nd.base_classes[0];
         if base.gen.es_ast {
             super_class = cast(es.Expression, base.gen.es_ast);
             if (
-                JAC_TYPE_REGISTRY is not None
-                and isinstance(super_class, es.Identifier)
+                isinstance(super_class, es.Identifier)
                 and JAC_TYPE_REGISTRY.is_exception(super_class.name)
             ) {
                 super_class = self._jac_exc_ref(super_class.name, base);

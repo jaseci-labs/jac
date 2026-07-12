@@ -76,6 +76,7 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
+        import jaclang.compiler.type_registry;
 
         return [
             ASTValidationPass,
