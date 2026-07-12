@@ -45,13 +45,9 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ### AUR (Arch Linux)
 
-Jac is available in the Arch User Repository:
+Jac is available in the Arch User Repository. Install it with your AUR helper of choice.
 
 ```bash
-# Using yay
-yay -S jaclang
-
-# Or using paru
 paru -S jaclang
 ```
 
@@ -76,8 +72,6 @@ Or drop into an interactive shell:
 ```bash
 docker run --rm -it --entrypoint bash jaseci/jaclang
 ```
-
-The image includes FastAPI, Uvicorn, and the scale serving stack, so `jac start` works out of the box. The runtime payload is pre-extracted, so containers start instantly with no one-time setup.
 
 ---
 
