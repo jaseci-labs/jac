@@ -54,6 +54,14 @@ glob HDR_ALLOC_ID_OFF: int = -32,
      HDR_DTOR_OFF: int = -8,
      HDR_TOTAL: int = 32;
 
+glob RC_COLOR_BLACK: int = 0,
+     RC_COLOR_WHITE: int = 1,
+     RC_COLOR_GRAY: int = 2,
+     RC_COLOR_PURPLE: int = 3,
+     RC_BUFFERED_BIT: int = 4,
+     RC_COLOR_SHIFT: int = 48,
+     RC_CYCLE_THRESHOLD: int = 1000;
+
 glob LIVE_NODE_ID_OFF: int = 0,
      LIVE_NODE_USER_OFF: int = 8,
      LIVE_NODE_TAG_OFF: int = 16,
@@ -175,6 +183,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_gc_disable_fn: (ir.Function | None) = None,
         rc_gc_enable_fn: (ir.Function | None) = None,
         rc_gc_disabled_gv: object = None,
+        rc_cycles_enable_fn: (ir.Function | None) = None,
+        rc_cycles_enabled_gv: object = None,
         rc_debug_gv: object = None,
         rc_alloc_id_gv: object = None,
         rc_live_head_gv: object = None,
@@ -183,6 +193,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
         rc_safe_free_fn: (ir.Function | None) = None,
+        rc_roots_buf_gv: object = None,
+        rc_roots_cap_gv: object = None,
+        rc_roots_count_gv: object = None,
+        rc_collecting_gv: object = None,
+        rc_push_root_fn: (ir.Function | None) = None,
+        rc_collect_cycles_fn: (ir.Function | None) = None,
+        rc_trace_lookup_fn: (ir.Function | None) = None,
+        rc_trace_pairs: dict[str, tuple] = {},
+        rc_retains_emitted: int = 0,
+        rc_releases_emitted: int = 0,
+        rc_ops_elided: int = 0,
+        struct_trace_fns: dict[str, ir.Function] = {},
         struct_release_fns: dict[str, ir.Function] = {},
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -217,6 +239,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_if(nd: uni.IfStmt) -> None;
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
     def _codegen_while(nd: uni.WhileStmt) -> None;
+    def _codegen_region(nd: uni.RegionStmt) -> None;
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _codegen_assignment(nd: uni.Assignment) -> None;
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
@@ -232,6 +255,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_rc_intrinsic(func_name: str) -> bool;
     def _native_module_call_target(nd: uni.FuncCall) -> (str | None);
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
 
@@ -793,7 +817,63 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _split_call_kwargs(nd: uni.FuncCall) -> dict;
+    def _gc_mode -> str;
     def _emit_rc_helpers -> None;
+    def _emit_rc_roots_globals -> None;
+    def _emit_trace_fn(arch_name: str) -> None;
+    def _register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool;
+    def _finalize_trace_lookup -> None;
+    def _require_trace_fn(type_name: str, participates: bool, has_trace: bool) -> None;
+    def _struct_has_ref_fields(arch_name: str) -> bool;
+    def _container_type_name(dtor_fn: object) -> str;
+    def _emit_container_trace_fn(
+        trace_fn_name: str, container_ptr_type: ir.Type, pointer_data_fields: list
+    ) -> ir.Function;
+
+    def _emit_rc_collect_cycles -> None;
+    def _emit_rc_color_load(
+        b: ir.IRBuilder, obj_i8: ir.Value
+    ) -> tuple[ir.Value, ir.Value];
+
+    def _emit_rc_color_store(
+        b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
+    ) -> None;
+
+    def _emit_rc_color_reset(b: ir.IRBuilder, csp: ir.Value) -> None;
+    def _emit_rc_clear_buffered(b: ir.IRBuilder, csp: ir.Value) -> None;
+    def _emit_rc_is_buffered(
+        b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
+    ) -> ir.Value;
+
+    def _emit_rc_trace_dispatch(
+        fn: ir.Function,
+        b: ir.IRBuilder,
+        obj_i8: ir.Value,
+        visitor_fn: ir.Function,
+        done_block: ir.Block
+    ) -> None;
+
+    def _emit_rc_simple_visitor(name: str, phase_fn: ir.Function) -> ir.Function;
+    def _emit_rc_mark_gray_phase -> ir.Function;
+    def _emit_rc_scan_black_phase -> ir.Function;
+    def _emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function;
+    def _emit_rc_collect_white_phase -> ir.Function;
+    def _emit_rc_collect_white_reclaim(
+        fn: ir.Function, done_bb: ir.Block, ptr: ir.Value
+    ) -> ir.Block;
+
+    def _emit_rc_root_pass(
+        prefix: str,
+        count: ir.Value,
+        next_bb: ir.Block,
+        phase_fn: ir.Function,
+        clear_purple: bool
+    ) -> ir.Block;
+
+    def _emit_rc_collect_loop(
+        mark_gray_fn: ir.Function, scan_fn: ir.Function, collect_white_fn: ir.Function
+    ) -> None;
+
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
@@ -805,6 +885,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
+    def _can_native_move_lower(nd: object) -> bool;
     def _release_owned_operands(
         left_orig: ir.Value, right_orig: ir.Value, op: str = ""
     ) -> None;

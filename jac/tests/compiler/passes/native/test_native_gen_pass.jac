@@ -2679,6 +2679,24 @@ test "rc stress large dict" {
     assert f(1000) == 1000;
 }
 
+test "cycle collector reclaims A<->B cycles without double-free" {
+    # collect_white reclaims each white node through its own per-type destructor
+    # so container backing arrays are freed, not just the header allocation. The
+    # dtor's recursive child-release is gated on __rc_collecting, so mid-sweep it
+    # frees backing storage + the struct WITHOUT re-releasing the cyclic members
+    # that collect_white already reclaims (which would double-free). The probe
+    # drives both a plain struct A<->B cycle and a cycle routed through a list
+    # field, over repeated sweeps in-process: an invalid/double free aborts the
+    # JIT here, and a leaked backing array shows up under ASan/valgrind. This runs
+    # without the static musl toolchain the RSS reclamation test in
+    # test_native_gc.jac needs, so it guards the free path locally and in CI.
+    (eng, _) = compile_native("cycle_collect_jit_probe.na.jac");
+    f = get_func(eng, "drive_cycles", ctypes.c_int64, ctypes.c_int64);
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
+}
+
 test "dicts items iteration sum" {
     (eng, _) = compile_native("dicts_sets.na.jac");
     f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
