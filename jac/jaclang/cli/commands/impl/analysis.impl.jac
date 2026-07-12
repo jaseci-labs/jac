@@ -319,10 +319,15 @@ def _format_single_file_worker(
     lintfix: bool,
     check: bool,
     cache_stamp: str = "",
-    cache_anchor: str = ""
+    cache_anchor: str = "",
+    logical_path: str = ""
 ) -> dict {
+    import os;
     import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
     path_obj = Path(file_path);
+
+    effective_logical = logical_path or file_path;
     result: dict = {
         'path': file_path,
         'success': False,
@@ -344,61 +349,104 @@ def _format_single_file_worker(
     cache_key = "";
     cfg_fp = "";
     cfg: any = None;
+    key_logical = "";
+    annex_ok = True;
+    annex_error_count = 0;
 
     annex_paths: list[str] = [];
     annex_formatted_map: dict[str, str] = {};
+    annex_logical_map: dict[str, str] = {};
     if lintfix {
         import from jaclang.jac0core.bccache { discover_annex_files }
+
         annex_paths = (
             discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
                 file_path, '.test.jac'
             )
         );
+        if logical_path {
+            phys_parent = str(Path(file_path).resolve().parent);
+            log_parent = str(Path(logical_path).parent);
+            for ap in annex_paths {
+                try {
+                    rel = os.path.relpath(ap, phys_parent);
+                    annex_logical_map[ap] = str(Path(log_parent) / rel);
+                } except ValueError {
+                    annex_logical_map[ap] = ap;
+                }
+            }
+        }
     }
     if cache_stamp {
         try {
             import from jaclang.cli.format_cache {
                 FormatCache,
                 config_fingerprint,
-                frame_unit
+                frame_unit,
+                canonical_logical_path,
+                default_format_cache_dir
             }
             import from jaclang.project.config { get_config_for_path }
-            discover_from = Path(cache_anchor) if cache_anchor else path_obj;
+            discover_from = Path(cache_anchor)
+                if cache_anchor
+                else Path(effective_logical);
             cfg = get_config_for_path(discover_from);
             if cfg is not None {
                 cache_dir = cfg.get_cache_dir();
-                fcache = FormatCache(
-                    cache_dir, enabled=True, formatter_stamp=cache_stamp
-                );
-
-                unit_parts = [path_obj.read_bytes()];
-                for ap in annex_paths {
-                    ap_obj = Path(ap);
-                    if ap_obj.exists() {
-                        unit_parts.append(ap_obj.read_bytes());
-                    }
-                }
-                unit_bytes = frame_unit(unit_parts);
-                cfg_fp = config_fingerprint(cfg, lintfix);
-                cache_key = fcache.make_key(
-                    unit_bytes, lintfix=lintfix, config_fingerprint=cfg_fp
-                );
-                if fcache.is_clean(cache_key) {
-                    result['cache_status'] = 'hit';
-                    result['success'] = True;
-                    result['changed'] = False;
-                    result['errors'] = 0;
-                    return result;
-                }
-                result['cache_status'] = 'miss';
+            } else {
+                anchor = Path(cache_anchor) if cache_anchor else path_obj;
+                cache_dir = default_format_cache_dir(anchor);
+                cfg = None;
             }
-        } except Exception {
+
+            fcache = FormatCache(cache_dir, enabled=True, formatter_stamp=cache_stamp);
+
+            unit_parts = [path_obj.read_bytes()];
+            for ap in annex_paths {
+                ap_obj = Path(ap);
+                if ap_obj.exists() {
+                    unit_parts.append(ap_obj.read_bytes());
+                }
+            }
+            unit_bytes = frame_unit(unit_parts);
+            cfg_fp = config_fingerprint(cfg, lintfix);
+            project_root = str(cfg.project_root)
+                if (cfg is not None and cfg.project_root)
+                else (cache_anchor);
+            key_logical = (
+                canonical_logical_path(effective_logical, project_root)
+                    if lintfix
+                    else ""
+            );
+            cache_key = fcache.make_key(
+                unit_bytes,
+                lintfix=lintfix,
+                config_fingerprint=cfg_fp,
+                logical_path=key_logical
+            );
+            if fcache.is_clean(cache_key) {
+                result['cache_status'] = 'hit';
+                result['success'] = True;
+                result['changed'] = False;
+                result['errors'] = 0;
+                return result;
+            }
+            result['cache_status'] = 'miss';
+        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
             fcache = None;
+            cache_key = "";
         }
     }
 
     try {
-        prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+        if logical_path {
+            source_str = read_file_with_encoding(str(path_obj));
+            prog = JacProgram.jac_str_formatter(
+                source_str, effective_logical, auto_lint=lintfix
+            );
+        } else {
+            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+        }
         if prog.errors_had {
             has_format_error = any(
                 e.code is not None and e.code.code == "E5051" for e in prog.errors_had
@@ -426,18 +474,39 @@ def _format_single_file_worker(
 
             if lintfix {
                 for annex_path in annex_paths {
+                    annex_logical = annex_logical_map.get(annex_path, annex_path);
                     try {
-                        annex_prog = JacProgram.jac_file_formatter(
-                            annex_path, auto_lint=True
-                        );
+                        if logical_path {
+                            annex_src = read_file_with_encoding(annex_path);
+                            annex_prog = JacProgram.jac_str_formatter(
+                                annex_src, annex_logical, auto_lint=True
+                            );
+                        } else {
+                            annex_prog = JacProgram.jac_file_formatter(
+                                annex_path, auto_lint=True
+                            );
+                        }
                         annex_formatted = annex_prog.mod.main.gen.jac;
                         annex_original = annex_prog.mod.main.source.code;
-                    } except Exception {
+                    } except (OSError, ValueError, TypeError, AttributeError) as e {
+                        annex_ok = False;
+                        annex_error_count += 1;
+                        result['errors_strs'].append(
+                            f"Error formatting annex '{annex_path}': {e}"
+                        );
                         continue;
                     }
-                    if annex_formatted {
-                        annex_formatted_map[annex_path] = annex_formatted;
+                    for warning in annex_prog.warnings_had {
+                        result['warnings_strs'].append(str(warning));
                     }
+                    for error in annex_prog.errors_had {
+                        result['errors_strs'].append(str(error));
+                        annex_ok = False;
+                        annex_error_count += 1;
+                    }
+                    annex_formatted_map[annex_path] = (
+                        annex_formatted if annex_formatted is not None else ""
+                    );
                     if (annex_formatted and annex_formatted != annex_original) {
                         result['changed'] = True;
                         if not check {
@@ -448,7 +517,7 @@ def _format_single_file_worker(
                     }
                 }
             }
-        } except Exception {
+        } except (OSError, ValueError, TypeError, AttributeError) {
             result['syntax_errors'] = [str(e) for e in prog.errors_had];
             return result;
         }
@@ -462,6 +531,7 @@ def _format_single_file_worker(
                 result['errors_strs'].append(str(error));
                 lint_errors += 1;
             }
+            lint_errors += annex_error_count;
         }
         result['success'] = True;
         result['errors'] = lint_errors;
@@ -472,6 +542,7 @@ def _format_single_file_worker(
             and result['success']
             and not result['syntax_errors']
             and result['errors'] == 0
+            and annex_ok
         ) {
             try {
                 import from jaclang.cli.format_cache { frame_unit }
@@ -488,16 +559,24 @@ def _format_single_file_worker(
                             new_parts.append(annex_formatted_map[ap].encode());
                         } elif Path(ap).exists() {
                             new_parts.append(Path(ap).read_bytes());
+                        } else {
+                            annex_ok = False;
+                            break;
                         }
                     }
-                    new_unit = frame_unit(new_parts);
-                    fcache.mark_clean(
-                        fcache.make_key(
-                            new_unit, lintfix=lintfix, config_fingerprint=cfg_fp
-                        )
-                    );
+                    if annex_ok {
+                        new_unit = frame_unit(new_parts);
+                        fcache.mark_clean(
+                            fcache.make_key(
+                                new_unit,
+                                lintfix=lintfix,
+                                config_fingerprint=cfg_fp,
+                                logical_path=key_logical
+                            )
+                        );
+                    }
                 }
-            } except Exception {
+            } except (OSError, ValueError, TypeError, AttributeError) {
                 ;
             }
         }
@@ -515,7 +594,9 @@ impl format(
     lintfix: bool = False,
     check: bool = False,
     cache: bool = False,
-    cache_anchor: str = ""
+    cache_anchor: str = "",
+    path_map: dict | None = None,
+    cache_stats: dict | None = None
 ) -> int {
     import from concurrent.futures { ProcessPoolExecutor, as_completed }
     import os;
@@ -524,12 +605,17 @@ impl format(
     }
 
     cache_stamp = "";
-    if cache {
-        import from jaclang.cli.format_cache { FORMAT_CACHE_SCHEMA_VERSION }
+
+    if cache and not to_screen {
+        import from jaclang.cli.format_cache {
+            FORMAT_CACHE_SCHEMA_VERSION,
+            formatter_pipeline_revision
+        }
         import from jaclang.cli.cli { jac_version }
         try {
-            cache_stamp = f"jfmt:{FORMAT_CACHE_SCHEMA_VERSION}:{jac_version()}";
-        } except Exception {
+            rev = formatter_pipeline_revision();
+            cache_stamp = f"jfmt:{FORMAT_CACHE_SCHEMA_VERSION}:{jac_version()}:{rev}";
+        } except (OSError, ValueError, TypeError, ImportError, AttributeError) {
             cache_stamp = "";
         }
     }
@@ -543,6 +629,8 @@ impl format(
     if total_files == 0 {
         return 1 if had_path_errors else 0;
     }
+
+    remap = path_map if path_map is not None else {};
 
     use_parallel = total_files > 1 and not to_screen;
     max_workers = min(os.cpu_count() or 4, total_files, 8);
@@ -566,7 +654,8 @@ impl format(
                         lintfix,
                         check,
                         cache_stamp,
-                        cache_anchor
+                        cache_anchor,
+                        remap.get(fp, "")
                     ): fp for fp in all_files
                 };
                 completed = 0;
@@ -596,7 +685,14 @@ impl format(
                     }
                 }
             }
-        } except Exception {
+        } except (
+            OSError,
+            ValueError,
+            TypeError,
+            ImportError,
+            AttributeError,
+            RuntimeError
+        ) {
             use_parallel = False;
         }
     }
@@ -605,28 +701,27 @@ impl format(
             console.print(f"Formatting {fp}");
             results.append(
                 _format_single_file_worker(
-                    fp, lintfix, check, cache_stamp, cache_anchor
+                    fp, lintfix, check, cache_stamp, cache_anchor, remap.get(fp, "")
                 )
             );
         }
     }
 
     if cache_stamp {
-        try {
-            import from jaclang.cli.format_cache { record_run }
-            hits = sum(
-                1
-                for r in results
-                if r.get('cache_status') == 'hit'
-            );
-            misses = sum(
-                1
-                for r in results
-                if r.get('cache_status') == 'miss'
-            );
-            record_run(hits, misses);
-        } except Exception {
-            ;
+        hits = sum(
+            1
+            for r in results
+            if r.get('cache_status') == 'hit'
+        );
+        misses = sum(
+            1
+            for r in results
+            if r.get('cache_status') == 'miss'
+        );
+        if cache_stats is not None {
+            cache_stats["hits"] = hits;
+            cache_stats["misses"] = misses;
+            cache_stats["examined"] = hits + misses;
         }
     }
 
@@ -754,7 +849,8 @@ impl precommit(
     staged: bool = False,
     verify: bool = False,
     install: bool = False,
-    force: bool = False
+    force: bool = False,
+    cache_stats: dict | None = None
 ) -> int {
     import os;
     import shutil;
@@ -809,6 +905,7 @@ impl precommit(
 
     fmt_targets = targets;
     tmp_root: (str | None) = None;
+    path_map: dict = {};
     if staged and verify {
         dirty = _staged_dirty_files(git_root, rel_targets);
         if dirty {
@@ -826,11 +923,17 @@ impl precommit(
                     cwd=git_root
                 );
                 fmt_targets = [os.path.join(tmp_root, rel) for rel in rel_targets];
+
+                path_map = {
+                    os.path.join(tmp_root, rel): os.path.join(git_root, rel)
+                    for rel in rel_targets
+                };
                 console.print("[precommit] Verifying staged content (index checkout).");
             } except Exception as e {
                 shutil.rmtree(tmp_root, ignore_errors=True);
                 tmp_root = None;
                 fmt_targets = targets;
+                path_map = {};
                 console.warning(
                     f"[precommit] Could not check out the staged blobs ({e}); "
                     "verifying the WORKTREE copies instead -- staged content "
@@ -846,7 +949,9 @@ impl precommit(
         lintfix=True,
         check=verify,
         cache=True,
-        cache_anchor=git_root
+        cache_anchor=git_root,
+        path_map=path_map,
+        cache_stats=cache_stats
     );
     if tmp_root {
         shutil.rmtree(tmp_root, ignore_errors=True);

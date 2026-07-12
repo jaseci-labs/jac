@@ -147,7 +147,9 @@ def format(
     lintfix: bool = False,
     check: bool = False,
     cache: bool = False,
-    cache_anchor: str = ""
+    cache_anchor: str = "",
+    path_map: dict | None = None,
+    cache_stats: dict | None = None
 ) -> int;
 
 @registry.command(
@@ -202,7 +204,8 @@ def precommit(
     staged: bool = False,
     verify: bool = False,
     install: bool = False,
-    force: bool = False
+    force: bool = False,
+    cache_stats: dict | None = None
 ) -> int;
 
 @registry.command(

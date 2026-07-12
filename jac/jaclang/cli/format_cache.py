@@ -2,7 +2,8 @@
 
 A valid entry proves::
 
-    (content digest + lintfix mode + config fingerprint + formatter stamp) -> clean
+    (content digest + lintfix mode + config fingerprint
+     + logical path when lintfix + formatter stamp) -> clean
 
 On a hit the caller may skip the formatter entirely -- no ``JacProgram``,
 no AST, no lint pass, no formatted-output allocation. This is the single
@@ -12,9 +13,11 @@ Design notes (see ``jac fmt`` / ``jac precommit`` integration in
 ``cli/commands/impl/analysis.impl.jac``):
 
 * **Content-addressed.** The entry filename *is* the digest, which already
-  encodes content + lintfix + config fingerprint + formatter stamp. Renaming
-  a clean file does not invalidate it; two clean files with identical bytes
-  share one entry.
+  encodes content + lintfix + config fingerprint + formatter stamp (and,
+  under ``lintfix``, the canonical logical path). Renaming a clean file
+  without lintfix does not invalidate it; two clean files with identical
+  bytes share one entry. With ``lintfix``, path is part of the key because
+  ``lint.exclude`` is path-sensitive.
 * **Self-healing.** Every entry carries a magic marker. A file that is
   missing, unreadable, or unrecognisable is a *miss* and is deleted on read,
   so a polluted directory can never produce a false "clean".
@@ -28,16 +31,17 @@ Design notes (see ``jac fmt`` / ``jac precommit`` integration in
 * **Version-namespaced.** Entries live under ``<cache_dir>/fmt-<schema>/`` so
   an incompatible future schema discards old state rather than interpreting it.
 
-This module deliberately knows nothing about ``JacConfig``, annex files, or
-the formatter pipeline: the worker assembles the unit bytes and the effective
-config fingerprint and hands them in. That keeps the cache a deep module with
-a tiny, pure, easily-tested interface.
+This module deliberately knows nothing about annex files or the formatter
+pipeline orchestration: the worker assembles the unit bytes, effective config
+fingerprint, and logical path and hands them in. That keeps the cache a deep
+module with a tiny, pure, easily-tested interface.
 """
 
 from __future__ import annotations
 
 import contextlib
 import hashlib
+import importlib
 import os
 from pathlib import Path
 
@@ -49,68 +53,142 @@ FORMAT_CACHE_SCHEMA_VERSION = "v1"
 # treated as corrupt and deleted on read.
 _ENTRY_MARKER = b"JFMTCLEAN\n"
 
-
-# ---------------------------------------------------------------------------
-# Best-effort run stats (fork-safe)
-#
-# The per-file worker records its outcome on each result dict; ``format()``
-# aggregates from the collected results *in the parent* and publishes here.
-# Aggregating after the fork/join (rather than mutating a global from workers)
-# keeps the counts correct under ``ProcessPoolExecutor``. Single-file runs are
-# in-process, so the numbers are exact for tests.
-# ---------------------------------------------------------------------------
-_LAST_RUN_STATS: dict[str, int] = {"examined": 0, "hits": 0, "misses": 0}
-
-
-def reset_run_stats() -> None:
-    """Zero the published run stats (test/observability hook)."""
-    _LAST_RUN_STATS["examined"] = 0
-    _LAST_RUN_STATS["hits"] = 0
-    _LAST_RUN_STATS["misses"] = 0
+# Modules whose source affects formatter / lintfix output. Hashed into the
+# formatter stamp so development edits invalidate the cache even when the
+# package version string is unchanged.
+_FORMATTER_PIPELINE_MODULES = (
+    "jaclang.compiler.passes.tool.jac_formatter_pass",
+    "jaclang.compiler.passes.tool.jac_auto_lint_pass",
+    "jaclang.compiler.passes.tool.doc_ir_gen_pass",
+    "jaclang.compiler.passes.tool.comment_injection_pass",
+    "jaclang.compiler.passes.tool.normalize_pass",
+    "jaclang.compiler.passes.tool.unparse_pass",
+    "jaclang.compiler.passes.tool.doc_ir",
+    "jaclang.jac0core.passes.transform",
+)
 
 
-def record_run(hits: int, misses: int) -> None:
-    """Publish aggregated cache outcome counts for the run just finished."""
-    _LAST_RUN_STATS["hits"] = int(hits)
-    _LAST_RUN_STATS["misses"] = int(misses)
-    _LAST_RUN_STATS["examined"] = int(hits) + int(misses)
-
-
-def run_stats() -> dict[str, int]:
-    """Return a copy of the published run stats."""
-    return dict(_LAST_RUN_STATS)
+def _stable_dump(value: object) -> str:
+    """Deterministic, order-stable serialization for config fingerprinting."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return repr(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_stable_dump(v) for v in value) + "]"
+    if isinstance(value, dict):
+        items = sorted((str(k), _stable_dump(v)) for k, v in value.items())
+        return "{" + ",".join(f"{k}:{v}" for k, v in items) + "}"
+    # Jac config section objects (FormatConfig, CheckConfig, LintConfig, …).
+    attrs: dict[str, object] = {}
+    for name in dir(value):
+        if name.startswith("_"):
+            continue
+        try:
+            attr = getattr(value, name)
+        except Exception:
+            continue
+        if callable(attr):
+            continue
+        attrs[name] = attr
+    return _stable_dump(attrs)
 
 
 def config_fingerprint(config: object, lintfix: bool) -> str:
     """Return a stable digest of the output-affecting effective config.
 
-    Over-broad is safe (extra misses), under-broad is unsafe (false hits), so
-    this leans conservative: it folds in every setting known to influence
-    formatter output -- lint selection (only matters under ``lintfix``),
-    ``[format]`` options, the active profile, and plugin identities/versions.
+    Over-broad is safe (extra misses), under-broad is unsafe (false hits).
+    Rather than maintaining a manual field list that drifts, this fingerprints
+    the complete effective ``[format]`` section always, and the complete
+    effective ``[check]`` section (including ``suppress`` /
+    ``suppress_categories`` / nested ``lint``) whenever ``lintfix`` is on.
     The argument is a resolved ``JacConfig`` (or ``None``).
     """
     if config is None:
         return "none"
     parts: list[str] = [f"lintfix={int(bool(lintfix))}"]
-    # Active profile changes which environment/inherits apply.
     parts.append(f"profile={getattr(config, 'active_profile', '') or ''}")
-    fmt = getattr(config, "format", None)
-    if fmt is not None:
-        parts.append(f"outfile={getattr(fmt, 'outfile', '') or ''}")
+    parts.append("format=" + _stable_dump(getattr(config, "format", None)))
     if lintfix:
-        chk = getattr(config, "check", None)
-        lint = getattr(chk, "lint", None) if chk is not None else None
-        if lint is not None:
-            parts.append("lint.select=" + ",".join(getattr(lint, "select", []) or []))
-            parts.append("lint.ignore=" + ",".join(getattr(lint, "ignore", []) or []))
-            parts.append("lint.exclude=" + ",".join(getattr(lint, "exclude", []) or []))
-    # Plugin identity/version can affect output; include defensively.
+        parts.append("check=" + _stable_dump(getattr(config, "check", None)))
     plugins = getattr(config, "plugin_dependencies", None) or {}
     if plugins:
         items = sorted(f"{k}={v}" for k, v in plugins.items())
         parts.append("plugins=" + "|".join(items))
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def canonical_logical_path(path: str, project_root: str | None = None) -> str:
+    """Return a stable, slash-normalized logical path for cache keys.
+
+    Prefer project-relative form so the same tree at two checkout locations
+    shares entries; fall back to the normalized absolute/local path.
+    """
+    norm = os.path.normpath(path)
+    if project_root:
+        try:
+            rel = os.path.relpath(norm, os.path.normpath(project_root))
+            if not rel.startswith(".."):
+                return rel.replace(os.sep, "/")
+        except ValueError:
+            pass
+    return norm.replace(os.sep, "/")
+
+
+def default_format_cache_dir(anchor: Path | str) -> Path:
+    """Default ``.jac/cache`` location when no project config is available."""
+    base = Path(anchor)
+    # Prefer the parent of a source file. Treat ``*.jac`` as a file even when
+    # the path does not currently exist (caller may pass a logical path).
+    if base.is_file() or base.suffix == ".jac":
+        base = base.parent
+    return base.resolve() / ".jac" / "cache"
+
+
+def _module_source_bytes(modname: str) -> bytes:
+    """Best-effort source bytes for ``modname`` (``.jac`` preferred over ``.py``)."""
+    try:
+        mod = importlib.import_module(modname)
+    except Exception:
+        return b""
+    file_path = getattr(mod, "__file__", None)
+    if not file_path:
+        return b""
+    path = Path(file_path)
+    candidates = [
+        path.with_suffix(".jac"),
+        path.parent / "impl" / f"{path.stem}.impl.jac",
+        path,
+    ]
+    # Also pull sibling impl package files when the module lives under passes/tool.
+    if path.parent.name == "tool":
+        impl = path.parent / "impl" / f"{path.stem}.impl.jac"
+        candidates.insert(1, impl)
+    chunks: list[bytes] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen or not candidate.is_file():
+            continue
+        seen.add(key)
+        try:
+            chunks.append(candidate.read_bytes())
+        except OSError:
+            continue
+    return b"\0".join(chunks)
+
+
+def formatter_pipeline_revision() -> str:
+    """Fingerprint formatter-pipeline sources for the cache stamp.
+
+    Package version alone is too weak during development: editing a format or
+    lint pass must invalidate entries even when ``jac_version()`` is unchanged.
+    """
+    h = hashlib.sha256()
+    for modname in _FORMATTER_PIPELINE_MODULES:
+        h.update(modname.encode())
+        h.update(b"\0")
+        h.update(_module_source_bytes(modname))
+        h.update(b"\0")
+    return h.hexdigest()[:16]
 
 
 def frame_unit(parts: list[bytes]) -> bytes:
@@ -163,17 +241,22 @@ class FormatCache:
         *,
         lintfix: bool,
         config_fingerprint: str,
+        logical_path: str = "",
     ) -> str:
         """Return the hex digest that identifies a proven-clean unit.
 
         ``content`` is the canonical unit bytes the caller assembled (main
-        file bytes, plus any annex bytes when ``lintfix`` is on). Pure: same
-        inputs always yield the same digest.
+        file bytes, plus any annex bytes when ``lintfix`` is on). When
+        ``lintfix`` is on, ``logical_path`` is also folded in because lint
+        exclude matching is path-sensitive. Pure: same inputs always yield
+        the same digest.
         """
         h = hashlib.sha256()
         h.update(_frame("stamp", self._stamp.encode()))
         h.update(_frame("lintfix", b"1" if lintfix else b"0"))
         h.update(_frame("cfg", config_fingerprint.encode()))
+        if lintfix:
+            h.update(_frame("path", logical_path.encode()))
         h.update(_frame("content", content))
         return h.hexdigest()
 
