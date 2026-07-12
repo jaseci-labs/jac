@@ -33,8 +33,10 @@ def:pub RightSidebar(
                     className="rounded-full bg-muted pl-9 pr-9"
                     placeholder="Search Little-X"
                     value={searchQuery}
-                    onChange={lambda e: ChangeEvent { onSearchChange(e.target.value); }}
-                    onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter" {
+                    onChange={lambda (e: ChangeEvent) { onSearchChange(
+                        e.target.value
+                    ); }}
+                    onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter" {
                         onSearch(searchQuery);
                     }}}
                 />

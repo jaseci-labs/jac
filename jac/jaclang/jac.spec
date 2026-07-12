@@ -215,15 +215,12 @@ comprehension_clauses ::= compr_clause compr_clause*
 compr_clause ::= "async"? "for" atomic_chain "in" pipe_call ("if" walrus_assign)*
 
 lambda_expr ::=
-    "lambda" ("(" func_params ")" | lambda_params) ("->" expression)?
-    (":" expression | "{" code_block_stmts "}" | expression)
-
-lambda_params ::= ("*" | "/" | lambda_param)*
-
-lambda_param ::=
-    ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
-    (":" pipe)? ("=" expression)?
+    "lambda" ("(" func_params ")")? ("->" expression)? "{" code_block_stmts "}"
+    # Parameters are parenthesized and the body is always braced; a
+    # zero-parameter lambda may omit the parens (`lambda { ... }`). A body
+    # that is a single expression statement is the implicit return, e.g.
+    # `lambda (x: int) { x + 1; }`; multi-statement bodies use an explicit
+    # `return`.
 
 jsx_element ::=
     "<>" jsx_children "</>"

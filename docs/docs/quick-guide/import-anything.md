@@ -280,7 +280,7 @@ cl {
 
     def TaskForm() -> JsxElement {
         has title: str = "";
-        return <button onClick={lambda e: ChangeEvent {
+        return <button onClick={lambda (e: ChangeEvent) {
             create_task(title=title);
         }}>Add</button>;
     }
