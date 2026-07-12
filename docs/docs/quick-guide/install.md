@@ -75,7 +75,6 @@ docker run --rm -it --entrypoint bash jaseci/jaclang
 
 ---
 
-
 ## Built-in Subsystems & Optional Dependencies
 
 The `jac` binary bundles every capability -- the AI (byLLM), MCP, full-stack client, and deployment & scaling subsystems are all built in. There is nothing to enable; what `jac install` does is resolve a capability's **optional third-party dependencies** into your project:
