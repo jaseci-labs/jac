@@ -973,7 +973,9 @@ impl NaIRGenPass._dispatch_primitive_method(
     method_name: str,
     target: ir.Value,
     args: list[ir.Value],
-    type_key: str
+    type_key: str,
+    kwargs: (dict | None) = None,
+    kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     self._ensure_emitters();
     _emitter = self._native_emitters.get(type_name);
@@ -984,18 +986,53 @@ impl NaIRGenPass._dispatch_primitive_method(
     if _emit_fn is None {
         return None;
     }
-    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=type_key);
+    if kwargs and method_name not in ("sort", ) {
+        self.emit(
+            E5090,
+            node_override=kw_node,
+            kind="keyword argument for native method",
+            name=f"{method_name}({', '.join(kwargs.keys())}=...)"
+        );
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(
+        pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {})
+    );
     return _emit_fn(_ctx, target, args);
 }
 
 impl NaIRGenPass._dispatch_builtin(
-    func_name: str, args: list[ir.Value]
+    func_name: str,
+    args: list[ir.Value],
+    kwargs: (dict | None) = None,
+    kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     self._ensure_emitters();
     _emit_fn = getattr(self._native_builtin_emitter, "emit_" + func_name, None);
     if _emit_fn is None {
         return None;
     }
-    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+    if kwargs and func_name not in ("sorted", ) {
+        self.emit(
+            E5090,
+            node_override=kw_node,
+            kind="keyword argument for native builtin",
+            name=f"{func_name}({', '.join(kwargs.keys())}=...)"
+        );
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(
+        pass_ref=self, type_key="", call_kwargs=(kwargs or {})
+    );
     return _emit_fn(_ctx, args);
+}
+
+impl NaIRGenPass._split_call_kwargs(nd: uni.FuncCall) -> dict {
+    out: dict = {};
+    for param in (nd.params or []) {
+        if isinstance(param, uni.KWPair) and param.key is not None {
+            out[param.key.sym_name] = param.value;
+        }
+    }
+    return out;
 }
