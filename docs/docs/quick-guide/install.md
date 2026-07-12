@@ -57,11 +57,27 @@ paru -S jaclang
 
 ### Docker
 
-Pull the official Docker image:
+Pull the official image:
 
 ```bash
 docker pull jaseci/jaclang
 ```
+
+Tags: `jaseci/jaclang:latest` (stable), `jaseci/jaclang:<version>` (specific), `jaseci/jaclang:dev` (main HEAD).
+
+Run a project from your working directory:
+
+```bash
+docker run --rm -v "$(pwd):/app" -w /app jaseci/jaclang run main.jac
+```
+
+Or drop into an interactive shell:
+
+```bash
+docker run --rm -it --entrypoint bash jaseci/jaclang
+```
+
+The image includes FastAPI, Uvicorn, and the scale serving stack, so `jac start` works out of the box. The runtime payload is pre-extracted, so containers start instantly with no one-time setup.
 
 ---
 
