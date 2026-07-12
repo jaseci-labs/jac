@@ -234,6 +234,7 @@ impl JacCompiler.get_bytecode(
         )
     );
     options = CompileOptions(type_check=can_typecheck);
+    result: (uni.Module | None) = None;
     try {
         result = self.compile(
             file_path=full_target, target_program=actual_program, options=options
@@ -288,23 +289,21 @@ impl JacCompiler.get_bytecode(
             } except Exception {
                 ;
             }
-            code = marshal.loads(result.gen.py_bytecode);
-
-            if is_internal {
-                self._evict_internal_unit(full_target, actual_program, result);
-            }
-            return code;
+            return marshal.loads(result.gen.py_bytecode);
         }
         return None;
     } finally {
         if is_internal {
+            if self._internal_bytecode_depth == 1 {
+                self._evict_internal_unit(full_target, actual_program, result);
+            }
             self._internal_bytecode_depth -= 1;
         }
     }
 }
 
 impl JacCompiler._evict_internal_unit(
-    full_target: str, actual_program: JacProgram, result: uni.Module
+    full_target: str, actual_program: JacProgram, result: (uni.Module | None)
 ) -> None {
     import os;
     if os.environ.get("JAC_NO_UNIT_EVICT") {
@@ -315,31 +314,18 @@ impl JacCompiler._evict_internal_unit(
         return;
     }
 
-    if result.gen.native_engine is not None {
+    if result is not None and result.gen.native_engine is not None {
         import from jaclang.jac0core.codeinfo { CodeGenTarget }
         slim = CodeGenTarget();
         slim.native_engine = result.gen.native_engine;
+        slim.native_layout = result.gen.native_layout;
         slim.interop_py_funcs = result.gen.interop_py_funcs;
         slim._interop_callbacks = result.gen._interop_callbacks;
         slim.interop_manifest = result.gen.interop_manifest;
         actual_program._native_cache[full_target] = slim;
     }
 
-    hub = actual_program.mod.hub;
-    cache_times = actual_program._hub_cache_times;
-    dependents = actual_program._dependents;
-    for path in list(hub.keys()) {
-        if path.endswith(".pyi") {
-            continue;
-        }
-        del (hub[path], );
-        if path in cache_times {
-            del (cache_times[path], );
-        }
-        for bucket in dependents.values() {
-            bucket.discard(path);
-        }
-    }
+    actual_program.release_compile_closure(keep_stubs=True);
 }
 
 impl JacCompiler._load_native_from_cache(

@@ -3,6 +3,8 @@
 import io;
 import os;
 import sys;
+import gc;
+import weakref;
 import subprocess;
 import marshal;
 import shutil;
@@ -13,6 +15,7 @@ import jaclang;
 import from jaclang { JacRuntime as Jac }
 import from jaclang { JacRuntimeInterface }
 import from jaclang.cli.commands { execution }
+import from jaclang.cli.commands { analysis }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compiler { JacCompiler }
 import from jaclang.jac0core.jir {
@@ -324,6 +327,69 @@ test "get_bytecode busts in-memory hub when .impl.jac changes" {
                 got
             )
         );
+    }
+}
+
+test "check preserves caller GC state" {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("glob check_value = 1;\n");
+        check_file = tmp.name;
+    }
+    was_enabled = gc.isenabled();
+    gc.disable();
+    try {
+        assert analysis.check([check_file], print_errs=False) == 0;
+        assert not gc.isenabled();
+    } finally {
+        if was_enabled {
+            gc.enable();
+        } else {
+            gc.disable();
+        }
+        os.unlink(check_file);
+    }
+}
+
+test "release compile closure clears ASTs and evaluator but keeps stubs" {
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        source_path = os.path.join(d, "source.jac");
+        stub_path = os.path.join(d, "types.pyi");
+        prog = JacProgram();
+        def source_ref -> object {
+            source_mod = prog.parse_str("glob value = 1;\n", source_path);
+            return weakref.ref(source_mod);
+        }
+        ast_ref = source_ref();
+        prog.parse_str("value: int\n", stub_path);
+        prog.get_type_evaluator();
+        prog.release_compile_closure(keep_stubs=True);
+        gc.collect();
+        assert ast_ref() is None , "released AST is still strongly referenced";
+        assert source_path not in prog.mod.hub;
+        assert stub_path in prog.mod.hub;
+        assert prog.type_evaluator is None;
+    }
+}
+
+test "release compile closure honors no unit eviction" {
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        source_path = os.path.join(d, "source.jac");
+        prog = JacProgram();
+        prog.parse_str("glob value = 1;\n", source_path);
+        old_no_evict = os.environ.get("JAC_NO_UNIT_EVICT");
+        os.environ["JAC_NO_UNIT_EVICT"] = "1";
+        try {
+            prog.release_compile_closure();
+            assert source_path in prog.mod.hub;
+        } finally {
+            if old_no_evict is None {
+                os.environ.pop("JAC_NO_UNIT_EVICT", None);
+            } else {
+                os.environ["JAC_NO_UNIT_EVICT"] = old_no_evict;
+            }
+        }
     }
 }
 

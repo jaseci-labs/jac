@@ -133,23 +133,16 @@ impl check(
         } except Exception as e {
             console.error(f"Error checking '{file_path}': {e}");
             return (False, 1, 0, [], []);
+        } finally {
+            prog.release_compile_closure();
         }
     }
-    import gc;
-    gc.disable();
-    try {
-        total_files = failed_files=total_errors=total_warnings=0;
-        prog = JacProgram();
-        (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
-        total_to_check = len(all_files);
-        for (idx, jac_file_path) in enumerate(all_files, 1) {
-            process_file_result(jac_file_path, idx, total_to_check);
-
-            gc.collect();
-            gc.freeze();
-        }
-    } finally {
-        gc.enable();
+    total_files = failed_files=total_errors=total_warnings=0;
+    prog = JacProgram();
+    (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
+    total_to_check = len(all_files);
+    for (idx, jac_file_path) in enumerate(all_files, 1) {
+        process_file_result(jac_file_path, idx, total_to_check);
     }
 
     if print_errs and len(failed_results) > 0 {

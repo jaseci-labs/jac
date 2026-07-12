@@ -111,7 +111,7 @@ impl CodeLocInfo.pos_end.getter -> int {
     return self.last_tok.pos_end;
 }
 
-impl CodeLocInfo.detach -> CodeLocInfo {
+impl CodeLocInfo.snapshot -> CodeLocInfo {
     import from jaclang.jac0core.unitree { Token }
 
     ft = self.first_tok;
