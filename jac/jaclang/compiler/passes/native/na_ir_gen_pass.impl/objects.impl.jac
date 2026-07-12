@@ -1438,7 +1438,13 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
             }
             result = self._dispatch_primitive_method(
-                "list", method_name, list_val, arg_vals, elem_type_name
+                "list",
+                method_name,
+                list_val,
+                arg_vals,
+                elem_type_name,
+                kwargs=self._split_call_kwargs(nd),
+                kw_node=nd
             );
 
             self._clear_rc_ctx();

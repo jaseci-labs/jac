@@ -59,6 +59,17 @@ need_cmd() {
     fi
 }
 
+# GitHub API requests: authenticate when GITHUB_TOKEN/GH_TOKEN is set, since
+# unauthenticated calls share a per-IP rate limit that CI runners exhaust.
+api_curl() {
+    local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    if [[ -n "$token" ]]; then
+        curl -fsSL -H "Authorization: Bearer ${token}" "$@"
+    else
+        curl -fsSL "$@"
+    fi
+}
+
 # --- Usage ---
 
 usage() {
@@ -200,7 +211,7 @@ ensure_on_path() {
 
 get_latest_version() {
     local response
-    response=$(curl -fsSL "${GITHUB_API}/releases/latest" 2>/dev/null) || {
+    response=$(api_curl "${GITHUB_API}/releases/latest" 2>/dev/null) || {
         err "Failed to query GitHub API for latest release."
         err "Check your internet connection or specify a version with --version."
         exit 1
@@ -222,7 +233,7 @@ get_latest_version() {
 resolve_jaclang_version_from_release() {
     local release_tag="$1"
     local response
-    response=$(curl -fsSL "${GITHUB_API}/releases/tags/v${release_tag}" 2>/dev/null) || {
+    response=$(api_curl "${GITHUB_API}/releases/tags/v${release_tag}" 2>/dev/null) || {
         err "Failed to query GitHub API for release v${release_tag}."
         exit 1
     }
