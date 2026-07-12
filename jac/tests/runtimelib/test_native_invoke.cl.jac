@@ -23,7 +23,7 @@ def _install_native(reply: dict) -> list {
     globalThis.__JAC_NATIVE__ = True;
     # The host JSON-parses its reply before resolving, so the runtime receives
     # an already-decoded object -- the mock resolves one directly (no stringify).
-    globalThis.__jac_invoke = lambda payload: any -> any {
+    globalThis.__jac_invoke = lambda (payload: any) -> any {
         seen.append(payload);
         return Promise.resolve(reply);
     };

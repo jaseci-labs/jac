@@ -1832,6 +1832,24 @@ impl LambdaExpr.captures.getter -> list[Symbol] {
     return self.get_enclosing_captures();
 }
 
+impl LambdaExpr.tail_return_expr -> Expr | None {
+    """Implicit return: a braced body consisting of a single expression
+    statement returns that expression's value. Any other body (multiple
+    statements, or a non-expression statement) uses an explicit `return`.""";
+    if not (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
+        return None;
+    }
+    stmts = [
+        s
+        for s in self.body
+        if not isinstance(s, Semi)
+    ];
+    if (len(stmts) == 1 and isinstance(stmts[0], ExprStmt)) {
+        return stmts[0].expr;
+    }
+    return None;
+}
+
 
 impl UnaryExpr.postinit -> None {
     UniNode.postinit(self);

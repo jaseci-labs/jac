@@ -237,7 +237,7 @@ impl NaIRGenPass._export_native_layout -> None {
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
         enum_types = self.struct_field_enum_type.get(arch_name, {});
-        for (fname, idx) in sorted(field_indices.items(), key=lambda x : x[1]) {
+        for (fname, idx) in sorted(field_indices.items(), key=lambda (x) { x[1]; }) {
             ftype = field_types.get(fname);
             llvm_t = self._llvm_type_str(ftype) if ftype is not None else "i64";
 

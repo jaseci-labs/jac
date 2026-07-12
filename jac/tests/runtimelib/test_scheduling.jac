@@ -19,23 +19,25 @@ test "task registration and scheduler lifecycle" {
 
     # Future date registers successfully
     future = (datetime.datetime.now() + datetime.timedelta(hours=1)).isoformat();
-    sched.register("future_task", lambda : None , ScheduleSpec(date=future), False);
+    sched.register("future_task", lambda { None; }, ScheduleSpec(date=future), False);
     assert len(sched._tasks) == 1;
     assert sched._tasks[0].name == "future_task";
     assert sched._tasks[0].next_run is not None;
 
     # Past date is skipped
     past = (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat();
-    sched.register("past_task", lambda : None , ScheduleSpec(date=past), False);
+    sched.register("past_task", lambda { None; }, ScheduleSpec(date=past), False);
     assert len(sched._tasks) == 1;
 
     # Invalid date is skipped
-    sched.register("bad_date", lambda : None , ScheduleSpec(date="not-a-date"), False);
+    sched.register(
+        "bad_date", lambda { None; }, ScheduleSpec(date="not-a-date"), False
+    );
     assert len(sched._tasks) == 1;
 
     # Multiple task types
-    sched.register("t_interval", lambda : None , ScheduleSpec(interval=60), False);
-    sched.register("t_cron", lambda : None , ScheduleSpec(cron="* * * * *"), False);
+    sched.register("t_interval", lambda { None; }, ScheduleSpec(interval=60), False);
+    sched.register("t_cron", lambda { None; }, ScheduleSpec(cron="* * * * *"), False);
     assert len(sched._tasks) == 3;
     names = [t.name for t in sched._tasks];
     assert "future_task" in names and "t_interval" in names and "t_cron" in names;

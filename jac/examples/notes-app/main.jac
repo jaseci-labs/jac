@@ -261,7 +261,7 @@ cl {
                                 </span>
                             </div>
                             <button
-                                onClick={lambda e: any { newNote(); }}
+                                onClick={lambda (e: any) { newNote(); }}
                                 style={{
                                     "background": accent,
                                     "color": "#fff",
@@ -280,7 +280,7 @@ cl {
                             <input
                                 value={query}
                                 placeholder="Search notes..."
-                                onChange={lambda e: any { query = e.target.value; }}
+                                onChange={lambda (e: any) { query = e.target.value; }}
                                 style={{
                                     "width": "100%",
                                     "boxSizing": "border-box",
@@ -304,7 +304,7 @@ cl {
                             {[
                                 <button
                                     key={n["id"]}
-                                    onClick={lambda e: any { selectNote(n["id"]); }}
+                                    onClick={lambda (e: any) { selectNote(n["id"]); }}
                                     style={{
                                         "display": "block",
                                         "width": "100%",
@@ -420,7 +420,7 @@ cl {
                                 >
                                     <input
                                         value={cur["title"]}
-                                        onChange={lambda e: any { patchActive(
+                                        onChange={lambda (e: any) { patchActive(
                                             e.target.value, cur["body"]
                                         ); }}
                                         placeholder="Note title"
@@ -466,7 +466,7 @@ cl {
                                 >
                                     <textarea
                                         value={cur["body"]}
-                                        onChange={lambda e: any { patchActive(
+                                        onChange={lambda (e: any) { patchActive(
                                             cur["title"], e.target.value
                                         ); }}
                                         placeholder="Start writing..."
@@ -494,7 +494,7 @@ cl {
                                     }}
                                 >
                                     <button
-                                        onClick={lambda e: any { deleteNote(
+                                        onClick={lambda (e: any) { deleteNote(
                                             cur["id"]
                                         ); }}
                                         style={{
@@ -540,7 +540,7 @@ cl {
                     style={{"borderTop": "1px solid " + border, "background": "#fff"}}
                 >
                     <button
-                        onClick={lambda e: any { diagnosticsOpen = not diagnosticsOpen; }}
+                        onClick={lambda (e: any) { diagnosticsOpen = not diagnosticsOpen; }}
                         style={{
                             "width": "100%",
                             "boxSizing": "border-box",
@@ -618,7 +618,7 @@ cl {
                                         Broker /__jac/*
                                     </span>
                                     <button
-                                        onClick={lambda e: any { refreshBroker(); }}
+                                        onClick={lambda (e: any) { refreshBroker(); }}
                                         style={{
                                             "background": "#f5f5f4",
                                             "border": "1px solid #e7e5e4",
