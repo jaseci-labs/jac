@@ -1,6 +1,7 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.constant { VALUE_ARCH_DECORATOR }
 
 def is_ref_arch(arch: uni.Archetype) -> bool;
 

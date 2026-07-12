@@ -285,6 +285,22 @@ applied to the derived products (jaseci-labs/jaseci#7230). `get_shared_type_fact
 per-module facts first-wins across a module set for whole-program C
 emission (cross-module vtable / virtual dispatch).
 
+Cross-module C emission is whole-program and **transitive**. `jac jac2c` of
+a module that imports others emits one C translation unit per module in the
+import graph reachable from the entry (`emit_translation_units` ->
+`discover_import_graph`, a breadth-first walk of every module's
+`direct_import_paths`). The shared `LayoutRegistry` and `TypeFacts` are built
+over that full set, so vtable slot numbering and ref-vs-value classification
+agree across units. Each unit emits only its own definitions; symbols it uses
+from another unit are `extern`-declared. Crucially this reaches *through*
+intermediate modules: a top module `A` that imports from `B`, where `B`
+imports a reference type from `C`, can receive and drive a `C`-defined value
+that it never names directly, so `A`'s unit must `extern` the leaf `struct`
+and its methods. `CGenPass.classify_imports` therefore walks the import graph
+transitively (matching `discover_import_graph`) rather than indexing only the
+direct imports, so a per-unit's extern decls and type-ids match the
+whole-program picture.
+
 ### The end-state purity contract
 
 The relocation plan (jaseci-labs/jaseci#6542) is complete.

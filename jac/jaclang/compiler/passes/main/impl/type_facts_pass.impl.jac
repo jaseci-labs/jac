@@ -87,12 +87,12 @@ impl ScopeTypes.for_ability(sig: object, self_type: str) -> dict[str, str] {
 }
 
 impl is_ref_arch(arch: uni.Archetype) -> bool {
-    for member in (arch.body or []) {
-        if isinstance(member, uni.Ability) {
-            return True;
+    for dec in (arch.decorators or []) {
+        if isinstance(dec, uni.Name) and dec.value == VALUE_ARCH_DECORATOR {
+            return False;
         }
     }
-    return arch.base_classes is not None and len(arch.base_classes) > 0;
+    return True;
 }
 
 impl type_tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str {

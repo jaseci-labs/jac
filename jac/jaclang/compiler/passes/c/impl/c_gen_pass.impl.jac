@@ -46,7 +46,9 @@ impl CGenPass.classify(mod: uni.Module) {
 
 impl CGenPass.classify_imports(mod: uni.Module) {
     import from jaclang.jac0core.program { JacProgram }
-    for path in direct_import_paths(mod) {
+    queue: list[str] = direct_import_paths(mod);
+    while queue {
+        path = queue.pop(0);
         if path in self.seen_imports {
             continue;
         }
@@ -66,6 +68,11 @@ impl CGenPass.classify_imports(mod: uni.Module) {
             self.imported_mods.append(sub);
         }
         self.index_imported(sub);
+        for nxt in direct_import_paths(sub) {
+            if nxt not in self.seen_imports {
+                queue.append(nxt);
+            }
+        }
     }
 }
 

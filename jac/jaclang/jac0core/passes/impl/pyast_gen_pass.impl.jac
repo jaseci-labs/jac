@@ -1164,8 +1164,14 @@ impl PyastGenPass.exit_archetype(nd: uni.Archetype) -> None {
             )
         );
     }
-    decorators = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators]
-        if nd.decorators
+
+    src_decorators = [
+        d
+        for d in (nd.decorators or [])
+        if not (isinstance(d, uni.Name) and d.value == VALUE_ARCH_DECORATOR)
+    ];
+    decorators = [cast(ast3.expr, self.py_ast_val(i)) for i in src_decorators]
+        if src_decorators
         else [];
     if (sem_decorator := self._get_sem_decorator(nd)) {
         decorators.append(sem_decorator);

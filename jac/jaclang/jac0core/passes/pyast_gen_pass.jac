@@ -7,6 +7,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext, EdgeDir }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { VALUE_ARCH_DECORATOR }
 import from jaclang.jac0core.codeinfo { BoundaryTypeInfo, InteropBinding }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { PyJsxProcessor }

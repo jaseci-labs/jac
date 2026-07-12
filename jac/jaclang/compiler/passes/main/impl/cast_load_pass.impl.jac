@@ -1138,6 +1138,8 @@ impl CastBuildPass._struct_archetype(
     }
     arch_type = self._op_tok(origin, Tok.KW_OBJECT, "obj");
     name_node = self._name(origin, name);
+
+    value_dec = self._name(origin, VALUE_ARCH_DECORATOR);
     if fields {
         body_kids: list[uni.UniNode] = [*fields];
     } else {
@@ -1153,8 +1155,8 @@ impl CastBuildPass._struct_archetype(
         base_classes=[],
         body=fields,
         doc=None,
-        decorators=None,
-        kid=[arch_type, name_node, *body_kids]
+        decorators=[value_dec],
+        kid=[value_dec, arch_type, name_node, *body_kids]
     );
 }
 
