@@ -152,41 +152,45 @@ test "console.print honors file= routing to an arbitrary stream" {
 
 test "console.print_urls emits URL data verbatim (no markup interpretation)" {
     out = _cap_stdout(
-        lambda : console.print_urls({"Local": f"http://{_BRACKET_BAIT}host:8080/"})
+        lambda { console.print_urls({"Local": f"http://{_BRACKET_BAIT}host:8080/"}); }
     );
     assert _BRACKET_BAIT in out , f"print_urls interpreted bracket data as markup; captured={out!r}";
 }
 
 
 test "console.print_list emits item data verbatim" {
-    out = _cap_stdout(lambda : console.print_list([f"item {_BRACKET_BAIT} one"]));
+    out = _cap_stdout(lambda { console.print_list([f"item {_BRACKET_BAIT} one"]); });
     assert _BRACKET_BAIT in out , f"print_list interpreted bracket data as markup; captured={out!r}";
 }
 
 
 test "console.print_next_steps emits step data verbatim" {
-    out = _cap_stdout(lambda : console.print_next_steps([f"run {_BRACKET_BAIT} now"]));
+    out = _cap_stdout(
+        lambda { console.print_next_steps([f"run {_BRACKET_BAIT} now"]); }
+    );
     assert _BRACKET_BAIT in out , f"print_next_steps interpreted bracket data as markup; captured={out!r}";
 }
 
 
 test "console.print_file_change emits filepath verbatim" {
     out = _cap_stdout(
-        lambda : console.print_file_change(f"/tmp/{_BRACKET_BAIT}/x.jac")
+        lambda { console.print_file_change(f"/tmp/{_BRACKET_BAIT}/x.jac"); }
     );
     assert _BRACKET_BAIT in out , f"print_file_change interpreted bracket data as markup; captured={out!r}";
 }
 
 
 test "console.print_watching emits pattern verbatim" {
-    out = _cap_stdout(lambda : console.print_watching(f"**/{_BRACKET_BAIT}/*.jac", 3));
+    out = _cap_stdout(
+        lambda { console.print_watching(f"**/{_BRACKET_BAIT}/*.jac", 3); }
+    );
     assert _BRACKET_BAIT in out , f"print_watching interpreted bracket data as markup; captured={out!r}";
 }
 
 
 test "console.print_table emits cell data verbatim" {
     out = _cap_stdout(
-        lambda : console.print_table(["Col"], [[f"cell {_BRACKET_BAIT}"]])
+        lambda { console.print_table(["Col"], [[f"cell {_BRACKET_BAIT}"]]); }
     );
     assert _BRACKET_BAIT in out , f"print_table interpreted bracket data as markup; captured={out!r}";
 }

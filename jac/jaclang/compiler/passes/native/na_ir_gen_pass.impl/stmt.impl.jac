@@ -1542,12 +1542,29 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         params = nd.collection.params or [];
         start_val: (ir.Value | None) = None;
         stop_val: (ir.Value | None) = None;
+        step_val: (ir.Value | None) = None;
         if len(params) == 1 {
             start_val = ir.Constant(ir.IntType(64), 0);
             stop_val = self._codegen_expr(params[0]);
         } elif len(params) >= 2 {
             start_val = self._codegen_expr(params[0]);
             stop_val = self._codegen_expr(params[1]);
+            if len(params) >= 3 {
+                step_val = self._codegen_expr(params[2]);
+                if step_val is None {
+                    return;
+                }
+                step_val = self._coerce_type(step_val, ir.IntType(64));
+                _step_is_zero = self.builder.icmp_signed(
+                    "==",
+                    step_val,
+                    ir.Constant(ir.IntType(64), 0),
+                    name="range.step.zero"
+                );
+                self._emit_runtime_raise(
+                    _step_is_zero, "ValueError", "range() arg 3 must not be zero"
+                );
+            }
         }
         if start_val is not None and stop_val is not None {
             self._codegen_for_indexed(
@@ -1559,7 +1576,10 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 var_types=[ir.IntType(64)],
                 rc_vars=False,
                 coll_release_op="",
-                range_start=self._coerce_type(start_val, ir.IntType(64))
+                range_start=self._coerce_type(start_val, ir.IntType(64)),
+                range_step=self._coerce_type(step_val, ir.IntType(64))
+                    if step_val is not None
+                    else None
             );
             return;
         }
@@ -1723,7 +1743,8 @@ impl NaIRGenPass._codegen_for_indexed(
     coll_release_op: str,
     range_start: (ir.Value | None) = None,
     elem_cast: (ir.Type | None) = None,
-    unpack_target: (uni.TupleVal | None) = None
+    unpack_target: (uni.TupleVal | None) = None,
+    range_step: (ir.Value | None) = None
 ) -> None {
     i64 = ir.IntType(64);
     _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
@@ -1792,7 +1813,16 @@ impl NaIRGenPass._codegen_for_indexed(
     self.builder.branch(cond_bb);
     self.builder.position_at_end(cond_bb);
     cur_idx = self.builder.load(idx_alloca, name="for.cur.idx");
-    cmp = self.builder.icmp_signed("<", cur_idx, len_val, name="for.cmp");
+    if kind == "range" and range_step is not None {
+        _step_pos = self.builder.icmp_signed(
+            ">", range_step, ir.Constant(i64, 0), name="for.step.pos"
+        );
+        _lt_stop = self.builder.icmp_signed("<", cur_idx, len_val, name="for.lt.stop");
+        _gt_stop = self.builder.icmp_signed(">", cur_idx, len_val, name="for.gt.stop");
+        cmp = self.builder.select(_step_pos, _lt_stop, _gt_stop, name="for.cmp");
+    } else {
+        cmp = self.builder.icmp_signed("<", cur_idx, len_val, name="for.cmp");
+    }
     self.builder.cbranch(cmp, body_bb, end_bb);
     self.loop_stack.append((incr_bb, end_bb));
     self.builder.position_at_end(body_bb);
@@ -1891,7 +1921,10 @@ impl NaIRGenPass._codegen_for_indexed(
     self.loop_stack.pop();
     self.builder.position_at_end(incr_bb);
     inc_idx = self.builder.load(idx_alloca, name="for.inc.idx");
-    next_idx = self.builder.add(inc_idx, ir.Constant(i64, 1), name="for.next.idx");
+    _idx_delta = range_step
+        if kind == "range" and range_step is not None
+        else ir.Constant(i64, 1);
+    next_idx = self.builder.add(inc_idx, _idx_delta, name="for.next.idx");
     self.builder.store(next_idx, idx_alloca);
     self.builder.branch(cond_bb);
     self.builder.position_at_end(end_bb);

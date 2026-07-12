@@ -344,7 +344,7 @@ impl DiagnosticEngine.register_all(
 impl DiagnosticEngine.analyze(
     self: DiagnosticEngine, ctx: BuildContext
 ) -> DiagnosticCollection {
-    self.detectors.sort(key=lambda d: BaseDetector : d.priority);
+    self.detectors.sort(key=lambda (d: BaseDetector) { d.priority; });
     collection = DiagnosticCollection();
     for detector in self.detectors {
         if detector.handle(ctx.error_output) {

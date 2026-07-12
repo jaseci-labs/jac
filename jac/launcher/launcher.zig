@@ -1,7 +1,7 @@
 //! jaclang single-binary launcher (Zig) -- dlopen embed.
 //!
 //! This executable carries the jaclang runtime + a private CPython as a
-//! gzip-compressed payload appended after the image (see `runtime.zig`). On
+//! zstd-compressed payload appended after the image (see `runtime.zig`). On
 //! first run it materializes that payload into a versioned cache dir, then
 //! **dlopens** the bundled shared libpython and drives it in-process. Nothing
 //! Python is linked at build time -- the launcher links only libc/libdl, exactly
@@ -12,7 +12,7 @@
 //! verbatim with the `na` desktop host (via the libjacpyembed shim). This file
 //! is now just the *headless CLI frontend* over that shared core: worker mode
 //! (drop-in `python`) and the jaclang CLI boot. The pure-Zig materialization
-//! half (trailer parse, cache resolution, gzip+tar extract, GC) lives in
+//! half (trailer parse, cache resolution, zstd+tar extract, GC) lives in
 //! `runtime.zig` and is unit-tested separately.
 
 const std = @import("std");

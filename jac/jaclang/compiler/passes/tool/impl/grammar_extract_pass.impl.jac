@@ -286,11 +286,43 @@ impl GrammarExtractPass._stage_remove_errors(rules: list) -> list {
                 filtered.append(choice);
             }
             result.append(GrammarRule(name=rule.name, body=GAlt(choices=filtered)));
+        } elif rule.name == "lambda_expr" {
+            result.append(
+                GrammarRule(
+                    name=rule.name, body=self._strip_lambda_body_recovery(rule.body)
+                )
+            );
         } else {
             result.append(rule);
         }
     }
     return result;
+}
+
+impl GrammarExtractPass._strip_lambda_body_recovery(body: GExpr) -> GExpr {
+    if not isinstance(body, GSeq) {
+        return body;
+    }
+    items: list = [];
+    for item in body.items {
+        if isinstance(item, GAlt) and len(item.choices) == 2 {
+            braced = item.choices[0];
+            recovery = item.choices[1];
+            if (
+                isinstance(braced, GSeq)
+                and len(braced.items) > 0
+                and isinstance(braced.items[0], GTok)
+                and braced.items[0].name == "LBRACE"
+                and isinstance(recovery, GRef)
+                and recovery.name == "expression"
+            ) {
+                items.append(braced);
+                continue;
+            }
+        }
+        items.append(item);
+    }
+    return GSeq(items=items);
 }
 
 impl GrammarExtractPass._is_redundant_slot_wrap_recovery(expr: GExpr) -> bool {
