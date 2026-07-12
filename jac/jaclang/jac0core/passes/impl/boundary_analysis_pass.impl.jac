@@ -1073,7 +1073,7 @@ impl BoundaryAnalysisPass._resolved_body(
                 return resolved;
             }
         } except Exception {
-            pass;
+            ;
         }
     }
     body = owner?.body;

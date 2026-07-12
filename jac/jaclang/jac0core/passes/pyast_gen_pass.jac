@@ -124,7 +124,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
     def needs_enum_kind(kind: str) -> None;
     def _next_temp_name(prefix: str) -> str;
-    def _py_name(nd: uni.AstSymbolNode) -> str;
+    def _py_name(nd: uni.AstSymbolNode | None) -> str;
     def _function_expr_from_def(
         func_def: (ast3.FunctionDef | ast3.AsyncFunctionDef),
         jac_node: uni.UniNode,

@@ -49,7 +49,7 @@ impl PyastGenPass._get_ambient_typing_names(cls: any) -> set[str] {
             }
         }
     } except (OSError, SyntaxError) {
-        pass;
+        ;
     }
     cls._ambient_typing_names = `set();
     return cls._ambient_typing_names;
@@ -453,7 +453,10 @@ impl PyastGenPass._next_temp_name(prefix: str) -> str {
     return f"__jac_{prefix}_{self._temp_name_counter}";
 }
 
-impl PyastGenPass._py_name(nd: uni.AstSymbolNode) -> str {
+impl PyastGenPass._py_name(nd: uni.AstSymbolNode | None) -> str {
+    if nd is None {
+        raise self.ice('_py_name called on a node without a name');
+    }
     if (isinstance(nd, uni.SpecialVarRef) and (nd.name == Tok.KW_INIT)) {
         return '__init__';
     }
