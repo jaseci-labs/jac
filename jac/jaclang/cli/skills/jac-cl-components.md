@@ -213,7 +213,7 @@ async def handle_add -> None {
     todos = [todo] + todos;
 }
 # bind as: onClick={handle_add}
-# if you need to pass a param: onClick={lambda -> None { handle_toggle(item.id); }}
+# if you need to pass a param: onClick={lambda { handle_toggle(item.id); }}
 ```
 
 Plain `def handle(e: MouseEvent)` is sync -- `await` inside it emits invalid JS.

@@ -62,7 +62,7 @@ impl useIsStandalone -> bool {
     reactUseEffect(
         lambda -> any {
             mediaQuery = window.matchMedia("(display-mode: standalone)");
-            handler = lambda e: any { setStandalone(e.matches); };
+            handler = lambda (e: any) { setStandalone(e.matches); };
             mediaQuery.addEventListener("change", handler);
             return lambda { mediaQuery.removeEventListener("change", handler); };
         },
@@ -82,7 +82,7 @@ impl captureInstallPrompt -> None {
 
     window.addEventListener(
         "beforeinstallprompt",
-        lambda e: any {
+        lambda (e: any) {
             e.preventDefault();
             window.__jacPwaPrompt = e;
             window.dispatchEvent(
@@ -790,7 +790,7 @@ impl IosInstallGuide(props: dict) -> JsxElement {
             <div className="jac-pwa-ios-overlay" onClick={onClose}>
                 <div
                     className={"jac-pwa-ios-guide " + className}
-                    onClick={lambda e: any { e.stopPropagation(); }}
+                    onClick={lambda (e: any) { e.stopPropagation(); }}
                 >
                     <div className="jac-pwa-ios-guide__title">{title}</div>
                     <div className="jac-pwa-ios-guide__subtitle">

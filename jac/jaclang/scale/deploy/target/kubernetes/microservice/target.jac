@@ -391,6 +391,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
+        # Resolve here, not in deploy(): `jac scale plan` calls this directly,
+        # and an unresolved '' python_image would render image-less manifests.
+        # Idempotent - a no-op once python_image is non-empty.
+        import from jaclang.scale.injector.binary { resolve_pod_base_image }
+        self.k8s_config.python_image = resolve_pod_base_image(
+            app_config.code_folder, self.k8s_config.python_image
+        );
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,

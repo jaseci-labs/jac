@@ -1435,8 +1435,9 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(
             cfg_mod,
             "get_scale_config",
-            lambda :
-                _TimeoutStubCfg(data={"http_forward_timeout": 45.0, "services": {}})
+            lambda { _TimeoutStubCfg(
+                data={"http_forward_timeout": 45.0, "services": {}}
+            ); }
         );
         assert http_forward_timeout(None) == 45.0;
         assert http_forward_timeout("any_service") == 45.0;
@@ -1444,13 +1445,12 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(
             cfg_mod,
             "get_scale_config",
-            lambda :
-                _TimeoutStubCfg(
-                    data={
-                        "http_forward_timeout": 45.0,
-                        "services": {"llm_app": {"http_forward_timeout": 300.0}}
-                    }
-                )
+            lambda { _TimeoutStubCfg(
+                data={
+                    "http_forward_timeout": 45.0,
+                    "services": {"llm_app": {"http_forward_timeout": 300.0}}
+                }
+            ); }
         );
         assert http_forward_timeout("llm_app") == 300.0;
         assert http_forward_timeout("other_service") == 45.0;
@@ -1458,10 +1458,9 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(
             cfg_mod,
             "get_scale_config",
-            lambda :
-                _TimeoutStubCfg(
-                    data={"services": {"llm_app": {"http_forward_timeout": 120.0}}}
-                )
+            lambda { _TimeoutStubCfg(
+                data={"services": {"llm_app": {"http_forward_timeout": 120.0}}}
+            ); }
         );
         assert http_forward_timeout("llm_app") == 120.0;
         assert http_forward_timeout("other_service") == 30.0;
@@ -1469,13 +1468,12 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(
             cfg_mod,
             "get_scale_config",
-            lambda :
-                _TimeoutStubCfg(
-                    data={
-                        "http_forward_timeout": 45.0,
-                        "services": {"llm_app": {"rpc_timeout": 120.0}}
-                    }
-                )
+            lambda { _TimeoutStubCfg(
+                data={
+                    "http_forward_timeout": 45.0,
+                    "services": {"llm_app": {"rpc_timeout": 120.0}}
+                }
+            ); }
         );
         assert http_forward_timeout("llm_app") == 45.0;
     } finally {

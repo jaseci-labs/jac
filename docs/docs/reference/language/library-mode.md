@@ -153,7 +153,7 @@ Run `jac tool jac2py friends.jac` to generate:
             visit(
                 self,
                 refs(
-                    OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit()
+                    OPath(here).edge_out(edge=lambda (i) { isinstance(i, Family); }).edge().visit()
                 ),
             )
 
@@ -330,7 +330,7 @@ from jaclang.lib import visit, refs, OPath
 
 visit(self, refs(OPath(here).edge_out().visit()))
 visit(
-    self, refs(OPath(here).edge_out(edge=lambda i: isinstance(i, Family)).edge().visit())
+    self, refs(OPath(here).edge_out(edge=lambda (i) { isinstance(i, Family); }).edge().visit())
 )
 ```
 
@@ -514,13 +514,13 @@ Use lambda functions for flexible filtering:
 # Filter by edge type
 visit(
     self,
-    refs(OPath(here).edge_out(edge=lambda e: isinstance(e, (Friend, Family))).visit()),
+    refs(OPath(here).edge_out(edge=lambda (e) { isinstance(e, (Friend, Family)); }).visit()),
 )
 
 # Filter by node attribute
 visit(
     self,
-    refs(OPath(here).edge_out(node=lambda n: hasattr(n, "active") and n.active).visit()),
+    refs(OPath(here).edge_out(node=lambda (n) { hasattr(n, "active") and n.active; }).visit()),
 )
 ```
 

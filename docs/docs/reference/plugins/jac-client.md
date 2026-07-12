@@ -561,7 +561,7 @@ cl {
             localStorage.setItem(key, JSON.stringify(value));
         }, [value]);
 
-        return (value, lambda v: any -> None { value = v; });
+        return (value, lambda (v: any) -> None { value = v; });
     }
 
     def:pub Settings() -> JsxElement {
@@ -2349,8 +2349,8 @@ cl {
         return <div>
             <input
                 value={value}
-                onChange={lambda e: ChangeEvent { value = e.target.value; }}
-                onKeyPress={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
+                onKeyPress={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" { submit(); }
                 }}
             />
@@ -2413,17 +2413,17 @@ cl {
         return <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent { text = e.target.value; }}
-                onKeyDown={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+                onKeyDown={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" and not e.shiftKey { submit(); }
                 }}
             />
             <input
                 type="checkbox"
                 checked={checked}
-                onChange={lambda e: ChangeEvent { checked = e.target.checked; }}
+                onChange={lambda (e: ChangeEvent) { checked = e.target.checked; }}
             />
-            <form onSubmit={lambda e: FormEvent {
+            <form onSubmit={lambda (e: FormEvent) {
                 e.preventDefault();
                 handleSubmit();
             }}>
@@ -2439,10 +2439,10 @@ cl {
 
     ```jac
     # Before
-    onChange={lambda e: any -> None { value = e.target.value; }}
+    onChange={lambda (e: any) -> None { value = e.target.value; }}
 
     # After (no import needed)
-    onChange={lambda e: ChangeEvent { value = e.target.value; }}
+    onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
     ```
 
 ---

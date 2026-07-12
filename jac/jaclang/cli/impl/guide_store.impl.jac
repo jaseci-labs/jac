@@ -116,7 +116,7 @@ impl list_guides -> list[Guide] {
     }
     guides: list[Guide] = [];
 
-    for f in sorted(gdir.glob("*.md"), key=lambda p: Path : p.stem) {
+    for f in sorted(gdir.glob("*.md"), key=lambda (p: Path) { p.stem; }) {
         g = parse_guide(f);
         if g is not None {
             guides.append(g);
@@ -151,12 +151,11 @@ impl grouped_guides -> list[tuple[str, list[Guide]]] {
     start = buckets.get("Start here");
     if start is not None {
         start.sort(
-            key=lambda g: Guide :
-                (
-                    _START_HERE_ORDER.index(g.name)
-                        if g.name in _START_HERE_ORDER
-                        else len(_START_HERE_ORDER)
-                )
+            key=lambda (g: Guide) { (
+                _START_HERE_ORDER.index(g.name)
+                    if g.name in _START_HERE_ORDER
+                    else len(_START_HERE_ORDER)
+            ); }
         );
     }
     return [

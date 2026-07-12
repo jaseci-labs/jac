@@ -820,7 +820,7 @@ def _canonical_json(val: object) -> str {
     return json.dumps(
         Serializer.serialize(val, include_type=True),
         sort_keys=True,
-        default=lambda v: str : str(v)
+        default=lambda (v: str) { str(v); }
     );
 }
 
@@ -1336,7 +1336,7 @@ impl SqliteMemory.recover_all -> tuple {
         )
     );
 
-    rows.sort(key=lambda r : 0 if r[1] == 'NodeAnchor' else 1);
+    rows.sort(key=lambda (r) { 0 if r[1] == 'NodeAnchor' else 1; });
     recovered = 0;
     still_stuck: list = [];
     for r in rows {

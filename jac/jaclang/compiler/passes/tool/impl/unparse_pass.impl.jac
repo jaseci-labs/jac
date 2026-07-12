@@ -412,7 +412,6 @@ impl UnparsePass.exit_ability(nd: uni.Ability) -> None {
 }
 
 impl UnparsePass.exit_func_signature(nd: uni.FuncSignature) -> None {
-    is_lambda = nd.parent and isinstance(nd.parent, uni.LambdaExpr);
     param_parts: list = [];
     if nd.posonly_params {
         for prm in nd.posonly_params {
@@ -435,13 +434,7 @@ impl UnparsePass.exit_func_signature(nd: uni.FuncSignature) -> None {
         param_parts.append(nd.kwargs.gen.jac);
     }
     params_str = ", ".join(param_parts);
-    if not is_lambda {
-        result = "(" + params_str + ")";
-    } elif not param_parts {
-        result = "()";
-    } else {
-        result = params_str;
-    }
+    result = "(" + params_str + ")";
     if nd.return_type {
         result = result + " -> " + nd.return_type.gen.jac;
     }
@@ -786,8 +779,7 @@ impl UnparsePass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
         body = " ".join([s.gen.jac for s in nd.body]);
         parts.append("{ " + body + " }");
     } else {
-        parts.append(":");
-        parts.append(nd.body.gen.jac);
+        parts.append("{ " + nd.body.gen.jac + " }");
     }
     nd.gen.jac = " ".join(parts);
 }
