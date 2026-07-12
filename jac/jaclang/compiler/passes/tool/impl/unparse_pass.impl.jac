@@ -617,6 +617,11 @@ impl UnparsePass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     nd.gen.jac = result;
 }
 
+impl UnparsePass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    body = " ".join([s.gen.jac for s in nd.body]);
+    nd.gen.jac = "forever { " + body + " }";
+}
+
 impl UnparsePass.exit_with_stmt(nd: uni.WithStmt) -> None {
     parts: list = ["with"];
     if nd.is_async {

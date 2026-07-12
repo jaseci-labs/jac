@@ -730,16 +730,25 @@ impl NativeStrEmitter.emit_count(
     sub_len = b.call(strlen_fn, [args[0]], name="cnt.sub.len");
     null_ptr = ir.Constant(i8p, None);
     func = b.basic_block.function;
-    entry_bb = b.basic_block;
+    empty_bb = func.append_basic_block(name="cnt.empty");
+    scan_bb = func.append_basic_block(name="cnt.scan");
     loop_bb = func.append_basic_block(name="cnt.loop");
     found_bb = func.append_basic_block(name="cnt.found");
     done_bb = func.append_basic_block(name="cnt.done");
+
+    is_empty = b.icmp_unsigned("==", sub_len, ir.Constant(i64, 0), name="cnt.isempty");
+    b.cbranch(is_empty, empty_bb, scan_bb);
+    b.position_at_start(empty_bb);
+    tgt_len = b.call(strlen_fn, [target], name="cnt.tgt.len");
+    empty_count = b.add(tgt_len, ir.Constant(i64, 1), name="cnt.empty.n");
+    b.branch(done_bb);
+    b.position_at_start(scan_bb);
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
     cur_ptr = b.phi(i8p, name="cnt.cur");
     count = b.phi(i64, name="cnt.count");
-    cur_ptr.add_incoming(target, entry_bb);
-    count.add_incoming(ir.Constant(i64, 0), entry_bb);
+    cur_ptr.add_incoming(target, scan_bb);
+    count.add_incoming(ir.Constant(i64, 0), scan_bb);
     found = b.call(strstr_fn, [cur_ptr, args[0]], name="cnt.found.ptr");
     is_null = b.icmp_unsigned("==", found, null_ptr, name="cnt.null");
     b.cbranch(is_null, done_bb, found_bb);
@@ -752,7 +761,10 @@ impl NativeStrEmitter.emit_count(
     count.add_incoming(new_count, found_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
-    return count;
+    result = b.phi(i64, name="cnt.result");
+    result.add_incoming(empty_count, empty_bb);
+    result.add_incoming(count, loop_bb);
+    return result;
 }
 
 impl NativeStrEmitter.emit_find(
@@ -766,7 +778,21 @@ impl NativeStrEmitter.emit_find(
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
     strstr_fn = p._get_or_declare_extern("strstr", i8p, [i8p, i8p]);
-    found = b.call(strstr_fn, [target, args[0]], name="find.ptr");
+    search_from = target;
+    if len(args) >= 2 {
+        strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+        slen = b.call(strlen_fn, [target], name="find.slen");
+        start = p._coerce_type(args[1], i64);
+        neg = b.icmp_signed("<", start, ir.Constant(i64, 0), name="find.st.neg");
+        wrapped = b.add(start, slen, name="find.st.wrap");
+        start = b.select(neg, wrapped, start, name="find.st.pos");
+        below = b.icmp_signed("<", start, ir.Constant(i64, 0), name="find.st.lo");
+        start = b.select(below, ir.Constant(i64, 0), start, name="find.st.lo.c");
+        above = b.icmp_signed(">", start, slen, name="find.st.hi");
+        start = b.select(above, slen, start, name="find.st.hi.c");
+        search_from = b.gep(target, [start], name="find.from");
+    }
+    found = b.call(strstr_fn, [search_from, args[0]], name="find.ptr");
     null_ptr = ir.Constant(i8p, None);
     is_null = b.icmp_unsigned("==", found, null_ptr, name="find.null");
     target_int = b.ptrtoint(target, i64, name="find.tgt.int");
@@ -3036,6 +3062,51 @@ impl NativeListEmitter.emit_sort(
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
     elem_type = helpers["elem_type"];
+
+    _kw = ctx?.call_kwargs or {};
+    _key_node = _kw.get("key");
+    _rev_node = _kw.get("reverse");
+    _unknown_kw = [
+        k
+        for k in _kw.keys()
+        if k not in ("key", "reverse")
+    ];
+    if _unknown_kw {
+        p.emit(
+            E5090,
+            node_override=_key_node or _rev_node,
+            kind="sort keyword argument",
+            name=", ".join(_unknown_kw)
+        );
+        return None;
+    }
+    key_fn: (ir.Function | None) = None;
+    if _key_node is not None {
+        _key_val = p._codegen_expr(_key_node);
+        _key_caps = p._pending_lambda_captures;
+        p._pending_lambda_captures = None;
+        if (
+            not isinstance(_key_val, ir.Function)
+            or _key_caps is not None
+            or len(_key_val.args) != 1
+        ) {
+            p.emit(
+                E5090,
+                node_override=_key_node,
+                kind="sort key",
+                name="key= (only a capture-free single-parameter lambda works)"
+            );
+            return None;
+        }
+        key_fn = _key_val;
+    }
+    rev_i1: (ir.Value | None) = None;
+    if _rev_node is not None {
+        _rev_val = p._codegen_expr(_rev_node);
+        if _rev_val is not None {
+            rev_i1 = p._to_bool(_rev_val);
+        }
+    }
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sort.len.ptr"
     );
@@ -3076,19 +3147,36 @@ impl NativeListEmitter.emit_sort(
     ej = b.call(helpers["get"], [target, ji], name="sort.ej");
     ej1 = b.call(helpers["get"], [target, j1], name="sort.ej1");
 
-    if isinstance(elem_type, ir.DoubleType) {
-        needs_swap = b.fcmp_ordered(">", ej, ej1, name="sort.gt");
-    } elif isinstance(elem_type, ir.PointerType) {
+    (cj, cj1) = (ej, ej1);
+    cmp_type = elem_type;
+    if key_fn is not None {
+        _kp_type = key_fn.args[0].type;
+        cj = b.call(key_fn, [p._coerce_type(ej, _kp_type)], name="sort.kj");
+        cj1 = b.call(key_fn, [p._coerce_type(ej1, _kp_type)], name="sort.kj1");
+        cmp_type = key_fn.function_type.return_type;
+    }
+    if isinstance(cmp_type, ir.DoubleType) {
+        cmp_gt = b.fcmp_ordered(">", cj, cj1, name="sort.gt");
+        cmp_lt = b.fcmp_ordered("<", cj, cj1, name="sort.lt");
+    } elif isinstance(cmp_type, ir.PointerType) {
         strcmp_fn = p._get_or_declare_extern(
-            "strcmp", ir.IntType(32), [elem_type, elem_type]
+            "strcmp", ir.IntType(32), [cmp_type, cmp_type]
         );
-        cmp_result = b.call(strcmp_fn, [ej, ej1], name="sort.cmp");
-        needs_swap = b.icmp_signed(
+        cmp_result = b.call(strcmp_fn, [cj, cj1], name="sort.cmp");
+        cmp_gt = b.icmp_signed(
             ">", cmp_result, ir.Constant(ir.IntType(32), 0), name="sort.gt"
         );
+        cmp_lt = b.icmp_signed(
+            "<", cmp_result, ir.Constant(ir.IntType(32), 0), name="sort.lt"
+        );
     } else {
-        needs_swap = b.icmp_signed(">", ej, ej1, name="sort.gt");
+        cmp_gt = b.icmp_signed(">", cj, cj1, name="sort.gt");
+        cmp_lt = b.icmp_signed("<", cj, cj1, name="sort.lt");
     }
+
+    needs_swap = cmp_gt
+        if rev_i1 is None
+        else b.select(rev_i1, cmp_lt, cmp_gt, name="sort.dir");
     b.cbranch(needs_swap, swap_bb, no_swap);
 
     b.position_at_start(swap_bb);
@@ -5232,13 +5320,17 @@ impl NativeBuiltinEmitter.emit_sorted(
     if _le is None {
         return None;
     }
-    _ctx2 = ctx.__class__(pass_ref=p, type_key=elem_key or "");
+    _ctx2 = ctx.__class__(
+        pass_ref=p, type_key=elem_key or "", call_kwargs=(ctx?.call_kwargs or {})
+    );
 
     sorted_copy = _le.emit_copy(_ctx2, list_val, []);
     if sorted_copy is None {
         return None;
     }
-    _le.emit_sort(_ctx2, sorted_copy, []);
+    if _le.emit_sort(_ctx2, sorted_copy, []) is None and (ctx?.call_kwargs or {}) {
+        return None;
+    }
     return sorted_copy;
 }
 

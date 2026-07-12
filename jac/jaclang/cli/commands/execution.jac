@@ -117,7 +117,7 @@ def run(
 
 @registry.command(
     name="dev",
-    help="Run the live dev loop: serve with hot reload and live compilation (never reads sealed artifacts)",
+    help="Serve with hot reload and live compilation",
     tier="core",
     args=[
         Arg.create(
@@ -262,7 +262,7 @@ def enter(
             "show-yaml",
             typ=bool,
             default=False,
-            help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
+            help="With --dry-run: dump the raw YAML stream",
             short=""
         ),
 

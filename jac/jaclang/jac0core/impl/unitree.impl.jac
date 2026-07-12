@@ -723,11 +723,26 @@ impl UniCFGNode.get_head -> UniCFGNode {
         nd.bb_in
         and (len(nd.bb_in) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_in[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
@@ -743,11 +758,26 @@ impl UniCFGNode.get_tail -> UniCFGNode {
         nd.bb_out
         and (len(nd.bb_out) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_out[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -1661,6 +1691,14 @@ impl WhileStmt.postinit -> None {
 }
 
 
+impl ForeverStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl WithStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1813,12 +1851,16 @@ impl MultiString.postinit -> None {
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.STRING);
 }
 
-impl MultiString.lit_value.getter -> str {
-    parts: list[str] = [];
+impl MultiString.lit_value.getter -> str | bytes {
+    parts: list[str | bytes] = [];
     for s in self.strings {
         if isinstance(s, String) {
             parts.append(s.lit_value);
         }
+    }
+
+    if parts and isinstance(parts[0], `bytes) {
+        return b"".join(parts);
     }
     return "".join(parts);
 }

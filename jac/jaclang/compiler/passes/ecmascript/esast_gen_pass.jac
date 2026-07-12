@@ -266,6 +266,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         scope_node: uni.UniScopeNode, body_nodes: (Sequence[uni.UniNode] | None)
     ) -> es.BlockStatement;
 
+    def _jac_exc_ref(
+        member: str, jac_node: (uni.UniNode | None)
+    ) -> es.MemberExpression;
+
     def exit_module(nd: uni.Module) -> None;
     def populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
@@ -330,6 +334,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def _target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node;
@@ -355,7 +360,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def _expr_type_name(expr_node: uni.UniNode) -> str;
     def _is_collection_expr(expr_node: uni.UniNode) -> bool;
-    def _build_jac_ref(path: list[str], jac_node: uni.UniNode) -> es.Expression;
+    def _build_jac_ref(
+        path: list[str], jac_node: (uni.UniNode | None)
+    ) -> es.Expression;
+
     def _build_jac_call(
         path: list[str], args: list[es.Expression], jac_node: uni.UniNode
     ) -> es.Expression;
