@@ -7,9 +7,9 @@ about to make a backend read the checker's results, read
 forbidden by design, and this document exists to keep it that way.
 
 Reference-doc companion pieces: the user-facing feature guide is
-[Ownership & Borrowing](docs/reference/language/ownership-borrowing.md); the
+[Ownership & Borrowing](ownership-borrowing.md); the
 code table is in
-[Errors and Warnings](docs/reference/diagnostics.md#ownership-borrow-errors).
+[Errors and Warnings](../diagnostics.md#ownership-borrow-errors).
 
 ## The three ground rules
 

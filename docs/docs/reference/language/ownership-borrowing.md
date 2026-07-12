@@ -196,5 +196,6 @@ On every backend the ownership annotations are compile-time-only. On the Python 
 
 ## See also
 
+- [Ownership Checker Specification](ownership-checker-spec.md) -- the authoritative statement of what each `E13xx` code guarantees, the checker's symbol-level granularity, and the diagnostics-only contract.
 - [Errors and Warnings](../diagnostics.md#ownership-borrow-errors) -- the full `E1301`-`E1309` code table.
 - [Native Compilation Reference](native-pathway.md#reference-count-elision) -- how the native backend proves reference-count elision independently of this checker.
