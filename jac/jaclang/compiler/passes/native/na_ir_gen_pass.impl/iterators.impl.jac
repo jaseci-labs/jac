@@ -989,7 +989,11 @@ impl NaIRGenPass._user_iter_next_fn(
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="usr.exc.obj.ptr"
     );
     reraise_obj = b.load(exc_obj_ptr, name="usr.reraise.obj");
-    b.call(self._exc_raise_fn, [reraise_obj, exc_type_val]);
+    exc_msg_slot = b.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="usr.exc.msg.ptr"
+    );
+    reraise_msg = b.load(exc_msg_slot, name="usr.reraise.msg");
+    b.call(self._exc_raise_fn, [reraise_obj, exc_type_val, reraise_msg]);
     b.unreachable();
     self._iter_next_fns[key] = fn;
     return fn;
