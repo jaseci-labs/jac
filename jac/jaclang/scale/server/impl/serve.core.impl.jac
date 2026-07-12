@@ -334,7 +334,7 @@ impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None 
 
     console.print_urls(urls);
     console.print();
-    console.print("  🚀 Server ready", style="bold green");
+    console.print("  Server ready", style="bold green");
 }
 
 impl JacAPIServerCore._configure_openapi_security -> None {

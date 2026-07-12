@@ -149,6 +149,39 @@ test "bug_6_mro_not_c3_diamond" {
 }
 
 # =========================================================================
+# Cyclic heritage: compute_mro_linearization must not recurse infinitely
+#
+# compute_mro_linearization recursed into base_classes with no in-progress
+# guard. A malformed or cyclic inheritance graph (a self-referential class,
+# or A -> B -> A) recursed until the stack overflowed instead of degrading
+# to a best-effort MRO. The fix adds an in-progress guard keyed on the class.
+# =========================================================================
+test "cyclic_heritage_mro_does_not_recurse" {
+    # Self-referential: A lists itself as a base.
+    a_shared = ClassType.ClassDetailsShared(
+        class_name="A", symbol_table=None, mro=[], base_classes=[]
+    );
+    a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
+    a_type.shared.base_classes = [a_type];
+    compute_mro_linearization(a_type);
+    assert a_type.shared.mro and a_type.shared.mro[0] is a_type;
+
+    # Mutual cycle: B -> C -> B.
+    b_shared = ClassType.ClassDetailsShared(
+        class_name="B", symbol_table=None, mro=[], base_classes=[]
+    );
+    b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
+    c_shared = ClassType.ClassDetailsShared(
+        class_name="C", symbol_table=None, mro=[], base_classes=[]
+    );
+    c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
+    b_type.shared.base_classes = [c_type];
+    c_type.shared.base_classes = [b_type];
+    compute_mro_linearization(b_type);
+    assert b_type.shared.mro and b_type.shared.mro[0] is b_type;
+}
+
+# =========================================================================
 # Bug #7: Protocol checking only compares method names, not signatures
 #
 # class_implements_protocol checks proto_method_names.issubset(cls_method_names)

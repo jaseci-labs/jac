@@ -178,8 +178,8 @@ def build_network(
     ing_out = [summarize_ingress(i) for i in ingresses];
     claimants = pvc_claimants(pods);
     pvc_out = [summarize_pvc(v, claimants) for v in pvcs];
-    svc_out.sort(key=lambda s : s.get("name", ""));
-    pvc_out.sort(key=lambda v : v.get("name", ""));
+    svc_out.sort(key=lambda (s) { s.get("name", ""); });
+    pvc_out.sort(key=lambda (v) { v.get("name", ""); });
     return {
         "available": True,
         "namespace": namespace,

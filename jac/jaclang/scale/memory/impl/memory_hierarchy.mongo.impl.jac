@@ -1154,7 +1154,7 @@ impl MongoBackend.recover_all -> tuple {
         return (0, []);
     }
 
-    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    docs.sort(key=lambda (d) { 0 if d.get('type') == 'NodeAnchor' else 1; });
     recovered = 0;
     still_stuck: list = [];
     for d in docs {
@@ -1422,7 +1422,7 @@ impl MongoBackend._auto_retry_quarantine(limit: int = 500) -> tuple {
         return (0, 0);
     }
 
-    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    docs.sort(key=lambda (d) { 0 if d.get('type') == 'NodeAnchor' else 1; });
     attempted = 0;
     recovered = 0;
     for d in docs {

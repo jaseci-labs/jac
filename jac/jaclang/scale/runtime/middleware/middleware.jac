@@ -17,7 +17,7 @@ obj MiddlewareRegistry {
 
     def register(middleware: Middleware) {
         self.middlewares.append(middleware);
-        self.middlewares.sort(key=lambda item: Middleware : item.priority);
+        self.middlewares.sort(key=lambda (item: Middleware) { item.priority; });
     }
 
     async def run(request: any, handler: any) -> any {

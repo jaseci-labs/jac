@@ -2,7 +2,7 @@ import os;
 import logging;
 import from jaclang.scale.injector.injector { Injector }
 import from jaclang.scale.injector.bundle {
-    pack_source,
+    pack_jab,
     content_address,
     bundle_object_key,
     ensure_jac_toml_cmd,
@@ -112,8 +112,8 @@ obj PvcInjector(Injector) {
     }
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        # BinaryInjector sets _pod_binary_bytes so the app's modules ship precompiled (#7179); plain PVC deploys pack source only.
-        raw = pack_source(
+        # BinaryInjector sets _pod_binary_bytes; pack_jab needs it to seal the .jab.
+        raw = pack_jab(
             project_dir,
             self.provisioned_database,
             getattr(self, "_pod_binary_bytes", b"")
@@ -231,9 +231,11 @@ obj PvcInjector(Injector) {
                     # real infra problem resurfaces loudly on the upload below.
                     logger.debug(f"pvc-injector: presence probe: {probe_err}");
                 }
-                with tempfile.NamedTemporaryFile(
-                    suffix=".tar.gz", delete=False
-                ) as tmp {
+                # Local scratch file only: kubectl cp needs a path to copy FROM.
+                # The suffix is irrelevant (nothing reads it); the real PVC
+                # filename comes from object_key (.jab app bundle / .tar.gz
+                # toolchain). Deleted right after the copy.
+                with tempfile.NamedTemporaryFile(delete=False) as tmp {
                     tmp.write(raw);
                     tmp_path = Path(tmp.name);
                 }

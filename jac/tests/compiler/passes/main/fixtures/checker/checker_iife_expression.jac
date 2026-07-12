@@ -2,7 +2,7 @@ with entry {
     # Test: IIFE returning a function
     adder = (
         def make_adder(x: int) {
-            return lambda  y: int: x + y;
+            return lambda  (y: int) { x + y; };
         }
     )(
         10

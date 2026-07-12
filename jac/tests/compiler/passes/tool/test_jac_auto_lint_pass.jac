@@ -1209,9 +1209,9 @@ test "W3037 auto-fix removes unnecessary -> None from lambdas" {
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
     formatted = prog.mod.main.gen.jac;
 
-    # Paren-less lambda with typed param: -> None removed, param kept
-    assert "lambda e: str {" in formatted;
-    assert "lambda x: int" in formatted and "y: int {" in formatted;
+    # Lambda with typed param: -> None removed, param kept
+    assert "lambda (e: str) {" in formatted;
+    assert "lambda (x: int" in formatted and "y: int) {" in formatted;
 
     # Lambda with no params: -> None removed
     assert "lambda {" in formatted;
@@ -1287,8 +1287,8 @@ test "W3042 converts map lambda to list comprehension" {
     # Multi-param case: MultiParamMap must be left untouched — list
     # comprehensions only bind one iteration variable per `for` clause.
     assert "items.map(" in formatted;
-    assert "lambda a: any" in formatted;
-    assert "b: any" in formatted;
+    assert "lambda (a: any" in formatted;
+    assert "b: any)" in formatted;
     assert "for a in items" not in formatted;
     assert "for a, b in items" not in formatted;
 }

@@ -57,7 +57,7 @@ def:pub ProfileTab(
                             rows={3}
                             placeholder="Write your bio..."
                             value={bioText}
-                            onChange={lambda e: ChangeEvent { onBioChange(
+                            onChange={lambda (e: ChangeEvent) { onBioChange(
                                 e.target.value
                             ); }}
                         />

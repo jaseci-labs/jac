@@ -216,6 +216,19 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
 
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     name = (nd).name_ref.sym_name if (nd).name_ref else "unnamed";
+    if isinstance(nd.signature, uni.FuncSignature) {
+        for _vp in nd.signature.get_parameters() {
+            if _vp.unpack is not None {
+                self.emit(
+                    E5090,
+                    node_override=_vp,
+                    kind="variadic parameter",
+                    name=f"{_vp.unpack.value}{_vp.name.value if _vp.name else ''}"
+                );
+                return;
+            }
+        }
+    }
     func = self.func_symtab.get(name);
     if func is None {
         return;

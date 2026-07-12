@@ -121,7 +121,12 @@ export fn jac_engine_boot() c_int {
     // #7047). embed owns dlopen/init; the host owns what runs after init
     // (SERVE/PLUGIN/DISPATCH), via the forwarders below. No argv: the embedded
     // host keeps CPython's `sys.argv == ['']` default, as before.
-    emb.initInterpreter(exe_z, .{}) catch return fail("interpreter initialization failed");
+    // No argv is passed (parse_argv stays off), so CPython never processes a
+    // print-and-exit flag here; a non-null exit request would mean the interpreter
+    // refused to come up, which for the desktop host is an init failure.
+    if (emb.initInterpreter(exe_z, .{}) catch return fail("interpreter initialization failed")) |_| {
+        return fail("interpreter initialization failed");
+    }
 
     // Resolve the host-facing C-API once. A missing symbol here is a packaging
     // bug; surface it cleanly rather than faulting on first forwarded call.

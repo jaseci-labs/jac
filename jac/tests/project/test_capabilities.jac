@@ -331,7 +331,7 @@ test "package_missing_error routes through the providing capability" {
     assert "jac-scale[" not in msg;
 
     orphan = package_missing_error("some-random-lib");
-    assert "jac add some-random-lib" in orphan;
+    assert "jac install some-random-lib" in orphan;
 }
 
 # ===== Installer integration (.jac/venv sync) =====

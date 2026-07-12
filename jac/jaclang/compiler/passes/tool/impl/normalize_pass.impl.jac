@@ -587,8 +587,7 @@ impl NormalizePass.enter_ability(nd: uni.Ability) -> None {
 }
 
 impl NormalizePass.enter_func_signature(nd: uni.FuncSignature) -> None {
-    is_lambda = nd.parent and isinstance(nd.parent, uni.LambdaExpr);
-    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.LPAREN)] if not is_lambda else [];
+    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.LPAREN)];
     if nd.posonly_params {
         for prm in nd.posonly_params {
             new_kid.append(prm);
@@ -621,11 +620,7 @@ impl NormalizePass.enter_func_signature(nd: uni.FuncSignature) -> None {
     if new_kid and isinstance(new_kid[-1], Token) and new_kid[-1].name == Tok.COMMA {
         new_kid = new_kid[:-1];
     }
-    if not is_lambda {
-        new_kid.append(nd.gen_token(Tok.RPAREN));
-    } elif not new_kid {
-        new_kid.extend([nd.gen_token(Tok.LPAREN), nd.gen_token(Tok.RPAREN)]);
-    }
+    new_kid.append(nd.gen_token(Tok.RPAREN));
     if nd.return_type {
         new_kid.append(nd.gen_token(Tok.RETURN_HINT));
         new_kid.append(nd.return_type);
@@ -878,6 +873,19 @@ impl NormalizePass.enter_while_stmt(nd: uni.WhileStmt) -> None {
     self._normalize_cond_block(nd, Tok.KW_WHILE);
 }
 
+impl NormalizePass.enter_forever_stmt(nd: uni.ForeverStmt) -> None {
+    new_kid: list[uni.UniNode] = [
+        nd.gen_token(Tok.KW_FOREVER),
+        nd.gen_token(Tok.LBRACE),
+
+    ];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
+    nd.set_kids(nodes=new_kid);
+}
+
 impl NormalizePass.enter_with_stmt(nd: uni.WithStmt) -> None {
     new_kid: list[uni.UniNode] = [];
     if nd.is_async {
@@ -1093,7 +1101,7 @@ impl NormalizePass.enter_lambda_expr(nd: uni.LambdaExpr) -> None {
         new_kid.extend(nd.body);
         new_kid.append(nd.gen_token(Tok.RBRACE));
     } elif isinstance(nd.body, uni.Expr) {
-        new_kid += [nd.gen_token(Tok.COLON), nd.body];
+        new_kid += [nd.gen_token(Tok.LBRACE), nd.body, nd.gen_token(Tok.RBRACE)];
     }
     nd.set_kids(nodes=new_kid);
 }

@@ -4,6 +4,7 @@ import from jaclang.scale.injector.binary {
     download_release_binary,
     node_arch,
     pack_binary_bytes,
+    stage_admin_dist,
     toolchain_object_key
 }
 import from jaclang.scale.injector.bundle { content_address }
@@ -19,8 +20,12 @@ obj BinaryInjector(PvcInjector) {
         _pod_binary_bytes: bytes = b"";
 
     def prepare(app_name: str, namespace: str, project_dir: str) {
-        # Download the pod binary FIRST so pack_source can precompile the app's
-        # modules with it (#7179): .jir is version-locked to the compiling
+        # Stage the console into the bundle first; it is independent of the
+        # binary and best-effort (a failure just falls back to the gateway's
+        # on-boot build), so it must not gate the download below.
+        stage_admin_dist(project_dir, self.channel.value);
+        # Download the pod binary before pack_source runs so it can precompile
+        # the app's modules with it: .jir is version-locked to the compiling
         # binary, so the driver's own jac cannot produce pod-valid seeds.
         payload = download_release_binary(self.channel.value, node_arch());
         self._pod_binary_bytes = payload;
@@ -47,7 +52,6 @@ obj BinaryInjector(PvcInjector) {
 
 
 def select_injector(
-    channel: Channel,
     storage_class: str,
     app_name: str,
     namespace: str,
@@ -55,11 +59,14 @@ def select_injector(
     provisioned_database: str = ""
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
-    blurb = (
-        "downloading the rolling `dev` (main HEAD) jac binary"
-            if channel == Channel.DEV
-            else "downloading the latest published (stable) jac release"
-    );
+    import from jaclang.scale.config.dev_config { resolve_dev_channel }
+    # The one place the pod binary channel is decided (local > dev > stable).
+    channel = resolve_dev_channel(project_dir);
+    blurbs = {
+        Channel.LOCAL: "shipping the local jac binary",
+        Channel.DEV: "downloading the rolling `dev` (main HEAD) jac binary",
+        Channel.STABLE: "downloading the latest published (stable) jac release"
+    };
     try {
         console.print(f"Preparing the '{channel.value}' jac runtime for pods.");
         injector = BinaryInjector(
@@ -68,7 +75,7 @@ def select_injector(
             provisioned_database=provisioned_database
         );
         injector.prepare(app_name, namespace, project_dir);
-        console.print(f"Ready: {blurb}.");
+        console.print(f"Ready: {blurbs[channel]}.");
         return (injector, injector._toolchain_object_key);
     } except Exception as exc {
         logger.warning(f"[{channel.value}] binary prep failed: {exc}");

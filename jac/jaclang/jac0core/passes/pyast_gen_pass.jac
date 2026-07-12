@@ -195,6 +195,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
@@ -217,6 +218,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
+    def _emit_lambda_expr_body(nd: uni.LambdaExpr, body_node: uni.Expr) -> None;
     def _remove_lambda_param_annotations(signature: uni.FuncSignature) -> None;
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;

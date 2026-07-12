@@ -169,6 +169,7 @@ test "core fixture emits expected constructs" {
         "for (const i of array)",
         "for (let i = 0; (i < limit); i += 1)",
         "while ((counter > 0))",
+        "while (true)",
 
     ] {
         assert pattern in js_code;
@@ -1364,7 +1365,8 @@ test "issue 5508 case2 str methods on untyped receivers" {
     # Pluck out the user-compiled function bodies (slice from each function
     # so the injected _jac runtime is not scanned).
     user_chunks = [];
-    for fn_name in ["case2_props_upper", "case2_props_strip", "case2_props_lower"] {
+    # Lowercase components are declared PascalCase (react-refresh contract)
+    for fn_name in ["Case2_props_upper", "Case2_props_strip", "Case2_props_lower"] {
         idx = js_code.find("function " + fn_name);
         assert idx >= 0 , (f"missing compiled function {fn_name}");
         user_chunks.append(js_code[idx:idx + 400]);
@@ -1994,6 +1996,76 @@ test "user-defined exception except is not a catch-all" {
         );
         assert result.returncode == 0 , (
             "user-defined except behaved as a catch-all (#6656):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "exception archetype subclassing a builtin extends _jac.exc.X" {
+    jac_code = "\"\"\"custom exception base test.\"\"\"\n\nobj MyError(Exception) {}\ncl def boom() -> int {\n    try { raise MyError(\"x\"); } except Exception { return 1; }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "class MyError extends _jac.exc.Exception" in js_code , (
+            "custom exception base must extend `_jac.exc.Exception`, got:\n"
+            f"{js_code}"
+        );
+        assert "class MyError extends Exception" not in js_code , (
+            "base class must not reference the bare (undefined) `Exception` "
+            f"global, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (boom() !== 1)" + " { throw new Error('custom exception must load and be caught by except Exception'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "custom exception subclassing a builtin failed to load/catch (#6663):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "exception archetype subclassing ValueError extends _jac.exc.ValueError" {
+    jac_code = "\"\"\"custom ValueError base test.\"\"\"\n\nobj MyValueError(ValueError) {}\ncl def parse_int(s: str) -> int {\n    try { raise MyValueError(\"bad\"); } except ValueError { return -1; }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "class MyValueError extends _jac.exc.ValueError" in js_code , (
+            "custom ValueError base must extend `_jac.exc.ValueError`, got:\n"
+            f"{js_code}"
+        );
+        assert "class MyValueError extends ValueError" not in js_code , (
+            "base class must not reference the bare (undefined) `ValueError` "
+            f"global, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (parse_int('x') !== -1)" + " { throw new Error('custom ValueError subclass must be caught by except ValueError'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "custom exception subclassing ValueError failed to load/catch (#6663):\n"
             f"stderr={result.stderr!r}\njs:\n{js_code}"
         );
         assert "ok" in result.stdout;

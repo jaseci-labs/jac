@@ -109,7 +109,7 @@ impl _adaptProps(tag: str, props: dict) -> dict {
             out["onPress"] = value;
         } elif key == "onChange" {
             user_on_change = value;
-            out["onChangeText"] = lambda text: any { user_on_change(
+            out["onChangeText"] = lambda (text: any) { user_on_change(
                 {"target": {"value": text}}
             ); };
         } elif key.startswith("data-") or key.startswith("aria-") {
@@ -230,7 +230,7 @@ impl _makeNativeLink(props: dict, children: list) -> JsxElement {
         or href.startswith("mailto:")
         or href.startswith("tel:") {
             RNLinking.openURL(href).catch(
-                lambda e: any { console.warn("RNLinking.openURL failed", e); }
+                lambda (e: any) { console.warn("RNLinking.openURL failed", e); }
             );
         } else {
             navigate(href);
@@ -398,7 +398,7 @@ impl _performNavigation(nav: any, target: any, options: dict = {}) -> None {
     to = str(target or "/");
     if to.startswith("http://") or to.startswith("https://") {
         RNLinking.openURL(to).catch(
-            lambda e: any { console.warn("RNLinking.openURL failed", e); }
+            lambda (e: any) { console.warn("RNLinking.openURL failed", e); }
         );
         return;
     }
@@ -704,9 +704,9 @@ impl __getLocalStorage(key: str) -> str {
         return cache[key];
     }
     SecureStore.getItemAsync(key).then(
-        lambda val: any { cache[key] = val or ""; }
+        lambda (val: any) { cache[key] = val or ""; }
     ).catch(
-        lambda e: any { console.warn("SecureStore.getItemAsync failed", e); }
+        lambda (e: any) { console.warn("SecureStore.getItemAsync failed", e); }
     );
     return "";
 }
@@ -714,14 +714,14 @@ impl __getLocalStorage(key: str) -> str {
 impl __setLocalStorage(key: str, value: str) -> None {
     _nativeStorageCache()[key] = value;
     SecureStore.setItemAsync(key, value).catch(
-        lambda e: any { console.warn("SecureStore.setItemAsync failed", e); }
+        lambda (e: any) { console.warn("SecureStore.setItemAsync failed", e); }
     );
 }
 
 impl __removeLocalStorage(key: str) -> None {
     _nativeStorageCache().pop(key, None);
     SecureStore.deleteItemAsync(key).catch(
-        lambda e: any { console.warn("SecureStore.deleteItemAsync failed", e); }
+        lambda (e: any) { console.warn("SecureStore.deleteItemAsync failed", e); }
     );
 }
 
@@ -769,7 +769,7 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
             }
             mounted = {"v": True};
             __ensureNativeTokenPrimed().then(
-                lambda _: any { if mounted["v"] { setReady(True); }}
+                lambda (_: any) { if mounted["v"] { setReady(True); }}
             );
             return lambda { mounted["v"] = False; };
         },
@@ -1108,7 +1108,7 @@ impl JacForm(props: dict) -> JsxElement {
                 field,
                 placeholder,
                 selected_value,
-                lambda text: any { _setFormField(form, fieldName, text); },
+                lambda (text: any) { _setFormField(form, fieldName, text); },
                 is_password and not is_visible,
                 message != ""
             );
@@ -1164,7 +1164,7 @@ impl __jacInstallErrorHandlers -> None {
     try {
         prev = globalThis.ErrorUtils.getGlobalHandler();
         globalThis.ErrorUtils.setGlobalHandler(
-            lambda error: any , isFatal: any {
+            lambda (error: any, isFatal: any) {
                 message = error.message if error else "Unknown error";
                 stack = error.stack if error else "";
                 __jacReportError(message, stack, "", "ErrorUtils");

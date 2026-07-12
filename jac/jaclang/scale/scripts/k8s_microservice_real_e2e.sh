@@ -203,10 +203,11 @@ import logging, os, sys, jaclang  # noqa: F401
 from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
 from jaclang.scale.config.app_config import AppConfig
-from jaclang.scale.config.dev_config import Channel, BINARY_PATH_ENV
+from jaclang.scale.config.dev_config import BINARY_PATH_ENV
 
-# The pod ships the binary at JAC_SCALE_BINARY_PATH (channel LOCAL), so the
-# e2e validates the jac built from THIS checkout - not a published release.
+# JAC_SCALE_BINARY_PATH makes the deploy resolve to the LOCAL channel and ship
+# the jac built from THIS checkout, so the e2e validates the code under test
+# rather than a published release.
 _local = os.environ.get(BINARY_PATH_ENV, "")
 if not _local or not os.path.isfile(_local):
     print(
@@ -244,7 +245,6 @@ result = target.deploy(
     AppConfig(
         code_folder=".",
         app_name="jac-e2e",
-        channel=Channel.LOCAL,
     )
 )
 if not result.success:

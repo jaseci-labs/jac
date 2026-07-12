@@ -217,6 +217,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_if(nd: uni.IfStmt) -> None;
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
     def _codegen_while(nd: uni.WhileStmt) -> None;
+    def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _codegen_assignment(nd: uni.Assignment) -> None;
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
@@ -225,6 +226,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
+    def _codegen_compare_chain(
+        nd: uni.CompareExpr, left: ir.Value
+    ) -> (ir.Value | None);
+
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _native_module_call_target(nd: uni.FuncCall) -> (str | None);
@@ -241,6 +246,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
+    def _isinstance_type_name(nd: uni.UniNode) -> (str | None);
     def _emit_isinstance_user(
         nd: uni.FuncCall, operand: ir.Value, names: list[str]
     ) -> (ir.Value | None);
@@ -290,6 +296,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
+    def _jacval_truthy(jv: ir.Value) -> ir.Value;
+    def _jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value;
@@ -314,6 +322,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
+    def _bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
     def _codegen_for_indexed(
@@ -327,7 +336,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         coll_release_op: str,
         range_start: (ir.Value | None) = None,
         elem_cast: (ir.Type | None) = None,
-        unpack_target: (uni.TupleVal | None) = None
+        unpack_target: (uni.TupleVal | None) = None,
+        range_step: (ir.Value | None) = None
     ) -> None;
 
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
@@ -342,6 +352,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
     def _codegen_string(nd: uni.String) -> (ir.Value | None);
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
+    def _fstring_spec_text(spec: uni.Expr) -> (str | None);
+    def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None);
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
@@ -528,6 +540,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    def _emit_norm_slice_bounds(
+        slice_node: object, src_len: ir.Value
+    ) -> (tuple | None);
+
     def _codegen_list_slice(
         target_val: ir.Value, slice_node: object, elem_type_name: str
     ) -> (ir.Value | None);
@@ -764,10 +780,19 @@ obj NaIRGenPass(ModuleCodegenPass) {
         method_name: str,
         target: ir.Value,
         args: list[ir.Value],
-        type_key: str
+        type_key: str,
+        kwargs: (dict | None) = None,
+        kw_node: (uni.UniNode | None) = None
     ) -> (ir.Value | None);
 
-    def _dispatch_builtin(func_name: str, args: list[ir.Value]) -> (ir.Value | None);
+    def _dispatch_builtin(
+        func_name: str,
+        args: list[ir.Value],
+        kwargs: (dict | None) = None,
+        kw_node: (uni.UniNode | None) = None
+    ) -> (ir.Value | None);
+
+    def _split_call_kwargs(nd: uni.FuncCall) -> dict;
     def _emit_rc_helpers -> None;
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;

@@ -3,8 +3,13 @@ import os;
 import from pathlib { Path }
 import from typing { cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { TOKEN_MAP }
-import from jaclang.jac0core.constant { SymbolType, Tokens as Tok, EdgeDir }
+import from jaclang.jac0core.constant {
+    TOKEN_MAP,
+    SymbolType,
+    Tokens as Tok,
+    EdgeDir,
+    SymbolAccess,
+}
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
@@ -17,6 +22,14 @@ import from jaclang.compiler.type_system { properties }
 import from jaclang.compiler.symbol_utils { int_subscript_suffix }
 import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
+import from jaclang.compiler.type_system.ts_decl_parser {
+    TsDecl,
+    TsType,
+    TsTypeKind,
+    TsDeclKind,
+    TsAccess,
+    TsMember
+}
 
 import from jaclang.jac0core.diagnostics {
     DiagnosticInfo,
@@ -172,8 +185,9 @@ obj TypeEvaluator {
         _strict_site_cache: dict[int, bool] = {},
         _sv_async_syms_cache: dict[int, set[int]] = {},
         _and_narrowing_overrides: dict[int, TypeBase] = {},
-        _ts_decl_cache: dict[str, (dict | None)] = {},
+        _ts_decl_cache: dict[str, (dict[str, TsDecl] | None)] = {},
         _ts_decl_path_cache: dict[str, (str | None)] = {},
+        _ts_synth_class_cache: dict[int, (dict[str, types.ClassType] | None)] = {},
         _untyped_external_cfg_cache: dict[str, bool] = {},
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,
@@ -213,11 +227,32 @@ obj TypeEvaluator {
         dts_path: str, item_name: str
     ) -> (TypeBase | None);
 
-    def _load_ts_declarations(dts_path: str) -> (dict | None);
-    def _map_ts_decl(decl: object, decls: dict, item_name: str) -> (TypeBase | None);
+    def _load_ts_declarations(dts_path: str) -> (dict[str, TsDecl] | None);
+    def _map_ts_decl(
+        decl: TsDecl, decls: dict[str, TsDecl], item_name: str
+    ) -> (TypeBase | None);
+
     def _map_ts_type(
-        ts: object, decls: dict, seen: (set[str] | None) = None
+        ts: (TsType | None),
+        decls: dict[str, TsDecl],
+        seen: (set[str] | None) = None,
+        shells: (dict[str, types.ClassType] | None) = None
     ) -> TypeBase;
+
+    def _synthesize_ts_decl_class(
+        decls: dict[str, TsDecl], item_name: str
+    ) -> (TypeBase | None);
+
+    def _install_synth_member(
+        scope: uni.UniScopeNode,
+        synth_src: uni.Source,
+        mname: str,
+        member_type: TypeBase
+    ) -> None;
+
+    def _ts_synth_class_types(
+        decls: dict[str, TsDecl]
+    ) -> (dict[str, types.ClassType] | None);
 
     def _emit_untyped_external(name_node: uni.Name, name: str, module: str) -> None;
     def _untyped_external_is_error(node_: uni.UniNode) -> bool;
@@ -370,6 +405,8 @@ obj TypeEvaluator {
         expected_type: TypeBase | None, dict_class: TypeBase
     ) -> tuple[TypeBase, TypeBase] | None;
 
+    def _infer_list_elem_from_mutations(expr: uni.ListVal) -> TypeBase | None;
+    def _list_mutation_elem_contrib(ref: uni.NameAtom) -> TypeBase | None;
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
     ) -> types.TypeBase | None;

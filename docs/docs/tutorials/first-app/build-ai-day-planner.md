@@ -4,7 +4,7 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 
 **Prerequisites:** [Installation](../../quick-guide/install.md) complete.
 
-**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework and the built-in `scale` deployment subsystem) plus the **byllm** plugin for AI. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
+**Required Packages:** This tutorial uses **jaclang** (which bundles the full-stack client framework, the built-in `scale` deployment subsystem, and byLLM for AI). If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), the core is already included -- skip to the version check below. Otherwise install the toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
@@ -18,12 +18,11 @@ Verify your installation meets the minimum requirements:
 jac --version
 ```
 
-The `jac --version` output lists the binary version and any installed plugins. Check that the following minimums are met (the full-stack client framework and the `scale` subsystem ship inside `jaclang`, so there are no separate versions for them):
+The `jac --version` output shows the binary version. Check that the minimum is met (byLLM, the full-stack client framework, and the `scale` subsystem all ship inside the binary, so there are no separate versions for them):
 
 | Package | Minimum Version |
 |---------|----------------|
 | jaclang | 0.11.0 |
-| byllm | 0.5.0 |
 
 **Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
 
@@ -738,17 +737,17 @@ Before building the UI, you need to understand **lambdas** -- Jac's anonymous fu
 <!-- jac-skip -->
 ```jac
 # Lambda with typed parameters
-double = lambda x: int -> int { return x * 2; };
+double = lambda (x: int) -> int { return x * 2; };
 
 # Lambda with no parameters
 say_hi = lambda -> str { return "hi"; };
 ```
 
-The syntax is `lambda params -> return_type { body }`. In JSX, you'll use them inline to handle user events:
+The syntax is `lambda (params) -> return_type { body }`. In JSX, you'll use them inline to handle user events:
 
 <!-- jac-skip -->
 ```jac
-onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
 ```
 
 **Transparent Server Calls**
@@ -815,8 +814,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -874,8 +873,8 @@ cl def:pub app -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -1010,8 +1009,8 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1063,7 +1062,7 @@ That last point deserves emphasis. You didn't write any code to save data or loa
 - **`cl import`** -- load CSS (or npm packages) in the browser
 - **`cl def:pub app -> JsxElement`** -- the main UI component
 - **`has`** (in components) -- reactive state that triggers re-renders on change
-- **`lambda`** -- anonymous functions: `lambda params -> type { body }`
+- **`lambda`** -- anonymous functions: `lambda (params) -> type { body }`
 - **`can with entry`** -- lifecycle hook that runs on component mount
 - **`await func()`** -- transparent server calls from the client (no HTTP code)
 - **`async`** -- marks functions that perform asynchronous operations
@@ -1110,7 +1109,7 @@ default_model = "local:gemma-4-e4b"
 That's the whole configuration. Anywhere you write `by llm()` in your Jac code, this is the model that runs. No import, no module-level variable -- swapping models means editing one line in `jac.toml`, with no code change.
 
 !!! info "Use a cloud model instead"
-    If you prefer a hosted model -- typically because you want a stronger model than runs locally, or you're on a machine without GPU/RAM headroom -- swap the `default_model` line in `jac.toml`. Jac's AI plugin wraps [LiteLLM](https://docs.litellm.ai/docs/providers), so anything LiteLLM supports works here:
+    If you prefer a hosted model -- typically because you want a stronger model than runs locally, or you're on a machine without GPU/RAM headroom -- swap the `default_model` line in `jac.toml`. Jac's AI subsystem (byLLM) wraps [LiteLLM](https://docs.litellm.ai/docs/providers), so anything LiteLLM supports works here:
 
     | Provider | `default_model` value | Notes |
     |----------|-----------------------|-------|
@@ -1129,7 +1128,7 @@ That's the whole configuration. Anywhere you write `by llm()` in your Jac code, 
     glob llm = Model(model_name="local:gemma-4-e4b");
     ```
 
-    `import from jaclang.byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
+    `import from jaclang.byllm.lib { Model }` loads the AI subsystem. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
 
 **Enums as Output Constraints**
 
@@ -1351,8 +1350,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { add_new_task(); }
                             }}
                             placeholder="What needs to be done today?"
@@ -1388,8 +1387,8 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                            onKeyPress={lambda e: KeyboardEvent {
+                            onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                            onKeyPress={lambda (e: KeyboardEvent) {
                                 if e.key == "Enter" { generate_meal_list(); }
                             }}
                             placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1516,8 +1515,8 @@ cl def:pub TasksColumn -> JsxElement {
                 <input
                     class="input"
                     value={task_text}
-                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { add_new_task(); }
                     }}
                     placeholder="What needs to be done today?"
@@ -1597,8 +1596,8 @@ cl def:pub ShoppingColumn -> JsxElement {
                 <input
                     class="input"
                     value={meal_text}
-                    onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                    onKeyPress={lambda e: KeyboardEvent {
+                    onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                    onKeyPress={lambda (e: KeyboardEvent) {
                         if e.key == "Enter" { generate_meal_list(); }
                     }}
                     placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -1853,8 +1852,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={task_text}
-                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { task_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { add_new_task(); }
                         }}
                         placeholder="What needs to be done today?"
@@ -1924,8 +1923,8 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                     <input
                         class="input"
                         value={meal_text}
-                        onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                        onKeyPress={lambda e: KeyboardEvent {
+                        onChange={lambda (e: ChangeEvent) { meal_text = e.target.value; }}
+                        onKeyPress={lambda (e: KeyboardEvent) {
                             if e.key == "Enter" { generate_meal_list(); }
                         }}
                         placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
@@ -2427,7 +2426,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                                 placeholder="Enter username"
                                 class="auth-input"
                             />
@@ -2437,7 +2436,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                                onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                                 placeholder="Enter password"
                                 class="auth-input"
                             />
@@ -2546,7 +2545,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -2659,7 +2658,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />
@@ -3423,7 +3422,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={taskText}
-                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { taskText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="What needs to be done today?"
                     />
@@ -3514,7 +3513,7 @@ The three files that change are in the collapsible sections below. Copy the unch
                     <input
                         class="input"
                         value={mealText}
-                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { mealText = e.target.value; }}
                         onKeyPress={handleKeyPress}
                         placeholder="e.g. 'chicken stir fry for 4'"
                     />

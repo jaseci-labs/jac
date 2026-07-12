@@ -44,6 +44,16 @@ Use this for air-gapped clusters, to pin an exact build, or to deploy a binary y
 
 ---
 
+### App Artifact (`.jab`)
+
+The app is packed on the deploy driver into a sealed **`.jab`** image, seeded to the bundle PVC, and extracted into the pod's `/app` volume. The `.jab` contains the project source, a `_precompiled/` sealed image (`MANIFEST.json` + content-keyed `.jir` modules built with the pod binary), and the sanitized `jac.toml`.
+
+Sealing is **mandatory**: if the app cannot be sealed into a valid image, the deploy fails rather than shipping a bundle that cold-compiles on the pod's first boot. When a pod starts, the compiler auto-loads the sibling `_precompiled/` image, so services run from precompiled modules with no on-pod compile step - for both single-app and microservice deployments.
+
+If a module in your project cannot be sealed (for example, a file that fails to compile), the deploy aborts with the seal error. Fix or exclude the offending module and redeploy.
+
+---
+
 ### Naming & Namespace
 
 Controls the application name used for all Kubernetes resource names and the namespace resources are created in.

@@ -788,6 +788,15 @@ obj WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     def postinit -> None;
 }
 
+obj ForeverStmt(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
+    has body: Sequence[CodeBlockStmt];
+
+    def postinit -> None;
+}
+
 obj WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
@@ -977,6 +986,7 @@ obj LambdaExpr(Expr, UniScopeNode) {
         signature: (FuncSignature | None) = None;
 
     def postinit -> None;
+    def tail_return_expr -> Expr | None;
 
     has captures: list[Symbol] { getter; }
 }
@@ -1010,7 +1020,7 @@ obj MultiString(AtomExpr) {
 
     def postinit -> None;
 
-    has lit_value: str { getter; }
+    has lit_value: str | bytes { getter; }
 }
 
 obj FString(AtomExpr) {
@@ -1591,7 +1601,8 @@ obj Literal(Token, AtomExpr) {
         pos_end: int
     ) -> None;
 
-    has lit_value: int | str | float | bool | None | Callable[([], Any)] | EllipsisType {
+    has lit_value:
+        int | str | bytes | float | bool | None | Callable[([], Any)] | EllipsisType {
         getter;
     }
 }
@@ -1635,7 +1646,7 @@ obj String(Literal) {
         SYMBOL_TYPE = SymbolType.STRING;
     }
 
-    has lit_value: str { getter; }
+    has lit_value: str | bytes { getter; }
 }
 
 obj Bool(Literal) {

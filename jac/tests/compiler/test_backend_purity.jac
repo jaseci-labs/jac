@@ -52,10 +52,13 @@ glob FORBIDDEN: dict[str, str] = {
              "module's exported ability at sv-import client-stub generation"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
-             1,
-             "cross-module import-surface read: sv-import client stub "
+             2,
+             "declaration-surface reads: (1) sv-import client stub "
              "generation resolves the SOURCE module's exported ability - "
-             "no fact on the local tree exists"
+             "no fact on the local tree exists; (2) component PascalCase "
+             "rename collision guard checks whether the capitalized name "
+             "is already declared in the module - the declared NAME is "
+             "the consumed fact, not a resolved type"
          ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", "type_tag.tag"): (
              7,
@@ -64,8 +67,12 @@ glob FORBIDDEN: dict[str, str] = {
              "declared NAME is the consumed fact, not a resolved type"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             1,
-             "classify_call fallback for call nodes synthesized after " "checking"
+             2,
+             "classify_call fallback for call nodes synthesized after "
+             "checking; and classify_call as the shadowing-aware builtin "
+             "test for the `type(None)` isinstance argument form (#6957) - "
+             "consuming the central classification instead of "
+             "re-implementing name resolution"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
              1,
