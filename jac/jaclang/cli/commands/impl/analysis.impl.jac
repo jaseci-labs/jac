@@ -441,7 +441,7 @@ impl format(
             pool_cls = (
                 ProcessPoolExecutor
                     if ctx is None
-                    else lambda **kw : ProcessPoolExecutor(mp_context=ctx, **kw)
+                    else lambda (**kw) { ProcessPoolExecutor(mp_context=ctx, **kw); }
             );
             with pool_cls(max_workers=max_workers) as executor {
                 futures = {

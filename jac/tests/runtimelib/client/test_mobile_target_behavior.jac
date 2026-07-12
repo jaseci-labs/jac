@@ -122,7 +122,7 @@ test "adb reverse is skipped silently when adb is missing" {
     }
 
     buf = io.StringIO();
-    with unittest.mock.patch("shutil.which", side_effect=lambda name : None ) as _, unittest.mock.patch(
+    with unittest.mock.patch("shutil.which", side_effect=lambda (name) { None; }) as _, unittest.mock.patch(
         "subprocess.run", side_effect=_record_run
     ) as _, redirect_stdout(buf), redirect_stderr(buf) {
         _mobile_setup_android_port_reverse(8000, 8001);

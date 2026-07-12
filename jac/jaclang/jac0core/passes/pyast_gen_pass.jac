@@ -218,6 +218,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
+    def _emit_lambda_expr_body(nd: uni.LambdaExpr, body_node: uni.Expr) -> None;
     def _remove_lambda_param_annotations(signature: uni.FuncSignature) -> None;
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;

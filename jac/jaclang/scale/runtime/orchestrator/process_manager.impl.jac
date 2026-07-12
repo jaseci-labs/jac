@@ -164,7 +164,7 @@ impl ServiceProcessManager.start_all -> None {
         proc = self.processes.get(name);
         if proc and entry.url {
             ok = wait_for_health(
-                entry.url, lambda : proc.poll() is None, timeout=timeout
+                entry.url, lambda { proc.poll() is None; }, timeout=timeout
             );
             if not ok {
                 exit_code = proc.poll();

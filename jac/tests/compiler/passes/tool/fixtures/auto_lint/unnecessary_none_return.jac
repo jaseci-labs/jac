@@ -23,7 +23,7 @@ obj Foo {
 }
 
 def handler {
-    lambda e: str -> None { print(e); };
-    lambda x: int, y: int -> None { print(x + y); };
+    lambda (e: str) -> None { print(e); };
+    lambda (x: int, y: int) -> None { print(x + y); };
     lambda -> None { print("no params"); };
 }

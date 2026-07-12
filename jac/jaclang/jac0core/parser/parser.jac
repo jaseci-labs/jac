@@ -482,8 +482,6 @@ obj Parser {
     def parse_comprehension_clauses -> list;
     def parse_compr_clause -> InnerCompr;
     def parse_lambda_expr -> Expr;
-    def parse_lambda_params(sig_kid: list) -> list;
-    def parse_lambda_param -> ParamVar;
     def parse_jsx_element -> Expr;
     def _parse_jsx_dynamic_tag(open_kid: list) -> Expr;
     def _consume_jsx_dynamic_close(close_kid: list);

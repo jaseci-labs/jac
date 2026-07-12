@@ -114,7 +114,7 @@ def:pub app -> JsxElement {
     async def handleChannelPost(text: str) -> None;
     def handleBackToChannels -> None;
 
-    get_tab_name = lambda t: str { return (
+    get_tab_name = lambda (t: str) { return (
         "Home"
             if t == "feed"
             else (
@@ -143,9 +143,9 @@ def:pub app -> JsxElement {
                 password={authPassword}
                 error={authError}
                 loading={authLoading}
-                onUsernameChange={lambda e: ChangeEvent { authUsername = e.target.value; }}
-                onPasswordChange={lambda e: ChangeEvent { authPassword = e.target.value; }}
-                onSubmit={lambda e: FormEvent {
+                onUsernameChange={lambda (e: ChangeEvent) { authUsername = e.target.value; }}
+                onPasswordChange={lambda (e: ChangeEvent) { authPassword = e.target.value; }}
+                onSubmit={lambda (e: FormEvent) {
                     e.preventDefault();
                     if isSignup {
                         handleSignup();
@@ -238,7 +238,7 @@ def:pub app -> JsxElement {
                         {profileAvatar}
                         {profileUsername}
                         {composerText}
-                        onComposerChange={lambda v: str { composerText = v; }}
+                        onComposerChange={lambda (v: str) { composerText = v; }}
                         onPost={postTweet}
                         {feedLoading}
                         {tweets}
@@ -282,7 +282,7 @@ def:pub app -> JsxElement {
                         {profileUsername}
                         {editingBio}
                         {bioText}
-                        onBioChange={lambda v: str { bioText = v; }}
+                        onBioChange={lambda (v: str) { bioText = v; }}
                         onSaveBio={handleSaveBio}
                         onCancelEditBio={lambda { editingBio = False; }}
                         onLike={handleLike}
@@ -294,7 +294,7 @@ def:pub app -> JsxElement {
             </main>
             <RightSidebar
                 {searchQuery}
-                onSearchChange={lambda v: str { searchQuery = v; }}
+                onSearchChange={lambda (v: str) { searchQuery = v; }}
                 onSearch={handleSearch}
                 onClearSearch={lambda {
                     searchQuery = "";
