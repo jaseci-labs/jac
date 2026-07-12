@@ -133,12 +133,14 @@ impl Transform.emit(
         return False;
     }
 
+    loc = loc.detach();
+
     msg = diag.format_message(**kwargs);
 
     related_locs: list[tuple[str, CodeLocInfo]] = [];
     if related {
         for (label, node) in related {
-            related_locs.append((label, node.loc));
+            related_locs.append((label, node.loc.detach()));
         }
     }
     alrt = Alert(

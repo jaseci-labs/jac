@@ -110,3 +110,35 @@ impl CodeLocInfo.pos_start.getter -> int {
 impl CodeLocInfo.pos_end.getter -> int {
     return self.last_tok.pos_end;
 }
+
+impl CodeLocInfo.detach -> CodeLocInfo {
+    import from jaclang.jac0core.unitree { Token }
+
+    ft = self.first_tok;
+    lt = self.last_tok;
+    new_ft = Token(
+        ft.orig_src,
+        ft.name,
+        ft.value,
+        ft.line_no,
+        ft.end_line,
+        ft.c_start,
+        ft.c_end,
+        ft.pos_start,
+        ft.pos_end
+    );
+    new_lt = Token(
+        lt.orig_src,
+        lt.name,
+        lt.value,
+        lt.line_no,
+        lt.end_line,
+        lt.c_start,
+        lt.c_end,
+        lt.pos_start,
+        lt.pos_end
+    );
+    new_ft._is_synthetic = True;
+    new_lt._is_synthetic = True;
+    return CodeLocInfo(new_ft, new_lt);
+}

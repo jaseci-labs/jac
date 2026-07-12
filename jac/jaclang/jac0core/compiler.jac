@@ -332,7 +332,9 @@ obj JacCompiler {
         _jaclang_root: (str | None) = None;
     }
 
-    has _internal_program: (JacProgram | None) = None;
+    has _internal_program: (JacProgram | None) = None,
+        _internal_bytecode_depth: int = 0;
+
     has internal_program: JacProgram { getter; }
 
     @classmethod
@@ -350,6 +352,10 @@ obj JacCompiler {
     def get_bytecode(
         full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None);
+
+    def _evict_internal_unit(
+        full_target: str, actual_program: JacProgram, result: uni.Module
+    ) -> None;
 
     def _load_native_from_cache(
         full_target: str,

@@ -276,4 +276,6 @@ obj CodeLocInfo {
     def __str__ -> str {
         return f"{self.first_line}:{self.col_start} - {self.last_line}:{self.col_end}";
     }
+
+    def detach -> CodeLocInfo;
 }

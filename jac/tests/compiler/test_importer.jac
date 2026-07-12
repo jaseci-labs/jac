@@ -326,3 +326,46 @@ test "get_bytecode busts in-memory hub when .impl.jac changes" {
         );
     }
 }
+
+test "internal get_bytecode evicts unit AST after compile" {
+    # Cold bootstrap used to retain every jaclang module AST in
+    # internal_program.mod.hub. After the outermost successful compile+cache
+    # write, non-stub ASTs must leave the hub so peak RSS stays near one import
+    # closure (+ warm typeshed), not the union of every module ever compiled.
+    compiler = JacCompiler();
+    prog = JacProgram();
+    # Two small, already-shipped jaclang modules (always under jaclang_root →
+    # resolve to internal_program). Force a fresh compile so we exercise the
+    # post-compile eviction path rather than a disk-cache hit.
+    samples = [
+        os.path.join(compiler._get_jaclang_root(), "jac0core", "log.jac"),
+        os.path.join(compiler._get_jaclang_root(), "jac0core", "constant.jac")
+    ];
+    for p in samples {
+        assert os.path.isfile(p) , f"missing fixture {p}";
+    }
+    old_rebuild = os.environ.get("JAC_REBUILD");
+    os.environ["JAC_REBUILD"] = "1";
+    try {
+        for p in samples {
+            code = compiler.get_bytecode(p, prog);
+            assert code is not None , f"compile failed for {p}";
+            hub = compiler.internal_program.mod.hub;
+            leftover_jac = [
+                k
+                for k in hub.keys()
+                if not k.endswith(".pyi")
+            ];
+            assert len(leftover_jac) == 0 , (
+                f"expected non-stub ASTs cleared after outermost get_bytecode of {p}; "
+                f"hub still has {leftover_jac[:8]}"
+            );
+        }
+    } finally {
+        if old_rebuild is None {
+            os.environ.pop("JAC_REBUILD", None);
+        } else {
+            os.environ["JAC_REBUILD"] = old_rebuild;
+        }
+    }
+}
