@@ -6,8 +6,6 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .config.config_loader { get_scale_config }
-import from .deploy.target.factory { DeploymentTargetFactory }
-import from .observability.factory { UtilityFactory }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
@@ -15,6 +13,21 @@ import from jaclang.runtimelib.storage { Storage }
 # imported lazily inside the hook bodies below so that `import jaclang` -- which
 # now always loads this built-in plugin -- never pulls the serve runtime closure.
 # The deps arrive in the project .jac/venv via the capability registry.
+obj DeployFactories {
+    has utility: type,
+        target: type;
+}
+
+def _load_deploy_factories -> DeployFactories {
+    # Lazy import: DeploymentTargetFactory (deploy/target/*, kubernetes) and
+    # UtilityFactory (observability/*) pull in large subtrees that a local
+    # `jac start`/`jac serve` dev server never touches. Importing them at module
+    # scope forced those modules to compile on every server start.
+    import from .observability.factory { UtilityFactory }
+    import from .deploy.target.factory { DeploymentTargetFactory }
+    return DeployFactories(utility=UtilityFactory, target=DeploymentTargetFactory);
+}
+
 def _print_autodetect_banner(routes: dict[str, str]) {
     names = sorted(routes.keys());
     plural = "s" if len(names) != 1 else "";
@@ -236,7 +249,8 @@ def deploy_destroy(
 
     scale_config = get_scale_config();
 
-    logger = UtilityFactory.create_logger('standard');
+    factories = _load_deploy_factories();
+    logger = factories.utility.create_logger('standard');
 
     if target in ('kubernetes', 'kubernetes-microservice') {
         target_config = scale_config.get_kubernetes_config();
@@ -264,7 +278,7 @@ def deploy_destroy(
         return 1;
     }
 
-    deployment_target = DeploymentTargetFactory.create(target, target_config, logger);
+    deployment_target = factories.target.create(target, target_config, logger);
     deployment_target.destroy(app_name, component);
 
     if component {
@@ -288,7 +302,8 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
 
     scale_config = get_scale_config();
 
-    logger = UtilityFactory.create_logger('standard');
+    factories = _load_deploy_factories();
+    logger = factories.utility.create_logger('standard');
 
     if target == 'kubernetes' {
         target_config = scale_config.get_kubernetes_config();
@@ -296,7 +311,7 @@ def deploy_status(file_path: str, target: str = "kubernetes") -> int {
         target_config = scale_config.get_section(target);
     }
 
-    deployment_target = DeploymentTargetFactory.create(target, target_config, logger);
+    deployment_target = factories.target.create(target, target_config, logger);
     app_name = target_config.get('app_name', 'jaseci');
 
     status_data = deployment_target.get_full_status(app_name);

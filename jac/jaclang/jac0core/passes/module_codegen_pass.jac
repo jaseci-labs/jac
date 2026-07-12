@@ -67,6 +67,10 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         return result;
     }
 
+    static def has_native_context_stmts(module: uni.Module) -> bool {
+        return bool(ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE));
+    }
+
     static def archetype_refs(nd: uni.UniNode) -> list[str] {
         names: list[str] = [];
         for nm in nd.get_all_sub_nodes(uni.Name) {
