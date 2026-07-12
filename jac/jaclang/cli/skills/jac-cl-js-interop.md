@@ -18,7 +18,7 @@ now = new(Date);
 evt = new(CustomEvent, "my-event", {"detail": {"key": "value"}});
 params = new(URLSearchParams, window.location.search);
 m = new(Map);
-promise = new(Promise, lambda(resolve: any, reject: any) {
+promise = new(Promise, lambda (resolve: any, reject: any) {
     resolve.call(None, result);
 });
 ```
@@ -29,7 +29,7 @@ A callback held in a variable/dict and invoked later must be called with `.call(
 
 ```
 msgHandler = onMessage;                      # assign to a local first
-ws.onmessage = lambda(e: any) {
+ws.onmessage = lambda (e: any) {
     msgHandler.call(None, JSON.parse(e.data));
 };
 ```
@@ -53,7 +53,7 @@ glob _ws: any = None;
 def:pub connectWs(url: str) {
     _ws = new(WebSocket, url);
     _ws.onopen = lambda { console.log("[ws] connected"); };
-    _ws.onmessage = lambda(event: any) {
+    _ws.onmessage = lambda (event: any) {
         try { handleMessage(JSON.parse(event.data)); }
         except Exception as e { console.error("[ws] message error:", e); }
     };
@@ -76,7 +76,7 @@ Dispatch: `window.dispatchEvent(new(CustomEvent, "theme-change", {"detail": {"th
 
 ```
 useEffect(lambda {
-    handler = lambda(e: any) { theme = e.detail.theme; };
+    handler = lambda (e: any) { theme = e.detail.theme; };
     window.addEventListener("theme-change", handler);
     return lambda { window.removeEventListener("theme-change", handler); };
 }, []);

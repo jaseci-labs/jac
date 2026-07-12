@@ -1344,8 +1344,8 @@ def example() {
 
     # Using lambdas in pipe chains
     result = numbers
-        |> (lambda x: list : [i * 2 for i in x])
-        |> (lambda x: list : [i for i in x if i > 10])
+        |> (lambda (x: list) { [i * 2 for i in x]; })
+        |> (lambda (x: list) { [i for i in x if i > 10]; })
         |> sum;
 }
 ```

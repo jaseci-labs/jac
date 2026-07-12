@@ -91,7 +91,7 @@ def:pub LLMMetricsPage -> JsxElement {
                         <input
                             type="checkbox"
                             checked={autoRefresh}
-                            onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                            onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
                             className="rounded border-line bg-surface-2 text-teal-500 focus:ring-teal-500"
                         />
                         Auto-refresh

@@ -134,6 +134,6 @@ with entry {
         "micro suite",
         MICRO_JAC_FILES,
         micro_suite_combined_test,
-        id_fn=lambda f : Path(f).stem
+        id_fn=lambda (f) { Path(f).stem; }
     );
 }

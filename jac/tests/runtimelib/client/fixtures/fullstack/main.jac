@@ -98,13 +98,13 @@ cl {
                 <p data-testid="server-message">{serverMessage}</p>
                 <button
                     data-testid="ping-btn"
-                    onClick={lambda e: any { handlePing(); }}
+                    onClick={lambda (e: any) { handlePing(); }}
                 >
                     Ping Backend
                 </button>
                 <button
                     data-testid="create-btn"
-                    onClick={lambda e: any { handleCreateItem(); }}
+                    onClick={lambda (e: any) { handleCreateItem(); }}
                 >
                     Create Item
                 </button>
@@ -207,14 +207,14 @@ cl {
                     type="text"
                     data-testid="username-input"
                     value={username}
-                    onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                     placeholder="username"
                 />
                 <input
                     type="password"
                     data-testid="password-input"
                     value={password}
-                    onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                     placeholder="password"
                 />
                 <button data-testid="signup-old" onClick={do_signup_old}>

@@ -243,6 +243,9 @@ jobs:
     uses: ./.github/workflows/build-binaries.yml
     with:
       tag: v${{ needs.resolve.outputs.version }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # Reveal draft as published + latest once every asset is attached. Gated on
   # build-binaries: a failed leg skips this, so a half-built draft never becomes
