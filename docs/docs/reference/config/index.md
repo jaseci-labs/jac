@@ -2,7 +2,7 @@
 
 The `jac.toml` file is the central configuration for Jac projects -- similar to `pyproject.toml` in Python or `package.json` in Node.js. It defines project metadata (name, version, entry point), manages dependencies (both PyPI and npm packages), sets defaults for CLI commands (test verbosity, server port, lint rules), configures built-in capabilities (LLM models, deployment targets), and supports environment-specific profiles (development vs. production).
 
-You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac add` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
+You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac install <pkg>` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
 
 `jac` commands locate `jac.toml` by walking up from the current working directory. The only exception is `jac install -e <path>`, which reads `jac.toml` from the resolved `<path>` so editable installs work from anywhere.
 
@@ -134,7 +134,7 @@ ffmpeg = "*"
 | Range | `">=1.0,<2.0"` | 1.x only |
 | Compatible | `"~=1.4.2"` | 1.4.x |
 
-> **Default behavior:** When you run `jac add requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back.
+> **Default behavior:** When you run `jac install requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back.
 
 ---
 
@@ -276,7 +276,10 @@ Defaults for `jac check`:
 ```toml
 [check]
 print_errs = true   # Print errors to console
+untyped-external = "warn"   # "error" escalates undeclared npm/PyPI imports to E1120
 ```
+
+`untyped-external` controls how `jac check` reports imports from external modules that ship no type information (no `.d.ts` for client npm packages, no `py.typed`/`.pyi` on the Python side). The default warns once per import with **`W1102`** and types the binding as foreign `any`. Set `untyped-external = "error"` to require declarations and emit **`E1120`** instead. See [npm import type checking](../plugins/jac-client.md#npm-import-type-checking-jac-check) in the jac-client reference.
 
 #### [check.lint]
 

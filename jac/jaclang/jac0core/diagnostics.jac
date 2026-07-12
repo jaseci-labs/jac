@@ -111,7 +111,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0021", Category.SYNTAX, "Expected :<+ or :+> to close connect operator"
      ),
      E0022 = _err(
-         "E0022", Category.SYNTAX, "Expected ':' or '{{' after lambda parameters"
+         "E0022",
+         Category.SYNTAX,
+         "Expected '{{' after lambda parameters",
+         help="Lambda bodies are braced; a single expression statement is the implicit return, e.g. 'lambda (x: int) { x + 1; }'."
      ),
      E0023 = _err(
          "E0023", Category.SYNTAX, "Expected augmented assignment in for...to...by step"
@@ -126,7 +129,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0025",
          Category.SYNTAX,
          "JavaScript arrow function syntax ('=>') is not supported in Jac",
-         help="Use Jac lambda syntax instead: 'lambda e: ChangeEvent { ... }' or 'lambda x: int : x + 1'."
+         help="Use Jac lambda syntax instead: 'lambda (e: ChangeEvent) { ... }' or 'lambda (x: int) { x + 1; }'."
      ),
      E0026 = _err(
          "E0026",
@@ -563,9 +566,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Lambda parameter '{name}' has no type and none could be inferred from context",
          "Jac is strictly typed: a lambda's parameter types must be known. Annotate the"
-         " parameter, e.g. `lambda x: int : x + 1` (the return type is still inferred), or"
+         " parameter, e.g. `lambda (x: int) { x + 1; }` (the return type is still inferred), or"
          " place the lambda where its type is fixed by context — passed as a typed callback"
-         " (`sorted(xs, key=lambda x: ...)`) or bound to a `Callable`-typed target."
+         " (`sorted(xs, key=lambda (x) { ... })`) or bound to a `Callable`-typed target."
      ),
      E1120 = _err(
          "E1120",

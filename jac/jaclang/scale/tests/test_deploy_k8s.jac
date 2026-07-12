@@ -1,7 +1,4 @@
-import base64;
-import json;
 import os;
-import subprocess;
 import time;
 import requests;
 import importlib.resources;
@@ -27,139 +24,6 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-
-def _get_git_config -> tuple[str, str, str] {
-    try {
-        current_dir = os.path.dirname(os.path.abspath(__file__));
-        git_root = subprocess.check_output(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=current_dir,
-            text=True,
-            stderr=subprocess.PIPE
-        ).strip();
-
-        repo_url = None;
-        branch = None;
-        commit = None;
-
-        if (
-            "GITHUB_HEAD_REF" in os.environ
-            and os.environ["GITHUB_HEAD_REF"]
-            and "GITHUB_EVENT_PATH" in os.environ
-        ) {
-            try {
-                with open(os.environ["GITHUB_EVENT_PATH"]) as f {
-                    event_data = json.load(f);
-                }
-
-                if "pull_request" in event_data {
-                    pr_data = event_data["pull_request"];
-                    head_repo = pr_data.get("head", {}).get("repo");
-                    base_repo = pr_data.get("base", {}).get("repo");
-                    if head_repo and base_repo {
-                        head_full_name = head_repo.get("full_name", "");
-                        base_full_name = base_repo.get("full_name", "");
-                        if head_full_name != base_full_name {
-                            repo_url = head_repo.get("clone_url");
-                            branch = os.environ.get("GITHUB_HEAD_REF");
-                            commit = pr_data.get("head", {}).get("sha");
-                            print(f"Detected fork-based PR from {head_full_name}");
-                        } else {
-                            repo_url = base_repo.get("clone_url");
-                            branch = "main";
-                            commit = pr_data.get("base", {}).get("sha");
-                            print(
-                                f"Detected non-fork PR in {base_full_name}, using main branch"
-                            );
-                        }
-                    }
-                }
-            } except (FileNotFoundError, json.JSONDecodeError, KeyError) as e {
-                print(f"Warning: Could not parse GitHub event data: {e}");
-            }
-        }
-
-        if not repo_url {
-            repo_url = subprocess.check_output(
-                ["git", "remote", "get-url", "origin"], cwd=git_root, text=True
-            ).strip();
-        }
-
-        if not branch {
-            if "GITHUB_HEAD_REF" in os.environ and os.environ["GITHUB_HEAD_REF"] {
-                branch = os.environ["GITHUB_HEAD_REF"];
-            } elif "GITHUB_REF_NAME" in os.environ {
-                branch = os.environ["GITHUB_REF_NAME"];
-            } elif "GITHUB_REF" in os.environ {
-                ref = os.environ["GITHUB_REF"];
-                if ref.startswith("refs/heads/") {
-                    branch = ref.replace("refs/heads/", "");
-                } elif ref.startswith("refs/tags/") {
-                    branch = ref.replace("refs/tags/", "");
-                }
-            }
-            if not branch {
-                branch = subprocess.check_output(
-                    ["git", "branch", "--show-current"], cwd=git_root, text=True
-                ).strip();
-            }
-            if not branch {
-                try {
-                    branch = subprocess.check_output(
-                        ["git", "symbolic-ref", "--short", "HEAD"],
-                        cwd=git_root,
-                        text=True,
-                        stderr=subprocess.PIPE
-                    ).strip();
-                } except subprocess.CalledProcessError {
-                    try {
-                        branches = (
-                            subprocess.check_output(
-                                ["git", "branch", "-r", "--contains", "HEAD"],
-                                cwd=git_root,
-                                text=True
-                            ).strip().split(
-                                "\n"
-                            )
-                        );
-
-                        if branches and branches[0] {
-                            branch = (
-                                branches[0].strip().replace("origin/", "").replace(
-                                    "*", ""
-                                ).strip()
-                            );
-                        }
-                    } except subprocess.CalledProcessError {
-                        0;
-                    }
-
-                    if not branch {
-                        branch = subprocess.check_output(
-                            ["git", "rev-parse", "--short", "HEAD"],
-                            cwd=git_root,
-                            text=True
-                        ).strip();
-                        print(
-                            f"Warning: Detached HEAD state, using short commit as branch: {branch}"
-                        );
-                    }
-                }
-            }
-        }
-
-        if not commit {
-            commit = subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=git_root, text=True
-            ).strip();
-        }
-
-        return (repo_url, branch, commit);
-    } except subprocess.CalledProcessError as e {
-        print(f"Error getting git config: {e}");
-        raise;
-    }
-}
 
 def _request_with_retry(
     method: str,
@@ -562,19 +426,18 @@ test "default redis memory limit does not emit a headroom warning" {
 
 test "redis pod resources propagate from [scale.database] config" {
     fake_config = SimpleNamespace(
-        get_database_config=lambda :
-            {
-                'redis_max_memory': '200mb',
-                'redis_cpu_request': '500m',
-                'redis_cpu_limit': '2000m',
-                'redis_memory_request': '1Gi',
-                'redis_memory_limit': '4Gi'
-            },
-        get_kubernetes_config=lambda : {}
+        get_database_config=lambda { {
+            'redis_max_memory': '200mb',
+            'redis_cpu_request': '500m',
+            'redis_cpu_limit': '2000m',
+            'redis_memory_request': '1Gi',
+            'redis_memory_limit': '4Gi'
+        }; },
+        get_kubernetes_config=lambda { {}; }
     );
 
     with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda : fake_config
+        redis_module, 'get_scale_config', lambda { fake_config; }
     ) {
         redis_provider = DatabaseProviderFactory.create(
             'kubernetes_redis', None, {'app_name': 'test-app'}
@@ -594,20 +457,19 @@ test "redis pod resources propagate from [scale.database] config" {
 
 test "redis warns when memory limit lacks headroom over maxmemory" {
     fake_config = SimpleNamespace(
-        get_database_config=lambda :
-            {
-                'redis_max_memory': '200mb',
-                'redis_cpu_request': '250m',
-                'redis_cpu_limit': '1000m',
-                'redis_memory_request': '128Mi',
-                'redis_memory_limit': '256Mi'
-            },
-        get_kubernetes_config=lambda : {}
+        get_database_config=lambda { {
+            'redis_max_memory': '200mb',
+            'redis_cpu_request': '250m',
+            'redis_cpu_limit': '1000m',
+            'redis_memory_request': '128Mi',
+            'redis_memory_limit': '256Mi'
+        }; },
+        get_kubernetes_config=lambda { {}; }
     );
     mock_logger = unittest.mock.MagicMock();
 
     with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda : fake_config
+        redis_module, 'get_scale_config', lambda { fake_config; }
     ) {
         with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
             redis_provider = DatabaseProviderFactory.create(

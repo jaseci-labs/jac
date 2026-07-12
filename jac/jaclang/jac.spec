@@ -65,7 +65,7 @@ spawn ::= "spawn" unpack | unpack ("spawn" unpack)*
 
 unpack ::= "*" ref | ref
 
-ref ::= "&" NAME? await_expr | await_expr
+ref ::= "&" ("(" await_expr | NAME? await_expr) | await_expr
 
 await_expr ::= "await" pipe_call | pipe_call
 
@@ -215,14 +215,7 @@ comprehension_clauses ::= compr_clause compr_clause*
 compr_clause ::= "async"? "for" atomic_chain "in" pipe_call ("if" walrus_assign)*
 
 lambda_expr ::=
-    "lambda" ("(" func_params ")" | lambda_params) ("->" expression)?
-    (":" expression | "{" code_block_stmts "}" | expression)
-
-lambda_params ::= ("*" | "/" | lambda_param)*
-
-lambda_param ::=
-    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
-    (":" pipe)? ("=" expression)?
+    "lambda" ("(" func_params ")")? ("->" expression)? "{" code_block_stmts "}"
 
 jsx_element ::=
     "<>" jsx_children "</>"
@@ -246,6 +239,7 @@ jsx_child ::=
           (
               "for"
               | "while"
+              | "forever"
               | "if"
               | "match"
               | "switch"
@@ -308,6 +302,8 @@ statement ::=
     | import_stmt
     | if_stmt
     | while_stmt
+    | region_stmt
+    | forever_stmt
     | for_stmt
     | with_stmt
     | try_stmt
@@ -340,6 +336,10 @@ elif_stmt ::= "elif" expression "{" code_block_stmts "}" (elif_stmt | else_stmt)
 else_stmt ::= "else" "{" code_block_stmts "}"
 
 while_stmt ::= "while" expression "{" code_block_stmts "}" else_stmt?
+
+region_stmt ::= "{" code_block_stmts "}"
+
+forever_stmt ::= "forever" "{" code_block_stmts "}"
 
 for_stmt ::=
     "async"? "for" atomic_chain (

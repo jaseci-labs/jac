@@ -450,6 +450,10 @@ impl UniPass.enter_while_stmt(nd: uni.WhileStmt) -> None {
     self.default_enter(nd);
 }
 
+impl UniPass.enter_forever_stmt(nd: uni.ForeverStmt) -> None {
+    self.default_enter(nd);
+}
+
 impl UniPass.enter_with_stmt(nd: uni.WithStmt) -> None {
     self.default_enter(nd);
 }
@@ -935,6 +939,10 @@ impl UniPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
 }
 
 impl UniPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
+    self.default_exit(nd);
+}
+
+impl UniPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
     self.default_exit(nd);
 }
 

@@ -23,7 +23,9 @@ obj KubernetesConfig(BaseConfig) {
         autoscaler_initial_cooldown: int = 0,
         extra_triggers: list[dict] = [],
         health_check_path: str = '/docs',
-        python_image: str = 'python:3.12-slim',
+        # Empty = auto: the official channel image when published, else
+        # python:3.12-slim (resolve_pod_base_image decides at deploy time).
+        python_image: str = '',
         busybox_image: str = 'busybox:1.36',
         wait_image: str = 'busybox',
         pvc_size: str = '5Gi',
@@ -179,7 +181,7 @@ obj KubernetesConfig(BaseConfig) {
             autoscaler_initial_cooldown=config.get('autoscaler_initial_cooldown', 0),
             extra_triggers=config.get('extra_triggers', []),
             health_check_path=config.get('health_check_path', '/docs'),
-            python_image=config.get('python_image', 'python:3.12-slim'),
+            python_image=config.get('python_image', ''),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),
             wait_image=config.get('wait_image', 'busybox'),
             pvc_size=config.get('pvc_size', '5Gi'),

@@ -2073,6 +2073,20 @@ impl PyastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     ];
 }
 
+impl PyastGenPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.While(
+                `test=self.sync(ast3.Constant(value=True)),
+                body=[
+                    cast(ast3.stmt, stmt) for stmt in self.resolve_stmt_block(nd.body)
+                ],
+                orelse=[]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_with_stmt(nd: uni.WithStmt) -> None {
     with_node = ast3.AsyncWith if nd.is_async else ast3.With;
     nd.gen.py_ast = [
@@ -2594,6 +2608,12 @@ impl PyastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
 
 impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     if isinstance(nd.body, `list) {
+        tail = nd.tail_return_expr();
+
+        if tail is not None {
+            self._emit_lambda_expr_body(nd, tail);
+            return;
+        }
         if (nd.signature and nd.signature.gen.py_ast) {
             arguments = cast(ast3.arguments, self.py_ast_val(nd.signature));
         } else {
@@ -2638,6 +2658,12 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
         ];
         return;
     }
+    self._emit_lambda_expr_body(nd, cast(uni.Expr, nd.body));
+}
+
+impl PyastGenPass._emit_lambda_expr_body(
+    nd: uni.LambdaExpr, body_node: uni.Expr
+) -> None {
     if nd.signature {
         self._remove_lambda_param_annotations(nd.signature);
     }
@@ -2651,7 +2677,6 @@ impl PyastGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             jac_node=nd
         );
     }
-    body_node = cast(uni.Expr, nd.body);
     body_expr = cast(ast3.expr, self.py_ast_val(body_node));
     nd.gen.py_ast = [
         self.sync(ast3.Lambda(args=arguments, body=body_expr), jac_node=nd)

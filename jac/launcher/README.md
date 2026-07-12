@@ -16,15 +16,15 @@ build trivial: the launcher links only libc, with **zero Python at build time**.
 | File | Role |
 |---|---|
 | `launcher.zig` | Process entry. Materializes the payload, `dlopen`s the bundled libpython, `dlsym`s ~6 `Py_*` functions, runs the jaclang boot dance. No `@cImport`, no Python headers. |
-| `runtime.zig` | Pure-Zig payload materialization + the SOLE owner of the on-disk trailer format: `parseTrailer`, cache resolution, gzip+tar extract into `~/.cache/jac/rt/<hash16>-<pathhash>` (path-folded so co-located checkouts don't collide), stale GC, plus the `.jab`-overlay helpers (`overlayForPath`, `appendOverlay`, `graftRuntime`). Unit-tested (`zig build test`). |
-| `pack.zig` | Build-time tool: `[stub][payload.tar.gz][trailer]` -> final `jac`. |
-| `payload.zig` | Build-time payload tool (pure std): `fetch-pbs` (HTTP + verify + zstd-extract a python-build-standalone tree), `fetch-typeshed` (HTTP tarball + sha256-verify the stdlib stubs), `mkpayload` (stage CPython + jaclang site, tar+gzip). Shells out only to the fetched pbs python for pip + JIR precompile. Replaces the old bash/curl/git/zstd/tar scripts. |
-| `tests/fixture.zig` | base64 tar.gz fixture for the materialize unit test. |
+| `runtime.zig` | Pure-Zig payload materialization + the SOLE owner of the on-disk trailer format: `parseTrailer`, cache resolution, zstd+tar extract into `~/.cache/jac/rt/<hash16>-<pathhash>` (path-folded so co-located checkouts don't collide), stale GC, plus the `.jab`-overlay helpers (`overlayForPath`, `appendOverlay`, `graftRuntime`). Unit-tested (`zig build test`). |
+| `pack.zig` | Build-time tool: `[stub][payload.tar.zst][trailer]` -> final `jac`. |
+| `payload.zig` | Build-time payload tool: `fetch-pbs` (HTTP + verify + zstd-extract a python-build-standalone tree), `fetch-typeshed` (HTTP tarball + sha256-verify the stdlib stubs), `mkpayload` (stage CPython + jaclang site, tar + zstd -19 via vendored libzstd -- Zig std decodes zstd but has no encoder; the dep is pinned in build.zig.zon and compiled into this build-time tool only). Shells out only to the fetched pbs python for pip + JIR precompile. Replaces the old bash/curl/git/zstd/tar scripts. |
+| `tests/fixture.zig` | base64 tar.zst fixture for the materialize unit test. |
 
 ## Binary shape
 
 ```
-jac = [ launcher stub (links libc only) ][ runtime.tar.gz ][ trailer ]
+jac = [ launcher stub (links libc only) ][ runtime.tar.zst ][ trailer ]
 trailer = "JACBIN01" | payload_len(u64 LE) | sha256_hex(64)   (80 bytes, at EOF)
 ```
 
@@ -74,7 +74,7 @@ zig build                            # -> zig-out/bin/jac
 ./zig-out/bin/jac --version
 
 zig build -Dpayload-progress         # same, but stream the payload build live
-zig build -Dpayload=/tmp/p.tar.gz    # pack a prebuilt payload (skip fetch+assemble)
+zig build -Dpayload=/tmp/p.tar.zst   # pack a prebuilt payload (skip fetch+assemble)
 ```
 
 Build-time host deps: just `zig` + network (plus an optional, best-effort

@@ -148,7 +148,7 @@ def build_podenv(namespace: str, this_env: list, pods: list, prefixes: list) -> 
             }
         );
     }
-    pod_rows.sort(key=lambda p : p.get("pod", ""));
+    pod_rows.sort(key=lambda (p) { p.get("pod", ""); });
     return {
         "available": True,
         "namespace": namespace,
@@ -168,7 +168,7 @@ def _own_env_entries -> list {
     for (k, v) in os.environ.items() {
         out.append({"name": str(k), "value": str(v), "source": ""});
     }
-    out.sort(key=lambda e : e.get("name", ""));
+    out.sort(key=lambda (e) { e.get("name", ""); });
     return out;
 }
 

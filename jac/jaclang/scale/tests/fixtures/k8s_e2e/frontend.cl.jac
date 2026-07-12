@@ -308,8 +308,8 @@ def:pub app -> any {
             password={authPassword}
             error={error}
             loading={loading}
-            onUsernameChange={lambda e: any { authUsername = e.target.value; }}
-            onPasswordChange={lambda e: any { authPassword = e.target.value; }}
+            onUsernameChange={lambda (e: any) { authUsername = e.target.value; }}
+            onPasswordChange={lambda (e: any) { authPassword = e.target.value; }}
             onSubmit={handleSubmit}
             onToggleMode={lambda {
                 isSignup = not isSignup;

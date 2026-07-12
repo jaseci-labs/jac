@@ -450,6 +450,10 @@ impl WhileStmt.accept_enter(v: UniPass) -> None {
     v.enter_while_stmt(self);
 }
 
+impl ForeverStmt.accept_enter(v: UniPass) -> None {
+    v.enter_forever_stmt(self);
+}
+
 impl WithStmt.accept_enter(v: UniPass) -> None {
     v.enter_with_stmt(self);
 }
@@ -936,6 +940,10 @@ impl VisitStmt.accept_exit(v: UniPass) -> None {
 
 impl WhileStmt.accept_exit(v: UniPass) -> None {
     v.exit_while_stmt(self);
+}
+
+impl ForeverStmt.accept_exit(v: UniPass) -> None {
+    v.exit_forever_stmt(self);
 }
 
 impl WithStmt.accept_exit(v: UniPass) -> None {

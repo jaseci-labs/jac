@@ -136,10 +136,10 @@ test "auto-marshal install_native_wrappers" {
 
     # Create a mock module with Python functions
     mock_mod = types.ModuleType("mock_arithmetic");
-    mock_mod.add = lambda a: int , b: int : a + b;
-    mock_mod.multiply = lambda a: int , b: int : a * b;
-    mock_mod.negate = lambda x: int : -x;
-    mock_mod.float_add = lambda a: float , b: float : a + b;
+    mock_mod.add = lambda (a: int, b: int) { a + b; };
+    mock_mod.multiply = lambda (a: int, b: int) { a * b; };
+    mock_mod.negate = lambda (x: int) { -x; };
+    mock_mod.float_add = lambda (a: float, b: float) { a + b; };
 
     # install_native_wrappers only accelerates bindings the module itself
     # defines (matching __module__) so it never clobbers imported foreign
@@ -479,13 +479,13 @@ test "native tokenize matches python lexer for unicode (byte offsets)" {
         for i in range(len(py_tokens)) {
             nt = na_tokens[i];
             pt = py_tokens[i];
-            getn = (lambda k : nt[k])
+            getn = (lambda (k) { nt[k]; })
                 if isinstance(nt, dict)
-                else (lambda k : getattr(nt, k));
+                else (lambda (k) { getattr(nt, k); });
             nloc = getn("loc");
-            getl = (lambda k : nloc[k])
+            getl = (lambda (k) { nloc[k]; })
                 if isinstance(nloc, dict)
-                else (lambda k : getattr(nloc, k));
+                else (lambda (k) { getattr(nloc, k); });
             assert getn("value") == pt.value , (
                 f"{source!r} tok{i} value: native={getn('value')!r} python={pt.value!r}"
             );

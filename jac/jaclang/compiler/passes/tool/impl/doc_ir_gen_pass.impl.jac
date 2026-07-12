@@ -1400,6 +1400,10 @@ impl DocIRGenPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
     nd.gen.doc_ir = self.format_simple_stmt_with_body(nd, nd.body);
 }
 
+impl DocIRGenPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    nd.gen.doc_ir = self.format_simple_stmt_with_body(nd, nd.body);
+}
+
 impl DocIRGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
     parts: list[doc.DocType] = [];
     indent_parts: list[doc.DocType] = [];

@@ -52,14 +52,14 @@ def:pub ResetPage -> JsxElement {
                             label="Current Password"
                             type="password"
                             value={resetCurrent}
-                            onChange={lambda e: any { resetCurrent = e.target.value; }}
+                            onChange={lambda (e: any) { resetCurrent = e.target.value; }}
                             className="mb-4"
                         />
                         <Input
                             label="New Password"
                             type="password"
                             value={resetNew}
-                            onChange={lambda e: any { resetNew = e.target.value; }}
+                            onChange={lambda (e: any) { resetNew = e.target.value; }}
                             placeholder="Min 8 characters"
                             className="mb-4"
                         />
@@ -67,7 +67,7 @@ def:pub ResetPage -> JsxElement {
                             label="Confirm Password"
                             type="password"
                             value={resetConfirm}
-                            onChange={lambda e: any { resetConfirm = e.target.value; }}
+                            onChange={lambda (e: any) { resetConfirm = e.target.value; }}
                             className="mb-5"
                         />
                         <Button type="submit" className="w-full">

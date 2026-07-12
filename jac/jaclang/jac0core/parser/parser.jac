@@ -77,6 +77,7 @@ import from jaclang.jac0core.unitree {
     ElseIf,
     ElseStmt,
     WhileStmt,
+    ForeverStmt,
     InForStmt,
     IterForStmt
 }
@@ -242,6 +243,7 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_TO: Tok.KW_TO.value,
          TokenKind.KW_BY: Tok.KW_BY.value,
          TokenKind.KW_WHILE: Tok.KW_WHILE.value,
+         TokenKind.KW_FOREVER: Tok.KW_FOREVER.value,
          TokenKind.KW_MATCH: Tok.KW_MATCH.value,
          TokenKind.KW_SWITCH: Tok.KW_SWITCH.value,
          TokenKind.KW_CASE: Tok.KW_CASE.value,
@@ -493,8 +495,6 @@ obj Parser {
     def parse_comprehension_clauses -> list;
     def parse_compr_clause -> InnerCompr;
     def parse_lambda_expr -> Expr;
-    def parse_lambda_params(sig_kid: list) -> list;
-    def parse_lambda_param -> ParamVar;
     def parse_jsx_element -> Expr;
     def _parse_jsx_dynamic_tag(open_kid: list) -> Expr;
     def _consume_jsx_dynamic_close(close_kid: list);
@@ -517,6 +517,7 @@ obj Parser {
     def parse_else_stmt -> ElseStmt;
     def parse_while_stmt -> WhileStmt;
     def parse_region_stmt -> RegionStmt;
+    def parse_forever_stmt -> ForeverStmt;
     def parse_for_stmt;
     def parse_try_stmt -> TryStmt;
     def parse_except_handler -> Except;

@@ -32,6 +32,7 @@ import from jaclang.jac0core.unitree {
     ElseIf,
     ElseStmt,
     WhileStmt,
+    ForeverStmt,
     InForStmt,
     IterForStmt
 }
@@ -348,6 +349,7 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_TO,
         TokenKind.KW_BY,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
         TokenKind.KW_CASE,
@@ -604,6 +606,7 @@ impl Parser.synchronize{
         if self.check_any(
             TokenKind.KW_IF,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_FOR,
             TokenKind.KW_DEF,
             TokenKind.KW_CAN,
@@ -2752,13 +2755,11 @@ impl Parser.parse_lambda_expr -> Expr {
     lambda_tok = self.consume_uni(TokenKind.KW_LAMBDA);
 
     sig_kid: list = [];
-    if self.check(TokenKind.LPAREN) {
-        self.advance();
+    params: list = [];
+    if self.match_tok(TokenKind.LPAREN) {
         sig_kid.append(self.make_uni_token(self.previous()));
         params = self.parse_func_params(sig_kid);
         sig_kid.append(self.consume_uni(TokenKind.RPAREN));
-    } else {
-        params = self.parse_lambda_params(sig_kid);
     }
     return_type = None;
     ret_hint_uni: UniToken | None = None;
@@ -2767,13 +2768,9 @@ impl Parser.parse_lambda_expr -> Expr {
         return_type = self.parse_expression();
     }
     body: Expr | list;
-    colon_uni: UniToken | None = None;
     lbrace_uni: UniToken | None = None;
     rbrace_uni: UniToken | None = None;
-    if self.match_tok(TokenKind.COLON) {
-        colon_uni = self.make_uni_token(self.previous());
-        body = self.parse_expression();
-    } elif self.match_tok(TokenKind.LBRACE) {
+    if self.match_tok(TokenKind.LBRACE) {
         lbrace_uni = self.make_uni_token(self.previous());
         body = self.parse_code_block_stmts();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
@@ -2807,9 +2804,6 @@ impl Parser.parse_lambda_expr -> Expr {
     }
 
     if not isinstance(body, list) {
-        if colon_uni {
-            kid.append(colon_uni);
-        }
         kid.append(body);
     } else {
         if lbrace_uni {
@@ -2821,132 +2815,6 @@ impl Parser.parse_lambda_expr -> Expr {
         }
     }
     return LambdaExpr(body=body, kid=kid, signature=signature);
-}
-
-impl Parser.parse_lambda_params(sig_kid: list) -> list {
-    params: list = [];
-    while self.check_name()
-    or self.check_any(
-        TokenKind.KW_SELF,
-        TokenKind.KW_PROPS,
-        TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
-        TokenKind.KW_HERE,
-        TokenKind.KW_VISITOR
-    )
-    or self.is_keyword_token()
-    or self.check_any(TokenKind.STAR_MUL, TokenKind.STAR_POW, TokenKind.DIV) {
-        if self.check(TokenKind.STAR_MUL)
-        and self.check_peek_any(
-            TokenKind.COMMA, TokenKind.COLON, TokenKind.RETURN_HINT, TokenKind.LBRACE
-        ) {
-            star_tok = self.advance();
-            star_uni = self.make_uni_token(star_tok);
-            sig_kid.append(star_uni);
-        } elif self.check(TokenKind.DIV)
-        and self.check_peek_any(
-            TokenKind.COMMA, TokenKind.COLON, TokenKind.RETURN_HINT, TokenKind.LBRACE
-        ) {
-            div_tok = self.advance();
-            div_uni = self.make_uni_token(div_tok);
-            sig_kid.append(div_uni);
-        } else {
-            pv = self.parse_lambda_param();
-            if pv is None {
-                break;
-            }
-            params.append(pv);
-            sig_kid.append(pv);
-        }
-        if not self.match_tok(TokenKind.COMMA) {
-            break;
-        }
-        sig_kid.append(self.make_uni_token(self.previous()));
-    }
-    return params;
-}
-
-impl Parser.parse_lambda_param -> ParamVar | None {
-    unpack: UniToken | None = None;
-    if self.check_any(TokenKind.STAR_MUL, TokenKind.STAR_POW) {
-        unpack_tok = self.advance();
-        unpack = self.make_uni_token(unpack_tok);
-    }
-
-    if self.check_name() {
-        name_tok = self.expect_name();
-        name = self.make_name_or_special(name_tok);
-    } elif self.check_any(
-        TokenKind.KW_SELF, TokenKind.KW_PROPS, TokenKind.KW_HERE, TokenKind.KW_VISITOR
-    ) {
-        name_tok = self.advance();
-        name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
-    } elif self.is_builtin_type_token() {
-        name_tok = self.advance();
-        name = self.make_name_or_special(name_tok);
-    } elif self.is_keyword_token() {
-        kw = self.current().value;
-        self.emit_diag(E0013, keyword=kw, context="lambda parameter");
-        name_tok = self.advance();
-        name = self.make_name_or_special(name_tok);
-    } else {
-        return None;
-    }
-    type_tag: SubTag | None = None;
-
-    if self.check(TokenKind.COLON) {
-        next_tok = self.peek();
-        is_type_annotation = False;
-        if next_tok.kind in [
-            TokenKind.NAME,
-            TokenKind.TYP_STRING,
-            TokenKind.TYP_INT,
-            TokenKind.TYP_FLOAT,
-            TokenKind.TYP_LIST,
-            TokenKind.TYP_TUPLE,
-            TokenKind.TYP_SET,
-            TokenKind.TYP_DICT,
-            TokenKind.TYP_BOOL,
-            TokenKind.TYP_BYTES,
-            TokenKind.TYP_ANY,
-            TokenKind.TYP_TYPE
-        ] {
-            after_type = self.peek(2);
-            if after_type.kind in [
-                TokenKind.COMMA,
-                TokenKind.EQ,
-                TokenKind.COLON,
-                TokenKind.RETURN_HINT,
-                TokenKind.LBRACE
-            ] {
-                is_type_annotation = True;
-            }
-        }
-        if is_type_annotation {
-            self.advance();
-            lam_colon = self.make_uni_token(self.previous());
-            te = self.parse_pipe();
-            type_tag = SubTag(tag=te, kid=[lam_colon, te]);
-        }
-    }
-    default_val: Expr | None = None;
-    if self.match_tok(TokenKind.EQ) {
-        default_val = self.parse_expression();
-    }
-    kid: list = [];
-    if unpack {
-        kid.append(unpack);
-    }
-    kid.append(name);
-    if type_tag {
-        kid.append(type_tag);
-    }
-    if default_val {
-        kid.append(default_val);
-    }
-    return ParamVar(
-        name=name, unpack=unpack, type_tag=type_tag, value=default_val, kid=kid
-    );
 }
 
 impl Parser.parse_jsx_element -> Expr {
@@ -3221,6 +3089,7 @@ impl Parser.parse_jsx_child -> Expr {
         if self.check_any(
             TokenKind.KW_FOR,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_IF,
             TokenKind.KW_MATCH,
             TokenKind.KW_SWITCH,
@@ -3849,6 +3718,7 @@ impl Parser.parse_statement{
     and self.check_peek_any(
         TokenKind.KW_FOR,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_IF,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
@@ -3911,6 +3781,9 @@ impl Parser.parse_statement{
     and self.current().value == "region"
     and self.check_peek(TokenKind.LBRACE) {
         return self.parse_region_stmt();
+    }
+    if self.check(TokenKind.KW_FOREVER) {
+        return self.parse_forever_stmt();
     }
 
     if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR) {
@@ -4182,6 +4055,17 @@ impl Parser.parse_region_stmt -> RegionStmt {
     kid.extend(body);
     kid.append(rb_uni);
     return RegionStmt(body=body, kid=kid);
+}
+
+impl Parser.parse_forever_stmt -> ForeverStmt {
+    forever_uni = self.consume_uni(TokenKind.KW_FOREVER);
+    lb_uni = self.consume_uni(TokenKind.LBRACE);
+    body = self.parse_code_block_stmts();
+    rb_uni = self.consume_uni(TokenKind.RBRACE);
+    kid: list = [forever_uni, lb_uni];
+    kid.extend(body);
+    kid.append(rb_uni);
+    return ForeverStmt(body=body, kid=kid);
 }
 
 impl Parser.parse_for_stmt{

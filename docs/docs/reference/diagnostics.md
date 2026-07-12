@@ -300,6 +300,7 @@ Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bin
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
 | `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `E1120` | Import of '{name}' from untyped external module '{module}' (no type declarations found) |
 | `W1103` | '{name}' is ambient and does not need to be imported from '{module}' |
 | `W1104` | Use the lowercase `any` keyword instead of importing `Any` from typing |
 
