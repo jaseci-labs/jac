@@ -1,9 +1,12 @@
 """Unit tests for `RcElisionProofPass`: which `b = a` move sites it proves safe.
 
-The pass is native-owned and unconditional, so these fixtures compile with
-`type_check=False` -- the ownership checker never runs, and the `na_move_lowerable`
-marks come purely from the native liveness proof. Each fixture function has a
-single `bN = a` candidate; we assert the mark per candidate by its target name.
+The proof is native-owned: it lives in the native codegen schedule, which only
+runs for native-context modules. These fixtures are plain `.jac` files compiled
+with `type_check=False` (so the ownership checker never runs over the deliberate
+UAF channels), then we drive `RcElisionProofPass` directly over the CFG-built IR
+so the `na_move_lowerable` marks come purely from the native liveness proof. Each
+fixture function has a single `bN = a` candidate; we assert the mark per candidate
+by its target name.
 
 This locks the conservative rule set: only a LOCAL source whose every use is an
 alias-value into a plain local, and which is dead-out at the move site, is proven.
@@ -16,6 +19,7 @@ import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
+import from jaclang.compiler.passes.native.rc_elision_proof_pass { RcElisionProofPass }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
@@ -27,6 +31,9 @@ def move_marks(fixture: str) -> dict[str, bool] {
     ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), type_check=False);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
+    # Native codegen (which schedules this pass) is gated off for plain `.jac`
+    # modules, so run the proof directly over the CFG-built IR to populate marks.
+    RcElisionProofPass(ir_in=ir, prog=prog);
     out: dict[str, bool] = {};
     for nd in ir.get_all_sub_nodes(uni.Assignment) {
         if len(nd.target) == 1 {

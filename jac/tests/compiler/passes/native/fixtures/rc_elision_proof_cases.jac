@@ -45,7 +45,7 @@ def f_fieldstore() -> int {
 # 5. Source captured by a closure -> disqualified -> b5 NOT.
 def f_closure() -> int {
     a: own Box = Box(v=1);
-    g = lambda : a;
+    g = lambda { a; };
     b5 = a;
     return take(b5);
 }
