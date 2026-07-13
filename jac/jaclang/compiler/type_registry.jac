@@ -60,24 +60,16 @@ obj JacTypeRegistry {
         return name in self._exception_parents;
     }
 
-    def exception_parent(name: str) -> str | None {
-        return self._exception_parents.get(name, None);
-    }
-
     def exception_entries -> list[tuple[str, str | None]] {
         return [(name, parent) for (name, parent) in self._exception_parents.items()];
     }
 
     def exception_type_id(name: str) -> int {
+        # Exception is the sole dense sentinel (throw/match base). Every other
+        # name — builtins included — is SHA256-derived so registry insertion
+        # order never renumbers the ABI.
         if name == "Exception" {
             return 0;
-        }
-        idx = 0;
-        for n in self._exception_parents.keys() {
-            idx += 1;
-            if n == name {
-                return idx;
-            }
         }
         import hashlib;
         digest = hashlib.sha256(name.encode("utf-8")).hexdigest();

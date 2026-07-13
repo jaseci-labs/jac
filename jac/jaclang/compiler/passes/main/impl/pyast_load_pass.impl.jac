@@ -556,7 +556,7 @@ impl PyastBuildPass.proc_slice(nd: py_ast.Slice) -> uni.IndexSlice {
     }
 }
 
-impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr {
+impl PyastBuildPass._proc_compr(nd: py_ast.AST, compr_cls: type) -> uni.UniNode {
     elt = self.convert(nd.elt);
     generators = [self.convert(gen) for gen in nd.generators];
     valid = [
@@ -568,10 +568,14 @@ impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr {
         raise self.ice('Length mismatch in list comp generators');
     }
     if isinstance(elt, uni.Expr) {
-        return uni.SetCompr(out_expr=elt, compr=valid, kid=[elt, *valid]);
+        return compr_cls(out_expr=elt, compr=valid, kid=[elt, *valid]);
     } else {
         raise self.ice();
     }
+}
+
+impl PyastBuildPass.proc_set_comp(nd: py_ast.SetComp) -> uni.ListCompr {
+    return self._proc_compr(nd, uni.SetCompr);
 }
 
 impl PyastBuildPass.proc_set(nd: py_ast.Set) -> uni.SetVal {
@@ -869,21 +873,7 @@ impl PyastBuildPass.proc_match(nd: py_ast.Match) -> uni.MatchStmt {
 }
 
 impl PyastBuildPass.proc_list_comp(nd: py_ast.ListComp) -> uni.ListCompr {
-    elt = self.convert(nd.elt);
-    generators = [self.convert(gen) for gen in nd.generators];
-    valid = [
-        gen
-        for gen in generators
-        if isinstance(gen, uni.InnerCompr)
-    ];
-    if (len(generators) != len(valid)) {
-        raise self.ice('Length mismatch in list comp generators');
-    }
-    if isinstance(elt, uni.Expr) {
-        return uni.ListCompr(out_expr=elt, compr=valid, kid=[elt, *valid]);
-    } else {
-        raise self.ice();
-    }
+    return self._proc_compr(nd, uni.ListCompr);
 }
 
 impl PyastBuildPass.proc_list(nd: py_ast.List) -> uni.ListVal {
@@ -1116,21 +1106,7 @@ impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.GlobalStmt {
 }
 
 impl PyastBuildPass.proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr {
-    elt = self.convert(nd.elt);
-    generators = [self.convert(gen) for gen in nd.generators];
-    valid = [
-        gen
-        for gen in generators
-        if isinstance(gen, uni.InnerCompr)
-    ];
-    if (len(generators) != len(valid)) {
-        raise self.ice('Length mismatch in list comp generators');
-    }
-    if isinstance(elt, uni.Expr) {
-        return uni.GenCompr(out_expr=elt, compr=valid, kid=[elt, *valid]);
-    } else {
-        raise self.ice();
-    }
+    return self._proc_compr(nd, uni.GenCompr);
 }
 
 impl PyastBuildPass.proc_formatted_value(

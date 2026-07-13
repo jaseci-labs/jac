@@ -36,10 +36,24 @@ test "a .c file compiles through the front-end as C (parse_str dispatch)" {
 test "a .c file is preprocessed on the way in (system include resolves)" {
     src = "#include <stddef.h>\nint two(void) { return 2; }\n";
     (prog, mod) = _compile_src("inc.c", src);
-    # <stddef.h> resolves through the vendored fake-libc include path; without
-    # preprocessing pycparser would choke on the directive.
+    # <stddef.h> resolves through the LP64 porting include tree (ahead of fake
+    # libc); without preprocessing pycparser would choke on the directive.
     assert not prog.errors_had , f"errors: {[str(e) for e in prog.errors_had]}";
     assert "def two() -> int" in mod.unparse();
+}
+
+test "LP64 porting size_t / uint64_t / Py_ssize_t lift as Jac int" {
+    import from tests.compiler.c2jac.support { FIXTURES }
+    import from jaclang.compiler.cfront.lift { lift_c_file }
+    import from jaclang.compiler.cfront.lp64_scalars { LP64_SCALARS }
+    assert LP64_SCALARS["size_t"] == "u64";
+    assert LP64_SCALARS["Py_ssize_t"] == "i64";
+    path = os.path.join(FIXTURES, "porting_widths.c");
+    res = lift_c_file(path);
+    out = res.module.unparse();
+    assert "def port_add_size(a: int, b: int) -> int" in out , out;
+    assert "def port_widen(x: int) -> int" in out , out;
+    assert "def port_ssize(n: int) -> int" in out , out;
 }
 
 test "a .i file is taken as already-preprocessed C" {

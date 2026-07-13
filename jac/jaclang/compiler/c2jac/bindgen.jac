@@ -12,6 +12,7 @@ import from jaclang.compiler.cfront.c_types {
     is_plain_char_ptr,
     TypeKind
 }
+import from jaclang.compiler.cfront.lp64_scalars { LP64_SCALARS }
 import from jaclang.compiler.cfront.cbind_ir {
     build_binding_module,
     FuncDesc,
@@ -32,25 +33,7 @@ glob _FFI_SCALARS: set = {
          "f64",
 
      },
-     _MAX_TYPEDEF_DEPTH: int = 16,
-     _STDINT_SCALARS: dict = {
-         "int8_t": "i8",
-         "uint8_t": "u8",
-         "int16_t": "i16",
-         "uint16_t": "u16",
-         "int32_t": "i32",
-         "uint32_t": "u32",
-         "int64_t": "i64",
-         "uint64_t": "u64",
-         "intmax_t": "i64",
-         "uintmax_t": "u64",
-         "intptr_t": "i64",
-         "uintptr_t": "u64",
-         "ptrdiff_t": "i64",
-         "size_t": "u64",
-         "ssize_t": "i64",
-
-     };
+     _MAX_TYPEDEF_DEPTH: int = 16;
 
 obj BindReport {
     has functions: int = 0,
@@ -120,8 +103,8 @@ def _collect_typedefs(file_ast: object) -> dict {
 def _scalar_for_names(names: list, typedefs: dict, depth: int = 0) -> str {
     if names and len(names) == 1 and depth < _MAX_TYPEDEF_DEPTH {
         nm = names[0];
-        if nm in _STDINT_SCALARS {
-            return _STDINT_SCALARS[nm];
+        if nm in LP64_SCALARS {
+            return LP64_SCALARS[nm];
         }
         if nm in typedefs {
             return _scalar_for_names(typedefs[nm], typedefs, depth + 1);

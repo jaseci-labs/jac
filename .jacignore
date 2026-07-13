@@ -25,7 +25,6 @@ es_unparse.jac
 execution.impl.jac
 execution.jac
 executor.jac
-fantasy_trading_game.jac
 grammar_extract_pass.jac
 helpers.jac
 help.jac
@@ -115,7 +114,6 @@ api.cl.jac
 compiler_bridge.impl.jac
 jac/jaclang/cli/impl/console.impl.jac
 doc_ir_gen_pass.impl.jac
-level_genarator.jac
 MetricsPage.cl.jac
 na_compile_pass.impl.jac
 scheduler.impl.jac
@@ -154,7 +152,6 @@ kubernetes_target.jac
 layout_pass.impl.jac
 layout_pass.jac
 local.impl.jac
-math_solver.jac
 memory.impl.jac
 model.impl.jac
 monitoring.jac
@@ -167,7 +164,6 @@ normalize_pass.impl.jac
 plugin.impl.jac
 primitives_native.jac
 pyjac_ast_link_pass.impl.jac
-receipt_analyzer.jac
 resources.impl.jac
 resources.jac
 semantic_analysis_pass.jac
@@ -229,7 +225,6 @@ comprehensions.impl.jac
 construct_types.impl.jac
 container_helpers.impl.jac
 context_mgr.impl.jac
-debate_agent.jac
 dep_registry.impl.jac
 dependencies.impl.jac
 evaluator_util_methods.impl.jac
@@ -258,33 +253,33 @@ toolcall.impl.jac
 transport.impl.jac
 tuples.impl.jac
 types.impl.jac
-wikipedia_react.jac
-# Built-in shadcn handler (jac/jaclang/cli/shadcn) — dynamic `config: any` +
-# Path/file-IO false positives (sibling plugin.jac / plugin.impl.jac ignored above)
+# Built-in shadcn handler + CLI (jac/jaclang/cli/shadcn) — dynamic `config: any` +
+# Path/file-IO false positives (e.g. Path(__file__) in template discovery). The
+# CLI was renamed from plugin.jac/plugin.impl.jac to cli.jac/cli.impl.jac.
 shadcn_handler.jac
 shadcn_handler.impl.jac
+jac/jaclang/cli/shadcn/cli.jac
+jac/jaclang/cli/shadcn/impl/cli.impl.jac
 theme_handler.jac
-# c2jac / jac2c C-transpiler passes (#7145 / #6973). These lift C into Jac and
-# re-emit it, driving the vendored pycparser whose `c_ast` nodes have no
-# Jac-visible stubs — every AST access resolves to `object`/`Any` and trips the
-# re-enabled "has no attribute" + Unknown-assignment diagnostics. Same stub-gap
-# class as the ignored `passes/native/llvm/*` package; the code is valid and
-# exercised by the c2jac/jac2c test suites.
+# c2jac C-ingestion frontend (#7145 / #6973). These lift C into Jac, driving the
+# vendored pycparser whose `c_ast` nodes have no Jac-visible stubs — every AST
+# access resolves to `object`/`Any` and trips the re-enabled "has no attribute"
+# diagnostics. Same stub-gap class as the ignored `passes/native/llvm/*` package;
+# the code is valid and exercised by the c2jac/jac2c test suites. (The jac2c
+# emit side — `passes/c/c_gen_pass` and the `ownership_facts`/`type_facts`
+# passes — walks Jac IR, not pycparser, so it is type-checked normally.)
 jac/jaclang/compiler/c2jac/bindgen.jac
 jac/jaclang/compiler/cfront/c_common.jac
 jac/jaclang/compiler/cfront/c_dataflow.jac
 jac/jaclang/compiler/cfront/c_idioms.jac
+jac/jaclang/compiler/cfront/c_types.jac
 jac/jaclang/compiler/cfront/cbind_ir.jac
 jac/jaclang/compiler/cfront/clib_bind.jac
 jac/jaclang/compiler/cfront/enum_prepass.jac
 jac/jaclang/compiler/cfront/lift.jac
 jac/jaclang/compiler/cfront/preprocess.jac
-jac/jaclang/compiler/passes/c/c_gen_pass.jac
-jac/jaclang/compiler/passes/c/impl/c_gen_pass.impl.jac
 jac/jaclang/compiler/passes/main/cast_load_pass.jac
 jac/jaclang/compiler/passes/main/impl/cast_load_pass.impl.jac
-jac/jaclang/compiler/passes/main/ownership_facts_pass.jac
-jac/jaclang/compiler/passes/main/impl/ownership_facts_pass.impl.jac
 # c2jac-generated demonstration output: lifted C double-pointer params
 # (`rotating_node_t **root`) surface as `object`, and the `typedef struct
 # rotating_node_s rotating_node_t` alias does not carry the struct's fields.
@@ -298,10 +293,6 @@ jac-py/Modules/rotatingtree.jac
 docs/docs/assets/examples/object_spatial/finding_common_interests.jac
 docs/docs/assets/examples/object_spatial/object_spatial_references.jac
 docs/docs/examples/chapter_10_school.jac
-jac/examples/mcp-dashboard-studio/backend/service.jac
-jac/examples/mcp-dashboard-studio/backend/utils.jac
-jac/examples/mcp-dashboard-studio/frontend/Dashboard.cl.jac
-jac/examples/mcp-dashboard-studio/frontend/Dashboard.impl.jac
 jac/examples/mobui/hello/main.jac
 jac/examples/mobui/littlex/main.jac
 jac/examples/mobui/littlex/theme.cl.jac
@@ -313,9 +304,6 @@ jac/jaclang/byllm/cli.jac
 jac/jaclang/byllm/config_loader.jac
 jac/jaclang/byllm/examples/agentic_ai/friendzone-lite/friendzone_lite.jac
 jac/jaclang/byllm/examples/agentic_ai/task-manager-lite/task_manager.jac
-jac/jaclang/byllm/examples/microbenchmarks/text_to_type.jac
-jac/jaclang/byllm/examples/prompt_caching/react_with_caching.jac
-jac/jaclang/byllm/examples/vision/personality_finder.jac
 jac/jaclang/byllm/impl/config_loader.impl.jac
 jac/jaclang/byllm/impl/mcp.impl.jac
 jac/jaclang/byllm/llm.impl/modelpool.impl.jac
@@ -343,6 +331,7 @@ jac/jaclang/cli/commands/eject.jac
 jac/jaclang/cli/commands/eject_targets/backend.jac
 jac/jaclang/cli/commands/guide.jac
 jac/jaclang/cli/commands/impl/browse.impl.jac
+jac/jaclang/cli/commands/impl/build.impl.jac
 jac/jaclang/cli/commands/impl/code.impl.jac
 jac/jaclang/cli/commands/impl/db.impl.jac
 jac/jaclang/cli/commands/impl/eject.impl.jac
@@ -444,6 +433,7 @@ jac/jaclang/runtimelib/client/targets/desktop/native/cef/cef_subprocess.na.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/host_boot.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/inprocess_dispatch.jac
 jac/jaclang/runtimelib/client/targets/desktop/native/oauth_broker.jac
+jac/jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.na.jac
 jac/jaclang/runtimelib/client/targets/desktop/plugin/plugin_host.jac
 jac/jaclang/runtimelib/client/targets/impl/mobile_target.impl.jac
 jac/jaclang/runtimelib/client/targets/impl/pwa_target.impl.jac

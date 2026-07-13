@@ -1,4 +1,3 @@
-import ast as ast3;
 import hashlib;
 import re;
 import from collections.abc { Sequence }
@@ -242,6 +241,7 @@ obj CodeGenTarget {
         osp_model: (OspModel | None) = None,
         native_compat: bool = False,
         layout_registry: any = None,
+        type_facts: any = None,
         ownership_facts: any = None,
         _clib_paths: list[str] = field(default_factory=`list),
         _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict),

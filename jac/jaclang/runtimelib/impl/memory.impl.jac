@@ -60,20 +60,6 @@ impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
     yield ;
 }
 
-impl Memory.query_by_type(
-    arch_type_name: str, field_filter: (dict | None) = None
-) -> Generator[Anchor, None, None] {
-    plan = QueryPlan(
-        node_type_final=arch_type_name, field_predicates=field_filter or {}
-    );
-    if not (plan.needs() <= self.capabilities()) {
-        return;
-    }
-    for anchor in self.execute_plan(plan) {
-        yield anchor;
-    }
-}
-
 def _anchor_to_row(anchor: Anchor) -> tuple {
     data = Serializer.serialize(anchor, include_type=True);
     data_json = json.dumps(data);
@@ -473,6 +459,33 @@ impl Memory.is_recoverable_quarantine(id: UUID) -> bool {
     return False;
 }
 
+impl Memory.find(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> Generator[Anchor, None, None] {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                yield anchor;
+            }
+        }
+    }
+}
+
+impl Memory.find_one(
+    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
+) -> (Anchor | None) {
+    id_list = [ids] if isinstance(ids, UUID) else list(ids);
+    for id in id_list {
+        if (anchor := self.get(id)) {
+            if filter is None or filter(anchor) {
+                return anchor;
+            }
+        }
+    }
+    return None;
+}
+
 impl VolatileMemory.postinit -> None {
     self.__mem__ = {};
 }
@@ -517,33 +530,6 @@ impl VolatileMemory.get_roots -> Generator[Root, None, None] {
             yield cast(Root, anchor.archetype);
         }
     }
-}
-
-impl VolatileMemory.find(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> Generator[Anchor, None, None] {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.__mem__.get(id)) {
-            if filter is None or filter(anchor) {
-                yield anchor;
-            }
-        }
-    }
-}
-
-impl VolatileMemory.find_one(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> (Anchor | None) {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.__mem__.get(id)) {
-            if filter is None or filter(anchor) {
-                return anchor;
-            }
-        }
-    }
-    return None;
 }
 
 impl VolatileMemory.get_mem -> dict[UUID, Anchor] {
@@ -828,33 +814,6 @@ impl SqliteMemory.get_roots -> Generator[Root, None, None] {
             yield cast(Root, anchor.archetype);
         }
     }
-}
-
-impl SqliteMemory.find(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> Generator[Anchor, None, None] {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                yield anchor;
-            }
-        }
-    }
-}
-
-impl SqliteMemory.find_one(
-    ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
-) -> (Anchor | None) {
-    id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                return anchor;
-            }
-        }
-    }
-    return None;
 }
 
 def _canonical_json(val: object) -> str {

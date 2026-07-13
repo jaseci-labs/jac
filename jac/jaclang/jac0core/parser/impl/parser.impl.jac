@@ -32,6 +32,7 @@ import from jaclang.jac0core.unitree {
     ElseIf,
     ElseStmt,
     WhileStmt,
+    ForeverStmt,
     InForStmt,
     IterForStmt
 }
@@ -336,6 +337,7 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_TO,
         TokenKind.KW_BY,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
         TokenKind.KW_CASE,
@@ -519,10 +521,10 @@ impl Parser.parse_access_tag -> SubTag | None {
     return None;
 }
 
-impl Parser.make_string(tok: Token) -> String {
-    return String(
+impl Parser._make_literal(node_cls: type, name: str, tok: Token) -> object {
+    return node_cls(
         orig_src=self.get_source(),
-        name=Tok.STRING.value,
+        name=name,
         value=tok.value,
         line=tok.loc.line,
         end_line=tok.loc.end_line,
@@ -531,6 +533,10 @@ impl Parser.make_string(tok: Token) -> String {
         pos_start=tok.loc.pos_start,
         pos_end=tok.loc.pos_end
     );
+}
+
+impl Parser.make_string(tok: Token) -> String {
+    return self._make_literal(String, Tok.STRING.value, tok);
 }
 
 impl Parser.make_string_from_value(value: str) -> String {
@@ -548,73 +554,23 @@ impl Parser.make_string_from_value(value: str) -> String {
 }
 
 impl Parser.make_int(tok: Token) -> Int {
-    return Int(
-        orig_src=self.get_source(),
-        name=Tok.INT.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Int, Tok.INT.value, tok);
 }
 
 impl Parser.make_float(tok: Token) -> Float {
-    return Float(
-        orig_src=self.get_source(),
-        name=Tok.FLOAT.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Float, Tok.FLOAT.value, tok);
 }
 
 impl Parser.make_bool(tok: Token) -> Bool {
-    return Bool(
-        orig_src=self.get_source(),
-        name=Tok.BOOL.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Bool, Tok.BOOL.value, tok);
 }
 
 impl Parser.make_null(tok: Token) -> Null {
-    return Null(
-        orig_src=self.get_source(),
-        name=Tok.NULL.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(Null, Tok.NULL.value, tok);
 }
 
 impl Parser.make_ellipsis(tok: Token) -> EllipsisLit {
-    return EllipsisLit(
-        orig_src=self.get_source(),
-        name=Tok.ELLIPSIS.value,
-        value=tok.value,
-        line=tok.loc.line,
-        end_line=tok.loc.end_line,
-        col_start=tok.loc.col_start,
-        col_end=tok.loc.col_end,
-        pos_start=tok.loc.pos_start,
-        pos_end=tok.loc.pos_end
-    );
+    return self._make_literal(EllipsisLit, Tok.ELLIPSIS.value, tok);
 }
 
 impl Parser.make_semi -> Semi {
@@ -638,6 +594,7 @@ impl Parser.synchronize{
         if self.check_any(
             TokenKind.KW_IF,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_FOR,
             TokenKind.KW_DEF,
             TokenKind.KW_CAN,
@@ -3231,6 +3188,7 @@ impl Parser.parse_jsx_child -> Expr {
         if self.check_any(
             TokenKind.KW_FOR,
             TokenKind.KW_WHILE,
+            TokenKind.KW_FOREVER,
             TokenKind.KW_IF,
             TokenKind.KW_MATCH,
             TokenKind.KW_SWITCH,
@@ -3859,6 +3817,7 @@ impl Parser.parse_statement{
     and self.check_peek_any(
         TokenKind.KW_FOR,
         TokenKind.KW_WHILE,
+        TokenKind.KW_FOREVER,
         TokenKind.KW_IF,
         TokenKind.KW_MATCH,
         TokenKind.KW_SWITCH,
@@ -3916,6 +3875,9 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.KW_WHILE) {
         return self.parse_while_stmt();
+    }
+    if self.check(TokenKind.KW_FOREVER) {
+        return self.parse_forever_stmt();
     }
 
     if self.check(TokenKind.KW_ASYNC) and self.check_peek(TokenKind.KW_FOR) {
@@ -4176,6 +4138,17 @@ impl Parser.parse_while_stmt -> WhileStmt {
         kid.append(else_body);
     }
     return WhileStmt(condition=condition, body=body, else_body=else_body, kid=kid);
+}
+
+impl Parser.parse_forever_stmt -> ForeverStmt {
+    forever_uni = self.consume_uni(TokenKind.KW_FOREVER);
+    lb_uni = self.consume_uni(TokenKind.LBRACE);
+    body = self.parse_code_block_stmts();
+    rb_uni = self.consume_uni(TokenKind.RBRACE);
+    kid: list = [forever_uni, lb_uni];
+    kid.extend(body);
+    kid.append(rb_uni);
+    return ForeverStmt(body=body, kid=kid);
 }
 
 impl Parser.parse_for_stmt{

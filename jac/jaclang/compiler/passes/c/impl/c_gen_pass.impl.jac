@@ -26,22 +26,17 @@ impl CGenPass.is_ref_arch(arch: uni.Archetype) -> bool {
 }
 
 impl CGenPass.classify(mod: uni.Module) {
-    next_id = C_FIRST_USER_TYPEID;
     for stmt in mod.body {
         if isinstance(stmt, uni.Archetype) and self.is_ref_arch(stmt) {
             name = stmt.name.value;
-            self.type_ids[name] = next_id;
-            next_id += 1;
+            self.type_ids[name] = stable_type_id(name);
         }
     }
     for stmt in mod.body {
         if isinstance(stmt, uni.Archetype) {
             self.index_arch(stmt);
         } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
-            sig = stmt.signature;
-            self.func_returns[stmt.name_ref.sym_name] = self.ret_type_name(
-                sig.return_type if isinstance(sig, uni.FuncSignature) else None
-            );
+            self.local_funcs[stmt.name_ref.sym_name] = True;
         }
     }
     self.classify_imports(mod);
@@ -49,7 +44,9 @@ impl CGenPass.classify(mod: uni.Module) {
 
 impl CGenPass.classify_imports(mod: uni.Module) {
     import from jaclang.jac0core.program { JacProgram }
-    for path in direct_import_paths(mod) {
+    queue: list[str] = direct_import_paths(mod);
+    while queue {
+        path = queue.pop(0);
         if path in self.seen_imports {
             continue;
         }
@@ -65,31 +62,33 @@ impl CGenPass.classify_imports(mod: uni.Module) {
                 continue;
             }
         }
+        if sub not in self.imported_mods {
+            self.imported_mods.append(sub);
+        }
         self.index_imported(sub);
+        for nxt in direct_import_paths(sub) {
+            if nxt not in self.seen_imports {
+                queue.append(nxt);
+            }
+        }
     }
 }
 
 impl CGenPass.index_imported(sub: uni.Module) {
-    next_id = C_FIRST_USER_TYPEID + len(self.type_ids);
     for stmt in sub.body {
         if isinstance(stmt, uni.Archetype) and self.is_ref_arch(stmt) {
             name = stmt.name.value;
             if name in self.type_ids {
                 continue;
             }
-            self.type_ids[name] = next_id;
-            next_id += 1;
+            self.type_ids[name] = stable_type_id(name);
             self.extern_types.append(name);
             self.index_arch(stmt);
         } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
             fname = stmt.name_ref.sym_name;
-            if fname in self.func_returns {
+            if fname in self.local_funcs or fname in self.extern_func_defs {
                 continue;
             }
-            sig = stmt.signature;
-            self.func_returns[fname] = self.ret_type_name(
-                sig.return_type if isinstance(sig, uni.FuncSignature) else None
-            );
             self.extern_funcs.append(fname);
             self.extern_func_defs[fname] = stmt;
         }
@@ -99,7 +98,6 @@ impl CGenPass.index_imported(sub: uni.Module) {
 impl CGenPass.index_arch(arch: uni.Archetype) {
     name = arch.name.value;
     self.arch_nodes[name] = arch;
-    (fmap, rmap) = arch_type_maps(arch);
     omap: dict[str, str] = {};
     dmap: dict[str, uni.Ability] = {};
     for member in (arch.body or []) {
@@ -109,14 +107,19 @@ impl CGenPass.index_arch(arch: uni.Archetype) {
             dmap[mname] = member;
         }
     }
-    self.field_types[name] = fmap;
-    self.method_returns[name] = rmap;
     self.method_owners[name] = omap;
     self.method_defs[name] = dmap;
 }
 
 impl CGenPass.gen_module(mod: uni.Module) {
     self.classify(mod);
+    self.tf = self.shared_type_facts
+    or get_shared_type_facts([mod] + self.imported_mods, self.prog);
+    if self.strict_c and not self.tf.ok {
+        raise ValueError(
+            "jac2c: semantic type facts unavailable -- refusing strict C emission"
+        );
+    }
     self.load_layout(mod);
     try {
         self.facts = get_ownership_facts(mod, self.prog);
@@ -241,8 +244,11 @@ impl CGenPass.load_layout(mod: uni.Module) {
     for cname in self.type_ids.keys() {
         lay = self.layout.get_layout(cname);
         if lay is not None {
+            if cname not in self.tf.field_types {
+                self.tf.field_types[cname] = {};
+            }
             for fi in lay.fields {
-                self.field_types[cname][fi.name] = fi.type_tag;
+                self.tf.field_types[cname][fi.name] = fi.type_tag;
             }
         }
     }
@@ -285,7 +291,7 @@ impl CGenPass.resolve_introducer(cls: str, m: str) -> str {
     return found;
 }
 
-impl CGenPass.layout_fields(name: str) -> list {
+impl CGenPass.layout_fields(name: str) -> list[FieldInfo] {
     if self.layout is not None {
         lay = self.layout.get_layout(name);
         if lay is not None {
@@ -390,6 +396,9 @@ impl CGenPass.gen_vtable(arch: uni.Archetype) -> str {
         return "";
     }
     lay = self.layout.get_layout(name);
+    if lay is None {
+        return "";
+    }
 
     slots: list[str] = [];
     for ms in lay.methods {
@@ -485,17 +494,17 @@ impl CGenPass.gen_dtor(arch: uni.Archetype) -> str {
     return "\n".join(lines);
 }
 
-impl CGenPass.all_fields(arch: uni.Archetype) -> list {
+impl CGenPass.all_fields(arch: uni.Archetype) -> list[tuple[str, str]] {
     name = arch.name.value;
     lfields = self.layout_fields(name);
     if lfields {
-        out: list = [];
+        out: list[tuple[str, str]] = [];
         for fi in lfields {
             out.append((fi.name, fi.type_tag));
         }
         return out;
     }
-    out2: list = [];
+    out2: list[tuple[str, str]] = [];
     for hv in self.field_list(arch) {
         out2.append((hv.name.value, self.type_name(hv.type_tag)));
     }
@@ -520,11 +529,7 @@ impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
     }
     init = self.find_init(arch);
     if isinstance(init, uni.Ability) {
-        if isinstance(init.signature, uni.FuncSignature) and init.signature.params {
-            for p in init.signature.params {
-                self.local_types[p.name.value] = self.type_name(p.type_tag);
-            }
-        }
+        self.local_types = ScopeTypes.for_ability(init.signature, name);
         body = self.gen_block(init.body, 1);
         if body {
             lines.append(body);
@@ -535,8 +540,8 @@ impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
     return "\n".join(lines);
 }
 
-impl CGenPass.field_defaults(arch: uni.Archetype) -> list {
-    out: list = [];
+impl CGenPass.field_defaults(arch: uni.Archetype) -> list[tuple[str, uni.Expr]] {
+    out: list[tuple[str, uni.Expr]] = [];
     for cname in reversed(self.mro_of(arch.name.value)) {
         anode = self.arch_nodes.get(cname);
         if anode is None {
@@ -554,25 +559,22 @@ impl CGenPass.field_defaults(arch: uni.Archetype) -> list {
 impl CGenPass.gen_method(arch: uni.Archetype, ab: uni.Ability) -> str {
     cname = arch.name.value;
     self.enter_method(cname);
-
     sig = ab.signature;
     self.cur_ret_cty = self.c_type(
         self.ret_type_name(
             sig.return_type if isinstance(sig, uni.FuncSignature) else None
         )
     );
-    if isinstance(sig, uni.FuncSignature) and sig.params {
-        for p in sig.params {
-            self.local_types[p.name.value] = self.type_name(p.type_tag);
-        }
-    }
-    body = self.gen_block(ab.body, 1);
+    body = self.emit_ability_body(sig, ab.body, cname);
     return self.method_head(arch, ab) + " {\n" + body + "\n}";
 }
 
 impl CGenPass.enter_method(cls: str) {
     self.local_types = {};
     self.owned_locals = [];
+    self.func_cleanup = "";
+    self.exc_hoists = [];
+    self.func_hoists = [];
     self.cur_class = cls;
     self.local_types["self"] = cls;
 }
@@ -597,8 +599,6 @@ impl CGenPass.func_head(ab: uni.Ability) -> str {
 }
 
 impl CGenPass.gen_func(ab: uni.Ability) -> str {
-    self.local_types = {};
-    self.owned_locals = [];
     self.cur_class = "";
     sig = ab.signature;
     self.cur_ret_cty = self.c_type(
@@ -606,13 +606,51 @@ impl CGenPass.gen_func(ab: uni.Ability) -> str {
             sig.return_type if isinstance(sig, uni.FuncSignature) else None
         )
     );
-    if isinstance(sig, uni.FuncSignature) and sig.params {
-        for p in sig.params {
-            self.local_types[p.name.value] = self.type_name(p.type_tag);
-        }
-    }
-    body = self.gen_block(ab.body, 1);
+    body = self.emit_ability_body(sig, ab.body, "");
     return self.func_head(ab) + " {\n" + body + "\n}";
+}
+
+impl CGenPass.emit_ability_body(sig: object, body: object, self_type: str) -> str {
+    # Probe once with `func_cleanup` unset so returns do not emit orphan
+    # `jac_exc_pop()` when this ability needs no cleanup frame. If wrap is
+    # required, regenerate with the frame name so early returns pop it.
+    self.owned_locals = [];
+    self.exc_hoists = [];
+    self.func_hoists = [];
+    self.local_types = ScopeTypes.for_ability(sig, self_type);
+    self.func_cleanup = "";
+    self.exc_ctr += 1;
+    fc_name = f"_fc{self.exc_ctr}";
+    rendered = self.gen_block(body, 1);
+    if self.owned_locals or self.needs_rt or self.func_hoists {
+        self.owned_locals = [];
+        self.exc_hoists = [];
+        self.func_hoists = [];
+        self.local_types = ScopeTypes.for_ability(sig, self_type);
+        self.func_cleanup = fc_name;
+        rendered = self.wrap_func_body(self.gen_block(body, 1));
+    }
+    return rendered;
+}
+
+impl CGenPass.wrap_func_body(body: str) -> str {
+    # Cleanup-only frame so a raise that longjmps out of this function still
+    # releases owned locals via the landing pad (RC + longjmp composition).
+    if not self.owned_locals and not self.needs_rt and not self.func_hoists {
+        self.func_cleanup = "";
+        return body;
+    }
+    self.needs_rt = True;
+    fc = self.func_cleanup;
+    lines: list[str] = [];
+    for (cty, name) in self.func_hoists {
+        lines.append(f"    {cty} {name} = NULL;");
+    }
+    lines.append(f"    jac_exc_frame {fc};");
+    lines.append(f"    jac_exc_push_cleanup(&{fc});");
+    lines.append(body);
+    lines.append(f"    jac_exc_pop();");
+    return "\n".join(lines);
 }
 
 impl CGenPass.gen_block(stmts: object, ind: int) -> str {
@@ -631,8 +669,37 @@ impl CGenPass.scope_release_lines(pad: str, skip_name: str) -> list[str] {
     out: list[str] = [];
     for v in self.owned_locals {
         if v != skip_name {
+            for u in self.drop_owned(v) {
+                out.append(pad + u);
+            }
             out.append(pad + f"jac_rc_release({v});");
         }
+    }
+    return out;
+}
+
+impl CGenPass.own_local(name: str, cty: str) -> list[str] {
+    # Register an owned RC local. Inside a try, hoist the declaration to
+    # function scope so post-try releases and landing-pad nulling stay in
+    # scope, and track the pointer on the current exception frame.
+    self.owned_locals.append(name);
+    out: list[str] = [];
+    if self.exc_frames {
+        self.exc_hoists.append((cty, name));
+        if (cty, name) not in self.func_hoists {
+            self.func_hoists.append((cty, name));
+        }
+        out.append(f"jac_exc_track({name});");
+    } elif self.func_cleanup {
+        out.append(f"jac_exc_track({name});");
+    }
+    return out;
+}
+
+impl CGenPass.drop_owned(name: str) -> list[str] {
+    out: list[str] = [];
+    if self.exc_frames or self.func_cleanup {
+        out.append(f"jac_exc_untrack({name});");
     }
     return out;
 }
@@ -650,10 +717,11 @@ impl CGenPass.ref_field_store(st: uni.Assignment, pad: str) -> (str | None) {
         return None;
     }
     fname = self.attr_name(tgt.right);
-    if recv_ty not in self.field_types or fname not in self.field_types[recv_ty] {
+    if recv_ty not in self.tf.field_types
+    or fname not in self.tf.field_types[recv_ty] {
         return None;
     }
-    fty = self.field_types[recv_ty][fname];
+    fty = self.tf.field_types[recv_ty][fname];
     if fty not in self.type_ids {
         return None;
     }
@@ -697,17 +765,32 @@ impl CGenPass.ref_local_copy(st: uni.Assignment, pad: str) -> (str | None) {
     }
     name = tgt.value;
     self.local_types[name] = ty;
-    self.owned_locals.append(name);
     cty = self.c_type(ty);
     val = self.gen_expr(st.value);
+    track = self.own_local(name, cty);
     if isinstance(st.value, uni.Name)
     and st.value.value in self.owned_locals
     and self.facts is not None
     and self.facts.is_last_use(st.value) {
-        self.owned_locals.remove(st.value.value);
-        return pad + f"{cty} {name} = {val};";
+        src = st.value.value;
+        untrack = self.drop_owned(src);
+        self.owned_locals.remove(src);
+        if self.exc_frames {
+            lines = [pad + f"{name} = {val};"];
+        } else {
+            lines = [pad + f"{cty} {name} = {val};"];
+        }
+        lines.extend([pad + u for u in untrack]);
+        lines.extend([pad + t for t in track]);
+        return "\n".join(lines);
     }
-    return pad + f"{cty} {name} = {val};\n" + pad + f"jac_rc_retain({name});";
+    if self.exc_frames {
+        lines = [pad + f"{name} = {val};", pad + f"jac_rc_retain({name});"];
+    } else {
+        lines = [pad + f"{cty} {name} = {val};", pad + f"jac_rc_retain({name});"];
+    }
+    lines.extend([pad + t for t in track]);
+    return "\n".join(lines);
 }
 
 impl CGenPass.gen_stmt(st: object, ind: int, is_last: bool) -> str {
@@ -743,6 +826,9 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
         pops = self.exc_pop_lines(pad);
         if st.expr is None {
             lines = pops + self.scope_release_lines(pad, "");
+            if self.func_cleanup {
+                lines.append(pad + "jac_exc_pop();");
+            }
             lines.append(pad + "return;");
             return "\n".join(lines);
         }
@@ -755,16 +841,25 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
 
         argcleanup = self.arg_post;
         self.arg_post = [];
-        if not releases and not pops and not argcleanup {
+        if not releases and not pops and not argcleanup and not self.func_cleanup
+        and not skip_name {
             return pad + "return " + val + ";";
         }
 
         self.tmp_ctr += 1;
         tmp = f"_ret{self.tmp_ctr}";
         lines = [pad + f"{self.cur_ret_cty} {tmp} = {val};"];
+        if skip_name {
+            for u in self.drop_owned(skip_name) {
+                lines.append(pad + u);
+            }
+        }
         lines.extend(pops);
         lines.extend(argcleanup);
         lines.extend(releases);
+        if self.func_cleanup {
+            lines.append(pad + "jac_exc_pop();");
+        }
         lines.append(pad + f"return {tmp};");
         return "\n".join(lines);
     }
@@ -781,7 +876,7 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
         }
         loc = self.ref_local_copy(st, pad);
         if loc is not None {
-            if is_last {
+            if is_last and not self.exc_frames {
                 cleanup = self.scope_release_lines(pad, "");
                 if cleanup {
                     return loc + "\n" + "\n".join(cleanup);
@@ -789,8 +884,11 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
             }
             return loc;
         }
-        rendered = pad + self.gen_assign(st) + ";";
-        if is_last {
+        rendered = pad + self.gen_assign(st);
+        if not rendered.rstrip().endswith(";") {
+            rendered = rendered + ";";
+        }
+        if is_last and not self.exc_frames {
             cleanup = self.scope_release_lines(pad, "");
             if cleanup {
                 return rendered + "\n" + "\n".join(cleanup);
@@ -810,7 +908,7 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
     }
     if isinstance(st, uni.ExprStmt) {
         rendered = pad + self.gen_expr(st.expr) + ";";
-        if is_last {
+        if is_last and not self.exc_frames {
             cleanup = self.scope_release_lines(pad, "");
             if cleanup {
                 return rendered + "\n" + "\n".join(cleanup);
@@ -818,7 +916,9 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
         }
         return rendered;
     }
-    self._unsupported(st, "E4301", stype=type(st).__name__);
+    if isinstance(st, uni.UniNode) {
+        self._unsupported(st, "E4301", stype=type(st).__name__);
+    }
     return pad + f"/* jac2c: unsupported statement {type(st).__name__} */";
 }
 
@@ -862,6 +962,7 @@ impl CGenPass.gen_if(st: uni.IfStmt, ind: int) -> str {
 }
 
 impl CGenPass.exc_pop_lines(pad: str) -> list[str] {
+    # Pop catching try frames only (function cleanup is popped after releases).
     out: list[str] = [];
     i = len(self.exc_frames) - 1;
     while i >= 0 {
@@ -907,18 +1008,23 @@ impl CGenPass.gen_raise(st: uni.RaiseStmt, ind: int) -> str {
     pad = "    " * ind;
     cause = st.cause;
     if cause is None {
-        return pad + "jac_exc_throw((int64_t)jac_exc_current_type(), jac_exc_current_payload());";
+        return pad + "jac_exc_rethrow();";
     }
     cname = self.exc_type_name(cause);
     tid = JAC_TYPE_REGISTRY.exception_type_id(cname);
     payload = "(void *)0";
+    owned_payload = False;
     if isinstance(cause, uni.FuncCall) and cause.params {
         for p in cause.params {
             if isinstance(p, uni.Expr) {
                 payload = "(void *)" + self.gen_expr(p);
+                owned_payload = self.facts is not None and self.facts.is_owned(p);
                 break;
             }
         }
+    }
+    if owned_payload {
+        return pad + f"jac_exc_throw_owned({tid}, {payload});";
     }
     return pad + f"jac_exc_throw({tid}, {payload});";
 }
@@ -931,22 +1037,47 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
     fr = f"_ef{n}";
     handled = f"_eh{n}";
     et = f"_et{n}";
+    owned_at_entry = list(self.owned_locals);
+    saved_hoists = self.exc_hoists;
+    self.exc_hoists = [];
+
+    self.exc_frames.append(fr);
+    body = self.gen_block(st.body, ind + 2);
+    self.exc_frames.pop();
+    hoists = self.exc_hoists;
+    self.exc_hoists = saved_hoists;
+    try_owned = [v for v in self.owned_locals if v not in owned_at_entry];
+
     lines: list[str] = [pad + "{"];
     lines.append(pad + f"    jac_exc_frame {fr};");
     lines.append(pad + f"    int {handled} = 0;");
     lines.append(pad + f"    if (setjmp({fr}.env) == 0) " + "{");
     lines.append(pad + f"        jac_exc_push(&{fr});");
-    self.exc_frames.append(fr);
-    body = self.gen_block(st.body, ind + 2);
-    self.exc_frames.pop();
     if body {
         lines.append(body);
     }
     lines.append(pad + "        jac_exc_pop();");
+    # Try-body locals that survived the try stay owned by the function: re-track
+    # them on the enclosing cleanup frame so a later raise still releases them.
+    for v in try_owned {
+        if v in self.owned_locals {
+            lines.append(pad + f"        jac_exc_track({v});");
+        }
+    }
     lines.append(pad + f"        {handled} = 1;");
     lines.append(pad + "    } else {");
+    # Landing pad already ran in jac_exc_throw's unwind; null hoisted locals
+    # so a later scope_release is a safe no-op on the exceptional path.
+    for (_cty, name) in hoists {
+        lines.append(pad + f"        {name} = NULL;");
+    }
     lines.append(pad + f"        int {et} = (int)jac_exc_current_type();");
     first = True;
+    for v in try_owned {
+        if v in self.owned_locals {
+            self.owned_locals.remove(v);
+        }
+    }
     for exc in (st.excepts or []) {
         cname = self.exc_type_name(exc.ex_type);
         cond = self.exc_match_cond(et, cname);
@@ -956,17 +1087,23 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
         if exc.name is not None {
             bind = exc.name.value;
             lines.append(
-                pad + f"            void *{bind} = jac_exc_current_payload();"
+                pad + f"            void *{bind} = jac_exc_take_payload();"
             );
             lines.append(pad + f"            (void){bind};");
+        } else {
+            lines.append(pad + "            jac_exc_clear();");
         }
-        lines.append(pad + "            jac_exc_clear();");
         hbody = self.gen_block(exc.body, ind + 3);
         if hbody {
             lines.append(hbody);
         }
         lines.append(pad + f"            {handled} = 1;");
         lines.append(pad + "        }");
+    }
+    for v in try_owned {
+        if v not in self.owned_locals {
+            self.owned_locals.append(v);
+        }
     }
     lines.append(pad + "    }");
     if st.finally_body is not None {
@@ -976,7 +1113,7 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
         }
     }
     lines.append(
-        pad + f"    if (!{handled}) " + "{ " + "jac_exc_throw((int64_t)jac_exc_current_type(), jac_exc_current_payload()); }"
+        pad + f"    if (!{handled}) " + "{ " + "jac_exc_rethrow(); }"
     );
     lines.append(pad + "}");
     return "\n".join(lines);
@@ -991,7 +1128,22 @@ impl CGenPass.gen_assign(a: uni.Assignment) -> str {
         if isinstance(tgt_node, uni.Name) {
             self.local_types[tgt_node.value] = tyname;
             if tyname in self.type_ids {
-                self.owned_locals.append(tgt_node.value);
+                track = self.own_local(tgt_node.value, cty);
+                if a.value is not None {
+                    if self.exc_frames {
+                        base = f"{tgt} = " + self.gen_expr(a.value);
+                    } else {
+                        base = f"{cty} {tgt} = " + self.gen_expr(a.value);
+                    }
+                    if track {
+                        return base + "; " + " ".join(track);
+                    }
+                    return base;
+                }
+                if self.exc_frames {
+                    return f"{tgt}";
+                }
+                return f"{cty} {tgt}";
             }
         }
         if a.value is not None {
@@ -1009,7 +1161,16 @@ impl CGenPass.gen_assign(a: uni.Assignment) -> str {
             cty = self.c_type(inferred);
             self.local_types[tgt_node.value] = inferred;
             if inferred in self.type_ids {
-                self.owned_locals.append(tgt_node.value);
+                track = self.own_local(tgt_node.value, cty);
+                if self.exc_frames {
+                    base = f"{tgt} = " + self.gen_expr(a.value);
+                } else {
+                    base = f"{cty} {tgt} = " + self.gen_expr(a.value);
+                }
+                if track {
+                    return base + "; " + " ".join(track);
+                }
+                return base;
             }
             return f"{cty} {tgt} = " + self.gen_expr(a.value);
         }
@@ -1018,14 +1179,7 @@ impl CGenPass.gen_assign(a: uni.Assignment) -> str {
 }
 
 impl CGenPass.expr_type_name(e: object) -> str {
-    return infer_type(
-        e,
-        self.local_types,
-        self.type_ids,
-        self.func_returns,
-        self.method_returns,
-        self.field_types
-    );
+    return self.tf.type_of(e, self.local_types);
 }
 
 impl CGenPass.c_op(op_val: str) -> str {
@@ -1077,7 +1231,7 @@ impl CGenPass.gen_expr(e: object) -> str {
         }
         return " ".join(pieces);
     }
-    if isinstance(e, uni.BinaryExpr) {
+    if isinstance(e, uni.BinaryExpr) and isinstance(e.op, uni.Token) {
         if e.op.value == "+"
         and (
             self.expr_type_name(e.left) == "str"
@@ -1117,7 +1271,9 @@ impl CGenPass.gen_expr(e: object) -> str {
     if isinstance(e, uni.FuncCall) {
         return self.gen_call(e);
     }
-    self._unsupported(e, "E4302", etype=type(e).__name__);
+    if isinstance(e, uni.UniNode) {
+        self._unsupported(e, "E4302", etype=type(e).__name__);
+    }
     return f"/* jac2c: unsupported expr {type(e).__name__} */";
 }
 
@@ -1127,6 +1283,13 @@ impl CGenPass.gen_call(e: uni.FuncCall) -> str {
     if isinstance(tgt, uni.Name) and tgt.value in self.type_ids {
         args = self.gen_args(e, tgt.value);
         return f"{tgt.value}__new(" + ", ".join(args) + ")";
+    }
+
+    # `@__jac_value__` POD: compound literal, not an RC `__new` / free function.
+    if isinstance(tgt, uni.Name)
+    and tgt.value in self.arch_nodes
+    and tgt.value not in self.type_ids {
+        return self.gen_value_ctor(e, tgt.value);
     }
 
     if isinstance(tgt, uni.Name)
@@ -1164,7 +1327,41 @@ impl CGenPass.gen_call(e: uni.FuncCall) -> str {
     return self.gen_expr(tgt) + "(" + ", ".join(args) + ")";
 }
 
-impl CGenPass.gen_args(e: uni.FuncCall, callee_key: str) -> list {
+impl CGenPass.gen_value_ctor(e: uni.FuncCall, name: str) -> str {
+    # `Vec2(x=3, y=4)` / `Vec2(3, 4)` / `Vec2()` → `(struct Vec2){ .x = … }`.
+    arch = self.arch_nodes[name];
+    fields = self.field_list(arch);
+    assigned: dict[str, str] = {};
+    pos = 0;
+    for p in (e.params or []) {
+        if isinstance(p, uni.KWPair) and p.key is not None {
+            assigned[self.attr_name(p.key)] = self.gen_expr(p.value);
+        } elif isinstance(p, uni.Expr) {
+            if pos >= len(fields) {
+                break;
+            }
+            assigned[fields[pos].name.value] = self.gen_expr(p);
+            pos += 1;
+        }
+    }
+    inits: list[str] = [];
+    for hv in fields {
+        fname = hv.name.value;
+        if fname in assigned {
+            inits.append(f".{fname} = {assigned[fname]}");
+        } elif hv.value is not None {
+            inits.append(f".{fname} = " + self.gen_expr(hv.value));
+        } else {
+            inits.append(f".{fname} = 0");
+        }
+    }
+    if not inits {
+        return f"(struct {name})" + "{0}";
+    }
+    return f"(struct {name})" + "{ " + ", ".join(inits) + " }";
+}
+
+impl CGenPass.gen_args(e: uni.FuncCall, callee_key: str) -> list[str] {
     args: list[str] = [];
     idx = 0;
     for p in (e.params or []) {
@@ -1206,7 +1403,7 @@ impl CGenPass.emit_arg(p: uni.Expr, callee_key: str, idx: int) -> str {
 }
 
 impl CGenPass.virtual_call(
-    recv_ty: str, mname: str, recv: str, slot: int, args: list
+    recv_ty: str, mname: str, recv: str, slot: int, args: list[str]
 ) -> str {
     intro = self.resolve_introducer(recv_ty, mname);
     ab = self.method_defs[intro][mname];
@@ -1269,7 +1466,10 @@ impl direct_import_paths(mod: uni.Module) -> list[str] {
 }
 
 impl discover_import_graph(
-    main_path: str, main_mod: uni.Module, prog: any, strict_c: bool = False
+    main_path: str,
+    main_mod: uni.Module,
+    prog: JacProgram | None,
+    strict_c: bool = False
 ) -> list[tuple[str, uni.Module]] {
     import from jaclang.jac0core.program { JacProgram }
     seen: dict[str, uni.Module] = {main_path: main_mod};
@@ -1301,14 +1501,21 @@ impl discover_import_graph(
 }
 
 impl emit_translation_units(
-    main_path: str, main_mod: uni.Module, prog: any
+    main_path: str, main_mod: uni.Module, prog: JacProgram
 ) -> list[tuple[str, str]] {
     graph = discover_import_graph(main_path, main_mod, prog, strict_c=True);
     mods = [m for (_, m) in graph];
     reg = get_shared_layout_registry(mods, prog);
+    reg_tf = get_shared_type_facts(mods, prog);
     out: list[tuple[str, str]] = [];
     for (path, m) in graph {
-        CGenPass(ir_in=m, prog=prog, shared_layout=reg, strict_c=True);
+        CGenPass(
+            ir_in=m,
+            prog=prog,
+            shared_layout=reg,
+            shared_type_facts=reg_tf,
+            strict_c=True
+        );
         out.append((path, m.gen.c_src or ""));
     }
     return out;

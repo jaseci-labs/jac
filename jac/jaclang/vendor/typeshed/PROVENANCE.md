@@ -12,8 +12,8 @@ verifies the **decompressed tar's** sha256 against `TARBALL_SHA256` (git's
 slip in -- the same guarantee git's content-addressing gave the old `git fetch`.
 
 Third-party stubs are NOT shipped: install the matching `types-*` package
-yourself (`jac add types-foo`); it is resolved via PEP 561 `<pkg>-stubs` from
-the project venv.
+yourself (`jac install types-foo`); it is resolved via PEP 561 `<pkg>-stubs`
+from the project venv.
 
 - Source:  https://github.com/python/typeshed
 - Commit:  bbbf7530a987e59c8458127351cacad2e57f04bf

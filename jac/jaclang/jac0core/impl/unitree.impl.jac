@@ -723,11 +723,26 @@ impl UniCFGNode.get_head -> UniCFGNode {
         nd.bb_in
         and (len(nd.bb_in) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_in[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
@@ -743,11 +758,26 @@ impl UniCFGNode.get_tail -> UniCFGNode {
         nd.bb_out
         and (len(nd.bb_out) == 1)
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            nd,
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and not isinstance(
             nd.bb_out[0],
-            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+            (
+                InForStmt,
+                IterForStmt,
+                WhileStmt,
+                ForeverStmt,
+                ConditionalNode,
+                InnerCompr
+            )
         )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -1654,6 +1684,14 @@ impl InForStmt.postinit -> None {
 
 
 impl WhileStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
+impl ForeverStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");

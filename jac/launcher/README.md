@@ -16,7 +16,7 @@ build trivial: the launcher links only libc, with **zero Python at build time**.
 | File | Role |
 |---|---|
 | `launcher.zig` | Process entry. Materializes the payload, `dlopen`s the bundled libpython, `dlsym`s ~6 `Py_*` functions, runs the jaclang boot dance. No `@cImport`, no Python headers. |
-| `runtime.zig` | Pure-Zig payload materialization: trailer parse, cache resolution, gzip+tar extract into `~/.cache/jac/rt/<hash16>-<pathhash>` (path-folded so co-located checkouts don't collide), stale GC. Unit-tested (`zig build test`). |
+| `runtime.zig` | Pure-Zig payload materialization + the SOLE owner of the on-disk trailer format: `parseTrailer`, cache resolution, gzip+tar extract into `~/.cache/jac/rt/<hash16>-<pathhash>` (path-folded so co-located checkouts don't collide), stale GC, plus the `.jab`-overlay helpers (`overlayForPath`, `appendOverlay`, `graftRuntime`). Unit-tested (`zig build test`). |
 | `pack.zig` | Build-time tool: `[stub][payload.tar.gz][trailer]` -> final `jac`. |
 | `payload.zig` | Build-time payload tool (pure std): `fetch-pbs` (HTTP + verify + zstd-extract a python-build-standalone tree), `fetch-typeshed` (HTTP tarball + sha256-verify the stdlib stubs), `mkpayload` (stage CPython + jaclang site, tar+gzip). Shells out only to the fetched pbs python for pip + JIR precompile. Replaces the old bash/curl/git/zstd/tar scripts. |
 | `tests/fixture.zig` | base64 tar.gz fixture for the materialize unit test. |
@@ -27,6 +27,22 @@ build trivial: the launcher links only libc, with **zero Python at build time**.
 jac = [ launcher stub (links libc only) ][ runtime.tar.gz ][ trailer ]
 trailer = "JACBIN01" | payload_len(u64 LE) | sha256_hex(64)   (80 bytes, at EOF)
 ```
+
+A `jac build --as binary` app binary appends its sealed `.jab` after that, with
+its own 80-byte overlay trailer (same codec, distinct magic):
+
+```
+app = [ base jac (verbatim) ][ app.jab ][ overlay trailer ]
+overlay trailer = "JABOVL01" | jab_len(u64 LE) | sha256_hex(64)   (80 bytes, at EOF)
+```
+
+The base bytes are the installed `jac`, byte-for-byte -- `jac __appjab <app.jab>
+<out>` copies this binary and appends the `.jab` (no CPython unpack/repack). At
+boot the launcher detects the `JABOVL01` marker, steps over the overlay to find
+the real payload trailer (so the CPython tree extracts unchanged), and exports
+`JAC_APP_OVERLAY_OFF/_LEN` so `cli_boot` slices the `.jab` out of the running
+binary and mounts it exactly like `jac run app.jab`. The trailer format lives
+only here in Zig; nothing in Python parses or writes it.
 
 Payload, materialized to `<cache>/rt/<hash16>-<pathhash>/` on first run (the
 `<pathhash>` folds in the binary's own path so two co-located checkouts with
@@ -101,13 +117,13 @@ archive is only a payload input; it is never linked.
     source, the compiler is served from a live tree) and `-Dskip-precompile`.
     `-Ddebug-src` embeds source text in each JIR so tracebacks render from the
     JIR itself (via the loader's `get_source` + `linecache`); release omits it.
-  - Same image, two products: `jac bundle --target sealed` emits the identical
-    manifest+JIR image for a **user app**, loadable in a host jac
-    via `jaclang.jac0core.sealed.register_image(<dir>/_precompiled)`;
-    `jac bundle --target binary` wraps that image onto a copy of the running
-    sealed binary (trailer surgery: rebuild the gzip'd tar with the app under
-    `site/<app>/` + a `site/jac_app.json` boot marker, re-emit
-    `[stub][payload][JACBIN01 trailer]`), yielding a self-contained executable
-    that `cli_boot` dispatches to instead of the jac CLI.
+  - One image, three shapes: `jac build --as sealed` emits the manifest+JIR
+    image dir for a **user app**, loadable in a host jac via
+    `jaclang.jac0core.sealed.register_image(<dir>/_precompiled)`; `--as jab`
+    tars that image into a single `.jab`; `--as binary` appends that same `.jab`
+    as an overlay onto a copy of the running sealed binary (see **Binary shape**
+    above -- no CPython unpack/repack), yielding a self-contained executable that
+    `cli_boot` mounts (via `run_jab_image`, the same path as `jac run app.jab`)
+    and dispatches to instead of the jac CLI.
 - **Linux**: the staged shared lib is named `libpython3.14.so` (pbs may ship
   `libpython3.14.so.1.0` -- `mkpayload` dereferences it to the bare name).

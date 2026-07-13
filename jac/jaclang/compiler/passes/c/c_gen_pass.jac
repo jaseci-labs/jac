@@ -1,21 +1,25 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes.main.layout_pass {
     get_layout_registry,
     get_shared_layout_registry,
-    LayoutRegistry
+    LayoutRegistry,
+    FieldInfo
 }
 import from jaclang.compiler.passes.main.ownership_facts_pass {
     get_ownership_facts,
     OwnershipFacts
 }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-import from jaclang.compiler.arch_types {
+import from jaclang.jac0core.osp_model { stable_osp_tag }
+import from jaclang.compiler.passes.main.type_facts_pass {
+    TypeFacts,
+    get_shared_type_facts,
+    ScopeTypes,
     is_ref_arch as arch_is_ref,
     type_tag_name,
-    ret_type_name as sig_ret_name,
-    arch_type_maps,
-    infer_type
+    ret_type_name as sig_ret_name
 }
 import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
 
@@ -31,14 +35,20 @@ glob C_PRIM_TYPES: dict[str, str] = {
 
 glob C_FIRST_USER_TYPEID: int = 2;
 
+def stable_type_id(name: str) -> int {
+    # Name-derived archetype type id. Never returns reserved RAW/STR (0/1).
+    return C_FIRST_USER_TYPEID + (stable_osp_tag(name) % 0x3FFFFFFD);
+}
+
 obj CGenPass(Transform[uni.Module, uni.Module]) {
     has type_ids: dict[str, int] = {},
-        field_types: dict[str, dict[str, str]] = {},
         method_owners: dict[str, dict[str, str]] = {},
-        method_returns: dict[str, dict[str, str]] = {},
         method_defs: dict[str, dict[str, uni.Ability]] = {},
-        func_returns: dict[str, str] = {},
         arch_nodes: dict[str, uni.Archetype] = {},
+        local_funcs: dict[str, bool] = {},
+        tf: TypeFacts = TypeFacts(),
+        shared_type_facts: TypeFacts | None = None,
+        imported_mods: list[uni.Module] = [],
         local_types: dict[str, str] = {},
         owned_locals: list[str] = [],
         cur_class: str = "",
@@ -46,6 +56,9 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         tmp_ctr: int = 0,
         exc_ctr: int = 0,
         exc_frames: list[str] = [],
+        exc_hoists: list[tuple[str, str]] = [],
+        func_hoists: list[tuple[str, str]] = [],
+        func_cleanup: str = "",
         needs_rt: bool = False,
         layout: LayoutRegistry | None = None,
         facts: OwnershipFacts | None = None,
@@ -74,7 +87,7 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def mro_of(name: str) -> list[str];
     def resolve_override(cls: str, m: str) -> str;
     def resolve_introducer(cls: str, m: str) -> str;
-    def layout_fields(name: str) -> list;
+    def layout_fields(name: str) -> list[FieldInfo];
     def c_type(jac_ty: str) -> str;
     def type_name(type_tag: uni.SubTag[uni.Expr] | None) -> str;
     def ret_type_name(ret: uni.Expr | None) -> str;
@@ -89,21 +102,24 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def ref_protos(arch: uni.Archetype) -> list[str];
     def gen_ref_defs(arch: uni.Archetype) -> list[str];
     def gen_dtor(arch: uni.Archetype) -> str;
-    def all_fields(arch: uni.Archetype) -> list;
+    def all_fields(arch: uni.Archetype) -> list[tuple[str, str]];
     def gen_ctor(arch: uni.Archetype) -> str;
-    def field_defaults(arch: uni.Archetype) -> list;
+    def field_defaults(arch: uni.Archetype) -> list[tuple[str, uni.Expr]];
     def gen_method(arch: uni.Archetype, ab: uni.Ability) -> str;
     def enter_method(cls: str);
     def func_head(ab: uni.Ability) -> str;
     def gen_func(ab: uni.Ability) -> str;
     def gen_block(stmts: object, ind: int) -> str;
     def scope_release_lines(pad: str, skip_name: str) -> list[str];
+    def own_local(name: str, cty: str) -> list[str];
+    def drop_owned(name: str) -> list[str];
     def ref_field_store(st: uni.Assignment, pad: str) -> (str | None);
     def ref_local_copy(st: uni.Assignment, pad: str) -> (str | None);
     def gen_stmt(st: object, ind: int, is_last: bool) -> str;
     def render_stmt(st: object, ind: int, is_last: bool) -> str;
     def gen_for(st: uni.IterForStmt, ind: int) -> str;
     def gen_if(st: uni.IfStmt, ind: int) -> str;
+    def wrap_func_body(body: str) -> str;
     def exc_pop_lines(pad: str) -> list[str];
     def exc_type_name(e: object) -> str;
     def exc_match_cond(et: str, cname: str) -> str;
@@ -115,10 +131,12 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def gen_compare_clause(left: object, op_val: str, right: object) -> str;
     def gen_expr(e: object) -> str;
     def gen_call(e: uni.FuncCall) -> str;
-    def gen_args(e: uni.FuncCall, callee_key: str) -> list;
+    def gen_value_ctor(e: uni.FuncCall, name: str) -> str;
+    def gen_args(e: uni.FuncCall, callee_key: str) -> list[str];
     def emit_arg(p: uni.Expr, callee_key: str, idx: int) -> str;
+    def emit_ability_body(sig: object, body: object, self_type: str) -> str;
     def virtual_call(
-        recv_ty: str, mname: str, recv: str, slot: int, args: list
+        recv_ty: str, mname: str, recv: str, slot: int, args: list[str]
     ) -> str;
 
     def attr_name(nd: object) -> str;
@@ -129,9 +147,12 @@ def import_path(mp: uni.ModulePath) -> (str | None);
 def direct_import_paths(mod: uni.Module) -> list[str];
 
 def discover_import_graph(
-    main_path: str, main_mod: uni.Module, prog: any, strict_c: bool = False
+    main_path: str,
+    main_mod: uni.Module,
+    prog: JacProgram | None,
+    strict_c: bool = False
 ) -> list[tuple[str, uni.Module]];
 
 def emit_translation_units(
-    main_path: str, main_mod: uni.Module, prog: any
+    main_path: str, main_mod: uni.Module, prog: JacProgram
 ) -> list[tuple[str, str]];

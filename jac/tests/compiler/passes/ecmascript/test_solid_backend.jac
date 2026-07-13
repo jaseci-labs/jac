@@ -429,7 +429,9 @@ test "solid runtime shim reaches router/form parity with the React shim" {
     ) , "Solid onTouched must validate on change only";
     # Error boundary + async boundary over solid-js primitives.
     assert "function JacClientErrorBoundary(" in js;
-    assert "function ErrorFallback(" in js;
+    # ErrorFallback is defined once in client_runtime_core and re-exported by
+    # both shims, so the shim js carries the binding rather than the function.
+    assert "ErrorFallback" in js;
     assert "function JacAwaiting(" in js;
     assert "SolidErrorBoundary" in js , "error boundary must use solid-js ErrorBoundary";
     assert "SolidSuspense" in js , "JacAwaiting must use solid-js Suspense";

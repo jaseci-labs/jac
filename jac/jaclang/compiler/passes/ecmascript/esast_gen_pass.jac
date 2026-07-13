@@ -170,6 +170,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
         reactive_vars: set[str] = set(),
+        component_export_names: set[str] = set(),
         reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
         _view_stack: list[(str | None)] = [],
@@ -329,6 +330,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def _target_to_pattern(target: es.Node, loc: uni.UniNode) -> es.Node;
@@ -389,6 +391,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
+    def _component_pascal_name(nd: uni.Ability) -> (str | None);
     def _component_call_abi(ability_node: uni.Ability) -> str;
     def _build_props_spread_component_call(
         nd: uni.FuncCall,
@@ -463,6 +466,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_atom_unit(nd: uni.AtomUnit) -> None;
     def exit_list_val(nd: uni.ListVal) -> None;
     def exit_set_val(nd: uni.SetVal) -> None;
+    def _gen_seq_array(nd: uni.UniNode) -> None;
     def exit_tuple_val(nd: uni.TupleVal) -> None;
     def exit_dict_val(nd: uni.DictVal) -> None;
     def exit_k_v_pair(nd: uni.KVPair) -> None;

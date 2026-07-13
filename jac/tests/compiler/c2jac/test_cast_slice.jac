@@ -75,10 +75,16 @@ test "struct_shape.c lifts C structs to faithful Jac obj/has (not with-entry)" {
     # direct-lift builds a real archetype + has-vars, unlike the two-hop
     # `class`/`with entry` artifact
     assert "obj Point {" in out , out;
-    assert "has x: int;" in out;
-    assert "has z: float;" in out;
+    assert "has x: int = 0;" in out;
+    assert "has z: float = 0.0;" in out;
     assert "obj Record {" in out;
     assert "obj Node {" in out;
+    assert "def point_sum() -> int {" in out;
+    assert "p: Point = Point();" in out;
+    assert "def point_init_sum() -> int {" in out;
+    assert "p: Point = Point(x=3, y=4, z=0);" in out;
+    assert "def point_desig_sum() -> int {" in out;
+    assert "p: Point = Point(x=3, y=4);" in out;
     assert "with entry" not in out;
     assert res.diags == [] , f"expected no diags, got {res.diags}";
 }
@@ -156,6 +162,7 @@ test "obj_array.c lifts an object fixed array to a range comprehension" {
     out = res.module.unparse(requires_format=True);
     # `struct Point pts[4];` -> `[Point() for _ in range(4)]` (not `[0] * 4`)
     assert "pts: list[Point] = [Point() for _ in range(4)];" in out , out;
+    assert "pts[0].x = n;" in out;
     assert "return pts[0].x;" in out;
     assert res.diags == [] , f"expected no diags, got {res.diags}";
 }

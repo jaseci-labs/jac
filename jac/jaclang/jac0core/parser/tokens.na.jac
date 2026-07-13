@@ -64,6 +64,7 @@ enum TokenKind {
     KW_TO = "to",
     KW_BY = "by",
     KW_WHILE = "while",
+    KW_FOREVER = "forever",
     KW_MATCH = "match",
     KW_SWITCH = "switch",
     KW_CASE = "case",
@@ -199,14 +200,9 @@ enum TokenKind {
     F_TEXT_SQ = "F_TEXT_SQ",
     F_TEXT_TDQ = "F_TEXT_TDQ",
     F_TEXT_TSQ = "F_TEXT_TSQ",
-    RF_TEXT_DQ = "RF_TEXT_DQ",
-    RF_TEXT_SQ = "RF_TEXT_SQ",
-    RF_TEXT_TDQ = "RF_TEXT_TDQ",
-    RF_TEXT_TSQ = "RF_TEXT_TSQ",
     D_LBRACE = "{{",
     D_RBRACE = "}}",
     CONV = "CONV",
-    F_FORMAT_TEXT = "F_FORMAT_TEXT",
     JSX_TEXT = "JSX_TEXT",
     JSX_COMMENT = "JSX_COMMENT",
     JSX_OPEN_START = "JSX_OPEN_START",
@@ -218,7 +214,6 @@ enum TokenKind {
     JSX_NAME = "JSX_NAME",
     COMMENT = "COMMENT",
     WS = "WS",
-    NEWLINE = "NEWLINE",
     EOF = "EOF",
     ERROR = "ERROR"
 }
@@ -240,7 +235,6 @@ obj Token {
         value: str,
         loc: SourceLoc;
 
-    def is_keyword -> bool;
     def __str__ -> str;
 }
 
@@ -316,6 +310,7 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "to": TokenKind.KW_TO,
          "by": TokenKind.KW_BY,
          "while": TokenKind.KW_WHILE,
+         "forever": TokenKind.KW_FOREVER,
          "match": TokenKind.KW_MATCH,
          "switch": TokenKind.KW_SWITCH,
          "case": TokenKind.KW_CASE,
@@ -374,5 +369,3 @@ def lookup_keyword(text: str) -> TokenKind | None {
     }
     return None;
 }
-
-glob _init = 0;

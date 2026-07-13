@@ -156,6 +156,13 @@ test "Phase 2 resolves a user scalar typedef alias through the typedef map" {
     assert "def si_scale(x: f64, k: f64) -> f64;" in out , out;  # real_t → double → f64
 }
 
+test "Phase 2 maps size_t/uint64 through the LP64 porting include tree" {
+    (out, rep) = _bind("bindgen/porting_stdint.h", "port");
+    assert "def port_len(n: u64) -> u64;" in out , out;
+    assert "def port_clamp(v: i32, lo: i32, hi: i32) -> i32;" in out , out;
+    _assert_compiles(out);
+}
+
 # ---------------------------------------------------------------------------- #
 # Phase 3 — struct layout bindings                                             #
 # ---------------------------------------------------------------------------- #

@@ -23,31 +23,13 @@ impl OwnershipFacts.is_consumed(key: str, idx: int) -> bool {
 
 impl OwnershipFactsPass.transform(ir_in: uni.Module) -> uni.Module {
     self.facts = OwnershipFacts();
-    try {
-        self.analyze(ir_in);
-        ir_in.gen.ownership_facts = self.facts;
-    } except Exception {
-        ir_in.gen.ownership_facts = OwnershipFacts();
-    }
+    self.analyze(ir_in);
+    ir_in.gen.ownership_facts = self.facts;
     return ir_in;
 }
 
 impl OwnershipFactsPass.analyze(mod: uni.Module) {
-    for stmt in mod.body {
-        if isinstance(stmt, uni.Archetype) and arch_is_ref(stmt) {
-            self.ref_types[stmt.name.value] = True;
-        }
-    }
-    for stmt in mod.body {
-        if isinstance(stmt, uni.Archetype) {
-            self.index_arch(stmt);
-        } elif isinstance(stmt, uni.Ability) and stmt.name_ref is not None {
-            sig = stmt.signature;
-            self.func_returns[stmt.name_ref.sym_name] = self.ret_name(
-                sig.return_type if isinstance(sig, uni.FuncSignature) else None
-            );
-        }
-    }
+    self.tf = get_type_facts(mod, self.prog);
     for stmt in mod.body {
         if isinstance(stmt, uni.Ability) {
             self.analyze_ability(stmt, "");
@@ -61,32 +43,12 @@ impl OwnershipFactsPass.analyze(mod: uni.Module) {
     }
 }
 
-impl OwnershipFactsPass.index_arch(arch: uni.Archetype) {
-    name = arch.name.value;
-    (fmap, rmap) = arch_type_maps(arch);
-    self.field_types[name] = fmap;
-    self.method_returns[name] = rmap;
-}
-
 impl OwnershipFactsPass.tag_name(type_tag: uni.SubTag[uni.Expr] | None) -> str {
     return type_tag_name(type_tag);
 }
 
-impl OwnershipFactsPass.ret_name(ret: uni.Expr | None) -> str {
-    return sig_ret_name(ret);
-}
-
 impl OwnershipFactsPass.analyze_ability(ab: uni.Ability, cls: str) {
-    self.local_types = {};
-    if cls {
-        self.local_types["self"] = cls;
-    }
-    sig = ab.signature;
-    if isinstance(sig, uni.FuncSignature) and sig.params {
-        for p in sig.params {
-            self.local_types[p.name.value] = self.tag_name(p.type_tag);
-        }
-    }
+    self.local_types = ScopeTypes.for_ability(ab.signature, cls);
     body = list(ab.body or []);
     for st in body {
         self.categorize_stmt(st);
@@ -97,7 +59,9 @@ impl OwnershipFactsPass.analyze_ability(ab: uni.Ability, cls: str) {
     }
 }
 
-impl OwnershipFactsPass.compute_consumed(ab: uni.Ability, cls: str, body: list) {
+impl OwnershipFactsPass.compute_consumed(
+    ab: uni.Ability, cls: str, body: list[uni.UniNode]
+) {
     sig = ab.signature;
     if not (isinstance(sig, uni.FuncSignature) and sig.params) {
         return;
@@ -109,7 +73,7 @@ impl OwnershipFactsPass.compute_consumed(ab: uni.Ability, cls: str, body: list) 
     idx = 0;
     for p in sig.params {
         pname = p.name.value;
-        if self.tag_name(p.type_tag) in self.ref_types {
+        if self.tag_name(p.type_tag) in self.tf.ref_types {
             store = self.sole_field_store(body, pname);
             if store is not None and self.count_name(body, pname) == 1 {
                 s = self.facts.consumed_params.get(key, None);
@@ -136,7 +100,9 @@ impl OwnershipFactsPass.callee_key(ab: uni.Ability, cls: str) -> str {
     return nm;
 }
 
-impl OwnershipFactsPass.sole_field_store(body: list, pname: str) -> uni.UniNode | None {
+impl OwnershipFactsPass.sole_field_store(
+    body: list[uni.UniNode], pname: str
+) -> uni.UniNode | None {
     found = None;
     count = 0;
     for st in body {
@@ -144,11 +110,8 @@ impl OwnershipFactsPass.sole_field_store(body: list, pname: str) -> uni.UniNode 
             tgt = st.target[0];
             if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
                 v = st.value;
-                target_v: object = v;
-                if isinstance(v, uni.AtomUnit) {
-                    target_v = v.value;
-                }
-                if isinstance(target_v, uni.Name) and target_v.value == pname {
+                inner = v.value if isinstance(v, uni.AtomUnit) else v;
+                if isinstance(inner, uni.Name) and inner.value == pname {
                     count += 1;
                     found = st.value;
                 }
@@ -161,7 +124,7 @@ impl OwnershipFactsPass.sole_field_store(body: list, pname: str) -> uni.UniNode 
     return None;
 }
 
-impl OwnershipFactsPass.count_name(body: list, pname: str) -> int {
+impl OwnershipFactsPass.count_name(body: list[uni.UniNode], pname: str) -> int {
     c = 0;
     for st in body {
         if isinstance(st, uni.Assignment) and st.value is not None {
@@ -214,7 +177,7 @@ impl OwnershipFactsPass.count_in_expr(e: object, pname: str) -> int {
     return 0;
 }
 
-impl OwnershipFactsPass.is_straight_line(body: list) -> bool {
+impl OwnershipFactsPass.is_straight_line(body: list[uni.UniNode]) -> bool {
     for st in body {
         if not isinstance(st, (uni.Assignment, uni.ExprStmt, uni.ReturnStmt)) {
             return False;
@@ -234,6 +197,49 @@ impl OwnershipFactsPass.categorize_stmt(st: object) {
     } elif isinstance(st, uni.ReturnStmt) {
         if st.expr is not None {
             self.categorize(st.expr);
+        }
+    } elif isinstance(st, uni.TryStmt) {
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+        for exc in (st.excepts or []) {
+            for s in (exc.body or []) {
+                self.categorize_stmt(s);
+            }
+        }
+        if st.finally_body is not None {
+            for s in (st.finally_body.body or []) {
+                self.categorize_stmt(s);
+            }
+        }
+    } elif isinstance(st, uni.IfStmt) {
+        self.categorize(st.condition);
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+        eb = st.else_body;
+        if isinstance(eb, uni.ElseIf) {
+            self.categorize_stmt(eb);
+        } elif isinstance(eb, uni.ElseStmt) {
+            for s in (eb.body or []) {
+                self.categorize_stmt(s);
+            }
+        }
+    } elif isinstance(st, uni.WhileStmt) {
+        self.categorize(st.condition);
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+    } elif isinstance(st, uni.IterForStmt) {
+        self.categorize_stmt(st.iter);
+        self.categorize(st.condition);
+        self.categorize_stmt(st.count_by);
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+    } elif isinstance(st, uni.RaiseStmt) {
+        if st.cause is not None {
+            self.categorize(st.cause);
         }
     }
 }
@@ -293,17 +299,10 @@ impl OwnershipFactsPass.is_str_concat(e: uni.Expr) -> bool {
 }
 
 impl OwnershipFactsPass.type_of(e: object) -> str {
-    return infer_type(
-        e,
-        self.local_types,
-        self.ref_types,
-        self.func_returns,
-        self.method_returns,
-        self.field_types
-    );
+    return self.tf.type_of(e, self.local_types);
 }
 
-impl OwnershipFactsPass.mark_last_uses(body: list) {
+impl OwnershipFactsPass.mark_last_uses(body: list[uni.UniNode]) {
     last_read: dict[str, uni.UniNode] = {};
     for st in body {
         self.collect_reads(st, last_read);
@@ -313,7 +312,7 @@ impl OwnershipFactsPass.mark_last_uses(body: list) {
     }
 }
 
-impl OwnershipFactsPass.collect_reads(e: object, last_read: dict) {
+impl OwnershipFactsPass.collect_reads(e: object, last_read: dict[str, uni.UniNode]) {
     if isinstance(e, uni.Assignment) {
         if e.value is not None {
             self.collect_reads(e.value, last_read);
@@ -363,14 +362,20 @@ impl OwnershipFactsPass.collect_reads(e: object, last_read: dict) {
 impl get_ownership_facts(
     module: uni.Module, prog: JacProgram | None = None
 ) -> OwnershipFacts {
-    cached: OwnershipFacts | None = module.gen.ownership_facts;
-    if cached is not None {
+    cached = module.gen.ownership_facts;
+    if isinstance(cached, OwnershipFacts) {
         return cached;
     }
     if prog is not None {
         OwnershipFactsPass(ir_in=module, prog=prog);
-        result: OwnershipFacts | None = module.gen.ownership_facts;
-        return result or OwnershipFacts();
+        result = module.gen.ownership_facts;
+        if isinstance(result, OwnershipFacts) {
+            return result;
+        }
+        return OwnershipFacts();
     }
-    return OwnershipFacts();
+    raise ValueError(
+        "get_ownership_facts: prog is None and this module has no cached facts; "
+        "pass a JacProgram to build facts, or call after facts were computed"
+    );
 }

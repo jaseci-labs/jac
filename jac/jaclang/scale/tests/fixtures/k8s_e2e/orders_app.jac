@@ -3,7 +3,7 @@
 Demonstrates inter-service communication via `sv import`:
   Orders service imports functions from cart_app and calls them like
   normal functions. The compiler generates HTTP stubs; the runtime
-  auto-spawns cart_app via our `ensure_sv_service` hookimpl.
+  auto-spawns cart_app via our `ensure_sv_service` provider.
 
 Exposes public functions for order operations. Callable via:
   - HTTP: POST /orders/function/{name}

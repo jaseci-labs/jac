@@ -20,6 +20,7 @@ nav:
           - Why Jac vs a Traditional Stack: "quick-guide/jac-vs-traditional-stack.md"
           - Core Concepts: "quick-guide/what-makes-jac-different.md"
           - Install: "quick-guide/install.md"
+          - One Binary, Build Anything: "quick-guide/one-binary.md"
       - Build Anything: "quick-guide/project-kinds.md"
       - I like to build…:
           - CLI tools & native binaries: "build/cli-and-native.md"
@@ -59,7 +60,6 @@ nav:
           - WebAssembly in the Browser: "tutorials/native/wasm.md"
       - Package & Extend:
           - Publish a Library: "tutorials/extend/publish-a-library.md"
-          - Build a Jac Plugin: "tutorials/extend/build-a-plugin.md"
       - Ship It — Deploy & Scale:
           - Local API Server: "tutorials/production/local.md"
           - Microservices with sv import: "tutorials/production/microservices.md"
@@ -96,7 +96,7 @@ nav:
           - CLI Commands: "reference/cli/index.md"
           - MCP Server: "reference/mcp.md"
           - Agent Skills & MCP: "quick-guide/agent-skills-and-mcp.md"
-          - Plugin Authoring: "reference/plugin-authoring.md"
+          - Plugins (Removed): "reference/plugin-authoring.md"
           - Configuration: "reference/config/index.md"
           - Publishing Packages: "reference/publishing.md"
           - Persistence & Schema Migration: "reference/persistence.md"

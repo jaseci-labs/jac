@@ -299,7 +299,7 @@ fn rdU32(b: []const u8, off: usize) u32 {
     return std.mem.readInt(u32, b[off..][0..4], .little);
 }
 
-const ZipMember = struct { name: []const u8, method: u16, csize: u32, usize_: u32, crc: u32, lho: u64 };
+const ZipMember = struct { name: []const u8, method: u16, csize: u32, crc: u32, lho: u64 };
 fn lessByLho(_: void, x: ZipMember, y: ZipMember) bool {
     return x.lho < y.lho;
 }
@@ -415,7 +415,6 @@ fn fetchLlvmSlice(io: Io, gpa: Allocator, a: Allocator, dest: []const u8, rel: L
                 .method = rdU16(cd, p + 10),
                 .crc = rdU32(cd, p + 16),
                 .csize = rdU32(cd, p + 20),
-                .usize_ = rdU32(cd, p + 24),
                 .lho = rdU32(cd, p + 42),
                 .name = cd[p + 46 ..][0..nlen],
             };

@@ -37,15 +37,66 @@ impl py2jac(filename: str) -> int {
 }
 
 impl c2jac(
-    filename: str,
+    filename: str = "",
     incdir: list | None = None,
     define: list | None = None,
     undef: list | None = None,
     force_include: list | None = None,
     nostdinc: bool = False,
-    strict_c: bool = False
+    strict_c: bool = False,
+    output: str | None = None,
+    project: str | None = None
 ) -> int {
-    import from jaclang.compiler.cfront.lift { lift_c_file, render_c2jac_report }
+    import os;
+    import from jaclang.compiler.cfront.lift {
+        lift_c_file,
+        render_lifted_jac
+    }
+    import from jaclang.compiler.cfront.report {
+        build_c2jac_report,
+        write_c2jac_report
+    }
+    if project {
+        if not output {
+            console.error("jac c2jac --project requires -o <outdir>");
+            return 1;
+        }
+        import from jaclang.compiler.cfront.project { lift_c_project }
+        try {
+            result = lift_c_project(
+                project,
+                output,
+                include_dirs=flatten_append(incdir),
+                defines=flatten_append(define),
+                undefines=flatten_append(undef),
+                force_includes=flatten_append(force_include),
+                nostdinc=nostdinc,
+                lenient_c=(not strict_c),
+            );
+        } except Exception as e {
+            console.error(f"Project lift failed: {e}");
+            return 1;
+        }
+        n_files = len(result.outputs);
+        total = sum([r.tier_b_count for r in result.files]);
+        console.print(
+            f"[c2jac] project: wrote {n_files} module(s) to {output} "
+            f"(tier-B sites={total}; aggregate {result.aggregate_path})",
+            markup=False,
+            highlight=False
+        );
+        if total and strict_c {
+            console.error(
+                f"[c2jac] {total} construct(s) could not be lifted faithfully (--strict-c)"
+            );
+            return 1;
+        }
+        return 0;
+    }
+    if not filename {
+        console.error("Not a .c or .i file.");
+        return 1;
+    }
     if not filename.endswith(".c") and not filename.endswith(".i") {
         console.error("Not a .c or .i file.");
         return 1;
@@ -67,22 +118,51 @@ impl c2jac(
         console.error(f"Transpilation failed: {e}");
         return 1;
     }
-    jac_str = res.module.unparse(requires_format=True);
-    header = render_c2jac_report(res.diags);
-    console.print(header + jac_str, markup=False, highlight=False);
+    jac_str = render_lifted_jac(res);
+    if output {
+        parent = os.path.dirname(output);
+        if parent {
+            os.makedirs(parent, exist_ok=True);
+        }
+        try {
+            with open(output, "w", encoding="utf-8") as f {
+                f.write(jac_str);
+            }
+        } except OSError as e {
+            console.error(f"Cannot write {output}: {e}");
+            return 1;
+        }
+        rep = build_c2jac_report(
+            source=filename,
+            output=output,
+            sites=res.sites,
+            quarantined=res.quarantined_functions,
+            lenient=(not strict_c)
+        );
+        side = write_c2jac_report(output, rep);
+        console.print(
+            f"[c2jac] wrote {output} (sidecar {side})",
+            markup=False,
+            highlight=False
+        );
+    } else {
+        console.print(jac_str, markup=False, highlight=False);
+    }
 
     n = len(res.diags);
     if n and strict_c {
         console.error(
             f"[c2jac] {n} construct(s) could not be lifted faithfully (--strict-c); "
-            f"see the `# c2jac:` header above"
+            f"see the `# c2jac:` header / sidecar"
         );
         return 1;
     }
     if n {
+        qn = len(res.quarantined_functions);
         console.warning(
-            f"[c2jac] {n} best-effort site(s) — see the `# c2jac:` header in the "
-            f"output (surrogate sites are also flagged inline as `__c_unsupported__`)"
+            f"[c2jac] {n} best-effort site(s)"
+            + (f", {qn} function(s) quarantined" if qn else "")
+            + " — see the `# c2jac:` header / `.c2jac.report.json` sidecar"
         );
     }
     return 0;
@@ -223,14 +303,6 @@ impl jac2js(filename: str) -> int {
         console.error('Not a .jac file.');
         return 1;
     }
-}
-
-impl js(filename: str) -> int {
-    console.warning(
-        "'jac js' is deprecated and will be removed in a future release. "
-        "Use 'jac jac2js' instead."
-    );
-    return jac2js(filename);
 }
 
 impl jac2c(filename: str) -> int {
