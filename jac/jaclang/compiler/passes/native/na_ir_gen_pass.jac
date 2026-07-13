@@ -93,6 +93,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         has_native_code: bool = False,
         native_tests: list = [],
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
+        _interned_strs: dict[str, ir.GlobalVariable] = {},
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),

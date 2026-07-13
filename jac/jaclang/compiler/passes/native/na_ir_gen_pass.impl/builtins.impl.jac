@@ -162,25 +162,28 @@ impl NaIRGenPass._codegen_multistring(nd: uni.MultiString) -> (ir.Value | None) 
 }
 
 impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir.Value {
-    str_bytes = bytearray((text + "\0").encode("utf8"));
     i64 = ir.IntType(64);
     i8 = ir.IntType(8);
-    i8_ptr = i8.as_pointer();
     i32 = ir.IntType(32);
-    arr_type = ir.ArrayType(i8, len(str_bytes));
-
-    struct_type = ir.LiteralStructType([i64, i64, arr_type]);
-    sentinel_val = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
-    dtor_val = ir.Constant(i64, 0);
-    c_str = ir.Constant(arr_type, str_bytes);
-    struct_val = ir.Constant(struct_type, [sentinel_val, dtor_val, c_str]);
-    global_str = ir.GlobalVariable(
-        self.llvm_module, struct_type, name=f"{name_prefix}.{self._str_count}"
-    );
-    self._str_count = self._str_count + 1;
-    global_str.linkage = "private";
-    global_str.global_constant = True;
-    global_str.initializer = struct_val;
+    _key = f"{name_prefix}\x00{text}";
+    global_str = self._interned_strs.get(_key);
+    if global_str is None {
+        str_bytes = bytearray((text + "\0").encode("utf8"));
+        arr_type = ir.ArrayType(i8, len(str_bytes));
+        struct_type = ir.LiteralStructType([i64, i64, arr_type]);
+        sentinel_val = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
+        dtor_val = ir.Constant(i64, 0);
+        c_str = ir.Constant(arr_type, str_bytes);
+        struct_val = ir.Constant(struct_type, [sentinel_val, dtor_val, c_str]);
+        global_str = ir.GlobalVariable(
+            self.llvm_module, struct_type, name=f"{name_prefix}.{self._str_count}"
+        );
+        self._str_count = self._str_count + 1;
+        global_str.linkage = "private";
+        global_str.global_constant = True;
+        global_str.initializer = struct_val;
+        self._interned_strs[_key] = global_str;
+    }
 
     gep = self.builder.gep(
         global_str,
