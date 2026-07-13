@@ -247,7 +247,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     );
 
     sig = (nd).signature;
-    import from jaclang.compiler.ownership { param_plainly_rebound }
     for (i, p) in enumerate(sig.get_parameters()) {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i];
@@ -256,7 +255,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         self.local_vars[param_name] = alloca;
 
         if isinstance(arg_val.type, ir.PointerType)
-        and param_plainly_rebound(p.name.sym if p.name else None) {
+        and bool(p.name?.sym?.param_rebound) {
             self._emit_rc_retain(arg_val, op="param_promote", loc=name);
         } else {
             self.param_vars.add(param_name);

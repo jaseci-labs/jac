@@ -1,8 +1,39 @@
-impl RcElisionProofPass.postinit -> None {
+impl RcFactsPass.postinit -> None {
     super.postinit();
 }
 
-impl RcElisionProofPass.transform(ir_in: uni.Module) -> uni.Module {
+impl RcFactsPass.transform(ir_in: uni.Module) -> uni.Module {
+    self._stamp_param_rebound(ir_in);
+    self._stamp_move_lowerable(ir_in);
+    return ir_in;
+}
+
+impl RcFactsPass._stamp_param_rebound(ir_in: uni.Module) -> None {
+    for pv in ir_in.get_all_sub_nodes(uni.ParamVar) {
+        sym = pv.name.sym if pv.name else None;
+        if sym is not None {
+            sym.param_rebound = self._param_plainly_rebound(sym);
+        }
+    }
+}
+
+impl RcFactsPass._param_plainly_rebound(sym: uni.Symbol) -> bool {
+    for d in (list(sym.defn) + list(sym.uses)) {
+        asg = d.find_parent_of_type(uni.Assignment);
+        if asg is None or asg.aug_op is not None {
+            continue;
+        }
+        targets = asg.target
+            if isinstance(asg.target, (list, tuple))
+            else [(asg.target)];
+        if d in targets {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl RcFactsPass._stamp_move_lowerable(ir_in: uni.Module) -> None {
     cfg_nodes = [
         n
         for n in ir_in.flatten()
@@ -39,7 +70,7 @@ impl RcElisionProofPass.transform(ir_in: uni.Module) -> uni.Module {
         tracked.add(sid);
     }
     if not candidates {
-        return ir_in;
+        return;
     }
 
     qualified: set[SymId] = set();
@@ -71,17 +102,16 @@ impl RcElisionProofPass.transform(ir_in: uni.Module) -> uni.Module {
             nd.na_move_lowerable = True;
         }
     }
-    return ir_in;
 }
 
-impl RcElisionProofPass._cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None) {
+impl RcFactsPass._cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None) {
     if isinstance(sub, uni.UniCFGNode) {
         return sub;
     }
     return sub.find_parent_of_type(uni.UniCFGNode);
 }
 
-impl RcElisionProofPass._is_def_name(nm: uni.Name) -> bool {
+impl RcFactsPass._is_def_name(nm: uni.Name) -> bool {
     p = nm.parent;
     if isinstance(p, uni.Assignment) and p.aug_op is None {
         for tgt in p.target {
@@ -93,7 +123,7 @@ impl RcElisionProofPass._is_def_name(nm: uni.Name) -> bool {
     return False;
 }
 
-impl RcElisionProofPass._is_alias_value(nm: uni.Name) -> bool {
+impl RcFactsPass._is_alias_value(nm: uni.Name) -> bool {
     p = nm.parent;
     if not isinstance(p, uni.Assignment) {
         return False;
@@ -118,9 +148,7 @@ impl RcElisionProofPass._is_alias_value(nm: uni.Name) -> bool {
     return True;
 }
 
-impl RcElisionProofPass._move_candidate_source(
-    nd: uni.Assignment
-) -> (uni.Name | None) {
+impl RcFactsPass._move_candidate_source(nd: uni.Assignment) -> (uni.Name | None) {
     if nd.aug_op is not None or len(nd.target) != 1 {
         return None;
     }
@@ -146,11 +174,22 @@ impl RcElisionProofPass._move_candidate_source(
     return val;
 }
 
-impl RcElisionProofPass._solve_liveness(
+impl RcFactsPass._live_transfer(nd: uni.UniCFGNode, out_set: set[SymId]) -> set[SymId] {
+    new_in = set(self._node_use.get(id(nd), set()));
+    dfn = self._node_def.get(id(nd), set());
+    for x in out_set {
+        if x not in dfn {
+            new_in.add(x);
+        }
+    }
+    return new_in;
+}
+
+impl RcFactsPass._solve_liveness(
     cfg_nodes: list[uni.UniCFGNode], tracked: set[SymId]
 ) -> dict[int, set[SymId]] {
-    node_use: dict[int, set[SymId]] = {};
-    node_def: dict[int, set[SymId]] = {};
+    self._node_use = {};
+    self._node_def = {};
     for n in cfg_nodes {
         use: set[SymId] = set();
         dfn: set[SymId] = set();
@@ -168,35 +207,8 @@ impl RcElisionProofPass._solve_liveness(
                 use.add(sid);
             }
         }
-        node_use[id(n)] = use;
-        node_def[id(n)] = dfn;
+        self._node_use[id(n)] = use;
+        self._node_def[id(n)] = dfn;
     }
-
-    live_in: dict[int, set[SymId]] = {};
-    for n in cfg_nodes {
-        live_in[id(n)] = set();
-    }
-    worklist = list(cfg_nodes);
-    while worklist {
-        n = worklist.pop();
-        out: set[SymId] = set();
-        for succ in n.bb_out {
-            for x in live_in.get(id(succ), set()) {
-                out.add(x);
-            }
-        }
-        new_in = set(node_use[id(n)]);
-        for x in out {
-            if x not in node_def[id(n)] {
-                new_in.add(x);
-            }
-        }
-        if new_in != live_in.get(id(n), set()) {
-            live_in[id(n)] = new_in;
-            for pred in n.bb_in {
-                worklist.append(pred);
-            }
-        }
-    }
-    return live_in;
+    return dataflow.solve_backward(cfg_nodes, self._live_transfer);
 }

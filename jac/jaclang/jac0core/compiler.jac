@@ -197,12 +197,12 @@ def get_py_code_gen(
 
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
         if native {
+            import from jaclang.compiler.passes.main.rc_facts_pass { RcFactsPass }
             import from jaclang.compiler.passes.native {
-                RcElisionProofPass,
                 NaIRGenPass,
                 NativeCompilePass
             }
-            passes.extend([RcElisionProofPass, NaIRGenPass, NativeCompilePass]);
+            passes.extend([RcFactsPass, NaIRGenPass, NativeCompilePass]);
         }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;

@@ -1151,7 +1151,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         self.builder.store(self.builder.extract_value(tup, 0, name="iterf.t0"), a0);
         self.builder.store(self.builder.extract_value(tup, 1, name="iterf.t1"), a1);
     }
-    import from jaclang.compiler.ownership { loop_body_locals }
+    import from jaclang.compiler.passes.main.rc_facts_pass { loop_body_locals }
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
 
     _iter_prebody = set(self.local_vars.keys());

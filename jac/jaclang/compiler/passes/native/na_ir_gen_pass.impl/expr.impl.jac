@@ -97,7 +97,10 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         _result.jac_loc = _jac_loc;
 
         if isinstance(_result.type, ir.PointerType) {
-            import from jaclang.compiler.ownership { Ownership, result_ownership }
+            import from jaclang.compiler.passes.main.rc_facts_pass {
+                Ownership,
+                result_ownership
+            }
             if result_ownership(nd) == Ownership.OWNED {
                 self._mark_owned(_result);
             }
