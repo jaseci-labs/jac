@@ -24,9 +24,13 @@ test "validate rejects a Service target with both port and port_name set" {
         scale_target_name="preview-deployment",
         target=HTTPServiceTarget(service="preview-svc", port=8080, port_name="http")
     );
-    with self.assertRaises(ValueError) {
+    raised = False;
+    try {
         keda._validate_http_activation_spec(spec);
+    } except ValueError as e {
+        raised = True;
     }
+    assert raised , "Expected ValueError when both port and port_name are set";
 }
 
 test "validate rejects a Service target with neither port nor port_name set" {
@@ -37,9 +41,13 @@ test "validate rejects a Service target with neither port nor port_name set" {
         scale_target_name="preview-deployment",
         target=HTTPServiceTarget(service="preview-svc")
     );
-    with self.assertRaises(ValueError) {
+    raised = False;
+    try {
         keda._validate_http_activation_spec(spec);
+    } except ValueError as e {
+        raised = True;
     }
+    assert raised , "Expected ValueError when neither port nor port_name is set";
 }
 
 test "validate requires at least one of concurrency or request_rate" {
@@ -50,9 +58,13 @@ test "validate requires at least one of concurrency or request_rate" {
         scale_target_name="preview-deployment",
         target=HTTPServiceTarget(service="preview-svc", port=8080)
     );
-    with self.assertRaises(ValueError) {
+    raised = False;
+    try {
         keda._validate_http_activation_spec(spec);
+    } except ValueError as e {
+        raised = True;
     }
+    assert raised , "Expected ValueError when neither concurrency nor request_rate is set";
 }
 
 test "request_rate defaults window to 1m and granularity to 1s when unset" {
@@ -277,14 +289,20 @@ test "apply_http_activation rejects a standalone Pod target with a /scale explan
         target=HTTPServiceTarget(service="preview-svc", port=8080),
         concurrency=HTTPConcurrencyMetric(target_value=10)
     );
-    with self.assertRaises(ValueError) as ctx {
+    raised = False;
+    error_msg = "";
+    try {
         keda.apply_http_activation(spec);
+    } except ValueError as e {
+        raised = True;
+        error_msg = str(e);
     }
-    assert "/scale" in str(ctx.exception);
+    assert raised , "Expected ValueError when scale_target_kind is Pod";
+    assert "/scale" in error_msg , "Error message must explain the /scale requirement";
 }
 
 test "apply_http_activation accepts a StatefulSet target without raising" {
-    KEDAAutoscaler._preflight_cache.clear();
+    KEDAAutoscaler._http_preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};
     mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
@@ -319,7 +337,7 @@ test "InterceptorRoute and ScaledObject names are deterministic and distinct" {
 
 # --- Section G: apply ordering, validation, and preflight -------------------
 test "apply_http_activation creates InterceptorRoute before ScaledObject when neither exists" {
-    KEDAAutoscaler._preflight_cache.clear();
+    KEDAAutoscaler._http_preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};
     mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
@@ -344,7 +362,7 @@ test "apply_http_activation creates InterceptorRoute before ScaledObject when ne
 }
 
 test "apply_http_activation patches InterceptorRoute and ScaledObject when both already exist" {
-    KEDAAutoscaler._preflight_cache.clear();
+    KEDAAutoscaler._http_preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};
     mock_api.get_namespaced_custom_object.return_value = {
@@ -372,7 +390,7 @@ test "apply_http_activation patches InterceptorRoute and ScaledObject when both 
 }
 
 test "apply_http_activation raises when the referenced scale target or Service does not exist" {
-    KEDAAutoscaler._preflight_cache.clear();
+    KEDAAutoscaler._http_preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};
 
@@ -392,9 +410,13 @@ test "apply_http_activation raises when the referenced scale target or Service d
         target=HTTPServiceTarget(service="preview-svc", port=8080),
         concurrency=HTTPConcurrencyMetric(target_value=10)
     );
-    with self.assertRaises(ValueError) {
+    raised_for_missing_target = False;
+    try {
         keda.apply_http_activation(spec);
+    } except ValueError as e {
+        raised_for_missing_target = True;
     }
+    assert raised_for_missing_target , "Expected ValueError when the scale target is missing";
 
     missing_service_core = unittest.mock.MagicMock();
     missing_service_core.read_namespaced_service.side_effect = ApiException(status=404);
@@ -410,9 +432,13 @@ test "apply_http_activation raises when the referenced scale target or Service d
         target=HTTPServiceTarget(service="missing-svc", port=8080),
         concurrency=HTTPConcurrencyMetric(target_value=10)
     );
-    with self.assertRaises(ValueError) {
+    raised_for_missing_service = False;
+    try {
         keda2.apply_http_activation(spec2);
+    } except ValueError as e {
+        raised_for_missing_service = True;
     }
+    assert raised_for_missing_service , "Expected ValueError when the Service is missing";
     mock_api.create_namespaced_custom_object.assert_not_called();
 }
 
