@@ -6,6 +6,7 @@ Exposes public functions for cart operations. Callable via:
 """
 
 import from shared.models { Cart, Product, Products, Order }
+import humanize;
 
 def _get_or_create_cart -> Cart {
     carts = [root()-->][?:Cart];
@@ -27,6 +28,7 @@ sv {
                 return {
                     "action": "updated",
                     "product_id": product_id,
+                    "qty_words": humanize.apnumber(item.get("qty", 0)),
                     "qty": item["qty"]
                 };
             }
