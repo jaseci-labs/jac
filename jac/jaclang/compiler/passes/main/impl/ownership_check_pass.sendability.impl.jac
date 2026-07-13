@@ -30,7 +30,7 @@ impl OwnershipCheckPass._emit_sendability_diagnostics -> None {
                 continue;
             }
             sid = self._sym_id(nm);
-            if sid is None or sid not in tracked {
+            if sid is None or sid not in tracked or nm.sym is None {
                 continue;
             }
             ownership = nm.sym.ownership;
