@@ -196,6 +196,42 @@ def open_det_tar(buf: io.BytesIO) -> tuple[tarfile.TarFile, any] {
 }
 
 
+def scale_cache_root -> Path {
+    # Driver-machine cache; shared with the binary/console download caches.
+    base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
+    if base {
+        return Path(base);
+    }
+    return Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache")) / "jac" / "scale-binaries";
+}
+
+
+def _staged_pod_jac(pod_binary: bytes) -> Path {
+    # The launcher keys its extracted runtime by (payload, executable path), so
+    # a fresh temp path every deploy re-runs the ~20s one-time setup just to
+    # host the precompiler. A stable path makes that a once-per-binary cost;
+    # the launcher's own per-path GC handles version bumps.
+    jac_path = scale_cache_root() / "pod-jac";
+    if jac_path.is_file() {
+        try {
+            if hashlib.sha256(jac_path.read_bytes()).hexdigest() == hashlib.sha256(
+                pod_binary
+            ).hexdigest() {
+                return jac_path;
+            }
+        } except OSError {
+            ;
+        }
+    }
+    jac_path.parent.mkdir(parents=True, exist_ok=True);
+    tmp = jac_path.with_suffix(f".{os.getpid()}.tmp");
+    tmp.write_bytes(pod_binary);
+    tmp.chmod(0o755);
+    tmp.rename(jac_path);
+    return jac_path;
+}
+
+
 def _precompile_app(base: Path, pod_binary: bytes) -> Path {
     # Seal the app's modules with the pod binary into _precompiled/MANIFEST.json
     # so the deploy artifact is a valid .jab. The seal is mandatory: an
@@ -217,9 +253,7 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
         if not marker.exists() {
             marker.write_text("");
         }
-        jac_path = stage_root / ".pod-jac";
-        jac_path.write_bytes(pod_binary);
-        jac_path.chmod(0o755);
+        jac_path = _staged_pod_jac(pod_binary);
         script = Path(str(__file__)).parent.parent.parent / "utils" / "precompile_bytecode.jac";
         # --seal emits the MANIFEST.json that makes the tree a sealed image.
         result = subprocess.run(
@@ -228,7 +262,6 @@ def _precompile_app(base: Path, pod_binary: bytes) -> Path {
             text=True,
             timeout=600
         );
-        jac_path.unlink();
         if (
             result.returncode != 0
             or not (stage / "_precompiled" / "MANIFEST.json").is_file()

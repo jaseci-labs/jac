@@ -30,3 +30,28 @@ test "identical content packs to identical bytes (content-address stable)" {
         shutil.rmtree(d, ignore_errors=True);
     }
 }
+
+
+test "staged pod binary reuses its stable path across packs" {
+    import from jaclang.scale.injector.bundle { _staged_pod_jac }
+    cache = tempfile.mkdtemp();
+    saved = os.environ.get("JAC_SCALE_CACHE_DIR");
+    os.environ["JAC_SCALE_CACHE_DIR"] = cache;
+    try {
+        first = _staged_pod_jac(b"ELF-one");
+        mtime = first.stat().st_mtime_ns;
+        # identical bytes: no rewrite, same file
+        assert _staged_pod_jac(b"ELF-one").stat().st_mtime_ns == mtime;
+        # new binary content replaces the file at the same stable path
+        second = _staged_pod_jac(b"ELF-two");
+        assert second == first;
+        assert second.read_bytes() == b"ELF-two";
+    } finally {
+        os.environ.pop("JAC_SCALE_CACHE_DIR", None);
+        if saved is not None {
+            os.environ["JAC_SCALE_CACHE_DIR"] = saved;
+        }
+        import shutil;
+        shutil.rmtree(cache, ignore_errors=True);
+    }
+}
