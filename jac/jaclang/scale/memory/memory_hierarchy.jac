@@ -152,9 +152,11 @@ obj ScaleTieredMemory(TieredMemory) {
         use_cache: bool = True;
 
     def postinit -> None;
+    def put(anchor: Anchor) -> None;
     def commit(anchor: (Anchor | None) = None) -> None;
     async def acommit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
+    def _mark_committed(anchor: (Anchor | None)) -> None;
     def get(id: UUID) -> (Anchor | None);
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
     def query(
