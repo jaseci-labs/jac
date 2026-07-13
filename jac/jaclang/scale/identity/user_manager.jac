@@ -70,6 +70,10 @@ obj JacScaleUserManager(UserManager) {
     def close -> None;
     def create_jwt_token(user_id: str, include_role: bool = True) -> str;
     def validate_jwt_token(token: str) -> str | None;
+    def validate_jwt_token_detail(
+        token: str | None, check_existence: bool = True
+    ) -> dict[str, any];
+
     def refresh_jwt_token(token: str) -> str | None;
     def get_jwt_claims(token: str) -> dict | None;
     def get_sso(platform: str) -> SSOProvider | None;

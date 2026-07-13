@@ -409,7 +409,7 @@ def scale_cmd(
         console.print(
             "No microservices found: no routes in "
             "[scale.microservices.routes] and no "
-            "`sv import` / `to sv:` services detected in the "
+            "`sv import` / `sv { }` services detected in the "
             "current directory.",
             style="error"
         );

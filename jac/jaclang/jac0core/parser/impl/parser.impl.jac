@@ -60,7 +60,12 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
+import from jaclang.jac0core.unitree {
+    TypedCtxBlock,
+    RegionStmt,
+    GlobalStmt,
+    NonLocalStmt
+}
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -249,7 +254,10 @@ impl Parser.consume_uni(kind: TokenKind) -> UniToken {
 }
 
 impl Parser._make_alert(
-    message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+    message: str,
+    sloc: SourceLoc,
+    code: DiagnosticInfo | None = None,
+    help_text: str | None = None
 ) -> Alert {
     source = self.get_source();
     tok = UniToken(
@@ -264,7 +272,7 @@ impl Parser._make_alert(
         pos_end=sloc.pos_end
     );
     loc = CodeLocInfo(tok, tok);
-    return Alert(message, loc, Parser, code=code);
+    return Alert(message, loc, Parser, code=code, help_text=help_text);
 }
 
 impl Parser.error(message: str) {
@@ -283,7 +291,9 @@ impl Parser.emit_diag(
     msg = diag.format_message(**kwargs);
     self.error_count += 1;
     if self.prog is not None {
-        alrt = self._make_alert(msg, sloc, code=diag);
+        alrt = self._make_alert(
+            msg, sloc, code=diag, help_text=diag.format_help(**kwargs)
+        );
         self.prog.errors_had.append(alrt);
     }
 }
@@ -294,7 +304,9 @@ impl Parser.emit_warn(
     sloc = loc if loc is not None else self.current().loc;
     msg = diag.format_message(**kwargs);
     if self.prog is not None {
-        alrt = self._make_alert(msg, sloc, code=diag);
+        alrt = self._make_alert(
+            msg, sloc, code=diag, help_text=diag.format_help(**kwargs)
+        );
         self.prog.warnings_had.append(alrt);
     }
 }
@@ -1234,9 +1246,31 @@ impl Parser.parse_unpack -> Expr {
 
 impl Parser.parse_ref -> Expr {
     if self.match_tok(TokenKind.BW_AND) {
-        op = self.make_uni_token(self.previous());
+        raw_tok = self.previous();
+        op = self.make_uni_token(raw_tok);
+        kids: list = [op];
+
+        if self.check(TokenKind.LPAREN)
+        or (not self.at_end() and self.current().loc.pos_start > raw_tok.loc.pos_end) {
+            target = self.parse_await_expr();
+            kids.append(target);
+            return UnaryExpr(operand=target, op=op, kid=kids);
+        }
+
+        is_mut = False;
+        if self.check(TokenKind.KW_MUT) {
+            mut_tok = self.advance();
+            kids.append(self.make_uni_token(mut_tok));
+            is_mut = True;
+        }
         target = self.parse_await_expr();
-        return UnaryExpr(operand=target, op=op, kid=[op, target]);
+        kids.append(target);
+        return UnaryExpr(
+            operand=target,
+            op=op,
+            ownership=OwnershipKind.MUT_BORROW if is_mut else OwnershipKind.BORROW,
+            kid=kids
+        );
     }
     return self.parse_await_expr();
 }
@@ -3127,67 +3161,6 @@ impl Parser.parse_element_stmt{
         return None;
     }
 
-    if self.check(TokenKind.KW_TO)
-    and self.check_peek_any(
-        TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
-    )
-    and self.peek(2).kind == TokenKind.COLON {
-        to_tok = self.advance();
-        to_uni = self.make_uni_token(to_tok);
-        ctx_tok = self.advance();
-        ctx_uni = self.make_uni_token(ctx_tok);
-        colon_tok = self.advance();
-        colon_uni = self.make_uni_token(colon_tok);
-        section_ctx: CodeContext;
-        if ctx_tok.kind == TokenKind.KW_CLIENT {
-            section_ctx = CodeContext.CLIENT;
-        } elif ctx_tok.kind == TokenKind.KW_SERVER {
-            section_ctx = CodeContext.SERVER;
-        } else {
-            section_ctx = CodeContext.NATIVE;
-        }
-        body: list = [];
-        kid: list = [to_uni, ctx_uni, colon_uni];
-        while not self.at_end() {
-            if self.check(TokenKind.KW_TO)
-            and self.check_peek_any(
-                TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
-            )
-            and self.peek(2).kind == TokenKind.COLON {
-                break;
-            }
-            before = self.pos;
-            stmt = self.parse_element_stmt();
-            if stmt is not None {
-                has_explicit_prefix = (
-                    len(stmt.kid) > 0
-                    and isinstance(stmt.kid[0], UniToken)
-                    and (
-                        stmt.kid[0].name == Tok.KW_CLIENT
-                        or stmt.kid[0].name == Tok.KW_SERVER
-                        or stmt.kid[0].name == Tok.KW_NATIVE
-                    )
-                );
-                if stmt?.code_context and not has_explicit_prefix {
-                    stmt.code_context = section_ctx;
-                }
-                body.append(stmt);
-                kid.append(stmt);
-            }
-
-            if self.pos == before and not self.at_end() {
-                self.advance();
-            }
-        }
-        if section_ctx == CodeContext.CLIENT {
-            return ClientBlock(body=body, implicit=True, kid=kid);
-        } elif section_ctx == CodeContext.SERVER {
-            return ServerBlock(body=body, implicit=True, kid=kid);
-        } else {
-            return NativeBlock(body=body, implicit=True, kid=kid);
-        }
-    }
-
     if self.check(TokenKind.KW_CLIENT) {
         self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {
@@ -3741,6 +3714,11 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_WHILE) {
         return self.parse_while_stmt();
     }
+    if self.check(TokenKind.NAME)
+    and self.current().value == "region"
+    and self.check_peek(TokenKind.LBRACE) {
+        return self.parse_region_stmt();
+    }
     if self.check(TokenKind.KW_FOREVER) {
         return self.parse_forever_stmt();
     }
@@ -4003,6 +3981,17 @@ impl Parser.parse_while_stmt -> WhileStmt {
         kid.append(else_body);
     }
     return WhileStmt(condition=condition, body=body, else_body=else_body, kid=kid);
+}
+
+impl Parser.parse_region_stmt -> RegionStmt {
+    region_uni = self.make_uni_token(self.advance());
+    lb_uni = self.consume_uni(TokenKind.LBRACE);
+    body = self.parse_code_block_stmts();
+    rb_uni = self.consume_uni(TokenKind.RBRACE);
+    kid: list = [region_uni, lb_uni];
+    kid.extend(body);
+    kid.append(rb_uni);
+    return RegionStmt(body=body, kid=kid);
 }
 
 impl Parser.parse_forever_stmt -> ForeverStmt {
@@ -4837,14 +4826,43 @@ impl Parser.parse_nonlocal_stmt -> NonLocalStmt {
     return NonLocalStmt(target=targets, kid=kid);
 }
 
+impl Parser.parse_ownership_prefix(kids: list) -> OwnershipKind {
+    if self.check(TokenKind.KW_OWN) {
+        own_tok = self.advance();
+        kids.append(self.make_uni_token(own_tok));
+        return OwnershipKind.OWN;
+    } elif self.check(TokenKind.NAME)
+    and self.current().value == "val"
+    and not self.check_peek(TokenKind.EQ)
+    and not self.check_peek(TokenKind.SEMI) {
+        val_tok = self.advance();
+        kids.append(self.make_uni_token(val_tok));
+        return OwnershipKind.VAL;
+    } elif self.check(TokenKind.BW_AND) {
+        amp_tok = self.advance();
+        kids.append(self.make_uni_token(amp_tok));
+        if self.check(TokenKind.KW_MUT) {
+            mut_tok = self.advance();
+            kids.append(self.make_uni_token(mut_tok));
+            return OwnershipKind.MUT_BORROW;
+        }
+        return OwnershipKind.BORROW;
+    }
+    return OwnershipKind.NONE;
+}
+
 impl Parser.parse_assignment_with_target(
     target: Expr, require_semi: bool = True
 ) -> Assignment {
     type_tag = None;
     if self.match_tok(TokenKind.COLON) {
         colon_uni = self.make_uni_token(self.previous());
+
+        own_kid: list = [colon_uni];
+        own_kind = self.parse_ownership_prefix(own_kid);
         tp = self.parse_pipe();
-        type_tag = SubTag(tag=tp, kid=[colon_uni, tp]);
+        own_kid.append(tp);
+        type_tag = SubTag(tag=tp, ownership=own_kind, kid=own_kid);
     }
     value = None;
     aug_op = None;
@@ -4886,6 +4904,7 @@ impl Parser.parse_assignment_with_target(
             if self.check(TokenKind.KW_YIELD)
             else self.parse_expression();
     }
+
     kid: list = [];
     eq_idx = 0;
     for (ti, tgt) in enumerate(targets) {
@@ -6011,8 +6030,11 @@ impl Parser.parse_param_var -> ParamVar | None {
     type_tag: SubTag | None = None;
     if self.match_tok(TokenKind.COLON) {
         param_colon_uni = self.make_uni_token(self.previous());
+        param_type_kid: list = [param_colon_uni];
+        param_kind = self.parse_ownership_prefix(param_type_kid);
         tp = self.parse_pipe();
-        type_tag = SubTag(tag=tp, kid=[param_colon_uni, tp]);
+        param_type_kid.append(tp);
+        type_tag = SubTag(tag=tp, ownership=param_kind, kid=param_type_kid);
     }
     default_val: Expr | None = None;
     param_eq_uni: UniToken | None = None;

@@ -105,7 +105,12 @@ import from jaclang.jac0core.unitree {
     DisengageStmt,
     ExprStmt
 }
-import from jaclang.jac0core.unitree { TypedCtxBlock, GlobalStmt, NonLocalStmt }
+import from jaclang.jac0core.unitree {
+    TypedCtxBlock,
+    RegionStmt,
+    GlobalStmt,
+    NonLocalStmt
+}
 import from jaclang.jac0core.unitree {
     BinaryExpr,
     UnaryExpr,
@@ -168,7 +173,12 @@ import from jaclang.jac0core.unitree {
 }
 import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxSlot, JsxComment }
 
-import from jaclang.jac0core.constant { Tokens as Tok, EdgeDir, CodeContext }
+import from jaclang.jac0core.constant {
+    Tokens as Tok,
+    EdgeDir,
+    CodeContext,
+    OwnershipKind
+}
 
 glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.INT: Tok.INT.value,
@@ -392,7 +402,10 @@ obj Parser {
     def consume_uni(kind: TokenKind) -> UniToken;
     def expect_name -> Token;
     def _make_alert(
-        message: str, sloc: SourceLoc, code: DiagnosticInfo | None = None
+        message: str,
+        sloc: SourceLoc,
+        code: DiagnosticInfo | None = None,
+        help_text: str | None = None
     ) -> Alert;
 
     def error(message: str);
@@ -503,6 +516,7 @@ obj Parser {
     def parse_elif_stmt -> ElseIf;
     def parse_else_stmt -> ElseStmt;
     def parse_while_stmt -> WhileStmt;
+    def parse_region_stmt -> RegionStmt;
     def parse_forever_stmt -> ForeverStmt;
     def parse_for_stmt;
     def parse_try_stmt -> TryStmt;
@@ -536,6 +550,7 @@ obj Parser {
         target: Expr, require_semi: bool = True
     ) -> Assignment;
 
+    def parse_ownership_prefix(kids: list) -> OwnershipKind;
     def parse_import_stmt -> Import;
     def parse_from_path -> tuple;
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;

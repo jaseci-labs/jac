@@ -970,6 +970,10 @@ impl PyastGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
     nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
 }
 
+impl PyastGenPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    nd.gen.py_ast = self._flatten_ast_list([item.gen.py_ast for item in nd.body]);
+}
+
 impl PyastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
     ;
 }
@@ -2689,7 +2693,41 @@ impl PyastGenPass._remove_lambda_param_annotations(
     }
 }
 
+impl PyastGenPass._emit_jobj_ref(nd: uni.UnaryExpr) -> None {
+    nd.gen.py_ast = [
+        self.sync(
+            ast3.Call(
+                func=self.builtin_name('jobj'),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(
+                            arg='id', value=cast(ast3.expr, self.py_ast_val(nd.operand))
+                        )
+                    )
+                ]
+            )
+        )
+    ];
+}
+
 impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
+    if nd.op.name == Tok.BW_AND {
+        if is_borrow_kind(nd.ownership) {
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.builtin_name('jref'),
+                        args=[cast(ast3.expr, self.py_ast_val(nd.operand))],
+                        keywords=[]
+                    )
+                )
+            ];
+        } else {
+            self._emit_jobj_ref(nd);
+        }
+        return;
+    }
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
     op_cls = UNARY_OP_MAP.get(op_tok) if op_tok else None;
     if op_cls {
@@ -2726,23 +2764,6 @@ impl PyastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
         ];
     } elif (nd.op.name in [Tok.STAR_POW]) {
         nd.gen.py_ast = nd.operand.gen.py_ast;
-    } elif (nd.op.name in [Tok.BW_AND]) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Call(
-                    func=self.builtin_name('jobj'),
-                    args=[],
-                    keywords=[
-                        self.sync(
-                            ast3.keyword(
-                                arg='id',
-                                value=cast(ast3.expr, self.py_ast_val(nd.operand))
-                            )
-                        )
-                    ]
-                )
-            )
-        ];
     } else {
         self.ice("Unknown Unary operator " + str(nd.op.value));
     }
