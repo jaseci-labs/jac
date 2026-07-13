@@ -35,7 +35,7 @@ permissions: {}
 jobs:
   create-release-pr:
     if: >-
-      github.repository == 'Jaseci-Labs/jaseci' &&
+      github.repository == 'jaseci-labs/jac' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.action == 'create-pr'
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -103,7 +103,7 @@ jobs:
 
   resolve:
     if: |
-      github.repository == 'Jaseci-Labs/jaseci' && (
+      github.repository == 'jaseci-labs/jac' && (
         (github.event_name == 'workflow_dispatch' && inputs.action == 'publish') || (
           github.event_name == 'pull_request' &&
           github.event.pull_request.merged == true &&
