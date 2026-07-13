@@ -181,7 +181,7 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 }
 
 def get_py_code_gen(
-    native: bool = True
+    native: bool = True, evict_py_ast: bool = False
 ) -> list[type[Transform[uni.Module, uni.Module]]] {
     global _codegen_sched_loading;
     if _codegen_sched_loading or _ir_sched_loading {
@@ -203,9 +203,10 @@ def get_py_code_gen(
             }
             passes.extend([RcElisionProofPass, NaIRGenPass, NativeCompilePass]);
         }
-        passes.extend(
-            [PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass, PyAstEvictPass]
-        );
+        passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
+        if evict_py_ast {
+            passes.append(PyAstEvictPass);
+        }
         return passes;
     } except ImportError {
         return [PyastGenPass, PyBytecodeGenPass];

@@ -6109,7 +6109,7 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
         }
         self._push_scope(nd);
     }
-    if (nd._gen is not None and nd._gen.es_ast) {
+    if nd.gen_or_none?.es_ast {
         if not (isinstance(nd, uni.Import) and nd.code_context != CodeContext.CLIENT) {
             self.prune();
             return;

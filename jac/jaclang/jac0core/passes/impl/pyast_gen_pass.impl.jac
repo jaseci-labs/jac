@@ -106,7 +106,7 @@ impl PyastGenPass.enter_node(nd: uni.UniNode) -> None {
         self.prune();
         return;
     }
-    if (nd._gen is not None and nd._gen.py_ast) {
+    if nd.gen_or_none?.py_ast {
         self.prune();
         return;
     }

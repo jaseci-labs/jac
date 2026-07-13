@@ -895,10 +895,20 @@ impl JacCompiler.compile(
         import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
         needs_native = is_native_mod
         or ModuleCodegenPass.has_native_context_stmts(mod_targ);
+
+        should_evict_py_ast = (
+            not os.environ.get("JAC_NO_PYAST_EVICT")
+            and (
+                bool(os.environ.get("JAC_PYAST_EVICT_ALL"))
+                or (actual_program is self._internal_program)
+            )
+        );
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_py_code_gen(native=needs_native),
+            passes=get_py_code_gen(
+                native=needs_native, evict_py_ast=should_evict_py_ast
+            ),
             cancel_token=options.cancel_token
         );
         if is_na_file {

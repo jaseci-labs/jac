@@ -185,6 +185,10 @@ impl JacProgram.release_compile_closure(self: JacProgram) -> None {
     if os.environ.get("JAC_NO_UNIT_EVICT") {
         return;
     }
+
+    for mod in list(self.mod.hub.values()) {
+        mod.evict_py_ast();
+    }
     self.mod.hub.clear();
     self._hub_cache_times.clear();
     self._dependents.clear();

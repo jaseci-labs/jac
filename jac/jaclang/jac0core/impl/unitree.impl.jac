@@ -258,8 +258,9 @@ impl UniNode.flatten -> list[UniNode] {
 }
 
 impl UniNode.unparse -> str {
-    if (self._gen is not None and self._gen.jac) {
-        return self._gen.jac;
+    gen = self.gen_or_none;
+    if gen?.jac {
+        return gen.jac;
     }
     return ' '.join([i.unparse() for i in self.kid]);
 }
@@ -2291,8 +2292,9 @@ impl Token.__repr__ -> str {
 }
 
 impl Token.unparse -> str {
-    if (self._gen is not None and self._gen.jac) {
-        return self._gen.jac;
+    gen = self.gen_or_none;
+    if gen?.jac {
+        return gen.jac;
     }
     return self.value;
 }
@@ -2625,6 +2627,22 @@ impl UniNode.gen.getter -> CodeGenTarget {
 
 impl UniNode.gen.setter(value: CodeGenTarget) {
     self._gen = value;
+}
+
+impl UniNode.gen_or_none.getter -> (CodeGenTarget | None) {
+    return self._gen;
+}
+
+impl Module.evict_py_ast -> None {
+    mods = [self] + self.get_all_sub_nodes(Module);
+    for mod in mods {
+        for nd in mod.flatten() {
+            gen = nd.gen_or_none;
+            if (gen is not None and gen.py_ast) {
+                gen.py_ast = [];
+            }
+        }
+    }
 }
 
 impl Expr.type_sym_tab.getter -> (UniScopeNode | None) {

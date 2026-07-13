@@ -46,6 +46,7 @@ obj UniNode {
     def accept_exit(v: UniPass) -> None;
 
     has gen: CodeGenTarget { getter; setter(value: CodeGenTarget); }
+    has gen_or_none: (CodeGenTarget | None) { getter; }
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
 
     def _construct_sub_node_tab -> None;
@@ -340,6 +341,7 @@ obj Module(AstDocNode, UniScopeNode) {
 
     def format -> str;
     def unparse(requires_format: bool = True) -> str;
+    def evict_py_ast -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {
