@@ -287,6 +287,13 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
     if info and not info["is_writer"] {
         cached = __cacheGet(args_key);
         if cached and __isFresh(cached) {
+            # Devtools (dev only): record cache hits, which never hit the network
+            # and so are invisible to a fetch-level interceptor.
+            if window.__jacDevtoolsOnCall {
+                window.__jacDevtoolsOnCall(
+                    {"endpoint_key": endpoint_key, "cached": True}
+                );
+            }
             return cached["data"];
         }
         # Dedup concurrent identical requests

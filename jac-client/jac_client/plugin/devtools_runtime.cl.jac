@@ -48,3 +48,33 @@ def:pub DevtoolsPanelShell(props: dict) -> JsxElement;
 
 """Environment panel: route, mounted module/entry, viewport, and runtime info."""
 def:pub EnvPanel -> JsxElement;
+
+"""Network panel: passively captured walker/function HTTP calls (newest first)."""
+def:pub NetworkPanel -> JsxElement;
+
+"""Install a passive `window.fetch` wrapper that records Jac walker/function calls.
+
+The wrapper is pure pass-through: it returns the original fetch promise unchanged
+and only records via side-effect handlers, so it can never alter call behavior.
+Idempotent (guards on a `window` flag).
+"""
+def _installNetworkCapture -> None;
+
+"""The fetch wrapper installed by `_installNetworkCapture`."""
+def _jacDevtoolsFetch(input: any, opts: any = None) -> any;
+
+"""Runtime hook: records a cached endpoint call (a cache hit does not fetch).
+
+Installed as `window.__jacDevtoolsOnCall` and invoked by the client runtime's
+`__cachedEndpointCall`, so repeat calls served from cache still show up.
+"""
+def _jacDevtoolsOnCall(info: dict) -> None;
+
+"""Extract a friendly call name (the segment after /walker/ or /function/)."""
+def _jacCallName(url: str) -> str;
+
+"""Append a captured request to the (capped) ring buffer and notify listeners."""
+def _recordNetworkEntry(rec: dict) -> None;
+
+"""Dispatch the event the Network panel listens on to refresh."""
+def _dispatchNetworkUpdate -> None;

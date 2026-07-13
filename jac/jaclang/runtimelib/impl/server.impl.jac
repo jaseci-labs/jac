@@ -2034,9 +2034,15 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         }
                     }
                 }
+                import from jaclang.runtimelib.devtools {
+                    begin_llm_capture,
+                    attach_llm_calls
+                }
+                _llm_buf = begin_llm_capture();
                 response = asyncio.run(
                     server.execution_handler.call_function(name, data, username)
                 );
+                attach_llm_calls(response, _llm_buf);
                 self._send_response(response);
             } elif path.startswith('/walker/') {
                 name_parts = path.split('/');
@@ -2061,9 +2067,15 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                     }
                 }
                 fields = data | {'_jac_spawn_node': node_id};
+                import from jaclang.runtimelib.devtools {
+                    begin_llm_capture,
+                    attach_llm_calls
+                }
+                _llm_buf = begin_llm_capture();
                 response = asyncio.run(
                     server.execution_handler.spawn_walker(name, fields, username)
                 );
+                attach_llm_calls(response, _llm_buf);
                 self._send_response(response);
             } elif (path == '/cl/__error__') {
                 message = data.get('message', '');
