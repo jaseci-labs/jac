@@ -79,3 +79,61 @@ test "bundle cache key ignores the derived client dist" {
     Path(d, "main.jac").write_text("with entry { print(1); }");
     assert _bundle_cache_key(Path(d), "mongo", b"BIN") != before;
 }
+
+
+test "unreadable input disables caching instead of keying a stale digest" {
+    import from jaclang.scale.injector.bundle { _bundle_cache_key }
+    if os.geteuid() == 0 {
+        return;
+    }
+    d = tempfile.mkdtemp();
+    Path(d, "main.jac").write_text("with entry {}");
+    secret = Path(d, "data.txt");
+    secret.write_text("x");
+    os.chmod(str(secret), 0);
+    try {
+        assert _bundle_cache_key(Path(d), "", b"BIN") == "";
+    } finally {
+        os.chmod(str(secret), 0o644);
+    }
+}
+
+
+test "a cache dir inside the project does not poison its own key" {
+    import from jaclang.scale.injector.bundle { _bundle_cache_key }
+    d = tempfile.mkdtemp();
+    Path(d, "main.jac").write_text("with entry {}");
+    saved = os.environ.get("JAC_SCALE_CACHE_DIR");
+    os.environ["JAC_SCALE_CACHE_DIR"] = str(Path(d, ".cache"));
+    try {
+        before = _bundle_cache_key(Path(d).resolve(), "", b"BIN");
+        jabs = Path(d, ".cache", "sealed-jabs");
+        jabs.mkdir(parents=True);
+        Path(jabs, "aaaa.jab").write_bytes(b"cached");
+        assert _bundle_cache_key(Path(d).resolve(), "", b"BIN") == before;
+    } finally {
+        os.environ.pop("JAC_SCALE_CACHE_DIR", None);
+        if saved is not None {
+            os.environ["JAC_SCALE_CACHE_DIR"] = saved;
+        }
+    }
+}
+
+
+test "an unreadable directory also disables caching" {
+    import from jaclang.scale.injector.bundle { _bundle_cache_key }
+    if os.geteuid() == 0 {
+        return;
+    }
+    d = tempfile.mkdtemp();
+    Path(d, "main.jac").write_text("with entry {}");
+    sub = Path(d, "data");
+    sub.mkdir();
+    Path(sub, "inner.txt").write_text("x");
+    os.chmod(str(sub), 0);
+    try {
+        assert _bundle_cache_key(Path(d), "", b"BIN") == "";
+    } finally {
+        os.chmod(str(sub), 0o755);
+    }
+}

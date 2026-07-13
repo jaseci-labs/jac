@@ -192,9 +192,35 @@ def _bundle_cache_key(base: Path, provisioned_database: str, pod_binary: bytes) 
     # The sealed .jab is a pure function of these inputs (deterministic tars):
     # source content, the baked database intent, and the sealing binary.
     # .jac/client/dist is derived from sources already hashed, so it is
-    # excluded - the parallel client build may still be writing it.
+    # excluded - the parallel client build may still be writing it. Returns ""
+    # when any input is unreadable: an incomplete digest must not key a cache
+    # entry, or a stale .jab could ship.
+    cache_rel: tuple = ();
+    try {
+        cache_rel = (scale_cache_root() / "sealed-jabs").resolve().relative_to(
+            base
+        ).parts;
+    } except ValueError {
+        ;
+    }
+    # rglob hides unreadable directories (their files silently vanish from the
+    # walk), so enumerate via os.walk and fail closed on any traversal error.
+    walk_errors: list = [];
+    def _on_walk_error(err: OSError) {
+        walk_errors.append(err);
+    }
+    files: list[Path] = [];
+    for walk_entry in os.walk(str(base), onerror=_on_walk_error, followlinks=True) {
+        dirpath: str = str(walk_entry[0]);
+        for name in walk_entry[2] {
+            files.append(Path(dirpath) / str(name));
+        }
+    }
+    if walk_errors {
+        return "";
+    }
     h = hashlib.sha256();
-    for path in sorted(base.rglob("*")) {
+    for path in sorted(files) {
         if not path.is_file() {
             continue;
         }
@@ -203,6 +229,10 @@ def _bundle_cache_key(base: Path, provisioned_database: str, pod_binary: bytes) 
             continue;
         }
         parts = rel.parts;
+        # a cache dir placed inside the project must not feed its own key
+        if cache_rel and parts[:len(cache_rel)] == cache_rel {
+            continue;
+        }
         if (
             len(parts) >= 3
             and parts[0] == ".jac"
@@ -214,7 +244,7 @@ def _bundle_cache_key(base: Path, provisioned_database: str, pod_binary: bytes) 
         try {
             digest = hashlib.sha256(path.read_bytes()).digest();
         } except OSError {
-            continue;
+            return "";
         }
         h.update(str(rel).encode());
         h.update(digest);
@@ -307,10 +337,10 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
     base = Path(project_dir).resolve();
     # Unchanged inputs produce byte-identical .jabs, so a cache hit skips the
     # whole seal (and the PVC seed dedups on the same digest downstream).
-    cache_file = scale_cache_root() / "sealed-jabs" / (
-        _bundle_cache_key(base, provisioned_database, pod_binary) + ".jab"
-    );
-    if cache_file.is_file() {
+    # An empty key means an unreadable input: skip caching for this pack.
+    key = _bundle_cache_key(base, provisioned_database, pod_binary);
+    cache_file = (scale_cache_root() / "sealed-jabs" / f"{key}.jab") if key else None;
+    if cache_file is not None and cache_file.is_file() {
         try {
             raw = cache_file.read_bytes();
             logger.info("Using the cached sealed .jab (sources + binary unchanged).");
@@ -363,6 +393,9 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
         }
         raw = buf.getvalue();
         try {
+            if cache_file is None {
+                return raw;
+            }
             cache_file.parent.mkdir(parents=True, exist_ok=True);
             tmp = cache_file.with_suffix(f".{os.getpid()}.tmp");
             tmp.write_bytes(raw);
