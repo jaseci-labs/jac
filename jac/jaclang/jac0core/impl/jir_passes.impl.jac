@@ -537,7 +537,8 @@ impl JirReader._init_caches -> None {
         SymbolAccess,
         SymbolType,
         EdgeDir,
-        CodeContext
+        CodeContext,
+        OwnershipKind
     }
     import from jaclang.jac0core.codeinfo { CodeLocInfo }
     import ast as ast3;
@@ -586,7 +587,8 @@ impl JirReader._init_caches -> None {
         'sym_type': SymbolType,
         'access': SymbolAccess,
         'edge_dir': EdgeDir,
-        'code_context': CodeContext
+        'code_context': CodeContext,
+        'ownership': OwnershipKind
     };
     for (fname, enum_cls) in enum_mapping.items() {
         cache: dict[str, object] = {};
