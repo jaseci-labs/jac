@@ -710,21 +710,11 @@ impl JacCompiler.compile(
     );
     had_blocking_errors = blocking_errs_post_ir > blocking_errs_pre_ir;
 
-    import from jaclang.jac0core.ext_registry { is_native_module, is_client_module }
-    mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
-    is_na_file = bool(mp) and is_native_module(mp);
-    is_explicit_native = is_na_file;
-    is_client_mod = bool(mp) and is_client_module(mp);
-    if (not is_explicit_native or not is_client_mod) and mod_targ?.body {
-        for _stmt in mod_targ.body {
-            if isinstance(_stmt, uni.NativeBlock) {
-                is_explicit_native = True;
-            }
-            if isinstance(_stmt, uni.ClientBlock) {
-                is_client_mod = True;
-            }
-        }
-    }
+    import from jaclang.jac0core.constant { CodeContext as _CodeCtx }
+    is_explicit_native = mod_targ is not None
+    and mod_targ.declares_codespace(_CodeCtx.NATIVE, path_hint=file_path);
+    is_client_mod = mod_targ is not None
+    and mod_targ.declares_codespace(_CodeCtx.CLIENT, path_hint=file_path);
     is_native_mod = is_explicit_native
     or (
         actual_program._auto_promote_native
@@ -915,7 +905,11 @@ impl JacCompiler.compile(
             passes=get_py_code_gen(native=needs_native),
             cancel_token=options.cancel_token
         );
-        if is_na_file {
+        import from jaclang.jac0core.ext_registry { is_native_module as _is_na_sfx }
+        _mp_scrub = mod_targ.loc.mod_path
+            if (mod_targ?.loc and mod_targ.loc)
+            else file_path;
+        if bool(_mp_scrub) and _is_na_sfx(_mp_scrub) {
             JacCompiler._scrub_native_artifacts_on_error(actual_program, mod_targ);
         }
     }

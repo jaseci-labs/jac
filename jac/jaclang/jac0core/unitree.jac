@@ -72,6 +72,7 @@ obj UniNode {
     def get_all_sub_nodes[T](typ: type[T]) -> list[T];
     def find_parent_of_type[T](typ: type[T]) -> (T | None);
     def parent_of_type[T](typ: type[T]) -> T;
+    def codespace -> CodeContext;
     def in_client_context -> bool;
     def in_native_context -> bool;
     def to_dict -> dict[(str, str)];
@@ -341,6 +342,7 @@ obj Module(AstDocNode, UniScopeNode) {
 
     def format -> str;
     def unparse(requires_format: bool = True) -> str;
+    def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {

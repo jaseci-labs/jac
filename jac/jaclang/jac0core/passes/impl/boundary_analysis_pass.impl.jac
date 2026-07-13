@@ -12,10 +12,12 @@ impl BoundaryAnalysisPass.before_pass(self: BoundaryAnalysisPass) -> None {
 impl BoundaryAnalysisPass._get_context(
     self: BoundaryAnalysisPass, nd: uni.UniNode
 ) -> InteropContext {
-    if nd.in_native_context() {
+    import from jaclang.jac0core.constant { CodeContext }
+    cs = nd.codespace();
+    if cs == CodeContext.NATIVE {
         return InteropContext.NATIVE;
     }
-    if nd.in_client_context() {
+    if cs == CodeContext.CLIENT {
         return InteropContext.CLIENT;
     }
     return InteropContext.SERVER;
