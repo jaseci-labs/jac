@@ -174,9 +174,10 @@ test "solid view seam emits un-thunked dynamic JSX, never wraps handlers (fixtur
     assert "{count()}" in js , "dynamic child should be an un-thunked accessor read";
     # Static literal attribute is a plain string attribute.
     assert 'type="text"' in js;
-    # Event handler is emitted as-is — never wrapped in a view thunk.
-    assert "onClick={" in js;
-    assert "onClick={() => count()" not in js , "handler must not be view-wrapped";
+    # Event handler is emitted as-is: the authored lambda's implicit return
+    # compiles to `() => count()`; a view wrap would add a second arrow layer.
+    assert "onClick={() => count()}" in js , "handler should be emitted as-is";
+    assert "onClick={() => () =>" not in js , "handler must not be view-wrapped";
 }
 
 test "solid lifts a keyed comprehension to native <For> (Branch 4)" {

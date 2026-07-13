@@ -36,6 +36,16 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_memory_request': '128Mi',
             'redis_memory_limit': '1Gi'
         },
+        'websocket': {
+            'backplane': None,
+            'redis_url': None,
+            'max_message_bytes': 65536,
+            'max_connections_per_target': 5000,
+            'max_connections_per_user': 10,
+            'max_anonymous_per_target': 100,
+            'target_timeout_seconds': 30,
+            'messages_per_second': 20
+        },
         'kubernetes': {
             'app_name': 'jaseci',
             'namespace': 'default',
@@ -142,7 +152,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'verify_token_ttl_seconds': 86400,
             'reset_url_template': '',
             'verify_url_template': '',
-            'token_collection': 'auth_tokens'
+            'token_collection': 'auth_tokens',
+            'password_hash_rounds': 12
         },
         'microservices': {
             'gateway_port': 8000,
@@ -370,6 +381,61 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
+"""Read a positive WebSocket limit, rejecting values that would wedge a socket.
+
+Every limit here is a divisor or a budget, and each has a value that silently
+breaks the connection rather than loosening it: `messages_per_second = 0` leaves
+the token bucket with nothing to refill it, so a socket is rate-limited forever
+after its first message; `max_message_bytes = 0` rejects every frame; a zero
+connection cap refuses every client. None of them mean "unlimited", so they are
+refused at load rather than at 3am. To effectively disable a limit, set it high.
+"""
+impl _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float {
+    raw = ws_config.get(key, fallback);
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)) {
+        raise ValueError(f"[scale.websocket].{key} must be a number, got {raw!r}.");
+    }
+    try {
+        value = float(raw);
+    } except ValueError {
+        raise ValueError(f"[scale.websocket].{key} must be a number, got {raw!r}.");
+    }
+    if value <= 0 {
+        raise ValueError(
+            f"[scale.websocket].{key} must be greater than 0, got {raw!r}. "
+            "These limits have no 'unlimited' value; set a high one instead."
+        );
+    }
+    return value;
+}
+
+impl JacScaleConfig.get_websocket_config(self: JacScaleConfig) -> dict[str, any] {
+    config = self.load();
+    ws_config: dict = config.get('websocket', {});
+    backplane = ws_config.get('backplane');
+    if backplane is not None {
+        backplane = str(backplane).lower();
+    }
+    ws_redis_url = ws_config.get('redis_url')
+    or self.get_database_config().get('redis_url');
+    return {
+        'backplane': backplane,
+        'redis_url': ws_redis_url,
+        'max_message_bytes': int(_ws_positive(ws_config, 'max_message_bytes', 65536)),
+        'max_connections_per_target': int(
+            _ws_positive(ws_config, 'max_connections_per_target', 5000)
+        ),
+        'max_connections_per_user': int(
+            _ws_positive(ws_config, 'max_connections_per_user', 10)
+        ),
+        'max_anonymous_per_target': int(
+            _ws_positive(ws_config, 'max_anonymous_per_target', 100)
+        ),
+        'target_timeout_seconds': _ws_positive(ws_config, 'target_timeout_seconds', 30),
+        'messages_per_second': _ws_positive(ws_config, 'messages_per_second', 20)
+    };
+}
+
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     global _scale_config_instance;
     if _scale_config_instance is not None {
@@ -383,6 +449,21 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
 impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
+}
+
+impl resolve_password_hash_rounds(configured_rounds: int) -> int {
+    env_val = os.environ.get('JAC_SCALE_BCRYPT_ROUNDS');
+    if not env_val {
+        return max(4, min(31, configured_rounds));
+    }
+    try {
+        rounds = int(env_val);
+    } except ValueError as e {
+        raise ValueError(
+            f"JAC_SCALE_BCRYPT_ROUNDS must be an integer in 4..31, got: {env_val!r}"
+        ) from e;
+    }
+    return max(4, min(31, rounds));
 }
 
 impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
@@ -442,6 +523,9 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
         'reset_url_template': auth_config.get('reset_url_template', ''),
         'verify_url_template': auth_config.get('verify_url_template', ''),
         'token_collection': auth_config.get('token_collection', 'auth_tokens'),
+        'password_hash_rounds': resolve_password_hash_rounds(
+            int(auth_config.get('password_hash_rounds', 12))
+        ),
         'forgot_password_rate_per_hour': int(
             auth_config.get('forgot_password_rate_per_hour', 3)
         ),

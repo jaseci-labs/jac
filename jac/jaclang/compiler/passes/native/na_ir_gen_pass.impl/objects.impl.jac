@@ -64,6 +64,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
         self._emit_struct_release_fn(arch_name);
+        self._emit_trace_fn(arch_name);
     }
 
     for arch in archetypes {
@@ -904,6 +905,11 @@ impl NaIRGenPass._codegen_instantiation(
             );
             self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
         }
+        self._emit_trace_fn(type_name);
+        _trace_fn_s = self.struct_trace_fns.get(type_name);
+        self._require_trace_fn(
+            type_name, self._struct_has_ref_fields(type_name), _trace_fn_s is not None
+        );
         if self.rc_set_type_fn is not None {
             _obj_i8 = self.builder.bitcast(
                 obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tag"
@@ -1438,7 +1444,13 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 );
             }
             result = self._dispatch_primitive_method(
-                "list", method_name, list_val, arg_vals, elem_type_name
+                "list",
+                method_name,
+                list_val,
+                arg_vals,
+                elem_type_name,
+                kwargs=self._split_call_kwargs(nd),
+                kw_node=nd
             );
 
             self._clear_rc_ctx();

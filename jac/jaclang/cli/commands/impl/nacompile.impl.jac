@@ -133,10 +133,15 @@ impl nacompile(
     scrub: bool = False,
     target: str = "",
     shared: bool = False,
-    debug: bool = False
+    debug: bool = False,
+    gc: str = "cycles"
 ) -> int {
     import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
 
+    if gc not in ("cycles", "rc", "none") {
+        console.error(f"Invalid --gc mode '{gc}' (expected: cycles, rc, none)");
+        return 1;
+    }
     if not is_jac(filename) {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
@@ -222,7 +227,7 @@ impl nacompile(
             prog._auto_promote_target = os.path.abspath(filename);
         }
 
-        options = CompileOptions(aot_mode=True, type_check=False);
+        options = CompileOptions(aot_mode=True, type_check=False, na_gc_mode=gc);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
         console.error(f"Jac compilation failed: {e}");

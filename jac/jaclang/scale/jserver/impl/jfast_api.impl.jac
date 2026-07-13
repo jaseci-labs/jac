@@ -110,7 +110,7 @@ impl JFastApiServer.run_server(
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stderr"
             },
-            "access": {"()": lambda : console_handler },
+            "access": {"()": lambda { console_handler; }},
 
         },
         "loggers": {

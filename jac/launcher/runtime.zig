@@ -1,30 +1,35 @@
 //! Runtime materialization for the jaclang single binary (Zig launcher).
 //!
-//! Pure-Zig half of the launcher: everything between "the process started" and
-//! "CPython is about to be initialized". It is deliberately free of any
-//! `@cImport`/libpython dependency so it can be unit-tested with plain
-//! `zig test` (see the tests at the bottom of this file). The CPython embed
-//! lives in `launcher.zig`, which calls `materialize` and then boots.
+//! The non-Python half of the launcher: everything between "the process
+//! started" and "CPython is about to be initialized". It is deliberately free
+//! of any `@cImport`/libpython dependency so it can be unit-tested via `zig
+//! build test` (see the tests at the bottom of this file); its one non-std
+//! ingredient is the vendored libzstd DEcoder (plain `extern fn`s, statically
+//! linked in by build.zig's linkLibzstd). The CPython embed lives in
+//! `launcher.zig`, which calls `materialize` and then boots.
 //!
 //! Binary shape (written by launcher/pack.zig):
 //!
-//!     [ exe stub ][ runtime.tar.gz payload ][ trailer ]
+//!     [ exe stub ][ runtime.tar.zst payload ][ trailer ]
 //!
 //!     trailer = magic("JACBIN01", 8) | payload_len(u64 LE, 8) | sha256_hex(64)
 //!               = 80 bytes, fixed, at EOF.
 //!
-//! On first run the payload is gzip-decompressed and untarred into
+//! On first run the payload is zstd-decompressed and untarred into
 //! `<cache>/rt/<hash16>-<pathhash>/` (atomic temp-dir + rename). `<hash16>` is
 //! the first 16 hex chars of the trailer digest (the payload version);
 //! `<pathhash>` folds in the binary's own path so co-located checkouts with
 //! identical payloads get distinct trees (see `rtKey`, issue #7012). A `.ok`
 //! marker guards against partial extracts; subsequent runs short-circuit on it.
 //!
-//! The payload is gzip (deflate), not zstd, so BOTH ends of the pipe are pure
-//! std: launcher/payload.zig compresses with `std.compress.flate.Compress` at
-//! build time and this module decompresses with `std.compress.flate.Decompress`
-//! -- no libzstd and no `zstd` host tool anywhere. Versus the C launcher this
-//! also drops the hand-rolled ustar reader (-> std.tar) and the
+//! The payload is zstd, and BOTH ends of the pipe bind vendored libzstd
+//! (pinned in build.zig.zon, compiled in statically -- no runtime dependency
+//! beyond the libc the launcher already links): launcher/payload.zig encodes
+//! at build time because Zig std has no zstd encoder, and this module decodes
+//! through `PayloadDecoder` below because std's pure-Zig zstd decoder measured
+//! ~15x SLOWER than even std flate on this payload (12 MB/s vs 193 MB/s at
+//! ReleaseSmall, w=2^24; libzstd decodes it at ~1 GB/s). Versus the C launcher
+//! this module also drops the hand-rolled ustar reader (-> std.tar) and the
 //! `system("rm -rf")` / `system("find")` shellouts (-> std.Io.Dir.deleteTree +
 //! dir iteration).
 
@@ -32,7 +37,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
-const flate = std.compress.flate;
 
 /// Trailer layout: magic(8) + payload_len u64-LE(8) + sha256 hex(64) = 80 bytes.
 /// This is the ONE authoritative definition of the on-disk trailer wire format
@@ -51,10 +55,104 @@ pub const MAGIC_LEN = 8;
 pub const HASH_LEN = 64; // sha256 hex
 pub const TRAILER_LEN = MAGIC_LEN + 8 + HASH_LEN; // 80
 
-/// deflate sliding-window buffer. Unlike zstd's tunable window, deflate's window
-/// is fixed at 32 KiB (`flate.max_window_len`), so this is constant regardless of
-/// the compression level payload.zig packs with.
-const GZIP_BUF_LEN = flate.max_window_len;
+/// zstd window log the payload is ENCODED with -- the one number both ends of
+/// the pipe must agree on. payload.zig pins its `ZSTD_c_windowLog` to this,
+/// and `extractPayload` caps the decoder at it (`ZSTD_d_windowLogMax`), so a
+/// payload this launcher carries can never be rejected as window-oversized.
+/// 2^24 = 16 MiB: within ~0.5% of level 19's default ratio on the runtime
+/// tree, while keeping the decoder's cold-path window allocation (and nothing
+/// else -- the warm path allocates zero) small.
+pub const PAYLOAD_WINDOW_LOG = 24;
+
+/// Staging buffer between the libzstd decoder and std.tar. Plain output space
+/// -- libzstd keeps the sliding window internally -- so the size only tunes
+/// copy granularity; it just needs to comfortably exceed tar's 512-byte
+/// header reads.
+const DECODE_BUF_LEN = 1 << 20;
+
+// ------------------------------------------------------ libzstd (decode only)
+// Vendored libzstd, statically compiled in by build.zig's linkLibzstd (same
+// pinned dep the build-time encoder uses). Plain extern fns -- no @cImport, no
+// headers -- so this module still tests via `zig build test` and adds nothing
+// dynamic to the shipped launcher. See the module doc for why libzstd and not
+// `std.compress.zstd` (~15x decode gap on this payload).
+const ZSTD_inBuffer = extern struct { src: ?*const anyopaque, size: usize, pos: usize };
+const ZSTD_outBuffer = extern struct { dst: ?*anyopaque, size: usize, pos: usize };
+pub extern fn ZSTD_createDCtx() ?*anyopaque;
+pub extern fn ZSTD_freeDCtx(dctx: ?*anyopaque) usize;
+extern fn ZSTD_DCtx_setParameter(dctx: ?*anyopaque, param: c_int, value: c_int) usize;
+extern fn ZSTD_decompressStream(dctx: ?*anyopaque, out: *ZSTD_outBuffer, in: *ZSTD_inBuffer) usize;
+extern fn ZSTD_isError(code: usize) c_uint;
+
+/// ZSTD_dParameter value -- part of zstd's stable public API (zstd.h).
+const ZSTD_d_windowLogMax: c_int = 100;
+
+/// Streaming zstd decoder over the in-memory compressed payload, exposed as a
+/// std `Io.Reader` so `std.tar.extract` can consume it -- the uncompressed
+/// tar (~430 MB) is never held in memory. libzstd owns the sliding window
+/// internally, so unlike `std.compress.zstd` the reader buffer here is plain
+/// staging space with no window-retention contract: `stream` fills the
+/// buffer and returns 0, the vtable-documented indirect pattern.
+pub const PayloadDecoder = struct {
+    dctx: *anyopaque,
+    src: []const u8,
+    src_pos: usize = 0,
+    /// True between frames (and before the first byte): after a frame fully
+    /// flushes, libzstd resets to await another frame, and a further call with
+    /// no input left must read as clean end-of-stream -- only running dry
+    /// MID-frame is truncation.
+    frame_done: bool = true,
+    reader: Io.Reader,
+
+    pub fn init(dctx: *anyopaque, src: []const u8, buffer: []u8) PayloadDecoder {
+        // Refuse frames windowed beyond the encode-side pin (defense in depth
+        // against a tampered payload demanding a huge window). Best-effort.
+        _ = ZSTD_DCtx_setParameter(dctx, ZSTD_d_windowLogMax, PAYLOAD_WINDOW_LOG);
+        return .{
+            .dctx = dctx,
+            .src = src,
+            .reader = .{
+                .vtable = &.{ .stream = stream },
+                .buffer = buffer,
+                .seek = 0,
+                .end = 0,
+            },
+        };
+    }
+
+    fn stream(r: *Io.Reader, w: *Io.Writer, limit: Io.Limit) Io.Reader.StreamError!usize {
+        _ = w;
+        _ = limit;
+        const d: *PayloadDecoder = @alignCast(@fieldParentPtr("reader", r));
+        // Reclaim consumed prefix; no history needs to survive in the buffer.
+        if (r.seek == r.end) {
+            r.seek = 0;
+            r.end = 0;
+        } else if (r.end == r.buffer.len) {
+            const keep = r.buffer[r.seek..r.end];
+            @memmove(r.buffer[0..keep.len], keep);
+            r.end = keep.len;
+            r.seek = 0;
+        }
+        // Buffer full of unconsumed data: cannot happen with tar-sized reads.
+        if (r.end == r.buffer.len) return error.ReadFailed;
+        // Clean EOF: everything consumed and the last frame fully flushed.
+        if (d.src_pos == d.src.len and d.frame_done) return error.EndOfStream;
+        var out = ZSTD_outBuffer{ .dst = r.buffer[r.end..].ptr, .size = r.buffer.len - r.end, .pos = 0 };
+        var in = ZSTD_inBuffer{ .src = d.src.ptr, .size = d.src.len, .pos = d.src_pos };
+        const rc = ZSTD_decompressStream(d.dctx, &out, &in);
+        d.src_pos = in.pos;
+        // Corrupt frame -- post-sha256, so an encoder/decoder mismatch, not
+        // bit rot.
+        if (ZSTD_isError(rc) != 0) return error.ReadFailed;
+        d.frame_done = rc == 0;
+        // No output and input exhausted mid-frame: truncated stream.
+        if (out.pos == 0 and !d.frame_done and d.src_pos == d.src.len)
+            return error.ReadFailed;
+        r.end += out.pos;
+        return 0;
+    }
+};
 
 const MAX_PATH = Io.Dir.max_path_bytes;
 
@@ -403,12 +501,13 @@ fn extractPayload(
         var dest = try Io.Dir.cwd().openDir(io, tmp, .{});
         defer dest.close(io);
 
-        const window = try gpa.alloc(u8, GZIP_BUF_LEN);
-        defer gpa.free(window);
+        const dctx = ZSTD_createDCtx() orelse return Error.MaterializeFailed;
+        defer _ = ZSTD_freeDCtx(dctx);
+        const buf = try gpa.alloc(u8, DECODE_BUF_LEN);
+        defer gpa.free(buf);
 
-        var src = Io.Reader.fixed(zbuf);
-        var dz = flate.Decompress.init(&src, .gzip, window);
-        try std.tar.extract(io, dest, &dz.reader, .{
+        var dec = PayloadDecoder.init(dctx, zbuf, buf);
+        try std.tar.extract(io, dest, &dec.reader, .{
             .mode_mode = .ignore,
             .strip_components = 0,
         });
@@ -511,8 +610,8 @@ test "cacheRoot prefers XDG_CACHE_HOME and falls back when unwritable" {
     try testing.expect(std.mem.indexOf(u8, fb, "jac-cache-4242") != null);
 }
 
-// End-to-end exercise of the gzip+tar plumbing: assemble a real
-// [stub][payload.tar.gz][trailer] binary from the committed fixture, run
+// End-to-end exercise of the zstd+tar plumbing: assemble a real
+// [stub][payload.tar.zst][trailer] binary from the committed fixture, run
 // materialize, and assert the tree extracted with correct contents -- then
 // re-run to prove the `.ok` warm-path short-circuits.
 // Test helper: assemble a fake jac binary (4-byte stub + payload + trailer).

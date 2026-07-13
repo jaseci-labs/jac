@@ -1,7 +1,7 @@
 //! jaclang single-binary launcher (Zig) -- dlopen embed.
 //!
 //! This executable carries the jaclang runtime + a private CPython as a
-//! gzip-compressed payload appended after the image (see `runtime.zig`). On
+//! zstd-compressed payload appended after the image (see `runtime.zig`). On
 //! first run it materializes that payload into a versioned cache dir, then
 //! **dlopens** the bundled shared libpython and drives it in-process. Nothing
 //! Python is linked at build time -- the launcher links only libc/libdl, exactly
@@ -12,7 +12,7 @@
 //! verbatim with the `na` desktop host (via the libjacpyembed shim). This file
 //! is now just the *headless CLI frontend* over that shared core: worker mode
 //! (drop-in `python`) and the jaclang CLI boot. The pure-Zig materialization
-//! half (trailer parse, cache resolution, gzip+tar extract, GC) lives in
+//! half (trailer parse, cache resolution, zstd+tar extract, GC) lives in
 //! `runtime.zig` and is unit-tested separately.
 
 const std = @import("std");
@@ -248,6 +248,43 @@ fn isNvimArgv0(init: std.process.Init) bool {
     return std.mem.eql(u8, std.fs.path.basename(argv0), "nvim");
 }
 
+/// True when a rival language toolchain is installed on `$PATH`. jac carries
+/// its own Bun inside the payload, invoked by absolute path and never placed on
+/// PATH -- so any of these names on PATH is a deliberately-installed competing
+/// ecosystem, the antithesis of the one-binary promise. Existence (a successful
+/// open) is the test; symlink shims (nvm/pyenv) resolve and count, as intended.
+/// python3.14 is named exactly, not `python3`: distros own `python3` as an OS
+/// dependency, but a fresh CPython 3.14 is a choice. Returns on the first hit.
+fn ninjaCompetingToolchain(init: std.process.Init) bool {
+    const banned = [_][]const u8{
+        "node",       "npm", "pnpm", "yarn", "deno", // JS runtimes + package managers
+        "python3.14", "pip", "pip3", // a deliberately-installed CPython + pip
+    };
+    const path = init.environ_map.get("PATH") orelse return false;
+    var dirs = std.mem.tokenizeScalar(u8, path, ':');
+    while (dirs.next()) |dir| {
+        for (banned) |name| {
+            var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+            const candidate = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, name }) catch continue;
+            var f = std.Io.Dir.cwd().openFile(init.io, candidate, .{}) catch continue;
+            f.close(init.io);
+            return true;
+        }
+    }
+    return false;
+}
+
+/// The unspoken override. A ninja wrongly flagged by a stray shim -- or one who
+/// simply declines the ordeal -- enters with `jac ninja --imnotworthy`.
+/// Deliberately undocumented: knowing the incantation is itself the credential.
+fn ninjaIsUnworthyOverride(init: std.process.Init) bool {
+    var it = init.minimal.args.iterate();
+    while (it.next()) |a| {
+        if (std.mem.eql(u8, a, "--imnotworthy")) return true;
+    }
+    return false;
+}
+
 const NinjaMode = enum {
     ninja, // `jac ninja [args...]` -> nvim -u <ninja>/init.lua [args...]
     verbatim, // argv[0]=="nvim" -> pass argv through untouched (--embed hop)
@@ -258,6 +295,16 @@ const NinjaMode = enum {
 /// nvim_main() in-process. Never returns.
 fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, mode: NinjaMode) noreturn {
     if (!build_options.ninja) die("this jac build does not bundle the ninja editor (rebuild without -Dno-ninja)");
+
+    // The ninja is earned. Only the user-typed `jac ninja` path is gated --
+    // never `.verbatim`, which is nvim's --embed server hopping back through the
+    // launcher mid-session; gating that would kill the editor AFTER it opened.
+    // A rival toolchain on PATH bars the door unless the invoker confesses with
+    // the unspoken `--imnotworthy`.
+    if (mode == .ninja and !ninjaIsUnworthyOverride(init) and ninjaCompetingToolchain(init)) {
+        std.debug.print("You... are not ready.\n", .{});
+        std.process.exit(1);
+    }
 
     const io = init.io;
     const env = init.environ_map;
@@ -360,6 +407,9 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
             _ = it.next(); // argv[0]
             _ = it.next(); // "ninja"
             while (it.next()) |arg| {
+                // The gate's confession is consumed here, not handed to nvim
+                // (which would reject the unknown flag).
+                if (std.mem.eql(u8, arg, "--imnotworthy")) continue;
                 if (argc >= argv_storage.len - 1) die("too many arguments");
                 argv_storage[argc] = arg.ptr;
                 argc += 1;

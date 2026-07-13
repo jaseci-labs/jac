@@ -516,3 +516,15 @@ test "bootstrap reuses the image binary only on a checksum match" {
     # the shipped-binary install stays as the mismatch/absence fallback
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
 }
+
+
+test "pod dep installs are routed to the shared-volume venv" {
+    script = str(
+        build_bootstrap_init_container(KubernetesConfig(), "jaseci/jaclang:dev")["args"][
+            0
+        ]
+    );
+    # exported before jac install: the image's cache site is container-local
+    assert 'export PIP_PREFIX="/app/.jac/venv"' in script;
+    assert script.index("PIP_PREFIX") < script.index("jac install");
+}

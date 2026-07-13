@@ -27,6 +27,17 @@ obj DiagnosticInfo {
             return f"{self.message_template} (missing key: {e})";
         }
     }
+
+    def format_help(**kwargs: object) -> (str | None) {
+        if self.help_text is None {
+            return None;
+        }
+        try {
+            return self.help_text.format(**kwargs);
+        } except (KeyError, ValueError, IndexError) {
+            return self.help_text;
+        }
+    }
 }
 
 glob DIAGNOSTICS: dict[str, DiagnosticInfo] = {};
@@ -100,7 +111,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0021", Category.SYNTAX, "Expected :<+ or :+> to close connect operator"
      ),
      E0022 = _err(
-         "E0022", Category.SYNTAX, "Expected ':' or '{{' after lambda parameters"
+         "E0022",
+         Category.SYNTAX,
+         "Expected '{{' after lambda parameters",
+         help="Lambda bodies are braced; a single expression statement is the implicit return, e.g. 'lambda (x: int) { x + 1; }'."
      ),
      E0023 = _err(
          "E0023", Category.SYNTAX, "Expected augmented assignment in for...to...by step"
@@ -115,7 +129,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0025",
          Category.SYNTAX,
          "JavaScript arrow function syntax ('=>') is not supported in Jac",
-         help="Use Jac lambda syntax instead: 'lambda e: ChangeEvent { ... }' or 'lambda x: int : x + 1'."
+         help="Use Jac lambda syntax instead: 'lambda (e: ChangeEvent) { ... }' or 'lambda (x: int) { x + 1; }'."
      ),
      E0026 = _err(
          "E0026",
@@ -552,9 +566,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Lambda parameter '{name}' has no type and none could be inferred from context",
          "Jac is strictly typed: a lambda's parameter types must be known. Annotate the"
-         " parameter, e.g. `lambda x: int : x + 1` (the return type is still inferred), or"
+         " parameter, e.g. `lambda (x: int) { x + 1; }` (the return type is still inferred), or"
          " place the lambda where its type is fixed by context — passed as a typed callback"
-         " (`sorted(xs, key=lambda x: ...)`) or bound to a `Callable`-typed target."
+         " (`sorted(xs, key=lambda (x) { ... })`) or bound to a `Callable`-typed target."
      ),
      E1120 = _err(
          "E1120",
@@ -564,6 +578,73 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " every external import must be typed. Install a package that ships"
          " TypeScript declarations (or the matching @types/<package>), or relax"
          " the setting to \"warn\"."
+     ),
+     E1301 = _err(
+         "E1301",
+         Category.SEMANTIC,
+         "Use of '{name}' after it was moved",
+         help="'{name}' is an `own` binding, so assigning it elsewhere (or passing"
+         " it into managed storage) moves the value out. The value now lives at the"
+         " destination — read it there, or reassign '{name}' before using it again."
+     ),
+     E1302 = _err(
+         "E1302",
+         Category.SEMANTIC,
+         "Conflicting mutable borrow of '{name}' while another borrow is live",
+         help="A value may have any number of shared (&) borrows or exactly one"
+         " mutable (&mut) borrow, never both at once. Let the existing borrow go out"
+         " of scope before taking '&mut {name}'."
+     ),
+     E1303 = _err(
+         "E1303",
+         Category.SEMANTIC,
+         "Cannot mutate '{name}' while a shared borrow of it is live",
+         help="While a `&` shared borrow is live, the owner is read-only. Let every"
+         " shared borrow go out of scope before mutating '{name}' — reassigning it or"
+         " writing one of its fields both count as mutation."
+     ),
+     E1304 = _err(
+         "E1304",
+         Category.SEMANTIC,
+         "'{name}' is destroyed while still borrowed",
+         help="The owner '{name}' goes out of scope (and is destroyed) while a borrow"
+         " of it is still live. A borrow must not outlive the value it points to; keep"
+         " '{name}' in scope for at least as long as every borrow of it."
+     ),
+     E1306 = _err(
+         "E1306",
+         Category.SEMANTIC,
+         "Borrow of '{name}' escapes its scope",
+         help="Borrows are second-class: a `&`/`&mut` reference may not be stored in a"
+         " field, returned (except a single passthrough parameter), or otherwise"
+         " outlive the scope that created it."
+     ),
+     E1307 = _err(
+         "E1307",
+         Category.SEMANTIC,
+         "Reference to '{name}' escapes its `region` block",
+         help="A `region {}` arena owns everything allocated inside it and frees the"
+         " whole arena at the closing brace. A reference rooted in the region may not"
+         " be returned, stored outside, or handed to a `flow`/`wait` boundary — it"
+         " would dangle once the arena is reclaimed. Keep the reference inside the"
+         " region, or move the value out with `own` before the block ends."
+     ),
+     E1308 = _err(
+         "E1308",
+         Category.SEMANTIC,
+         "'{name}' is not sendable across a concurrency boundary",
+         help="Only a deep-immutable `val` value or a moved `own` value may cross a"
+         " `flow`/`wait`/`thread_run` boundary — those are the only payloads that are"
+         " statically race-free. A live `&`/`&mut` borrow or a shared managed value may"
+         " not be sent; move it with `own`, or send a `val` snapshot instead."
+     ),
+     E1309 = _err(
+         "E1309",
+         Category.SEMANTIC,
+         "Cannot mutate '{name}' through a deep-immutable `val` binding",
+         help="'{name}' is a `val` value: it is transitively immutable, so it may never"
+         " be reassigned, have a field written, or be borrowed `&mut`. Take a `val` as"
+         " read-only, or use an `own`/managed binding if you need to mutate."
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(

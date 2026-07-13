@@ -216,6 +216,19 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
 
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     name = (nd).name_ref.sym_name if (nd).name_ref else "unnamed";
+    if isinstance(nd.signature, uni.FuncSignature) {
+        for _vp in nd.signature.get_parameters() {
+            if _vp.unpack is not None {
+                self.emit(
+                    E5090,
+                    node_override=_vp,
+                    kind="variadic parameter",
+                    name=f"{_vp.unpack.value}{_vp.name.value if _vp.name else ''}"
+                );
+                return;
+            }
+        }
+    }
     func = self.func_symtab.get(name);
     if func is None {
         return;
@@ -573,6 +586,29 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     b_nogc.call(self.rc_gc_disable_fn, []);
     b_nogc.branch(_nogc_cont);
     self._builder = ir.IRBuilder(_nogc_cont);
+
+    if self._gc_mode() == "cycles" {
+        _cyc_str = self._get_snprintf_fmt("JAC_GC_CYCLES");
+        _cyc_ptr = self.builder.gep(
+            _cyc_str,
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+            name="cyc.key"
+        );
+        _cyc_val = self.builder.call(_getenv_fn, [_cyc_ptr], name="cyc.env");
+        _cyc_set = self.builder.icmp_unsigned(
+            "!=", _cyc_val, ir.Constant(_i8p, None), name="cyc.set"
+        );
+        _cyc_then = func.append_basic_block("cyc_enable");
+        _cyc_cont = func.append_basic_block("cyc_cont");
+        self.builder.cbranch(_cyc_set, _cyc_then, _cyc_cont);
+        b_cyc = ir.IRBuilder(_cyc_then);
+        if self.rc_alloc_fn is None {
+            self._emit_rc_helpers();
+        }
+        b_cyc.call(self.rc_cycles_enable_fn, []);
+        b_cyc.branch(_cyc_cont);
+        self._builder = ir.IRBuilder(_cyc_cont);
+    }
     if glob_init_fn is not None {
         self.builder.call(glob_init_fn, []);
     }

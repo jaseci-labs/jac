@@ -18,7 +18,11 @@
 //!
 //! Build-time host tools: just `zig` and a network connection. The old bash /
 //! curl / git / zstd / tar dependencies are gone -- payload.zig does HTTP,
-//! integrity, (de)compression and tar in std. It shells out only to the
+//! integrity, decompression and tar in std, and the runtime payload rides
+//! vendored libzstd on both ends (a pinned build.zig.zon dep, statically
+//! compiled into the payload tool's encoder and the launcher's decoder; see
+//! linkLibzstd for why std.compress.zstd is not enough). It shells out only
+//! to the
 //! freshly-fetched pbs python (pip + JIR precompile), which provides its own
 //! pip, and -- best-effort, optional -- to `strip` to shrink the unstripped
 //! pbs libpython (~245 MiB -> ~20 MiB); without `strip` the build still works,
@@ -84,6 +88,9 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     launcher_mod.addOptions("build_options", launcher_opts);
+    // The launcher decodes its payload with vendored libzstd (statically
+    // linked; still no runtime deps beyond libc) -- see linkLibzstd.
+    linkLibzstd(b, launcher_mod, .decompress);
     const stub = b.addExecutable(.{ .name = "jac", .root_module = launcher_mod });
 
     // The assembled ninja tree staged into the payload as nvim/ (runtime/ +
@@ -154,6 +161,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    // The shim shares embed.zig's materialize path, so it needs the same
+    // vendored libzstd decoder as the launcher stub.
+    linkLibzstd(b, pyembed_mod, .decompress);
     const pyembed = b.addLibrary(.{ .name = "jacpyembed", .root_module = pyembed_mod, .linkage = .dynamic });
     // Place the shim into the source tree (gitignored) so the editable dev loop --
     // which serves the desktop assets from source, not the payload -- finds it via
@@ -173,17 +183,20 @@ pub fn build(b: *std.Build) void {
     // --- unit tests (pure Zig, no libpython) -------------------------------
     addTests(b, target, optimize);
 
-    // The one pure-Zig build tool (launcher/payload.zig) that replaces the old
-    // bash scripts; it links only std (http/zstd/flate/tar/crypto) and shells
-    // out only to the fetched pbs python (pip + JIR precompile). Built for the
-    // host since it runs at build time. Created here (not inside the payload
-    // block) so the arch-independent `fetch-typeshed` step can reuse it.
+    // The one Zig build tool (launcher/payload.zig) that replaces the old
+    // bash scripts; it uses std for http/tar/crypto and all DEcompression, plus
+    // vendored libzstd (below) for the one thing std cannot do: ENcode the zstd
+    // runtime payload. It shells out only to the fetched pbs python (pip + JIR
+    // precompile). Built for the host since it runs at build time. Created here
+    // (not inside the payload block) so the arch-independent `fetch-typeshed`
+    // step can reuse it.
     const tool_mod = b.createModule(.{
         .root_source_file = b.path("launcher/payload.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
         .link_libc = true,
     });
+    linkLibzstd(b, tool_mod, .compress);
     const tool = b.addExecutable(.{ .name = "payload", .root_module = tool_mod });
     const root = b.pathFromRoot(".");
 
@@ -270,7 +283,7 @@ pub fn build(b: *std.Build) void {
     };
 
     // --- runtime payload: -Dpayload override, else fetch pbs + mkpayload ----
-    const payload: std.Build.LazyPath = if (b.option([]const u8, "payload", "Path to a prebuilt runtime payload .tar.gz")) |p|
+    const payload: std.Build.LazyPath = if (b.option([]const u8, "payload", "Path to a prebuilt runtime payload .tar.zst")) |p|
         .{ .cwd_relative = p }
     else payload: {
         const pbs_dir = b.pathFromRoot(b.fmt(".pbs-build/{s}", .{osarch}));
@@ -300,7 +313,7 @@ pub fn build(b: *std.Build) void {
         }
         mk.step.dependOn(&fetch.step);
         mk.step.dependOn(&fetch_ts.step);
-        const out = mk.addOutputFileArg("payload.tar.gz");
+        const out = mk.addOutputFileArg("payload.tar.zst");
         // Optional trailing flags (parsed after the positional pbs/root/out):
         // --shim ships the Zig-built LLVMPY_* shim instead of pip-installing the
         // llvmlite wheel; --skip-precompile drops the JIR precompile (fast
@@ -791,21 +804,90 @@ fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         .root_source_file = b.path("launcher/runtime.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
+    // The materialize test decodes the fixture through the launcher's real
+    // libzstd-backed path.
+    linkLibzstd(b, runtime_mod, .decompress);
     const runtime_tests = b.addTest(.{ .name = "runtime-tests", .root_module = runtime_mod });
     test_step.dependOn(&b.addRunArtifact(runtime_tests).step);
 
     // payload.zig's staging/floor tests (filesystem-only; no network or pbs
     // tree). Rooted at a tiny aggregator -- payload.zig has its own `pub fn main`
     // (the build CLI), which collides with the `--listen=-` test runner if used
-    // as the test root directly.
+    // as the test root directly. Links both libzstd sides so the round-trip
+    // test runs the production pipe: tool encode -> launcher decode.
     const payload_mod = b.createModule(.{
         .root_source_file = b.path("launcher/payload_test.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
+    linkLibzstd(b, payload_mod, .both);
     const payload_tests = b.addTest(.{ .name = "payload-tests", .root_module = payload_mod });
     test_step.dependOn(&b.addRunArtifact(payload_tests).step);
+}
+
+/// Compile the needed side(s) of upstream libzstd (pinned in build.zig.zon)
+/// into `mod`. Zig std ships a zstd DEcoder but no encoder -- and that pure-Zig
+/// decoder measures ~15x slower than even std flate on the runtime payload
+/// (12 MB/s vs 193 MB/s at ReleaseSmall; libzstd decodes at ~1 GB/s) -- so BOTH
+/// ends of the payload pipe bind libzstd: `.compress` into the build-time
+/// payload tool, `.decompress` into everything that runs `materialize` (the
+/// launcher stub, the pyembed shim, and their tests). The objects are linked
+/// statically; shipped binaries gain no runtime dependency beyond the libc
+/// they already carry. ZSTD_MULTITHREAD parallelizes mkpayload's level-19
+/// pass (pthreads via link_libc); ZSTD_DISABLE_ASM skips the amd64 .S huffman
+/// kernels so the decoder stays portable plain C across all pinned targets.
+const ZstdSide = enum { compress, decompress, both };
+fn linkLibzstd(b: *std.Build, mod: *std.Build.Module, side: ZstdSide) void {
+    const dep = b.lazyDependency("zstd", .{}) orelse return;
+    mod.addIncludePath(dep.path("lib"));
+    const flags: []const []const u8 = &.{ "-DZSTD_MULTITHREAD", "-DZSTD_DISABLE_ASM" };
+    mod.addCSourceFiles(.{
+        .root = dep.path("lib"),
+        .files = &.{
+            "common/debug.c",
+            "common/entropy_common.c",
+            "common/error_private.c",
+            "common/fse_decompress.c",
+            "common/pool.c",
+            "common/threading.c",
+            "common/xxhash.c",
+            "common/zstd_common.c",
+        },
+        .flags = flags,
+    });
+    if (side != .decompress) mod.addCSourceFiles(.{
+        .root = dep.path("lib"),
+        .files = &.{
+            "compress/fse_compress.c",
+            "compress/hist.c",
+            "compress/huf_compress.c",
+            "compress/zstd_compress.c",
+            "compress/zstd_compress_literals.c",
+            "compress/zstd_compress_sequences.c",
+            "compress/zstd_compress_superblock.c",
+            "compress/zstd_double_fast.c",
+            "compress/zstd_fast.c",
+            "compress/zstd_lazy.c",
+            "compress/zstd_ldm.c",
+            "compress/zstd_opt.c",
+            "compress/zstd_preSplit.c",
+            "compress/zstdmt_compress.c",
+        },
+        .flags = flags,
+    });
+    if (side != .compress) mod.addCSourceFiles(.{
+        .root = dep.path("lib"),
+        .files = &.{
+            "decompress/huf_decompress.c",
+            "decompress/zstd_ddict.c",
+            "decompress/zstd_decompress.c",
+            "decompress/zstd_decompress_block.c",
+        },
+        .flags = flags,
+    });
 }
 
 /// Non-panicking Dependency.artifact(): null while the dependency's own lazy
