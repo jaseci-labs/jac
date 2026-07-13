@@ -14,10 +14,16 @@ type TargetFactory = Callable[[dict[str, any], Logger | None], DeploymentTarget]
 project dependency -- sync it into the jac global site on first use so a scale
 deploy never requires a manual 'jac install --scale'.
 
+The deploy entry points (the kubernetes realizer and the destroy/status verbs)
+call this before their first third-party import: pieces of the tooling
+(dotenv, then the kubernetes client) are imported before this factory runs, so
+syncing only inside create() crashed a clean operator machine with
+"No module named ..." before the install had a chance to happen.
+
 A dry run renders manifests and applies nothing, so it must not reach for the
 tooling at all: installing into the global site is a mutation of the operator's
 machine, and --dry-run promises not to make any."""
-def _ensure_deploy_tooling(dry_run: bool = False) {
+def ensure_deploy_tooling(dry_run: bool = False) {
     if dry_run {
         return;
     }
@@ -67,7 +73,7 @@ class DeploymentTargetFactory {
         }
 
         if target_type == 'kubernetes' {
-            _ensure_deploy_tooling(dry_run);
+            ensure_deploy_tooling(dry_run);
             _require_deploy_tooling(dry_run);
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
                 KubernetesTarget
@@ -78,7 +84,7 @@ class DeploymentTargetFactory {
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
         } elif target_type == 'kubernetes-microservice' {
-            _ensure_deploy_tooling(dry_run);
+            ensure_deploy_tooling(dry_run);
             _require_deploy_tooling(dry_run);
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
                 KubernetesConfig

@@ -1,10 +1,13 @@
 import os;
 import pathlib;
-import from dotenv { load_dotenv }
 import from jaclang.cli.console { console }
 import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.observability.factory { UtilityFactory }
-import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
+import from jaclang.scale.deploy.target.factory {
+    DeploymentTargetFactory,
+    ensure_deploy_tooling
+}
+import from jaclang.scale._optdeps.optional_deps { require_optional }
 import from jaclang.scale.config.app_config { AppConfig }
 
 
@@ -55,8 +58,17 @@ obj KubernetesRealizer {
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'");
         }
+        # Sync the deploy.k8s closure before the deploy path's first
+        # third-party import: dotenv below is part of that tooling, so a clean
+        # operator machine crashed with "No module named 'dotenv'" before the
+        # factory's own sync inside create() could run. A dry run installs
+        # nothing, so require_optional turns an unsynced machine into an
+        # actionable capability error instead of a bare ModuleNotFoundError.
+        ensure_deploy_tooling(dry_run);
         code_folder = os.path.dirname(filename) or '.';
         dotenv_path = os.path.join(code_folder, '.env');
+        require_optional("dotenv", "deploy.k8s");
+        import from dotenv { load_dotenv }
         load_dotenv(dotenv_path);
         scale_config = get_scale_config();
         logger = UtilityFactory.create_logger('standard');
