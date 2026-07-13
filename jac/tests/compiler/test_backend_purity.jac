@@ -51,6 +51,13 @@ glob FORBIDDEN: dict[str, str] = {
              "former local _ability_from_symbol) used to resolve a SOURCE "
              "module's exported ability at sv-import client-stub generation"
          ),
+         ("ecmascript/impl/esast_gen_pass.impl.jac", "type_evaluator"): (
+             2,
+             "classify_call fallback (same context as symbol_utils above) "
+             "and _sv_import_item_is_type: both fetch the one central "
+             "evaluator to resolve an import placeholder for modules that "
+             "never ran TypeCheckPass (reached only transitively)"
+         ),
          ("ecmascript/impl/esast_gen_pass.impl.jac", ".lookup("): (
              2,
              "declaration-surface reads: (1) sv-import client stub "

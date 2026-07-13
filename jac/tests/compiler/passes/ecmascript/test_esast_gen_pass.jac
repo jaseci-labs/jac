@@ -2,6 +2,8 @@
 
 import os;
 import from tests.support { JAC_ROOT }
+import from tempfile { TemporaryDirectory }
+import from pathlib { Path }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
@@ -1179,4 +1181,41 @@ test "augmented reactive assignments do not double-apply the lhs" {
     assert "setCount((count + (count" not in js , (
         "double-application bug detected in:\n" + js
     );
+}
+
+test "obj construction across a transitively-imported file emits new" {
+    # Regression: an `obj` imported into a file that's reached only
+    # transitively (never the compile entry point) resolved to a placeholder
+    # symbol instead of its real archetype type, so classify_call emitted a
+    # plain call instead of `new`
+    with TemporaryDirectory() as tmpdir {
+        types_file = Path(tmpdir) / "types.jac";
+        types_file.write_text(
+            "obj:pub Widget {\n    has id: str,\n        name: str;\n}\n"
+        );
+        middle_file = Path(tmpdir) / "middle.cl.jac";
+        middle_file.write_text(
+            "import from .types { Widget }\n\ndef:pub make_widget() -> Widget {\n    return Widget(id=\"1\", name=\"test\");\n}\n"
+        );
+        entry_file = Path(tmpdir) / "entry.jac";
+        entry_file.write_text("cl {\n    import from .middle { make_widget }\n}\n");
+        prog = JacProgram();
+        prog.compile(file_path=str(entry_file));
+        assert not prog.errors_had , (
+            f"Compilation errors: {[str(e) for e in prog.errors_had]}"
+        );
+        middle_mod = prog.mod.hub[str(middle_file.resolve())];
+        assert not middle_mod.gen.js , (
+            "test invariant broken: middle file should not have JS generated "
+            "yet (it must only have been shallow-parsed as a dependency)"
+        );
+        EsastGenPass(ir_in=middle_mod, prog=prog);
+        js = middle_mod.gen.js;
+        assert "new Widget(" in js , (
+            f"expected `new Widget(...)` construction, got:\n{js}"
+        );
+        assert "return Widget(" not in js , (
+            f"Widget must not be constructed as a plain call:\n{js}"
+        );
+    }
 }

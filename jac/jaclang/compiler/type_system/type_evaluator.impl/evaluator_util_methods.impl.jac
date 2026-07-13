@@ -826,7 +826,11 @@ impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
         mod_item = sym.decl.find_parent_of_type(uni.ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
-        if isinstance(mod_item.name, uni.Name) and mod_item.name.sym {
+        if (
+            isinstance(mod_item.name, uni.Name)
+            and mod_item.name.sym
+            and mod_item.name.sym.sym_type != SymbolType.VAR
+        ) {
             return mod_item.name.sym;
         }
 

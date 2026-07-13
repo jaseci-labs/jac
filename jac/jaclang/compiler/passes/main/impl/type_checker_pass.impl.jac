@@ -150,13 +150,13 @@ impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None
     }
 
     if self._lambda_depth > 0 {
-        nd.call_kind = classify_call(nd).value;
+        nd.call_kind = classify_call(nd, self.evaluator).value;
         nd.callee_decl = ability_of_symbol(resolve_expr_symbol(nd.target));
         return;
     }
     self.evaluator.get_type_of_expression(nd);
 
-    nd.call_kind = classify_call(nd).value;
+    nd.call_kind = classify_call(nd, self.evaluator).value;
 
     nd.callee_decl = ability_of_symbol(resolve_expr_symbol(nd.target));
 

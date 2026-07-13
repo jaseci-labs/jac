@@ -1791,7 +1791,7 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     _call_kind = nd.call_kind;
     if _call_kind is None {
         import from jaclang.compiler.symbol_utils { classify_call }
-        _call_kind = classify_call(nd).value;
+        _call_kind = classify_call(nd, self.prog.get_type_evaluator()).value;
     }
     if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
@@ -4826,6 +4826,9 @@ impl EsastGenPass._sv_import_item_is_type(
         SymbolType.ENUM_ARCH
     };
     sym = item.name.sym;
+    if sym {
+        sym = self.prog.get_type_evaluator().resolve_imported_symbols(sym);
+    }
     if sym and (sym.sym_type in type_kinds) {
         return True;
     }

@@ -47,7 +47,7 @@ def _is_user_symbol(sym: uni.Symbol) -> bool {
     return False;
 }
 
-def classify_call(nd: uni.FuncCall) -> CallKind {
+def classify_call(nd: uni.FuncCall, evaluator: any = None) -> CallKind {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
     if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
@@ -55,6 +55,9 @@ def classify_call(nd: uni.FuncCall) -> CallKind {
     }
 
     sym = resolve_expr_symbol(nd.target);
+    if sym is not None and evaluator is not None {
+        sym = evaluator.resolve_imported_symbols(sym);
+    }
 
     if sym is not None
     and sym.decl is not None
