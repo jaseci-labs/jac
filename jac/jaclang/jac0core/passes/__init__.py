@@ -17,6 +17,7 @@ from jaclang.jac0core.passes.ast_validation_pass import ASTValidationPass
 from jaclang.jac0core.passes.boundary_analysis_pass import BoundaryAnalysisPass
 from jaclang.jac0core.passes.decl_impl_match_pass import DeclImplMatchPass
 from jaclang.jac0core.passes.module_codegen_pass import ModuleCodegenPass
+from jaclang.jac0core.passes.pyast_evict_pass import PyAstEvictPass
 from jaclang.jac0core.passes.pyast_gen_pass import PyastGenPass
 from jaclang.jac0core.passes.pybc_gen_pass import PyBytecodeGenPass
 from jaclang.jac0core.passes.semantic_analysis_pass import SemanticAnalysisPass
@@ -32,6 +33,7 @@ __all__ = [
     "UniPass",
     "SymTabBuildPass",
     "PyastGenPass",
+    "PyAstEvictPass",
     "PyBytecodeGenPass",
     "JacAnnexPass",
     "DeclImplMatchPass",

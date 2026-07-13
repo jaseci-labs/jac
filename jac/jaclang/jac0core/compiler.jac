@@ -33,6 +33,7 @@ import from jaclang.jac0core.passes {
     DeclImplMatchPass,
     JacAnnexPass,
     PyastGenPass,
+    PyAstEvictPass,
     PyBytecodeGenPass,
     SemanticAnalysisPass,
     SymTabBuildPass,
@@ -202,7 +203,9 @@ def get_py_code_gen(
             }
             passes.extend([RcElisionProofPass, NaIRGenPass, NativeCompilePass]);
         }
-        passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
+        passes.extend(
+            [PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass, PyAstEvictPass]
+        );
         return passes;
     } except ImportError {
         return [PyastGenPass, PyBytecodeGenPass];
