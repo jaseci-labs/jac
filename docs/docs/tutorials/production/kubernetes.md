@@ -100,30 +100,26 @@ That's it. Your application is now running on Kubernetes.
 
 ## Deployment Modes
 
-### Development Mode (Default)
-
-Deploys without building a Docker image. Fastest for iteration.
+### Deploy
 
 ```bash
 jac start --scale
 ```
 
-### Production Mode
+There is no image to build and no registry to configure. `jac-scale` packs your
+source into a bundle, copies it into the cluster, and runs every pod on a stock
+base image that a bootstrap initContainer prepares. The same command works
+against a local cluster and a remote one.
 
-Builds a Docker image and pushes to DockerHub before deploying.
+### Preview
 
 ```bash
-jac start --scale --build
+jac start --scale --dry-run
 ```
 
-**Requirements for production mode:**
-
-Create a `.env` file with your Docker credentials:
-
-```env
-DOCKER_USERNAME=your-dockerhub-username
-DOCKER_PASSWORD=your-dockerhub-password-or-token
-```
+Prints the manifests that would be applied and changes nothing: nothing is sent
+to the cluster, no database is provisioned, and no TLS certificate is issued.
+Add `--show-yaml` to dump the raw YAML stream.
 
 ---
 
@@ -209,20 +205,23 @@ For the full list of autoscaling options (including event triggers, polling inte
 
 ---
 
-## Remote Clusters and Image Registry
+## Local and Remote Clusters
 
-Local clusters (Docker Desktop, Minikube, k3d, kind) load the built image directly into the cluster's container runtime. **Remote clusters (EKS, GKE, AKS, anything you reach over the network) cannot do this** -- they pull images from a registry the cluster has IAM/auth to read.
+The same `jac start --scale` works against both, and neither needs a container
+registry. Because no application image is built, there is nothing to push and
+nothing for the cluster to pull: your source travels into the cluster as a
+bundle on a PVC, and pods boot from a stock base image.
 
-For a remote cluster, set `image_registry` in `jac.toml` so the build pipeline pushes there before applying manifests:
+Pods pull only that base image -- `jaseci/jaclang` by default. If your cluster
+cannot reach Docker Hub, point `python_image` at one it can:
 
 ```toml
 [scale.kubernetes]
-image_registry = "${ECR_REGISTRY}"   # e.g. 123456789012.dkr.ecr.us-east-2.amazonaws.com
+python_image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/jaclang:latest"
 ```
 
-`${ENV_VAR}` interpolation lets you keep the registry URL out of source control -- export it from `.env` or your CI runner. The build pipeline tags the image as `<registry>/<app_name>:dev-<sha12>` and pushes before `kubectl apply`. Image tags are content-addressed (the `<sha12>` suffix changes whenever the source does), so subsequent rebuilds trigger an automatic rolling update.
-
-You also need to give your CI runner or developer machine permission to push to the registry. For ECR, that's typically `aws ecr get-login-password | docker login` plus an IAM policy granting `ecr:*` on the repo.
+That is the only registry a deploy depends on, and only for the base image --
+your code is never baked into it.
 
 ---
 
@@ -390,11 +389,19 @@ kubectl logs -l app=mongodb
 kubectl logs -l app=redis
 ```
 
-### Build failures (--build mode)
+### Pods stuck in Init
 
-- Ensure Docker daemon is running
-- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
-- Check disk space for image building
+The bootstrap initContainer unpacks the source bundle and installs the runtime
+before your app starts, so a pod stuck in `Init` almost always failed there:
+
+```bash
+kubectl logs <pod-name> -c jac-bootstrap
+kubectl get pvc                     # the bundle PVC must be Bound
+```
+
+A `Pending` PVC means the cluster has no usable StorageClass; an
+`ImagePullBackOff` means it cannot reach the base image, so set `python_image`
+to one it can pull.
 
 ### General debugging
 

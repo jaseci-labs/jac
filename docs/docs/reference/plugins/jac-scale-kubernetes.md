@@ -8,16 +8,14 @@
 
 | Mode | Command | Description |
 |------|---------|-------------|
-| **Development** | `jac start app.jac --scale` | Deploy without building a Docker image - fast iteration |
-| **Production** | `jac start app.jac --scale --build` | Build and push Docker image to registry, then deploy |
+| **Deploy** | `jac start app.jac --scale` | Ship the project source into the cluster and deploy |
+| **Preview** | `jac start app.jac --scale --dry-run` | Print the manifests that would be applied; change nothing |
 | **Enable HTTPS** | `jac start app.jac --scale --enable-tls` | Enable TLS on a live deployment (no redeploy, run after CNAME propagates) |
 
-**Production mode** requires Docker credentials in `.env`:
-
-```env
-DOCKER_USERNAME=your-dockerhub-username
-DOCKER_PASSWORD=your-dockerhub-password-or-token
-```
+There is no image-build step. `jac-scale` does not build, tag, or push a Docker
+image, and it needs no registry and no registry credentials: pods run a stock
+base image, and your source is shipped into the cluster (see
+[Source Distribution](#source-distribution) below).
 
 ---
 
@@ -887,28 +885,45 @@ export OPENAI_API_KEY="sk-..."
 export MONGO_PASSWORD="secret123"
 export JWT_SECRET="my-jwt-key"
 
-jac start app.jac --scale --build
+jac start app.jac --scale
 ```
 
 This eliminates the need for manual `kubectl create secret` commands after deployment.
 
 ---
 
-## Remote Image Registry
+## Source Distribution
 
-Remote Kubernetes clusters (EKS, GKE, AKS, etc.) pull images from a registry rather than loading them from a local container runtime. Set `image_registry` in `jac.toml` to push there before manifest apply:
+`jac-scale` ships **no application image**, so there is no registry to configure
+and nothing to push. This is what makes a deploy work the same way against a
+local cluster (kind, k3d, Minikube, Docker Desktop) and a remote one (EKS, GKE,
+AKS) -- neither needs to pull an image you built.
+
+Instead, a deploy:
+
+1. Packs the project source into a content-addressed bundle and copies it into
+   the cluster on a PVC.
+2. Runs a bootstrap initContainer that unpacks the bundle and installs the
+   pinned `jac` runtime into a shared volume.
+3. Starts every pod on a stock base image -- `jaseci/jaclang:latest` (or
+   `:dev` on the dev channel), falling back to `python:3.12-slim` when that tag
+   is unreachable.
+
+Override the base image with `python_image` if you need your own:
 
 ```toml
 [scale.kubernetes]
-image_registry = "${ECR_REGISTRY}"
+python_image = "my-registry/my-base:1.2.3"
 ```
 
-Behavior:
+That image only has to provide the interpreter; your code still arrives via the
+bundle, not baked into the image.
 
-- **Local clusters** (Minikube, Docker Desktop, k3d, kind): if `image_registry` is unset, the built image is loaded directly into the cluster's runtime (`minikube image load`, `k3d image import`, `kind load docker-image`).
-- **Remote clusters**: `image_registry` must be set. The image is tagged as `<image_registry>/<app_name>:dev-<sha12>` and pushed before `kubectl apply`. The `<sha12>` suffix is a content hash of the source tree -- rebuilds change the tag, which triggers an automatic rolling update.
-- The registry value supports `${ENV_VAR}` interpolation so you can keep registry URLs out of source control. The local environment is read at deploy time.
-- Authentication to the registry is up to you (`docker login`, ECR `get-login-password`, GCR service account, etc.). `jac-scale` does not manage registry credentials.
+!!! note
+    Earlier releases shipped a Docker build-and-push pipeline. It was removed,
+    along with its flags and config keys; see
+    [Breaking Changes](../../community/breaking-changes.md#kubernetes-image-build-pipeline-removed)
+    if you are migrating from it.
 
 ---
 
@@ -1126,11 +1141,21 @@ kubectl logs -l app=mongodb
 kubectl logs -l app=redis
 ```
 
-### Build Failures (--build mode)
+### Pods Stuck in Init
 
-- Ensure Docker daemon is running
-- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
-- Check disk space for image building
+The bootstrap initContainer unpacks the source bundle and installs the runtime
+before the app container starts, so a pod that never leaves `Init` usually means
+that step failed:
+
+```bash
+kubectl logs <pod-name> -c jac-bootstrap
+kubectl get pvc                     # the bundle PVC must be Bound
+```
+
+- A `Pending` PVC means the cluster has no usable StorageClass; set
+  `bundle_storage_class` (or a `host_path` volume) to one it does have.
+- `ImagePullBackOff` on the base image means the cluster cannot reach
+  `jaseci/jaclang`; set `python_image` to a base it can pull.
 
 ### General Debugging
 
