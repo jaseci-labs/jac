@@ -6,6 +6,7 @@ Exposes public functions for cart operations. Callable via:
 """
 
 import from shared.models { Cart, Product, Products, Order }
+# declared pip dep imported at boot: proves pod installs reach the served process
 import humanize;
 
 def _get_or_create_cart -> Cart {
