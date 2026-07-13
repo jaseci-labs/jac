@@ -1012,18 +1012,18 @@ metadata = { serverAddress = "http://prometheus:9090", metricName = "pending_ord
 #### Gateway High Availability
 
 !!! warning "Gateway defaults to a single replica"
-    The gateway service (`__gateway__`) is configured like any other service under `[plugins.scale.microservices.services]` -- its HPA defaults to `min = 1`. Because the gateway is the single entry point for all external traffic, a pod restart (crash, rolling deploy, node drain) leaves no pod to serve requests until the replacement passes its readiness probe. With the default `readiness_initial_delay = 300`, that is a ~5 minute window of 503s for every user, regardless of which backend service they are calling.
+    The gateway service (`__gateway__`) is configured like any other service under `[scale.microservices.services]` -- its HPA defaults to `min = 1`. Because the gateway is the single entry point for all external traffic, a pod restart (crash, rolling deploy, node drain) leaves no pod to serve requests until the replacement passes its readiness probe. With the default `readiness_initial_delay = 300`, that is a ~5 minute window of 503s for every user, regardless of which backend service they are calling.
 
     Backend services don't have this exposure -- if one of several replicas restarts, the others keep serving. Give the gateway the same redundancy, either as a fixed count or as an autoscaler floor:
 
     ```toml
     # Fixed count, no autoscaling (same effect as the __gateway__ example above)
-    [plugins.scale.microservices.services.__gateway__]
+    [scale.microservices.services.__gateway__]
     replicas = 2
     hpa = { enabled = false }
 
     # Or, if you want the gateway to also scale up under load:
-    [plugins.scale.microservices.services.__gateway__.hpa]
+    [scale.microservices.services.__gateway__.hpa]
     min = 2
     ```
 
