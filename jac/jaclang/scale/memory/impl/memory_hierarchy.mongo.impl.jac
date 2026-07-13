@@ -528,11 +528,8 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
     }
     (filt, skip_n, limit_n) = _plan_to_mongo_filter(plan);
     try {
-        cursor = self.collection.find(filt);
-        if skip_n or limit_n is not None {
-            # skip/limit are undefined without a sort; pin to _id for stable pages
-            cursor = cursor.sort('_id', 1);
-        }
+        # sort every query by _id so a pushed-down slice matches an in-memory slice
+        cursor = self.collection.find(filt).sort('_id', 1);
         if skip_n {
             cursor = cursor.skip(skip_n);
         }

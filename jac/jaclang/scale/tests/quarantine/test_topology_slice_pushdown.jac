@@ -217,15 +217,21 @@ test "mongo slice pushdown paginates deterministically" {
         ctx1.mem.commit();
         ctx1.close();
 
+        full_plan = QueryPlan(node_type_final="_PushdownLead");
         page1 = QueryPlan(node_type_final="_PushdownLead", slc=slice(0, 50));
         page2 = QueryPlan(node_type_final="_PushdownLead", slc=slice(50, 100));
 
+        full = [str(cast(Anchor, a).id) for a in mongo1.execute_plan(full_plan)];
         ids1 = [str(cast(Anchor, a).id) for a in mongo1.execute_plan(page1)];
         ids2 = [str(cast(Anchor, a).id) for a in mongo1.execute_plan(page2)];
 
         assert len(ids1) == 50 and len(ids2) == 50;
         assert set(ids1).isdisjoint(set(ids2)) , "pages must not overlap";
         assert len(set(ids1 + ids2)) == 100 , "pages must cover distinct rows";
+
+        # a pushed-down slice must equal the in-memory slice of the full scan
+        assert ids1 == full[0:50] , "pushed-down page must match in-memory slice";
+        assert ids2 == full[50:100] , "pushed-down page must match in-memory slice";
 
         rerun = [str(cast(Anchor, a).id) for a in mongo1.execute_plan(page1)];
         assert rerun == ids1 , "repeated page must be stable";
