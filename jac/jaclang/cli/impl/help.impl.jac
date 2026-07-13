@@ -79,7 +79,7 @@ impl HelpFormatter.format_main_help(
         }
         display_name = self.groups.get_display_name(group);
         lines.append(_help_color(f"{display_name}:", _HELP_HEADER));
-        cmds.sort(key=lambda c: str : c.name);
+        cmds.sort(key=lambda (c: str) { c.name; });
         for cmd in cmds {
             padding = " " * (col - len(cmd.name));
             lines.append(f"    {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
@@ -147,7 +147,7 @@ impl HelpFormatter.format_curated_help(
         lines.append(
             _help_color(f"{self.groups.tier_sections.get(tier, tier)}:", _HELP_HEADER)
         );
-        cmds.sort(key=lambda c: str : c.name);
+        cmds.sort(key=lambda (c: str) { c.name; });
         for cmd in cmds {
             padding = " " * (col - len(cmd.name));
             lines.append(f"    {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");

@@ -106,7 +106,8 @@ test "all ast has normalize" {
         if issubclass(cls, uni.UniNode) and not issubclass(cls, uni.Token)
     ];
     ordered_classes = sorted(
-        uni_node_classes, key=lambda cls : source_code.find(f"class {cls.__name__}"),
+        uni_node_classes,
+        key=lambda (cls) { source_code.find(f"class {cls.__name__}"); },
     );
     for cls in ordered_classes {
         if cls.__name__ not in exclude {
@@ -388,110 +389,6 @@ cl test my_test {}
     );
 }
 
-test "to section headers" {
-    # Basic: each 'to X:' produces an implicit XBlock whose body contains
-    # all statements until the next header or EOF.
-    source = """
-to sv:
-def sv_fn() -> int { return 1; }
-to cl:
-def cl_fn() -> int { return 2; }
-to na:
-def na_fn() -> int { return 3; }
-to sv:
-def sv_fn2() -> int { return 4; }
-""";
-    prog = JacProgram();
-    mod = prog.parse_str(source, "test.jac");
-    assert not prog.errors_had;
-    bd = mod.body;
-    assert len(bd) == 4;
-    assert isinstance(bd[0], uni.ServerBlock) and bd[0].implicit;
-    assert isinstance(bd[1], uni.ClientBlock) and bd[1].implicit;
-    assert isinstance(bd[2], uni.NativeBlock) and bd[2].implicit;
-    assert isinstance(bd[3], uni.ServerBlock) and bd[3].implicit;
-    expected_ctxs = [
-        CodeContext.SERVER,
-        CodeContext.CLIENT,
-        CodeContext.NATIVE,
-        CodeContext.SERVER
-    ];
-    for (blk, expected) in zip(bd, expected_ctxs) {
-        inner = [
-            stmt
-            for stmt in blk.body
-            if isinstance(stmt, uni.ContextAwareNode)
-        ];
-        assert len(inner) == 1;
-        assert inner[0].code_context == expected;
-    }
-
-    # Explicit cl/sv/na single-stmt prefix inside a 'to X:' section overrides
-    # the active section's tagging for that one statement.
-    source = """
-to cl:
-def cl_a() -> int { return 1; }
-sv def sv_b() -> int { return 2; }
-def cl_c() -> int { return 3; }
-""";
-    prog = JacProgram();
-    mod = prog.parse_str(source, "test.jac");
-    assert not prog.errors_had;
-    assert len(mod.body) == 1;
-    block = mod.body[0];
-    assert isinstance(block, uni.ClientBlock) and block.implicit;
-    ctxs = [
-        s.code_context
-        for s in block.body
-        if isinstance(s, uni.ContextAwareNode)
-    ];
-    assert ctxs == [CodeContext.CLIENT, CodeContext.SERVER, CodeContext.CLIENT];
-
-    # A braced 'cl { ... }' block nested inside a 'to sv:' section is itself
-    # an element of that section's body — the braced block's own stmts are
-    # tagged CLIENT, and a later plain def resumes the surrounding SERVER.
-    source = """
-to sv:
-def sv_a() -> int { return 1; }
-cl {
-    def cl_b() -> int { return 2; }
-}
-def sv_c() -> int { return 3; }
-""";
-    prog = JacProgram();
-    mod = prog.parse_str(source, "test.jac");
-    assert not prog.errors_had;
-    assert len(mod.body) == 1;
-    outer = mod.body[0];
-    assert isinstance(outer, uni.ServerBlock) and outer.implicit;
-    assert len(outer.body) == 3;
-    assert isinstance(outer.body[0], uni.Ability);
-    assert outer.body[0].code_context == CodeContext.SERVER;
-    assert isinstance(outer.body[1], uni.ClientBlock);
-    assert not outer.body[1].implicit;
-    assert all(
-        s.code_context == CodeContext.CLIENT
-        for s in outer.body[1].body
-        if isinstance(s, uni.ContextAwareNode)
-    );
-    assert isinstance(outer.body[2], uni.Ability);
-    assert outer.body[2].code_context == CodeContext.SERVER;
-
-    # A 'to X:' header at EOF with no following stmt still parses as an empty
-    # implicit XBlock; earlier statements stay at module scope.
-    source = """
-def a() -> int { return 1; }
-to cl:
-""";
-    prog = JacProgram();
-    mod = prog.parse_str(source, "test.jac");
-    assert not prog.errors_had;
-    assert mod.body[0].code_context == CodeContext.SERVER;
-    assert isinstance(mod.body[1], uni.ClientBlock);
-    assert mod.body[1].implicit;
-    assert len(mod.body[1].body) == 0;
-}
-
 test "docstring before context prefix" {
     # Regression: a """docstring""" placed before a `cl`/`sv`/`na` prefix used
     # to fail with E0005 because the docstring-prefix dispatcher in
@@ -547,7 +444,7 @@ na def na_fn -> int { return 3; }
     }
 }
 
-test "cl/sv/na block and section-header forms parse without warning" {
+test "cl/sv/na block and prefix forms parse without warning" {
     # Braced block form parses cleanly -- it is no longer deprecated
     source = """
 cl { def a() -> int { return 1; } }
@@ -566,14 +463,8 @@ na { def c() -> int { return 3; } }
     }
     assert "W0064" not in w_codes;
 
-    # Section headers and single-statement prefix forms also parse cleanly
+    # Single-statement prefix forms also parse cleanly
     source = """
-to cl:
-def a() -> int { return 1; }
-to sv:
-def b() -> int { return 2; }
-to na:
-def c() -> int { return 3; }
 cl def d() -> int { return 4; }
 sv def e() -> int { return 5; }
 na def f() -> int { return 6; }
@@ -1054,6 +945,6 @@ test "docstring attaches to all member types inside archetype body" {
 
 with entry {
     parametrize(
-        "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
+        "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda (f) { Path(f).stem; }
     );
 }

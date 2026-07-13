@@ -86,7 +86,7 @@ test "debounce consolidates rapid changes" {
         temp_dir = Path(tmp);
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         watcher.start();
         # Simulate rapid changes to the same file
         test_file = str(temp_dir / "app.jac");
@@ -106,7 +106,7 @@ test "file change detection" {
         temp_dir = Path(tmp);
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         # Create test file before starting watcher
         test_file = temp_dir / "test.jac";
         test_file.write_text("initial content");
@@ -318,11 +318,11 @@ test "process change settles to ok unless an error was recorded" {
         # A change whose rebuild records no error ends healthy,
         # even when the build was previously broken.
         reloader.record_error("app.jac", "old failure");
-        reloader._dispatch_change = lambda p , d : None ;
+        reloader._dispatch_change = lambda (p, d) { None; };
         reloader._process_change("app.jac");
         assert reloader.build_status() == {"status": "ok", "error": None};
         # A change whose rebuild records an error stays broken.
-        reloader._dispatch_change = lambda p , d : reloader.record_error(p, "boom");
+        reloader._dispatch_change = lambda (p, d) { reloader.record_error(p, "boom"); };
         reloader._process_change("app.jac");
         status = reloader.build_status();
         assert status["status"] == "error";
@@ -497,7 +497,7 @@ test "moves emit delete plus create; directories flagged, noise filtered" {
         (temp_dir / "pagesx").mkdir();
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         watcher.start();
         time.sleep(0.3);
         import os;
@@ -526,7 +526,7 @@ test "flush loop survives an exception and keeps delivering" {
         temp_dir = Path(tmp);
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         original_flush = watcher._debounce_flush;
         def exploding_flush {
             raise RuntimeError("boom");

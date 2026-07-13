@@ -78,7 +78,7 @@ cl {
                 <input
                     type="text"
                     value={username}
-                    onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                     placeholder="Username"
                     style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
                 />
@@ -86,7 +86,7 @@ cl {
                 <input
                     type="password"
                     value={password}
-                    onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                    onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                     placeholder="Password"
                     style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
                 />
@@ -253,7 +253,7 @@ cl {
                     <input
                         type="text"
                         value={username}
-                        onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                         placeholder="Username"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -263,7 +263,7 @@ cl {
                     <input
                         type="password"
                         value={password}
-                        onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                         placeholder="Password"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -341,7 +341,7 @@ cl {
                     <input
                         type="text"
                         value={username}
-                        onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { username = e.target.value; }}
                         placeholder="Username"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -351,7 +351,7 @@ cl {
                     <input
                         type="password"
                         value={password}
-                        onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { password = e.target.value; }}
                         placeholder="Password"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -361,7 +361,7 @@ cl {
                     <input
                         type="password"
                         value={confirmPassword}
-                        onChange={lambda e: ChangeEvent { confirmPassword = e.target.value; }}
+                        onChange={lambda (e: ChangeEvent) { confirmPassword = e.target.value; }}
                         placeholder="Confirm Password"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />

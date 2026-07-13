@@ -110,3 +110,25 @@ impl CodeLocInfo.pos_start.getter -> int {
 impl CodeLocInfo.pos_end.getter -> int {
     return self.last_tok.pos_end;
 }
+
+impl CodeGenTarget.client_manifest.getter -> ClientManifest {
+    if (self._client_manifest is None) {
+        self._client_manifest = ClientManifest();
+    }
+    return self._client_manifest;
+}
+
+impl CodeGenTarget.client_manifest.setter(value: ClientManifest) -> None {
+    self._client_manifest = value;
+}
+
+impl CodeGenTarget.interop_manifest.getter -> InteropManifest {
+    if (self._interop_manifest is None) {
+        self._interop_manifest = InteropManifest();
+    }
+    return self._interop_manifest;
+}
+
+impl CodeGenTarget.interop_manifest.setter(value: InteropManifest) -> None {
+    self._interop_manifest = value;
+}

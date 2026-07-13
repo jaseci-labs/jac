@@ -114,6 +114,16 @@ enum CodeContext {
 
 enum EdgeDir { IN = 1, OUT = 2, ANY = 3 }
 
+enum OwnershipKind { NONE = 0, OWN = 1, BORROW = 2, MUT_BORROW = 3, VAL = 4 }
+
+def is_borrow_kind(k: OwnershipKind) -> bool {
+    return k == OwnershipKind.BORROW or k == OwnershipKind.MUT_BORROW;
+}
+
+def is_mut_kind(k: OwnershipKind) -> bool {
+    return k == OwnershipKind.MUT_BORROW;
+}
+
 enum SymbolAccess {
     PRIVATE = 'private',
     PUBLIC = 'public',

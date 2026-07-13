@@ -358,6 +358,10 @@ impl UniPass.enter_raise_stmt(nd: uni.RaiseStmt) -> None {
     self.default_enter(nd);
 }
 
+impl UniPass.enter_region_stmt(nd: uni.RegionStmt) -> None {
+    self.default_enter(nd);
+}
+
 impl UniPass.enter_report_stmt(nd: uni.ReportStmt) -> None {
     self.default_enter(nd);
 }
@@ -839,6 +843,10 @@ impl UniPass.exit_py_inline_code(nd: uni.PyInlineCode) -> None {
 }
 
 impl UniPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
+    self.default_exit(nd);
+}
+
+impl UniPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
     self.default_exit(nd);
 }
 

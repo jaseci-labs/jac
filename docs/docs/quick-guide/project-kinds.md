@@ -370,7 +370,7 @@ cl def:pub app -> JsxElement {
     }
     return <div>
         <input value={text}
-            onChange={lambda e: ChangeEvent { text = e.target.value; }}
+            onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
             placeholder="Add a todo..." />
         <button onClick={add}>Add</button>
         {[<p key={jid(t)}>{t.title}</p> for t in todos]}
