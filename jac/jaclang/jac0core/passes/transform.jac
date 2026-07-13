@@ -45,6 +45,9 @@ obj BaseTransform[T_in, T_out](ABC) {
 }
 
 obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
+    static has PROVIDES: tuple = (),
+        REQUIRES: tuple = ();
+
     has cur_node: UniNode by postinit,
         _project_config: any = None,
         _cached_check_suppress_tokens: list[str] = field(default_factory=`list),

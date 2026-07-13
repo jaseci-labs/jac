@@ -56,6 +56,7 @@ obj CapabilityCheckPass(Transform[uni.Module, uni.Module]) {
 }
 
 obj PortabilityWarnPass(Transform[uni.Module, uni.Module]) {
+    static has PROVIDES: tuple = ('portability', );
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None;
@@ -69,6 +70,7 @@ obj PortabilityWarnPass(Transform[uni.Module, uni.Module]) {
 }
 
 obj NativeCapabilityCheckPass(Transform[uni.Module, uni.Module]) {
+    static has PROVIDES: tuple = ('capability', );
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None;

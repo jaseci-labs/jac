@@ -33,6 +33,9 @@ obj BorrowMeta {
 }
 
 obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
+    static has PROVIDES: tuple = ('ownership', ),
+        REQUIRES: tuple = ('cfg', 'inference');
+
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,

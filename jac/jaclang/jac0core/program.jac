@@ -23,7 +23,8 @@ class JacProgram {
         _track_dependencies: bool,
         _auto_promote_native: bool,
         _auto_promote_target: str,
-        _inferred_mods: set;
+        _inferred_mods: set,
+        _analyses_run: dict;
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;

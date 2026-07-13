@@ -80,6 +80,14 @@ glob HDR_MAGIC: int = 44061,
      HDR_MAGIC_SHIFT_BASE: int = 44061 * 4294967296;
 
 obj NaIRGenPass(ModuleCodegenPass) {
+    static has REQUIRES: tuple = (
+        'inference',
+        'cfg',
+        'ownership',
+        'capability',
+        'rc-facts'
+    );
+
     has llvm_module: ir.Module by postinit,
         type_map: dict[str, ir.Type] by postinit,
         complex_struct_type: object by postinit,

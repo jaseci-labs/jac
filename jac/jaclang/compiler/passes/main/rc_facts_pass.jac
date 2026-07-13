@@ -65,6 +65,9 @@ def loop_body_locals(body: (list | tuple | None)) -> list[str] {
 }
 
 obj RcFactsPass(Transform[uni.Module, uni.Module]) {
+    static has PROVIDES: tuple = ('rc-facts', ),
+        REQUIRES: tuple = ('cfg', );
+
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,

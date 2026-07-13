@@ -5,6 +5,8 @@ import from jaclang.jac0core.passes { UniPass }
 import type from jaclang.jac0core.program { JacProgram }
 
 obj CFGBuildPass(UniPass) {
+    static has PROVIDES: tuple = ('cfg', );
+
     def before_pass -> None;
     def link_bbs(source: uni.UniCFGNode, target: uni.UniCFGNode) -> None;
     def _link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None;

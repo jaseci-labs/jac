@@ -51,6 +51,25 @@ glob _ir_sched_loading = ContextVar('jac_ir_sched_loading', default=False),
          'jac_typecheck_sched_loading', default=False
      );
 
+def expand_with_requirements(
+    passes: list[type[Transform[uni.Module, uni.Module]]],
+    providers: dict[str, type[Transform[uni.Module, uni.Module]]]
+) -> list[type[Transform[uni.Module, uni.Module]]] {
+    out: list[type[Transform[uni.Module, uni.Module]]] = [];
+    for p in passes {
+        for tag in (getattr(p, 'REQUIRES', ()) or ()) {
+            prov = providers.get(tag);
+            if prov is not None and prov not in out and prov not in passes {
+                out.append(prov);
+            }
+        }
+        if p not in out {
+            out.append(p);
+        }
+    }
+    return out;
+}
+
 def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     return [BoundaryAnalysisPass];
 }
@@ -204,7 +223,11 @@ def get_py_code_gen(
                 NaIRGenPass,
                 NativeCompilePass
             }
-            passes.extend([RcFactsPass, NaIRGenPass, NativeCompilePass]);
+            passes.extend(
+                expand_with_requirements(
+                    [NaIRGenPass, NativeCompilePass], {'rc-facts': RcFactsPass}
+                )
+            );
         }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;

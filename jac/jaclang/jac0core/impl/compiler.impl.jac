@@ -809,7 +809,11 @@ impl JacCompiler.compile(
         if run_inference {
             try {
                 import from jaclang.compiler.passes.native { NaIRGenPass }
-                _parity_passes = [NaIRGenPass];
+                import from jaclang.compiler.passes.main.rc_facts_pass { RcFactsPass }
+                import from jaclang.jac0core.compiler {
+                    expand_with_requirements as _expand_reqs
+                }
+                _parity_passes = _expand_reqs([NaIRGenPass], {'rc-facts': RcFactsPass});
             } except ImportError {
                 _parity_passes = [];
             }
@@ -935,11 +939,30 @@ impl JacCompiler.run_schedule(
     passes: list[type[Transform[uni.Module, uni.Module]]],
     cancel_token: (Event | None) = None
 ) -> None {
+    provided = target_program._analyses_run.get(id(mod));
+    if provided is None {
+        provided = set();
+        target_program._analyses_run[id(mod)] = provided;
+    }
     for current_pass in passes {
         if (cancel_token and cancel_token.is_set()) {
             break;
         }
+        for _req in (getattr(current_pass, 'REQUIRES', ()) or ()) {
+            if _req not in provided {
+                raise RuntimeError(
+                    f"scheduling error: pass {current_pass.__name__} requires "
+                    f"analysis '{_req}' which has not run for module "
+                    f"{mod.loc.mod_path if mod.loc else mod.name} -- the "
+                    f"schedule that reached this point is missing a declared "
+                    f"dependency."
+                );
+            }
+        }
         current_pass(ir_in=mod, prog=target_program, cancel_token=cancel_token);
+        for _prov in (getattr(current_pass, 'PROVIDES', ()) or ()) {
+            provided.add(_prov);
+        }
     }
 }
 
