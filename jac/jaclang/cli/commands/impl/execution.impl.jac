@@ -120,9 +120,7 @@ def _execute_plan(
             );
         }
 
-        console.error(
-            f"Project kind '{plan.kind}' has no build verb '{plan.verb}'."
-        );
+        console.error(f"Project kind '{plan.kind}' has no build verb '{plan.verb}'.");
         return 1;
     }
     console.error(f"Unsupported run action '{plan.action}' for kind '{plan.kind}'.");

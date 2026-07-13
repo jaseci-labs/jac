@@ -87,10 +87,6 @@ impl TemplateRegistry.list_templates -> list[tuple[str, str]] {
     return result;
 }
 
-"""List the kinds that have a template registered, described by their KindSpec.
-
-A kind is described once, in KIND_SPECS. Template descriptions only speak for
-named variants (`jac create --use <name>`), which are not kinds."""
 impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
     import from jaclang.project.kinds { KIND_SPECS }
     available: set[str] = set();
@@ -191,8 +187,6 @@ def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
     }
 }
 
-"""Build a core template from the kind's spec: description and entry filename
-both come from KIND_SPECS, so a kind is described in exactly one place."""
 def _core_template(
     kind: str, body: str, extra_config: dict[str, any] = {}
 ) -> dict[str, any] {

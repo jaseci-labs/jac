@@ -1,12 +1,3 @@
-"""Project kinds: the single source of truth for what a kind *is* and how it runs.
-
-A `KindSpec` carries every per-kind fact -- what `jac create` scaffolds
-(`description`, `entry`) and what `jac run` dispatches to (`action`, `verb`,
-`flags`, `summary`). `plan_project_run` is a table lookup plus the two facts
-that can only be known at plan time (the serve port, the native output path);
-there is no per-kind dispatch ladder anywhere.
-"""
-
 import os;
 import from jaclang.project.config { JacConfig }
 import from jaclang.jac0core.ext_registry { base_stem, codespace_of, MODULE_SUFFIXES }
@@ -149,26 +140,28 @@ def is_valid_kind(kind: str) -> bool {
     return kind in KIND_SPECS;
 }
 
-"""A resolved run: the kind's spec plus the bits only known at plan time."""
 obj RunPlan {
     has spec: KindSpec,
         entry_path: str,
         flags: dict[str, any],
         summary: str;
 
-    @property
-    def kind -> str {
-        return self.spec.name;
+    has kind: str {
+        getter {
+            return self.spec.name;
+        }
     }
 
-    @property
-    def action -> str {
-        return self.spec.action;
+    has action: str {
+        getter {
+            return self.spec.action;
+        }
     }
 
-    @property
-    def verb -> str {
-        return self.spec.verb;
+    has verb: str {
+        getter {
+            return self.spec.verb;
+        }
     }
 
     def command_line -> str {
@@ -256,7 +249,6 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
         return None;
     }
     if not spec.needs_entry {
-        # Packages are built from the project, not from a single entry file.
         entry_path = "";
     }
 
@@ -267,7 +259,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
         output = os.path.join(project_root, spec.output_dir, stem);
         flags["output"] = output;
     }
-    # A default port stays out of the flags so `jac run --show` reads clean.
+
     if spec.action == "serve" and config.serve.port != 8000 {
         flags["port"] = config.serve.port;
     }
