@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 import from jaclang.jac0core.ext_registry { is_native_module }
+import from jaclang.project.kinds { RunPlan }
 
 def _discover_config_from_file(filename: str) -> None {
     import from pathlib { Path }
@@ -58,7 +59,7 @@ def _populate_native_argv(engine: object, argv: list[str]) -> None {
     engine._jac_argv_refs = (c_strings, c_argv);
 }
 
-def _print_plan(plan: object) {
+def _print_plan(plan: RunPlan) {
     console.print(f"project kind : {plan.kind}");
     console.print(f"action       : {plan.action}");
     console.print(f"summary      : {plan.summary}");
@@ -66,35 +67,16 @@ def _print_plan(plan: object) {
         console.print(f"entry-point  : {plan.entry_path}");
     }
     console.print(f"equivalent   : {plan.command_line()}");
-    if plan.requires_plugin {
-        console.print(f"requires     : {plan.requires_plugin} plugin");
-    }
-}
-
-def _plugin_available(pkg: str) -> bool {
-    import importlib.util;
-    try {
-        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
-    } except (ImportError, ValueError) {
-        return False;
-    }
 }
 
 def _execute_plan(
-    plan: object,
+    plan: RunPlan,
     main: bool,
     cache: bool,
     autonative: bool,
     diagnostics: str,
     args: list
 ) -> int {
-    if plan.requires_plugin and not _plugin_available(plan.requires_plugin) {
-        console.error(
-            f"Project kind '{plan.kind}' requires the {plan.requires_plugin} plugin, "
-            f"which is not installed. Install it, then: {plan.command_line()}"
-        );
-        return 1;
-    }
     if plan.action == "execute" {
         return run(
             filename=plan.entry_path,
@@ -106,19 +88,12 @@ def _execute_plan(
         );
     }
     if plan.action == "serve" {
-        if "client" in plan.flags {
-            console.error(
-                f"Project kind '{plan.kind}' is run via the {plan.requires_plugin} "
-                f"plugin command: {plan.command_line()}"
-            );
-            return 1;
-        }
-
         return start(
             filename=plan.entry_path,
             port=plan.flags.get("port", 8000),
             no_client=plan.flags.get("no_client", False),
-            dev=plan.flags.get("dev", False)
+            dev=plan.flags.get("dev", False),
+            client=plan.flags.get("client", "web")
         );
     }
     if plan.action == "build" {
@@ -139,13 +114,13 @@ def _execute_plan(
         }
         if plan.verb == "build" {
             import from jaclang.cli.commands.build { build }
-            return build(projection=plan.flags.get("as", "jab"));
+            return build(
+                projection=plan.flags.get("as", "jab"),
+                client=plan.flags.get("client", "")
+            );
         }
 
-        console.error(
-            f"Project kind '{plan.kind}' builds via the {plan.requires_plugin} "
-            f"plugin command: {plan.command_line()}"
-        );
+        console.error(f"Project kind '{plan.kind}' has no build verb '{plan.verb}'.");
         return 1;
     }
     console.error(f"Unsupported run action '{plan.action}' for kind '{plan.kind}'.");

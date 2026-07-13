@@ -67,10 +67,17 @@ obj KubernetesRealizer {
             target_config = scale_config.get_section(target);
         }
         deployment_target = DeploymentTargetFactory.create(
-            target, target_config, logger
+            target, target_config, logger, dry_run=dry_run
         );
 
-        if enable_tls {
+        # --enable-tls issues certificates against the live cluster, so a dry
+        # run has to skip it and fall through to the plan.
+        if enable_tls and dry_run {
+            console.warning(
+                "--dry-run ignores --enable-tls: issuing certificates would "
+                "modify the cluster. Re-run without --dry-run to enable TLS."
+            );
+        } elif enable_tls {
             if not target_config.get('domain', '') {
                 raise ValueError(
                     "No domain configured. Set 'domain' under [scale.kubernetes] in jac.toml before running --enable-tls."

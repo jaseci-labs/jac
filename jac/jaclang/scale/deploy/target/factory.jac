@@ -12,8 +12,15 @@ type TargetFactory = Callable[[dict[str, any], Logger | None], DeploymentTarget]
 
 """Deploy tooling is operator-machine tooling pinned by the jac binary, not a
 project dependency -- sync it into the jac global site on first use so a scale
-deploy never requires a manual 'jac install --scale'."""
-def _ensure_deploy_tooling {
+deploy never requires a manual 'jac install --scale'.
+
+A dry run renders manifests and applies nothing, so it must not reach for the
+tooling at all: installing into the global site is a mutation of the operator's
+machine, and --dry-run promises not to make any."""
+def _ensure_deploy_tooling(dry_run: bool = False) {
+    if dry_run {
+        return;
+    }
     missing = missing_capability_dists("deploy.k8s");
     if not missing {
         return;
@@ -31,6 +38,16 @@ def _ensure_deploy_tooling {
     }
 }
 
+"""Gate the k8s client behind the deploy path only. Manifest rendering is pure
+dict-building, so a dry run stays useful on a machine that has never installed
+the deploy tooling."""
+def _require_deploy_tooling(dry_run: bool = False) {
+    if dry_run {
+        return;
+    }
+    require_optional("kubernetes", "deploy.k8s");
+}
+
 class DeploymentTargetFactory {
     static has _registry: dict[str, TargetFactory] = {};
 
@@ -39,7 +56,10 @@ class DeploymentTargetFactory {
     }
 
     static def create(
-        target_type: str, config: dict[str, any], logger: (Logger | None) = None
+        target_type: str,
+        config: dict[str, any],
+        logger: (Logger | None) = None,
+        dry_run: bool = False
     ) -> DeploymentTarget {
         if target_type in DeploymentTargetFactory._registry {
             factory = DeploymentTargetFactory._registry[target_type];
@@ -47,8 +67,8 @@ class DeploymentTargetFactory {
         }
 
         if target_type == 'kubernetes' {
-            _ensure_deploy_tooling();
-            require_optional("kubernetes", "deploy.k8s");
+            _ensure_deploy_tooling(dry_run);
+            _require_deploy_tooling(dry_run);
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
                 KubernetesTarget
             }
@@ -58,8 +78,8 @@ class DeploymentTargetFactory {
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
         } elif target_type == 'kubernetes-microservice' {
-            _ensure_deploy_tooling();
-            require_optional("kubernetes", "deploy.k8s");
+            _ensure_deploy_tooling(dry_run);
+            _require_deploy_tooling(dry_run);
             import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
                 KubernetesConfig
             }
