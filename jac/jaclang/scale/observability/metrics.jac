@@ -19,6 +19,9 @@ class MetricsCollector {
         success: bool = True
     ) -> None;
 
+    def record_ws_connection_opened(self: MetricsCollector) -> None;
+    def record_ws_connection_closed(self: MetricsCollector) -> None;
+    def record_ws_broadcast(self: MetricsCollector) -> None;
     def get_endpoint_handler(self: MetricsCollector) -> Callable[..., any];
     def is_enabled(self: MetricsCollector) -> bool;
 }
@@ -42,6 +45,9 @@ class NoOpMetricsCollector(MetricsCollector) {
         success: bool = True
     ) { }
 
+    def record_ws_connection_opened(self: NoOpMetricsCollector) { }
+    def record_ws_connection_closed(self: NoOpMetricsCollector) { }
+    def record_ws_broadcast(self: NoOpMetricsCollector) { }
     def get_endpoint_handler(self: NoOpMetricsCollector) -> Callable[..., any] {
         def noop { }
         return noop;

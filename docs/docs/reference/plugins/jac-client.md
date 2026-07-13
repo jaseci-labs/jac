@@ -274,22 +274,6 @@ cl {
 
 A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
 
-### Section Headers
-
-As an alternative to a block, the `to cl:` section header tags **every following module-level element** as client-side, until the next `to X:` header or end of file. This is convenient for a file that is mostly client code, since it avoids a wrapping block:
-
-```jac
-to cl:
-
-def:pub app() -> JsxElement {
-    return <div>
-        <h1>Hello, World!</h1>
-    </div>;
-}
-```
-
-You can switch back with `to sv:`, `to na:`, or end the file.
-
 ### Single-Statement Forms
 
 For one-off client-side declarations, use the single-statement `cl` prefix:
@@ -380,7 +364,7 @@ cl {
 
 ### The `has` Keyword
 
-Inside client-tagged code (a `cl { }` block, a `.cl.jac` file, or a `to cl:` section), `has` creates reactive state:
+Inside client-tagged code (a `cl { }` block or a `.cl.jac` file), `has` creates reactive state:
 
 ```jac
 cl {

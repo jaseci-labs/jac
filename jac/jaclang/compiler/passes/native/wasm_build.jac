@@ -95,6 +95,7 @@ glob _LATE_BOUND: set = {
          "strlen",
          "malloc",
          "calloc",
+         "realloc",
          "malloc_usable_size",
          "memcpy",
          "memmove",

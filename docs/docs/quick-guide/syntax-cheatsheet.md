@@ -1237,9 +1237,9 @@ with entry {
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
-#   sv { } / to sv: = server (Python/PyPI)
-#   cl { } / to cl: = client (JavaScript/npm)
-#   na { } / to na: = native (C ABI)
+#   sv { } = server (Python/PyPI)
+#   cl { } = client (JavaScript/npm)
+#   na { } = native (C ABI)
 
 
 # ============================================================
@@ -1274,15 +1274,7 @@ cl {
 # Code after the block is back in the server codespace
 node Secret { has value: str; }
 
-# Section header -- an alternative to a block; sets the codespace for
-# every following element until the next "to X:" header or end of file
-to cl:
-
-import from react { useEffect }
-
-to sv:
-
-# Single-statement form (no header, no braces)
+# Single-statement form (no block, no braces) -- tags exactly one statement
 sv import from .database { connect_db }
 cl import from react { useState }
 

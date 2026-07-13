@@ -31,7 +31,13 @@ glob MANUAL_FIELDS: dict[str, list] = {
          "OPT_NODE_LIST": 11,
 
      },
-     ENUM_TYPES: set = {"SymbolType", "SymbolAccess", "EdgeDir", "CodeContext"},
+     ENUM_TYPES: set = {
+         "SymbolType",
+         "SymbolAccess",
+         "EdgeDir",
+         "CodeContext",
+         "OwnershipKind"
+     },
      SKIP_PARAMS: set = {"self", "kid", "parent"};
 
 def classify_type(ann_str: str) -> int {

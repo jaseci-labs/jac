@@ -7,6 +7,22 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### `to cl:` / `to sv:` / `to na:` section markers removed
+
+The module-level colon-section-marker syntax has been removed. A `to cl:` / `to sv:` / `to na:` line used to switch every following statement into the client / server / native context until the next marker or end of file. This is a **clean break** -- writing `to cl:` (or `to sv:` / `to na:`) now fails to parse.
+
+Use the braced block form instead. It compiles to the same node and is now the canonical way to scope a region to a context:
+
+| Old | New |
+|---|---|
+| `to cl:` <br> `<client stmts>` | `cl { <client stmts> }` |
+| `to sv:` <br> `<server stmts>` | `sv { <server stmts> }` (or leave at module top level -- server is the default context) |
+| `to na:` <br> `<native stmts>` | `na { <native stmts> }` |
+
+**Impact:** rewrite any `to cl:` / `to sv:` / `to na:` section into the matching braced block, wrapping exactly the statements that belonged to that section. Single-statement prefixes (`cl def:pub foo() {...}`, `sv ...`, `na ...`) and file-extension contexts (`.cl.jac`, `.na.jac`) are unaffected. The `to` keyword is otherwise unchanged -- it still drives the iter-for loop (`for x = 0 to 10 by 1`).
+
+---
+
 ### `jac add` merged into `jac install`
 
 The `jac add` verb has been removed; `jac install <pkg>` absorbs it. This is a **clean break** -- `jac add ...` now fails with a pointer to the new spelling.
