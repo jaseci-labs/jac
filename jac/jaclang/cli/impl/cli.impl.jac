@@ -41,6 +41,14 @@ impl start_cli -> None {
 
     _load_project_config();
 
+    fast_rc = _try_fast_path(sys.argv[1:]);
+    if fast_rc is not None {
+        if fast_rc != 0 {
+            sys.exit(fast_rc);
+        }
+        return;
+    }
+
     register_feature_commands();
 
     registry = get_registry();
@@ -329,4 +337,67 @@ def _apply_config_defaults(config: object, args_dict: dict) {
             args_dict[arg_name] = config_value;
         }
     }
+}
+
+def _try_fast_path(raw_argv: list) -> int | None {
+    import from jaclang.cli.registry { get_registry }
+    import from jaclang.cli.executor { get_executor }
+    import from jaclang.cli.console { console }
+
+    if not raw_argv {
+        return None;
+    }
+
+    if raw_argv == ["-V"] or raw_argv == ["--version"] {
+        import from jaclang.cli.banners { print_version_banner }
+        print_version_banner(jac_version());
+        return 0;
+    }
+
+    if raw_argv[0] == "run" {
+        rest = raw_argv[1:];
+    } elif (
+        not raw_argv[0].startswith("-")
+        and raw_argv[0].lower().endswith((".jac", ".py"))
+    ) {
+        rest = raw_argv;
+    } else {
+        return None;
+    }
+
+    if not rest or rest[0].startswith("-") {
+        return None;
+    }
+    filename = rest[0];
+    if not filename.lower().endswith((".jac", ".py")) {
+        return None;
+    }
+
+    tail = rest[1:];
+    if tail and tail[0] == "--" {
+        script_args = tail[1:];
+    } elif any(tok.startswith("-") for tok in tail) {
+        return None;
+    } else {
+        script_args = tail;
+    }
+
+    args_dict: dict = {
+        "filename": filename,
+        "cache": True,
+        "main": True,
+        "autonative": False,
+        "args": script_args
+    };
+    _apply_profile(args_dict);
+
+    spec = get_registry().get("run");
+    if spec is None {
+        return None;
+    }
+    result = get_executor().execute(spec, args_dict);
+    if result.error {
+        console.error(f"{result.error}");
+    }
+    return result.return_code;
 }
