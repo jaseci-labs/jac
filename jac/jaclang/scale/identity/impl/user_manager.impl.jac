@@ -285,6 +285,9 @@ impl JacScaleUserManager.refresh_jwt_token(token: str) -> str | None {
         decoded = jwt.decode(
             token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_exp": True}
         );
+        if decoded.get('type') == 'api_key' {
+            return None;
+        }
         user_id = decoded.get('sub') or decoded.get('user_id');
         return self.create_jwt_token(user_id) if user_id else None;
     } except Exception as e {
