@@ -21,12 +21,15 @@ obj Tagged {
     }
 }
 
+# Assigning a no-default Final in init is a scope rule, not a count (Pyright
+# does no definite-assignment analysis here). Repeated writes -- sequential,
+# branched, or in a loop -- are all legal inside init/postinit.
 obj Pair {
     has a: Final[int];
 
     def init {
-        self.a = 1;                    # OK: first init write
-        self.a = 2;                    # <-- Error (second write in same init block)
+        self.a = 1;                    # OK: init write
+        self.a = 2;                    # OK: init is not write-counted
     }
 }
 
@@ -35,9 +38,19 @@ obj Cond {
 
     def init(flag: bool) {
         if flag {
-            self.v = 1;                # OK: each branch initializes once
+            self.v = 1;                # OK
         } else {
-            self.v = 2;                # OK: distinct branch block
+            self.v = 2;                # OK
+        }
+    }
+}
+
+obj LoopInit {
+    has w: Final[int];
+
+    def init {
+        for i in [1, 2, 3] {
+            self.w = i;                # OK: still just an init write
         }
     }
 }

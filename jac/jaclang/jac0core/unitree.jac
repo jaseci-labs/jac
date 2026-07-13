@@ -88,7 +88,7 @@ obj Symbol {
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
         semstr: str by postinit,
-        is_immutable: bool by postinit,
+        is_immutable: bool = False,
         ownership: OwnershipKind = OwnershipKind.NONE;
 
     def init(

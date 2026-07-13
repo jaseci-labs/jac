@@ -1012,6 +1012,7 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     sym.access = access;
     sym.parent_tab = None;
     sym.semstr = '';
+    sym.is_immutable = False;
 
     for d in defn_nodes {
         if isinstance(d, NameAtom) {

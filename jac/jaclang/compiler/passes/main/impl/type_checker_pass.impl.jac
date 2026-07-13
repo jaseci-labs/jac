@@ -221,19 +221,14 @@ impl TypeCheckPass._check_immutable_write(
         if not attr_sym.is_immutable {
             return;
         }
+
         decl_node = attr_sym.decl.name_of;
         if (
             isinstance(decl_node, uni.HasVar)
             and decl_node.value is None
             and self._in_owner_initializer(target)
         ) {
-            assign_node = target.find_parent_of_type(uni.Assignment);
-            block_owner = assign_node.parent if assign_node is not None else None;
-            write_key = f"{id(block_owner)}:{id(attr_sym)}";
-            if write_key not in self._final_init_writes {
-                self._final_init_writes.add(write_key);
-                return;
-            }
+            return;
         }
         kind = "read-only" if attr_sym.decl.loc.mod_path == '<ts-synth>' else "Final";
         self.emit(E1121, node_override=target, name=target.right.value, kind=kind);

@@ -584,7 +584,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot assign to '{name}': it is declared {kind}",
          "A binding annotated with 'Final' (or a 'readonly' member of an imported"
-         " TypeScript interface) can only be set at its declaration, or once in"
+         " TypeScript interface) can only be set at its declaration, or in"
          " 'init'/'postinit' when the declaration has no initializer."
      ),
      E1301 = _err(
