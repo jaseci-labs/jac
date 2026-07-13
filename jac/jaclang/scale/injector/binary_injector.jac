@@ -15,6 +15,7 @@ glob logger = logging.getLogger(__name__);
 
 obj BinaryInjector(PvcInjector) {
     has channel: Channel = Channel.STABLE,
+        on_binary_ready: any = None,
         _toolchain_object_key: str = "",
         _toolchain_bytes: bytes = b"",
         _pod_binary_bytes: bytes = b"";
@@ -27,8 +28,14 @@ obj BinaryInjector(PvcInjector) {
         # Download the pod binary before pack_source runs so it can precompile
         # the app's modules with it: .jir is version-locked to the compiling
         # binary, so the driver's own jac cannot produce pod-valid seeds.
-        payload = download_release_binary(self.channel.value, node_arch());
+        arch = node_arch();
+        payload = download_release_binary(self.channel.value, arch);
         self._pod_binary_bytes = payload;
+        # Hand the payload to work that overlaps the seal below (the host
+        # client build); pre_tar_hook joins it before the tree is packed.
+        if self.on_binary_ready is not None {
+            self.on_binary_ready(payload, arch);
+        }
         super.prepare(app_name, namespace, project_dir);
         raw = pack_binary_bytes(payload);
         self._toolchain_object_key = toolchain_object_key(
@@ -56,7 +63,9 @@ def select_injector(
     app_name: str,
     namespace: str,
     project_dir: str,
-    provisioned_database: str = ""
+    provisioned_database: str = "",
+    on_binary_ready: any = None,
+    pre_tar_hook: any = None
 ) -> tuple[PvcInjector, str] {
     import from jaclang.cli.console { console }
     import from jaclang.scale.config.dev_config { resolve_dev_channel }
@@ -72,7 +81,9 @@ def select_injector(
         injector = BinaryInjector(
             channel=channel,
             storage_class=storage_class,
-            provisioned_database=provisioned_database
+            provisioned_database=provisioned_database,
+            on_binary_ready=on_binary_ready,
+            pre_tar_hook=pre_tar_hook
         );
         injector.prepare(app_name, namespace, project_dir);
         console.print(f"Ready: {blurbs[channel]}.");
