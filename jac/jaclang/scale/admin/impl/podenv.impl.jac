@@ -174,13 +174,13 @@ def _own_env_entries -> list {
 
 
 def _collect_podenv -> dict {
-    own = _own_env_entries();
+    own_env = _own_env_entries();
     if not k8s_available() {
         # Off-cluster we can still show our own process env (redacted).
         return {
             "available": False,
             "detail": unavailable_detail(),
-            "this_pod": redact_env(own, _ENV_ALLOW_PREFIXES),
+            "this_pod": redact_env(own_env, _ENV_ALLOW_PREFIXES),
             "pods": []
         };
     }
@@ -189,7 +189,7 @@ def _collect_podenv -> dict {
         return {
             "available": False,
             "detail": unavailable_detail(),
-            "this_pod": redact_env(own, _ENV_ALLOW_PREFIXES),
+            "this_pod": redact_env(own_env, _ENV_ALLOW_PREFIXES),
             "pods": []
         };
     }
@@ -201,12 +201,12 @@ def _collect_podenv -> dict {
         return {
             "available": False,
             "detail": api_error_detail(e),
-            "this_pod": redact_env(own, _ENV_ALLOW_PREFIXES),
+            "this_pod": redact_env(own_env, _ENV_ALLOW_PREFIXES),
             "pods": []
         };
     }
     return build_podenv(
-        ns, own, [p.to_dict() for p in (pod_objs or [])], _ENV_ALLOW_PREFIXES
+        ns, own_env, [p.to_dict() for p in (pod_objs or [])], _ENV_ALLOW_PREFIXES
     );
 }
 

@@ -1,3 +1,14 @@
+glob RC_INTRINSIC_NAMES: frozenset[str] = frozenset(
+         {
+             "__rc_debug_enable",
+             "__rc_debug_disable",
+             "__rc_gc_disable",
+             "__rc_gc_enable",
+             "__rc_collect_cycles",
+
+         }
+     );
+
 impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
     if type_name in self.type_map {
         return self.type_map[type_name];
@@ -199,6 +210,20 @@ impl NaIRGenPass._native_module_call_target(nd: uni.FuncCall) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._codegen_rc_intrinsic(func_name: str) -> bool {
+    if func_name not in RC_INTRINSIC_NAMES {
+        return False;
+    }
+    if func_name == "__rc_collect_cycles" and self._gc_mode() != "cycles" {
+        return True;
+    }
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    self.builder.call(self.llvm_module.get_global(func_name), []);
+    return True;
+}
+
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     _call_kind = nd.call_kind;
     if _call_kind is None {
@@ -219,41 +244,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
+    if self._codegen_rc_intrinsic(func_name) {
+        return None;
+    }
+
     if _call_kind == "builtin" {
         if func_name == "print" {
             return self._emit_print(nd);
-        }
-
-        if func_name == "__rc_debug_enable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            en_fn = self.llvm_module.get_global("__rc_debug_enable");
-            self.builder.call(en_fn, []);
-            return None;
-        }
-        if func_name == "__rc_debug_disable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            dis_fn = self.llvm_module.get_global("__rc_debug_disable");
-            self.builder.call(dis_fn, []);
-            return None;
-        }
-
-        if func_name == "__rc_gc_disable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            self.builder.call(self.rc_gc_disable_fn, []);
-            return None;
-        }
-        if func_name == "__rc_gc_enable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            self.builder.call(self.rc_gc_enable_fn, []);
-            return None;
         }
 
         if func_name == "__float_bits" {

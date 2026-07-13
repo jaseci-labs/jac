@@ -131,10 +131,14 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.capability_check_pass {
             PortabilityWarnPass
         }
+        import from jaclang.compiler.passes.main.ownership_check_pass {
+            OwnershipCheckPass
+        }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
         return [
             StaticAnalysisPass,
             AccessCheckPass,
+            OwnershipCheckPass,
             PortabilityWarnPass,
             JacLintCheckPass
         ];
@@ -190,13 +194,13 @@ def get_py_code_gen(
         }
 
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
-
         if native {
             import from jaclang.compiler.passes.native {
+                RcElisionProofPass,
                 NaIRGenPass,
                 NativeCompilePass
             }
-            passes.extend([NaIRGenPass, NativeCompilePass]);
+            passes.extend([RcElisionProofPass, NaIRGenPass, NativeCompilePass]);
         }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;

@@ -144,6 +144,7 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         }
     }
     self._codegen_entry(_entry_nodes);
+    self._finalize_trace_lookup();
 
     if self.has_native_code {
         if self.errors_had {
@@ -155,6 +156,18 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         self.ir_in.gen.llvm_ir = self.llvm_module;
 
         import os;
+        if os.environ.get("JAC_RC_STATS", "") {
+            _rc_total = self.rc_retains_emitted + self.rc_releases_emitted;
+            _rc_known = _rc_total + self.rc_ops_elided;
+            _rc_pct = (100.0 * self.rc_ops_elided / _rc_known) if _rc_known else 0.0;
+            import sys;
+            sys.stderr.write(
+                f"rc-stats [{os.path.basename(self.ir_in.loc.mod_path)}] "
+                f"gc={self._gc_mode()} retains={self.rc_retains_emitted} "
+                f"releases={self.rc_releases_emitted} "
+                f"elided={self.rc_ops_elided} coverage={_rc_pct:.1f}%\n"
+            );
+        }
         _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
         if _ir_dump_path {
             with open(_ir_dump_path, "w") as _f {
