@@ -242,3 +242,35 @@ test "component rename is skipped when the PascalCase name is already taken" {
     assert "function page()" in js;
     assert "const page" not in js;
 }
+
+test "runtime core imports the jsx factory it calls" {
+    import from pathlib { Path }
+    import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+    import from jaclang.runtimelib.client_surface { with_runtime_globals }
+
+    core_path = Path(resolve_client_runtime_cl_path()).parent / "client_runtime_core.cl.jac";
+    mod = JacProgram().compile(str(core_path));
+    js = mod.gen.js;
+
+    # The core's error boundary and dev overlay are JSX, so they lower to
+    # __jacJsx(...) calls -- but the factory is React-specific and lives in the
+    # platform runtime, so core must import it rather than rely on file scope.
+    assert "__jacJsx(" in js , "runtime core should emit JSX factory calls";
+    assert "function __jacJsx(" not in js , "core must not define the React factory";
+
+    wired = with_runtime_globals(js);
+    assert 'import {__jacJsx} from "@jac/runtime";' in wired;
+}
+
+test "runtime globals skip symbols the module defines itself" {
+    import from jaclang.runtimelib.client_surface { with_runtime_globals }
+
+    # Core calls __jacJsx but defines __jacSpawn; importing both would rebind
+    # the local function.
+    js = "async function __jacSpawn(a) {}\nfunction F() { return __jacJsx('div', {}, []); }\n";
+    wired = with_runtime_globals(js);
+
+    assert 'import {__jacJsx} from "@jac/runtime";' in wired;
+    assert "__jacSpawn}" not in wired , "must not import a locally-defined global";
+    assert "{__jacJsx, __jacSpawn}" not in wired;
+}
