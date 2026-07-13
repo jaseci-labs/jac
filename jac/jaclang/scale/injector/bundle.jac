@@ -224,10 +224,23 @@ def _staged_pod_jac(pod_binary: bytes) -> Path {
         }
     }
     jac_path.parent.mkdir(parents=True, exist_ok=True);
-    tmp = jac_path.with_suffix(f".{os.getpid()}.tmp");
-    tmp.write_bytes(pod_binary);
-    tmp.chmod(0o755);
-    tmp.rename(jac_path);
+    # mkstemp guarantees a unique temp even for concurrent stagings in one
+    # process; os.replace publishes atomically (last writer wins).
+    (fd, tmp_name) = tempfile.mkstemp(prefix="pod-jac.", dir=str(jac_path.parent));
+    try {
+        with os.fdopen(fd, "wb") as handle {
+            handle.write(pod_binary);
+        }
+        os.chmod(tmp_name, 0o755);
+        os.replace(tmp_name, str(jac_path));
+    } except BaseException {
+        try {
+            os.unlink(tmp_name);
+        } except OSError {
+            ;
+        }
+        raise;
+    }
     return jac_path;
 }
 
