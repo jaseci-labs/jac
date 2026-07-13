@@ -151,9 +151,9 @@ test "prod render_page injects early error handler before module bundle script" 
         _bundle=None,
         _module=None,
         module_name='stub',
-        load=lambda : None ,
-        get_client_functions=lambda : {'app': None},
-        ensure_bundle=lambda : 'abc123'
+        load=lambda { None; },
+        get_client_functions=lambda { {'app': None}; },
+        ensure_bundle=lambda { 'abc123'; }
     );
     result = JacClient.render_page(introspector, 'app', {}, 'guest');
     html = result['html'];

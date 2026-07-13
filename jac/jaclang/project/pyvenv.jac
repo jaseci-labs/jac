@@ -207,7 +207,7 @@ def _discover_venv_site_packages(venv_dir: Path) -> Path | None {
     if not candidates {
         return None;
     }
-    candidates.sort(key=lambda p : p.parent.name, reverse=True);
+    candidates.sort(key=lambda (p) { p.parent.name; }, reverse=True);
     return candidates[0];
 }
 

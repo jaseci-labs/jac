@@ -100,6 +100,11 @@ jobs:
           fi
 
       - name: "install: download + run the binary"
+        env:
+          # install.sh authenticates its GitHub API calls when a token is set;
+          # shared runners (macOS especially) exhaust the unauthenticated
+          # per-IP rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/install.sh
 
       - name: "install: verify jac"

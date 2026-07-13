@@ -61,8 +61,8 @@ cl def:pub app -> JsxElement {
         <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent { text = e.target.value; }}
-                onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}}
+                onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+                onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}}
                 placeholder="Add a todo..."
             />
             <button onClick={lambda { add(); }}>Add</button>

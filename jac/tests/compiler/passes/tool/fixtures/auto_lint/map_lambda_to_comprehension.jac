@@ -7,7 +7,7 @@ only bind a single iteration variable per `for` clause.
 
 def:pub HourGrid(hours: list, items: list) -> JsxElement {
     hourLabels = hours.map(
-        lambda hour: any -> any {
+        lambda (hour: any) -> any {
             return <div className="text-xs text-center">{hour}</div>;
         }
     );
@@ -22,7 +22,7 @@ def:pub HourGrid(hours: list, items: list) -> JsxElement {
 
 def:pub MultiParamMap(items: list) -> JsxElement {
     rendered = items.map(
-        lambda a: any, b: any -> any {
+        lambda (a: any, b: any) -> any {
             return <li>{a + b}</li>;
         }
     );

@@ -36,7 +36,7 @@ def:pub LoginPage -> JsxElement {
                             label="Username"
                             type="text"
                             value={loginUsername}
-                            onChange={lambda e: any { loginUsername = e.target.value; }}
+                            onChange={lambda (e: any) { loginUsername = e.target.value; }}
                             placeholder="admin"
                             className="mb-4"
                         />
@@ -44,7 +44,7 @@ def:pub LoginPage -> JsxElement {
                             label="Password"
                             type="password"
                             value={loginPassword}
-                            onChange={lambda e: any { loginPassword = e.target.value; }}
+                            onChange={lambda (e: any) { loginPassword = e.target.value; }}
                             placeholder="Enter password"
                             className="mb-5"
                         />

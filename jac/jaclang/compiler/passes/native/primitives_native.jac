@@ -14,10 +14,12 @@ import from jaclang.compiler.primitives {
     BuiltinEmitter
 }
 import type from jaclang.compiler.passes.native.na_ir_gen_pass { NaIRGenPass }
+import from jaclang.jac0core.diagnostics { E5090 }
 
 obj NativeEmitCtx {
     has pass_ref: NaIRGenPass,
-        type_key: str = "";
+        type_key: str = "",
+        call_kwargs: dict = {};
 }
 
 
@@ -1816,6 +1818,12 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         p = ctx.pass_ref;
         base = args[0];
         exp = args[1];
+        if len(args) >= 3
+        and isinstance(base.type, ir.IntType)
+        and isinstance(exp.type, ir.IntType)
+        and isinstance(args[2].type, ir.IntType) {
+            return self.emit_pow_mod(ctx, base, exp, args[2]);
+        }
         if isinstance(base.type, ir.IntType) and isinstance(exp.type, ir.IntType) {
             return p._codegen_int_pow(base, exp);
         }
@@ -1827,6 +1835,69 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return get_builder(p).call(pow_fn, [base, exp], name="pow.result");
         }
         return None;
+    }
+
+    def emit_pow_mod(
+        self: NativeBuiltinEmitter,
+        ctx: NativeEmitCtx,
+        base: ir.Value,
+        exp: ir.Value,
+        mod: ir.Value
+    ) -> (ir.Value | None) {
+        p = ctx.pass_ref;
+        b = get_builder(p);
+        i64 = ir.IntType(64);
+        one = ir.Constant(i64, 1);
+        zero = ir.Constant(i64, 0);
+        base64 = p._coerce_type(base, i64);
+        exp64 = p._coerce_type(exp, i64);
+        mod64 = p._coerce_type(mod, i64);
+        mod_is_zero = b.icmp_signed("==", mod64, zero, name="powm.mod.zero");
+        p._emit_runtime_raise(
+            mod_is_zero, "ValueError", "pow() 3rd argument cannot be 0"
+        );
+        base0 = b.srem(base64, mod64, name="powm.base0");
+        func = b.basic_block.function;
+        entry_bb = b.basic_block;
+        loop_bb = func.append_basic_block(name="powm.loop");
+        body_bb = func.append_basic_block(name="powm.body");
+        odd_bb = func.append_basic_block(name="powm.odd");
+        even_bb = func.append_basic_block(name="powm.even");
+        done_bb = func.append_basic_block(name="powm.done");
+        b.branch(loop_bb);
+        b.position_at_start(loop_bb);
+        acc = b.phi(i64, name="powm.acc");
+        cur = b.phi(i64, name="powm.cur");
+        left = b.phi(i64, name="powm.left");
+        acc.add_incoming(one, entry_bb);
+        cur.add_incoming(base0, entry_bb);
+        left.add_incoming(exp64, entry_bb);
+        alive = b.icmp_signed(">", left, zero, name="powm.alive");
+        b.cbranch(alive, body_bb, done_bb);
+        b.position_at_start(body_bb);
+        bit = b.and_(left, one, name="powm.bit");
+        is_odd = b.icmp_signed("==", bit, one, name="powm.isodd");
+        b.cbranch(is_odd, odd_bb, even_bb);
+        b.position_at_start(odd_bb);
+        acc_mul = b.mul(acc, cur, name="powm.acc.mul");
+        acc_new = b.srem(acc_mul, mod64, name="powm.acc.new");
+        b.branch(even_bb);
+        b.position_at_start(even_bb);
+        acc_next = b.phi(i64, name="powm.acc.next");
+        acc_next.add_incoming(acc, body_bb);
+        acc_next.add_incoming(acc_new, odd_bb);
+        cur_sq = b.mul(cur, cur, name="powm.cur.sq");
+        cur_next = b.srem(cur_sq, mod64, name="powm.cur.next");
+        left_next = b.ashr(left, one, name="powm.left.next");
+        acc.add_incoming(acc_next, even_bb);
+        cur.add_incoming(cur_next, even_bb);
+        left.add_incoming(left_next, even_bb);
+        b.branch(loop_bb);
+        b.position_at_start(done_bb);
+
+        fixed = b.add(acc, mod64, name="powm.fix");
+        fixed = b.srem(fixed, mod64, name="powm.fix.rem");
+        return fixed;
     }
 
     def emit_divmod(

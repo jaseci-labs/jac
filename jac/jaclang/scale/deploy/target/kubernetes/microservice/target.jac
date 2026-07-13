@@ -140,49 +140,117 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
     def _scan_for_crash_loop(
         core_v1: any, ns: str, current_hashes: set, fleet_app_names: set
-    ) -> tuple[str, list[str]] {
+    ) -> dict[str, any] {
         # current_hashes only covers the fleet's own microservice Deployments
         # (resolved from `names`); companions (Redis, Prometheus, Grafana, ...)
         # and observability pods share this namespace but were never part of
         # that resolution, so the hash filter must not apply to them - doing
         # so would silently exempt a crash-looping companion from detection.
+        # Image-pull failures are the opposite: only the fleet's own pods may
+        # fast-fail the rollout, so a broken companion image just lets the
+        # wait time out instead of aborting a fleet that is coming up fine.
+        imagepull_reasons: set = {
+            "ImagePullBackOff",
+            "ErrImagePull",
+            "InvalidImageName"
+        };
+        transient_reasons: set = {"PodInitializing", "ContainerCreating"};
         crash = "";
+        crash_pod = None;
+        pulls: dict[str, any] = {};
         phases: list[str] = [];
+        states: list[str] = [];
         try {
             for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                pod_name = str(p.metadata.name);
                 labels = p.metadata.labels or {};
                 app = str(labels.get("app", ""));
+                in_fleet = (app in fleet_app_names) if fleet_app_names else True;
                 if current_hashes and app in fleet_app_names {
                     pod_hash = labels.get("pod-template-hash");
                     if pod_hash is not None and pod_hash not in current_hashes {
                         continue;
                     }
                 }
-                for cs in (p.status.container_statuses or []) {
-                    if (cs.restart_count or 0) >= 3 {
-                        crash = (
-                            f"pod '{p.metadata.name}' crash-looping "
-                            f"({cs.restart_count} restarts)"
-                        );
+                phase = str(p.status.phase or '?');
+                statuses = list(p.status.init_container_statuses or []) + list(
+                    p.status.container_statuses or []
+                );
+                pod_reason = "";
+                pod_crash = "";
+                pod_crash_restarts = 0;
+                pod_pull = "";
+                pod_pull_reason = "";
+                for cs in statuses {
+                    waiting = cs.state.waiting if cs.state else None;
+                    reason = (waiting.reason if waiting else "") or "";
+                    restarts = cs.restart_count or 0;
+                    states.append(f"{pod_name}/{cs.name}={phase}/{reason}/{restarts}");
+                    if reason and reason not in transient_reasons {
+                        pod_reason = reason;
+                    }
+                    # A container blocked on the registry never ran, so its
+                    # restart count says nothing about crash-looping.
+                    crashing = restarts >= 3 and reason not in imagepull_reasons;
+                    if crashing and not pod_crash {
+                        pod_crash = str(cs.name);
+                        pod_crash_restarts = restarts;
+                    } elif reason in imagepull_reasons and not pod_pull and in_fleet {
+                        pod_pull = str(cs.name);
+                        pod_pull_reason = reason;
                     }
                 }
+                if pod_pull {
+                    pulls[pod_name] = (pod_pull, pod_pull_reason, p);
+                }
+                if pod_crash and not crash {
+                    crash = (
+                        f"pod '{pod_name}' container '{pod_crash}' "
+                        f"crash-looping ({pod_crash_restarts} restarts)"
+                    );
+                    crash_pod = p;
+                }
                 if app {
-                    phases.append(f"{app}={p.status.phase or '?'}");
+                    token = f"{app}={phase}";
+                    if pod_reason {
+                        token = f"{app}={phase}/{pod_reason}";
+                    }
+                    phases.append(token);
                 }
             }
         } except Exception {
             _ = 0;
         }
-        return (crash, phases);
+        return {
+            "crash": crash,
+            "crash_pod": crash_pod,
+            "pulls": pulls,
+            "phases": phases,
+            "states": states
+        };
     }
 
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
         import time;
+        import sys;
         import from kubernetes { client }
         import from jaclang.cli.console { console }
         names: list[str] = [];
+        app_labels: list[str] = [];
         for dep in bundle.get("deployments", {}).values() {
             names.append(dep["metadata"]["name"]);
+            app: str = "";
+            try {
+                app = str(dep["spec"]["selector"]["matchLabels"]["app"]);
+            } except Exception { }
+            if not app {
+                try {
+                    app = str((dep["metadata"].get("labels") or {}).get("app") or "");
+                } except Exception { }
+            }
+            if app {
+                app_labels.append(app);
+            }
         }
         if not names {
             return;
@@ -194,23 +262,25 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         total = len(names);
         elapsed = 0;
         ready = 0;
-        # console.status is an in-place spinner that never streams on a non-TTY log (CI); fall back to plain lines so progress isn't stuck at "0/{total}".
-        interactive = bool(getattr(console, "is_terminal", False));
-        last_line = "";
+        interactive = bool(sys.stdout.isatty());
+        fleet_apps: set = set(app_labels);
+        pod_selector = "app in ({})".format(", ".join(app_labels))
+            if app_labels
+            else None;
+        imagepull_streak: dict[str, int] = {};
+        last_sig = "";
+        last_heartbeat = -90;
 
-        app_names = [
-            (dep["metadata"]["labels"] or {}).get("app")
-            for dep in bundle.get("deployments", {}).values()
-        ];
-        selector = "app in ({})".format(", ".join(app_names));
-        fleet_app_names: set = set(app_names);
         current_hashes: set = set();
-        try {
-            current_hashes = _resolve_current_rs_hashes(ns, selector);
-        } except Exception as exc {
-            console.print(
-                f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
-            );
+        if pod_selector {
+            try {
+                current_hashes = _resolve_current_rs_hashes(ns, pod_selector);
+            } except Exception as exc {
+                console.print(
+                    f"[warn] RS hash lookup failed, falling back to broad pod "
+                    f"scan: {exc}"
+                );
+            }
         }
 
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
@@ -235,43 +305,136 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     return;
                 }
 
-                (crash, phases) = self._scan_for_crash_loop(
-                    core_v1, ns, current_hashes, fleet_app_names
+                scan = self._scan_for_crash_loop(
+                    core_v1, ns, current_hashes, fleet_apps
                 );
-                if crash {
+                phase_tokens = scan["phases"];
+                state_tokens = scan["states"];
+                crash_failure = scan["crash"];
+                crash_pod = scan["crash_pod"];
+
+                if crash_failure and pod_selector {
                     # A hash set captured before the new RS's revision annotation
                     # was stamped can still point at the old RS; re-verify against
                     # a freshly resolved set before actually failing the rollout,
                     # mirroring check_deployment_status's crash re-verification.
-                    current_hashes = _refresh_rs_hashes(ns, selector, current_hashes);
-                    (crash, _) = self._scan_for_crash_loop(
-                        core_v1, ns, current_hashes, fleet_app_names
+                    refreshed = _refresh_rs_hashes(ns, pod_selector, current_hashes);
+                    current_hashes = refreshed or set();
+                    recheck = self._scan_for_crash_loop(
+                        core_v1, ns, current_hashes, fleet_apps
                     );
-                    if crash {
-                        raise Exception(crash);
+                    crash_failure = recheck["crash"];
+                    crash_pod = recheck["crash_pod"];
+                }
+
+                pulls = scan["pulls"];
+                imagepull_streak = {k: imagepull_streak.get(k, 0) + 1 for k in pulls};
+                pull_failure = "";
+                pull_pod = None;
+                for (pod_name, info) in pulls.items() {
+                    if imagepull_streak.get(pod_name, 0) >= 2 {
+                        pull_failure = (
+                            f"pod '{pod_name}' container '{info[0]}' "
+                            f"cannot pull image ({info[1]})"
+                        );
+                        pull_pod = info[2];
+                        break;
                     }
                 }
-                detail = ", ".join(phases) if phases else "scheduling pods";
+
+                failure = crash_failure or pull_failure;
+                failed_pod = crash_pod if crash_failure else pull_pod;
+                if failure and failed_pod is not None {
+                    detail = self._pod_failure_detail(
+                        core_v1, ns, str(failed_pod.metadata.name), failed_pod
+                    );
+                    raise Exception(f"{failure}.{detail}");
+                }
+
+                summary = ", ".join(phase_tokens)
+                    if phase_tokens
+                    else "scheduling pods";
                 line = (
                     f"Rolling out fleet: {ready}/{total} ready - {elapsed}s "
-                    f"elapsed ({detail}) - pods install jac + start the app"
+                    f"elapsed ({summary}) - pods install jac + start the app"
                 );
                 st.update(line);
-                # Emit to CI when the count moves or ~every 30s; dedupe to avoid spam.
-                if not interactive {
-                    stamp = f"{ready}/{total} {detail}";
-                    if stamp != last_line or elapsed % 30 == 0 {
+
+                sig = f"{ready}/{total}|" + "|".join(sorted(state_tokens));
+                if sig != last_sig or (elapsed - last_heartbeat) >= 90 {
+                    if not interactive {
                         console.print(line);
-                        last_line = stamp;
                     }
+                    last_sig = sig;
+                    last_heartbeat = elapsed;
                 }
                 time.sleep(10);
                 elapsed += 10;
             }
         }
+        timeout_detail = "";
+        try {
+            stuck = core_v1.list_namespaced_pod(
+                namespace=ns, label_selector=pod_selector
+            ).items
+                if pod_selector
+                else [];
+            for p in stuck {
+                timeout_detail += (
+                    f" [pod {p.metadata.name}]" + self._pod_failure_detail(
+                        core_v1, ns, str(p.metadata.name), p
+                    )
+                );
+            }
+        } except Exception {
+            _ = 0;
+        }
         raise Exception(
-            f"timed out after {timeout}s ({ready}/{total} deployments ready)"
+            f"timed out after {timeout}s ({ready}/{total} deployments ready)."
+            f"{timeout_detail}"
         );
+    }
+
+    def _pod_failure_detail(
+        core_v1: any, namespace: str, pod_name: str, pod: any = None
+    ) -> str {
+        import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
+            describe_pod_status
+        }
+        detail = describe_pod_status(core_v1, namespace, pod_name, pod);
+        term_lines: list[str] = [];
+        try {
+            if pod is None {
+                pod = core_v1.read_namespaced_pod(pod_name, namespace);
+            }
+            statuses = (pod.status.init_container_statuses or []) + (
+                pod.status.container_statuses or []
+            );
+            for cs in statuses {
+                states: list = [];
+                if cs.state and cs.state.terminated {
+                    states.append(("terminated", cs.state.terminated));
+                }
+                if cs.last_state and cs.last_state.terminated {
+                    states.append(("last-terminated", cs.last_state.terminated));
+                }
+                for (label, term) in states {
+                    message = (term.message or "").strip();
+                    if message or term.reason {
+                        term_lines.append(
+                            f"container '{cs.name}' {label}: "
+                            f"{term.reason or '?'} (exit={term.exit_code}) {message}"
+                        );
+                    }
+                }
+            }
+        } except Exception {
+            _ = 0;
+        }
+        if term_lines {
+            detail = detail + " " + "; ".join(term_lines);
+        }
+        return detail;
     }
 
     def _deploy_observability(app_name: str) -> None {
@@ -391,6 +554,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
+        # Resolve here, not in deploy(): `jac scale plan` calls this directly,
+        # and an unresolved '' python_image would render image-less manifests.
+        # Idempotent - a no-op once python_image is non-empty.
+        import from jaclang.scale.injector.binary { resolve_pod_base_image }
+        self.k8s_config.python_image = resolve_pod_base_image(
+            app_config.code_folder, self.k8s_config.python_image
+        );
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,

@@ -305,6 +305,8 @@ test "lambda expr" {
     lines = output.split("\n");
     assert lines[0] == "9";
     assert lines[1] == "567";
+    assert lines[2] == "7";
+    assert lines[3] == "None";
 }
 
 test "override walker inherit" {

@@ -447,7 +447,7 @@ cl {
                                 placeholder="What's happening?"
                                 placeholderTextColor={C.muted}
                                 multiline={True}
-                                onChangeText={lambda v: str { draft = v; }}
+                                onChangeText={lambda (v: str) { draft = v; }}
                             />
                             <View style={styles.composerActions}>
                                 <Icon
@@ -517,7 +517,7 @@ cl {
                             value={query}
                             placeholder="Search posts and people"
                             placeholderTextColor={C.muted}
-                            onChangeText={lambda v: str { query = v; }}
+                            onChangeText={lambda (v: str) { query = v; }}
                         />
                     </View>
                     <ScrollView style={styles.body}>
@@ -801,7 +801,7 @@ cl {
                                 value={authUser}
                                 placeholder="Username"
                                 placeholderTextColor={C.muted}
-                                onChangeText={lambda v: str { authUser = v; }}
+                                onChangeText={lambda (v: str) { authUser = v; }}
                             />
                         </View>
                         <View style={styles.fieldRow}>
@@ -818,7 +818,7 @@ cl {
                                 placeholder="Password"
                                 placeholderTextColor={C.muted}
                                 secureTextEntry={True}
-                                onChangeText={lambda v: str { authPass = v; }}
+                                onChangeText={lambda (v: str) { authPass = v; }}
                             />
                         </View>
                         {(
@@ -836,7 +836,7 @@ cl {
                                     placeholder="Confirm password"
                                     placeholderTextColor={C.muted}
                                     secureTextEntry={True}
-                                    onChangeText={lambda v: str { authPass2 = v; }}
+                                    onChangeText={lambda (v: str) { authPass2 = v; }}
                                 />
                             </View>
                         )
@@ -961,7 +961,7 @@ cl {
                                 value={commentDraft}
                                 placeholder="Write a comment..."
                                 placeholderTextColor={C.muted}
-                                onChangeText={lambda v: str { commentDraft = v; }}
+                                onChangeText={lambda (v: str) { commentDraft = v; }}
                             />
                             <Pressable style={styles.sendBtn} onPress={submitComment}>
                                 <Icon

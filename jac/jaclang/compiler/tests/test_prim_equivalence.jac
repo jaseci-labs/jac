@@ -330,6 +330,26 @@ test "native any guarded consume" {
     );
 }
 
+test "native bare list flow inference" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "bare_list_check_py",
+        "bare_list_check_cl",
+        "bare_list_check_na",
+        require=["na"]
+    );
+}
+
+test "native none any consume" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "none_consume_check_py",
+        "none_consume_check_cl",
+        "none_consume_check_na",
+        require=["na"]
+    );
+}
+
 test "dict order" {
     run_with_both(
         "prim_dictorder.jac",
