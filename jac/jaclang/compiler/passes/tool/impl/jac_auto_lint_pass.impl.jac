@@ -1301,7 +1301,7 @@ impl JacAutoLintPass._impl_owner_archetype(
             }
         }
     }
-    # An annex is linted on its own, so the object it implements is in another file.
+
     if arch_node is None {
         for stmt in self._base_decl_archetypes(impl_node.loc.mod_path) {
             if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
@@ -2642,17 +2642,12 @@ impl JacAutoLintPass._property_role_of_ability(ab: uni.Ability) -> str {
         if isinstance(dec, uni.Name) and dec.value == "property" {
             return "property";
         }
-        # Only '@x.setter def x' -- an accessor for a property declared in this same
-        # object -- may be folded into a native block. '@Base.x.setter' extends a
-        # parent's property (inheriting its other accessors), so rewriting it as a
-        # local 'has x { setter }' would silently drop them.
+
         if isinstance(dec, uni.AtomTrailer)
         and dec.is_attr
         and isinstance(dec.right, uni.Name)
         and isinstance(dec.target, uni.Name)
         and dec.target.value == own_name {
-            # '@x.getter' replaces the property's fget, so it plays the same role as
-            # the original '@property' and wins when both are present.
             if dec.right.value == "getter" {
                 return "property";
             }
@@ -2761,9 +2756,7 @@ impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
             group_indices[pname] = [];
             order.append(pname);
         }
-        # A later '@x.getter' supersedes the '@property' it extends, so it takes the
-        # 'property' slot -- but it may carry no return annotation, so remember the
-        # first declared type as a fallback for the generated 'has' declaration.
+
         if role == "property" and pname not in prop_types {
             declared = item.signature.return_type if item.signature else None;
             if declared is not None {
@@ -2846,8 +2839,6 @@ impl JacAutoLintPass._property_impl_roles(
 ) -> dict[str, list[uni.Ability]] {
     roles: dict[str, list[uni.Ability]] = {};
 
-    # The property may already be native -- either the user wrote it that way, or the
-    # same '--fix' run folded the declarations before this impl file was reached.
     for member in arch.body {
         if not isinstance(member, uni.ArchHas) {
             continue;
@@ -2876,10 +2867,7 @@ impl JacAutoLintPass._property_impl_roles(
             roles.setdefault(role, []).append(member);
         }
     }
-    # Whatever leaves the decorated declarations alone must leave their impls alone
-    # too, or the impls end up bound to nothing: '_convert_properties' folds a group
-    # only when it has a getter with a declared type -- it needs both to write
-    # 'has <name>: <type> { ... }' -- and only when the getter is not suppressed.
+
     for getter in roles.get("property", []) {
         if getter.signature
         and (getter.signature.return_type is not None)
@@ -2902,9 +2890,7 @@ impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
     if isinstance(decl, uni.Ability) {
         return self._property_role_of_ability(decl);
     }
-    # The formatter runs on one file at a time and builds no symbol table, so
-    # 'decl_link' is unset here. Read the accessors back off the declaring object
-    # instead -- which for an impl file means re-parsing the file it annexes.
+
     arch = self._impl_owner_archetype(nd);
     prop_name = last.sym_name if last else "";
     if arch is None or not prop_name {
@@ -2914,8 +2900,7 @@ impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
     if "property" not in roles {
         return "";
     }
-    # An accessor that carries a body is already implemented; only a declared-only
-    # one is something an impl can be filling in.
+
     pending: dict[str, uni.Ability] = {};
     for (role, accessors) in roles.items() {
         for acc in accessors {
@@ -2931,8 +2916,6 @@ impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
         return list(pending.keys())[0];
     }
 
-    # A getter impl and a setter impl share the dotted target 'T.celsius', so the
-    # signature is the only thing that tells them apart.
     spec = nd.spec if isinstance(nd.spec, uni.FuncSignature) else None;
     for role in ["property", "setter", "deleter"] {
         acc = pending.get(role);
@@ -2945,10 +2928,7 @@ impl JacAutoLintPass._impl_property_kind(nd: uni.ImplDef) -> str {
             return role;
         }
     }
-    # A native accessor may declare no signature at all ('getter;'), leaving nothing
-    # to match against, so fall back to the shape of the impl: one that takes a value
-    # is the setter, one that hands a value back is the getter, and a bare one is the
-    # deleter -- the only accessor that neither takes nor returns anything.
+
     takes_value = (spec is not None) and len(spec.params) > 0;
     returns_value = (spec is not None) and (spec.return_type is not None);
     if takes_value and "setter" in pending {
@@ -2977,10 +2957,7 @@ impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
     kw = "getter" if kind == "property" else kind;
     acc_name = self._make_name_node(last_target, kw);
     dot_tok = last_target.gen_token(Tok.DOT);
-    # The formatter tells a target's own tokens apart from what follows them by
-    # source column, and both new nodes are minted off 'last_target' -- landing on
-    # top of it. Pin them to its end with no width: any wider and they would reach
-    # over the '{' or signature that follows and swallow it.
+
     end_col = last_target.loc.col_end;
     dot_tok.c_start = end_col;
     dot_tok.c_end = end_col;

@@ -90,9 +90,6 @@ impl SemanticAnalysisPass._check_archetype(
                     and isinstance(dec.target, uni.Name)
                     and dec.right.value in ['getter', 'setter', 'deleter']
                 ) {
-                    # Only the same-object form '@x.setter def x' is reported. A
-                    # cross-object '@Base.x.setter' extends a parent's property and
-                    # has no direct native rewrite, so it is left alone.
                     prop_dec = f"{dec.target.value}.{dec.right.value}";
                 }
                 if prop_dec != "" {
@@ -113,11 +110,6 @@ impl SemanticAnalysisPass._check_archetype(
 impl SemanticAnalysisPass._property_type_names(
     self: SemanticAnalysisPass, methods: list[uni.Ability]
 ) -> dict[str, str] {
-    # Map each method name to its declared return type, so that a bare
-    # '@x.setter'/'@x.deleter' -- which carries no return annotation of its own --
-    # can still name the property's type in the suggested native replacement. Only a
-    # plain name renders cleanly; anything else falls back to the '...' placeholder
-    # W3043 uses for the same case.
     names: dict[str, str] = {};
     for method in methods {
         sig = method.signature;

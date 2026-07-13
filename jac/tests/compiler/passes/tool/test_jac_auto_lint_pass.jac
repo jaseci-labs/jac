@@ -1415,23 +1415,19 @@ test "property-to-native re-targets impl-separated accessor bodies" {
         shutil.copy2(
             os.path.join(fixture_dir, "impl", "property_impl_split.impl.jac"), impl_dst
         );
-
         with contextlib.suppress(SystemExit) {
             analysis.lint([main_dst], fix=True);
         }
-
         with open(main_dst) as f {
             updated_main = f.read();
         }
         with open(impl_dst) as f {
             updated_impl = f.read();
         }
-
         # Declarations collapse into one native accessor block.
         assert "has celsius: float {" in updated_main , updated_main;
         assert "@property" not in updated_main , updated_main;
         assert "@celsius.setter" not in updated_main , updated_main;
-
         # Impl bodies are re-targeted to dotted-impl form so they still bind.
         assert "impl Temperature.celsius.getter" in updated_impl , updated_impl;
         assert "impl Temperature.celsius.setter" in updated_impl , updated_impl;
