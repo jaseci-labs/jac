@@ -255,7 +255,10 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
 | `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
 | `--scale` | Deploy to Kubernetes (built-in scale subsystem) | `False` |
-| `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
+| `--target` | Deployment target (with `--scale`) | `kubernetes` |
+| `--enable-tls` | Enable HTTPS via Let's Encrypt (with `--scale`) | `False` |
+| `--dry-run` | Print the manifests that would be applied; change nothing (with `--scale`) | `False` |
+| `--show-yaml` | With `--dry-run`: dump the raw YAML stream | `False` |
 
 **Examples:**
 
@@ -284,8 +287,8 @@ jac start main.jac --client mobile --dev --host 192.168.1.25
 # Deploy to Kubernetes (built-in scale subsystem)
 jac start --scale
 
-# Build and deploy to Kubernetes
-jac start --scale --build
+# Preview the manifests without touching the cluster
+jac start --scale --dry-run
 ```
 
 > **Note**:
@@ -1224,8 +1227,8 @@ jac config list -o toml
 Deploy to Kubernetes using the built-in `scale` subsystem. See the [`jac start`](#jac-start) command above for full options.
 
 ```bash
-jac start --scale           # Deploy without building
-jac start --scale --build   # Build and deploy
+jac start --scale             # Deploy
+jac start --scale --dry-run   # Print the manifests; change nothing
 ```
 
 ---

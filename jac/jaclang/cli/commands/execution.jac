@@ -255,7 +255,7 @@ def enter(
             "dry-run",
             typ=bool,
             default=False,
-            help="Print manifests + image plan that would be applied; touch nothing (no cluster contact, no build, no DB provisioning)",
+            help="Print the manifests that would be applied; change nothing (nothing applied to the cluster, no DB provisioning, no TLS issuance, no deploy tooling installed)",
             short=""
         ),
         Arg.create(
