@@ -26,26 +26,21 @@ impl CommandExecutor.execute(
 }
 
 impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int {
-    import inspect;
     import from jaclang.cli.command { CommandSpec }
     if spec.handler is None {
         console.error(f"No handler registered for command '{spec.name}'");
         return 1;
     }
 
-    sig = inspect.signature(spec.handler);
-    has_var_keyword = any(
-        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-    );
-    if has_var_keyword {
-        filtered_args = args;
-    } else {
-        filtered_args = {
-            k: v
-            for (k, v) in args.items()
-            if k in sig.parameters
-        };
+    forward: set = {"args"};
+    for arg in spec.get_all_args() {
+        forward.add(arg.dest or arg.name.replace("-", "_"));
     }
+    filtered_args = {
+        k: v
+        for (k, v) in args.items()
+        if k in forward
+    };
     result = spec.handler(**filtered_args);
 
     if result is None {
