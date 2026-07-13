@@ -258,8 +258,8 @@ impl UniNode.flatten -> list[UniNode] {
 }
 
 impl UniNode.unparse -> str {
-    if self.gen.jac {
-        return self.gen.jac;
+    if (self._gen is not None and self._gen.jac) {
+        return self._gen.jac;
     }
     return ' '.join([i.unparse() for i in self.kid]);
 }
@@ -2291,8 +2291,8 @@ impl Token.__repr__ -> str {
 }
 
 impl Token.unparse -> str {
-    if self.gen.jac {
-        return self.gen.jac;
+    if (self._gen is not None and self._gen.jac) {
+        return self._gen.jac;
     }
     return self.value;
 }
