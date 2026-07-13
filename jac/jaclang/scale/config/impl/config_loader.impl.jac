@@ -613,6 +613,17 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
     };
 }
 
+impl JacScaleConfig.microservices_declared(self: JacScaleConfig) -> bool {
+    # The merged load() always carries a 'microservices' key from
+    # get_default_config (and callers may write merged routes back into the
+    # loaded doc), so "did the user write [scale.microservices]?" must be
+    # answered from the raw, unmerged plugin config in jac.toml.
+    declared = self.get_jac_config().get_plugin_config(self.get_plugin_name()).get(
+        'microservices'
+    );
+    return isinstance(declared, dict) and bool(declared);
+}
+
 impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     admin_config = config.get('admin', {});
