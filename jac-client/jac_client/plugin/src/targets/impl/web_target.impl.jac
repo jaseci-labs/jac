@@ -140,6 +140,8 @@ impl WebTarget.build(
         raise RuntimeError(f"Module '{mod}' is not a valid module type");
     }
     builder = JacClient.get_client_bundle_builder();
+    # Production artifact: never compile in the dev-only devtools overlay.
+    builder.is_production = True;
     builder.build(loaded_mod, force=True);
     bundle_path = bundler.find_bundle();
     if not bundle_path {

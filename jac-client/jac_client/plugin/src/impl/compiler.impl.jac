@@ -46,6 +46,18 @@ impl ViteCompiler.compile(
     if pwa_config.is_pwa_enabled() {
         self.compile_pwa_runtime();
     }
+    # Compile the devtools overlay runtime when enabled (dev-only by default).
+    # A production build target sets `is_production`, which suppresses the
+    # overlay unless it was explicitly opted in via config or the JAC_DEVTOOLS
+    # env var (the staging opt-in).
+    import from jac_client.plugin.src.config_loader { JacClientConfig as DevtoolsConfig }
+    devtools_config = DevtoolsConfig(self.project_dir);
+    self._devtools_enabled = devtools_config.is_devtools_enabled(
+        is_production=self.is_production
+    );
+    if self._devtools_enabled {
+        self.compile_devtools_runtime();
+    }
     self.copy_root_assets();
     self.create_entry_file(module_path);
     # Return exports and globals without bundling
@@ -78,6 +90,15 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
     } else {
         # Explicit routing mode: import app from entry module (original behavior)
         entry_content = build_simple_react_entry_script(module_path.stem);
+    }
+    # Mount the devtools overlay after the app root. It is a separate React
+    # root in its own Shadow DOM, so this cannot affect the app's mount. Covers
+    # both entry variants; only emitted when devtools is enabled for this build.
+    if self._devtools_enabled {
+        entry_content += (
+            '\nimport { mountDevtools } from "./devtools_runtime.js";\n'
+            'mountDevtools();\n'
+        );
     }
     entry_file.write_text(entry_content, encoding='utf-8');
 }
@@ -375,6 +396,34 @@ impl ViteCompiler.compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str
     return (pwa_js, all_exports);
 }
 
+"""Compile the devtools overlay runtime (only when devtools is enabled)."""
+impl ViteCompiler.compile_devtools_runtime(self: ViteCompiler) -> tuple[str, list[str]] {
+    runtime_path = self.runtime_path;
+    if runtime_path is None {
+        return ('', []);
+    }
+    devtools_runtime_path: Path = runtime_path.parent / 'devtools_runtime.cl.jac';
+    if not devtools_runtime_path.exists() {
+        return ('', []);
+    }
+    (devtools_js, mod, devtools_manifest) = self.jac_compiler.compile_module(
+        devtools_runtime_path
+    );
+    # Prepend the `@jac/runtime` import so the overlay's JSX (`__jacJsx`) resolves,
+    # exactly as app modules do. The overlay does not define `__jacJsx` itself.
+    devtools_js = self.jac_compiler.add_runtime_imports(devtools_js);
+    devtools_exports_list = self.jac_compiler.extract_exports(devtools_manifest);
+    glob_names = list(devtools_manifest.globals) if devtools_manifest else [];
+    all_exports = sorted(set(devtools_exports_list + glob_names));
+    self.compiled_dir.mkdir(parents=True, exist_ok=True);
+    devtools_out = self.compiled_dir / 'devtools_runtime.js';
+    devtools_out.write_text(devtools_js, encoding='utf-8');
+    self._write_source_map(
+        mod, str(devtools_runtime_path), devtools_out, devtools_js
+    );
+    return (devtools_js, all_exports);
+}
+
 """Write the per-file source map for a freshly compiled module and chain the
 compiled JS to it via a `//# sourceMappingURL` comment.
 
@@ -542,7 +591,8 @@ impl ViteCompiler.init(
     runtime_path: (Path | None) = None,
     compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
     extract_exports_func: Callable[([any], list[str])],
-    extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])]
+    extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])],
+    is_production: bool = False
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
@@ -564,6 +614,9 @@ impl ViteCompiler.init(
         self.project_dir = vite_package_json.parent;
     }
     self.runtime_path = runtime_path;
+    # Production build targets set this so the dev-only devtools overlay is
+    # never compiled into a shipped bundle (serve paths leave it False).
+    self.is_production = is_production;
     self.compiled_dir = self._get_client_dir() / 'compiled';
     self.jac_compiler = JacToJSCompiler(
         compile_to_js_func, extract_exports_func, extract_globals_func
@@ -573,4 +626,6 @@ impl ViteCompiler.init(
     self.vite_bundler = ViteBundler(self.project_dir, vite_output_dir, vite_minify);
     self._has_pages = False;
     self._route_scanner = None;
+    # Set during compile(): whether to also mount the devtools overlay in the entry.
+    self._devtools_enabled = False;
 }

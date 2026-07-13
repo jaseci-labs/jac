@@ -53,7 +53,8 @@ impl ViteClientBundleBuilder._get_compiler(
             runtime_path=self.runtime_path,
             compile_to_js_func=compile_to_js_func,
             extract_exports_func=self._extract_client_exports,
-            extract_globals_func=self._extract_client_globals
+            extract_globals_func=self._extract_client_globals,
+            is_production=self.is_production
         );
     }
     return self._compiler;
@@ -71,5 +72,8 @@ impl ViteClientBundleBuilder.init(
     self.vite_output_dir = vite_output_dir;
     self.vite_package_json = vite_package_json;
     self.vite_minify = vite_minify;
+    # Set to True by production build targets so the dev-only devtools overlay
+    # is never compiled into a shipped bundle. Serve paths leave it False.
+    self.is_production = False;
     self._compiler: (ViteCompiler | None) = None;
 }

@@ -96,6 +96,11 @@ class JacClientPluginConfig {
                             "description": "Registry authentication tokens (e.g., '//npm.pkg.github.com/' = { _authToken = '${NODE_AUTH_TOKEN}' })"
                         }
                     }
+                },
+                "devtools": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "In-app developer tools overlay injected on top of the running app in dev. Dict keys: 'enabled' (bool), 'position' (str), 'panels' (list). Omitted from production `jac build` output unless 'enabled' is true or the JAC_DEVTOOLS env var is set."
                 }
             }
         };

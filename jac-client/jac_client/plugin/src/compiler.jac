@@ -42,11 +42,13 @@ class ViteCompiler {
         runtime_path: (Path | None) = None,
         compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
         extract_exports_func: Callable[([any], list[str])],
-        extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])]
+        extract_globals_func: Callable[([any, ModuleType], dict[(str, Any)])],
+        is_production: bool = False
     );
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];
     def compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str]];
+    def compile_devtools_runtime(self: ViteCompiler) -> tuple[str, list[str]];
     def _write_source_map(
         self: ViteCompiler,
         mod: Any,

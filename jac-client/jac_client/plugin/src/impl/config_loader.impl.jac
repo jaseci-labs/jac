@@ -163,6 +163,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
         'configs': {},  # Generic config file generation: { "postcss": {...}, "tailwind": {...} }
         'paths': {},  # Import path aliases: { "@components/*": "./components/*" }
         'npm': {},  # NPM registry config: { "scoped_registries": {...}, "auth": {...} }
+        'devtools': {},  # Devtools overlay: { "enabled": bool, "position": str, "panels": list }
         'package': {
             'name': '',
             'version': '1.0.0',
@@ -243,6 +244,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         'paths': client_config.get('paths', {}),
         'npm': client_config.get('npm', {}),
         'pwa': client_config.get('pwa', {}),
+        'devtools': client_config.get('devtools', {}),
         'package': {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
@@ -342,6 +344,46 @@ impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
     # PWA is enabled if the section exists (even if empty)
     # The section is added by `jac setup pwa`
     return len(pwa_config) > 0;
+}
+
+"""Get devtools overlay configuration from [plugins.client.devtools] in jac.toml."""
+impl JacClientConfig.get_devtools_config(self: JacClientConfig) -> dict[str, any] {
+    config = self.load();
+    return config.get('devtools', {});
+}
+
+"""Decide whether the in-app devtools overlay should be injected.
+
+Resolution order:
+  1. `JAC_DEVTOOLS` env var (`1/true/yes` -> on, `0/false/no` -> off).
+  2. Explicit `enabled` in [plugins.client.devtools].
+  3. Default: off in a production build (`is_production`), otherwise follow the
+     client's debug-mode detection (on by default in dev).
+
+`is_production` is passed by the compiler from the bundle's minify flag so a
+`jac build` never ships the overlay unless it was explicitly enabled (the
+staging opt-in).
+"""
+impl JacClientConfig.is_devtools_enabled(
+    self: JacClientConfig, is_production: bool = False
+) -> bool {
+    import os;
+    env_flag = os.environ.get("JAC_DEVTOOLS", "").lower();
+    if env_flag in ("1", "true", "yes") {
+        return True;
+    }
+    if env_flag in ("0", "false", "no") {
+        return False;
+    }
+    devtools_config = self.get_devtools_config();
+    if "enabled" in devtools_config {
+        return bool(devtools_config.get("enabled"));
+    }
+    if is_production {
+        return False;
+    }
+    import from jac_client.plugin.src.diagnostics { is_debug_mode }
+    return is_debug_mode(self.get_jac_config());
 }
 
 """Check if core runtime dependencies are present and version-compatible.
