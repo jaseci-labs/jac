@@ -729,12 +729,8 @@ impl get_command(name: str) -> dict[str, any] {
                 continue;
             }
             seen_args.add(arg.name);
-            type_name: str;
-            if hasattr(arg.typ, "__name__") {
-                type_name = arg.typ.__name__;
-            } else {
-                type_name = str(arg.typ);
-            }
+            import from jaclang.cli.command { argtype_name }
+            type_name: str = argtype_name(arg.typ);
             arg_info: dict[str, any] = {
                 "name": arg.name,
                 "kind": arg.kind.name,

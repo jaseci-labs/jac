@@ -158,7 +158,7 @@ impl jac_version -> str {
 }
 
 def _extract_script_args(registry: object) -> list {
-    import from jaclang.cli.command { ArgKind }
+    import from jaclang.cli.command { ArgKind, ArgType }
 
     raw = sys.argv[1:];
     if len(raw) < 2 {
@@ -188,7 +188,7 @@ def _extract_script_args(registry: object) -> list {
         if arg.kind in (ArgKind.POSITIONAL, ArgKind.MULTI, ArgKind.REMAINDER) {
             continue;
         }
-        if arg.kind == ArgKind.FLAG or arg.typ == bool {
+        if arg.kind == ArgKind.FLAG or arg.typ == ArgType.BOOL {
             continue;
         }
         value_flags.add(f"--{arg.name}");

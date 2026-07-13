@@ -1,4 +1,4 @@
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -33,7 +33,11 @@ glob registry = get_registry();
             help="Second argument (alias new_name, etc.)"
         ),
         Arg.create(
-            "limit", typ=int, default=50, help="Row limit for list commands", short="n"
+            "limit",
+            typ=ArgType.INT,
+            default=50,
+            help="Row limit for list commands",
+            short="n"
         ),
         Arg.create(
             "app",

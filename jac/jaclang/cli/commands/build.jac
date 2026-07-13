@@ -1,5 +1,5 @@
 import from jaclang.cli.registry { get_registry }
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 
 glob registry = get_registry();
 
@@ -33,16 +33,19 @@ glob registry = get_registry();
         ),
         Arg.create(
             "no_typecheck",
-            typ=bool,
+            typ=ArgType.BOOL,
             default=False,
             help="Skip the whole-program type-check gate (escape hatch)"
         ),
         Arg.create(
-            "check_only", typ=bool, default=False, help="Run the gate and emit nothing"
+            "check_only",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Run the gate and emit nothing"
         ),
         Arg.create(
             "client",
-            typ=str,
+            typ=ArgType.STR,
             default="",
             help=(
                 "Build a client shell instead of the artifact: web, "
@@ -54,7 +57,7 @@ glob registry = get_registry();
         ),
         Arg.create(
             "platform",
-            typ=str,
+            typ=ArgType.STR,
             default=None,
             help="Platform for desktop/mobile shells (windows, macos, linux, all, android, ios)",
             choices=["windows", "macos", "linux", "all", "android", "ios"],

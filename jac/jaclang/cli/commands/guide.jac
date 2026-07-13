@@ -1,4 +1,4 @@
-import from jaclang.cli.command { Arg, ArgKind }
+import from jaclang.cli.command { Arg, ArgKind, ArgType }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
@@ -26,7 +26,7 @@ glob registry = get_registry();
         Arg(
             name="json",
             kind=ArgKind.OPTION,
-            typ=bool,
+            typ=ArgType.BOOL,
             `default=False,
             help="Emit machine-readable JSON (for tools and agents)",
             short="j",

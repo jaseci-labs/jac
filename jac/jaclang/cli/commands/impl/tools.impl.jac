@@ -159,7 +159,7 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
 }
 
 def _extract_commands(registry: any) -> list {
-    import from jaclang.cli.command { ArgKind }
+    import from jaclang.cli.command { ArgKind, ArgType }
     commands = [];
     for (name, spec) in sorted(registry.commands.items()) {
         flags = [];
@@ -167,7 +167,7 @@ def _extract_commands(registry: any) -> list {
         has_file_positional = False;
         for arg in spec.get_all_args() {
             short = f"-{arg.short}" if arg.short else None;
-            if arg.kind == ArgKind.FLAG or arg.typ == bool {
+            if arg.kind == ArgKind.FLAG or arg.typ == ArgType.BOOL {
                 flags.append((f"--{arg.name}", short, arg.help or ""));
                 flags.append((f"--no-{arg.name}", None, f"Disable {arg.name}"));
             } elif arg.kind == ArgKind.OPTION {
