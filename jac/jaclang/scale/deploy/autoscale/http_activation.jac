@@ -71,6 +71,7 @@ obj HTTPActivationSpec {
         target: HTTPServiceTarget,
         scale_target_api_version: str = "apps/v1",
         scale_target_kind: str = "Deployment",
+        scale_target_plural: (str | None) = None,
         rules: list[HTTPRoutingRule] = [],
         min_replicas: int = 0,
         max_replicas: int = 1,

@@ -375,6 +375,70 @@ test "apply_http_activation warns but still proceeds for an unrecognized scale_t
     assert "preview-rollout" in warn_msg;
 }
 
+test "apply_http_activation validates a custom target when scale_target_plural is set" {
+    KEDAAutoscaler._http_preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_apps = unittest.mock.MagicMock();
+    mock_core = unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(
+        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
+    );
+    spec = HTTPActivationSpec(
+        name="preview",
+        namespace="default",
+        scale_target_name="preview-rollout",
+        scale_target_kind="Rollout",
+        scale_target_api_version="argoproj.io/v1alpha1",
+        scale_target_plural="rollouts",
+        target=HTTPServiceTarget(service="preview-svc", port=8080),
+        concurrency=HTTPConcurrencyMetric(target_value=10)
+    );
+    result = keda.apply_http_activation(spec);
+    assert result == True;
+    mock_apps.read_namespaced_deployment.assert_not_called();
+    mock_apps.read_namespaced_stateful_set.assert_not_called();
+    target_check_calls = [
+        c
+        for c in mock_api.get_namespaced_custom_object.call_args_list
+        if c[1].get("plural") == "rollouts"
+    ];
+    assert len(target_check_calls) == 1;
+    assert target_check_calls[0][1]["group"] == "argoproj.io";
+    assert target_check_calls[0][1]["version"] == "v1alpha1";
+    assert target_check_calls[0][1]["name"] == "preview-rollout";
+}
+
+test "apply_http_activation raises when a custom target with scale_target_plural is missing" {
+    KEDAAutoscaler._http_preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_apps = unittest.mock.MagicMock();
+    mock_core = unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(
+        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
+    );
+    spec = HTTPActivationSpec(
+        name="preview",
+        namespace="default",
+        scale_target_name="missing-rollout",
+        scale_target_kind="Rollout",
+        scale_target_api_version="argoproj.io/v1alpha1",
+        scale_target_plural="rollouts",
+        target=HTTPServiceTarget(service="preview-svc", port=8080),
+        concurrency=HTTPConcurrencyMetric(target_value=10)
+    );
+    raised = False;
+    try {
+        keda.apply_http_activation(spec);
+    } except ValueError as e {
+        raised = True;
+    }
+    assert raised , "Expected ValueError when a custom target with scale_target_plural is missing";
+    mock_api.create_namespaced_custom_object.assert_not_called();
+}
+
 
 # --- Section F: naming -------------------------------------------------------
 test "InterceptorRoute and ScaledObject names are deterministic and distinct" {

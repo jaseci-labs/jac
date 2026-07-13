@@ -370,14 +370,26 @@ impl KEDAAutoscaler.apply_http_activation{
             apps_api.read_namespaced_stateful_set(
                 name=spec.scale_target_name, namespace=spec.namespace
             );
+        } elif spec.scale_target_plural is not None {
+            (custom_group, _, custom_version) = spec.scale_target_api_version.rpartition(
+                "/"
+            );
+            api.get_namespaced_custom_object(
+                group=custom_group,
+                version=custom_version,
+                namespace=spec.namespace,
+                plural=spec.scale_target_plural,
+                name=spec.scale_target_name
+            );
         } else {
             if self.logger {
                 self.logger.warn(
                     "HTTP activation cannot verify scale_target_kind="
-                    f"'{spec.scale_target_kind}' exists before apply; only "
-                    "Deployment and StatefulSet targets are checked. Ensure "
-                    f"'{spec.scale_target_name}' exists in namespace "
-                    f"'{spec.namespace}' before relying on this activation."
+                    f"'{spec.scale_target_kind}' exists before apply; set "
+                    "scale_target_plural to enable validation for custom "
+                    f"resources. Ensure '{spec.scale_target_name}' exists in "
+                    f"namespace '{spec.namespace}' before relying on this "
+                    "activation."
                 );
             }
         }
