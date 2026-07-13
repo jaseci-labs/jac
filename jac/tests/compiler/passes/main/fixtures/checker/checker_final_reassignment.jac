@@ -55,6 +55,20 @@ obj LoopInit {
     }
 }
 
+# A `for` target binds a fresh symbol in the loop's scope, so re-using a Final
+# name as a loop variable shadows it rather than writing it -- no E1121. Pinned
+# deliberately: if scoping ever changes so the target resolves to the outer
+# symbol, this becomes an error and the count in the driver test must be
+# revisited on purpose rather than silently.
+def for_target_shadows_final(items: list[int]) -> int {
+    t: Final[int] = 1;
+    total = t;
+    for t in items {
+        total += t;
+    }
+    return total;
+}
+
 glob RATE: Final[float] = 1.5;
 
 with entry {

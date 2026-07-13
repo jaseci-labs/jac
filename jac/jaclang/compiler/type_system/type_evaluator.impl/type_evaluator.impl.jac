@@ -2022,7 +2022,7 @@ impl TypeEvaluator._apply_final_qualifier(
         return annotation_type;
     }
     if symbol is not None {
-        symbol.is_immutable = True;
+        symbol.immutability = ImmutabilityKind.FINAL;
     }
     if annotation_type.private.type_args {
         return annotation_type.private.type_args[0];

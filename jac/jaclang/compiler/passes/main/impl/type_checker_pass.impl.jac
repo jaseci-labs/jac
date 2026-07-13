@@ -218,10 +218,9 @@ impl TypeCheckPass._check_immutable_write(
             return;
         }
         self.evaluator.get_type_of_symbol(attr_sym);
-        if not attr_sym.is_immutable {
+        if attr_sym.immutability == ImmutabilityKind.NONE {
             return;
         }
-
         decl_node = attr_sym.decl.name_of;
         if (
             isinstance(decl_node, uni.HasVar)
@@ -230,17 +229,26 @@ impl TypeCheckPass._check_immutable_write(
         ) {
             return;
         }
-        kind = "read-only" if attr_sym.decl.loc.mod_path == '<ts-synth>' else "Final";
-        self.emit(E1121, node_override=target, name=target.right.value, kind=kind);
+        self._emit_immutable_write(attr_sym, target, target.right.value);
         return;
     }
     if isinstance(target, uni.Name) and target.sym {
         sym = target.sym;
         self.evaluator.get_type_of_symbol(sym);
-        if sym.is_immutable and sym.decl.name_of is not target {
-            self.emit(E1121, node_override=target, name=target.value, kind="Final");
+        if sym.immutability != ImmutabilityKind.NONE
+        and sym.decl.name_of is not target {
+            self._emit_immutable_write(sym, target, target.value);
         }
     }
+}
+
+impl TypeCheckPass._emit_immutable_write(
+    self: TypeCheckPass, sym: uni.Symbol, site: uni.UniNode, name: str
+) -> None {
+    kind = "read-only" if sym.immutability == ImmutabilityKind.READONLY else "Final";
+    decl = sym.decl;
+    related = [(f"'{name}' declared {kind} here", decl)] if decl is not None else None;
+    self.emit(E1121, node_override=site, name=name, kind=kind, related=related);
 }
 
 impl TypeCheckPass._in_owner_initializer(

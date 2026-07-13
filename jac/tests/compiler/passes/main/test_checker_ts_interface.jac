@@ -574,7 +574,8 @@ test "callable interface enforces its call-signature return type" {
 
 test "readonly interface member rejects reassignment (issue #7354)" {
     # `readonly label: string` on Config is parsed by the .d.ts parser and
-    # threaded into the synthesized member symbol as is_immutable; direct
+    # threaded into the synthesized member symbol as ImmutabilityKind.READONLY;
+    # direct
     # reassignment must raise E1121 while writable members stay assignable.
     with TemporaryDirectory() as td {
         proj = make_iface_npm_project(Path(cast(str, td)));

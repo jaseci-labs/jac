@@ -419,7 +419,9 @@ impl TypeEvaluator._install_synth_member(
     member_sym = uni.Symbol(
         defn=field_node, access=SymbolAccess.PUBLIC, parent_tab=scope
     );
-    member_sym.is_immutable = readonly;
+    member_sym.immutability = (
+        ImmutabilityKind.READONLY if readonly else ImmutabilityKind.NONE
+    );
     scope.names_in_scope[mname] = member_sym;
 }
 

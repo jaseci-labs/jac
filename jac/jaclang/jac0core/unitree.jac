@@ -14,6 +14,7 @@ import from jaclang.jac0core.constant {
     DELIM_MAP,
     CodeContext,
     EdgeDir,
+    ImmutabilityKind,
     OwnershipKind,
     SymbolAccess,
     SymbolStorage,
@@ -88,7 +89,7 @@ obj Symbol {
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
         semstr: str by postinit,
-        is_immutable: bool = False,
+        immutability: ImmutabilityKind = ImmutabilityKind.NONE,
         ownership: OwnershipKind = OwnershipKind.NONE;
 
     def init(

@@ -426,7 +426,7 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
         if jtype.private.type_args {
             return self._convert_to_instance(jtype.private.type_args[0]);
         }
-        return types.AnyType();
+        return types.UnknownType();
     }
     return type_utils.convert_to_instance(jtype);
 }
