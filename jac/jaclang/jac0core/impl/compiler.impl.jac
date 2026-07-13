@@ -310,10 +310,6 @@ impl JacCompiler._evict_internal_unit(
         return;
     }
 
-    if self._internal_bytecode_depth > 1 {
-        return;
-    }
-
     if result is not None and result.gen.native_engine is not None {
         import from jaclang.jac0core.codeinfo { CodeGenTarget }
         slim = CodeGenTarget();
