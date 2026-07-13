@@ -152,7 +152,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'verify_token_ttl_seconds': 86400,
             'reset_url_template': '',
             'verify_url_template': '',
-            'token_collection': 'auth_tokens'
+            'token_collection': 'auth_tokens',
+            'password_hash_rounds': 12
         },
         'microservices': {
             'gateway_port': 8000,
@@ -450,6 +451,21 @@ impl reset_scale_config -> None {
     _scale_config_instance = None;
 }
 
+impl resolve_password_hash_rounds(configured_rounds: int) -> int {
+    env_val = os.environ.get('JAC_SCALE_BCRYPT_ROUNDS');
+    if not env_val {
+        return max(4, min(31, configured_rounds));
+    }
+    try {
+        rounds = int(env_val);
+    } except ValueError as e {
+        raise ValueError(
+            f"JAC_SCALE_BCRYPT_ROUNDS must be an integer in 4..31, got: {env_val!r}"
+        ) from e;
+    }
+    return max(4, min(31, rounds));
+}
+
 impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     telemetry_config = config.get('telemetry', {});
@@ -507,6 +523,9 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
         'reset_url_template': auth_config.get('reset_url_template', ''),
         'verify_url_template': auth_config.get('verify_url_template', ''),
         'token_collection': auth_config.get('token_collection', 'auth_tokens'),
+        'password_hash_rounds': resolve_password_hash_rounds(
+            int(auth_config.get('password_hash_rounds', 12))
+        ),
         'forgot_password_rate_per_hour': int(
             auth_config.get('forgot_password_rate_per_hour', 3)
         ),

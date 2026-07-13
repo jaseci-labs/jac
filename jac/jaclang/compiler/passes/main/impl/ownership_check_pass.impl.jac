@@ -158,13 +158,13 @@ impl OwnershipCheckPass._stamp_ownership -> None {
 
     for nd in self.idx_assignments {
         own_target = self._is_own_decl(nd);
-        if own_target is not None {
+        if own_target is not None and own_target.sym is not None {
             sid = self._name_sym_id(own_target);
             own_target.sym.ownership = OwnershipKind.OWN;
             self.owned_decl[sid] = own_target;
         }
         borrow_target = self._is_borrow_decl(nd);
-        if borrow_target is not None {
+        if borrow_target is not None and borrow_target.sym is not None {
             sid = self._name_sym_id(borrow_target);
             is_mut = nd.type_tag.ownership == OwnershipKind.MUT_BORROW
                 if nd.type_tag
@@ -217,15 +217,17 @@ impl OwnershipCheckPass._stamp_ownership -> None {
     }
 
     for nd in self.idx_assignments {
-        target = self._borrow_target(nd);
+        borrow_target = self._borrow_target(nd);
         owner = self._borrow_source_owner(nd);
-        if target is not None and owner is not None {
-            borrow_id = self._name_sym_id(target);
+        if borrow_target is not None
+        and borrow_target.sym is not None
+        and owner is not None {
+            borrow_id = self._name_sym_id(borrow_target);
             owner_id = self._name_sym_id(owner);
             self.borrow_meta[borrow_id] = BorrowMeta(
-                name=target.sym_name,
+                name=borrow_target.sym_name,
                 owner=owner_id,
-                is_mut=is_mut_kind(target.sym.ownership)
+                is_mut=is_mut_kind(borrow_target.sym.ownership)
                 or (
                     is_mut_kind(nd.value.ownership)
                         if isinstance(nd.value, uni.UnaryExpr)
