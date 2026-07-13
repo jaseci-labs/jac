@@ -1,6 +1,6 @@
 # `jac ninja`
 
-Nothing to see here, perhaps you can go back and learn about something else. 
+Nothing to see here, perhaps you can go back and learn about something else.
 
 <div style="height: 1400vh;" aria-hidden="true"></div>
 
