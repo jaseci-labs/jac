@@ -177,6 +177,54 @@ def sanitized_jac_toml(base: Path, provisioned_database: str = "") -> (str | Non
 }
 
 
+def scale_cache_root -> Path {
+    # Driver-machine cache shared by the binary/console downloads and the
+    # sealed-bundle cache below.
+    base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
+    if base {
+        return Path(base);
+    }
+    return Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache")) / "jac" / "scale-binaries";
+}
+
+
+def _bundle_cache_key(base: Path, provisioned_database: str, pod_binary: bytes) -> str {
+    # The sealed .jab is a pure function of these inputs (deterministic tars):
+    # source content, the baked database intent, and the sealing binary.
+    # .jac/client/dist is derived from sources already hashed, so it is
+    # excluded - the parallel client build may still be writing it.
+    h = hashlib.sha256();
+    for path in sorted(base.rglob("*")) {
+        if not path.is_file() {
+            continue;
+        }
+        rel = path.relative_to(base);
+        if is_excluded(rel) {
+            continue;
+        }
+        parts = rel.parts;
+        if (
+            len(parts) >= 3
+            and parts[0] == ".jac"
+            and parts[1] == "client"
+            and parts[2] == "dist"
+        ) {
+            continue;
+        }
+        try {
+            digest = hashlib.sha256(path.read_bytes()).digest();
+        } except OSError {
+            continue;
+        }
+        h.update(str(rel).encode());
+        h.update(digest);
+    }
+    h.update(provisioned_database.encode());
+    h.update(hashlib.sha256(pod_binary).digest());
+    return h.hexdigest();
+}
+
+
 def det_tar_member(info: tarfile.TarInfo) -> tarfile.TarInfo {
     # Bundles are content-addressed; wall-clock mtimes and uid/gid would give
     # identical content a new digest every deploy, defeating seed skip-if-present.
@@ -257,6 +305,20 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
         );
     }
     base = Path(project_dir).resolve();
+    # Unchanged inputs produce byte-identical .jabs, so a cache hit skips the
+    # whole seal (and the PVC seed dedups on the same digest downstream).
+    cache_file = scale_cache_root() / "sealed-jabs" / (
+        _bundle_cache_key(base, provisioned_database, pod_binary) + ".jab"
+    );
+    if cache_file.is_file() {
+        try {
+            raw = cache_file.read_bytes();
+            logger.info("Using the cached sealed .jab (sources + binary unchanged).");
+            return raw;
+        } except OSError {
+            ;
+        }
+    }
     staged = _precompile_app(base, pod_binary);
     # staged is <stage_root>/app; the whole mkdtemp tree must be removed even if
     # a tar.add below raises, or a full project copy leaks in /tmp on every
@@ -299,7 +361,16 @@ def pack_jab(project_dir: str, provisioned_database: str, pod_binary: bytes) -> 
         } finally {
             gz.close();
         }
-        return buf.getvalue();
+        raw = buf.getvalue();
+        try {
+            cache_file.parent.mkdir(parents=True, exist_ok=True);
+            tmp = cache_file.with_suffix(f".{os.getpid()}.tmp");
+            tmp.write_bytes(raw);
+            tmp.rename(cache_file);
+        } except Exception as e {
+            logger.warning(f"Could not cache the sealed .jab ({e}).");
+        }
+        return raw;
     } finally {
         shutil.rmtree(str(staged.parent), ignore_errors=True);
     }

@@ -8,7 +8,7 @@ import tarfile;
 import from pathlib { Path }
 import from urllib.request { urlopen }
 import from urllib.error { HTTPError }
-import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
+import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR, scale_cache_root }
 import from jaclang.runtimelib.utils { release_arch, host_arch }
 
 glob logger = logging.getLogger(__name__);
@@ -247,26 +247,13 @@ def resolve_pod_base_image(project_dir: str, configured: str) -> str {
 }
 
 
-def _scale_cache_root -> Path {
-    # Cache on the DEPLOY-DRIVER machine (laptop / CI runner / operator pod),
-    # not the cluster: the driver needs the binary before the PVC exists, and
-    # this one copy serves every app/cluster it deploys. The PVC hop is
-    # deduplicated separately by the content-addressed seeder (#7198).
-    base = os.environ.get("JAC_SCALE_CACHE_DIR", "");
-    if base {
-        return Path(base);
-    }
-    return Path(os.environ.get("XDG_CACHE_HOME", "") or (Path.home() / ".cache")) / "jac" / "scale-binaries";
-}
-
-
 def _binary_cache_path(channel: str, arch: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-linux-{arch}";
+    return scale_cache_root() / f"jac-{channel}-linux-{arch}";
 }
 
 
 def _admin_dist_cache_path(channel: str) -> Path {
-    return _scale_cache_root() / f"jac-{channel}-admin-dist.tar.gz";
+    return scale_cache_root() / f"jac-{channel}-admin-dist.tar.gz";
 }
 
 

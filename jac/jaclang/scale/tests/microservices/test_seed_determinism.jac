@@ -30,3 +30,52 @@ test "identical content packs to identical bytes (content-address stable)" {
         shutil.rmtree(d, ignore_errors=True);
     }
 }
+
+
+test "sealed .jab cache: hit on unchanged inputs, miss on source change" {
+    import from jaclang.scale.injector.bundle { _bundle_cache_key }
+    if not _JAC_BIN.is_file() {
+        return;
+    }
+    binary = _JAC_BIN.read_bytes();
+    d = tempfile.mkdtemp();
+    cache = tempfile.mkdtemp();
+    saved = os.environ.get("JAC_SCALE_CACHE_DIR");
+    os.environ["JAC_SCALE_CACHE_DIR"] = cache;
+    try {
+        src = Path(d, "svc.jac");
+        src.write_text("with entry { print(\"ok\"); }");
+        first = pack_jab(d, "", binary);
+        jabs = list(Path(cache, "sealed-jabs").glob("*.jab"));
+        assert len(jabs) == 1;
+        # sentinel-replace the cache entry: a second pack must return it
+        # verbatim, proving the seal was skipped
+        jabs[0].write_bytes(b"SENTINEL");
+        assert pack_jab(d, "", binary) == b"SENTINEL";
+        # a source change keys differently and re-seals for real
+        src.write_text("with entry { print(\"changed\"); }");
+        assert pack_jab(d, "", binary) != b"SENTINEL";
+    } finally {
+        os.environ.pop("JAC_SCALE_CACHE_DIR", None);
+        if saved is not None {
+            os.environ["JAC_SCALE_CACHE_DIR"] = saved;
+        }
+        import shutil;
+        shutil.rmtree(d, ignore_errors=True);
+        shutil.rmtree(cache, ignore_errors=True);
+    }
+}
+
+
+test "bundle cache key ignores the derived client dist" {
+    import from jaclang.scale.injector.bundle { _bundle_cache_key }
+    d = tempfile.mkdtemp();
+    Path(d, "main.jac").write_text("with entry {}");
+    before = _bundle_cache_key(Path(d), "mongo", b"BIN");
+    dist = Path(d, ".jac", "client", "dist");
+    dist.mkdir(parents=True);
+    Path(dist, "client.abc123.js").write_text("bundled");
+    assert _bundle_cache_key(Path(d), "mongo", b"BIN") == before;
+    Path(d, "main.jac").write_text("with entry { print(1); }");
+    assert _bundle_cache_key(Path(d), "mongo", b"BIN") != before;
+}
