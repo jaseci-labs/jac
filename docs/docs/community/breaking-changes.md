@@ -18,6 +18,7 @@ This is a **clean break** -- there is no deprecated alias, and `--list_jacpacks`
 | `jac create --list_jacpacks` | `jac create --list` |
 
 **Impact:** replace `--list_jacpacks` with `--list` in scripts, CI, and docs. The short form `-l` is unchanged, so `jac create -l` works before and after. Nothing about the `.jacpack` format, `--pack`, or `--use` changes.
+
 ### Kubernetes image-build pipeline removed
 
 `jac start --scale` no longer builds, tags, or pushes a Docker image. Copying the
