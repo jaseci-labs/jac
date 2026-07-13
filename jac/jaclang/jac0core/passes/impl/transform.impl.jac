@@ -134,6 +134,7 @@ impl Transform.emit(
     }
 
     msg = diag.format_message(**kwargs);
+    resolved_help = help_text if help_text is not None else diag.format_help(**kwargs);
 
     related_locs: list[tuple[str, CodeLocInfo]] = [];
     if related {
@@ -147,7 +148,7 @@ impl Transform.emit(
         from_pass=self.__class__,
         code=diag,
         related=related_locs,
-        help_text=help_text
+        help_text=resolved_help
     );
 
     if (diag.severity == Severity.ERROR) {

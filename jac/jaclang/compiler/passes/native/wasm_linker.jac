@@ -190,9 +190,9 @@ impl WasmObj.parse -> None {
                 } elif k == 3 {
                     vt = b[o];
                     o += 1;
-                    mut = b[o];
+                    is_mut = b[o];
                     o += 1;
-                    self.imports.append(["global", mod, fld, (vt, mut)]);
+                    self.imports.append(["global", mod, fld, (vt, is_mut)]);
                 }
                 ci += 1;
             }

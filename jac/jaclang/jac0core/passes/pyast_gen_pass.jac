@@ -4,7 +4,7 @@ import textwrap;
 import from collections.abc { Sequence }
 import from typing { ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { CodeContext, EdgeDir }
+import from jaclang.jac0core.constant { CodeContext, EdgeDir, is_borrow_kind }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.codeinfo { BoundaryTypeInfo, InteropBinding }
@@ -125,6 +125,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def needs_enum_kind(kind: str) -> None;
     def _next_temp_name(prefix: str) -> str;
     def _py_name(nd: uni.AstSymbolNode) -> str;
+    def _emit_jobj_ref(nd: uni.UnaryExpr) -> None;
     def _function_expr_from_def(
         func_def: (ast3.FunctionDef | ast3.AsyncFunctionDef),
         jac_node: uni.UniNode,
@@ -184,6 +185,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;

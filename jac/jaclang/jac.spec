@@ -65,7 +65,7 @@ spawn ::= "spawn" unpack | unpack ("spawn" unpack)*
 
 unpack ::= "*" ref | ref
 
-ref ::= "&" await_expr | await_expr
+ref ::= "&" ("(" await_expr | "mut"? await_expr) | await_expr
 
 await_expr ::= "await" pipe_call | pipe_call
 
@@ -216,11 +216,6 @@ compr_clause ::= "async"? "for" atomic_chain "in" pipe_call ("if" walrus_assign)
 
 lambda_expr ::=
     "lambda" ("(" func_params ")")? ("->" expression)? "{" code_block_stmts "}"
-    # Parameters are parenthesized and the body is always braced; a
-    # zero-parameter lambda may omit the parens (`lambda { ... }`). A body
-    # that is a single expression statement is the implicit return, e.g.
-    # `lambda (x: int) { x + 1; }`; multi-statement bodies use an explicit
-    # `return`.
 
 jsx_element ::=
     "<>" jsx_children "</>"
@@ -259,7 +254,6 @@ jsx_child ::=
 
 element_stmt ::=
     ";"
-    | "to" element_stmt*
     | "cl" (client_block | element_stmt)?
     | "sv" (server_block | element_stmt)?
     | "na" (native_block | element_stmt)?
@@ -307,6 +301,7 @@ statement ::=
     | import_stmt
     | if_stmt
     | while_stmt
+    | region_stmt
     | forever_stmt
     | for_stmt
     | with_stmt
@@ -340,6 +335,8 @@ elif_stmt ::= "elif" expression "{" code_block_stmts "}" (elif_stmt | else_stmt)
 else_stmt ::= "else" "{" code_block_stmts "}"
 
 while_stmt ::= "while" expression "{" code_block_stmts "}" else_stmt?
+
+region_stmt ::= "{" code_block_stmts "}"
 
 forever_stmt ::= "forever" "{" code_block_stmts "}"
 
@@ -411,8 +408,10 @@ global_stmt ::= "global" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
 nonlocal_stmt ::= "nonlocal" (NAME | KWESC_NAME) ("," (NAME | KWESC_NAME))* ";"
 
+ownership_prefix ::= "own" | NAME | "&" "mut"?
+
 assignment_with_target ::=
-    (":" pipe)? (
+    (":" ownership_prefix pipe)? (
         "=" (yield_stmt | expression) ("=" (yield_stmt | expression))*
         | (
               (
@@ -490,9 +489,8 @@ func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 func_params ::= ("*" | "/" | param_var)*
 
 param_var ::=
-    ("*" | "**")?
-    (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
-    (":" pipe)? ("=" expression)?
+    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "here" | "visitor")
+    (":" ownership_prefix pipe)? ("=" expression)?
 
 enum ::=
     ("@" atomic_chain)* "enum" access_tag (NAME | KWESC_NAME)

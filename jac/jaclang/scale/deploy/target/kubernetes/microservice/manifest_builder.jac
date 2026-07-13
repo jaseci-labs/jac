@@ -201,7 +201,7 @@ obj MicroserviceManifestBuilder {
             raise ValueError(
                 "No microservices found to deploy: declare "
                 "[scale.microservices.routes] in jac.toml, or add "
-                "`sv import` / `to sv:` services under the project root so they "
+                "`sv import` / `sv { }` services under the project root so they "
                 "can be auto-discovered."
             );
         }

@@ -73,6 +73,7 @@ obj CFGBuildPass(UniPass) {
     def exit_switch_case(nd: uni.SwitchCase) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_ability(nd: uni.Ability) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
