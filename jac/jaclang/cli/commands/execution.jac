@@ -207,7 +207,7 @@ def enter(
                 "Client build target for dev server (web, pwa, mobile, desktop). "
                 "Choices reflect installed targets (desktop builds a native webview app)."
             ),
-            choices=["web", "pwa", "mobile"],
+            choices=["web", "pwa", "mobile", "desktop"],
             short=""
         ),
         Arg.create(

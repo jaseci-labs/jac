@@ -59,11 +59,7 @@ impl create(
         load_template_from_json,
         load_template_from_directory
     }
-    import from jaclang.project.kinds {
-        is_valid_kind,
-        kind_required_plugin,
-        VALID_KINDS
-    }
+    import from jaclang.project.kinds { is_valid_kind, VALID_KINDS }
     registry = get_template_registry();
 
     if registry.is_empty() {
@@ -77,9 +73,7 @@ impl create(
                 "\nProject kinds (jac create --kind <kind>):\n", style="info"
             );
             for (kname, desc) in kinds {
-                plugin = kind_required_plugin(kname);
-                suffix = f"  [needs {plugin}]" if plugin else "";
-                console.print(f"  {kname}: {desc}{suffix}");
+                console.print(f"  {kname}: {desc}");
             }
         }
         variants = [
@@ -128,23 +122,11 @@ impl create(
             );
             return 1;
         }
-        plugin = kind_required_plugin(target_kind);
-        if plugin and not _plugin_available(plugin) {
-            console.error(
-                f"Project kind '{target_kind}' requires the {plugin} plugin, which is not installed.",
-                hint=f"Install it (e.g. `pip install {plugin}` / `jac install {plugin}`), then retry."
-            );
-            return 1;
-        }
         tmpl = registry.get_by_kind(target_kind);
         if tmpl is None {
             console.error(
                 f"No template registered for kind '{target_kind}'.",
-                hint=(
-                    f"The {plugin} plugin provides it -- ensure it is installed."
-                        if plugin
-                        else "This is unexpected for a core kind; please report it."
-                )
+                hint="This is unexpected for a core kind; please report it."
             );
             return 1;
         }
@@ -298,15 +280,6 @@ def _stamp_kind(config: dict, kind: str) -> None {
     }
     if not proj.get("kind") {
         proj["kind"] = kind;
-    }
-}
-
-def _plugin_available(pkg: str) -> bool {
-    import importlib.util;
-    try {
-        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
-    } except (ImportError, ValueError) {
-        return False;
     }
 }
 

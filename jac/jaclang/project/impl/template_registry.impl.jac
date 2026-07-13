@@ -87,18 +87,22 @@ impl TemplateRegistry.list_templates -> list[tuple[str, str]] {
     return result;
 }
 
+"""List the kinds that have a template registered, described by their KindSpec.
+
+A kind is described once, in KIND_SPECS. Template descriptions only speak for
+named variants (`jac create --use <name>`), which are not kinds."""
 impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
-    import from jaclang.project.kinds { VALID_KINDS }
-    by_kind: dict[str, str] = {};
+    import from jaclang.project.kinds { KIND_SPECS }
+    available: set[str] = set();
     for template in self._templates.values() {
-        if template.is_default_for_kind and template.kind not in by_kind {
-            by_kind[template.kind] = template.description;
+        if template.is_default_for_kind {
+            available.add(template.kind);
         }
     }
     result: list[tuple[str, str]] = [];
-    for kind in VALID_KINDS {
-        if kind in by_kind {
-            result.append((kind, by_kind[kind]));
+    for (kind, spec) in KIND_SPECS.items() {
+        if kind in available {
+            result.append((kind, spec.description));
         }
     }
     return result;
@@ -187,18 +191,21 @@ def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
     }
 }
 
+"""Build a core template from the kind's spec: description and entry filename
+both come from KIND_SPECS, so a kind is described in exactly one place."""
 def _core_template(
-    kind: str,
-    description: str,
-    entry_file: str,
-    files: dict[str, str],
-    extra_config: dict[str, any] = {}
+    kind: str, body: str, extra_config: dict[str, any] = {}
 ) -> dict[str, any] {
+    import from jaclang.project.kinds { kind_spec }
+    spec = kind_spec(kind);
+    if spec is None {
+        raise ValueError(f"No KindSpec for core template kind '{kind}'");
+    }
     project_section: dict[str, any] = {
         "name": "{{name}}",
         "version": "0.1.0",
-        "description": description,
-        "entry-point": entry_file,
+        "description": spec.description,
+        "entry-point": spec.entry,
         "kind": kind
     };
     config: dict[str, any] = {
@@ -211,11 +218,11 @@ def _core_template(
     }
     return {
         "name": kind,
-        "description": description,
+        "description": spec.description,
         "kind": kind,
         "is_default_for_kind": True,
         "config": config,
-        "files": files,
+        "files": {spec.entry: body},
         "root_gitignore_entries": [".jac/", "jac.local.toml"],
         "directories": [".jac"]
     };
@@ -245,51 +252,14 @@ def _register_core_templates(registry: TemplateRegistry) {
     );
 
     for info in [
-        _core_template(
-            "cli", "Command-line Jac project", "main.jac", {"main.jac": _hello}
-        ),
-        _core_template(
-            "cli-native",
-            "Natively-compiled Jac program (compiled and run)",
-            "main.na.jac",
-            {"main.na.jac": _hello}
-        ),
-        _core_template(
-            "native-binary",
-            "Natively-compiled standalone binary (built into dist/)",
-            "main.na.jac",
-            {"main.na.jac": _hello}
-        ),
-        _core_template(
-            "native-lib",
-            "Natively-compiled shared library (.so / .dylib / .dll)",
-            "main.na.jac",
-            {"main.na.jac": _shared}
-        ),
-        _core_template(
-            "service",
-            "Headless Jac API service (server walkers, no client)",
-            "main.sv.jac",
-            {"main.sv.jac": _service}
-        ),
-        _core_template(
-            "service-mesh",
-            "Jac microservice (server walkers; auto-starts providers)",
-            "main.sv.jac",
-            {"main.sv.jac": _service}
-        ),
-        _core_template(
-            "py-package",
-            "Distributable Python package (built into a wheel)",
-            "lib.jac",
-            {"lib.jac": _lib}
-        ),
-        _core_template(
-            "js-package",
-            "Distributable npm package (built into a tarball)",
-            "lib.jac",
-            {"lib.jac": _lib}
-        )
+        _core_template("cli", _hello),
+        _core_template("cli-native", _hello),
+        _core_template("native-binary", _hello),
+        _core_template("native-lib", _shared),
+        _core_template("service", _service),
+        _core_template("service-mesh", _service),
+        _core_template("py-package", _lib),
+        _core_template("js-package", _lib)
     ] {
         registry.register(info);
     }

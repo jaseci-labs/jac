@@ -1,39 +1,175 @@
+"""Project kinds: the single source of truth for what a kind *is* and how it runs.
+
+A `KindSpec` carries every per-kind fact -- what `jac create` scaffolds
+(`description`, `entry`) and what `jac run` dispatches to (`action`, `verb`,
+`flags`, `summary`). `plan_project_run` is a table lookup plus the two facts
+that can only be known at plan time (the serve port, the native output path);
+there is no per-kind dispatch ladder anywhere.
+"""
+
 import os;
 import from jaclang.project.config { JacConfig }
 import from jaclang.jac0core.ext_registry { base_stem, codespace_of, MODULE_SUFFIXES }
 
-glob KIND_SPECS: dict[str, dict[str, str]] = {
-         "cli": {"entry": "main.jac", "plugin": ""},
-         "cli-native": {"entry": "main.na.jac", "plugin": ""},
-         "native-binary": {"entry": "main.na.jac", "plugin": ""},
-         "native-lib": {"entry": "main.na.jac", "plugin": ""},
-         "service": {"entry": "main.sv.jac", "plugin": ""},
-         "service-mesh": {"entry": "main.sv.jac", "plugin": ""},
-         "py-package": {"entry": "lib.jac", "plugin": ""},
-         "js-package": {"entry": "lib.jac", "plugin": ""},
-         "web-app": {"entry": "main.jac", "plugin": ""},
-         "web-static": {"entry": "main.jac", "plugin": ""},
-         "desktop": {"entry": "main.jac", "plugin": ""},
-         "mobile": {"entry": "main.jac", "plugin": ""}
+obj KindSpec {
+    has name: str,
+        description: str,
+        entry: str,
+        action: str,
+        verb: str,
+        summary: str,
+        flags: dict[str, any] = {},
+        needs_entry: bool = True,
+        output_dir: str = "";
+}
+
+glob KIND_SPECS: dict[str, KindSpec] = {
+         spec.name: spec
+         for spec in [
+             KindSpec(
+                 name="cli",
+                 description="Command-line Jac project",
+                 entry="main.jac",
+                 action="execute",
+                 verb="run",
+                 summary="Execute {kind} entry-point {entry}"
+             ),
+             KindSpec(
+                 name="cli-native",
+                 description="Natively-compiled Jac program (compiled and run)",
+                 entry="main.na.jac",
+                 action="execute",
+                 verb="run",
+                 summary="Execute {kind} entry-point {entry}"
+             ),
+             KindSpec(
+                 name="native-binary",
+                 description="Natively-compiled standalone binary (built into dist/)",
+                 entry="main.na.jac",
+                 action="build",
+                 verb="nacompile",
+                 summary="Build native binary -> {output}",
+                 output_dir="dist"
+             ),
+             KindSpec(
+                 name="native-lib",
+                 description="Natively-compiled shared library (.so / .dylib / .dll)",
+                 entry="main.na.jac",
+                 action="build",
+                 verb="nacompile",
+                 summary="Build shared library (.so / .dylib / .dll)",
+                 flags={"shared": True}
+             ),
+             KindSpec(
+                 name="service",
+                 description="Headless Jac API service (server walkers, no client)",
+                 entry="main.sv.jac",
+                 action="serve",
+                 verb="start",
+                 summary="Serve headless API service",
+                 flags={"no_client": True}
+             ),
+             KindSpec(
+                 name="service-mesh",
+                 description="Jac microservice (server walkers; auto-starts providers)",
+                 entry="main.sv.jac",
+                 action="serve",
+                 verb="start",
+                 summary="Serve microservice consumer (auto-starts providers)"
+             ),
+             KindSpec(
+                 name="py-package",
+                 description="Distributable Python package (built into a wheel)",
+                 entry="lib.jac",
+                 action="build",
+                 verb="build",
+                 summary="Build PyPI wheel into dist/",
+                 flags={"as": "wheel"},
+                 needs_entry=False
+             ),
+             KindSpec(
+                 name="js-package",
+                 description="Distributable npm package (built into a tarball)",
+                 entry="lib.jac",
+                 action="build",
+                 verb="build",
+                 summary="Build npm package into dist/",
+                 flags={"as": "npm"},
+                 needs_entry=False
+             ),
+             KindSpec(
+                 name="web-app",
+                 description="Minimal full-stack Jac app (server walkers + client UI)",
+                 entry="main.jac",
+                 action="serve",
+                 verb="start",
+                 summary="Serve full-stack app with client (dev mode)",
+                 flags={"dev": True}
+             ),
+             KindSpec(
+                 name="web-static",
+                 description="Client-only Jac app (runs in the browser, no backend)",
+                 entry="main.jac",
+                 action="serve",
+                 verb="start",
+                 summary="Serve client-only app as a static page (no backend)"
+             ),
+             KindSpec(
+                 name="desktop",
+                 description="Jac desktop app (OS webview + nacompile)",
+                 entry="main.jac",
+                 action="serve",
+                 verb="start",
+                 summary="Run desktop app (OS webview)",
+                 flags={"client": "desktop"}
+             ),
+             KindSpec(
+                 name="mobile",
+                 description="Jac mobile client app (Capacitor + Vite)",
+                 entry="main.jac",
+                 action="build",
+                 verb="build",
+                 summary="Build mobile app bundle",
+                 flags={"client": "mobile"}
+             )
+         ]
      },
      VALID_KINDS: list[str] = list(KIND_SPECS.keys());
 
-def kind_required_plugin(kind: str) -> str {
-    return KIND_SPECS.get(kind, {}).get("plugin", "");
+def kind_spec(kind: str) -> KindSpec | None {
+    return KIND_SPECS.get(kind);
 }
 
 def kind_entry(kind: str) -> str {
-    return KIND_SPECS.get(kind, {}).get("entry", "main.jac");
+    spec = KIND_SPECS.get(kind);
+    return spec.entry if spec else "main.jac";
 }
 
+def is_valid_kind(kind: str) -> bool {
+    return kind in KIND_SPECS;
+}
+
+"""A resolved run: the kind's spec plus the bits only known at plan time."""
 obj RunPlan {
-    has kind: str,
-        action: str,
-        verb: str,
+    has spec: KindSpec,
         entry_path: str,
-        flags: dict,
-        summary: str,
-        requires_plugin: str = "";
+        flags: dict[str, any],
+        summary: str;
+
+    @property
+    def kind -> str {
+        return self.spec.name;
+    }
+
+    @property
+    def action -> str {
+        return self.spec.action;
+    }
+
+    @property
+    def verb -> str {
+        return self.spec.verb;
+    }
 
     def command_line -> str {
         parts = ["jac", self.verb];
@@ -53,10 +189,6 @@ obj RunPlan {
         }
         return " ".join(parts);
     }
-}
-
-def is_valid_kind(kind: str) -> bool {
-    return kind in VALID_KINDS;
 }
 
 def _entry_stem(path: str) -> str {
@@ -114,136 +246,38 @@ def resolve_project_kind(config: JacConfig, entry_path: str) -> str {
     return "cli";
 }
 
-def _serve_flags(config: JacConfig, base: dict) -> dict {
-    if config.serve.port != 8000 {
-        base["port"] = config.serve.port;
-    }
-    return base;
-}
-
 def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
     entry_path = resolve_entry(config, project_root);
-    kind = resolve_project_kind(config, entry_path);
-
-    needs_entry = kind not in ["py-package", "js-package"];
-    if needs_entry and not entry_path {
+    spec = KIND_SPECS.get(resolve_project_kind(config, entry_path));
+    if spec is None {
         return None;
     }
-    stem = _entry_stem(entry_path) if entry_path else config.project.name;
-    if kind in ["cli", "cli-native"] {
-        return RunPlan(
-            kind=kind,
-            action="execute",
-            verb="run",
-            entry_path=entry_path,
-            flags={},
-            summary=f"Execute {kind} entry-point {os.path.basename(entry_path)}"
-        );
+    if spec.needs_entry and not entry_path {
+        return None;
     }
-    if kind == "native-binary" {
-        out = os.path.join(project_root, "dist", stem);
-        return RunPlan(
-            kind=kind,
-            action="build",
-            verb="nacompile",
-            entry_path=entry_path,
-            flags={"output": out},
-            summary=f"Build native binary -> {out}"
-        );
+    if not spec.needs_entry {
+        # Packages are built from the project, not from a single entry file.
+        entry_path = "";
     }
-    if kind == "native-lib" {
-        return RunPlan(
-            kind=kind,
-            action="build",
-            verb="nacompile",
-            entry_path=entry_path,
-            flags={"shared": True},
-            summary="Build shared library (.so / .dylib / .dll)"
-        );
+
+    flags = dict(spec.flags);
+    output = "";
+    if spec.output_dir {
+        stem = _entry_stem(entry_path) if entry_path else config.project.name;
+        output = os.path.join(project_root, spec.output_dir, stem);
+        flags["output"] = output;
     }
-    if kind == "service" {
-        return RunPlan(
-            kind=kind,
-            action="serve",
-            verb="start",
-            entry_path=entry_path,
-            flags=_serve_flags(config, {"no_client": True}),
-            summary="Serve headless API service"
-        );
+    # A default port stays out of the flags so `jac run --show` reads clean.
+    if spec.action == "serve" and config.serve.port != 8000 {
+        flags["port"] = config.serve.port;
     }
-    if kind == "service-mesh" {
-        return RunPlan(
-            kind=kind,
-            action="serve",
-            verb="start",
-            entry_path=entry_path,
-            flags=_serve_flags(config, {}),
-            summary="Serve microservice consumer (auto-starts providers)"
-        );
-    }
-    if kind == "web-app" {
-        return RunPlan(
-            kind=kind,
-            action="serve",
-            verb="start",
-            entry_path=entry_path,
-            flags=_serve_flags(config, {"dev": True}),
-            summary="Serve full-stack app with client (dev mode)",
-            requires_plugin=kind_required_plugin(kind)
-        );
-    }
-    if kind == "web-static" {
-        return RunPlan(
-            kind=kind,
-            action="serve",
-            verb="start",
-            entry_path=entry_path,
-            flags=_serve_flags(config, {}),
-            summary="Serve client-only app as a static page (no backend)",
-            requires_plugin=kind_required_plugin(kind)
-        );
-    }
-    if kind == "desktop" {
-        return RunPlan(
-            kind=kind,
-            action="serve",
-            verb="start",
-            entry_path=entry_path,
-            flags={"client": "desktop"},
-            summary="Run desktop app (OS webview)",
-            requires_plugin=kind_required_plugin(kind)
-        );
-    }
-    if kind == "py-package" {
-        return RunPlan(
-            kind=kind,
-            action="build",
-            verb="build",
-            entry_path="",
-            flags={"as": "wheel"},
-            summary="Build PyPI wheel into dist/"
-        );
-    }
-    if kind == "js-package" {
-        return RunPlan(
-            kind=kind,
-            action="build",
-            verb="build",
-            entry_path="",
-            flags={"as": "npm"},
-            summary="Build npm package into dist/"
-        );
-    }
-    if kind == "mobile" {
-        return RunPlan(
-            kind=kind,
-            action="build",
-            verb="build",
-            entry_path=entry_path,
-            flags={"client": "mobile"},
-            summary="Build mobile app bundle",
-            requires_plugin=kind_required_plugin(kind)
-        );
-    }
-    return None;
+
+    return RunPlan(
+        spec=spec,
+        entry_path=entry_path,
+        flags=flags,
+        summary=spec.summary.format(
+            kind=spec.name, entry=os.path.basename(entry_path), output=output
+        )
+    );
 }
