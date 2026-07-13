@@ -154,8 +154,8 @@ def post_request(
 }
 
 def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Popen {
-    jac_executable = Path(sys.executable).parent / "jac";
-    cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
+    import from jaclang.scale.runtime.context.util { jac_executable }
+    cmd = [jac_executable(), "start", str(jac_file.name), "--port", str(port)];
 
     env = os.environ.copy();
 

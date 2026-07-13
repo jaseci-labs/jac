@@ -93,11 +93,11 @@ def:pub PodEnvPage -> JsxElement {
                 show={loadedOnce and not available}
                 detail={detail}
                 label="Other pods unavailable"
-                remediation="Showing this pod only. Enable [plugins.scale.kubernetes].ops_console for the rest."
+                remediation="Showing this pod only. Enable [scale.kubernetes].ops_console for the rest."
             />
             <select
                 value={selected}
-                onChange={lambda e: any { selected = e.target.value; }}
+                onChange={lambda (e: any) { selected = e.target.value; }}
                 className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
             >
                 <option value="__self__">This pod (gateway)</option>

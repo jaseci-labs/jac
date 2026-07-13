@@ -331,7 +331,7 @@ test "package_missing_error routes through the providing capability" {
     assert "jac-scale[" not in msg;
 
     orphan = package_missing_error("some-random-lib");
-    assert "jac add some-random-lib" in orphan;
+    assert "jac install some-random-lib" in orphan;
 }
 
 # ===== Installer integration (.jac/venv sync) =====
@@ -513,10 +513,10 @@ test "scale app inferred as kind=cli still installs the serve closure (#7206)" {
     project_dir = Path(tmp) / "svc";
     project_dir.mkdir();
     # No [project] kind + plain main.jac -> resolve_project_kind infers "cli"
-    # (action="execute"), yet [plugins.scale] means the app is served.
+    # (action="execute"), yet [scale] means the app is served.
     (project_dir / "jac.toml").write_text(
         '[project]\nname = "svc"\nversion = "0.1.0"\nentry-point = "main.jac"\n\n'
-        '[plugins.scale.database]\nbackend = "mongo"\n'
+        '[scale.database]\nbackend = "mongo"\n'
     );
     (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
     try {

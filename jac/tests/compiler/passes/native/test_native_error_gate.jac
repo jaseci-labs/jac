@@ -17,21 +17,21 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.jir { get_module_cache_path }
 import from jaclang.jac0core.runtime { JacRuntime }
 
-# For-loop tuple destructuring is not yet lowered on the na pathway
-# (issue #7238) and, crucially, is NOT caught by the up-front capability
-# blacklist -- the E5090 fires deep inside NaIRGenPass codegen. That
-# makes it the exact "drift" class of error the gate exists for.
+# `eval` of a runtime string can never be lowered on the na pathway: it
+# would need an embedded interpreter inside the AOT-compiled binary. The
+# E5090 fires deep inside NaIRGenPass codegen and, crucially, is NOT caught
+# by the up-front capability blacklist -- that makes it the exact "drift"
+# class of error the gate exists for. (An earlier version leaned on
+# for-loop tuple destructuring, but #7238 later lowered that construct
+# natively -- exactly the kind of drift this test guards against. A
+# fundamentally dynamic construct like `eval` is drift-proof.)
 glob BAD_NA_SOURCE: str = (
-         "def probe(files: list[tuple[str, bytes]]) -> int {\n"
-         "    total = 0;\n"
-         "    for (name, payload) in files {\n"
-         "        total += len(payload);\n"
-         "    }\n"
-         "    return total;\n"
+         "def probe() -> None {\n"
+         "    eval(\"1 + 1\");\n"
          "}\n"
          "\n"
          "with entry {\n"
-         "    print(\"sum:\", probe([(\"a\", b\"XY\"), (\"b\", b\"ZQ\")]));\n"
+         "    probe();\n"
          "}\n"
      ),
      GOOD_NA_SOURCE: str = (

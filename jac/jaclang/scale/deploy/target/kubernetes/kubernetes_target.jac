@@ -946,6 +946,10 @@ obj KubernetesTarget(DeploymentTarget) {
                 {'namespace': namespace}
             );
         }
+        import from jaclang.scale.injector.binary { resolve_pod_base_image }
+        self.k8s_config.python_image = resolve_pod_base_image(
+            app_config.code_folder, self.k8s_config.python_image
+        );
 
         try {
             validate_resource_limits(
@@ -1013,7 +1017,6 @@ obj KubernetesTarget(DeploymentTarget) {
 
             import from jaclang.scale.injector.binary_injector { select_injector }
             (injector, _tc_key) = select_injector(
-                app_config.dev,
                 self.k8s_config.bundle_storage_class,
                 app_name,
                 namespace,
@@ -1045,6 +1048,13 @@ obj KubernetesTarget(DeploymentTarget) {
                 needs_root=True
             );
             container_config['env'] = container_config['env'] + runtime_container_env();
+            import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+                image_pull_policy
+            }
+            pull_policy = image_pull_policy(self.k8s_config.python_image);
+            if pull_policy {
+                container_config['imagePullPolicy'] = pull_policy;
+            }
 
             app_sa_name = f"{app_name}-sa";
             self._create_service_account(app_sa_name, app_name, namespace, core_v1);
@@ -1087,9 +1097,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
             template_spec['initContainers'].append(
                 build_bootstrap_init_container(
-                    self.k8s_config,
-                    self.k8s_config.python_image,
-                    app_config.dev.overlays_source()
+                    self.k8s_config, self.k8s_config.python_image
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

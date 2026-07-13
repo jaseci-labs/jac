@@ -112,6 +112,9 @@ impl CoalesceBBPass._node_label(nd: uni.UniNode) -> str {
             if self._has_bool_sc(nd.condition)
             else 'while ' + nd.condition.unparse();
     }
+    if isinstance(nd, uni.ForeverStmt) {
+        return 'forever';
+    }
     if isinstance(nd, uni.InForStmt) {
         return 'for ' + nd.target.unparse() + ' in ' + nd.collection.unparse();
     }
@@ -326,7 +329,9 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
         if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef, uni.Test)) {
             continue;
         }
-        if isinstance(k, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt)) {
+        if isinstance(
+            k, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
+        ) {
             if not k.bb_out and not self._is_terminal(k) {
                 self.link_bbs(k, target);
             }
@@ -662,8 +667,15 @@ impl CFGBuildPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     self._link_body_tails_to_header(nd);
 }
 
+impl CFGBuildPass.exit_forever_stmt(nd: uni.ForeverStmt) -> None {
+    self._link_body_tails_to_header(nd);
+    if nd.body {
+        self.link_bbs(nd, nd.body[0]);
+    }
+}
+
 impl CFGBuildPass._link_body_tails_to_header(
-    nd: uni.WhileStmt | uni.InForStmt | uni.IterForStmt
+    nd: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt
 ) -> None {
     if not nd.body {
         return;
@@ -767,7 +779,7 @@ impl CFGBuildPass._wire_compr_filters(
 
 impl CFGBuildPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
     loop = self._find_parent_of_types(
-        nd, (uni.WhileStmt, uni.InForStmt, uni.IterForStmt)
+        nd, (uni.WhileStmt, uni.ForeverStmt, uni.InForStmt, uni.IterForStmt)
     );
     if not loop {
         return;
@@ -861,6 +873,13 @@ impl CFGBuildPass.exit_with_stmt(nd: uni.WithStmt) -> None {
 }
 
 impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
+    if nd.body {
+        self.link_bbs(nd, nd.body[0]);
+        self._link_sequential(nd.body);
+    }
+}
+
+impl CFGBuildPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
     if nd.body {
         self.link_bbs(nd, nd.body[0]);
         self._link_sequential(nd.body);

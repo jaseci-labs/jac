@@ -219,7 +219,7 @@ def:pub TracesPage -> JsxElement {
             <div className="flex flex-wrap gap-3 items-end">
                 <select
                     value={filterService}
-                    onChange={lambda e: any { filterService = e.target.value; }}
+                    onChange={lambda (e: any) { filterService = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="">All services</option>
@@ -227,7 +227,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={filterStatus}
-                    onChange={lambda e: any { filterStatus = e.target.value; }}
+                    onChange={lambda (e: any) { filterStatus = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="">All statuses</option>
@@ -235,7 +235,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={String(filterMinDuration)}
-                    onChange={lambda e: any { filterMinDuration = Number(
+                    onChange={lambda (e: any) { filterMinDuration = Number(
                         e.target.value
                     ); }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
@@ -247,7 +247,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={filterSince}
-                    onChange={lambda e: any { filterSince = e.target.value; }}
+                    onChange={lambda (e: any) { filterSince = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="15m">Last 15 min</option>
@@ -261,7 +261,7 @@ def:pub TracesPage -> JsxElement {
             >
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5"/>
                 <span className="text-muted">
-                    Trace backend unavailable. Enable tracing with [plugins.scale.microservices.tracing].enabled = true and redeploy so Tempo + the Alloy OTLP lane come up.
+                    Trace backend unavailable. Enable tracing with [scale.microservices.tracing].enabled = true and redeploy so Tempo + the Alloy OTLP lane come up.
                 </span>
             </div>
                 if backendOffline

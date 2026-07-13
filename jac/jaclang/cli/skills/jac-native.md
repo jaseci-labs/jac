@@ -99,7 +99,7 @@ with entry {
 }
 ```
 
-Run with plain `jac run`. Interop stubs are generated automatically in both directions; primitives, collections, and `obj` instances cross the boundary. Each codespace only sees its own definitions at compile time (context isolation) - a native function referencing a Python function defined *after* the `na` block fails E5090 and returns 0. Variants: `to na:` section header (rest of module is native) or `na` prefix on a single declaration.
+Run with plain `jac run`. Interop stubs are generated automatically in both directions; primitives, collections, and `obj` instances cross the boundary. Each codespace only sees its own definitions at compile time (context isolation) - a native function referencing a Python function defined *after* the `na` block fails E5090 and returns 0. Variants: a `na { ... }` block or an `na` prefix on a single declaration.
 
 ## Native-to-native imports + decl/impl separation
 

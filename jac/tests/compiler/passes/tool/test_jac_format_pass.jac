@@ -122,6 +122,18 @@ test "lambda whitespace fmt" {
     compare_files(os.path.join(FIXTURES, "lambda_whitespace_fmt.jac"));
 }
 
+test "forever fmt" {
+    compare_files(os.path.join(FIXTURES, "forever_fmt.jac"));
+}
+
+test "forever keyword preserved not rewritten" {
+    path = os.path.join(FIXTURES, "forever_fmt.jac");
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+    assert "forever {" in formatted;
+    assert "while" not in formatted;
+}
+
 test "fstring comment not injected" {
     path = os.path.join(FIXTURES, "fstring_comment.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);
@@ -235,7 +247,7 @@ test "unicode encoding write roundtrip" {
     path = os.path.join(FIXTURES, "unicode_encoding.jac");
 
     result = subprocess.run(
-        ["jac", "format", path, "--lintfix"], capture_output=True, text=True
+        ["jac", "fmt", path, "--lintfix"], capture_output=True, text=True
     );
     assert result.returncode == 0 , f"jac format failed: {result.stderr}";
 
@@ -357,7 +369,7 @@ test "jsx and lambda inline compact forms stay flat" {
         '        <div>\n'
         '            <input\n'
         '                value={text}\n'
-        '                onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}}\n'
+        '                onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}}\n'
         '                placeholder="Add a todo..."\n'
         '            />\n'
         '            <button onClick={add}>Add</button>\n'
@@ -381,7 +393,7 @@ test "jsx and lambda inline compact forms stay flat" {
     );
 
     # A single-statement `if` inside a lambda body must stay flat.
-    lambda_form = 'lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}';
+    lambda_form = 'lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}';
     assert lambda_form in formatted , (
         "lambda-nested `if { stmt; }` was expanded to multiple lines:\n" + str(
             formatted
@@ -572,8 +584,8 @@ test "if statement outside lambda still breaks" {
         '        d();\n'
         '        e();\n'
         '    }\n'
-        '    f = lambda e: int { if e > 0 { x = 1; y = 2; } };\n'
-        '    g = lambda e: int { if e > 0 { x = 1; } else { x = 2; } };\n'
+        '    f = lambda (e: int) { if e > 0 { x = 1; y = 2; } };\n'
+        '    g = lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } };\n'
         '}\n'
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
@@ -598,12 +610,14 @@ test "if statement outside lambda still breaks" {
     );
 
     # Multi-statement `if` inside lambda should NOT stay flat.
-    assert "lambda e: int { if e > 0 { x = 1; y = 2; }" not in formatted , (
+    assert "lambda (e: int) { if e > 0 { x = 1; y = 2; }" not in formatted , (
         f"multi-statement lambda `if` must fall back to hard-line layout:\n{formatted}"
     );
 
     # Lambda `if` with else should NOT stay flat.
-    assert ("lambda e: int { if e > 0 { x = 1; } else { x = 2; } }") not in formatted , (
+    assert (
+        "lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }"
+    ) not in formatted , (
         f"lambda `if`/`else` must fall back to hard-line layout:\n{formatted}"
     );
 }

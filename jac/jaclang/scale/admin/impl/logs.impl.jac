@@ -218,7 +218,7 @@ def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] 
         }
     }
 
-    out.sort(key=lambda line : line.get("ts_ns", ""), reverse=not ascending);
+    out.sort(key=lambda (line) { line.get("ts_ns", ""); }, reverse=not ascending);
     return out;
 }
 
@@ -243,7 +243,7 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             tags=["Logs"],
             summary="Service dropdown options",
             description=(
-                "Microservices declared in [plugins.scale.microservices.routes] "
+                "Microservices declared in [scale.microservices.routes] "
                 "+ 'gateway'. Used by the admin LogsPage service filter."
             )
         )

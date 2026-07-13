@@ -333,7 +333,7 @@ For the full Kubernetes deployment story (image building, ingress, autoscaling),
 
 For projects with more than a handful of services, the built-in `scale` subsystem ships a microservice mode that puts a single API gateway in front of all of them. `jac setup microservice` writes the plumbing into `jac.toml` and `jac start` on the project root brings the whole stack up -- one public port, one unified `/docs`, one `/metrics` endpoint, one shared anchor store. The same source still runs as a monolith when microservice mode is disabled.
 
-The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path (proxy, passthrough, aggregation). Drop-in observability: `X-Trace-Id` is minted if absent and threaded through every `sv` RPC hop. The following knobs all live under `[plugins.scale.microservices]` and are emitted as commented reference blocks by `jac setup microservice`:
+The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path (proxy, passthrough, aggregation). Drop-in observability: `X-Trace-Id` is minted if absent and threaded through every `sv` RPC hop. The following knobs all live under `[scale.microservices]` and are emitted as commented reference blocks by `jac setup microservice`:
 
 | Concern | Config | Default |
 |---------|--------|---------|
@@ -352,13 +352,13 @@ The gateway implementation lives under [`jac/jaclang/scale/microservices/`](http
 
 ### Kubernetes (microservice mode)
 
-When `[plugins.scale.microservices].enabled = true`, `jac start --scale` deploys every service as its own Kubernetes Deployment, fronted by the gateway. Each service gets its own pod template, HPA, and PodDisruptionBudget; peer URLs and routing are derived from `[plugins.scale.microservices.routes]`. You do not write any of those manifests by hand and you do not set the peer URLs by hand either -- in `--scale` K8s mode the consumer's `JAC_SV_<MODULE>_URL` for every peer is auto-injected on every pod, pointing at the in-cluster Service DNS:
+When `[scale.microservices].enabled = true`, `jac start --scale` deploys every service as its own Kubernetes Deployment, fronted by the gateway. Each service gets its own pod template, HPA, and PodDisruptionBudget; peer URLs and routing are derived from `[scale.microservices.routes]`. You do not write any of those manifests by hand and you do not set the peer URLs by hand either -- in `--scale` K8s mode the consumer's `JAC_SV_<MODULE>_URL` for every peer is auto-injected on every pod, pointing at the in-cluster Service DNS:
 
 ```text
 JAC_SV_INVENTORY_SERVICE_URL=http://inventory-service.<namespace>.svc.cluster.local:<port>
 ```
 
-The env-var name follows the same convention as the manual setup above (raw module name from `sv import from <name>`, upper-cased, joined with `JAC_SV_…_URL`); the URL host uses the Kubernetes Service's DNS-1123 form (`jac_coder_sv` becomes `jac-coder-sv-service`). Per-service env overrides under `[plugins.scale.microservices.services.<name>.env]` cannot shadow these keys -- a stale override would silently route sv-to-sv calls to the wrong backend.
+The env-var name follows the same convention as the manual setup above (raw module name from `sv import from <name>`, upper-cased, joined with `JAC_SV_…_URL`); the URL host uses the Kubernetes Service's DNS-1123 form (`jac_coder_sv` becomes `jac-coder-sv-service`). Per-service env overrides under `[scale.microservices.services.<name>.env]` cannot shadow these keys -- a stale override would silently route sv-to-sv calls to the wrong backend.
 
 If you need a sibling sv-to-sv call to leave the cluster (e.g. point at a vendor SaaS), wire it like the [Kubernetes section](#kubernetes) above by editing the Deployment's env spec directly; the value you set wins for that one service. Most apps never need to.
 

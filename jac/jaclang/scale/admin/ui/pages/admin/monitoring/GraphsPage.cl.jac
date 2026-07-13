@@ -159,7 +159,7 @@ cl {
                     <p className="text-sm text-muted">
                         Enable in jac.toml:
                         <span className="font-mono text-fg ml-1">
-                            [plugins.scale.monitoring] enabled = true
+                            [scale.monitoring] enabled = true
                         </span>
                     </p>
                 </div>;
@@ -209,7 +209,7 @@ cl {
 
         rangeSelect = <select
             value={str(rangeMinutes)}
-            onChange={lambda e: any { rangeMinutes = int(e.target.value); }}
+            onChange={lambda (e: any) { rangeMinutes = int(e.target.value); }}
             className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
         >
             <option value="60">Last 1 hour</option>

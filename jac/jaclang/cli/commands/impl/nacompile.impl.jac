@@ -133,10 +133,15 @@ impl nacompile(
     scrub: bool = False,
     target: str = "",
     shared: bool = False,
-    debug: bool = False
+    debug: bool = False,
+    gc: str = "cycles"
 ) -> int {
     import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
 
+    if gc not in ("cycles", "rc", "none") {
+        console.error(f"Invalid --gc mode '{gc}' (expected: cycles, rc, none)");
+        return 1;
+    }
     if not is_jac(filename) {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
@@ -210,7 +215,7 @@ impl nacompile(
         }
     }
 
-    console.print(f"Compiling {filename} to native binary...");
+    console.print(f"Compiling {filename} to native binary");
 
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.compile_options { CompileOptions }
@@ -222,7 +227,7 @@ impl nacompile(
             prog._auto_promote_target = os.path.abspath(filename);
         }
 
-        options = CompileOptions(aot_mode=True, type_check=False);
+        options = CompileOptions(aot_mode=True, type_check=False, na_gc_mode=gc);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
         console.error(f"Jac compilation failed: {e}");
@@ -590,7 +595,8 @@ impl nacompile(
 
 def _resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
     import os;
-    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+    import from jaclang.runtimelib.utils { triple_arch }
+    want = triple_arch(triple);
 
     pbs = os.path.join(pkg_root, ".pbs-build");
     if os.path.isdir(pbs) {
@@ -746,13 +752,14 @@ def _collect_floor_archives(
 
 def _musl_lib_dir(triple: str) -> (str | None) {
     import os;
+    import from jaclang.runtimelib.utils { triple_arch }
     env = os.environ.get("JAC_NATIVE_MUSL_DIR", "");
     if env and os.path.isdir(env) {
         return env;
     }
     import jaclang;
     pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
-    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+    want = triple_arch(triple);
     pbs = os.path.join(pkg_root, ".pbs-build");
     if os.path.isdir(pbs) {
         for d in sorted(os.listdir(pbs)) {

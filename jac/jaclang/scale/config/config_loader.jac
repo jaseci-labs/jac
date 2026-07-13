@@ -19,6 +19,7 @@ class JacScaleConfig(PluginConfigBase) {
     def get_secrets_config(self: JacScaleConfig) -> dict[str, str];
     def get_monitoring_config(self: JacScaleConfig) -> dict[str, any];
     def get_events_config(self: JacScaleConfig) -> dict[str, any];
+    def get_websocket_config(self: JacScaleConfig) -> dict[str, any];
     def get_admin_config(self: JacScaleConfig) -> dict[str, any];
     def get_scheduler_config(self: JacScaleConfig) -> dict[str, any];
     def get_telemetry_config(self: JacScaleConfig) -> dict[str, any];
@@ -29,5 +30,6 @@ class JacScaleConfig(PluginConfigBase) {
 
 glob _scale_config_instance: JacScaleConfig | None = None;
 
+def _ws_positive(ws_config: dict, key: str, fallback: (int | float)) -> float;
 def get_scale_config(project_dir: Path | None = None) -> JacScaleConfig;
 def reset_scale_config -> None;

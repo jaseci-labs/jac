@@ -32,7 +32,8 @@ impl _RepairUser.__jac_schema__ -> None {
     schema_alias("name", stored="username");
     schema_drop("legacy_bio");
     schema_upgrade(
-        _split_repair_tags, when=(lambda doc: dict : isinstance(doc.get('tags'), str))
+        _split_repair_tags,
+        when=(lambda (doc: dict) { isinstance(doc.get('tags'), str); })
     );
 }
 

@@ -1,17 +1,23 @@
 //! Test fixture: a tiny `python/`+`site/` runtime tree, tarred and
-//! gzip-compressed, base64-encoded as source (the repo disallows committed
+//! zstd-compressed, base64-encoded as source (the repo disallows committed
 //! binary files). Decoded by runtime.zig's end-to-end materialize test.
+//!
+//! Regenerate: untar/re-tar the tree, then `zstd -19 --no-check` +
+//! `base64 -w0` (any conformant frame whose window fits
+//! runtime.PAYLOAD_WINDOW_LOG works; --no-check matches the packer, which
+//! skips the frame checksum because the trailer sha256 already covers the
+//! compressed bytes).
 
 const std = @import("std");
 
-pub const payload_tar_gz_b64 =
-    "H4sIAAAAAAACA+3VSw6CMBSF4Y5dhRvAPuhjPSA3kaBA4JrI7iUyIxrjoA2R803aWQd/0tNPfOlaKWJSs+Dc65ytzzf3YLwXRycSuI9cDPOTYp/6pf+1LuV2+mulcov+ifvfiqGh4cQPjtDfW/u5vzGr/kY5JY4K/RP0Lyemc1dRtvQ/CNiRsWaSkd/4ff990Br/f7L+LY1MldxMf610yNE/df+KqI8w/9/3X6/3X3trsP8pLOmzrsHuAwAAAAAAAAAAAAAA/IUnlAy0nAAoAAA=";
+pub const payload_tar_zst_b64 =
+    "KLUv/WAAJzUFAKIGFhiQOweoKIPvf1WsOfp/7tLIl6JJ/f57TgHKE1YxVYfZEU2T447cqDb2J+4kHhDYvYM7MjJ4rtxdpVhDPUBWYMEoIlOTkSzPPCw6Pl/BGduWX6vlU/OQjpwdIEAzKCM5BTjYesC+/1bjHwNjKhk5NlMQQIU4MAZ1IExGC8ZCJYwBRBl1FY4dMdXsMHuACbmp+nApDcjAvNQBR8pXCQ8waIDlJOI=";
 
 /// Decode the fixture payload into freshly allocated bytes (caller frees).
 pub fn payloadAlloc(a: std.mem.Allocator) ![]u8 {
     const dec = std.base64.standard.Decoder;
-    const n = try dec.calcSizeForSlice(payload_tar_gz_b64);
+    const n = try dec.calcSizeForSlice(payload_tar_zst_b64);
     const out = try a.alloc(u8, n);
-    try dec.decode(out, payload_tar_gz_b64);
+    try dec.decode(out, payload_tar_zst_b64);
     return out;
 }

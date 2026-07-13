@@ -14,7 +14,7 @@ import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.bccache { discover_base_file, discover_annex_files }
-import from jaclang.compiler.type_system.type_utils { get_completion_items }
+import from jaclang.compiler.type_system.type_utils { doc_of_sym, get_completion_items }
 import from jaclang.compiler.type_system.types {
     ClassType,
     FunctionType,

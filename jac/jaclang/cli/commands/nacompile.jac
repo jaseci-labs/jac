@@ -5,7 +5,8 @@ glob registry = get_registry();
 
 @registry.command(
     name="nacompile",
-    help="Compile a Jac file to a standalone native binary",
+    help="Compile a Jac file to a standalone native binary (prefer 'jac build --as native' for projects)",
+    hidden=True,
     args=[
         Arg.create(
             "filename", kind=ArgKind.POSITIONAL, help="Path to .jac or .na.jac file"
@@ -41,6 +42,13 @@ glob registry = get_registry();
             short="g",
             help="Emit DWARF debug info + symbol table so the binary is debuggable with gdb/lldb"
         ),
+        Arg.create(
+            "gc",
+            kind=ArgKind.OPTION,
+            short="",
+            default="cycles",
+            help="Memory-management runtime to emit: 'cycles' (refcounting + cycle collector, default), 'rc' (refcounting only, no collector code), or 'none' (no refcounting call sites; memory is never reclaimed)"
+        ),
 
     ],
     examples=[
@@ -70,5 +78,6 @@ def nacompile(
     scrub: bool = False,
     target: str = "",
     shared: bool = False,
-    debug: bool = False
+    debug: bool = False,
+    gc: str = "cycles"
 ) -> int;
