@@ -112,6 +112,26 @@ test "rule with only hosts omits empty path and headers keys" {
     assert "headers" not in result[0];
 }
 
+test "rule with multiple paths expands into one OR-grouped match block per path" {
+    keda = KEDAAutoscaler();
+    rules = [
+        HTTPRoutingRule(
+            hosts=["preview.jac.dev"],
+            paths=[HTTPPathMatch(value="/app"), HTTPPathMatch(value="/api")],
+            headers=[HTTPHeaderMatch(name="x-preview-id", value="123")]
+        )
+    ];
+    result = keda._build_routing_rules(rules);
+    assert len(result) == 2;
+    path_values = [entry["path"]["value"] for entry in result];
+    assert "/app" in path_values;
+    assert "/api" in path_values;
+    for entry in result {
+        assert entry["hosts"] == ["preview.jac.dev"];
+        assert entry["headers"][0]["name"] == "x-preview-id";
+    }
+}
+
 
 # --- Section C: InterceptorRoute manifest builder ---------------------------
 test "build_interceptor_route produces a complete and valid InterceptorRoute body" {
@@ -321,6 +341,38 @@ test "apply_http_activation accepts a StatefulSet target without raising" {
     );
     result = keda.apply_http_activation(spec);
     assert result == True;
+}
+
+test "apply_http_activation warns but still proceeds for an unrecognized scale_target_kind" {
+    KEDAAutoscaler._http_preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_apps = unittest.mock.MagicMock();
+    mock_core = unittest.mock.MagicMock();
+    mock_logger = unittest.mock.MagicMock();
+    keda = KEDAAutoscaler(
+        _custom_api=mock_api,
+        _apps_api=mock_apps,
+        _core_api=mock_core,
+        logger=mock_logger
+    );
+    spec = HTTPActivationSpec(
+        name="preview",
+        namespace="default",
+        scale_target_name="preview-rollout",
+        scale_target_kind="Rollout",
+        target=HTTPServiceTarget(service="preview-svc", port=8080),
+        concurrency=HTTPConcurrencyMetric(target_value=10)
+    );
+    result = keda.apply_http_activation(spec);
+    assert result == True;
+    mock_apps.read_namespaced_deployment.assert_not_called();
+    mock_apps.read_namespaced_stateful_set.assert_not_called();
+    mock_logger.warn.assert_called_once();
+    warn_msg = mock_logger.warn.call_args[0][0];
+    assert "Rollout" in warn_msg;
+    assert "preview-rollout" in warn_msg;
 }
 
 

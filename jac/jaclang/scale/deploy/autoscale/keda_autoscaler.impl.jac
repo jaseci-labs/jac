@@ -370,6 +370,16 @@ impl KEDAAutoscaler.apply_http_activation{
             apps_api.read_namespaced_stateful_set(
                 name=spec.scale_target_name, namespace=spec.namespace
             );
+        } else {
+            if self.logger {
+                self.logger.warn(
+                    "HTTP activation cannot verify scale_target_kind="
+                    f"'{spec.scale_target_kind}' exists before apply; only "
+                    "Deployment and StatefulSet targets are checked. Ensure "
+                    f"'{spec.scale_target_name}' exists in namespace "
+                    f"'{spec.namespace}' before relying on this activation."
+                );
+            }
         }
     } except ApiException as e {
         if e.status == 404 {
@@ -498,25 +508,29 @@ impl KEDAAutoscaler.destroy_http_activation{
 impl KEDAAutoscaler._build_routing_rules{
     result: list[dict[str, any]] = [];
     for rule in rules {
-        entry: dict[str, any] = {};
-        if rule.hosts {
-            entry["hosts"] = rule.hosts;
-        }
-        if rule.paths {
-            entry["path"] = {"value": rule.paths[0].value};
-        }
-        if rule.headers {
-            header_matches: list[dict[str, any]] = [];
-            for header in rule.headers {
-                header_entry: dict[str, any] = {"name": header.name};
-                if header.value is not None {
-                    header_entry["value"] = header.value;
-                }
-                header_matches.append(header_entry);
+        header_matches: list[dict[str, any]] = [];
+        for header in rule.headers {
+            header_entry: dict[str, any] = {"name": header.name};
+            if header.value is not None {
+                header_entry["value"] = header.value;
             }
-            entry["headers"] = header_matches;
+            header_matches.append(header_entry);
         }
-        result.append(entry);
+
+        paths = rule.paths or [None];
+        for path in paths {
+            entry: dict[str, any] = {};
+            if rule.hosts {
+                entry["hosts"] = rule.hosts;
+            }
+            if path is not None {
+                entry["path"] = {"value": path.value};
+            }
+            if header_matches {
+                entry["headers"] = header_matches;
+            }
+            result.append(entry);
+        }
     }
     return result;
 }
