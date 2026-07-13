@@ -7,9 +7,13 @@ impl SemDefMatchPass.connect_sems(
         }
         semdef = sym.decl.name_of;
         target_sym = self.resolve_sem_target(semdef, target_sym_tab);
+
         if (target_sym is not None) {
-            target_sym.decl.name_of.semstr = semdef.value.lit_value;
-            target_sym.semstr = semdef.value.lit_value;
+            sem_value = semdef.value.lit_value;
+            if (isinstance(sem_value, str)) {
+                target_sym.decl.name_of.semstr = sem_value;
+                target_sym.semstr = sem_value;
+            }
         }
     }
 }

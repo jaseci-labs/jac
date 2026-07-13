@@ -78,7 +78,7 @@ def:pub CallDetailModal(
         <div className="modal-overlay" onClick={lambda { onClose(); }}>
             <div
                 className="modal cd-modal"
-                onClick={lambda e: any { e.stopPropagation(); }}
+                onClick={lambda (e: any) { e.stopPropagation(); }}
             >
                 <div className="modal-head">
                     <span className={"tok-chip tok-" + detail.node}>{detail.node}</span>

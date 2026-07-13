@@ -55,9 +55,9 @@ impl ObjectSpatialPath.convert(
     if callable(filter) {
         return filter;
     } elif isinstance(filter, `list) {
-        return lambda i: any : (i in filter);
+        return lambda (i: any) { i in filter; };
     }
-    return lambda i: any : (i == filter);
+    return lambda (i: any) { i == filter; };
 }
 
 impl ObjectSpatialPath.append(

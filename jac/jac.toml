@@ -2,7 +2,7 @@
 # the build reads version/metadata here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.31.2"
+version = "0.32.0"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"
@@ -60,4 +60,7 @@ exclude = [
     #    native bridge extractor reads.
     "jir_registry.jac",
     "plugin_bridge.na.jac",
+    #  - uni_pass.jac carries the `# >>> generated visitor surface >>>` markers
+    #    that `jac gen-uni-dispatch` uses to locate the region it rewrites.
+    "uni_pass.jac",
 ]

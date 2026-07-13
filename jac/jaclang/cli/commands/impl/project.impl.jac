@@ -1100,7 +1100,7 @@ impl deps(scale: bool = False, as_json: bool = False) -> int {
         eco_deps = plan.for_ecosystem(ecosystem);
         console.print(f"\n  [{ecosystem}] ({len(eco_deps)})", style="info");
         width = max([len(d.name) for d in eco_deps]);
-        for d in sorted(eco_deps, key=lambda d : (d.origin, d.name)) {
+        for d in sorted(eco_deps, key=lambda (d) { (d.origin, d.name); }) {
             dev_marker = "  (dev)" if d.dev else "";
             version = d.version or "*";
             console.print(

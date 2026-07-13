@@ -209,6 +209,44 @@ def _fetch_verified_asset(
 }
 
 
+glob OFFICIAL_IMAGE: str = "jaseci/jaclang";
+
+
+def resolve_pod_base_image(project_dir: str, configured: str) -> str {
+    # Auto-select the official base image to match the pod binary channel:
+    # dev -> jaseci/jaclang:dev, stable -> jaseci/jaclang:latest. The image
+    # ships the runtime pre-extracted and the serve closure pre-installed, so
+    # pods skip the one-time setup. An explicit [scale.kubernetes].python_image
+    # always wins; the local channel keeps the plain python base (no image
+    # matches a developer-built binary).
+    if configured {
+        return configured;
+    }
+    fallback = "python:3.12-slim";
+    import from jaclang.scale.config.dev_config { resolve_dev_channel, Channel }
+    channel = resolve_dev_channel(project_dir);
+    if channel == Channel.LOCAL {
+        return fallback;
+    }
+    tag = "dev" if channel == Channel.DEV else "latest";
+    image = f"{OFFICIAL_IMAGE}:{tag}";
+    # The tag may not be published yet (or the registry is unreachable from
+    # this driver); fall back rather than shipping manifests that cannot pull.
+    try {
+        _http_get_bytes(
+            f"https://hub.docker.com/v2/repositories/{OFFICIAL_IMAGE}/tags/{tag}"
+        );
+        return image;
+    } except Exception {
+        logger.info(
+            f"Official base image {image} is not published or not reachable; "
+            f"pods use {fallback}."
+        );
+        return fallback;
+    }
+}
+
+
 def _scale_cache_root -> Path {
     # Cache on the DEPLOY-DRIVER machine (laptop / CI runner / operator pod),
     # not the cluster: the driver needs the binary before the PVC exists, and

@@ -216,7 +216,7 @@ test "planner bypasses index when no hop is filtered" {
         );
 
         # Edge-type filter alone is enough to engage the index.
-        edge_filter = lambda e: any : isinstance(e, EdgeX);
+        edge_filter = lambda (e: any) { isinstance(e, EdgeX); };
         edge_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, edge_filter)]
         );
@@ -225,7 +225,7 @@ test "planner bypasses index when no hop is filtered" {
         );
 
         # Node-type filter alone also engages the index.
-        node_filter = lambda n: any : isinstance(n, TypeA);
+        node_filter = lambda (n: any) { isinstance(n, TypeA); };
         node_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, node_filter)]
         );
@@ -294,7 +294,7 @@ test "planner bails when a hop has predicates beyond type" {
         # predicate detector returns True. On a single-hop (and therefore
         # final) chain, execute_path still engages: the planner post-applies
         # the predicate above the materialized list.
-        pred_filter = lambda n: any : isinstance(n, TypeA) and n.val > 5;
+        pred_filter = lambda (n: any) { isinstance(n, TypeA) and n.val > 5; };
         single_hop_pred = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, pred_filter)]
         );

@@ -474,9 +474,7 @@ impl NaIRGenPass._resolve_primitive_name(
         if isinstance(expr, uni.Null) {
             return ir.VoidType();
         }
-    } except NameError {
-        pass;
-    }
+    } except NameError { }
 
     if isinstance(expr, uni.Name) {
         name = expr.value;
@@ -692,13 +690,16 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     if isinstance(val.type, ir.IntType) and val.type.width == 1 {
         return val;
     }
+    if self?.jacval_type and val.type == self.jacval_type {
+        return self._jacval_truthy(val);
+    }
     if isinstance(val.type, ir.IntType) {
         return self.builder.icmp_unsigned(
             "!=", val, ir.Constant(val.type, 0), name="tobool"
         );
     }
     if isinstance(val.type, ir.DoubleType) {
-        return self.builder.fcmp_ordered(
+        return self.builder.fcmp_unordered(
             "!=", val, ir.Constant(val.type, 0.0), name="tobool"
         );
     }
@@ -769,6 +770,81 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     return val;
 }
 
+
+impl NaIRGenPass._jacval_truthy(jv: ir.Value) -> ir.Value {
+    b = self.builder;
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    tag = b.extract_value(jv, 0, name="jv.truthy.tag");
+    payload = b.extract_value(jv, 1, name="jv.truthy.payload");
+    func = b.function;
+    str_bb = func.append_basic_block(name="jv.truthy.str");
+    cont_chk_bb = func.append_basic_block(name="jv.truthy.cont.chk");
+    cont_len_bb = func.append_basic_block(name="jv.truthy.cont.len");
+    scalar_bb = func.append_basic_block(name="jv.truthy.scalar");
+    merge_bb = func.append_basic_block(name="jv.truthy.end");
+
+    is_str = b.icmp_unsigned("==", tag, ir.Constant(i8, 2), name="jv.truthy.isstr");
+    b.cbranch(is_str, str_bb, cont_chk_bb);
+
+    b.position_at_end(str_bb);
+    str_ptr = b.inttoptr(payload, i8.as_pointer(), name="jv.truthy.strp");
+    str_res = self._to_bool(str_ptr);
+    str_exit_bb = b.block;
+    b.branch(merge_bb);
+
+    b.position_at_end(cont_chk_bb);
+    is_list = b.icmp_unsigned("==", tag, ir.Constant(i8, 3), name="jv.truthy.islist");
+    is_dict = b.icmp_unsigned("==", tag, ir.Constant(i8, 4), name="jv.truthy.isdict");
+    is_set = b.icmp_unsigned("==", tag, ir.Constant(i8, 5), name="jv.truthy.isset");
+    is_cont = b.or_(
+        b.or_(is_list, is_dict, name="jv.truthy.ld"), is_set, name="jv.truthy.iscont"
+    );
+    cont_nonnull = b.icmp_unsigned(
+        "!=", payload, ir.Constant(i64, 0), name="jv.truthy.cont.nn"
+    );
+    read_len = b.and_(is_cont, cont_nonnull, name="jv.truthy.readlen");
+    b.cbranch(read_len, cont_len_bb, scalar_bb);
+
+    b.position_at_end(cont_len_bb);
+    len_ptr = b.inttoptr(payload, i64.as_pointer(), name="jv.truthy.lenp");
+    cont_len = b.load(len_ptr, name="jv.truthy.len");
+    len_res = b.icmp_unsigned(
+        "!=", cont_len, ir.Constant(i64, 0), name="jv.truthy.lennz"
+    );
+    b.branch(merge_bb);
+
+    b.position_at_end(scalar_bb);
+    is_none = b.icmp_unsigned("==", tag, ir.Constant(i8, 8), name="jv.truthy.isnone");
+    is_float = b.icmp_unsigned("==", tag, ir.Constant(i8, 1), name="jv.truthy.isfloat");
+    as_f64 = b.bitcast(payload, ir.DoubleType(), name="jv.truthy.f64");
+    f_nz = b.fcmp_unordered(
+        "!=", as_f64, ir.Constant(ir.DoubleType(), 0.0), name="jv.truthy.fnz"
+    );
+    p_nz = b.icmp_unsigned("!=", payload, ir.Constant(i64, 0), name="jv.truthy.pnz");
+    num_res = b.select(is_float, f_nz, p_nz, name="jv.truthy.num");
+    scalar_res = b.select(
+        is_none, ir.Constant(i1, 0), num_res, name="jv.truthy.scalar"
+    );
+    b.branch(merge_bb);
+
+    b.position_at_end(merge_bb);
+    phi = b.phi(i1, name="jv.truthy");
+    phi.add_incoming(str_res, str_exit_bb);
+    phi.add_incoming(len_res, cont_len_bb);
+    phi.add_incoming(scalar_res, scalar_bb);
+    return phi;
+}
+
+impl NaIRGenPass._jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value {
+    i8 = ir.IntType(8);
+    tag = self.builder.extract_value(jv, 0, name="jv.nonetest.tag");
+    cmp_op = "!=" if negate else "==";
+    return self.builder.icmp_unsigned(
+        cmp_op, tag, ir.Constant(i8, 8), name="jv.nonetest"
+    );
+}
 
 impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
     _was_owned = self._is_owned(val);
@@ -1060,6 +1136,13 @@ impl NaIRGenPass._emit_binary_op(
             strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
             memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
             slen = self.builder.call(strlen_fn, [str_val], name="rep.slen");
+
+            _rep_neg = self.builder.icmp_signed(
+                "<", int_val, ir.Constant(i64, 0), name="rep.neg"
+            );
+            int_val = self.builder.select(
+                _rep_neg, ir.Constant(i64, 0), int_val, name="rep.n"
+            );
             total = self.builder.mul(slen, int_val, name="rep.total");
             alloc = self.builder.add(total, ir.Constant(i64, 1), name="rep.alloc");
             self._set_rc_ctx("str_repeat", "");

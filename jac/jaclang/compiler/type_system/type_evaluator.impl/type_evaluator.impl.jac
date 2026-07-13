@@ -166,6 +166,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                     if expected_elem is not None {
                         list_inst.private.type_args = [expected_elem];
+                    } else {
+                        flow_elem = self._infer_list_elem_from_mutations(expr);
+                        if flow_elem is not None {
+                            list_inst.private.type_args = [flow_elem];
+                        }
                     }
                 }
                 if isinstance(list_inst, types.ClassType) and expr.values {
@@ -546,8 +551,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                 }
 
-                if seeded_param and isinstance(expr.body, uni.Expr) {
-                    self._invalidate_expr_type_cache(expr.body);
+                if seeded_param {
+                    seed_body_expr: uni.Expr | None = None;
+                    if isinstance(expr.body, uni.Expr) {
+                        seed_body_expr = expr.body;
+                    } else {
+                        seed_body_expr = expr.tail_return_expr();
+                    }
+                    if seed_body_expr is not None {
+                        self._invalidate_expr_type_cache(seed_body_expr);
+                    }
                 }
             }
 
@@ -1675,6 +1688,9 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.UnaryExpr():
             if isinstance(expr.op, uni.Token) {
+                if expr.op.name == Tok.BW_AND {
+                    return self.get_type_of_expression(expr.operand);
+                }
                 if expr.op.name == Tok.NOT {
                     operand_type = self.get_type_of_expression(expr.operand);
                     if (
@@ -2129,7 +2145,27 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     ) {
                         return self._resolve_type_alias_rhs(node_.parent.value);
                     }
-                    return self._convert_to_instance(annotation_type);
+                    declared_inst = self._convert_to_instance(annotation_type);
+
+                    if (
+                        isinstance(declared_inst, types.ClassType)
+                        and declared_inst.is_builtin("list")
+                        and not declared_inst.private.type_args
+                        and isinstance(node_.parent.value, uni.ListVal)
+                        and not node_.parent.value.values
+                    ) {
+                        value_type = self.get_type_of_expression(
+                            node_.parent.value, expected_type=declared_inst
+                        );
+                        if (
+                            isinstance(value_type, types.ClassType)
+                            and value_type.is_builtin("list")
+                            and value_type.private.type_args
+                        ) {
+                            return value_type;
+                        }
+                    }
+                    return declared_inst;
                 } else {
                     if node_.parent.value is not None {
                         return self._widen_literal_for_declaration(
@@ -2369,8 +2405,12 @@ impl TypeEvaluator._assign_callable(
     }
 
     if dest_func.return_type and src_func.return_type {
-        src_ret = self._convert_to_instance(src_func.return_type);
         dest_ret = self._convert_to_instance(dest_func.return_type);
+
+        if self.is_none_type(dest_ret) {
+            return True;
+        }
+        src_ret = self._convert_to_instance(src_func.return_type);
         if not self.assign_type(src_ret, dest_ret, strict) {
             return False;
         }

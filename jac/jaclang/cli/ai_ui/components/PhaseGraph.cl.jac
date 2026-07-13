@@ -160,7 +160,7 @@ def:pub PhaseGraph(
             cyRef.current = cy;
             # Clicking a node selects it -- the parent shows that state's full
             # definition in the phase inspector. A grab cursor hints it's clickable.
-            cy.on("tap", "node", lambda evt: any { onSelect(evt.target.id()); });
+            cy.on("tap", "node", lambda (evt: any) { onSelect(evt.target.id()); });
             cy.on(
                 "mouseover",
                 "node",

@@ -3,7 +3,7 @@ name: jac-cl-components
 description: Writing a client-side UI component - shape, reactive state, mount effects, props and Callable callbacks, JSX rendering, event handlers. Load when creating or editing any `.cl.jac` file. Pair with `jac-cl-routing` (multi-page apps), `jac-cl-organization` (architecture & file layout), `jac-cl-auth` (protected pages).
 ---
 
-`.cl.jac` files are client-side Jac. A component is a `def:pub` function returning `JsxElement`. State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No `to cl:` header - the extension sets client context.
+`.cl.jac` files are client-side Jac. A component is a `def:pub` function returning `JsxElement`. State = `has` fields, which compile 1:1 to React `useState` - assign directly (`x = x + 1` re-renders; no `setX(...)` call) but all `useState` semantics apply: writes are async, the closure stays stale until the next render. Mount effects = `async can with entry` (compiles to `useEffect`). Event handlers = `def` methods typed with ambient DOM events (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`). No `cl { }` wrapper needed - the extension sets client context.
 
 ## This is Jac, not React or JavaScript
 
@@ -213,7 +213,7 @@ async def handle_add -> None {
     todos = [todo] + todos;
 }
 # bind as: onClick={handle_add}
-# if you need to pass a param: onClick={lambda -> None { handle_toggle(item.id); }}
+# if you need to pass a param: onClick={lambda { handle_toggle(item.id); }}
 ```
 
 Plain `def handle(e: MouseEvent)` is sync -- `await` inside it emits invalid JS.
@@ -243,7 +243,7 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>`, or move styling to `className` + a same-basename `.style.css` annex (auto-scoped -- see `jac-cl-styling`).
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
-- **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context. The **opposite** holds for mixed-context **`main.jac`** and **`pages/*.jac`** - those are plain `.jac` files, so client code there DOES need `cl import` and a `cl { }` block (or `cl def:pub`). Rule of thumb: **wrapper in `.jac`, no wrapper in `.cl.jac`.**
+- **No `cl { }` / `cl def:pub` wrapper in `.cl.jac` files.** The extension already sets the client context. The **opposite** holds for mixed-context **`main.jac`** and **`pages/*.jac`** - those are plain `.jac` files, so client code there DOES need `cl import` and a `cl { }` block (or `cl def:pub`). Rule of thumb: **wrapper in `.jac`, no wrapper in `.cl.jac`.**
 - **Top-level component name is `def:pub app`** - lowercase. Runtime mounts the literal name. Its signature is set by the routing system: `app()` for manual/single-page, `app(children: any)` that renders `children` for file-based routing. Getting this wrong drops every route with no error - see `jac-cl-routing`.
 - **JSX comments use `{#* ... *#}`.** This is only valid **inside JSX element children** (between any opening and closing tag) - anywhere outside JSX is a parse error (E0001). The JS-style `{/* ... */}` is also a parse error in Jac JSX. `{}` (empty slot) is also a parse error - use `{#* note *#}` for a no-op placeholder. A `#` outside an expression slot is treated as **literal HTML text**, not a comment.
 - **Module `glob`s can hold rich data - including JSX.** `glob _BUILDS: list[dict] = [{"name": "CLI", "icon": <Terminal size={15}/>}];` is a fine home for render-constant tables; iterate them in slots or comprehensions. `glob` is NOT reactive - anything that changes belongs in `has`.

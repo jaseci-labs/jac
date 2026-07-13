@@ -24,7 +24,7 @@
 
 Jac's native codespace compiles code to **machine-code via LLVM** -- the same Jac syntax, but running as native instructions instead of on the Python runtime. You can use it in two ways:
 
-1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `na { }` block (or `to na:` section header / `na` statement prefix). The compiler generates the interop layer automatically.
+1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `na { }` block (or `na` statement prefix). The compiler generates the interop layer automatically.
 2. **Standalone `.na.jac` files** -- compile an entire program to a self-contained binary with `jac nacompile`. No Python runtime, no external compiler, no external linker -- the entire toolchain from source to executable runs within Jac itself.
 
 Native compilation is ideal for:
@@ -39,7 +39,7 @@ Native compilation is ideal for:
 
 | Aspect | Details |
 |--------|---------|
-| **Inline section** | `na { }` block (or `to na:` header / `na` prefix) in any `.jac` file |
+| **Inline section** | `na { }` block (or `na` prefix) in any `.jac` file |
 | **Dedicated file** | `.na.jac` extension |
 | **Entry point** | `with entry { }` (standalone binaries only) |
 | **CLI command** | `jac nacompile <file> [-o output] [--shared]` |
@@ -58,10 +58,9 @@ Native compilation is ideal for:
 
 The most common way to use native compilation is to tag elements of a regular `.jac` file for the native codespace. Functions in a native section compile to native machine code while the rest of the file runs on Python as usual.
 
-There are three ways to select the native codespace inside a file:
+There are two ways to select the native codespace inside a file:
 
 - **`na { ... }` braced block** (recommended) -- every element inside the braces compiles native; the braces bracket exactly the tagged region. Also works inside inner scopes.
-- **`to na:` section header** -- every following module-level element compiles native until the next `to X:` header or end of file. Convenient for a module that is mostly native.
 - **`na` single-statement prefix** -- tags one declaration.
 
 ```jac
@@ -776,6 +775,28 @@ Native Jac uses **automatic reference counting** for memory management. Heap-all
 
 !!! warning "Current Status"
     Deep release of nested structures is currently disabled to prevent use-after-free in complex ownership scenarios. This means certain long-running native programs may leak memory. Programs with bounded allocation are unaffected. Proper ownership tracking is a planned improvement.
+
+### Reserved `__rc_*` runtime hooks
+
+Five names are **reserved intrinsics** on the native pathway: `__rc_debug_enable()`, `__rc_debug_disable()`, `__rc_gc_disable()`, `__rc_gc_enable()`, and `__rc_collect_cycles()`. A call to any of them is dispatched by name to the corresponding runtime helper *before* normal call classification and symbol resolution -- ahead of builtins, module functions, and locals. You therefore cannot define or import your own function under one of these names in native code and expect it to be called; the name is claimed by the RC runtime (defining one would also collide with the runtime's own emitted symbol). The dispatch lives in a single table in the native code generator (`_codegen_rc_intrinsic`).
+
+These hooks exist only in native code. On the Python backend they have no runtime implementation, and a call surfaces an unresolved-type diagnostic at check time rather than silently type-checking.
+
+### Reference-count elision
+
+A move assignment `b = a` would normally emit a defensive `__rc_retain` on the source so that both slots can be released independently. When the move is the *last* use of `a`, that retain is pure overhead: the reference can simply be handed to `b` and the source slot nulled, so `a`'s later cleanup release loads null and is a no-op and the object is freed exactly once.
+
+The native backend decides where this is safe with `RcElisionProofPass`, a small intraprocedural pass that runs unconditionally in the native codegen path -- *before* `NaIRGenPass` and independent of the [ownership & borrow checker](ownership-borrowing.md), which does not run under `nacompile` (`type_check=False`). The pass reads only the syntactic AST and the CFG; it consults no checker or symbol facts, so the elision is sound whether or not the ownership diagnostics ever ran.
+
+It is deliberately conservative -- it proves only the safe case and retains everywhere else. An assignment `b = a` is elided only when:
+
+- `b` is a single, plain, **local** name (never a field, subscript, global, or parameter);
+- the binding is not a `borrow`/`val` binding;
+- `a` is a plain **local** name (an `own` *parameter* is never elided);
+- **every** use of `a` in its function is an alias-value into a plain local -- this one invariant excludes call-args, returns, field/container stores, `&a` borrows, and closure/concurrent captures, any of which is a use that is not an alias-value; and
+- `a` is **dead-out** at the move site, proven by backward liveness over the CFG. A later use reached through a loop back-edge without an intervening redefinition keeps `a` live and blocks the elision, so a `b = a` inside a loop is elided only when `a` is redefined each iteration before the move.
+
+The proof is scoped to the exact move site (`Assignment.na_move_lowerable`), not to a symbol, so a variable moved at its last use elides there even if it was aliased earlier.
 
 ---
 

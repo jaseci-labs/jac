@@ -76,6 +76,8 @@ nav:
           - Concurrency: "reference/language/concurrency.md"
           - Comprehensions & Filters: "reference/language/advanced.md"
           - Walker Patterns: "reference/language/walker-responses.md"
+          - Ownership & Borrowing: "reference/language/ownership-borrowing.md"
+          - Ownership Checker Specification: "reference/language/ownership-checker-spec.md"
           - Appendices: "reference/language/appendices.md"
           - Syntax Cheatsheet: "quick-guide/syntax-cheatsheet.md"
       - Native Compilation: "reference/language/native-pathway.md"

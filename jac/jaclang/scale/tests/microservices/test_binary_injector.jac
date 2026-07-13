@@ -440,3 +440,91 @@ test "no published checksum refuses to stage without touching the network" {
         }
     }
 }
+
+
+test "explicit python_image wins over channel auto-selection" {
+    import from jaclang.scale.injector.binary { resolve_pod_base_image }
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    assert resolve_pod_base_image(d, "my-registry/custom:1") == "my-registry/custom:1";
+}
+
+
+test "local channel never auto-selects the official image" {
+    import from jaclang.scale.injector.binary { resolve_pod_base_image }
+    d = _write_toml("[project]\nname = \"app\"\n");
+    saved = os.environ.get(BINARY_PATH_ENV);
+    try {
+        os.environ[BINARY_PATH_ENV] = "/some/jac";
+        assert resolve_pod_base_image(d, "") == "python:3.12-slim";
+    } finally {
+        os.environ.pop(BINARY_PATH_ENV, None);
+        if saved is not None {
+            os.environ[BINARY_PATH_ENV] = saved;
+        }
+    }
+}
+
+
+test "dev channel picks the official dev image when the tag is published" {
+    import jaclang.scale.injector.binary as binary;
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = binary._http_get_bytes;
+    def _ok(url: str) -> bytes {
+        return b"{}";
+    }
+    try {
+        binary._http_get_bytes = _ok;
+        assert binary.resolve_pod_base_image(d, "") == "jaseci/jaclang:dev";
+    } finally {
+        binary._http_get_bytes = saved;
+    }
+}
+
+
+test "unpublished official image falls back to the plain python base" {
+    import jaclang.scale.injector.binary as binary;
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = binary._http_get_bytes;
+    def _raise(url: str) -> bytes {
+        raise RuntimeError("404");
+    }
+    try {
+        binary._http_get_bytes = _raise;
+        assert binary.resolve_pod_base_image(d, "") == "python:3.12-slim";
+    } finally {
+        binary._http_get_bytes = saved;
+    }
+}
+
+
+test "only the mutable dev tag forces imagePullPolicy Always" {
+    import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+        image_pull_policy
+    }
+    assert image_pull_policy("jaseci/jaclang:dev") == "Always";
+    assert image_pull_policy("jaseci/jaclang:latest") == "";
+    assert image_pull_policy("jaseci/jaclang:0.31.2") == "";
+    assert image_pull_policy("python:3.12-slim") == "";
+}
+
+
+test "bootstrap reuses the image binary only on a checksum match" {
+    cmds = build_runtime_install_commands(KubernetesConfig());
+    joined = " && ".join(cmds);
+    assert "sha256sum /usr/local/bin/jac" in joined;
+    assert "ln -sf /usr/local/bin/jac" in joined;
+    # the shipped-binary install stays as the mismatch/absence fallback
+    assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
+}
+
+
+test "pod dep installs are routed to the shared-volume venv" {
+    script = str(
+        build_bootstrap_init_container(KubernetesConfig(), "jaseci/jaclang:dev")["args"][
+            0
+        ]
+    );
+    # exported before jac install: the image's cache site is container-local
+    assert 'export PIP_PREFIX="/app/.jac/venv"' in script;
+    assert script.index("PIP_PREFIX") < script.index("jac install");
+}

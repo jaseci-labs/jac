@@ -144,6 +144,7 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         }
     }
     self._codegen_entry(_entry_nodes);
+    self._finalize_trace_lookup();
 
     if self.has_native_code {
         if self.errors_had {
@@ -155,6 +156,18 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         self.ir_in.gen.llvm_ir = self.llvm_module;
 
         import os;
+        if os.environ.get("JAC_RC_STATS", "") {
+            _rc_total = self.rc_retains_emitted + self.rc_releases_emitted;
+            _rc_known = _rc_total + self.rc_ops_elided;
+            _rc_pct = (100.0 * self.rc_ops_elided / _rc_known) if _rc_known else 0.0;
+            import sys;
+            sys.stderr.write(
+                f"rc-stats [{os.path.basename(self.ir_in.loc.mod_path)}] "
+                f"gc={self._gc_mode()} retains={self.rc_retains_emitted} "
+                f"releases={self.rc_releases_emitted} "
+                f"elided={self.rc_ops_elided} coverage={_rc_pct:.1f}%\n"
+            );
+        }
         _ir_dump_path = os.environ.get("JAC_DUMP_IR", "");
         if _ir_dump_path {
             with open(_ir_dump_path, "w") as _f {
@@ -237,7 +250,7 @@ impl NaIRGenPass._export_native_layout -> None {
         field_types = self.struct_field_types.get(arch_name, {});
         fields: list[NativeFieldInfo] = [];
         enum_types = self.struct_field_enum_type.get(arch_name, {});
-        for (fname, idx) in sorted(field_indices.items(), key=lambda x : x[1]) {
+        for (fname, idx) in sorted(field_indices.items(), key=lambda (x) { x[1]; }) {
             ftype = field_types.get(fname);
             llvm_t = self._llvm_type_str(ftype) if ftype is not None else "i64";
 
@@ -973,7 +986,9 @@ impl NaIRGenPass._dispatch_primitive_method(
     method_name: str,
     target: ir.Value,
     args: list[ir.Value],
-    type_key: str
+    type_key: str,
+    kwargs: (dict | None) = None,
+    kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     self._ensure_emitters();
     _emitter = self._native_emitters.get(type_name);
@@ -984,18 +999,53 @@ impl NaIRGenPass._dispatch_primitive_method(
     if _emit_fn is None {
         return None;
     }
-    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key=type_key);
+    if kwargs and method_name not in ("sort", ) {
+        self.emit(
+            E5090,
+            node_override=kw_node,
+            kind="keyword argument for native method",
+            name=f"{method_name}({', '.join(kwargs.keys())}=...)"
+        );
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(
+        pass_ref=self, type_key=type_key, call_kwargs=(kwargs or {})
+    );
     return _emit_fn(_ctx, target, args);
 }
 
 impl NaIRGenPass._dispatch_builtin(
-    func_name: str, args: list[ir.Value]
+    func_name: str,
+    args: list[ir.Value],
+    kwargs: (dict | None) = None,
+    kw_node: (uni.UniNode | None) = None
 ) -> (ir.Value | None) {
     self._ensure_emitters();
     _emit_fn = getattr(self._native_builtin_emitter, "emit_" + func_name, None);
     if _emit_fn is None {
         return None;
     }
-    _ctx = self._native_emit_ctx_class(pass_ref=self, type_key="");
+    if kwargs and func_name not in ("sorted", ) {
+        self.emit(
+            E5090,
+            node_override=kw_node,
+            kind="keyword argument for native builtin",
+            name=f"{func_name}({', '.join(kwargs.keys())}=...)"
+        );
+        return None;
+    }
+    _ctx = self._native_emit_ctx_class(
+        pass_ref=self, type_key="", call_kwargs=(kwargs or {})
+    );
     return _emit_fn(_ctx, args);
+}
+
+impl NaIRGenPass._split_call_kwargs(nd: uni.FuncCall) -> dict {
+    out: dict = {};
+    for param in (nd.params or []) {
+        if isinstance(param, uni.KWPair) and param.key is not None {
+            out[param.key.sym_name] = param.value;
+        }
+    }
+    return out;
 }
