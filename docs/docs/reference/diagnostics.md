@@ -344,7 +344,7 @@ obj Account {
 ```
 
 `jac check --lint --fix` rewrites the decorator form automatically
-([`property-to-native`](#lint-rules-w3xxx--e3xxx)). As with `W2006`/`W2007`, a
+([`property-to-native`](#lint-rules-w3xxx-e3xxx)). As with `W2006`/`W2007`, a
 Python-compat `class` is exempt. A cross-object `@Base.x.setter` extends a parent's
 property and has no direct native form, so it is not reported.
 
