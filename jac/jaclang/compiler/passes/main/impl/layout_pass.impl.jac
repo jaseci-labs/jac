@@ -371,7 +371,7 @@ impl LayoutPass._build_vtable_layout(
 ) -> None {
     reg = self.registry;
     layout_obj = reg.layouts.get(arch_name);
-    if layout_obj is None or not layout_obj.has_vtable {
+    if layout_obj is None {
         return;
     }
     method_list: list[str] = [];
@@ -438,6 +438,21 @@ impl LayoutRegistry.get_layout(name: str) -> (ArchetypeLayout | None) {
 
 impl LayoutRegistry.get_enum_layout(name: str) -> (EnumLayout | None) {
     return self.enums.get(name);
+}
+
+impl LayoutRegistry.resolve_method_owner(
+    arch_name: str, method_name: str
+) -> (str | None) {
+    lay = self.layouts.get(arch_name);
+    if lay is None {
+        return None;
+    }
+    for mslot in lay.methods {
+        if mslot.name == method_name {
+            return mslot.owner;
+        }
+    }
+    return None;
 }
 
 impl LayoutRegistry.get_mro(name: str) -> list[str] {

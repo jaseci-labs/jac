@@ -20,16 +20,8 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
 
     vtable_type = ir.ArrayType(i8_ptr, len(layout) + VTABLE_HEADER_SLOTS);
     entries: list[ir.Constant] = [self._emit_class_name_const(arch_name)];
-    mro = self._mro_of(arch_name);
     for method_name in layout {
-        func = None;
-        for check_name in mro {
-            full_name = f"{check_name}.{method_name}";
-            if full_name in self.method_funcs {
-                func = self.method_funcs[full_name];
-                break;
-            }
-        }
+        func = self._resolve_method(arch_name, method_name);
         if func is not None {
             entries.append(func.bitcast(i8_ptr));
         } else {
@@ -54,15 +46,7 @@ impl NaIRGenPass._codegen_virtual_call(
         return None;
     }
 
-    func = None;
-    mro = self._mro_of(obj_type_name);
-    for check_name in mro {
-        full_name = f"{check_name}.{method_name}";
-        if full_name in self.method_funcs {
-            func = self.method_funcs[full_name];
-            break;
-        }
-    }
+    func = self._resolve_method(obj_type_name, method_name);
     if func is None {
         return None;
     }

@@ -124,14 +124,7 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
     for (base_name, layout) in self.vtable_layouts.items() {
         non_overridden: set[str] = set();
         for method_name in layout {
-            defining_class: (str | None) = None;
-            base_mro = self._mro_of(base_name);
-            for check in base_mro {
-                if f"{check}.{method_name}" in self.method_funcs {
-                    defining_class = check;
-                    break;
-                }
-            }
+            defining_class = self._resolve_method_owner(base_name, method_name);
             if defining_class is None {
                 continue;
             }
@@ -1580,18 +1573,17 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
 
-    func = None;
-    full_name = "";
+    func = self._resolve_method(type_name, method_name);
     _demoted = False;
-    for check_name in self._mro_of(type_name) {
-        full_name = f"{check_name}.{method_name}";
-        if full_name in self.method_funcs {
-            func = self.method_funcs[full_name];
-            break;
-        }
-        if full_name in self._native_skipped_methods {
+    if func is None {
+        if f"{type_name}.{method_name}" in self._native_skipped_methods {
             _demoted = True;
-            break;
+        } else {
+            _owner = self._resolve_method_owner(type_name, method_name);
+            if _owner is not None
+            and f"{_owner}.{method_name}" in self._native_skipped_methods {
+                _demoted = True;
+            }
         }
     }
     if func is None {
@@ -1666,14 +1658,7 @@ impl NaIRGenPass._emit_obj_str(val: ir.Value) -> (ir.Value | None) {
         return None;
     }
 
-    func = None;
-    for check_name in self._mro_of(type_name) {
-        cand = f"{check_name}.__str__";
-        if cand in self.method_funcs {
-            func = self.method_funcs[cand];
-            break;
-        }
-    }
+    func = self._resolve_method(type_name, "__str__");
 
     i8p = ir.IntType(8).as_pointer();
     is_null = self.builder.icmp_unsigned(
