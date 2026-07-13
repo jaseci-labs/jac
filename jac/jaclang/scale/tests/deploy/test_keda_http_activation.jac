@@ -343,19 +343,14 @@ test "apply_http_activation accepts a StatefulSet target without raising" {
     assert result == True;
 }
 
-test "apply_http_activation warns but still proceeds for an unrecognized scale_target_kind" {
+test "apply_http_activation raises for an unrecognized scale_target_kind when scale_target_plural is unset" {
     KEDAAutoscaler._http_preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};
-    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
     mock_apps = unittest.mock.MagicMock();
     mock_core = unittest.mock.MagicMock();
-    mock_logger = unittest.mock.MagicMock();
     keda = KEDAAutoscaler(
-        _custom_api=mock_api,
-        _apps_api=mock_apps,
-        _core_api=mock_core,
-        logger=mock_logger
+        _custom_api=mock_api, _apps_api=mock_apps, _core_api=mock_core
     );
     spec = HTTPActivationSpec(
         name="preview",
@@ -365,14 +360,20 @@ test "apply_http_activation warns but still proceeds for an unrecognized scale_t
         target=HTTPServiceTarget(service="preview-svc", port=8080),
         concurrency=HTTPConcurrencyMetric(target_value=10)
     );
-    result = keda.apply_http_activation(spec);
-    assert result == True;
+    raised = False;
+    error_msg = "";
+    try {
+        keda.apply_http_activation(spec);
+    } except ValueError as e {
+        raised = True;
+        error_msg = str(e);
+    }
+    assert raised , "Expected ValueError when scale_target_kind is unrecognized and scale_target_plural is unset";
+    assert "Rollout" in error_msg;
+    assert "scale_target_plural" in error_msg;
     mock_apps.read_namespaced_deployment.assert_not_called();
     mock_apps.read_namespaced_stateful_set.assert_not_called();
-    mock_logger.warn.assert_called_once();
-    warn_msg = mock_logger.warn.call_args[0][0];
-    assert "Rollout" in warn_msg;
-    assert "preview-rollout" in warn_msg;
+    mock_api.create_namespaced_custom_object.assert_not_called();
 }
 
 test "apply_http_activation validates a custom target when scale_target_plural is set" {

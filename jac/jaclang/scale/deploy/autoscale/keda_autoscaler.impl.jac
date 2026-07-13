@@ -382,16 +382,13 @@ impl KEDAAutoscaler.apply_http_activation{
                 name=spec.scale_target_name
             );
         } else {
-            if self.logger {
-                self.logger.warn(
-                    "HTTP activation cannot verify scale_target_kind="
-                    f"'{spec.scale_target_kind}' exists before apply; set "
-                    "scale_target_plural to enable validation for custom "
-                    f"resources. Ensure '{spec.scale_target_name}' exists in "
-                    f"namespace '{spec.namespace}' before relying on this "
-                    "activation."
-                );
-            }
+            raise ValueError(
+                f"Cannot verify scale_target_kind='{spec.scale_target_kind}' "
+                f"exists before apply. Set scale_target_plural on "
+                f"HTTPActivationSpec to enable validation for this custom "
+                f"resource, or use scale_target_kind='Deployment' or "
+                f"'StatefulSet'."
+            );
         }
     } except ApiException as e {
         if e.status == 404 {
