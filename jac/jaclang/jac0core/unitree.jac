@@ -90,7 +90,9 @@ obj Symbol {
         imported: bool by postinit,
         semstr: str by postinit,
         ownership: OwnershipKind = OwnershipKind.NONE,
-        param_rebound: bool = False;
+        param_rebound: bool = False,
+        na_escapes: bool = False,
+        na_stack_ok: bool = False;
 
     def init(
         defn: NameAtom,

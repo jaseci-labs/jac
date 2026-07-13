@@ -808,6 +808,19 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self._self_arch = saved_self_arch;
 }
 
+impl NaIRGenPass._stack_alloc_target_ok(nd: uni.UniNode) -> bool {
+    p = nd.parent;
+    if not isinstance(p, uni.Assignment) or p.aug_op is not None or p.value is not nd {
+        return False;
+    }
+    targets = p.target if isinstance(p.target, (list, tuple)) else [(p.target)];
+    if len(targets) != 1 or not isinstance(targets[0], uni.Name) {
+        return False;
+    }
+    sym = targets[0].sym;
+    return sym is not None and sym.na_stack_ok;
+}
+
 impl NaIRGenPass._codegen_instantiation(
     nd: (uni.FuncCall | uni.Name)
 ) -> (ir.Value | None) {
@@ -820,7 +833,49 @@ impl NaIRGenPass._codegen_instantiation(
     struct_ptr_type = struct_type.as_pointer();
 
     _vt_struct = type_name in self.clib_vtable_structs;
-    if _vt_struct {
+    _stack_ok = (
+        not _vt_struct
+        and self._stack_alloc_target_ok(nd)
+        and self._arch_is_acyclic(type_name)
+        and not self._struct_has_ref_fields(type_name)
+        and not self._arch_has_vtable(type_name)
+    );
+    if _stack_ok {
+        _i8 = ir.IntType(8);
+        _i32s = ir.IntType(32);
+        _i64s = ir.IntType(64);
+        _hdr_arr = ir.ArrayType(_i8, HDR_TOTAL);
+        _slab_ty = ir.LiteralStructType([_hdr_arr, struct_type]);
+        _slab = self._entry_alloca(_slab_ty, f"stk.{type_name}");
+        obj_ptr = self.builder.gep(
+            _slab, [ir.Constant(_i32s, 0), ir.Constant(_i32s, 1)], name="stk.obj"
+        );
+        _stk_i8 = self.builder.bitcast(obj_ptr, _i8.as_pointer(), name="stk.i8");
+        _stk_rc_slot = self.builder.gep(
+            _stk_i8, [ir.Constant(_i64s, HDR_RC_OFF)], name="stk.rc.slot"
+        );
+        self.builder.store(
+            ir.Constant(_i64s, RC_SENTINEL),
+            self.builder.bitcast(_stk_rc_slot, _i64s.as_pointer(), name="stk.rc.p")
+        );
+        _stk_dtor_slot = self.builder.gep(
+            _stk_i8, [ir.Constant(_i64s, HDR_DTOR_OFF)], name="stk.dtor.slot"
+        );
+        self.builder.store(
+            ir.Constant(_i64s, 0),
+            self.builder.bitcast(_stk_dtor_slot, _i64s.as_pointer(), name="stk.dtor.p")
+        );
+        _stk_aid_slot = self.builder.gep(
+            _stk_i8, [ir.Constant(_i64s, HDR_ALLOC_ID_OFF)], name="stk.aid.slot"
+        );
+        self.builder.store(
+            ir.Constant(_i64s, 0),
+            self.builder.bitcast(_stk_aid_slot, _i64s.as_pointer(), name="stk.aid.p")
+        );
+        if self.rc_set_type_fn is not None {
+            self._emit_set_type_tag(self.builder, _stk_i8, type_name);
+        }
+    } elif _vt_struct {
         obj_ptr = self._clib_alloc_vtable(type_name);
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);

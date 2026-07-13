@@ -242,6 +242,7 @@ obj CodeGenTarget {
         osp_model: (OspModel | None) = None,
         native_compat: bool = False,
         native_viols_reported: bool = False,
+        rc_last_use: dict[int, list[str]] = field(default_factory=`dict),
         layout_registry: any = None,
         _clib_paths: list[str] = field(default_factory=`list),
         _clib_symbol_lib: dict[(str, str)] = field(default_factory=`dict),

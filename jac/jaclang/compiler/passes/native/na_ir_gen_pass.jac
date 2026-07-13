@@ -885,6 +885,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
     def _arch_is_acyclic(arch_name: str) -> bool;
+    def _emit_last_use_releases(stmt: uni.UniNode) -> None;
+    def _stack_alloc_target_ok(nd: uni.UniNode) -> bool;
     def _emit_set_type_tag(b: ir.IRBuilder, ptr_i8: ir.Value, type_name: str) -> None;
     def _emit_magic_check(
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"

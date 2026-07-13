@@ -5,7 +5,143 @@ impl RcFactsPass.postinit -> None {
 impl RcFactsPass.transform(ir_in: uni.Module) -> uni.Module {
     self._stamp_param_rebound(ir_in);
     self._stamp_move_lowerable(ir_in);
+    self._stamp_escapes(ir_in);
+    self._stamp_last_use(ir_in);
     return ir_in;
+}
+
+impl RcFactsPass._enclosing_fn_scope(nd: uni.UniNode) -> (uni.UniNode | None) {
+    cur = nd.parent;
+    while cur is not None {
+        if isinstance(cur, (uni.Ability, uni.LambdaExpr, uni.Test, uni.ModuleCode)) {
+            return cur;
+        }
+        cur = cur.parent;
+    }
+    return None;
+}
+
+impl RcFactsPass._is_param_sym(sym: uni.Symbol) -> bool {
+    for d in sym.defn {
+        if d.find_parent_of_type(uni.ParamVar) is not None {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl RcFactsPass._use_ok_for_stack(nm: uni.Name) -> bool {
+    p = nm.parent;
+    if isinstance(p, uni.AtomTrailer) and p.target is nm {
+        return True;
+    }
+    if isinstance(
+        p,
+        (uni.BinaryExpr, uni.CompareExpr, uni.UnaryExpr, uni.BoolExpr, uni.IfElseExpr)
+    ) {
+        return True;
+    }
+    if isinstance(p, uni.Assignment) {
+        targets = p.target if isinstance(p.target, (list, tuple)) else [(p.target)];
+        for t in targets {
+            if t is nm {
+                return True;
+            }
+        }
+        return False;
+    }
+    if isinstance(p, (uni.IfStmt, uni.WhileStmt)) {
+        return True;
+    }
+    return False;
+}
+
+impl RcFactsPass._stamp_escapes(ir_in: uni.Module) -> None {
+    seen: set[int] = set();
+    for nm in ir_in.get_all_sub_nodes(uni.Name) {
+        sym = nm.sym;
+        if sym is None or id(sym) in seen {
+            continue;
+        }
+        if sym.storage != SymbolStorage.LOCAL or self._is_param_sym(sym) {
+            sym.na_escapes = True;
+            sym.na_stack_ok = False;
+            seen.add(id(sym));
+            continue;
+        }
+        seen.add(id(sym));
+        escapes = False;
+        stack_ok = True;
+        _def_scope = self._enclosing_fn_scope(sym.defn[0]) if sym.defn else None;
+        for u in (list(sym.defn) + list(sym.uses)) {
+            if u.find_parent_of_type(uni.ReturnStmt) is not None {
+                escapes = True;
+                stack_ok = False;
+                break;
+            }
+            if self._enclosing_fn_scope(u) is not _def_scope {
+                escapes = True;
+                stack_ok = False;
+                break;
+            }
+            if stack_ok and not self._use_ok_for_stack(u) {
+                stack_ok = False;
+            }
+        }
+        sym.na_escapes = escapes;
+        sym.na_stack_ok = stack_ok and not escapes;
+    }
+}
+
+impl RcFactsPass._stamp_last_use(ir_in: uni.Module) -> None {
+    last_use: dict[int, dict] = {};
+    bodies: list = [];
+    for ab in ir_in.get_all_sub_nodes(uni.Ability) {
+        if isinstance(ab.signature, uni.FuncSignature)
+        and isinstance(ab.body, (list, tuple)) {
+            bodies.append((ab, ab.body));
+        }
+    }
+    for mc in ir_in.get_all_sub_nodes(uni.ModuleCode) {
+        if isinstance(mc.body, (list, tuple)) {
+            bodies.append((mc, mc.body));
+        }
+    }
+    out: dict[int, list[str]] = {};
+    for (owner, body) in bodies {
+        sym_last: dict[int, tuple] = {};
+        for (idx, stmt) in enumerate(body) {
+            for nm in stmt.get_all_sub_nodes(uni.Name) {
+                sym = nm.sym;
+                if sym is None
+                or sym.storage != SymbolStorage.LOCAL
+                or sym.na_escapes
+                or self._is_param_sym(sym)
+                or nm.sym_name == "self" {
+                    continue;
+                }
+                if self._enclosing_fn_scope(nm) is not owner {
+                    continue;
+                }
+                sym_last[id(sym)] = (idx, nm.sym_name);
+            }
+        }
+        by_stmt: dict[int, list[str]] = {};
+        for (_, entry) in sym_last.items() {
+            (idx, name) = entry;
+            key = id(body[idx]);
+            if key not in by_stmt {
+                by_stmt[key] = [];
+            }
+            if name not in by_stmt[key] {
+                by_stmt[key].append(name);
+            }
+        }
+        for (k, v) in by_stmt.items() {
+            out[k] = v;
+        }
+    }
+    ir_in.gen.rc_last_use = out;
 }
 
 impl RcFactsPass._stamp_param_rebound(ir_in: uni.Module) -> None {

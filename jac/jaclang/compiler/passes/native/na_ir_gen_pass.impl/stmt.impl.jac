@@ -21,6 +21,7 @@ impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
             }
         }
         self._codegen_stmt(stmt);
+        self._emit_last_use_releases(stmt);
 
         if _di_blk_snap is not None and _di_line_snap > 0 {
             try {
@@ -43,6 +44,36 @@ impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
                 }
             } except Exception { }
         }
+    }
+}
+
+impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
+    _map = self.ir_in.gen.rc_last_use;
+    if not _map {
+        return;
+    }
+    names = _map.get(id(stmt));
+    if not names {
+        return;
+    }
+    if self._builder is None or self.builder.block.is_terminated {
+        return;
+    }
+    for name in names {
+        if name == "self" or name in self.param_vars {
+            continue;
+        }
+        alloca = self.local_vars.get(name);
+        if alloca is None {
+            continue;
+        }
+        slot_ty = alloca.type?.pointee;
+        if not (isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee) {
+            continue;
+        }
+        val = self.builder.load(alloca, name=f"lu.{name}");
+        self._emit_rc_release_typed(val, op="last_use", loc="");
+        self.builder.store(ir.Constant(slot_ty, None), alloca);
     }
 }
 

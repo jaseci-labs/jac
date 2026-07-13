@@ -74,6 +74,11 @@ obj RcFactsPass(Transform[uni.Module, uni.Module]) {
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _stamp_param_rebound(ir_in: uni.Module) -> None;
+    def _stamp_escapes(ir_in: uni.Module) -> None;
+    def _use_ok_for_stack(nm: uni.Name) -> bool;
+    def _enclosing_fn_scope(nd: uni.UniNode) -> (uni.UniNode | None);
+    def _is_param_sym(sym: uni.Symbol) -> bool;
+    def _stamp_last_use(ir_in: uni.Module) -> None;
     def _param_plainly_rebound(sym: uni.Symbol) -> bool;
     def _stamp_move_lowerable(ir_in: uni.Module) -> None;
     def _cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None);
