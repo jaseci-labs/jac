@@ -84,6 +84,12 @@ impl RcFactsPass._stamp_escapes(ir_in: uni.Module) -> None {
                 stack_ok = False;
                 break;
             }
+
+            if u.find_parent_of_type(uni.FuncCall) is not None {
+                escapes = True;
+                stack_ok = False;
+                break;
+            }
             if stack_ok and not self._use_ok_for_stack(u) {
                 stack_ok = False;
             }
