@@ -330,6 +330,67 @@ impl gen_jir_registry(verify: bool = False) -> int {
     return 0;
 }
 
+impl gen_cli_dispatch(verify: bool = False) -> int {
+    import from jaclang.cli.gen_cli_dispatch { generate }
+    import from pathlib { Path }
+    import tempfile;
+    import subprocess;
+    import sys;
+    import os;
+    import jaclang;
+
+    dispatch_path = Path(jaclang.__file__).parent / "cli" / "command_dispatch.jac";
+
+    try {
+        content = generate();
+    } except Exception as e {
+        console.error(f"Failed to generate dispatch: {e}");
+        return 1;
+    }
+
+    try {
+        with tempfile.TemporaryDirectory() as fmt_dir {
+            tmp_path = os.path.join(fmt_dir, "command_dispatch.jac");
+            with open(tmp_path, 'w', encoding='utf-8') as tmp {
+                tmp.write(content);
+            }
+            with open(
+                os.path.join(fmt_dir, "jac.toml"), 'w', encoding='utf-8'
+            ) as cfg {
+                cfg.write("[check.lint]\nselect = [\"all\"]\n");
+            }
+            subprocess.run(
+                [sys.executable, '-m', 'jaclang', 'fmt', '--lintfix', tmp_path],
+                capture_output=True,
+                cwd=fmt_dir
+            );
+            content = Path(tmp_path).read_text(encoding="utf-8");
+        }
+    } except Exception {
+        ;
+    }
+
+    if verify {
+        current = dispatch_path.read_text(encoding="utf-8")
+            if dispatch_path.exists()
+            else "";
+        if current == content {
+            console.print("command_dispatch.jac is up to date.");
+            return 0;
+        } else {
+            console.error(
+                "command_dispatch.jac is OUT OF DATE. "
+                "Run `jac gen-cli-dispatch` to update."
+            );
+            return 1;
+        }
+    }
+
+    dispatch_path.write_text(content);
+    console.print(f"Generated {dispatch_path} ({len(content)} bytes)");
+    return 0;
+}
+
 impl gen_uni_dispatch(verify: bool = False) -> int {
     import from jaclang.jac0core.gen_uni_dispatch { write_all, verify_all }
     if verify {

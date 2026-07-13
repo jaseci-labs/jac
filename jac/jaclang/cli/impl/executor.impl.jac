@@ -27,21 +27,13 @@ impl CommandExecutor.execute(
 
 impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int {
     import from jaclang.cli.command { CommandSpec }
-    if spec.handler is None {
+    import from jaclang.cli.command_dispatch { dispatch_command }
+
+    (handled, result) = dispatch_command(spec.name, args);
+    if not handled {
         console.error(f"No handler registered for command '{spec.name}'");
         return 1;
     }
-
-    forward: set = {"args"};
-    for arg in spec.get_all_args() {
-        forward.add(arg.dest or arg.name.replace("-", "_"));
-    }
-    filtered_args = {
-        k: v
-        for (k, v) in args.items()
-        if k in forward
-    };
-    result = spec.handler(**filtered_args);
 
     if result is None {
         return 0;

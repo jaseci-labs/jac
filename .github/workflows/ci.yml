@@ -348,6 +348,10 @@ jobs:
         run: |
           jac gen-jir-registry --verify
 
+      - name: Verify command_dispatch.jac is up to date
+        run: |
+          jac gen-cli-dispatch --verify
+
       - name: Run jac check (using .jacignore)
         run: |
           set -euo pipefail

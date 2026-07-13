@@ -191,3 +191,26 @@ def gen_jir_registry(verify: bool = False) -> int;
     group="tools"
 )
 def gen_uni_dispatch(verify: bool = False) -> int;
+
+@registry.command(
+    name="gen-cli-dispatch",
+    hidden=True,
+    help="Regenerate command_dispatch.jac from the registered CLI commands",
+    args=[
+        Arg.create(
+            "verify",
+            typ=ArgType.BOOL,
+            default=False,
+            help="Check that command_dispatch.jac is up to date; exit 1 if not",
+            short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac gen-cli-dispatch", "Regenerate command_dispatch.jac"),
+        ("jac gen-cli-dispatch --verify", "Check dispatch is up to date (for CI)"),
+
+    ],
+    group="tools"
+)
+def gen_cli_dispatch(verify: bool = False) -> int;
