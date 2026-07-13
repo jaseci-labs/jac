@@ -34,7 +34,9 @@ obj VarInfo(Info) {
     has type_info: (ClassInfo | str | tuple | None) = None;
 }
 
-obj ParamInfo(VarInfo) {}
+obj ParamInfo(VarInfo) {
+    has has_default: bool = False;
+}
 
 obj FieldInfo(VarInfo) {}
 

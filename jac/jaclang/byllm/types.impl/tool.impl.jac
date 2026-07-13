@@ -59,9 +59,13 @@ impl Tool.make_finish_tool(resp_type: type) -> Tool {
         try {
             return TypeAdapter(resp_type).validate_python(final_output);
         } except Exception as e {
-            raise FinishToolError(
+            err = FinishToolError(
                 f"finish_tool output does not match expected type '{resp_type.__name__}': {e}"
             );
+            err.raw_output = str(
+                final_output
+            );  # feeds the typed-retry correction prompt
+            raise err;
         }
     }
     finish_tool.__annotations__["return"] = resp_type;
@@ -70,12 +74,13 @@ impl Tool.make_finish_tool(resp_type: type) -> Tool {
         func=finish_tool,
         description="This tool is used to finish the tool calls and return the final output.",
         params_desc={"final_output": "The final output of the tool calls.",},
+        is_terminal=True,
     );
 }
 
-"""Check if the tool is a finish tool."""
+"""True if the tool ends the ReAct loop (flagged terminal or the reserved name)."""
 impl Tool.is_finish_tool -> bool {
-    return self.get_name() == "finish_tool";
+    return self.is_terminal or self.get_name() == "finish_tool";
 }
 
 """Return the JSON schema for the tool function."""

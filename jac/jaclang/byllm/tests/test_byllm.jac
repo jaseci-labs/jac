@@ -781,6 +781,207 @@ test "output conversion error on wrong json structure" {
     assert raised , "Expected OutputConversionError for structurally wrong JSON";
 }
 
+# --- structured output field handling --------------------------------------
+# Fields the type does not declare are dropped (pydantic default): the required data is
+# present, so the typed object is built and re-prompting is avoided. The raw response is
+# still visible in the LiteLLM log. Missing/wrong required fields still raise and retry.
+# Leaf coercion ("30" to 30) stays lenient. These call parse_response directly.
+glob _TestAddress = dataclasses.make_dataclass("Address", [("city", str)]),
+     _TestPersonWithAddr = dataclasses.make_dataclass(
+         "PersonWithAddr", [("name", str), ("address", _TestAddress)]
+     );
+
+test "structured output drops undeclared top-level fields" {
+    mt_run = MTRuntime(
+        messages=[],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    person = mt_run.parse_response(
+        "{\"name\": \"Alice\", \"age\": 30, \"hobby\": \"chess\"}"
+    );
+    assert person.name == "Alice" and person.age == 30 , "declared fields must be kept";
+    assert not hasattr(person, "hobby") , "an undeclared field must be dropped, not attached";
+}
+
+test "structured output drops undeclared nested fields" {
+    mt_run = MTRuntime(
+        messages=[],
+        resp_type=_TestPersonWithAddr,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    # The extra field is inside a nested dataclass; it too is dropped.
+    person = mt_run.parse_response(
+        "{\"name\": \"Alice\", \"address\": {\"city\": \"NYC\", \"zip\": \"10001\"}}"
+    );
+    assert person.address.city == "NYC" , "declared nested fields must be kept";
+    assert not hasattr(person.address, "zip") , "an undeclared nested field must be dropped";
+}
+
+test "structured output coerces leaves and accepts an exact match" {
+    mt_run = MTRuntime(
+        messages=[],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    # "30" -> 30 leaf coercion stays lenient.
+    person = mt_run.parse_response("{\"name\": \"Alice\", \"age\": \"30\"}");
+    assert person.name == "Alice" and person.age == 30 , "exact-shape response should validate (with leaf coercion)";
+}
+
+test "structured output raises on a missing required field" {
+    mt_run = MTRuntime(
+        messages=[],
+        resp_type=_TestPerson,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    # Missing `age` is a real failure -> raises (this drives the typed-retry loop).
+    raised = False;
+    try {
+        mt_run.parse_response("{\"name\": \"Alice\"}");
+    } except OutputConversionError {
+        raised = True;
+    }
+    assert raised , "a missing required field must raise, not be silently accepted";
+}
+
+test "finish_tool validation error carries raw_output for retry feedback" {
+    # The tools/ReAct path validates the model's finish_tool output. A mismatch
+    # raises FinishToolError; the typed-retry loop treats it like a parse failure,
+    # so it must carry raw_output (echoed back in the correction prompt).
+    finish = Tool.make_finish_tool(_TestPerson);
+    raised = False;
+    try {
+        finish(final_output={"name": "Alice"});  # missing required `age`
+    } except FinishToolError as e {
+        raised = True;
+        assert "Person" in str(e) , f"error should name the target type, got '{e}'";
+        assert e?.raw_output is not None , "FinishToolError must set raw_output";
+        assert "Alice" in e.raw_output , f"raw_output should echo the model's output, got '{e.raw_output}'";
+    }
+    assert raised , "invalid finish_tool output should raise FinishToolError";
+}
+
+# --- terminal tool (finish_tool=) ------------------------------------------
+test "a terminal-flagged tool is detected as the loop terminator" {
+    # finish_tool= flags the Tool instance (is_terminal); is_finish_tool honors it.
+    def my_finish(answer: str) -> str {
+        return answer;
+    }
+    def plain(x: int) -> int {
+        return x;
+    }
+    assert Tool(my_finish, is_terminal=True).is_finish_tool() , "a terminal-flagged tool must be terminal";
+    assert not Tool(plain).is_finish_tool() , "an ordinary tool must not be terminal";
+    # byllm's injected finish_tool is terminal by construction.
+    assert Tool.make_finish_tool(_TestPerson).is_finish_tool() , "injected finish_tool must be terminal";
+}
+
+test "tool schema omits params that have defaults from required" {
+    # A defaulted param is optional -> the model may omit it (no forced filler).
+    def finish(answer: str = "") -> str {
+        return answer;
+    }
+    def both(required_arg: str, optional_arg: int = 0) -> str {
+        return required_arg;
+    }
+    required = Tool(finish).get_json_schema()["function"]["parameters"]["required"];
+    assert "answer" not in required , f"a defaulted param must be omittable, got required={required}";
+
+    required2 = Tool(both).get_json_schema()["function"]["parameters"]["required"];
+    assert "required_arg" in required2 , "a param without a default must stay required";
+    assert "optional_arg" not in required2 , f"a defaulted param must be omittable, got required={required2}";
+}
+
+test "terminal tool ends the loop and returns its output" {
+    mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
+    # The model calls a worker then the terminal tool; the loop ends and returns
+    # the terminal tool's output.
+    assert mod.run_agent("go") == "done" , "designated terminal tool should end the loop with its output";
+    # The tool instruction must name the DESIGNATED terminal ("finish"), not the generic
+    # "finish_tool" that isn't in the schema.
+    sysprompt = str(mod.term_llm.seen_prompts[0]);
+    assert "finish(output)" in sysprompt , f"instruction should name the designated terminal, got: {sysprompt}";
+    assert "finish_tool(output)" not in sysprompt , "instruction must not reference the generic finish_tool when one is designated";
+}
+
+test "get_terminal_tool prefers the designated terminal over a name-only match" {
+    # A user tool coincidentally named "finish_tool" (is_terminal False) must not shadow
+    # the caller-designated terminal, even when it appears first in the list.
+    def finish_tool(x: str) -> str {
+        return x;
+    }
+    def realfinish(answer: str) -> str {
+        return answer;
+    }
+    name_only = Tool(finish_tool);
+    designated = Tool(realfinish, is_terminal=True);
+    mt_run = MTRuntime(
+        messages=[],
+        resp_type=str,
+        stream=False,
+        tools=[name_only, designated],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    term = mt_run.get_terminal_tool();
+    assert term is not None , "a terminal tool should be found";
+    assert term.get_name() == "realfinish" , f"should return the flagged terminal, got {term.get_name()}";
+}
+
+test "designated terminal forces recovery on a natural exit" {
+    mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
+    # The model stops without calling finish (plain text). Because a terminal tool is
+    # designated, byllm re-prompts once to force it; the recovery turn calls finish.
+    assert mod.run_agent_recover("go") == "forced" , "a designated terminal must be enforced on natural exit";
+}
+
+test "plain str agent answers in text without forced recovery" {
+    mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
+    # No designated terminal + str return: a plain text answer is a valid ending, so
+    # the loop does not force an extra turn (only two outputs are consumed).
+    assert mod.run_plain("go") == "plain answer" , "a str agent may answer in text when no terminal is designated";
+}
+
+test "terminal tool body executes once and ends the loop" {
+    mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
+    # The finish call is reached through both ToolCall.__call__ (history message) and
+    # get_output (return value); pre-fix both executed the body, running it twice. The
+    # fixture also queues a third "trap" output that byllm must never dispatch to. So a
+    # single `finish_body_runs == 1` proves BOTH: no double-execution, and the loop ended
+    # on the finish call instead of advancing to the trap turn.
+    result = mod.run_agent_recorded("go");
+    assert result == "once" , f"terminal tool should return its output, got {result}";
+    assert len(mod.finish_body_runs) == 1 , f"finish body must execute once (ran {len(
+        mod.finish_body_runs
+    )}x)";
+    # The trap output must remain unconsumed: byllm made exactly two LLM calls (lookup, finish).
+    assert len(mod.dbl_call_llm.seen_prompts) == 2 , f"byllm must stop at the finish call (made {len(
+        mod.dbl_call_llm.seen_prompts
+    )} calls)";
+}
+
+test "finish_tool= handles a function already in tools without mutating it" {
+    mod = jac_import("llm_terminal_tool", base_path=FIXTURE_DIR + "/")[0];
+    # finish is in both tools=[...] and finish_tool=: the factory re-wraps it as terminal.
+    assert mod.run_agent_dup("go") == "dup" , "re-wrapped terminal should still end the loop with its output";
+    # The designation is call-scoped: it must NOT globally mark the function terminal, so a
+    # fresh Tool wrapping the same function elsewhere is not treated as a loop terminator.
+    assert not Tool(mod.finish).is_finish_tool() , "finish_tool= must not leak is_terminal onto the function";
+}
+
 test "output conversion error not raised for str return type" {
     # parse_response should pass through raw strings without attempting conversion
     mt_run = MTRuntime(

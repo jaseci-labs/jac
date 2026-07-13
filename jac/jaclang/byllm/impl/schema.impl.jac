@@ -268,6 +268,8 @@ impl _type_to_schema(
         # exist, so iterate those and decorate with the MTIR semstring where
         # the names line up - a mismatch between hints and info (e.g. a stale
         # or mis-assigned info) must not crash schema generation.
+        # A param with a default is optional, so it is omitted from `required` (else the
+        # model is forced to supply, and pads, values like `finish(answer: str = "")`).
         if info and info?.params and info.params {
             sem_by_name = {p.name: p for p in info.params};
             params = {
@@ -278,19 +280,37 @@ impl _type_to_schema(
                     info=sem_by_name.get(param_name)
                 ) for (param_name, param_type) in hints.items()
             };
+            # MTIR records default presence statically (ParamInfo.has_default).
+            required_names = [
+                pname
+                for pname in params.keys()
+                if not (pname in sem_by_name and sem_by_name[pname].has_default)
+            ];
         } else {
-            # Fall back to introspecting the function's type hints
+            # No MTIR (Python library mode): introspect the function's hints and defaults.
             params = {
                 param_name: _type_to_schema(param_type, param_name)
                 for (param_name, param_type) in hints.items()
             };
+            required_names = list(params.keys());
+            try {
+                sig = inspect.signature(ty);
+                required_names = [
+                    pname
+                    for pname in params.keys()
+                    if pname not in sig.parameters
+                    or sig.parameters[pname].default is inspect.Parameter.empty
+                ];
+            } except (ValueError, TypeError) {
+                required_names = list(params.keys());
+            }
         }
         return {
             "title": title or ty.__name__,
             "type": "function",
             "description": semstr,
             "properties": params,
-            "required": list(params.keys()),
+            "required": required_names,
             "additionalProperties": False,
 
         };
@@ -422,7 +442,13 @@ impl tool_to_schema(
     };
 }
 
-"""Convert a JSON dictionary to an instance of the given type."""
+"""Convert a JSON dictionary to an instance of the given type.
+
+Fields the type does not declare are dropped (pydantic's default): the required data
+is present and correct, so re-prompting could only cost a round trip or make it worse.
+The raw response with the extra fields stays visible in the LiteLLM call log. Missing or
+wrong-typed required fields still raise (ValidationError) and drive the typed-retry loop.
+"""
 impl json_to_instance(json_obj: dict, ty: type) -> object {
     json_obj = _unwrap_from_object(json_obj);
     json_obj = _decode_dict(json_obj);

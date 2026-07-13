@@ -4,6 +4,7 @@ This module provides functionality to generate JSON schemas for classes and type
 and to validate instances against these schemas.
 """
 
+import inspect;
 import from dataclasses { is_dataclass }
 import from enum { Enum }
 import from types { FunctionType, MethodType, UnionType }
