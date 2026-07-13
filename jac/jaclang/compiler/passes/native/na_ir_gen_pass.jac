@@ -123,8 +123,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         static_methods: dict[str, bool] = {},
         static_fields: dict[str, object] = {},
         static_field_types: dict[str, object] = {},
-        func_ret_tuple_hints: dict[str, list] = {},
-        func_ret_ann_name: dict[str, str] = {},
+        func_ret_type_key: dict[str, str] = {},
+        func_ret_elem_keys: dict[str, list] = {},
         list_types: dict[str, object] = {},
         list_helpers: dict[str, dict] = {},
         var_list_elem_struct: dict[str, object] = {},
@@ -799,8 +799,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _llvm_type_str(ty: ir.Type) -> str;
     def _export_native_layout -> None;
-    def _extract_tuple_struct_hints(type_node: object) -> list;
-    def _extract_elem_struct_hint(type_node: object) -> (str | None);
+    def _normalize_type_key(key: str) -> str;
+    def _record_ret_facts(name: str, sig: uni.FuncSignature) -> None;
+    def _ret_tuple_hints(fname: str, ret_tuple: any) -> (list | None);
     def _ensure_emitters -> None;
     def _primitive_method_names(type_name: str) -> set[str];
     def _dispatch_primitive_method(

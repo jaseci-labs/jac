@@ -45,22 +45,69 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
 
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
 
-    if sig.return_type is not None {
-        hints = self._extract_tuple_struct_hints(sig.return_type);
-        if hints {
-            self.func_ret_tuple_hints[name] = hints;
-        }
-        _rt = sig.return_type;
+    self._record_ret_facts(name, sig);
+    self.has_native_code = True;
+}
 
-        if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
-            _rt = _rt.left;
-        }
-        _rname = self._get_name(_rt);
-        if _rname is not None {
-            self.func_ret_ann_name[name] = _rname;
+impl NaIRGenPass._normalize_type_key(key: str) -> str {
+    if key.startswith("type[") and key.endswith("]") {
+        key = key[5:-1];
+    }
+    if " | " in key {
+        for part in key.split(" | ") {
+            _p = part.strip();
+            if _p.startswith("type[") and _p.endswith("]") {
+                _p = _p[5:-1];
+            }
+            if _p not in ("None", "NoneType") {
+                return _p;
+            }
         }
     }
-    self.has_native_code = True;
+    return key;
+}
+
+impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
+    _rt = sig.return_type;
+    if _rt is None {
+        return;
+    }
+    if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
+        _rt = _rt.left;
+    }
+    _rtb = _rt?.type;
+    if _rtb is not None {
+        try {
+            self.func_ret_type_key[name] = self._normalize_type_key(_rtb.mangle());
+        } except Exception { }
+    }
+    elems: list = [];
+    if isinstance(_rt, uni.TupleVal) {
+        elems = list(_rt.values or []);
+    } elif _rt?.right and _rt.right?.slices {
+        for s in (_rt.right.slices or []) {
+            inner = s.start if s?.start else s;
+            if isinstance(inner, uni.TupleVal) {
+                elems.extend(list(inner.values or []));
+            } else {
+                elems.append(inner);
+            }
+        }
+    }
+    if elems {
+        keys: list = [];
+        for e in elems {
+            _ek: (str | None) = None;
+            _etb = e?.type if isinstance(e, uni.Expr) else None;
+            if _etb is not None {
+                try {
+                    _ek = self._normalize_type_key(_etb.mangle());
+                } except Exception { }
+            }
+            keys.append(_ek);
+        }
+        self.func_ret_elem_keys[name] = keys;
+    }
 }
 
 impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
