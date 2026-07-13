@@ -924,20 +924,20 @@ impl Module.unparse(requires_format: bool = True) -> str {
     import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
     import from jaclang.jac0core.program { JacProgram }
 
-    own = self.loc.mod_path;
+    own_path = self.loc.mod_path;
     saved_body = self.body;
     saved_kid = self.kid;
     head_kid = [
         k
         for k in saved_kid
-        if (not k.loc.mod_path) or (k.loc.mod_path == own)
+        if (not k.loc.mod_path) or (k.loc.mod_path == own_path)
     ];
     filtered = len(head_kid) != len(saved_kid);
     if filtered {
         self.body = [
             st
             for st in saved_body
-            if (not st.loc.mod_path) or (st.loc.mod_path == own)
+            if (not st.loc.mod_path) or (st.loc.mod_path == own_path)
         ];
         self.set_kids(nodes=head_kid or [EmptyToken()]);
     }
@@ -1613,6 +1613,14 @@ impl TypedCtxBlock.postinit -> None {
 }
 
 
+impl RegionStmt.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl IfStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1830,6 +1838,24 @@ impl LambdaExpr.postinit -> None {
 
 impl LambdaExpr.captures.getter -> list[Symbol] {
     return self.get_enclosing_captures();
+}
+
+impl LambdaExpr.tail_return_expr -> Expr | None {
+    """Implicit return: a braced body consisting of a single expression
+    statement returns that expression's value. Any other body (multiple
+    statements, or a non-expression statement) uses an explicit `return`.""";
+    if not (isinstance(self.body, Sequence) and not isinstance(self.body, Expr)) {
+        return None;
+    }
+    stmts = [
+        s
+        for s in self.body
+        if not isinstance(s, Semi)
+    ];
+    if (len(stmts) == 1 and isinstance(stmts[0], ExprStmt)) {
+        return stmts[0].expr;
+    }
+    return None;
 }
 
 

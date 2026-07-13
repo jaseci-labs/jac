@@ -1,119 +1,75 @@
-import logging;
+"""WebSocket connection management for Jac Scale.
+
+Tracks live connections per target and per user, enforces connection caps and
+per-send timeouts, and fans broadcasts out through a pluggable backplane so
+they reach every worker.
+"""
 import asyncio;
+import logging;
+import time;
+import uuid;
+import from asyncio { Lock }
 import from fastapi { WebSocket, WebSocketDisconnect }
 import from inspect { isgenerator }
+import from jaclang.scale.websocket.backplane { BaseBackplane, MemoryBackplane }
 
 glob logger = logging.getLogger(__name__),
      _WS_STREAM_STOP: any = object();
 
+"""Per-connection state: identity, auth expiry, rate-limit bucket, heartbeat."""
+obj ConnectionContext {
+    has websocket: WebSocket,
+        target_kind: str,
+        target_name: str,
+        conn_id: str = uuid.uuid4().hex,
+        user_id: (str | None) = None,
+        exp: (float | None) = None,
+        rate_tokens: float = 0.0,
+        rate_last_refill: float = time.monotonic(),
+        last_seen: float = time.monotonic(),
+        closed: bool = False;
+}
+
+"""Connection manager: tracks active WS contexts per (kind:name) and per user."""
 obj WebSocketConnectionManager {
-    has _active_connections: dict[str, list[WebSocket]] = {};
+    has _by_target: dict[str, dict[str, ConnectionContext]] = {},
+        _by_user: dict[str, int] = {},
+        _anon_by_target: dict[str, int] = {},
+        _lock: (Lock | None) = None,
+        _sub_lock: (Lock | None) = None,
+        max_per_target: int = 5000,
+        max_per_user: int = 10,
+        max_anonymous_per_target: int = 100,
+        send_timeout: float = 5.0,
+        backplane: (BaseBackplane | None) = None,
+        metrics: any = None,
+        _subscribed: set[str] = set(),
+        _backplane_started: bool = False;
 
-    async def connect(websocket: WebSocket, walker_name: str) {
-        await websocket.accept();
-        if walker_name not in self._active_connections {
-            self._active_connections[walker_name] = [];
-        }
-        self._active_connections[walker_name].append(websocket);
-        logger.info(
-            f"WebSocket connected for walker '{walker_name}'. "
-            f"Active: {len(self._active_connections[walker_name])}"
-        );
-    }
+    def _get_lock -> Lock;
+    def _get_sub_lock -> Lock;
+    def _target_has_connections(target_key: str) -> bool;
+    def _get_backplane -> BaseBackplane;
+    async def ensure_backplane_started -> None;
+    async def shutdown -> None;
+    async def ensure_subscribed(target_key: str) -> None;
+    async def maybe_unsubscribe(target_key: str) -> None;
+    async def _on_backplane_message(channel: str, message: dict) -> None;
+    async def _local_fanout(target_key: str, message: dict) -> None;
+    async def _release_slot(ctx: ConnectionContext) -> None;
+    async def register(ctx: ConnectionContext) -> (str | None);
+    async def unregister(ctx: ConnectionContext) -> None;
+    async def broadcast_target(
+        target_kind: str, target_name: str, message: dict
+    ) -> None;
 
-    def disconnect(websocket: WebSocket, walker_name: str) {
-        if walker_name in self._active_connections {
-            self._active_connections[walker_name] = [
-                ws
-                for ws in self._active_connections[walker_name]
-                if ws != websocket
-            ];
-            logger.info(
-                f"WebSocket disconnected for walker '{walker_name}'. "
-                f"Active: {len(self._active_connections[walker_name])}"
-            );
-        }
-    }
-
-    def get_connections(walker_name: str) -> list[WebSocket] {
-        return self._active_connections.get(walker_name, []);
-    }
-
-    async def broadcast(walker_name: str, message: dict) {
-        for ws in self.get_connections(walker_name) {
-            try {
-                await ws.send_json(message);
-            } except Exception as e {
-                logger.debug(
-                    f"WS broadcast send failed for '{walker_name}'; dropping socket: {e}"
-                );
-                self.disconnect(ws, walker_name);
-            }
-        }
-    }
+    async def send_to(ctx: ConnectionContext, message: dict) -> bool;
 }
 
-"""Advance a synchronous generator one step off the event-loop thread, returning
-the `_WS_STREAM_STOP` sentinel on exhaustion (StopIteration cannot cross an
-executor boundary, so it is converted to a sentinel)."""
-def _ws_stream_next(gen: any) -> any {
-    try {
-        return gen.__next__();
-    } except StopIteration {
-        return _WS_STREAM_STOP;
-    }
-}
+def consume_rate_token(
+    ctx: ConnectionContext, capacity: float, refill_per_sec: float
+) -> bool;
 
-"""Stream a generator target result over the socket as `chunk` frames followed by
-a terminating `done` frame. Mirrors the HTTP SSE frame semantics: synchronous
-generators are advanced in a worker thread so a slow step does not block the
-event loop, and the `done` frame is always sent (carrying the error on failure)
-so a client that reads until `done` never hangs."""
-async def _ws_stream_result(
-    websocket: WebSocket,
-    ws_manager: WebSocketConnectionManager,
-    target_name: str,
-    is_broadcast: bool,
-    result: any
-) {
-    async def emit(frame: dict) {
-        if is_broadcast {
-            await ws_manager.broadcast(target_name, frame);
-        } else {
-            await websocket.send_json(frame);
-        }
-    }
-    stream_error: (str | None) = None;
-    try {
-        if isgenerator(result) {
-            loop = asyncio.get_running_loop();
-            while True {
-                item = await loop.run_in_executor(None, _ws_stream_next, result);
-                if item is _WS_STREAM_STOP {
-                    break;
-                }
-                await emit({'ok': True, 'type': 'chunk', 'data': item});
-            }
-        } else {
-            async for item in result {
-                await emit({'ok': True, 'type': 'chunk', 'data': item});
-            }
-        }
-    } except WebSocketDisconnect {
-        raise;
-    } except Exception as e {
-        logger.error(f"WS stream error for '{target_name}': {e}");
-        stream_error = str(e);
-    }
-    if stream_error is None {
-        await emit({'ok': True, 'type': 'done'});
-    } else {
-        await emit(
-            {
-                'ok': False,
-                'type': 'done',
-                'error': {'code': 'STREAM_ERROR', 'message': stream_error}
-            }
-        );
-    }
-}
+def _ws_stream_next(gen: any) -> any;
+
+async def _ws_stream_result(send_result: any, result: any);

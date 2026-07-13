@@ -149,6 +149,7 @@ obj GrammarExtractPass(UniPass) {
     def _stage_dedup_tokens(rules: list) -> list;
     def _stage_remove_errors(rules: list) -> list;
     def _is_redundant_slot_wrap_recovery(expr: GExpr) -> bool;
+    def _strip_lambda_body_recovery(body: GExpr) -> GExpr;
     def _stage_remove_unreachable(rules: list) -> list;
     def _dedup_parent_child_tokens(expr: GExpr, rule_map: dict) -> GExpr;
     def _collect_refs(body: GExpr) -> set;
