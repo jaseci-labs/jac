@@ -103,22 +103,36 @@ int     jac_str_eq(const char *a, const char *b);
 
 /* --- exceptions (setjmp/longjmp) ----------------------------------------- */
 
-/* Mirrors passes/native/na_ir_gen_pass.impl/exceptions.impl.jac: a stack of
- * setjmp frames plus a "current exception" (type id + payload). A `try` pushes a
- * frame and setjmp()s its env; `raise` sets the current exception and longjmp()s
- * the top frame; a handler matches on type id (with subclass descendants). */
+/* setjmp/longjmp plus landing-pad ownership: each frame records owned RC
+ * pointers introduced while it is current. On throw, every frame between the
+ * raise and the catching handler runs its landing pad (releases owned), then
+ * the catching frame longjmps. Cleanup-only frames (function scopes) have no
+ * setjmp; catching frames do. This is what makes RC compose with exceptions --
+ * without it, longjmp skips scope_release epilogues and leaks. */
+#define JAC_EXC_OWNED_MAX 64
+
 typedef struct jac_exc_frame {
     jmp_buf                env;
     struct jac_exc_frame  *prev;
+    void                  *owned[JAC_EXC_OWNED_MAX];
+    int                    n_owned;
+    int                    catching; /* 1 = setjmp handler; 0 = cleanup-only */
 } jac_exc_frame;
 
-void     jac_exc_push(jac_exc_frame *frame);   /* link frame as the new top      */
-void     jac_exc_pop(void);                    /* unlink the top frame           */
-void     jac_exc_throw(int64_t type_id, void *payload); /* set current + longjmp */
-int64_t  jac_exc_current_type(void);           /* type id of in-flight exception */
+void     jac_exc_push(jac_exc_frame *frame);         /* catching frame           */
+void     jac_exc_push_cleanup(jac_exc_frame *frame); /* function-scope cleanup   */
+void     jac_exc_pop(void);                          /* unlink; no release       */
+void     jac_exc_track(void *p);                     /* record owned on top      */
+void     jac_exc_untrack(void *p);                   /* drop before normal release */
+void     jac_exc_landing_pad(jac_exc_frame *frame);  /* release frame's owned    */
+void     jac_exc_throw(int64_t type_id, void *payload);       /* borrowed payload */
+void     jac_exc_throw_owned(int64_t type_id, void *payload); /* takes RC ownership */
+void     jac_exc_rethrow(void);                      /* continue with current    */
+int64_t  jac_exc_current_type(void);
 void    *jac_exc_current_payload(void);
-void     jac_exc_clear(void);                  /* handler consumed the exception */
-void     jac_exc_rethrow_uncaught(void);       /* no frame left -> print + abort */
+void    *jac_exc_take_payload(void);                 /* clear + transfer ownership */
+void     jac_exc_clear(void);                        /* consume; release if owned */
+void     jac_exc_rethrow_uncaught(void);
 
 #ifdef __cplusplus
 }

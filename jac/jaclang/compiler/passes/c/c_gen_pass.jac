@@ -12,6 +12,7 @@ import from jaclang.compiler.passes.main.ownership_facts_pass {
     OwnershipFacts
 }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+import from jaclang.jac0core.osp_model { stable_osp_tag }
 import from jaclang.compiler.passes.main.type_facts_pass {
     TypeFacts,
     get_shared_type_facts,
@@ -34,6 +35,11 @@ glob C_PRIM_TYPES: dict[str, str] = {
 
 glob C_FIRST_USER_TYPEID: int = 2;
 
+def stable_type_id(name: str) -> int {
+    # Name-derived archetype type id. Never returns reserved RAW/STR (0/1).
+    return C_FIRST_USER_TYPEID + (stable_osp_tag(name) % 0x3FFFFFFD);
+}
+
 obj CGenPass(Transform[uni.Module, uni.Module]) {
     has type_ids: dict[str, int] = {},
         method_owners: dict[str, dict[str, str]] = {},
@@ -50,6 +56,9 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         tmp_ctr: int = 0,
         exc_ctr: int = 0,
         exc_frames: list[str] = [],
+        exc_hoists: list[tuple[str, str]] = [],
+        func_hoists: list[tuple[str, str]] = [],
+        func_cleanup: str = "",
         needs_rt: bool = False,
         layout: LayoutRegistry | None = None,
         facts: OwnershipFacts | None = None,
@@ -102,12 +111,15 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def gen_func(ab: uni.Ability) -> str;
     def gen_block(stmts: object, ind: int) -> str;
     def scope_release_lines(pad: str, skip_name: str) -> list[str];
+    def own_local(name: str, cty: str) -> list[str];
+    def drop_owned(name: str) -> list[str];
     def ref_field_store(st: uni.Assignment, pad: str) -> (str | None);
     def ref_local_copy(st: uni.Assignment, pad: str) -> (str | None);
     def gen_stmt(st: object, ind: int, is_last: bool) -> str;
     def render_stmt(st: object, ind: int, is_last: bool) -> str;
     def gen_for(st: uni.IterForStmt, ind: int) -> str;
     def gen_if(st: uni.IfStmt, ind: int) -> str;
+    def wrap_func_body(body: str) -> str;
     def exc_pop_lines(pad: str) -> list[str];
     def exc_type_name(e: object) -> str;
     def exc_match_cond(et: str, cname: str) -> str;
@@ -119,8 +131,10 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
     def gen_compare_clause(left: object, op_val: str, right: object) -> str;
     def gen_expr(e: object) -> str;
     def gen_call(e: uni.FuncCall) -> str;
+    def gen_value_ctor(e: uni.FuncCall, name: str) -> str;
     def gen_args(e: uni.FuncCall, callee_key: str) -> list[str];
     def emit_arg(p: uni.Expr, callee_key: str, idx: int) -> str;
+    def emit_ability_body(sig: object, body: object, self_type: str) -> str;
     def virtual_call(
         recv_ty: str, mname: str, recv: str, slot: int, args: list[str]
     ) -> str;

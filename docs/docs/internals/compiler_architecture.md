@@ -301,6 +301,74 @@ transitively (matching `discover_import_graph`) rather than indexing only the
 direct imports, so a per-unit's extern decls and type-ids match the
 whole-program picture.
 
+#### Exception landing pads (RC + longjmp)
+
+`jacrt` exceptions are setjmp/longjmp. Normal `scope_release` only runs on
+straight-line exit/return, so a `raise` that longjmps would otherwise skip
+every owned-local release on the interrupted frames. Each `jac_exc_frame`
+therefore records the RC pointers introduced while it is current
+(`jac_exc_track` / `jac_exc_untrack`). On throw the runtime walks the frame
+stack, runs each frame's landing pad (releases its owned pointers), and
+longjmps only once it reaches a catching (`try`) frame. Functions that own
+RC locals also push a cleanup-only frame so a raise out of a callee still
+releases that callee's locals. `CGenPass` hoists try-body owned decls so the
+handler can null them after unwind, and `jac_exc_throw_owned` /
+`jac_exc_clear` give raise payloads a defined ownership. This seam has to
+exist before GOTO_LIFTER turns CPython error ladders into try/finally.
+
+#### c2jac containment + multi-TU provenance
+
+c2jac ingest used to track fidelity per AST site only. That left two gaps:
+
+1. **No containment unit.** A single `__c_unsupported__` hole (or a
+   behavior-changing lowering) turned the whole function into a runtime
+   landmine that still imported cleanly. Fidelity bands now classify every
+   4200-series code as `style`, `behavior`, or `hole`
+   (`compiler/cfront/fidelity.jac`). Style sites (e.g. W4201 cast elided)
+   stay twin-band W/E warnings. Behavior (W4205 volatile, W4206 static-local
+   persistence, fall-through, variadic, …) and hole (W4290) sites
+   **quarantine the containing function**: the signature is kept, the body
+   becomes a single `raise` carrying the diag reason(s), and mid-body
+   surrogates are removed. Clean siblings in the same module stay callable.
+   Module-scope holes (no containing function) still emit `__c_unsupported__`.
+
+2. **TU-shaped ingest vs program-shaped emit.** `jac jac2c` walks the import
+   graph; single-file `jac c2jac` did not. Project mode
+   (`jac tool c2jac --project <dir> -o <outdir>`) indexes defined symbols
+   across every `.c` under the directory, lifts each TU, then wires
+   `import from <stem> { ... }` for foreign calls so lifted modules can call
+   each other (`compiler/cfront/project.jac`). Provenance is machine-readable:
+   each output gets a `<stem>.c2jac.report.json` sidecar (band, line, function,
+   quarantined flag, Tier-B count), plus an aggregate
+   `project.c2jac.report.json`. The human `# c2jac:` comment header remains for
+   stdout; `-o` writes both the `.jac` and its sidecar.
+
+#### LP64 porting libc + lift oracle + stable type ids
+
+c2jac preprocess prefers `compiler/cfront/porting/` (LP64-correct
+`stddef`/`stdint`/`limits` plus `jacport.h`) ahead of pycparser's fake libc.
+Bindgen and lift share `lp64_scalars.jac` so `size_t` / fixed-width names map
+by name to the same widths. Fake libc remains for the long-tail declaration
+surface that the porting tree does not re-state.
+
+Lift behavioral proof is **bytecode vs original C**: `jac run` of lifted Jac
+against `cc` of the original `.c` (+ driver). Fixture TUs compile with
+`-Dmain=__c2jac_fixture_main` so a fixture-defined `main` cannot collide with
+the driver. `char*` / `(un)signed char*` lower as `str` cursors
+(`*p` → `ord(…)`, `p++` → `p[1:]`); scalar `char` and character constants are
+ints. Lift→jac2c→`cc` is a **behavioral** check for C-shaped POD lifts
+(minilib `@__jac_value__` structs re-emit as compound literals and must match
+the original `.c` under `cc`); idiomatic lift output (`list[...]`,
+comprehensions, …) remains outside jac2c's emittable subset and is not grown
+in lockstep on the port critical path. Emit-leg differentials (`emit_support.jac`)
+continue to prove hand-authored C-shaped Jac through jac2c+cc vs the interpreter.
+
+jac2c exception and ref-archetype type ids are **name-hash stable**
+(`exception_type_id` high-band hash with `Exception=0`; `CGenPass.type_ids`
+via `stable_type_id` with reserved 0/1). Whole-program emission remains the
+orchestrator for shared facts/layout; stable ids keep separate/incremental
+re-emission from being foreclosed by discovery-order numbering.
+
 ### The end-state purity contract
 
 The relocation plan (jaseci-labs/jaseci#6542) is complete.

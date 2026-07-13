@@ -16,67 +16,10 @@ identifiers).
 
 import from jaclang.compiler.cfront.lift { lift_c_str, lift_c_file }
 import from tests.compiler.c2jac.support {
+    BREADTH,
     read_fixture as _read,
     recompile_errors as _recompile
 }
-
-# (fixture, sorted expected diagnostic codes). Every directive-free fixture the
-# two-hop suite covered; `[]` == a fully faithful lift with no best-effort holes.
-glob BREADTH: list = [
-         ("arrays.c", []),
-         ("cfor.c", []),
-         ("control_flow.c", []),
-         ("do_while.c", []),
-         ("do_while_continue.c", ["W4203"]),
-         ("edge_cases.c", ["W4202", "W4290", "W4290"]),
-         ("edge_cases_2.c", ["W4207", "W4290"]),
-         ("edge_cases_3.c", ["W4290", "W4290"]),
-         ("enum_collision.c", []),
-         ("enum_flags.c", []),
-         ("enum_simple.c", []),
-         ("enum_tu_collision.c", ["W4290"]),
-         ("expr_stmts.c", []),
-         ("for_array_body.c", []),
-         ("for_block_spacing.c", []),
-         ("for_body_rich.c", []),
-         ("for_call_body.c", []),
-         ("for_cast.c", ["W4201"]),
-         ("for_char_cond.c", []),
-         ("for_comma.c", ["W4204"]),
-         ("for_comma_init.c", []),
-         ("for_comma_init_rich.c", []),
-         ("for_comma_step.c", []),
-         ("for_continue.c", ["W4208"]),
-         ("for_deref.c", ["W4290"]),
-         ("for_empty_stmt.c", []),
-         ("for_funcall_step.c", []),
-         ("for_funcall_step_continue.c", ["W4208"]),
-         ("for_incdec_body.c", []),
-         ("for_infinite_continue.c", []),
-         ("for_initlist.c", []),
-         ("for_multidecl_init.c", []),
-         ("for_nested_cond_clobber.c", ["W4208", "W4290"]),
-         ("for_nested_dowhile.c", ["W4203"]),
-         ("for_nested_switch.c", ["W4202"]),
-         ("for_ptr_idiom.c", ["W4290"]),
-         ("for_ternary.c", []),
-         ("for_unmappable_cond.c", ["W4208", "W4290"]),
-         ("for_unsupported.c", []),
-         ("hello.c", []),
-         ("nonascii_str.c", []),
-         ("obj_array.c", []),
-         ("pointers.c", []),
-         ("ptr_idioms.c", []),
-         ("struct_array.c", []),
-         ("struct_shape.c", []),
-         ("switch_basic.c", []),
-         ("switch_fallthrough.c", ["W4202"]),
-         ("ternary.c", []),
-         ("cpython/mysnprintf.c", ["W4207"]),
-         ("cpython/pystrcmp.c", []),
-         ("cpython/rotatingtree.c", []),
-
-     ];
 
 test "every fixture lifts to Jac that recompiles with zero errors" {
     broken: list = [];
@@ -118,15 +61,15 @@ def _read_path(name: str) -> str {
 }
 
 # ---- targeted faithful-output locks (constructs not in test_cast_slice) ----
-test "for_continue.c desugars a for-with-continue to init + while (W4208)" {
+test "for_continue.c promotes descending for-with-continue to IterForStmt" {
     res = lift_c_str(_read("for_continue.c"), "for_continue.c");
     out = res.module.unparse(requires_format=True);
-    # a loop-level `continue` would skip the C `for` step, so the promotion is
-    # abandoned: the step moves into the body and the loop becomes a `while`.
-    assert "while (i > 0) {" in out , out;
+    # `>`/`>=` are promotable; Jac IterForStmt runs count_by on continue, so
+    # the C `for` step is faithful and no W4208 quarantine is needed.
+    assert "for i = n to i > 0 by" in out , out;
     assert "continue;" in out;
-    assert "i -= 1;" in out;
-    assert res.diags[0][0] == "W4208";
+    assert res.diags == [] , res.diags;
+    assert res.quarantined_functions == [];
 }
 
 test "for_comma.c promotes past a pure comma-init and flags a dropped operand" {
@@ -139,7 +82,9 @@ test "for_comma.c promotes past a pure comma-init and flags a dropped operand" {
 test "for_cast.c elides a representation-changing cast in the body (W4201)" {
     res = lift_c_str(_read("for_cast.c"), "for_cast.c");
     out = res.module.unparse(requires_format=True);
-    assert "total = total + (i / 2);" in out , out;
+    # Known-int `/` lowers to `//` (C truncating divide); the `(int)` cast
+    # itself is still elided as W4201.
+    assert "total = total + (i // 2);" in out , out;
     assert res.diags[0][0] == "W4201";
 }
 
@@ -150,26 +95,29 @@ test "for_ternary.c lifts a body ternary to a Jac if-else expression" {
     assert res.diags == [] , res.diags;
 }
 
-test "switch_fallthrough.c collapses to if/elif/else and flags fall-through" {
+test "switch_fallthrough.c flags fall-through and quarantines the function" {
     res = lift_c_str(_read("switch_fallthrough.c"), "switch_fallthrough.c");
     out = res.module.unparse(requires_format=True);
-    assert "if x == 1 {" in out , out;
-    assert "} elif x == 2 {" in out;
+    # W4202 is behavior-band: containing function becomes a call-time trap
     assert res.diags[0][0] == "W4202";
+    assert res.quarantined_functions;
+    assert "quarantined function" in out , out;
+    assert "raise" in out;
 }
 
-test "do_while_continue.c keeps the pre-continue step and flags W4203" {
+test "do_while_continue.c flags W4203 and quarantines the function" {
     res = lift_c_str(_read("do_while_continue.c"), "do_while_continue.c");
     out = res.module.unparse(requires_format=True);
-    assert "while True {" in out , out;
-    assert "continue;" in out;
-    assert "if not (n > 0) {" in out;
     assert res.diags[0][0] == "W4203";
+    assert res.quarantined_functions;
+    assert "quarantined function" in out , out;
+    assert "raise" in out;
 }
 
 test "struct_array.c lifts an object array + subscript member assign" {
     res = lift_c_str(_read("struct_array.c"), "struct_array.c");
     out = res.module.unparse(requires_format=True);
+    assert "has x: int = 0;" in out , out;
     assert "a: list[S] = [S() for _ in range(2)];" in out , out;
     assert "a[0].x = 1;" in out;
     assert res.diags == [] , res.diags;
@@ -178,8 +126,10 @@ test "struct_array.c lifts an object array + subscript member assign" {
 test "for_funcall_step.c lifts a module-scope global as `glob`" {
     res = lift_c_str(_read("for_funcall_step.c"), "for_funcall_step.c");
     out = res.module.unparse(requires_format=True);
-    # a bare `name: T;` is invalid at module level — C globals must be `glob`
-    assert "glob counter: int;" in out , out;
+    # C BSS-zeroed globals become `glob` with an explicit zero; functions that
+    # assign them need `global name;` (Jac/Python local-binding rule).
+    assert "glob counter: int = 0;" in out , out;
+    assert "global counter;" in out , out;
     assert "def tick() -> None {" in out;
     assert res.diags == [] , res.diags;
 }
@@ -196,6 +146,9 @@ test "cpython/pystrcmp.c lifts a real-world file (walrus loop cond, ternary)" {
     assert "def py_tolower(c: int) -> int {" in out , out;
     # a comma-operator loop condition folds the assignment into a walrus
     assert "(size := size - 1)" in out;
+    # char* cursors: deref → ord(...), advance → suffix slice
+    assert "ord(" in out , out;
+    assert "p1 = p1[1:];" in out or "p1 = p1[1 :];" in out , out;
     assert res.diags == [] , res.diags;
 }
 

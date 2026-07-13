@@ -5,6 +5,13 @@ impl CastBuildPass.postinit -> None {
     self._enum_member_owner = self._build_member_owner_map();
     self._var_types = {};
     self._func_depth = 0;
+    self._func_name = None;
+    self._func_contam = [];
+    self._sites = [];
+    self._quarantined = [];
+    self._module_globals = set();
+    self._func_global_writes = set();
+    self._struct_fields = {};
     super.postinit();
 }
 
@@ -79,6 +86,20 @@ impl CastBuildPass.emit_c_diag(
     diag = DIAGNOSTICS[twin];
     self.cur_node = loc_node;
     self.emit(diag, node_override=loc_node, **kw);
+    band = fidelity_band(num);
+    (line, _) = self._coord(c_node);
+    site = CLiftSite(
+        code=twin,
+        msg=diag.format_message(**kw),
+        line=line,
+        band=band.value,
+        function=self._func_name,
+        quarantined=False
+    );
+    self._sites.append(site);
+    if self._func_name is not None and band_quarantines(band) {
+        self._func_contam.append(site);
+    }
 }
 
 impl CastBuildPass.c_diags -> list[tuple[str, str, int]] {
@@ -88,6 +109,29 @@ impl CastBuildPass.c_diags -> list[tuple[str, str, int]] {
         out.append((code, al.msg, al.loc.first_line));
     }
     return out;
+}
+
+impl CastBuildPass.c_sites -> list[CLiftSite] {
+    return self._sites;
+}
+
+impl CastBuildPass.quarantined_functions -> list[str] {
+    return self._quarantined;
+}
+
+impl CastBuildPass._quarantine_raise(
+    c_node: object, fname: str, sites: list[CLiftSite]
+) -> uni.RaiseStmt {
+    parts: list[str] = [];
+    for s in sites {
+        parts.append(f"L{s.line} [{s.code}] {s.msg}");
+        s.quarantined = True;
+    }
+    text = f"c2jac: quarantined function '{fname}' — " + "; ".join(parts);
+    (line, col) = self._coord(c_node);
+    lit = self._lit(uni.String, Tok.STRING, repr(text), line, col);
+    raise_tok = self._op_tok(c_node, Tok.KW_RAISE, "raise");
+    return uni.RaiseStmt(cause=lit, from_target=None, kid=[raise_tok, lit]);
 }
 
 impl CastBuildPass._coord(c_node: object) -> tuple[int, int] {
@@ -168,9 +212,33 @@ impl CastBuildPass._scope_bind(assign: uni.Assignment) -> uni.UniNode {
     );
 }
 
+impl CastBuildPass._collect_module_globals(ext: list) -> set[str] {
+    # File-scope Decl names (not function decls) become Jac `glob`s. Functions
+    # that assign to them need a `global` stmt or Python treats the name as local.
+    out: set[str] = set();
+    for entry in ext {
+        if not isinstance(entry, c_ast.Decl) or entry.name is None {
+            continue;
+        }
+        if isinstance(entry.type, c_ast.FuncDecl) {
+            continue;
+        }
+        out.add(entry.name);
+    }
+    return out;
+}
+
+impl CastBuildPass._global_stmt(c_node: object, names: list[str]) -> uni.GlobalStmt {
+    targets: list[uni.Name] = [self._name(c_node, n) for n in names];
+    gtok = self._op_tok(c_node, Tok.GLOBAL_OP, "global");
+    semi = self._op_tok(c_node, Tok.SEMI, ";");
+    return uni.GlobalStmt(target=targets, kid=[gtok, *targets, semi]);
+}
+
 impl CastBuildPass.proc_file_ast(nd: object) -> uni.Module {
     elements: list[uni.UniNode] = [];
     ext = nd?.ext or [];
+    self._module_globals = self._collect_module_globals(ext);
     for entry in ext {
         res = self.convert(entry, stmt=True);
         if isinstance(res, list) {
@@ -213,6 +281,8 @@ impl CastBuildPass.proc_func_def(nd: object) -> uni.Ability {
     self._var_types = {};
     fname = nd.decl.name;
     name = self._ident(nd.decl, fname);
+    self._func_name = fname;
+    self._func_contam = [];
     params: list[uni.ParamVar] = [];
     pl = nd.decl.type.args;
     if pl is not None {
@@ -251,8 +321,24 @@ impl CastBuildPass.proc_func_def(nd: object) -> uni.Ability {
         kid=sig_kids
     );
     self._func_depth += 1;
+    self._func_global_writes = set();
     body = self.proc_compound(nd.body);
     self._func_depth -= 1;
+    if self._func_contam {
+        body = [self._quarantine_raise(nd, fname, list(self._func_contam))];
+        if fname not in self._quarantined {
+            self._quarantined.append(fname);
+        }
+    } elif self._func_global_writes {
+        # Jac/Python needs `global name;` before assigning a module glob.
+        body = [
+            self._global_stmt(nd, sorted(self._func_global_writes)),
+            *body
+        ];
+    }
+    self._func_name = None;
+    self._func_contam = [];
+    self._func_global_writes = set();
     kid: list[uni.UniNode] = [name, sig, *body];
     return self.nu(
         uni.Ability(
@@ -318,7 +404,20 @@ impl CastBuildPass.proc_decl(nd: object) -> object {
         annot = uni.SubTag[uni.Expr](tag=ann, kid=[ann]);
         self._list_bound.discard(nd.name);
     }
-    value = self.conv_expr(nd_init) if nd_init is not None else None;
+    value = (
+        self._init_value(nd_init, nd.type) if nd_init is not None else None
+    );
+    # C objects without an initializer are BSS-zeroed (file scope) or
+    # indeterminate (locals). Jac has no uninit locals: emit the same zero
+    # default used for `has` fields so `Point p;` → `p: Point = Point()` and
+    # scalar `int x;` → `x: int = 0` are readable before the first store.
+    if (
+        value is None
+        and arr_elem is None
+        and not isinstance(inner, c_ast.ArrayDecl)
+    ) {
+        value = self._elem_default(nd, elem_typename(nd.type));
+    }
     kid: list[uni.UniNode] = [target, annot];
     if value is not None {
         kid.append(value);
@@ -345,11 +444,33 @@ impl CastBuildPass.proc_return(nd: object) -> uni.ReturnStmt {
 }
 
 impl CastBuildPass.proc_binary_op(nd: object) -> object {
+    # char*/str cursor + offset → suffix slice `p[n:]`.
+    if nd.op == "+" and self._is_str_cursor(nd.left) {
+        if not (expr_reeval_safe(nd.left) and expr_reeval_safe(nd.right)) {
+            return self._surrogate_expr(nd);
+        }
+        base = self.conv_expr(nd.left);
+        idx = self.conv_expr(nd.right);
+        if isinstance(base, uni.Expr) and isinstance(idx, uni.Expr) {
+            return self._slice_from(nd, base, idx);
+        }
+        return self._surrogate_expr(nd);
+    }
     entry = C_OP_TOK.get(nd.op);
     if entry is None {
         return self._surrogate_expr(nd);
     }
     (kind, tok, text) = entry;
+    # C integer `/` truncates toward zero; Jac `/` is true division. When both
+    # operands are known ints, emit `//` so lifted arithmetic matches cc.
+    if (
+        nd.op == "/"
+        and self._expr_prim(nd.left) == JacPrim.INT
+        and self._expr_prim(nd.right) == JacPrim.INT
+    ) {
+        tok = Tok.FLOOR_DIV;
+        text = "//";
+    }
     left = self.conv_expr(nd.left);
     right = self.conv_expr(nd.right);
     if not (isinstance(left, uni.Expr) and isinstance(right, uni.Expr)) {
@@ -413,6 +534,12 @@ impl CastBuildPass.proc_constant(nd: object) -> uni.Literal {
         return self._lit(uni.String, Tok.STRING, repr(nd.value), line, col);
     }
     if family == CLIT_CHAR {
+        # C character constants have type `int` after promotion.
+        ov = c_char_ord(nd.value);
+        if ov is not None {
+            return self._lit(uni.Int, Tok.INT, str(ov), line, col);
+        }
+        self.emit_c_diag(nd, 4210, value=str(nd.value));
         return self._lit(
             uni.String, Tok.STRING, repr(c_char_text(nd.value)), line, col
         );
@@ -635,6 +762,13 @@ impl CastBuildPass.proc_while(nd: object) -> object {
 }
 
 impl CastBuildPass._inc_dec_stmt(nd: object) -> uni.Assignment | None {
+    if isinstance(nd.expr, c_ast.ID) {
+        forward = nd.op in ("p++", "++");
+        adv = self._str_advance_assign(nd, nd.expr.name, forward);
+        if adv is not None {
+            return adv;
+        }
+    }
     target = self.conv_expr(nd.expr);
     if not isinstance(target, (uni.Name, uni.AtomTrailer)) {
         return None;
@@ -682,8 +816,11 @@ impl CastBuildPass._for_promotable(nd: object) -> bool {
     if not ok_init {
         return False;
     }
+    # Ascending and descending relational bounds; Jac IterForStmt runs
+    # count_by on `continue`, matching C `for` step semantics.
     if not (
-        isinstance(cond_node, c_ast.BinaryOp) and cond_node.op in ("<", "<=", "!=")
+        isinstance(cond_node, c_ast.BinaryOp)
+        and cond_node.op in ("<", "<=", ">", ">=", "!=")
     ) {
         return False;
     }
@@ -705,6 +842,41 @@ impl CastBuildPass._for_clause_stmts(clause_node: object) -> list[uni.UniNode] {
         return self._conv_stmts(clause_node.exprs);
     }
     return self._conv_stmts([clause_node]);
+}
+
+impl CastBuildPass._splice_for_continues(
+    stmts: list[uni.UniNode], step_c: object
+) -> list[uni.UniNode] {
+    # Rewrite loop-level `continue` to `step; continue` so a for→while
+    # lowering still runs the C `for` step. Nested loops are left alone —
+    # their continues target the inner loop.
+    out: list[uni.UniNode] = [];
+    for s in stmts {
+        if isinstance(s, uni.CtrlStmt) and s.ctrl.name == Tok.KW_CONTINUE {
+            out.extend(self._for_clause_stmts(step_c));
+            out.append(s);
+        } elif isinstance(s, uni.IfStmt) {
+            s.body = self._splice_for_continues(list(s.body), step_c);
+            eb = s.else_body;
+            while isinstance(eb, uni.ElseIf) {
+                eb.body = self._splice_for_continues(list(eb.body), step_c);
+                eb = eb.else_body;
+            }
+            if isinstance(eb, uni.ElseStmt) {
+                eb.body = self._splice_for_continues(list(eb.body), step_c);
+            }
+            out.append(s);
+        } elif (
+            isinstance(s, uni.WhileStmt)
+            or isinstance(s, uni.IterForStmt)
+            or isinstance(s, uni.InForStmt)
+        ) {
+            out.append(s);
+        } else {
+            out.append(s);
+        }
+    }
+    return out;
 }
 
 impl CastBuildPass.proc_for(nd: object) -> object {
@@ -758,7 +930,19 @@ impl CastBuildPass.proc_for(nd: object) -> object {
             );
         }
     }
-    if step_node is not None and nd.stmt is not None and has_loop_continue(nd.stmt) {
+    # Continue-safe while: splice the step before each loop-level continue so
+    # it cannot skip the C `for` step. Nested-loop continues are untouched.
+    if (
+        step_node is not None
+        and nd.stmt is not None
+        and has_loop_continue(nd.stmt)
+        and step_stmts
+    ) {
+        body_stmts = self._splice_for_continues(body_stmts, step_node);
+    } elif step_node is not None and nd.stmt is not None and has_loop_continue(
+        nd.stmt
+    ) {
+        # Step exists in C but failed to lower — still flag the infidelity.
         detail = "a loop-level `continue` skips the step that C runs each iteration";
         lossy_detail = detail if not lossy_detail else lossy_detail + " | " + detail;
     }
@@ -951,6 +1135,11 @@ impl CastBuildPass._scalar_prim(type_node: object) -> JacPrim | None {
 }
 
 impl CastBuildPass._record_scalar_type(name: str, type_node: object) -> None {
+    chain = walk_to_typedecl(type_node);
+    if chain.kind == TypeKind.PTR and is_char_ptr(chain.node) {
+        self._var_types[name] = JacPrim.STR;
+        return;
+    }
     prim = self._scalar_prim(type_node);
     if prim is not None {
         self._var_types[name] = prim;
@@ -962,7 +1151,7 @@ impl CastBuildPass._record_scalar_type(name: str, type_node: object) -> None {
 impl CastBuildPass._expr_prim(c_node: object) -> JacPrim | None {
     if isinstance(c_node, c_ast.Constant) {
         fam = classify_c_constant(c_node.type);
-        if fam == CLIT_INT {
+        if fam == CLIT_INT or fam == CLIT_CHAR {
             return JacPrim.INT;
         }
         if fam == CLIT_FLOAT {
@@ -973,7 +1162,158 @@ impl CastBuildPass._expr_prim(c_node: object) -> JacPrim | None {
     if isinstance(c_node, c_ast.ID) {
         return self._var_types.get(c_node.name);
     }
+    if isinstance(c_node, c_ast.Cast) {
+        return self._expr_prim(c_node.expr);
+    }
+    if (
+        isinstance(c_node, c_ast.BinaryOp)
+        and c_node.op == "+"
+        and self._is_str_cursor(c_node.left)
+    ) {
+        return JacPrim.STR;
+    }
     return None;
+}
+
+impl CastBuildPass._is_str_cursor(c_node: object) -> bool {
+    return self._expr_prim(c_node) == JacPrim.STR;
+}
+
+impl CastBuildPass._index_expr(
+    c_node: object, base: uni.Expr, idx: uni.Expr
+) -> uni.AtomTrailer {
+    slice_node = uni.Slice(start=idx, stop=None, step=None, kid=[idx]);
+    index = uni.IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
+    return uni.AtomTrailer(
+        target=base, right=index, is_attr=False, is_null_ok=False, kid=[base, index]
+    );
+}
+
+impl CastBuildPass._slice_from(
+    c_node: object, base: uni.Expr, start: uni.Expr
+) -> uni.AtomTrailer {
+    slice_node = uni.Slice(start=start, stop=None, step=None, kid=[start]);
+    index = uni.IndexSlice(slices=[slice_node], is_range=True, kid=[slice_node]);
+    return uni.AtomTrailer(
+        target=base, right=index, is_attr=False, is_null_ok=False, kid=[base, index]
+    );
+}
+
+impl CastBuildPass._ord_call(c_node: object, ch: uni.Expr) -> uni.FuncCall {
+    target = self._name(c_node, "ord");
+    return uni.FuncCall(
+        target=target, params=[ch], genai_call=None, kid=[target, ch]
+    );
+}
+
+impl CastBuildPass._str_char_at(
+    c_node: object, base_c: object, idx_c: object | None
+) -> object {
+    # `(ord(base[idx]) if base[idx:] else 0)` — empty suffix ⇒ NUL (0).
+    # Always parenthesize: if-else binds looser than `and`/`or`.
+    if not expr_reeval_safe(base_c) {
+        return self._surrogate_expr(c_node);
+    }
+    if idx_c is not None and not expr_reeval_safe(idx_c) {
+        return self._surrogate_expr(c_node);
+    }
+    (line, col) = self._coord(c_node);
+    base = self.conv_expr(base_c);
+    base2 = self.conv_expr(base_c);
+    if not (isinstance(base, uni.Expr) and isinstance(base2, uni.Expr)) {
+        return self._surrogate_expr(c_node);
+    }
+    zero = self._lit(uni.Int, Tok.INT, "0", line, col);
+    # idx == 0 / absent: `ord(p[0]) if p else 0`
+    if idx_c is None {
+        zero_idx = self._lit(uni.Int, Tok.INT, "0", line, col);
+        ch = self._index_expr(c_node, base2, zero_idx);
+        ord_ch = self._ord_call(c_node, ch);
+        cond_cfg = uni.CfgExpr(expr=base, kid=[base]);
+        val_cfg = uni.CfgExpr(expr=ord_ch, kid=[ord_ch]);
+        else_cfg = uni.CfgExpr(expr=zero, kid=[zero]);
+        inner = uni.IfElseExpr(
+            value=val_cfg,
+            condition=cond_cfg,
+            else_value=else_cfg,
+            kid=[val_cfg, cond_cfg, else_cfg]
+        );
+        return uni.AtomUnit(
+            value=inner,
+            kid=[
+                self._op_tok(c_node, Tok.LPAREN, "("),
+                inner,
+                self._op_tok(c_node, Tok.RPAREN, ")")
+            ]
+        );
+    }
+    idx_e = self.conv_expr(idx_c);
+    idx_e2 = self.conv_expr(idx_c);
+    if not (isinstance(idx_e, uni.Expr) and isinstance(idx_e2, uni.Expr)) {
+        return self._surrogate_expr(c_node);
+    }
+    zero_idx = self._lit(uni.Int, Tok.INT, "0", line, col);
+    # Guard on the remaining suffix so an exhausted cursor yields 0 (NUL).
+    tail = self._slice_from(c_node, base, idx_e);
+    ch = self._index_expr(
+        c_node, self._slice_from(c_node, base2, idx_e2), zero_idx
+    );
+    ord_ch = self._ord_call(c_node, ch);
+    cond_cfg = uni.CfgExpr(expr=tail, kid=[tail]);
+    val_cfg = uni.CfgExpr(expr=ord_ch, kid=[ord_ch]);
+    else_cfg = uni.CfgExpr(expr=zero, kid=[zero]);
+    inner = uni.IfElseExpr(
+        value=val_cfg,
+        condition=cond_cfg,
+        else_value=else_cfg,
+        kid=[val_cfg, cond_cfg, else_cfg]
+    );
+    return uni.AtomUnit(
+        value=inner,
+        kid=[
+            self._op_tok(c_node, Tok.LPAREN, "("),
+            inner,
+            self._op_tok(c_node, Tok.RPAREN, ")")
+        ]
+    );
+}
+
+impl CastBuildPass._str_deref(c_node: object, ptr_c: object) -> object {
+    if not self._is_str_cursor(ptr_c) {
+        return None;
+    }
+    if (
+        isinstance(ptr_c, c_ast.BinaryOp)
+        and ptr_c.op == "+"
+        and self._is_str_cursor(ptr_c.left)
+    ) {
+        return self._str_char_at(c_node, ptr_c.left, ptr_c.right);
+    }
+    return self._str_char_at(c_node, ptr_c, None);
+}
+
+impl CastBuildPass._str_advance_assign(
+    c_node: object, name: str, forward: bool
+) -> uni.Assignment | None {
+    if self._var_types.get(name) != JacPrim.STR {
+        return None;
+    }
+    if not forward {
+        # Decrementing a string cursor has no faithful str lowering.
+        return None;
+    }
+    (line, col) = self._coord(c_node);
+    one = self._lit(uni.Int, Tok.INT, "1", line, col);
+    base = self._name(c_node, name);
+    target = self._name(c_node, name);
+    tail = self._slice_from(c_node, base, one);
+    return uni.Assignment(
+        target=[target],
+        value=tail,
+        type_tag=None,
+        mutable=False,
+        kid=[target, tail]
+    );
 }
 
 impl CastBuildPass.proc_unary_op(nd: object) -> object {
@@ -991,7 +1331,18 @@ impl CastBuildPass.proc_unary_op(nd: object) -> object {
         walrus = self._pre_incdec_walrus(nd);
         return walrus if walrus is not None else self._surrogate_expr(nd);
     }
-    if nd.op in ("*", "&") and is_simple_ref(nd.expr) {
+    if nd.op == "*" {
+        str_d = self._str_deref(nd, nd.expr);
+        if str_d is not None {
+            return str_d;
+        }
+        if is_simple_ref(nd.expr) {
+            inner = self.conv_expr(nd.expr);
+            return inner if isinstance(inner, uni.Expr) else self._surrogate_expr(nd);
+        }
+        return self._surrogate_expr(nd);
+    }
+    if nd.op == "&" and is_simple_ref(nd.expr) {
         inner = self.conv_expr(nd.expr);
         return inner if isinstance(inner, uni.Expr) else self._surrogate_expr(nd);
     }
@@ -1032,6 +1383,11 @@ impl CastBuildPass.proc_assignment(nd: object) -> object {
             targets_c.append(cur.lvalue);
             cur = cur.rvalue;
         }
+        for t in targets_c {
+            if isinstance(t, c_ast.ID) and t.name in self._module_globals {
+                self._func_global_writes.add(t.name);
+            }
+        }
         tgt_exprs = [self.conv_expr(t) for t in targets_c];
         val = self.conv_expr(cur);
         ok = isinstance(val, uni.Expr)
@@ -1046,6 +1402,9 @@ impl CastBuildPass.proc_assignment(nd: object) -> object {
             );
         }
         return self._surrogate_stmt(nd);
+    }
+    if isinstance(nd.lvalue, c_ast.ID) and nd.lvalue.name in self._module_globals {
+        self._func_global_writes.add(nd.lvalue.name);
     }
     lhs = self.conv_expr(nd.lvalue);
     rhs = self.conv_expr(nd.rvalue);
@@ -1064,7 +1423,34 @@ impl CastBuildPass.proc_assignment(nd: object) -> object {
     if aug_name is None {
         return self._surrogate_stmt(nd);
     }
-    op = self._op_tok(nd, aug_name, nd.op);
+    # str cursor `p += 1` / `p -= 1` → suffix / (no faithful backstep).
+    if (
+        isinstance(nd.lvalue, c_ast.ID)
+        and nd.op in ("+=", "-=")
+        and self._var_types.get(nd.lvalue.name) == JacPrim.STR
+    ) {
+        if (
+            isinstance(nd.rvalue, c_ast.Constant)
+            and classify_c_constant(nd.rvalue.type) == CLIT_INT
+            and parse_c_int(nd.rvalue.value) == 1
+        ) {
+            adv = self._str_advance_assign(nd, nd.lvalue.name, nd.op == "+=");
+            if adv is not None {
+                return adv;
+            }
+        }
+        return self._surrogate_stmt(nd);
+    }
+    aug_text = nd.op;
+    if (
+        nd.op == "/="
+        and self._expr_prim(nd.lvalue) == JacPrim.INT
+        and self._expr_prim(nd.rvalue) == JacPrim.INT
+    ) {
+        aug_name = Tok.FLOOR_DIV_EQ;
+        aug_text = "//=";
+    }
+    op = self._op_tok(nd, aug_name, aug_text);
     return uni.Assignment(
         target=[lhs],
         type_tag=None,
@@ -1104,14 +1490,18 @@ impl CastBuildPass._struct_field(mem: object) -> uni.ArchHas | None {
         return None;
     }
     name_node = self._name(mem, mem.name);
-    ann = self._name(mem, elem_typename(mem.type));
+    tname = elem_typename(mem.type);
+    ann = self._name(mem, tname);
     type_tag = uni.SubTag[uni.Expr](tag=ann, kid=[ann]);
+    # C struct fields are zero at BSS / after `= {0}`; defaulted `has` lets
+    # malloc→`Type()` and `[Type() for _ in range(n)]` construct without args.
+    default = self._elem_default(mem, tname);
     hv = uni.HasVar(
         name=name_node,
         type_tag=type_tag,
-        value=None,
+        value=default,
         defer=False,
-        kid=[name_node, type_tag]
+        kid=[name_node, type_tag, default]
     );
     has_kw = self._op_tok(mem, Tok.KW_HAS, "has");
     semi = self._op_tok(mem, Tok.SEMI, ";");
@@ -1129,13 +1519,18 @@ impl CastBuildPass._struct_archetype(
     snode: object, name: str, origin: object
 ) -> uni.Archetype {
     fields: list[uni.ArchHas] = [];
+    field_specs: list[tuple[str, object]] = [];
     decls = snode?.decls or [];
     for mem in decls {
         ah = self._struct_field(mem);
         if ah is not None {
             fields.append(ah);
         }
+        if mem.name is not None and mem.type is not None {
+            field_specs.append((mem.name, mem.type));
+        }
     }
+    self._struct_fields[name] = field_specs;
     arch_type = self._op_tok(origin, Tok.KW_OBJECT, "obj");
     name_node = self._name(origin, name);
 
@@ -1350,8 +1745,7 @@ impl CastBuildPass._decl_array(nd: object) -> object {
     value: uni.Expr | None = None;
     nd_init = c_field(nd, "init");
     if nd_init is not None {
-        iv = self.conv_expr(nd_init);
-        value = iv if isinstance(iv, uni.Expr) else None;
+        value = self._init_value(nd_init, arr_decl);
     } elif arr_decl.dim is not None {
         dim_expr = self.conv_expr(arr_decl.dim);
         if elem_name in C_PRIM_MAP and isinstance(dim_expr, uni.Expr) {
@@ -1382,6 +1776,8 @@ impl CastBuildPass.proc_array_decl(nd: object) -> object {
 }
 
 impl CastBuildPass.proc_init_list(nd: object) -> object {
+    # Untyped fallback (no enclosing Decl type): keep as a Jac list. Struct
+    # and struct-array inits go through `_typed_init` from Decl sites.
     elts: list[uni.Expr] = [];
     for e in nd?.exprs or [] {
         ev = self.conv_expr(e);
@@ -1398,6 +1794,7 @@ impl CastBuildPass.proc_init_list(nd: object) -> object {
 }
 
 impl CastBuildPass.proc_named_initializer(nd: object) -> object {
+    # Reached only from untyped InitList paths (array designators, etc.).
     names = nd.name or [];
     field = ".".join([self._desig_name(d) for d in names]);
     self.emit_c_diag(nd, 4209, field=field);
@@ -1406,6 +1803,142 @@ impl CastBuildPass.proc_named_initializer(nd: object) -> object {
 
 impl CastBuildPass._desig_name(d: object) -> str {
     return d.name if isinstance(d, c_ast.ID) else str(getattr(d, "value", "?"));
+}
+
+impl CastBuildPass._kw_pair(c_node: object, key: str, value: uni.Expr) -> uni.KWPair {
+    key_n = self._name(c_node, key);
+    return uni.KWPair(key=key_n, value=value, kid=[key_n, value]);
+}
+
+impl CastBuildPass._needs_typed_init(c_type: object) -> bool {
+    chain = walk_to_typedecl(c_type);
+    if chain.kind == TypeKind.ARRAY {
+        return self._needs_typed_init(chain.node.type);
+    }
+    if chain.kind != TypeKind.SCALAR {
+        return False;
+    }
+    tname = elem_typename(c_type);
+    return tname in self._struct_fields;
+}
+
+impl CastBuildPass._init_value(c_init: object, c_type: object) -> uni.Expr | None {
+    typed = self._typed_init(c_init, c_type);
+    if typed is not None {
+        return typed;
+    }
+    ev = self.conv_expr(c_init);
+    return ev if isinstance(ev, uni.Expr) else None;
+}
+
+impl CastBuildPass._typed_init(c_init: object, c_type: object) -> uni.Expr | None {
+    if not isinstance(c_init, c_ast.InitList) {
+        return None;
+    }
+    chain = walk_to_typedecl(c_type);
+    if chain.kind == TypeKind.ARRAY {
+        if not self._needs_typed_init(chain.node.type) {
+            return None;
+        }
+        return self._array_init_from_list(c_init, chain.node.type);
+    }
+    if chain.kind == TypeKind.SCALAR {
+        tname = elem_typename(c_type);
+        if tname in self._struct_fields {
+            return self._struct_init_from_list(c_init, tname);
+        }
+    }
+    return None;
+}
+
+impl CastBuildPass._array_init_from_list(
+    c_init: object, elem_type: object
+) -> uni.ListVal | None {
+    elts: list[uni.Expr] = [];
+    for e in c_init?.exprs or [] {
+        if isinstance(e, c_ast.NamedInitializer) {
+            # Array designators (`[2] = …`) stay STYLE/untyped for now.
+            names = e.name or [];
+            field = ".".join([self._desig_name(d) for d in names]);
+            self.emit_c_diag(e, 4209, field=field);
+            return None;
+        }
+        val = self._init_value(e, elem_type);
+        if val is None {
+            return None;
+        }
+        elts.append(val);
+    }
+    if elts {
+        return uni.ListVal(values=elts, kid=[*elts]);
+    }
+    lb = self._op_tok(c_init, Tok.LSQUARE, "[");
+    rb = self._op_tok(c_init, Tok.RSQUARE, "]");
+    return uni.ListVal(values=[], kid=[lb, rb]);
+}
+
+impl CastBuildPass._field_index(type_name: str, field: str) -> int | None {
+    specs = self._struct_fields.get(type_name, []);
+    i = 0;
+    while i < len(specs) {
+        if specs[i][0] == field {
+            return i;
+        }
+        i += 1;
+    }
+    return None;
+}
+
+impl CastBuildPass._struct_init_from_list(
+    c_init: object, type_name: str
+) -> uni.FuncCall | None {
+    specs = self._struct_fields.get(type_name, []);
+    by_name: dict[str, uni.Expr] = {};
+    pos: int = 0;
+    for e in c_init?.exprs or [] {
+        if isinstance(e, c_ast.NamedInitializer) {
+            desigs = e.name or [];
+            # Single-level `.field = expr` only; nested `.a.b` / `[i]` stay STYLE.
+            if len(desigs) != 1 or not isinstance(desigs[0], c_ast.ID) {
+                field = ".".join([self._desig_name(d) for d in desigs]);
+                self.emit_c_diag(e, 4209, field=field);
+                return None;
+            }
+            fname = desigs[0].name;
+            fi = self._field_index(type_name, fname);
+            if fi is None {
+                self.emit_c_diag(e, 4209, field=fname);
+                return None;
+            }
+            val = self._init_value(e.expr, specs[fi][1]);
+            if val is None {
+                return None;
+            }
+            by_name[fname] = val;
+            pos = fi + 1;
+            continue;
+        }
+        if pos >= len(specs) {
+            break;
+        }
+        (fname, ftype) = specs[pos];
+        val = self._init_value(e, ftype);
+        if val is None {
+            return None;
+        }
+        by_name[fname] = val;
+        pos += 1;
+    }
+    params: list[uni.KWPair] = [];
+    for (fname, _) in specs {
+        if fname not in by_name {
+            continue;
+        }
+        params.append(self._kw_pair(c_init, fname, by_name[fname]));
+    }
+    ctor = self._name(c_init, type_name);
+    kid: list[uni.UniNode] = [ctor, *params];
+    return uni.FuncCall(target=ctor, params=params, genai_call=None, kid=kid);
 }
 
 impl CastBuildPass.proc_expr_list(nd: object) -> object {

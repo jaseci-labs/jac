@@ -19,7 +19,8 @@ class _C2JacPreprocessor(Preprocessor) {
         kind = "<...>" if is_system_include else '"..."';
         self.c2jac_errors.append(
             f"#include {kind} not found: {includepath} "
-            f"(add its dir with -I, or -nostdinc is off and no fake libc is bundled)"
+            f"(add its dir with -I, or -nostdinc is off and no "
+            f"porting/fake libc is bundled)"
         );
 
         raise OutputDirective(Action.IgnoreAndRemove);
@@ -30,6 +31,15 @@ class _C2JacPreprocessor(Preprocessor) {
 def _fake_libc_dir -> str | None {
     base = os.path.dirname(pycparser.__file__);
     cand = os.path.join(base, "utils", "fake_libc_include");
+    return cand if os.path.isdir(cand) else None;
+}
+
+
+def _porting_libc_dir -> str | None {
+    import jaclang;
+    cand = os.path.join(
+        os.path.dirname(jaclang.__file__), "compiler", "cfront", "porting"
+    );
     return cand if os.path.isdir(cand) else None;
 }
 
@@ -52,6 +62,12 @@ def _configure_pp(
         pp.add_path(d);
     }
     if not nostdinc {
+        # LP64-correct stddef/stdint/limits (+ jacport.h) win over fake
+        # placeholder widths; fake libc still covers the long-tail stubs.
+        port = _porting_libc_dir();
+        if port is not None {
+            pp.add_path(port);
+        }
         fake = _fake_libc_dir();
         if fake is not None {
             pp.add_path(fake);

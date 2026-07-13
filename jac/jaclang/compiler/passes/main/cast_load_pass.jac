@@ -34,7 +34,10 @@ import from jaclang.compiler.cfront.c_types {
     typename,
     jac_prim,
     JacPrim,
-    C_PRIM_MAP
+    C_PRIM_MAP,
+    is_char_ptr,
+    walk_to_typedecl,
+    TypeKind
 }
 import from jaclang.compiler.cfront.c_idioms {
     malloc_array_match,
@@ -49,7 +52,20 @@ import from jaclang.compiler.cfront.enum_prepass {
     build_enum_map
 }
 import from jaclang.compiler.cfront.c_common { eval_enumerators, jac_id, c_field }
+import from jaclang.compiler.cfront.fidelity {
+    fidelity_band,
+    band_quarantines
+}
 import from jaclang.jac0core.constant { VALUE_ARCH_DECORATOR }
+
+obj CLiftSite {
+    has code: str,
+        msg: str,
+        line: int,
+        band: str,
+        function: str | None = None,
+        quarantined: bool = False;
+}
 
 glob _CONVERT_OVERRIDE: dict[str, str] = {
          "FileAST": "proc_file_ast",
@@ -105,7 +121,14 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
         _list_bound: set[str] by postinit,
         _enum_member_owner: dict[str, str] by postinit,
         _var_types: dict[str, object] by postinit,
-        _func_depth: int by postinit;
+        _func_depth: int by postinit,
+        _func_name: str | None by postinit,
+        _func_contam: list[CLiftSite] by postinit,
+        _sites: list[CLiftSite] by postinit,
+        _quarantined: list[str] by postinit,
+        _module_globals: set[str] by postinit,
+        _func_global_writes: set[str] by postinit,
+        _struct_fields: dict[str, list[tuple[str, object]]] by postinit;
 
     def postinit -> None;
     def _build_member_owner_map -> dict[str, str];
@@ -119,6 +142,9 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
     ) -> None;
 
     def c_diags -> list[tuple[str, str, int]];
+    def c_sites -> list[CLiftSite];
+    def quarantined_functions -> list[str];
+    def _quarantine_raise(c_node: object, fname: str, sites: list[CLiftSite]) -> uni.RaiseStmt;
     def _coord(c_node: object) -> tuple[int, int];
     def _name(c_node: object, value: str) -> uni.Name;
     def _ident(c_node: object, value: str) -> uni.Name;
@@ -126,6 +152,8 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
     def _surrogate_expr(c_node: object) -> uni.FuncCall;
     def _surrogate_stmt(c_node: object) -> uni.UniNode;
     def _scope_bind(assign: uni.Assignment) -> uni.UniNode;
+    def _collect_module_globals(ext: list) -> set[str];
+    def _global_stmt(c_node: object, names: list[str]) -> uni.GlobalStmt;
     def proc_file_ast(nd: object) -> uni.Module;
     def proc_compound(nd: object) -> list[uni.UniNode];
     def proc_func_def(nd: object) -> uni.Ability;
@@ -153,6 +181,9 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
     def _conv_stmts(items: list) -> list[uni.UniNode];
     def _for_promotable(nd: object) -> bool;
     def _for_clause_stmts(clause_node: object) -> list[uni.UniNode];
+    def _splice_for_continues(
+        stmts: list[uni.UniNode], step_c: object
+    ) -> list[uni.UniNode];
     def proc_for(nd: object) -> object;
     def _bool_true(c_node: object) -> uni.Literal;
     def _is_surrogate(expr: object) -> bool;
@@ -168,6 +199,15 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
     def _scalar_prim(type_node: object) -> JacPrim | None;
     def _record_scalar_type(name: str, type_node: object) -> None;
     def _expr_prim(c_node: object) -> JacPrim | None;
+    def _is_str_cursor(c_node: object) -> bool;
+    def _index_expr(c_node: object, base: uni.Expr, idx: uni.Expr) -> uni.AtomTrailer;
+    def _slice_from(c_node: object, base: uni.Expr, start: uni.Expr) -> uni.AtomTrailer;
+    def _ord_call(c_node: object, ch: uni.Expr) -> uni.FuncCall;
+    def _str_char_at(
+        c_node: object, base_c: object, idx_c: object | None
+    ) -> object;
+    def _str_deref(c_node: object, ptr_c: object) -> object;
+    def _str_advance_assign(c_node: object, name: str, forward: bool) -> uni.Assignment | None;
     def proc_unary_op(nd: object) -> object;
     def _pre_incdec_walrus(nd: object) -> uni.AtomUnit | None;
     def proc_assignment(nd: object) -> object;
@@ -188,6 +228,13 @@ obj CastBuildPass(Transform[uni.CModuleAst, uni.Module]) {
     def proc_init_list(nd: object) -> object;
     def proc_named_initializer(nd: object) -> object;
     def _desig_name(d: object) -> str;
+    def _kw_pair(c_node: object, key: str, value: uni.Expr) -> uni.KWPair;
+    def _needs_typed_init(c_type: object) -> bool;
+    def _init_value(c_init: object, c_type: object) -> uni.Expr | None;
+    def _typed_init(c_init: object, c_type: object) -> uni.Expr | None;
+    def _array_init_from_list(c_init: object, elem_type: object) -> uni.ListVal | None;
+    def _struct_init_from_list(c_init: object, type_name: str) -> uni.FuncCall | None;
+    def _field_index(type_name: str, field: str) -> int | None;
     def proc_expr_list(nd: object) -> object;
     def proc_cast(nd: object) -> object;
 }

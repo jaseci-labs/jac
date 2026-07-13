@@ -54,11 +54,15 @@ CLI command: `cbindgen` in `jac/jaclang/cli/commands/transform.jac` (decl) +
 Scalar return/param types resolve through `_scalar_for_names`, which tries, in
 order:
 
-1. Fixed-width / size name map `_STDINT_SCALARS` (`uint32_t` to `u32`,
-   `size_t` to `u64`, `ssize_t` to `i64`, `intptr_t`, `ptrdiff_t`, ...). Matched
-   by *name*, deliberately ahead of step 2, because pycparser's bundled fake
-   libc defines these with placeholder widths; resolving the alias would be
-   wrong. Widths assume an LP64 native target (the only target nacompile emits).
+1. Fixed-width / size name map `LP64_SCALARS` in
+   `jaclang/compiler/cfront/lp64_scalars.jac` (`uint32_t` to `u32`,
+   `size_t` to `u64`, `ssize_t` to `i64`, `intptr_t`, `ptrdiff_t`,
+   `Py_ssize_t`, ...). Matched by *name*, deliberately ahead of step 2.
+   Preprocess prefers the curated LP64 porting tree
+   (`jaclang/compiler/cfront/porting/`, including `jacport.h`) ahead of
+   pycparser's fake libc, so typedef *spellings* are also LP64-correct;
+   the name map still wins when a fixture deliberately lies about width.
+   Widths assume an LP64 native target (the only target nacompile emits).
 2. Same-TU typedef table `_collect_typedefs` (`typedef double real_t;` makes
    `real_t` resolve to `f64`). Recursive, depth-bounded against cycles.
 3. C-keyword reading `ffi_prim` (`unsigned long` to `u64`, `double` to `f64`,
@@ -96,9 +100,10 @@ share a name, two Jac module globals cannot).
 - **P1 - integer constants:** DONE. enum enumerators + object-like `#define`
   ints to `glob NAME: int = N;` (section 4). Added `preprocess_c_collect` to
   surface the macro table; `BindReport.constants`.
-- **P2 - typedef + fixed-width scalars:** DONE. `_STDINT_SCALARS` name map and
+- **P2 - typedef + fixed-width scalars:** DONE. Shared `LP64_SCALARS` name map and
   the same-TU typedef table (section 3), so `uint32_t` / `size_t` / user aliases
-  bind to real FFI scalars instead of collapsing to `int`.
+  bind to real FFI scalars instead of collapsing to `int`. Porting headers supply
+  LP64-correct typedefs for lift and bindgen alike.
 - **P3 - struct layout bindings:** DONE. Named and typedef'd C structs to
   `import from <lib> { obj Name { has field: type = default; } }` (section 6).
   Fields resolve through the same `ffi_type` pipeline as function params. Struct

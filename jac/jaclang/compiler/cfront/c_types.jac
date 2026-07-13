@@ -1,4 +1,5 @@
 import from jaclang.vendor.pycparser { c_ast }
+import from jaclang.compiler.cfront.lp64_scalars { lp64_ffi_scalar }
 
 enum JacPrim {
     INT = "int",
@@ -27,13 +28,31 @@ glob C_BUILTIN_TYPES: set = {
          "signed",
          "bool",
          "size_t",
+         "ssize_t",
+         "ptrdiff_t",
+         "intptr_t",
+         "uintptr_t",
+         "int8_t",
+         "uint8_t",
+         "int16_t",
+         "uint16_t",
+         "int32_t",
+         "uint32_t",
+         "int64_t",
+         "uint64_t",
+         "intmax_t",
+         "uintmax_t",
+         "Py_ssize_t",
+         "Py_hash_t",
 
      },
      C_PRIM_MAP: dict = {
          "int": JacPrim.INT,
          "float": JacPrim.FLOAT,
          "double": JacPrim.FLOAT,
-         "char": JacPrim.STR,
+         # Plain `char` is an integer type in C (promotion / arithmetic). The
+         # string idiom is specifically `char*` — see `is_plain_char_ptr`.
+         "char": JacPrim.INT,
          "void": JacPrim.VOID,
          "long": JacPrim.INT,
          "short": JacPrim.INT,
@@ -43,15 +62,31 @@ glob C_BUILTIN_TYPES: set = {
 
      };
 
+def _jac_prim_from_lp64(name: str) -> JacPrim | None {
+    ffi = lp64_ffi_scalar(name);
+    if ffi is None {
+        return None;
+    }
+    if ffi.startswith("f") {
+        return JacPrim.FLOAT;
+    }
+    return JacPrim.INT;
+}
+
 def jac_prim(names: list) -> JacPrim {
     if not names {
         return JacPrim.INT;
     }
     if "char" in names {
-        if "signed" in names or "unsigned" in names {
-            return JacPrim.INT;
+        # All char flavours are integers as scalars; pointers are handled by
+        # `is_plain_char_ptr` / `is_char_ptr`.
+        return JacPrim.INT;
+    }
+    if len(names) == 1 {
+        lp = _jac_prim_from_lp64(names[0]);
+        if lp is not None {
+            return lp;
         }
-        return JacPrim.STR;
     }
     return C_PRIM_MAP.get(names[-1], JacPrim.INT);
 }
@@ -96,17 +131,35 @@ def ptr_inner_typedecl(ptr_decl: object) -> object | None {
     return None;
 }
 
-def is_plain_char_ptr(ptr_decl: object) -> bool {
+def _char_ptr_names(ptr_decl: object) -> list | None {
     inner = ptr_inner_typedecl(ptr_decl);
     if inner is None {
-        return False;
+        return None;
     }
     names = inner.type?.names or [];
-    return "char" in names and jac_prim(names) == JacPrim.STR;
+    if "char" not in names {
+        return None;
+    }
+    return names;
+}
+
+def is_plain_char_ptr(ptr_decl: object) -> bool {
+    # `char*` / `const char*` string idiom (not signed/unsigned byte buffers).
+    names = _char_ptr_names(ptr_decl);
+    if names is None {
+        return False;
+    }
+    return "signed" not in names and "unsigned" not in names;
+}
+
+def is_char_ptr(ptr_decl: object) -> bool {
+    # Any single-level pointer to char / signed char / unsigned char. Lift
+    # models these as `str` cursors (`*p` → `ord(p[0])`, `p++` → `p[1:]`).
+    return _char_ptr_names(ptr_decl) is not None;
 }
 
 def ptr_typename(ptr_decl: object) -> str {
-    if is_plain_char_ptr(ptr_decl) {
+    if is_char_ptr(ptr_decl) {
         return "str";
     }
     inner = ptr_inner_typedecl(ptr_decl);

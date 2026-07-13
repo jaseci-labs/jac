@@ -198,6 +198,49 @@ impl OwnershipFactsPass.categorize_stmt(st: object) {
         if st.expr is not None {
             self.categorize(st.expr);
         }
+    } elif isinstance(st, uni.TryStmt) {
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+        for exc in (st.excepts or []) {
+            for s in (exc.body or []) {
+                self.categorize_stmt(s);
+            }
+        }
+        if st.finally_body is not None {
+            for s in (st.finally_body.body or []) {
+                self.categorize_stmt(s);
+            }
+        }
+    } elif isinstance(st, uni.IfStmt) {
+        self.categorize(st.condition);
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+        eb = st.else_body;
+        if isinstance(eb, uni.ElseIf) {
+            self.categorize_stmt(eb);
+        } elif isinstance(eb, uni.ElseStmt) {
+            for s in (eb.body or []) {
+                self.categorize_stmt(s);
+            }
+        }
+    } elif isinstance(st, uni.WhileStmt) {
+        self.categorize(st.condition);
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+    } elif isinstance(st, uni.IterForStmt) {
+        self.categorize_stmt(st.iter);
+        self.categorize(st.condition);
+        self.categorize_stmt(st.count_by);
+        for s in (st.body or []) {
+            self.categorize_stmt(s);
+        }
+    } elif isinstance(st, uni.RaiseStmt) {
+        if st.cause is not None {
+            self.categorize(st.cause);
+        }
     }
 }
 

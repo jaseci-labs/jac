@@ -12,13 +12,15 @@ def jac2js(filename: str) -> int;
 def jac2c(filename: str) -> int;
 
 def c2jac(
-    filename: str,
+    filename: str = "",
     incdir: list | None = None,
     define: list | None = None,
     undef: list | None = None,
     force_include: list | None = None,
     nostdinc: bool = False,
-    strict_c: bool = False
+    strict_c: bool = False,
+    output: str | None = None,
+    project: str | None = None
 ) -> int;
 
 def cbindgen(

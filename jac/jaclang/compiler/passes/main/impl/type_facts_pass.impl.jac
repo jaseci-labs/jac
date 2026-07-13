@@ -194,7 +194,12 @@ impl infer_type(
     }
     if isinstance(e, uni.FuncCall) {
         tgt = e.target;
-        if isinstance(tgt, uni.Name) and tgt.value in ref_types {
+        # Ref arches live in `ref_types`; value arches (`@__jac_value__`) do
+        # not, but both are indexed in `field_types` so a `Type(...)` call
+        # still types as `Type` for jac2c POD compound literals.
+        if isinstance(tgt, uni.Name) and (
+            tgt.value in ref_types or tgt.value in field_types
+        ) {
             return tgt.value;
         }
         if isinstance(tgt, uni.Name) and tgt.value in func_returns {

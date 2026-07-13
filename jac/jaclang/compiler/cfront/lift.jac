@@ -1,10 +1,13 @@
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.compiler.passes.main.cast_load_pass { CastBuildPass }
+import from jaclang.compiler.passes.main.cast_load_pass { CastBuildPass, CLiftSite }
 
 obj LiftResult {
     has module: uni.Module,
-        diags: list[tuple[str, str, int]];
+        diags: list[tuple[str, str, int]],
+        sites: list[CLiftSite] = [],
+        quarantined_functions: list[str] = [],
+        lenient: bool = True;
 }
 
 def lift_c_str(c_src: str, filename: str, lenient_c: bool = True) -> LiftResult {
@@ -28,7 +31,13 @@ def lift_c_str(c_src: str, filename: str, lenient_c: bool = True) -> LiftResult 
         prog=JacProgram(),
         lenient_c=lenient_c
     );
-    return LiftResult(module=pass_.ir_out, diags=pass_.c_diags());
+    return LiftResult(
+        module=pass_.ir_out,
+        diags=pass_.c_diags(),
+        sites=pass_.c_sites(),
+        quarantined_functions=pass_.quarantined_functions(),
+        lenient=lenient_c
+    );
 }
 
 def transpile_c_str(c_src: str, filename: str, lenient_c: bool = True) -> str {
@@ -75,10 +84,16 @@ def render_c2jac_report(diags: list[tuple[str, str, int]]) -> str {
     sites = "site" if n == 1 else "sites";
     lines = [
         f"# c2jac: {n} best-effort {sites} lowered with known infidelities "
-        f"(surrogate calls to `__c_unsupported__` mark unliftable holes):"
+        f"(behavior/hole sites quarantine their containing function; "
+        f"module-scope holes remain as `__c_unsupported__`):"
     ];
     for (code, msg, line) in ordered {
         lines.append(f"#   L{line} [{code}] {msg}");
     }
     return "\n".join(lines) + "\n\n";
+}
+
+def render_lifted_jac(res: LiftResult) -> str {
+    header = render_c2jac_report(res.diags);
+    return header + res.module.unparse(requires_format=True);
 }

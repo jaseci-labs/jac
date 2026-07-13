@@ -68,6 +68,7 @@ def _run_c_transform(tool: str, args: list) -> int {
     strict_c = False;
     lib: str | None = None;
     output: str | None = None;
+    project: str | None = None;
     i = 0;
     n = len(args);
     while i < n {
@@ -90,7 +91,8 @@ def _run_c_transform(tool: str, args: list) -> int {
             "--allow",
             "--block",
             "-o",
-            "--output"
+            "--output",
+            "--project"
         );
         short_glued = len(a) > 2 and a[:2] in ("-I", "-D", "-U", "-o");
         if short_glued {
@@ -119,13 +121,15 @@ def _run_c_transform(tool: str, args: list) -> int {
             nostdinc = True;
         } elif a == "--strict-c" and tool == "c2jac" {
             strict_c = True;
+        } elif a == "--project" and tool == "c2jac" {
+            project = val;
         } elif a == "--lib" and tool == "cbindgen" {
             lib = val;
         } elif a == "--allow" and tool == "cbindgen" {
             allows.append(val);
         } elif a == "--block" and tool == "cbindgen" {
             blocks.append(val);
-        } elif a in ("-o", "--output") and tool == "cbindgen" {
+        } elif a in ("-o", "--output") {
             output = val;
         } elif a.startswith("-") {
             console.error(f"jac tool {tool}: unknown argument '{a}'");
@@ -134,6 +138,23 @@ def _run_c_transform(tool: str, args: list) -> int {
             positional.append(a);
         }
         i += 1;
+    }
+    if tool == "c2jac" and project {
+        if positional {
+            console.error("Usage: jac tool c2jac --project <dir> -o <outdir> [options]");
+            return 1;
+        }
+        return c2jac(
+            "",
+            incdir=[incs] if incs else None,
+            define=[defs] if defs else None,
+            undef=[undefs] if undefs else None,
+            force_include=[forces] if forces else None,
+            nostdinc=nostdinc,
+            strict_c=strict_c,
+            output=output,
+            project=project
+        );
     }
     if len(positional) != 1 {
         console.error(f"Usage: jac tool {tool} <file> [options]");
@@ -152,7 +173,8 @@ def _run_c_transform(tool: str, args: list) -> int {
             undef=undef,
             force_include=force_include,
             nostdinc=nostdinc,
-            strict_c=strict_c
+            strict_c=strict_c,
+            output=output
         );
     }
     return cbindgen(

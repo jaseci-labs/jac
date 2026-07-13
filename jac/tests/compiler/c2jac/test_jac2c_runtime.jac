@@ -32,21 +32,40 @@ def _fn_body(c_src: str, sig: str) -> str {
 
 
 test "jac2c emits RC objects, constructors, methods, and balanced retain/release" {
+    import from jaclang.compiler.passes.c.c_gen_pass { stable_type_id }
     c_src = unit_src("obj_rc.jac", "obj_rc.jac");
+    tid = stable_type_id("Counter");
+    assert tid >= 2;
+    needle_alloc = f"jac_rc_alloc(sizeof(struct Counter), {tid}, Counter__dtor)";
+    assert needle_alloc in c_src , f"missing hash-stable alloc {needle_alloc!r} in:\n{c_src}";
     for needle in [
         "#include \"jacrt.h\"",
         "struct Counter *Counter__new(int start)",
-        "jac_rc_alloc(sizeof(struct Counter)",
         "int Counter__bump(struct Counter *self)",
         "self->n = (self->n + 1)",
-        "return Counter__get(self->c)",
+        "Counter__get(self->c)",
         "jac_rc_retain(",
         "jac_rc_release(self->c)",
-        "jac_rc_release(c)"
+        "jac_rc_release(c)",
+        "jac_exc_push_cleanup(",
+        "jac_exc_track("
     ] {
         assert needle in c_src , f"missing {needle!r} in:\n{c_src}";
     }
     assert "unsupported" not in c_src , f"unsupported nodes remain:\n{c_src}";
+}
+
+test "jac2c type_ids are name-stable across defining and importing TUs" {
+    import from jaclang.compiler.passes.c.c_gen_pass { stable_type_id }
+    shape_tid = stable_type_id("Shape");
+    sq_tid = stable_type_id("Sq");
+    assert shape_tid >= 2 and sq_tid >= 2 and shape_tid != sq_tid;
+    base_src = unit_src("xmod_main.jac", "xmod_base.jac");
+    main_src = unit_src("xmod_main.jac", "xmod_main.jac");
+    assert f"jac_rc_alloc(sizeof(struct Shape), {shape_tid}," in base_src , base_src;
+    assert f"jac_rc_alloc(sizeof(struct Sq), {sq_tid}," in main_src , main_src;
+    # Importer sees the same Shape id as the defining TU would compute.
+    assert shape_tid == stable_type_id("Shape");
 }
 
 test "jac2c emits per-class vtables and virtual dispatch for inheritance" {
@@ -79,13 +98,37 @@ test "jac2c lowers try/except/raise to the setjmp runtime" {
         "jac_exc_frame ",
         "setjmp(",
         "jac_exc_push(",
+        "jac_exc_push_cleanup(",
         "jac_exc_throw(",
         "jac_exc_current_type()",
-        "jac_exc_clear();"
+        "jac_exc_rethrow()"
     ] {
         assert needle in c_src , f"missing {needle!r} in:\n{c_src}";
     }
     assert "unsupported" not in c_src , f"unsupported nodes remain:\n{c_src}";
+}
+
+test "jac2c tracks owned locals on exception frames for landing-pad unwind" {
+    c_src = unit_src("exc_rc_unwind.jac", "exc_rc_unwind.jac");
+    for needle in ["jac_exc_track(", "jac_exc_push_cleanup("] {
+        assert needle in c_src , f"missing {needle!r} in:\n{c_src}";
+    }
+    try_local = _fn_body(c_src, "int run_try_local(void)");
+    assert "jac_exc_track(c)" in try_local ,
+        f"try-body owned local must be tracked:\n{try_local}";
+    assert "struct Counter * c = NULL;" in try_local ,
+        f"try-body owned local must be function-hoisted:\n{try_local}";
+}
+
+test "jac2c exception unwind releases owned locals (rc balanced)" {
+    if cc() is None {
+        return;
+    }
+    calls = ["run_try_local", "run_callee_raise", "run_nothrow"];
+    c_out = link_and_run(emit_units("exc_rc_unwind.jac"), calls, rc_live=True);
+    py_out = interpreter_run(["exc_rc_unwind.jac"], "exc_rc_unwind.jac", calls);
+    assert c_out == f"{py_out} 0" ,
+        f"got {c_out!r}, want {py_out!r} + ' 0' (landing-pad must release on unwind)";
 }
 
 test "jac2c uses OwnershipFacts callee conventions to move or copy across calls" {
