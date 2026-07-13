@@ -8,6 +8,7 @@ with entry {
         import from pymongo.errors {
             ConnectionFailure,
             DuplicateKeyError,
+            OperationFailure,
             PyMongoError
         }
         import from pymongo.results {
@@ -28,6 +29,7 @@ with entry {
         Cursor = None;
         Collection = None;
         ConnectionFailure = Exception;
+        OperationFailure = Exception;
         DuplicateKeyError = Exception;
         class _PyMongoUnavailableError(Exception) {}
         PyMongoError = _PyMongoUnavailableError;

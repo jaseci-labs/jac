@@ -103,7 +103,25 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                                         'name': 'mongo-run',
                                         'mountPath': '/var/run/mongodb'
                                     }
-                                ]
+                                ],
+                                # Ready means mongod answers an authenticated
+                                # command, not just an open TCP port. The
+                                # headless service only publishes ready pods
+                                # to DNS, so the app pods' wait-for-mongodb
+                                # init container inherently waits for this.
+                                'readinessProbe': {
+                                    'exec': {
+                                        'command': [
+                                            'sh',
+                                            '-c',
+                                            'HOME=/tmp mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({ping: 1})" >/dev/null'
+                                        ]
+                                    },
+                                    'initialDelaySeconds': 5,
+                                    'periodSeconds': 5,
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 6
+                                }
                             }
                         ],
                         'volumes': [

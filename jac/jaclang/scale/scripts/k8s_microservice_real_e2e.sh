@@ -283,6 +283,25 @@ done
 
 _t "pods Ready"
 
+echo "=== mongo readiness gate + no crash-restarts on first boot ==="
+# The live mongo statefulset must gate Ready on the authenticated ping, and
+# no app pod may have crash-restarted while mongo came up.
+MONGO_PROBE=$(kubectl get statefulset jac-e2e-mongodb -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.template.spec.containers[0].readinessProbe.exec.command[*]}' 2>/dev/null || true)
+if ! echo "${MONGO_PROBE}" | grep -q "mongosh"; then
+    echo "FAIL: mongo statefulset has no authenticated-ping readinessProbe"
+    exit 1
+fi
+RESTARTS=$(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale \
+    -o jsonpath='{range .items[*]}{.metadata.name}{":"}{range .status.initContainerStatuses[*]}{.restartCount}{","}{end}{range .status.containerStatuses[*]}{.restartCount}{","}{end}{"\n"}{end}' \
+    | grep -vE '^[^:]+:(0,)*$' | grep -v '^$' || true)
+if [ -n "${RESTARTS}" ]; then
+    echo "FAIL: pods crash-restarted during first boot:"
+    echo "${RESTARTS}"
+    dump_pod_state
+    exit 1
+fi
+
 echo "=== first-boot compile stats (per pod) ==="
 for pod in $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o name 2>/dev/null); do
     # `|| true` throughout: pods without a jac-bootstrap container (mongo,

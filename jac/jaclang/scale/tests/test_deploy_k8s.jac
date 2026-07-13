@@ -483,6 +483,69 @@ test "redis warns when memory limit lacks headroom over maxmemory" {
         'redis_memory_limit' in str(call) for call in mock_logger.warning.call_args_list
     );
     assert warned , "expected a headroom warning when limit <= 2x maxmemory";
+
+test "mongo ready means authenticated ping, and app pods wait on it" {
+    provider = DatabaseProviderFactory.create(
+        'kubernetes_mongo', None, {'app_name': 'test-app'}
+    );
+    deployed = provider.deploy();
+    container = deployed['deployment']['spec']['template']['spec']['containers'][0];
+    probe = container['readinessProbe'];
+    probe_cmd = ' '.join(probe['exec']['command']);
+    assert 'mongosh' in probe_cmd;
+    assert '$MONGO_INITDB_ROOT_USERNAME' in probe_cmd;
+    assert '$MONGO_INITDB_ROOT_PASSWORD' in probe_cmd;
+    assert 'ping' in probe_cmd;
+    assert probe['failureThreshold'] * probe['periodSeconds'] >= 30;
+
+    # The headless service resolves only ready pods, so the nc wait in the
+    # app pods' init container inherits the authenticated-ping gate.
+    assert deployed['service']['spec']['clusterIP'] == 'None';
+    init = provider.get_init_container('test-app', 'busybox:1.36');
+    assert 'nc -z test-app-mongodb-service 27017' in init['command'][2];
+}
+
+
+test "deploy path applies the mongo statefulset with its readiness gate" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'test-app';
+    target_config['namespace'] = 'test-ns';
+    logger = UtilityFactory.create_logger('standard');
+    deployment_target = DeploymentTargetFactory.create(
+        'kubernetes', target_config, logger
+    );
+
+    not_found = ApiException();
+    not_found.status = 404;
+    apps_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+    for reader in [
+        apps_v1.read_namespaced_stateful_set,
+        apps_v1.read_namespaced_deployment,
+        core_v1.read_namespaced_secret,
+        core_v1.read_namespaced_service,
+        core_v1.read_namespaced_service_account,
+        core_v1.read_namespaced_config_map,
+        core_v1.read_namespaced_persistent_volume_claim
+    ] {
+        reader.side_effect = not_found;
+    }
+
+    deployment_target._deploy_databases('test-app', 'test-ns', apps_v1, core_v1);
+
+    applied = [
+        c.kwargs['body'] for c in apps_v1.create_namespaced_stateful_set.call_args_list
+    ];
+    mongo_sets = [
+        b
+        for b in applied
+        if b['metadata']['name'] == 'test-app-mongodb'
+    ];
+    assert len(mongo_sets) == 1;
+    spec = mongo_sets[0]['spec']['template']['spec'];
+    probe = spec['containers'][0]['readinessProbe'];
+    assert 'mongosh' in ' '.join(probe['exec']['command']);
 }
 
 obj FakeNetworkingV1 {
