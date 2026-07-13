@@ -201,3 +201,27 @@ test "mtir gen all genai abilities captured" {
         expected_abilities
     )}";
 }
+
+test "mtir gen cross-module parent with by-llm tools" {
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURES, "mtir_cross_module_inherit", "main.jac"));
+    assert not prog.errors_had;
+    assert Jac.program is not None;
+    mtir_map = Jac.program.mtir_map;
+    step_scope = None;
+    for scope in mtir_map {
+        if "step" in scope {
+            step_scope = scope;
+            break;
+        }
+    }
+    assert step_scope is not None , "Child.step should be in mtir_map";
+    method_info = mtir_map[step_scope];
+    assert isinstance(method_info, MethodInfo);
+    assert method_info.parent_class is not None;
+    assert method_info.parent_class.name == "Child";
+    base_names = [b.name for b in method_info.parent_class.base_classes];
+    assert "Parent" in base_names;
+    tool_names = [t.name for t in method_info.tools];
+    assert "helper_tool" in tool_names;
+}

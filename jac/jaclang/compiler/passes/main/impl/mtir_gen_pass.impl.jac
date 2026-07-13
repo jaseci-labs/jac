@@ -241,7 +241,11 @@ impl MTIRGenPass._extract_class_info(symbol: uni.Symbol) -> ClassInfo | None {
             } else {
                 base_name = str(base);
             }
-            base_classes.append(ClassInfo(name=base_name, semstr=None));
+            base_classes.append(
+                ClassInfo(
+                    name=base_name, semstr=None, fields=[], base_classes=[], methods=[]
+                )
+            );
         }
     }
     fields: list[FieldInfo] = [];
