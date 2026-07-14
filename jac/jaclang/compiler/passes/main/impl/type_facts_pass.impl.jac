@@ -1,11 +1,14 @@
-impl TypeFacts.type_of(e: object, local_types: dict[str, str]) -> str {
+impl TypeFacts.type_of(
+    e: object, local_types: dict[str, str], scope: dict[str, str] = {}
+) -> str {
     return infer_type(
         e,
         local_types,
         self.ref_types,
         self.func_returns,
         self.method_returns,
-        self.field_types
+        self.field_types,
+        scope
     );
 }
 
@@ -73,14 +76,17 @@ impl get_type_facts(module: uni.Module, prog: JacProgram | None = None) -> TypeF
     );
 }
 
-impl ScopeTypes.for_ability(sig: object, self_type: str) -> dict[str, str] {
+impl ScopeTypes.for_ability(
+    sig: object, self_type: str, scope: dict[str, str] = {}
+) -> dict[str, str] {
     out: dict[str, str] = {};
     if self_type {
         out["self"] = self_type;
     }
     if isinstance(sig, uni.FuncSignature) and sig.params {
         for p in sig.params {
-            out[p.name.value] = type_tag_name(p.type_tag);
+            pty = type_tag_name(p.type_tag);
+            out[p.name.value] = scope.get(pty, pty);
         }
     }
     return out;
@@ -147,11 +153,18 @@ impl infer_type(
     ref_types: object,
     func_returns: dict[str, str],
     method_returns: dict[str, dict[str, str]],
-    field_types: dict[str, dict[str, str]]
+    field_types: dict[str, dict[str, str]],
+    scope: dict[str, str] = {}
 ) -> str {
     if isinstance(e, uni.AtomUnit) {
         return infer_type(
-            e.value, local_types, ref_types, func_returns, method_returns, field_types
+            e.value,
+            local_types,
+            ref_types,
+            func_returns,
+            method_returns,
+            field_types,
+            scope
         );
     }
     if isinstance(e, (uni.String, uni.MultiString)) {
@@ -171,10 +184,22 @@ impl infer_type(
     }
     if isinstance(e, uni.BinaryExpr) {
         lt = infer_type(
-            e.left, local_types, ref_types, func_returns, method_returns, field_types
+            e.left,
+            local_types,
+            ref_types,
+            func_returns,
+            method_returns,
+            field_types,
+            scope
         );
         rt = infer_type(
-            e.right, local_types, ref_types, func_returns, method_returns, field_types
+            e.right,
+            local_types,
+            ref_types,
+            func_returns,
+            method_returns,
+            field_types,
+            scope
         );
         if isinstance(e.op, uni.Token)
         and e.op.value == "+"
@@ -194,16 +219,15 @@ impl infer_type(
     }
     if isinstance(e, uni.FuncCall) {
         tgt = e.target;
-        # Ref arches live in `ref_types`; value arches (`@__jac_value__`) do
-        # not, but both are indexed in `field_types` so a `Type(...)` call
-        # still types as `Type` for jac2c POD compound literals.
-        if isinstance(tgt, uni.Name) and (
-            tgt.value in ref_types or tgt.value in field_types
-        ) {
-            return tgt.value;
-        }
-        if isinstance(tgt, uni.Name) and tgt.value in func_returns {
-            return func_returns[tgt.value];
+
+        if isinstance(tgt, uni.Name) {
+            tv = scope.get(tgt.value, tgt.value);
+            if tv in ref_types or tv in field_types {
+                return tv;
+            }
+            if tgt.value in func_returns {
+                return func_returns[tgt.value];
+            }
         }
         if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
             recv = infer_type(
@@ -212,7 +236,8 @@ impl infer_type(
                 ref_types,
                 func_returns,
                 method_returns,
-                field_types
+                field_types,
+                scope
             );
             m = _attr_name(tgt.right);
             if recv in method_returns and m in method_returns[recv] {
@@ -223,7 +248,13 @@ impl infer_type(
     }
     if isinstance(e, uni.AtomTrailer) and e.is_attr {
         recv = infer_type(
-            e.target, local_types, ref_types, func_returns, method_returns, field_types
+            e.target,
+            local_types,
+            ref_types,
+            func_returns,
+            method_returns,
+            field_types,
+            scope
         );
         f = _attr_name(e.right);
         if recv in field_types and f in field_types[recv] {
@@ -238,31 +269,150 @@ impl get_shared_type_facts(
 ) -> TypeFacts {
     merged = TypeFacts();
     merged.ok = True;
+    idx = build_type_id_index(modules);
+    merged.type_ids = idx;
     for m in modules {
         f = get_type_facts(m, prog);
         if not f.ok {
             merged.ok = False;
         }
+        mp = m.loc.mod_path if m.loc else "";
+        scope = idx.scope_for(m);
+
         for (k, rv) in f.ref_types.items() {
-            if k not in merged.ref_types {
-                merged.ref_types[k] = rv;
-            }
+            merged.ref_types[idx.tid_for(mp, k)] = rv;
         }
         for (k, fv) in f.func_returns.items() {
             if k not in merged.func_returns {
-                merged.func_returns[k] = fv;
+                merged.func_returns[k] = scope.get(fv, fv);
             }
         }
         for (k, mv) in f.method_returns.items() {
-            if k not in merged.method_returns {
-                merged.method_returns[k] = dict(mv);
+            inner: dict[str, str] = {};
+            for (mn, rt) in mv.items() {
+                inner[mn] = scope.get(rt, rt);
             }
+            merged.method_returns[idx.tid_for(mp, k)] = inner;
         }
         for (k, tv) in f.field_types.items() {
-            if k not in merged.field_types {
-                merged.field_types[k] = dict(tv);
+            fmap: dict[str, str] = {};
+            for (fn, ft) in tv.items() {
+                fmap[fn] = scope.get(ft, ft);
             }
+            merged.field_types[idx.tid_for(mp, k)] = fmap;
         }
     }
     return merged;
+}
+
+impl module_stem(mod_path: str) -> str {
+    import os;
+    base = os.path.basename(mod_path or "");
+    for ext in [".na.jac", ".jac", ".c", ".h"] {
+        if base.endswith(ext) {
+            return base[:-len(ext)];
+        }
+    }
+    return base;
+}
+
+impl sanitize_c_ident(s: str) -> str {
+    import re;
+    out = re.sub(r'[^A-Za-z0-9_]', '_', s or "");
+    if out and out[0].isdigit() {
+        out = "_" + out;
+    }
+    return out or "m";
+}
+
+impl TypeIdIndex.key(mod_path: str, name: str) -> str {
+    return (mod_path or "") + "\x00" + name;
+}
+
+impl TypeIdIndex.tid_for(mod_path: str, name: str) -> str {
+    return self.tids.get(self.key(mod_path, name), name);
+}
+
+impl TypeIdIndex.tid_of_arch(arch: uni.Archetype) -> str {
+    mp = arch.loc.mod_path if arch.loc else "";
+    return self.tid_for(mp, arch.name.value);
+}
+
+impl TypeIdIndex.scope_for(mod: uni.Module) -> dict[str, str] {
+    scope: dict[str, str] = {};
+    for stmt in (mod.body or []) {
+        if isinstance(stmt, uni.Archetype) {
+            scope[stmt.name.value] = self.tid_of_arch(stmt);
+        } elif isinstance(stmt, uni.Import) {
+            for item in stmt.items {
+                if not isinstance(item, uni.ModuleItem) {
+                    continue;
+                }
+                try {
+                    tgt = item.from_mod_path.resolve_relative_path();
+                } except Exception {
+                    continue;
+                }
+                if not tgt {
+                    continue;
+                }
+                local = item.alias.value if item.alias is not None else item.name.value;
+                scope[local] = self.tid_for(tgt, item.name.value);
+            }
+        }
+    }
+    return scope;
+}
+
+impl build_type_id_index(modules: list[uni.Module]) -> TypeIdIndex {
+    idx = TypeIdIndex();
+    defs: list[tuple[str, str]] = [];
+    name_mods: dict[str, set[str]] = {};
+    for m in modules {
+        for stmt in (m.body or []) {
+            if isinstance(stmt, uni.Archetype) {
+                mp = stmt.loc.mod_path if stmt.loc else "";
+                nm = stmt.name.value;
+                defs.append((mp, nm));
+                if nm not in name_mods {
+                    name_mods[nm] = set();
+                }
+                name_mods[nm].add(mp);
+            }
+        }
+    }
+    used: set[str] = set();
+
+    for (mp, nm) in defs {
+        if len(name_mods[nm]) <= 1 {
+            idx.tids[idx.key(mp, nm)] = nm;
+            used.add(nm);
+        }
+    }
+
+    colliders: list[tuple[str, str]] = [];
+    placed: set[str] = set();
+    for (mp, nm) in defs {
+        if len(name_mods[nm]) > 1 {
+            k = idx.key(mp, nm);
+            if k in placed {
+                continue;
+            }
+            placed.add(k);
+            colliders.append((mp, nm));
+        }
+    }
+    colliders.sort(key=lambda pair : pair[1] + "\x00" + pair[0]);
+    for (mp, nm) in colliders {
+        base = sanitize_c_ident(module_stem(mp)) + "__" + nm;
+        cand = base;
+        n = 1;
+        while cand in used {
+            cand = base + "_" + str(n);
+            n += 1;
+        }
+        used.add(cand);
+        idx.tids[idx.key(mp, nm)] = cand;
+    }
+    return idx;
 }

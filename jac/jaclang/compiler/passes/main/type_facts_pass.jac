@@ -19,11 +19,14 @@ def infer_type(
     ref_types: object,
     func_returns: dict[str, str],
     method_returns: dict[str, dict[str, str]],
-    field_types: dict[str, dict[str, str]]
+    field_types: dict[str, dict[str, str]],
+    scope: dict[str, str] = {}
 ) -> str;
 
 obj ScopeTypes {
-    static def for_ability(sig: object, self_type: str) -> dict[str, str];
+    static def for_ability(
+        sig: object, self_type: str, scope: dict[str, str] = {}
+    ) -> dict[str, str];
 }
 
 obj TypeFacts {
@@ -31,11 +34,30 @@ obj TypeFacts {
         func_returns: dict[str, str] = {},
         method_returns: dict[str, dict[str, str]] = {},
         field_types: dict[str, dict[str, str]] = {},
-        ok: bool = False;
+        ok: bool = False,
+        type_ids: (TypeIdIndex | None) = None;
 
-    def type_of(e: object, local_types: dict[str, str]) -> str;
+    def type_of(
+        e: object, local_types: dict[str, str], scope: dict[str, str] = {}
+    ) -> str;
+
     def is_ref(name: str) -> bool;
 }
+
+obj TypeIdIndex {
+    has tids: dict[str, str] = {};
+
+    def key(mod_path: str, name: str) -> str;
+    def tid_for(mod_path: str, name: str) -> str;
+    def tid_of_arch(arch: uni.Archetype) -> str;
+    def scope_for(mod: uni.Module) -> dict[str, str];
+}
+
+def module_stem(mod_path: str) -> str;
+
+def sanitize_c_ident(s: str) -> str;
+
+def build_type_id_index(modules: list[uni.Module]) -> TypeIdIndex;
 
 def get_type_facts(module: uni.Module, prog: JacProgram | None = None) -> TypeFacts;
 

@@ -15,6 +15,7 @@ import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 import from jaclang.jac0core.osp_model { stable_osp_tag }
 import from jaclang.compiler.passes.main.type_facts_pass {
     TypeFacts,
+    TypeIdIndex,
     get_shared_type_facts,
     ScopeTypes,
     is_ref_arch as arch_is_ref,
@@ -36,7 +37,6 @@ glob C_PRIM_TYPES: dict[str, str] = {
 glob C_FIRST_USER_TYPEID: int = 2;
 
 def stable_type_id(name: str) -> int {
-    # Name-derived archetype type id. Never returns reserved RAW/STR (0/1).
     return C_FIRST_USER_TYPEID + (stable_osp_tag(name) % 0x3FFFFFFD);
 }
 
@@ -71,11 +71,17 @@ obj CGenPass(Transform[uni.Module, uni.Module]) {
         extern_func_defs: dict[str, uni.Ability] = {},
         seen_imports: list[str] = [],
         shared_layout: LayoutRegistry | None = None,
+        tid_index: TypeIdIndex | None = None,
+        type_scope: dict[str, str] = {},
+        mod_scopes: dict[str, dict[str, str]] = {},
         strict_c: bool = False;
 
     def transform(ir_in: uni.Module) -> uni.Module;
     def _unsupported(nd: uni.UniNode, code: str, **kw: object);
     def is_ref_arch(arch: uni.Archetype) -> bool;
+    def arch_tid(arch: uni.Archetype) -> str;
+    def tid(name: str) -> str;
+    def _defining_scope(nd: uni.UniNode) -> dict[str, str];
     def classify(mod: uni.Module);
     def classify_imports(mod: uni.Module);
     def index_imported(sub: uni.Module);

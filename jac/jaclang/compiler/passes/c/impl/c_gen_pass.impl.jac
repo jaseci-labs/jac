@@ -25,10 +25,21 @@ impl CGenPass.is_ref_arch(arch: uni.Archetype) -> bool {
     return arch_is_ref(arch);
 }
 
+impl CGenPass.arch_tid(arch: uni.Archetype) -> str {
+    if self.tid_index is not None {
+        return self.tid_index.tid_of_arch(arch);
+    }
+    return arch.name.value if arch.name else "unknown";
+}
+
+impl CGenPass.tid(name: str) -> str {
+    return self.type_scope.get(name, name);
+}
+
 impl CGenPass.classify(mod: uni.Module) {
     for stmt in mod.body {
         if isinstance(stmt, uni.Archetype) and self.is_ref_arch(stmt) {
-            name = stmt.name.value;
+            name = self.arch_tid(stmt);
             self.type_ids[name] = stable_type_id(name);
         }
     }
@@ -77,7 +88,7 @@ impl CGenPass.classify_imports(mod: uni.Module) {
 impl CGenPass.index_imported(sub: uni.Module) {
     for stmt in sub.body {
         if isinstance(stmt, uni.Archetype) and self.is_ref_arch(stmt) {
-            name = stmt.name.value;
+            name = self.arch_tid(stmt);
             if name in self.type_ids {
                 continue;
             }
@@ -96,7 +107,7 @@ impl CGenPass.index_imported(sub: uni.Module) {
 }
 
 impl CGenPass.index_arch(arch: uni.Archetype) {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     self.arch_nodes[name] = arch;
     omap: dict[str, str] = {};
     dmap: dict[str, uni.Ability] = {};
@@ -112,9 +123,28 @@ impl CGenPass.index_arch(arch: uni.Archetype) {
 }
 
 impl CGenPass.gen_module(mod: uni.Module) {
+    base_tf = self.shared_type_facts;
+    if base_tf is not None and base_tf.type_ids is not None {
+        self.tid_index = base_tf.type_ids;
+        self.type_scope = self.tid_index.scope_for(mod);
+    }
     self.classify(mod);
     self.tf = self.shared_type_facts
     or get_shared_type_facts([mod] + self.imported_mods, self.prog);
+    if self.tid_index is None and self.tf.type_ids is not None {
+        self.tid_index = self.tf.type_ids;
+        self.type_scope = self.tid_index.scope_for(mod);
+    }
+
+    self.mod_scopes = {};
+    if self.tid_index is not None {
+        mp0 = mod.loc.mod_path if mod.loc else "";
+        self.mod_scopes[mp0] = self.type_scope;
+        for im in self.imported_mods {
+            imp = im.loc.mod_path if im.loc else "";
+            self.mod_scopes[imp] = self.tid_index.scope_for(im);
+        }
+    }
     if self.strict_c and not self.tf.ok {
         raise ValueError(
             "jac2c: semantic type facts unavailable -- refusing strict C emission"
@@ -140,7 +170,7 @@ impl CGenPass.gen_module(mod: uni.Module) {
     funcs: list[str] = [];
     for stmt in mod.body {
         if isinstance(stmt, uni.Archetype) {
-            if stmt.name.value in self.type_ids {
+            if self.arch_tid(stmt) in self.type_ids {
                 structs.append(self.gen_ref_struct(stmt));
                 vt = self.gen_vtable(stmt);
                 if vt {
@@ -200,11 +230,13 @@ impl CGenPass.gen_module(mod: uni.Module) {
 
 impl CGenPass.extern_decls -> list[str] {
     out: list[str] = [];
+    saved = self.type_scope;
     for tname in self.extern_types {
         arch = self.arch_nodes.get(tname);
         if arch is None {
             continue;
         }
+        self.type_scope = self._defining_scope(arch);
         out.append(self.gen_ref_struct(arch));
         out.append("extern " + self.ctor_head(arch) + ";");
         for ab in self.method_list(arch) {
@@ -219,9 +251,16 @@ impl CGenPass.extern_decls -> list[str] {
         if ab is None {
             continue;
         }
+        self.type_scope = self._defining_scope(ab);
         out.append("extern " + self.func_head(ab) + ";");
     }
+    self.type_scope = saved;
     return out;
+}
+
+impl CGenPass._defining_scope(nd: uni.UniNode) -> dict[str, str] {
+    mp = nd.loc.mod_path if nd.loc else "";
+    return self.mod_scopes.get(mp, self.type_scope);
 }
 
 impl CGenPass.load_layout(mod: uni.Module) {
@@ -302,6 +341,7 @@ impl CGenPass.layout_fields(name: str) -> list[FieldInfo] {
 }
 
 impl CGenPass.c_type(jac_ty: str) -> str {
+    jac_ty = self.tid(jac_ty);
     if jac_ty in self.type_ids {
         return f"struct {jac_ty} *";
     }
@@ -320,7 +360,7 @@ impl CGenPass.ret_type_name(ret: object) -> str {
 }
 
 impl CGenPass.gen_struct(arch: uni.Archetype) -> str {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     lines: list[str] = [f"struct {name} " + "{"];
     for member in (arch.body or []) {
         if isinstance(member, uni.ArchHas) {
@@ -357,7 +397,7 @@ impl CGenPass.method_list(arch: uni.Archetype) -> list[uni.Ability] {
 }
 
 impl CGenPass.find_init(arch: uni.Archetype) -> object {
-    for cname in self.mro_of(arch.name.value) {
+    for cname in self.mro_of(self.arch_tid(arch)) {
         if cname in self.method_defs and "init" in self.method_defs[cname] {
             return self.method_defs[cname]["init"];
         }
@@ -366,7 +406,7 @@ impl CGenPass.find_init(arch: uni.Archetype) -> object {
 }
 
 impl CGenPass.gen_ref_struct(arch: uni.Archetype) -> str {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     lines: list[str] = [f"struct {name} " + "{"];
     if self.has_vtable(name) {
         lines.append("    void **__vtable;");
@@ -388,7 +428,7 @@ impl CGenPass.gen_ref_struct(arch: uni.Archetype) -> str {
 }
 
 impl CGenPass.gen_vtable(arch: uni.Archetype) -> str {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     if not self.has_vtable(name) {
         return "";
     }
@@ -418,7 +458,7 @@ impl CGenPass.gen_vtable(arch: uni.Archetype) -> str {
 }
 
 impl CGenPass.ctor_head(arch: uni.Archetype) -> str {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     init = self.find_init(arch);
     params: list[str] = [];
     if isinstance(init, uni.Ability)
@@ -434,7 +474,7 @@ impl CGenPass.ctor_head(arch: uni.Archetype) -> str {
 }
 
 impl CGenPass.method_head(arch: uni.Archetype, ab: uni.Ability) -> str {
-    cname = arch.name.value;
+    cname = self.arch_tid(arch);
     mname = ab.name_ref.sym_name if ab.name_ref is not None else "";
     sig = ab.signature;
     ret = self.c_type(
@@ -453,7 +493,7 @@ impl CGenPass.method_head(arch: uni.Archetype, ab: uni.Ability) -> str {
 }
 
 impl CGenPass.ref_protos(arch: uni.Archetype) -> list[str] {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     out: list[str] = [f"static void {name}__dtor(void *self);"];
     out.append(self.ctor_head(arch) + ";");
     for ab in self.method_list(arch) {
@@ -477,7 +517,7 @@ impl CGenPass.gen_ref_defs(arch: uni.Archetype) -> list[str] {
 }
 
 impl CGenPass.gen_dtor(arch: uni.Archetype) -> str {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     lines: list[str] = [f"static void {name}__dtor(void *self) " + "{"];
     body: list[str] = [];
     for (fname, fty) in self.all_fields(arch) {
@@ -495,7 +535,7 @@ impl CGenPass.gen_dtor(arch: uni.Archetype) -> str {
 }
 
 impl CGenPass.all_fields(arch: uni.Archetype) -> list[tuple[str, str]] {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     lfields = self.layout_fields(name);
     if lfields {
         out: list[tuple[str, str]] = [];
@@ -512,7 +552,7 @@ impl CGenPass.all_fields(arch: uni.Archetype) -> list[tuple[str, str]] {
 }
 
 impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
-    name = arch.name.value;
+    name = self.arch_tid(arch);
     tid = self.type_ids[name];
     self.enter_method(name);
     lines: list[str] = [self.ctor_head(arch) + " {"];
@@ -529,7 +569,9 @@ impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
     }
     init = self.find_init(arch);
     if isinstance(init, uni.Ability) {
-        self.local_types = ScopeTypes.for_ability(init.signature, name);
+        self.local_types = ScopeTypes.for_ability(
+            init.signature, name, self.type_scope
+        );
         body = self.gen_block(init.body, 1);
         if body {
             lines.append(body);
@@ -542,7 +584,7 @@ impl CGenPass.gen_ctor(arch: uni.Archetype) -> str {
 
 impl CGenPass.field_defaults(arch: uni.Archetype) -> list[tuple[str, uni.Expr]] {
     out: list[tuple[str, uni.Expr]] = [];
-    for cname in reversed(self.mro_of(arch.name.value)) {
+    for cname in reversed(self.mro_of(self.arch_tid(arch))) {
         anode = self.arch_nodes.get(cname);
         if anode is None {
             continue;
@@ -557,7 +599,7 @@ impl CGenPass.field_defaults(arch: uni.Archetype) -> list[tuple[str, uni.Expr]] 
 }
 
 impl CGenPass.gen_method(arch: uni.Archetype, ab: uni.Ability) -> str {
-    cname = arch.name.value;
+    cname = self.arch_tid(arch);
     self.enter_method(cname);
     sig = ab.signature;
     self.cur_ret_cty = self.c_type(
@@ -611,13 +653,10 @@ impl CGenPass.gen_func(ab: uni.Ability) -> str {
 }
 
 impl CGenPass.emit_ability_body(sig: object, body: object, self_type: str) -> str {
-    # Probe once with `func_cleanup` unset so returns do not emit orphan
-    # `jac_exc_pop()` when this ability needs no cleanup frame. If wrap is
-    # required, regenerate with the frame name so early returns pop it.
     self.owned_locals = [];
     self.exc_hoists = [];
     self.func_hoists = [];
-    self.local_types = ScopeTypes.for_ability(sig, self_type);
+    self.local_types = ScopeTypes.for_ability(sig, self_type, self.type_scope);
     self.func_cleanup = "";
     self.exc_ctr += 1;
     fc_name = f"_fc{self.exc_ctr}";
@@ -626,7 +665,7 @@ impl CGenPass.emit_ability_body(sig: object, body: object, self_type: str) -> st
         self.owned_locals = [];
         self.exc_hoists = [];
         self.func_hoists = [];
-        self.local_types = ScopeTypes.for_ability(sig, self_type);
+        self.local_types = ScopeTypes.for_ability(sig, self_type, self.type_scope);
         self.func_cleanup = fc_name;
         rendered = self.wrap_func_body(self.gen_block(body, 1));
     }
@@ -634,8 +673,6 @@ impl CGenPass.emit_ability_body(sig: object, body: object, self_type: str) -> st
 }
 
 impl CGenPass.wrap_func_body(body: str) -> str {
-    # Cleanup-only frame so a raise that longjmps out of this function still
-    # releases owned locals via the landing pad (RC + longjmp composition).
     if not self.owned_locals and not self.needs_rt and not self.func_hoists {
         self.func_cleanup = "";
         return body;
@@ -679,9 +716,6 @@ impl CGenPass.scope_release_lines(pad: str, skip_name: str) -> list[str] {
 }
 
 impl CGenPass.own_local(name: str, cty: str) -> list[str] {
-    # Register an owned RC local. Inside a try, hoist the declaration to
-    # function scope so post-try releases and landing-pad nulling stay in
-    # scope, and track the pointer on the current exception frame.
     self.owned_locals.append(name);
     out: list[str] = [];
     if self.exc_frames {
@@ -752,7 +786,7 @@ impl CGenPass.ref_local_copy(st: uni.Assignment, pad: str) -> (str | None) {
         return None;
     }
     if st.type_tag is not None {
-        ty = self.type_name(st.type_tag);
+        ty = self.tid(self.type_name(st.type_tag));
     } else {
         ty = self.expr_type_name(st.value);
     }
@@ -841,7 +875,10 @@ impl CGenPass.render_stmt(st: object, ind: int, is_last: bool) -> str {
 
         argcleanup = self.arg_post;
         self.arg_post = [];
-        if not releases and not pops and not argcleanup and not self.func_cleanup
+        if not releases
+        and not pops
+        and not argcleanup
+        and not self.func_cleanup
         and not skip_name {
             return pad + "return " + val + ";";
         }
@@ -962,7 +999,6 @@ impl CGenPass.gen_if(st: uni.IfStmt, ind: int) -> str {
 }
 
 impl CGenPass.exc_pop_lines(pad: str) -> list[str] {
-    # Pop catching try frames only (function cleanup is popped after releases).
     out: list[str] = [];
     i = len(self.exc_frames) - 1;
     while i >= 0 {
@@ -1046,7 +1082,11 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
     self.exc_frames.pop();
     hoists = self.exc_hoists;
     self.exc_hoists = saved_hoists;
-    try_owned = [v for v in self.owned_locals if v not in owned_at_entry];
+    try_owned = [
+        v
+        for v in self.owned_locals
+        if v not in owned_at_entry
+    ];
 
     lines: list[str] = [pad + "{"];
     lines.append(pad + f"    jac_exc_frame {fr};");
@@ -1057,8 +1097,7 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
         lines.append(body);
     }
     lines.append(pad + "        jac_exc_pop();");
-    # Try-body locals that survived the try stay owned by the function: re-track
-    # them on the enclosing cleanup frame so a later raise still releases them.
+
     for v in try_owned {
         if v in self.owned_locals {
             lines.append(pad + f"        jac_exc_track({v});");
@@ -1066,8 +1105,7 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
     }
     lines.append(pad + f"        {handled} = 1;");
     lines.append(pad + "    } else {");
-    # Landing pad already ran in jac_exc_throw's unwind; null hoisted locals
-    # so a later scope_release is a safe no-op on the exceptional path.
+
     for (_cty, name) in hoists {
         lines.append(pad + f"        {name} = NULL;");
     }
@@ -1086,9 +1124,7 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
         lines.append(pad + f"        {kw} ({cond}) " + "{");
         if exc.name is not None {
             bind = exc.name.value;
-            lines.append(
-                pad + f"            void *{bind} = jac_exc_take_payload();"
-            );
+            lines.append(pad + f"            void *{bind} = jac_exc_take_payload();");
             lines.append(pad + f"            (void){bind};");
         } else {
             lines.append(pad + "            jac_exc_clear();");
@@ -1112,9 +1148,7 @@ impl CGenPass.gen_try(st: uni.TryStmt, ind: int) -> str {
             lines.append(fbody);
         }
     }
-    lines.append(
-        pad + f"    if (!{handled}) " + "{ " + "jac_exc_rethrow(); }"
-    );
+    lines.append(pad + f"    if (!{handled}) " + "{ " + "jac_exc_rethrow(); }");
     lines.append(pad + "}");
     return "\n".join(lines);
 }
@@ -1123,7 +1157,7 @@ impl CGenPass.gen_assign(a: uni.Assignment) -> str {
     tgt_node = a.target[0];
     tgt = self.gen_expr(tgt_node);
     if a.type_tag is not None {
-        tyname = self.type_name(a.type_tag);
+        tyname = self.tid(self.type_name(a.type_tag));
         cty = self.c_type(tyname);
         if isinstance(tgt_node, uni.Name) {
             self.local_types[tgt_node.value] = tyname;
@@ -1179,7 +1213,7 @@ impl CGenPass.gen_assign(a: uni.Assignment) -> str {
 }
 
 impl CGenPass.expr_type_name(e: object) -> str {
-    return self.tf.type_of(e, self.local_types);
+    return self.tf.type_of(e, self.local_types, self.type_scope);
 }
 
 impl CGenPass.c_op(op_val: str) -> str {
@@ -1280,16 +1314,16 @@ impl CGenPass.gen_expr(e: object) -> str {
 impl CGenPass.gen_call(e: uni.FuncCall) -> str {
     tgt = e.target;
 
-    if isinstance(tgt, uni.Name) and tgt.value in self.type_ids {
-        args = self.gen_args(e, tgt.value);
-        return f"{tgt.value}__new(" + ", ".join(args) + ")";
+    if isinstance(tgt, uni.Name) and self.tid(tgt.value) in self.type_ids {
+        ctor_tid = self.tid(tgt.value);
+        args = self.gen_args(e, ctor_tid);
+        return f"{ctor_tid}__new(" + ", ".join(args) + ")";
     }
 
-    # `@__jac_value__` POD: compound literal, not an RC `__new` / free function.
     if isinstance(tgt, uni.Name)
-    and tgt.value in self.arch_nodes
-    and tgt.value not in self.type_ids {
-        return self.gen_value_ctor(e, tgt.value);
+    and self.tid(tgt.value) in self.arch_nodes
+    and self.tid(tgt.value) not in self.type_ids {
+        return self.gen_value_ctor(e, self.tid(tgt.value));
     }
 
     if isinstance(tgt, uni.Name)
@@ -1328,7 +1362,6 @@ impl CGenPass.gen_call(e: uni.FuncCall) -> str {
 }
 
 impl CGenPass.gen_value_ctor(e: uni.FuncCall, name: str) -> str {
-    # `Vec2(x=3, y=4)` / `Vec2(3, 4)` / `Vec2()` → `(struct Vec2){ .x = … }`.
     arch = self.arch_nodes[name];
     fields = self.field_list(arch);
     assigned: dict[str, str] = {};
