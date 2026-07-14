@@ -219,21 +219,16 @@ impl get_registry -> CommandRegistry {
     return _registry;
 }
 
-impl _register_all_feature_commands -> None {
-    import jaclang.runtimelib.client.cli;
-    import jaclang.cli.shadcn.cli;
-    import jaclang.scale.plugin;
-    import jaclang.byllm.cli;
+impl _load_feature_modules(module_names: list[str]) -> None {
+    import importlib;
+    for module_name in module_names {
+        importlib.import_module(module_name);
+    }
 }
 
 impl register_feature_commands(raw_argv: list[str] | None = None) -> None {
-    if raw_argv is None or not raw_argv {
-        _register_all_feature_commands();
-        return;
-    }
-
-    if "-h" in raw_argv or "--help" in raw_argv {
-        _register_all_feature_commands();
+    if raw_argv is None or not raw_argv or "-h" in raw_argv or "--help" in raw_argv {
+        _load_feature_modules(list(FEATURE_COMMAND_MODULES.values()));
         return;
     }
 
@@ -245,13 +240,8 @@ impl register_feature_commands(raw_argv: list[str] | None = None) -> None {
         }
     }
 
-    if command == "setup" {
-        import jaclang.runtimelib.client.cli;
-    } elif command == "scale" {
-        import jaclang.scale.plugin;
-    } elif command == "retheme" {
-        import jaclang.cli.shadcn.cli;
-    } elif command == "model" {
-        import jaclang.byllm.cli;
+    module_name: str | None = FEATURE_COMMAND_MODULES.get(command or "");
+    if module_name {
+        _load_feature_modules([module_name]);
     }
 }
