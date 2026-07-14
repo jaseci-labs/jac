@@ -1,0 +1,7 @@
+[project]
+name = "integration_byllm"
+version = "1.0.0"
+description = "Jac client application: integration_byllm"
+entry-point = "main.jac"
+
+[serve]
