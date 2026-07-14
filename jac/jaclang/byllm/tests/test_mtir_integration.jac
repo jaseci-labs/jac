@@ -785,124 +785,66 @@ test "tool schema strips nested titles and marks strict" {
     import from keydrop_schema { Investigation }
     import from jaclang.byllm.lib { Tool }
 
-    tool = Tool.make_finish_tool(Investigation);
-    tool_schema = tool.get_json_schema();
-
+    tool_schema = Tool.make_finish_tool(Investigation).get_json_schema();
     assert tool_schema["function"]["strict"] == True;
-
-    final_output = tool_schema["function"]["parameters"]["properties"]["final_output"];
-    for (field_name, field_schema) in final_output["properties"].items() {
-        assert "title" not in field_schema , f"leaked title on {field_name}: {field_schema}";
+    props = tool_schema["function"]["parameters"]["properties"]["final_output"][
+        "properties"
+    ];
+    for (field_name, field_schema) in props.items() {
+        assert "title" not in field_schema , f"leaked title on {field_name}";
     }
 }
 
-test "json_to_instance recovers Title-Case keys" {
-    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
-
-    import from keydrop_schema { Investigation }
-    import jaclang.byllm.schema as schema;
-
-    # Title-Case keys, as a model emits for Title-Cased schema labels.
-    emitted = {
-        "Error Analysis": "two calls shared one list",
-        "Root Cause": "mutable default arg cart=[]",
-
-    };
-    inv = schema.json_to_instance(emitted, Investigation);
-
-    assert isinstance(inv, Investigation);
-    assert inv.error_analysis == "two calls shared one list";
-    assert inv.root_cause == "mutable default arg cart=[]";
-}
-
-test "finish tool parse_arguments recovers Title-Case keys" {
+test "Title-Case keys are recovered on both deserialize paths" {
     jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
 
     import from keydrop_schema { Investigation }
     import from jaclang.byllm.lib { Tool }
-
-    tool = Tool.make_finish_tool(Investigation);
-    # final_output keyed in Title Case -- the shape that bit the gpt-5 agent.
-    args = tool.parse_arguments(
-        {"final_output": {"Error Analysis": "x", "Root Cause": "mutable default arg"}}
-    );
-    inv = args["final_output"];
-
-    assert isinstance(inv, Investigation);
-    assert inv.root_cause == "mutable default arg";
-}
-
-test "key normalisation is type-directed for dict fields" {
-    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
-
-    import from keydrop_schema { TeamReport }
     import jaclang.byllm.schema as schema;
 
-    # `scores` keys are data: they must survive even when Title-Cased, while
-    # the `investigation` dataclass field still gets its keys repaired.
-    emitted = {
-        "Investigation": {"Root Cause": "shared mutable default"},
-        "scores": {"Root Cause": 5, "Error Analysis": 9},
-
-    };
-    team_report = schema.json_to_instance(emitted, TeamReport);
-
-    assert isinstance(team_report, TeamReport);
-    assert team_report.investigation.root_cause == "shared mutable default";
-    assert team_report.scores == {"Root Cause": 5, "Error Analysis": 9};
-}
-
-test "conflicting real name and Title-Case alias are rejected" {
-    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
-
-    import from keydrop_schema { Investigation }
-    import jaclang.byllm.schema as schema;
-    import from jaclang.byllm.exceptions { OutputConversionError }
-
-    # The real field name and its Title-Case variant carry different values:
-    # ambiguous, so reject rather than silently pick the exact-name value.
-    raised = False;
-    try {
-        schema.json_to_instance(
-            {"root_cause": "correct", "Root Cause": "stale"}, Investigation
-        );
-    } except OutputConversionError {
-        raised = True;
-    }
-    assert raised;
-}
-
-test "identical real name and Title-Case alias are kept" {
-    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
-
-    import from keydrop_schema { Investigation }
-    import jaclang.byllm.schema as schema;
-
-    # Real name plus a redundant Title-Case label with the SAME value is a
-    # harmless duplicate -- keep it, do not reject.
+    # Direct structured return -- the bug: every field fell back to its default.
     inv = schema.json_to_instance(
-        {"root_cause": "same", "Root Cause": "same"}, Investigation
+        {"Error Analysis": "shared list", "Root Cause": "mutable default"},
+        Investigation
     );
+    assert inv.error_analysis == "shared list";
+    assert inv.root_cause == "mutable default";
 
-    assert inv.root_cause == "same";
+    # Finish-tool path (what bit the gpt-5 agent): final_output keyed Title-Case.
+    args = Tool.make_finish_tool(Investigation).parse_arguments(
+        {"final_output": {"Root Cause": "mutable default"}}
+    );
+    assert args["final_output"].root_cause == "mutable default";
 }
 
-test "union handling is type-directed and non-corrupting" {
+test "key repair is type-directed: dataclasses fixed, dict keys kept" {
     jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
 
-    import from keydrop_schema { OptHolder }
+    import from keydrop_schema { TeamReport, OptHolder, DictArmHolder }
     import jaclang.byllm.schema as schema;
 
-    # `investigation` (Investigation | None) has one structural arm, so its
-    # Title-Case keys are repaired; `scores` (dict[str,int] | None) carries
-    # real keys that must survive verbatim.
-    holder = schema.json_to_instance(
-        {"investigation": {"Root Cause": "recovered"}, "scores": {"Root Cause": 7},},
-        OptHolder,
+    # Nested dataclass repaired; `scores` (dict[str,int]) keys are real data.
+    tr = schema.json_to_instance(
+        {
+            "Investigation": {"Root Cause": "shared default"},
+            "scores": {"Root Cause": 5, "Error Analysis": 9}
+        },
+        TeamReport
     );
+    assert tr.investigation.root_cause == "shared default";
+    assert tr.scores == {"Root Cause": 5, "Error Analysis": 9};
 
-    assert holder.investigation.root_cause == "recovered";
-    assert holder.scores == {"Root Cause": 7};
+    # Optional[dataclass] arm repaired; Optional[dict] arm keys survive.
+    opt = schema.json_to_instance(
+        {"investigation": {"Root Cause": "recovered"}, "scores": {"Root Cause": 7}},
+        OptHolder
+    );
+    assert opt.investigation.root_cause == "recovered";
+    assert opt.scores == {"Root Cause": 7};
+
+    # A dict arm makes the union ambiguous, so the payload is left untouched.
+    da = schema.json_to_instance({"payload": {"Root Cause": 5}}, DictArmHolder);
+    assert da.payload == {"Root Cause": 5};
 }
 
 test "multi-dataclass union repairs against the best-matching arm" {
@@ -911,75 +853,44 @@ test "multi-dataclass union repairs against the best-matching arm" {
     import from keydrop_schema { Cat, PetHolder }
     import jaclang.byllm.schema as schema;
 
-    # `Color` + `Name` map to Cat (2 fields) vs Dog (1) -- Cat wins, and its
-    # Title-Case keys are repaired.
-    holder = schema.json_to_instance(
+    # `Color` + `Name` match Cat (2 fields) over Dog (1): Cat wins, keys repaired.
+    best = schema.json_to_instance(
         {"pet": {"Color": "black", "Name": "Tom"}}, PetHolder
     );
+    assert isinstance(best.pet, Cat);
+    assert best.pet.color == "black";
 
-    assert isinstance(holder.pet, Cat);
-    assert holder.pet.color == "black";
-    assert holder.pet.name == "Tom";
+    # Only the shared `name` present -> tie -> first arm, but value preserved.
+    tie = schema.json_to_instance({"pet": {"Name": "Solo"}}, PetHolder);
+    assert tie.pet.name == "Solo";
 }
 
-test "ambiguous union tie still preserves shared-field data" {
-    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
-
-    import from keydrop_schema { PetHolder }
-    import jaclang.byllm.schema as schema;
-
-    # Only the shared `name` field is present, so Dog and Cat tie. The first arm
-    # is chosen, but the value is repaired instead of dropped to the default.
-    holder = schema.json_to_instance({"pet": {"Name": "Solo"}}, PetHolder);
-
-    assert holder.pet.name == "Solo";
-}
-
-test "dict-arm union leaves real keys untouched" {
-    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
-
-    import from keydrop_schema { DictArmHolder }
-    import jaclang.byllm.schema as schema;
-
-    # `payload` is `Investigation | dict[str,int]`. A dict-shaped value whose key
-    # looks Title-Cased must not be renamed toward the dataclass arm.
-    holder = schema.json_to_instance({"payload": {"Root Cause": 5}}, DictArmHolder);
-
-    assert holder.payload == {"Root Cause": 5};
-}
-
-test "conflicting aliases for one field are rejected" {
+test "duplicate keys for one field: conflicting rejected, identical kept" {
     jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
 
     import from keydrop_schema { Investigation }
     import jaclang.byllm.schema as schema;
     import from jaclang.byllm.exceptions { OutputConversionError }
 
-    # `Root Cause` and `root-cause` both normalize to `root_cause` but carry
-    # different values: ambiguous, so reject instead of silently picking one.
-    raised = False;
-    try {
-        schema.json_to_instance(
-            {"Root Cause": "first", "root-cause": "second"}, Investigation
-        );
-    } except OutputConversionError {
-        raised = True;
+    # Conflicting values are ambiguous -- reject (-> retry / self-correct)
+    # rather than silently pick one, whether real-name-vs-alias or alias-vs-alias.
+    for bad in [
+        {"root_cause": "correct", "Root Cause": "stale"},
+        {"Root Cause": "first", "root-cause": "second"}
+    ] {
+        raised = False;
+        try {
+            schema.json_to_instance(bad, Investigation);
+        } except OutputConversionError {
+            raised = True;
+        }
+        assert raised;
     }
-    assert raised;
-}
 
-test "identical duplicate aliases are kept without error" {
-    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
-
-    import from keydrop_schema { Investigation }
-    import jaclang.byllm.schema as schema;
-
-    # Two aliases for the same field with the SAME value are a harmless
-    # duplicate -- keep it, do not reject.
+    # Identical duplicates are a harmless echo -- keep, do not reject.
     inv = schema.json_to_instance(
-        {"Root Cause": "same", "root-cause": "same"}, Investigation
+        {"root_cause": "same", "Root Cause": "same"}, Investigation
     );
-
     assert inv.root_cause == "same";
 }
 
