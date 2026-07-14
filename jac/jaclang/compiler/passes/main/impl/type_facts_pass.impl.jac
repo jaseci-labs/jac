@@ -1,6 +1,12 @@
 impl TypeFacts.type_of(
     e: object, local_types: dict[str, str], scope: dict[str, str] = {}
 ) -> str {
+    if self.prog is not None and isinstance(e, uni.Expr) {
+        resolved = self.type_of_via_checker(e);
+        if resolved {
+            return resolved;
+        }
+    }
     return infer_type(
         e,
         local_types,
@@ -10,6 +16,41 @@ impl TypeFacts.type_of(
         self.field_types,
         scope
     );
+}
+
+impl TypeFacts.type_of_via_checker(e: uni.Expr) -> str {
+    import from jaclang.compiler.type_system.type_utils { primitive_type_name_of }
+    import from jaclang.compiler.type_system.types { ClassType }
+    if self.prog is None {
+        return "";
+    }
+    ty = e.type;
+    if ty is None {
+        try {
+            te = self.prog.get_type_evaluator();
+            if te {
+                ty = te.get_type_of_expression(e);
+            }
+        } except Exception {
+            return "";
+        }
+    }
+    if ty is None {
+        return "";
+    }
+
+    prim = primitive_type_name_of(ty);
+    if prim {
+        return prim;
+    }
+
+    if self.type_ids is not None and isinstance(ty, ClassType) {
+        arch = ty.shared.symbol_table;
+        if isinstance(arch, uni.Archetype) and self.type_ids.has_arch(arch) {
+            return self.type_ids.tid_of_arch(arch);
+        }
+    }
+    return "";
 }
 
 impl TypeFacts.is_ref(name: str) -> bool {
@@ -269,6 +310,7 @@ impl get_shared_type_facts(
 ) -> TypeFacts {
     merged = TypeFacts();
     merged.ok = True;
+    merged.prog = prog;
     idx = build_type_id_index(modules);
     merged.type_ids = idx;
     for m in modules {
@@ -336,6 +378,11 @@ impl TypeIdIndex.tid_for(mod_path: str, name: str) -> str {
 impl TypeIdIndex.tid_of_arch(arch: uni.Archetype) -> str {
     mp = arch.loc.mod_path if arch.loc else "";
     return self.tid_for(mp, arch.name.value);
+}
+
+impl TypeIdIndex.has_arch(arch: uni.Archetype) -> bool {
+    mp = arch.loc.mod_path if arch.loc else "";
+    return self.key(mp, arch.name.value) in self.tids;
 }
 
 impl TypeIdIndex.scope_for(mod: uni.Module) -> dict[str, str] {

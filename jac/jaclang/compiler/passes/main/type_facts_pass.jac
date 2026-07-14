@@ -35,12 +35,14 @@ obj TypeFacts {
         method_returns: dict[str, dict[str, str]] = {},
         field_types: dict[str, dict[str, str]] = {},
         ok: bool = False,
-        type_ids: (TypeIdIndex | None) = None;
+        type_ids: (TypeIdIndex | None) = None,
+        prog: (JacProgram | None) = None;
 
     def type_of(
         e: object, local_types: dict[str, str], scope: dict[str, str] = {}
     ) -> str;
 
+    def type_of_via_checker(e: uni.Expr) -> str;
     def is_ref(name: str) -> bool;
 }
 
@@ -50,6 +52,7 @@ obj TypeIdIndex {
     def key(mod_path: str, name: str) -> str;
     def tid_for(mod_path: str, name: str) -> str;
     def tid_of_arch(arch: uni.Archetype) -> str;
+    def has_arch(arch: uni.Archetype) -> bool;
     def scope_for(mod: uni.Module) -> dict[str, str];
 }
 
