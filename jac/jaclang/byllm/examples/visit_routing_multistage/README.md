@@ -1,4 +1,5 @@
 # Multistage Visit Routing
+
 `visit ... by llm(...)` lets a byllm model choose which node(s) a walker visits
 next. This example documents the **multistage** routing mode and the change that
 makes it render walker/node context **untruncated**, and ships a self-contained
@@ -77,7 +78,7 @@ jac run demo.jac
 ```
 
 The demo drives one identical graph and walker through both modes. The walker
-carries a long `case_notes` field with a fraud flag, 
+carries a long `case_notes` field with a fraud flag,
 `INTERNAL_FRAUD_FLAG_ESCALATE`, buried in the middle. The routing rule is the
 same for both modes — "escalate if you see the fraud flag" — so the only
 variable is whether the router can see it.
