@@ -5810,7 +5810,8 @@ impl NativeBuiltinEmitter.emit_bool(
             return b.zext(p._emit_bytes_truthy(arg_val), i64, name="bool.byresult");
         }
     }
-    return None;
+
+    return b.zext(p._to_bool(arg_val), i64, name="bool.result");
 }
 
 impl NativeBuiltinEmitter.emit_list(
