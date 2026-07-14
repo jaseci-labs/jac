@@ -1163,6 +1163,16 @@ obj KubernetesTarget(DeploymentTarget) {
                     metadata=dict(raw.get("metadata", {})),
                     name=raw.get("name")
                 );
+                if t.type == "memory" and not self.k8s_config.memory_request {
+                    if self.logger {
+                        self.logger.warn(
+                            "Skipping 'memory' trigger: memory_request is unset; "
+                            "HPA cannot compute memory utilization without a "
+                            "request baseline"
+                        );
+                    }
+                    continue;
+                }
                 raw_auth = raw.get("auth");
                 if raw_auth {
                     t.auth = TriggerAuth(
