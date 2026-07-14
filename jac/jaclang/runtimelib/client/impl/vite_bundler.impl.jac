@@ -619,9 +619,7 @@ function jacErrorReporter() {{
             loc += ")";
           }} catch(e) {{}}
         }}
-        // Timestamped: the server log is append-only, so an un-timestamped error
-        // is indistinguishable from a live one once it has been fixed. Readers
-        // (and agents) need this to tell a stale line from a current failure.
+        // Timestamped: the log is append-only, so a fixed error otherwise reads as live.
         console.error("[" + new Date(now).toISOString() + "] Client error: " + data.type + ": " + data.message + loc);
         if (data.phase === "load") {{
           try {{ reportClientLoad(data); }} catch (e) {{}}
