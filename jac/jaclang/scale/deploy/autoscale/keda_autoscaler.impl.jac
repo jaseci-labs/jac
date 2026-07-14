@@ -125,7 +125,13 @@ impl KEDAAutoscaler._build_manifests{
         "maxReplicaCount": spec.max_replicas,
         "pollingInterval": spec.polling_interval,
         "cooldownPeriod": spec.cooldown_period,
-        "triggers": keda_triggers
+        "triggers": keda_triggers,
+        # cooldownPeriod only covers scale-to-zero; 1..N scaling needs this.
+        "advanced": {
+            "horizontalPodAutoscalerConfig": {
+                "behavior": Autoscaler._build_behavior(spec)
+            }
+        }
     };
 
     if spec.idle_replicas is not None {
