@@ -327,6 +327,26 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `W2006` | '@classmethod' decorator is not recommended in '{kind}' definitions |
 | `W2007` | '@staticmethod' is not supported in '{kind}' definitions |
 | `E2008` | Invalid target for context update: {target} |
+| `W2029` | '@{decorator}' is not recommended in '{kind}' definitions -- use native property syntax |
+
+`W2029` covers the Python property decorators -- `@property`, and the same-object
+`@x.getter` / `@x.setter` / `@x.deleter` -- in favour of [native property
+syntax](language/functions-objects.md#6-properties-and-encapsulation):
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+        }
+}
+```
+
+`jac check --lint --fix` rewrites the decorator form automatically
+([`property-to-native`](#lint-rules-w3xxx-e3xxx)). As with `W2006`/`W2007`, a
+Python-compat `class` is exempt. A cross-object `@Base.x.setter` extends a parent's
+property and has no direct native form, so it is not reported.
 
 ### Declaration-Implementation Matching
 
@@ -357,7 +377,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ---
 
-## Lint Rules (W3xxx / E3xxx)
+## Lint Rules (W3xxx, E3xxx)
 
 Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 
