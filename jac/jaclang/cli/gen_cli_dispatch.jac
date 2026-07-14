@@ -28,7 +28,21 @@ def generate -> str {
     lines.append('DO NOT EDIT MANUALLY - regenerate with `jac gen-cli-dispatch`.');
     lines.append('"""');
     lines.append('');
-    lines.append('def dispatch_command(name: str, args: dict) -> tuple[bool, any] {');
+    lines.append('"""Normalize a handler return value into a process exit code."""');
+    lines.append('def _norm_exit(result: any) -> int {');
+    lines.append('    if result is None {');
+    lines.append('        return 0;');
+    lines.append('    } elif isinstance(result, int) {');
+    lines.append('        return result;');
+    lines.append('    } else {');
+    lines.append('        return 0;');
+    lines.append('    }');
+    lines.append('}');
+    lines.append('');
+    lines.append(
+        '"""Dispatch a CLI command; return its exit code, or None if unknown."""'
+    );
+    lines.append('def dispatch_command(name: str, args: dict) -> int | None {');
 
     for cname in names {
         spec = reg.commands[cname];
@@ -54,11 +68,11 @@ def generate -> str {
         joined = ", ".join(call_args);
         lines.append(f"    if name == {repr(cname)} {{");
         lines.append(f"        import from {module} {{ {func} }}");
-        lines.append(f"        return (True, {func}({joined}));");
+        lines.append(f"        return _norm_exit({func}({joined}));");
         lines.append('    }');
     }
 
-    lines.append('    return (False, None);');
+    lines.append('    return None;');
     lines.append('}');
     return "\n".join(lines) + "\n";
 }

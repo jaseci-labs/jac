@@ -6,25 +6,22 @@ explicitly forwarded arguments - no Callable field, no **kwargs.
 DO NOT EDIT MANUALLY - regenerate with `jac gen-cli-dispatch`.
 """
 
-def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
-    if name == 'add' {
-        import from jaclang.cli.commands.project { add }
-        return (
-            True,
-            add(
-                packages=args.get("packages", []),
-                dev=args.get("dev", False),
-                git=args.get("git", ''),
-                verbose=args.get("verbose", False),
-                npm=args.get("npm", False),
-                shadcn=args.get("shadcn", False)
-            )
-        );
+"""Normalize a handler return value into a process exit code."""
+def _norm_exit(result: any) -> int {
+    if result is None {
+        return 0;
+    } elif isinstance(result, int) {
+        return result;
+    } else {
+        return 0;
     }
+}
+
+"""Dispatch a CLI command; return its exit code, or None if unknown."""
+def dispatch_command(name: str, args: dict) -> int | None {
     if name == 'ai' {
         import from jaclang.cli.commands.ai { ai }
-        return (
-            True,
+        return _norm_exit(
             ai(
                 prompt=args.get("prompt", ''),
                 model=args.get("model", ''),
@@ -37,8 +34,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'browse' {
         import from jaclang.cli.commands.browse { browse }
-        return (
-            True,
+        return _norm_exit(
             browse(
                 action=args["action"],
                 args=args.get("args", []),
@@ -49,8 +45,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'build' {
         import from jaclang.cli.commands.build { build }
-        return (
-            True,
+        return _norm_exit(
             build(
                 filename=args.get("filename", ''),
                 projection=args.get("projection", 'jab'),
@@ -64,8 +59,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'check' {
         import from jaclang.cli.commands.analysis { check }
-        return (
-            True,
+        return _norm_exit(
             check(
                 paths=args["paths"],
                 print_errs=args.get("print_errs", True),
@@ -80,8 +74,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'clean' {
         import from jaclang.cli.commands.project { clean }
-        return (
-            True,
+        return _norm_exit(
             clean(
                 all=args.get("all", False),
                 data=args.get("data", False),
@@ -93,8 +86,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'code' {
         import from jaclang.cli.commands.code { code }
-        return (
-            True,
+        return _norm_exit(
             code(
                 action=args.get("action", ''),
                 target=args.get("target", ''),
@@ -105,8 +97,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'completions' {
         import from jaclang.cli.commands.tools { completions }
-        return (
-            True,
+        return _norm_exit(
             completions(
                 shell=args.get("shell", 'bash'), install=args.get("install", False)
             )
@@ -114,8 +105,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'config' {
         import from jaclang.cli.commands.config { config }
-        return (
-            True,
+        return _norm_exit(
             config(
                 action=args.get("action", 'show'),
                 key=args.get("key", ''),
@@ -127,14 +117,13 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'create' {
         import from jaclang.cli.commands.project { create }
-        return (
-            True,
+        return _norm_exit(
             create(
                 name=args.get("name", ''),
                 force=args.get("force", False),
                 kind=args.get("kind", ''),
                 use=args.get("use", 'default'),
-                list_jacpacks=args.get("list_jacpacks", False),
+                list=args.get("list", False),
                 pack=args.get("pack", ''),
                 pack_output=args.get("pack_output", ''),
                 skip=args.get("skip", False),
@@ -150,8 +139,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'db' {
         import from jaclang.cli.commands.db { db }
-        return (
-            True,
+        return _norm_exit(
             db(
                 action=args.get("action", 'inspect'),
                 sub=args.get("sub", ''),
@@ -164,8 +152,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'dev' {
         import from jaclang.cli.commands.execution { dev }
-        return (
-            True,
+        return _norm_exit(
             dev(
                 filename=args.get("filename", ''),
                 port=args.get("port", 8000),
@@ -175,8 +162,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'dot' {
         import from jaclang.cli.commands.tools { dot }
-        return (
-            True,
+        return _norm_exit(
             dot(
                 filename=args["filename"],
                 session=args.get("session", ''),
@@ -195,8 +181,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'fmt' {
         import from jaclang.cli.commands.analysis { format }
-        return (
-            True,
+        return _norm_exit(
             format(
                 paths=args["paths"],
                 to_screen=args.get("to_screen", False),
@@ -207,24 +192,23 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'gen-cli-dispatch' {
         import from jaclang.cli.commands.tools { gen_cli_dispatch }
-        return (True, gen_cli_dispatch(verify=args.get("verify", False)));
+        return _norm_exit(gen_cli_dispatch(verify=args.get("verify", False)));
     }
     if name == 'gen-jir-registry' {
         import from jaclang.cli.commands.tools { gen_jir_registry }
-        return (True, gen_jir_registry(verify=args.get("verify", False)));
+        return _norm_exit(gen_jir_registry(verify=args.get("verify", False)));
     }
     if name == 'gen-uni-dispatch' {
         import from jaclang.cli.commands.tools { gen_uni_dispatch }
-        return (True, gen_uni_dispatch(verify=args.get("verify", False)));
+        return _norm_exit(gen_uni_dispatch(verify=args.get("verify", False)));
     }
     if name == 'gen_parser' {
         import from jaclang.cli.commands.analysis { gen_parser }
-        return (True, gen_parser());
+        return _norm_exit(gen_parser());
     }
     if name == 'guide' {
         import from jaclang.cli.commands.guide { guide }
-        return (
-            True,
+        return _norm_exit(
             guide(
                 topic=args.get("topic", ''),
                 search=args.get("search", ''),
@@ -235,13 +219,16 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'install' {
         import from jaclang.cli.commands.project { install }
-        return (
-            True,
+        return _norm_exit(
             install(
                 packages=args.get("packages", []),
                 editable=args.get("editable", []),
                 dev=args.get("dev", False),
                 extras=args.get("extras", []),
+                no_save=args.get("no_save", False),
+                git=args.get("git", ''),
+                npm=args.get("npm", False),
+                shadcn=args.get("shadcn", False),
                 verbose=args.get("verbose", False),
                 force_reinstall=args.get("force_reinstall", False),
                 no_cache_dir=args.get("no_cache_dir", False),
@@ -259,12 +246,11 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'lsp' {
         import from jaclang.cli.commands.tools { lsp }
-        return (True, lsp());
+        return _norm_exit(lsp());
     }
     if name == 'mcp' {
         import from jaclang.cli.commands.mcp { mcp_cmd }
-        return (
-            True,
+        return _norm_exit(
             mcp_cmd(
                 transport=args.get("transport", 'stdio'),
                 port=args.get("port", 3001),
@@ -276,33 +262,31 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'model' {
         import from jaclang.byllm.cli { model }
-        return (
-            True,
+        return _norm_exit(
             model(action=args.get("action", 'list'), alias=args.get("alias", ''))
         );
     }
     if name == 'nacompile' {
         import from jaclang.cli.commands.nacompile { nacompile }
-        return (
-            True,
+        return _norm_exit(
             nacompile(
                 filename=args["filename"],
                 output=args.get("output", ''),
                 scrub=args.get("scrub", False),
                 target=args.get("target", ''),
                 shared=args.get("shared", False),
-                debug=args.get("debug", False)
+                debug=args.get("debug", False),
+                gc=args.get("gc", 'cycles')
             )
         );
     }
     if name == 'ninja' {
         import from jaclang.cli.commands.tools { ninja }
-        return (True, ninja());
+        return _norm_exit(ninja());
     }
     if name == 'precommit' {
         import from jaclang.cli.commands.analysis { precommit }
-        return (
-            True,
+        return _norm_exit(
             precommit(
                 paths=args.get("paths", None),
                 staged=args.get("staged", False),
@@ -312,36 +296,9 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
             )
         );
     }
-    if name == 'prune' {
-        import from jaclang.cli.commands.prune { prune }
-        return (
-            True,
-            prune(
-                action=args.get("action", 'report'),
-                paths=args.get("paths", None),
-                exclude=args.get("exclude", None),
-                recipes=args.get("recipes", None),
-                risk_ceiling=args.get("risk_ceiling", ''),
-                output=args.get("output", ''),
-                preview=args.get("preview", False),
-                apply=args.get("apply", False),
-                model=args.get("model", 'heuristic'),
-                group=args.get("group", ''),
-                probe=args.get("probe", False),
-                history=args.get("history", False),
-                windows=args.get("windows", False),
-                fuzzy=args.get("fuzzy", False),
-                verdict_file=args.get("verdict_file", ''),
-                list_=args.get("list_", False),
-                show=args.get("show", ''),
-                page=args.get("page", 1)
-            )
-        );
-    }
     if name == 'remove' {
         import from jaclang.cli.commands.project { remove }
-        return (
-            True,
+        return _norm_exit(
             remove(
                 packages=args.get("packages", []),
                 dev=args.get("dev", False),
@@ -352,8 +309,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'retheme' {
         import from jaclang.cli.shadcn.cli { retheme }
-        return (
-            True,
+        return _norm_exit(
             retheme(
                 style=args.get("style", None),
                 baseColor=args.get("baseColor", None),
@@ -367,8 +323,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'run' {
         import from jaclang.cli.commands.execution { run }
-        return (
-            True,
+        return _norm_exit(
             run(
                 filename=args.get("filename", ''),
                 show=args.get("show", False),
@@ -386,8 +341,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'scale' {
         import from jaclang.scale.plugin { scale_cmd }
-        return (
-            True,
+        return _norm_exit(
             scale_cmd(
                 action=args["action"],
                 service_name=args.get("service_name", ''),
@@ -399,15 +353,13 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'setup' {
         import from jaclang.runtimelib.client.cli { setup }
-        return (
-            True,
+        return _norm_exit(
             setup(target=args["target"], platform=args.get("platform", None))
         );
     }
     if name == 'start' {
         import from jaclang.cli.commands.execution { start }
-        return (
-            True,
+        return _norm_exit(
             start(
                 filename=args["filename"],
                 port=args.get("port", 8000),
@@ -429,8 +381,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'test' {
         import from jaclang.cli.commands.analysis { test }
-        return (
-            True,
+        return _norm_exit(
             test(
                 paths=args.get("paths", []),
                 test_name=args.get("test_name", ''),
@@ -445,12 +396,11 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'tool' {
         import from jaclang.cli.commands.tools { tool }
-        return (True, tool(tool=args["tool"], args=args.get("args", [])));
+        return _norm_exit(tool(tool=args["tool"], args=args.get("args", [])));
     }
     if name == 'update' {
         import from jaclang.cli.commands.project { update }
-        return (
-            True,
+        return _norm_exit(
             update(
                 packages=args.get("packages", []),
                 dev=args.get("dev", False),
@@ -460,8 +410,7 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
     }
     if name == 'x' {
         import from jaclang.cli.commands.execution { x }
-        return (
-            True,
+        return _norm_exit(
             x(
                 name=args.get("name", ''),
                 use_global=args.get("use_global", False),
@@ -471,5 +420,5 @@ def dispatch_command(name: str, args: dict) -> tuple[bool, any] {
             )
         );
     }
-    return (False, None);
+    return None;
 }

@@ -29,21 +29,12 @@ impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int
     import from jaclang.cli.command { CommandSpec }
     import from jaclang.cli.command_dispatch { dispatch_command }
 
-    (handled, result) = dispatch_command(spec.name, args);
-    if not handled {
+    rc = dispatch_command(spec.name, args);
+    if rc is None {
         console.error(f"No handler registered for command '{spec.name}'");
         return 1;
     }
-
-    if result is None {
-        return 0;
-    } elif isinstance(result, int) {
-        return result;
-    } elif isinstance(result, bool) {
-        return 0 if result else 1;
-    } else {
-        return 0;
-    }
+    return rc;
 }
 
 impl get_executor -> CommandExecutor {
