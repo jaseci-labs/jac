@@ -98,6 +98,9 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | Non
 impl TypeEvaluator._extract_tuple_element_type(
     tuple_type: TypeBase, idx: int
 ) -> TypeBase | None {
+    if isinstance(tuple_type, types.AnyType) and tuple_type.is_foreign and idx >= 0 {
+        return types.AnyType(is_foreign=True);
+    }
     if not isinstance(tuple_type, types.ClassType) or idx < 0 {
         return None;
     }
@@ -172,6 +175,9 @@ impl TypeEvaluator._tuple_literal_index_type(
 impl TypeEvaluator._get_iterable_element_type(
     iterable_type: TypeBase, node_for_error: uni.Expr | None = None
 ) -> TypeBase | None {
+    if isinstance(iterable_type, types.AnyType) and iterable_type.is_foreign {
+        return types.AnyType(is_foreign=True);
+    }
     iter_type = self.get_type_of_magic_method_call(
         iterable_type, "__iter__", [], node_for_error
     );
