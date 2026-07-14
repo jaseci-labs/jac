@@ -82,8 +82,7 @@ carries a long `case_notes` field with a fraud flag,
 same for both modes — "escalate if you see the fraud flag" — so the only
 variable is whether the router can see it.
 
-Expected output (the litellm "Provider List" lines are harmless `MockLLM`
-chatter):
+Expected output:
 
 ```
 === MULTISTAGE: field rendered untruncated, router sees the flag ===
