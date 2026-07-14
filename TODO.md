@@ -220,12 +220,19 @@
 - __A6 LP64 libc:__ new `cfront/lp64_scalars.jac` is a curated LP64-correct scalar map (`size_t`/`Py_ssize_t` → u64/i64), name-matched ahead of alias resolution.
 - __B1 behavior-proven:__ `test_jac2c_runtime.jac` now executes lifted fixtures on both the cc-linked binary and the stock Jac interpreter and diffs them (`interpreter_run` / `link_and_run`).
 - __B5 hygiene:__ `jac.toml` already excludes `jac-py/*` from deslop/format; the `SKIP=jac-format` + pre-stripped-comments recipe is intact; this branch did not regress it.
+- __B2 ingestion type-check:__ ✅ RESOLVED -- untyped `jaclang/vendor` modules are classified as foreign `Any`; C-ingestion and ownership files are no longer ignored by the checker. Focused checker gate: 13/13; `test_bindgen.jac` + `test_cast_ingest.jac`: 31/31.
+- __Foreign-Any propagation:__ ✅ RESOLVED -- iteration, tuple destructuring, subscripting, and operators preserve foreign `Any`, while ordinary `Any` remains on its existing path. Regression suite: 6/6, with positive and negative controls.
+
+## Recent work completed (2026-07-14)
+
+- Checker fix split onto `foreign-any-checker-fix` as `ed32b62c2`, then brought into this branch as `606404ba4`.
+- B2 ingestion/type-check narrowing committed as `a055aa045` and pushed to `origin/jac-python` for PR #6973.
+- Broader c2jac breadth/slice runs still expose unrelated fixture issues: comments passed directly to pycparser in `struct_shape.c`, and unpreprocessed directives in `cpython/rotatingtree.c`; no changes made here.
 
 ## PARTIAL items
 
 - __A7 round-trip oracle:__ emit-leg differential now runs (cc-binary vs interpreter), but jac2c still can't re-emit all idiomatic Jac and the oracle was not re-pointed at bytecode-backend execution.
 - __A8 type registry:__ `exception_type_id` is now sha256 hash-based (derivable/stable); emission is still whole-program-only (no separate compilation).
-- __B2 ingestion type-check:__ ✅ RESOLVED -- vendor classification now treats untyped `jaclang/vendor` Python like other untyped third-party modules; the C-ingestion frontend and `ownership.jac` are no longer in `.jacignore`. The focused checker gate passes 13/13, and `test_bindgen.jac` + `test_cast_ingest.jac` pass 31/31. Foreign-`Any` propagation is covered separately by checker commit `606404ba4` (dedicated branch commit `ed32b62c2`).
 
 ## OPEN (not on this branch)
 
