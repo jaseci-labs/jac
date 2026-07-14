@@ -699,7 +699,17 @@ test "signature mismatch fixed" {
     # signatures, so we format the .impl.jac annex directly.
     input_path = auto_lint_fixture_path(os.path.join("impl", "sig_mismatch.impl.jac"));
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
 
     # Check the impl signatures were fixed by examining the AST nodes directly
     impl_mod = prog.mod.main;
@@ -751,7 +761,17 @@ test "nested class impl signature fixed" {
         os.path.join("impl", "nested_class_sig.impl.jac")
     );
 
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    } finally {
+        set_config(None);
+    }
 
     impl_mod = prog.mod.main;
 
@@ -1378,8 +1398,18 @@ test "deslop rules are disabled under default select" {
 
 test "property-to-native folds '@x.getter' into the accessor block" {
     input_path = auto_lint_fixture_path("property_getter_decorator.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
-    formatted = prog.mod.main.gen.jac;
+    # Explicit config: the repo jac.toml excludes */tests/* from lint fixes
+    # (fixtures must keep their pre-transform syntax), so the transform under
+    # test needs a config whose exclude list is empty.
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
 
     # The whole '@property'/'@val.getter'/'@val.setter' cluster collapses into one
     # native property, and '@val.getter' -- which supersedes the '@property' it

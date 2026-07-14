@@ -1401,7 +1401,8 @@ def build_osp_kernel_js -> str {
     js = "";
     try {
         prog = JacProgram();
-        ir = prog.compile(file_path=cl_copy, no_cgen=True);
+
+        ir = prog.compile(file_path=cl_copy, no_cgen=True, type_check=True);
         program = EsastGenPass(ir_in=ir, prog=prog).ir_out.gen.es_ast;
         kept: list = [];
         if isinstance(program, es.Program) {

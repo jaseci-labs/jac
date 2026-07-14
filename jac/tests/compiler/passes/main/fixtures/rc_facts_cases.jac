@@ -1,10 +1,14 @@
-"""Fixtures for RcElisionProofPass. Each function has one `bN = a` candidate; the
+"""Fixtures for RcFactsPass move-lowerability proofs. Each function has one `bN = a` candidate; the
 proof must mark exactly the sound ones. Compiled with `type_check=False`, so the
 marks come purely from the native proof, never the ownership checker."""
 
-obj Box { has v: int = 0; }
+obj Box {
+    has v: int = 0;
+}
 
-obj Holder { has inner: Box; }
+obj Holder {
+    has inner: Box;
+}
 
 def take(x: Box) -> int {
     return 1;
@@ -12,7 +16,7 @@ def take(x: Box) -> int {
 
 # 1. Safe straight-line last-use move: `a` is a local whose only use is the move,
 #    dead after -> b1 MUST be marked.
-def f_safe() -> int {
+def f_safe -> int {
     a: own Box = Box(v=1);
     b1 = a;
     return take(b1);
@@ -26,7 +30,7 @@ def f_param(a: own Box) -> int {
 }
 
 # 3. Source is passed as a call-arg (a non-alias use) -> disqualified -> b3 NOT.
-def f_callarg() -> int {
+def f_callarg -> int {
     a: own Box = Box(v=1);
     take(a);
     b3 = a;
@@ -34,7 +38,7 @@ def f_callarg() -> int {
 }
 
 # 4. Source stored into a field (escapes) -> disqualified -> b4 NOT.
-def f_fieldstore() -> int {
+def f_fieldstore -> int {
     a: own Box = Box(v=1);
     h = Holder(inner=Box());
     h.inner = a;
@@ -43,7 +47,7 @@ def f_fieldstore() -> int {
 }
 
 # 5. Source captured by a closure -> disqualified -> b5 NOT.
-def f_closure() -> int {
+def f_closure -> int {
     a: own Box = Box(v=1);
     g = lambda { a; };
     b5 = a;
@@ -51,17 +55,17 @@ def f_closure() -> int {
 }
 
 # 6. Source captured by a concurrent payload -> disqualified -> b6 NOT.
-def f_concurrent() -> int {
+def f_concurrent -> int {
     a: own Box = Box(v=1);
-    flow take(a);
+    flow take(a) ;
     b6 = a;
     return take(b6);
 }
 
 # 7. Source borrowed (`&a`, a non-alias use) -> disqualified -> b7 NOT.
-def f_borrow() -> int {
+def f_borrow -> int {
     a: own Box = Box(v=1);
-    r: &Box = &a;
+    r: &Box = & a;
     b7 = a;
     return take(b7);
 }

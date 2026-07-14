@@ -1789,10 +1789,6 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     self._ensure_emitters();
 
     _call_kind = nd.call_kind;
-    if _call_kind is None {
-        import from jaclang.compiler.symbol_utils { classify_call }
-        _call_kind = classify_call(nd).value;
-    }
     if _call_kind == "builtin" and isinstance(nd.target, uni.Name) {
         import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
         _builtin_name = nd.target.sym_name;
@@ -3906,14 +3902,9 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
 }
 
 impl EsastGenPass._osp_model -> OspModel {
+    import from jaclang.jac0core.osp_model { get_osp_model }
     _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
-    _existing = _root.gen.osp_model;
-    if _existing is not None {
-        return _existing;
-    }
-    _model = OspAnalysis.compute(_root, _root.get_all_sub_nodes(uni.Archetype));
-    _root.gen.osp_model = _model;
-    return _model;
+    return get_osp_model(_root);
 }
 
 impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {

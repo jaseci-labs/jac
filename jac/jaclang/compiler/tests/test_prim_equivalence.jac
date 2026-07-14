@@ -350,6 +350,16 @@ test "native none any consume" {
     );
 }
 
+test "native any alias retain" {
+    run_with_both(
+        "native_any_alias_retain.jac",
+        "alias_retain_py",
+        "alias_retain_cl",
+        "alias_retain_na",
+        require=["na"]
+    );
+}
+
 test "dict order" {
     run_with_both(
         "prim_dictorder.jac",

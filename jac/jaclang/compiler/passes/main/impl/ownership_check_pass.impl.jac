@@ -387,54 +387,13 @@ impl OwnershipCheckPass._transfer(
 impl OwnershipCheckPass._solve_forward_dataflow(
     cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
 ) -> dict[int, set[SymId]] {
-    state: dict[int, set[SymId]] = {};
-    for n in cfg_nodes {
-        state[id(n)] = set();
-    }
-    worklist = list(cfg_nodes);
-    while worklist {
-        n = worklist.pop();
-        new_state: set[SymId] = set();
-        for pred in n.bb_in {
-            for x in transfer(pred, state.get(id(pred), set())) {
-                new_state.add(x);
-            }
-        }
-        if new_state != state.get(id(n), set()) {
-            state[id(n)] = new_state;
-            for nb in n.bb_out {
-                worklist.append(nb);
-            }
-        }
-    }
-    return state;
+    return dataflow.solve_forward(cfg_nodes, transfer);
 }
 
 impl OwnershipCheckPass._solve_backward_dataflow(
     cfg_nodes: list[uni.UniCFGNode], transfer: DataflowTransfer
 ) -> dict[int, set[SymId]] {
-    state: dict[int, set[SymId]] = {};
-    for n in cfg_nodes {
-        state[id(n)] = set();
-    }
-    worklist = list(cfg_nodes);
-    while worklist {
-        n = worklist.pop();
-        joined: set[SymId] = set();
-        for succ in n.bb_out {
-            for x in state.get(id(succ), set()) {
-                joined.add(x);
-            }
-        }
-        new_state = transfer(n, joined);
-        if new_state != state.get(id(n), set()) {
-            state[id(n)] = new_state;
-            for nb in n.bb_in {
-                worklist.append(nb);
-            }
-        }
-    }
-    return state;
+    return dataflow.solve_backward(cfg_nodes, transfer);
 }
 
 impl OwnershipCheckPass._run_dataflow(cfg_nodes: list[uni.UniCFGNode]) -> None {

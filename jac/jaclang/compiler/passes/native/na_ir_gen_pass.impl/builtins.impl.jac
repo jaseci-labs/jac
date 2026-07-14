@@ -162,25 +162,28 @@ impl NaIRGenPass._codegen_multistring(nd: uni.MultiString) -> (ir.Value | None) 
 }
 
 impl NaIRGenPass._make_global_string(text: str, name_prefix: str = ".str") -> ir.Value {
-    str_bytes = bytearray((text + "\0").encode("utf8"));
     i64 = ir.IntType(64);
     i8 = ir.IntType(8);
-    i8_ptr = i8.as_pointer();
     i32 = ir.IntType(32);
-    arr_type = ir.ArrayType(i8, len(str_bytes));
-
-    struct_type = ir.LiteralStructType([i64, i64, arr_type]);
-    sentinel_val = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
-    dtor_val = ir.Constant(i64, 0);
-    c_str = ir.Constant(arr_type, str_bytes);
-    struct_val = ir.Constant(struct_type, [sentinel_val, dtor_val, c_str]);
-    global_str = ir.GlobalVariable(
-        self.llvm_module, struct_type, name=f"{name_prefix}.{self._str_count}"
-    );
-    self._str_count = self._str_count + 1;
-    global_str.linkage = "private";
-    global_str.global_constant = True;
-    global_str.initializer = struct_val;
+    _key = f"{name_prefix}\x00{text}";
+    global_str = self._interned_strs.get(_key);
+    if global_str is None {
+        str_bytes = bytearray((text + "\0").encode("utf8"));
+        arr_type = ir.ArrayType(i8, len(str_bytes));
+        struct_type = ir.LiteralStructType([i64, i64, arr_type]);
+        sentinel_val = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
+        dtor_val = ir.Constant(i64, 0);
+        c_str = ir.Constant(arr_type, str_bytes);
+        struct_val = ir.Constant(struct_type, [sentinel_val, dtor_val, c_str]);
+        global_str = ir.GlobalVariable(
+            self.llvm_module, struct_type, name=f"{name_prefix}.{self._str_count}"
+        );
+        self._str_count = self._str_count + 1;
+        global_str.linkage = "private";
+        global_str.global_constant = True;
+        global_str.initializer = struct_val;
+        self._interned_strs[_key] = global_str;
+    }
 
     gep = self.builder.gep(
         global_str,
@@ -199,30 +202,10 @@ impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
 }
 
 impl NaIRGenPass._fstring_spec_text(spec: uni.Expr) -> (str | None) {
-    if isinstance(spec, uni.String) {
-        return spec.lit_value;
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        static_fstring_spec_text
     }
-    if isinstance(spec, uni.MultiString) {
-        parts: list[str] = [];
-        for s in spec.strings {
-            if not isinstance(s, uni.String) {
-                return None;
-            }
-            parts.append(s.lit_value);
-        }
-        return "".join(parts);
-    }
-    if isinstance(spec, uni.FString) {
-        parts2: list[str] = [];
-        for p in spec.parts {
-            if not isinstance(p, uni.String) {
-                return None;
-            }
-            parts2.append(p.lit_value);
-        }
-        return "".join(parts2);
-    }
-    return None;
+    return static_fstring_spec_text(spec);
 }
 
 impl NaIRGenPass._fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None) {
@@ -353,7 +336,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
             _conv = part.conversion if part.conversion is not None else -1;
             if _conv not in (-1, 115) {
                 self.emit(
-                    E5090,
+                    E5092,
                     node_override=part,
                     kind="f-string conversion",
                     name=("!r" if _conv == 114 else "!a")
@@ -365,7 +348,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 _spec_txt = self._fstring_spec_text(part.format_spec);
                 if _spec_txt is None {
                     self.emit(
-                        E5090,
+                        E5092,
                         node_override=part,
                         kind="f-string format spec",
                         name="<dynamic spec>"
@@ -388,7 +371,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 _tr = self._fstring_spec_to_printf(_spec_txt, _fs_kind or "");
                 if _tr is None {
                     self.emit(
-                        E5090,
+                        E5092,
                         node_override=part,
                         kind="f-string format spec",
                         name=_spec_txt
