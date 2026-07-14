@@ -98,8 +98,7 @@ impl KEDAAutoscaler._build_manifests{
         "pollingInterval": spec.polling_interval,
         "cooldownPeriod": spec.cooldown_period,
         "triggers": keda_triggers,
-        # cooldownPeriod only governs scale-to-zero; 1..N scaling is delegated
-        # to the underlying HPA, so it needs the same behavior guardrails.
+        # cooldownPeriod only covers scale-to-zero; 1..N scaling needs this.
         "advanced": {
             "horizontalPodAutoscalerConfig": {
                 "behavior": Autoscaler._build_behavior(spec)

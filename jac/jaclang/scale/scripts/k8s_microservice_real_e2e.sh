@@ -328,10 +328,6 @@ done
 
 _t "routing OK"
 echo "=== verify HPA OOM guardrails (cpu+memory metrics, behavior rate limits) ==="
-# Every managed HPA must scale on memory as well as CPU (so pods scale out
-# before hitting their memory limit) and carry a behavior block that
-# rate-limits scale-up; without it the K8s default doubles the fleet every
-# 15s and OOMs the node.
 # The heredoc feeds python's stdin, so the HPA JSON must travel via a file.
 HPA_JSON="$(mktemp)"
 kubectl get hpa -n "${NAMESPACE}" -l managed=jac-scale -o json > "${HPA_JSON}"

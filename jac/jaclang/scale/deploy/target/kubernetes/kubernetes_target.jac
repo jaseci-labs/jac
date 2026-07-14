@@ -1140,16 +1140,22 @@ obj KubernetesTarget(DeploymentTarget) {
                                 self.k8s_config.cpu_utilization_target
                             )
                         }
-                    ),
-                    Trigger(
-                        type="memory",
-                        metadata={
-                            "averageUtilization": str(
-                                self.k8s_config.memory_utilization_target
-                            )
-                        }
                     )
                 ];
+                # Utilization is relative to the container request; without a
+                # memory_request the metric can never be computed.
+                if self.k8s_config.memory_request {
+                    triggers.append(
+                        Trigger(
+                            type="memory",
+                            metadata={
+                                "averageUtilization": str(
+                                    self.k8s_config.memory_utilization_target
+                                )
+                            }
+                        )
+                    );
+                }
             }
             for raw in self.k8s_config.extra_triggers {
                 t = Trigger(

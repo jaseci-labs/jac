@@ -35,24 +35,24 @@ class Autoscaler {
         return {"managed": "jac-scale"};
     }
 
-    # Without this block the HPA default (double the fleet every 15s with no
-    # stabilization) bursts pods faster than nodes absorb their memory, which
-    # OOM-kills the fleet. Scale-down is percent-capped so survivors are not
-    # slammed with the full load at once.
+    # Values are clamped to what the autoscaling/v2 API accepts: policy
+    # values must be > 0 and stabilization windows 0..3600.
     static def _build_behavior(spec: AutoscalerSpec) -> dict[str, any] {
         return {
             "scaleUp": {
-                "stabilizationWindowSeconds": spec.scale_up_stabilization,
+                "stabilizationWindowSeconds": min(
+                    3600, max(0, spec.scale_up_stabilization)
+                ),
                 "policies": [
                     {
                         "type": "Pods",
-                        "value": spec.scale_up_max_pods,
+                        "value": max(1, spec.scale_up_max_pods),
                         "periodSeconds": 60
                     }
                 ]
             },
             "scaleDown": {
-                "stabilizationWindowSeconds": spec.cooldown_period,
+                "stabilizationWindowSeconds": min(3600, max(0, spec.cooldown_period)),
                 "policies": [{"type": "Percent", "value": 50, "periodSeconds": 60}]
             }
         };
