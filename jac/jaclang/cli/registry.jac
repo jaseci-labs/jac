@@ -38,4 +38,5 @@ glob _registry: CommandRegistry | None = None;
 
 def get_registry -> CommandRegistry;
 
-def register_feature_commands -> None;
+def register_feature_commands(raw_argv: list[str] | None = None) -> None;
+def _register_all_feature_commands -> None;

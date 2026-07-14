@@ -219,9 +219,39 @@ impl get_registry -> CommandRegistry {
     return _registry;
 }
 
-impl register_feature_commands -> None {
+impl _register_all_feature_commands -> None {
     import jaclang.runtimelib.client.cli;
     import jaclang.cli.shadcn.cli;
     import jaclang.scale.plugin;
     import jaclang.byllm.cli;
+}
+
+impl register_feature_commands(raw_argv: list[str] | None = None) -> None {
+    if raw_argv is None or not raw_argv {
+        _register_all_feature_commands();
+        return;
+    }
+
+    if "-h" in raw_argv or "--help" in raw_argv {
+        _register_all_feature_commands();
+        return;
+    }
+
+    command: str | None = None;
+    for token in raw_argv {
+        if not token.startswith("-") {
+            command = token;
+            break;
+        }
+    }
+
+    if command == "setup" {
+        import jaclang.runtimelib.client.cli;
+    } elif command == "scale" {
+        import jaclang.scale.plugin;
+    } elif command == "retheme" {
+        import jaclang.cli.shadcn.cli;
+    } elif command == "model" {
+        import jaclang.byllm.cli;
+    }
 }

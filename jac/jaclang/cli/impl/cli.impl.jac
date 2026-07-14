@@ -30,9 +30,7 @@ impl start_cli -> None {
     import from jaclang.cli.console { console }
 
     raw_argv = sys.argv[1:];
-    if _needs_feature_commands(raw_argv) {
-        register_feature_commands();
-    }
+    register_feature_commands(raw_argv);
 
     dev_source = os.environ.get('JAC_DEV_SOURCE');
     if dev_source {
@@ -157,21 +155,6 @@ impl jac_version -> str {
         }
     }
     return pkg_version('jaclang');
-}
-
-def _needs_feature_commands(raw_argv: list[str]) -> bool {
-    if not raw_argv {
-        return True;
-    }
-    if "-h" in raw_argv or "--help" in raw_argv {
-        return True;
-    }
-    for token in raw_argv {
-        if not token.startswith("-") {
-            return token in ("setup", "scale", "retheme", "model");
-        }
-    }
-    return False;
 }
 
 def _extract_script_args(registry: object) -> list {
