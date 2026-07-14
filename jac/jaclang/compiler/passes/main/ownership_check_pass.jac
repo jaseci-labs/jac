@@ -33,9 +33,6 @@ obj BorrowMeta {
 }
 
 obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
-    static has PROVIDES: tuple = ('ownership', ),
-        REQUIRES: tuple = ('cfg', 'inference');
-
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
@@ -56,6 +53,9 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         idx_concurrent: list[uni.ConcurrentExpr] = [],
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
         val_decl: dict[SymId, uni.Name] = {};
+
+    static has PROVIDES: tuple = ('ownership', ),
+        REQUIRES: tuple = ('cfg', 'inference');
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

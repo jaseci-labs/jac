@@ -16,11 +16,12 @@ import from jaclang.jac0core.diagnostics {
 }
 
 obj AccessCheckPass(Transform[uni.Module, uni.Module]) {
-    static has PROVIDES: tuple = ('access-checks', );
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
         _enforce: bool = False;
+
+    static has PROVIDES: tuple = ('access-checks', );
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

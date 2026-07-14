@@ -56,10 +56,11 @@ obj CapabilityCheckPass(Transform[uni.Module, uni.Module]) {
 }
 
 obj PortabilityWarnPass(Transform[uni.Module, uni.Module]) {
-    static has PROVIDES: tuple = ('portability', );
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None;
+
+    static has PROVIDES: tuple = ('portability', );
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

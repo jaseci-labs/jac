@@ -21,10 +21,11 @@ import from jaclang.jac0core.diagnostics {
 }
 
 obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
-    static has PROVIDES: tuple = ('static-checks', );
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None;
+
+    static has PROVIDES: tuple = ('static-checks', );
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

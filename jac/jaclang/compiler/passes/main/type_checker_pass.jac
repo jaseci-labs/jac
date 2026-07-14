@@ -36,10 +36,9 @@ import from jaclang.jac0core.diagnostics {
 
 
 class TypeCheckPass(UniPass) {
+    has _lambda_depth: int = 0;
     static has PROVIDES: tuple = ('inference', ),
         inference_only: bool = False;
-
-    has _lambda_depth: int = 0;
 
     def before_pass(self: TypeCheckPass) -> None;
     def after_pass(self: TypeCheckPass) -> None;

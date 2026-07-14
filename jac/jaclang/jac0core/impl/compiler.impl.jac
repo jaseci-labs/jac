@@ -772,10 +772,20 @@ impl JacCompiler.compile(
     }
 
     if options.type_check or is_native_mod {
+        _check_passes = get_type_check_sched();
+        _mod_analyses = actual_program._analyses_run.get(id(mod_targ), set());
+        if _check_passes and 'cfg' not in _mod_analyses {
+            try {
+                import from jaclang.compiler.passes.main.cfg_build_pass {
+                    CFGBuildPass as _CfgPass
+                }
+                _check_passes = [_CfgPass] + _check_passes;
+            } except ImportError { }
+        }
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_type_check_sched(),
+            passes=_check_passes,
             cancel_token=options.cancel_token
         );
     }

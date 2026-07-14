@@ -30,7 +30,7 @@ impl RcFactsPass._is_param_sym(sym: uni.Symbol) -> bool {
     return False;
 }
 
-impl RcFactsPass._use_ok_for_stack(nm: uni.Name) -> bool {
+impl RcFactsPass._use_ok_for_stack(nm: uni.NameAtom) -> bool {
     p = nm.parent;
     if isinstance(p, uni.AtomTrailer) and p.target is nm {
         return True;
@@ -100,54 +100,51 @@ impl RcFactsPass._stamp_escapes(ir_in: uni.Module) -> None {
 }
 
 impl RcFactsPass._stamp_last_use(ir_in: uni.Module) -> None {
-    last_use: dict[int, dict] = {};
-    bodies: list = [];
+    out: dict[int, list[str]] = {};
     for ab in ir_in.get_all_sub_nodes(uni.Ability) {
         if isinstance(ab.signature, uni.FuncSignature)
         and isinstance(ab.body, (list, tuple)) {
-            bodies.append((ab, ab.body));
+            self._collect_last_use(ab, ab.body, out);
         }
     }
     for mc in ir_in.get_all_sub_nodes(uni.ModuleCode) {
         if isinstance(mc.body, (list, tuple)) {
-            bodies.append((mc, mc.body));
-        }
-    }
-    out: dict[int, list[str]] = {};
-    for (owner, body) in bodies {
-        sym_last: dict[int, tuple] = {};
-        for (idx, stmt) in enumerate(body) {
-            for nm in stmt.get_all_sub_nodes(uni.Name) {
-                sym = nm.sym;
-                if sym is None
-                or sym.storage != SymbolStorage.LOCAL
-                or sym.na_escapes
-                or self._is_param_sym(sym)
-                or nm.sym_name == "self" {
-                    continue;
-                }
-                if self._enclosing_fn_scope(nm) is not owner {
-                    continue;
-                }
-                sym_last[id(sym)] = (idx, nm.sym_name);
-            }
-        }
-        by_stmt: dict[int, list[str]] = {};
-        for (_, entry) in sym_last.items() {
-            (idx, name) = entry;
-            key = id(body[idx]);
-            if key not in by_stmt {
-                by_stmt[key] = [];
-            }
-            if name not in by_stmt[key] {
-                by_stmt[key].append(name);
-            }
-        }
-        for (k, v) in by_stmt.items() {
-            out[k] = v;
+            self._collect_last_use(mc, mc.body, out);
         }
     }
     ir_in.gen.rc_last_use = out;
+}
+
+impl RcFactsPass._collect_last_use(
+    owner: uni.UniNode, body: Sequence[uni.UniNode], out: dict[int, list[str]]
+) -> None {
+    sym_last: dict[int, tuple[int, str]] = {};
+    for (idx, stmt) in enumerate(body) {
+        for nm in stmt.get_all_sub_nodes(uni.Name) {
+            sym = nm.sym;
+            if sym is None
+            or sym.storage != SymbolStorage.LOCAL
+            or sym.na_escapes
+            or self._is_param_sym(sym)
+            or nm.sym_name == "self" {
+                continue;
+            }
+            if self._enclosing_fn_scope(nm) is not owner {
+                continue;
+            }
+            sym_last[id(sym)] = (idx, nm.sym_name);
+        }
+    }
+    for (_, entry) in sym_last.items() {
+        (idx, name) = entry;
+        key = id(body[idx]);
+        if key not in out {
+            out[key] = [];
+        }
+        if name not in out[key] {
+            out[key].append(name);
+        }
+    }
 }
 
 impl RcFactsPass._stamp_param_rebound(ir_in: uni.Module) -> None {

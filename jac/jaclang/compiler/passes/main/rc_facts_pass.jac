@@ -1,3 +1,4 @@
+import from collections.abc { Sequence }
 import from typing { TypeAlias }
 import jaclang.jac0core.unitree as uni;
 import jaclang.compiler.passes.main.dataflow as dataflow;
@@ -43,7 +44,7 @@ def result_ownership(expr: (uni.Expr | None)) -> Ownership {
     return Ownership.UNKNOWN;
 }
 
-def loop_body_locals(body: (list | tuple | None)) -> list[str] {
+def loop_body_locals(body: (Sequence[uni.UniNode] | None)) -> list[str] {
     out: list[str] = [];
     seen: set[str] = set();
     if not body {
@@ -65,23 +66,27 @@ def loop_body_locals(body: (list | tuple | None)) -> list[str] {
 }
 
 obj RcFactsPass(Transform[uni.Module, uni.Module]) {
-    static has PROVIDES: tuple = ('rc-facts', ),
-        REQUIRES: tuple = ('cfg', );
-
     has ir_in: uni.Module,
         prog: any,
         cancel_token: any = None,
         _node_use: dict[int, set[SymId]] = {},
         _node_def: dict[int, set[SymId]] = {};
 
+    static has PROVIDES: tuple = ('rc-facts', ),
+        REQUIRES: tuple = ('cfg', );
+
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _stamp_param_rebound(ir_in: uni.Module) -> None;
     def _stamp_escapes(ir_in: uni.Module) -> None;
-    def _use_ok_for_stack(nm: uni.Name) -> bool;
+    def _use_ok_for_stack(nm: uni.NameAtom) -> bool;
     def _enclosing_fn_scope(nd: uni.UniNode) -> (uni.UniNode | None);
     def _is_param_sym(sym: uni.Symbol) -> bool;
     def _stamp_last_use(ir_in: uni.Module) -> None;
+    def _collect_last_use(
+        owner: uni.UniNode, body: Sequence[uni.UniNode], out: dict[int, list[str]]
+    ) -> None;
+
     def _param_plainly_rebound(sym: uni.Symbol) -> bool;
     def _stamp_move_lowerable(ir_in: uni.Module) -> None;
     def _cfg_owner(sub: uni.UniNode) -> (uni.UniCFGNode | None);
