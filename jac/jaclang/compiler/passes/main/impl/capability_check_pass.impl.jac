@@ -125,6 +125,33 @@ impl name_in_type_position(name_nd: uni.UniNode) -> bool {
     return False;
 }
 
+impl static_fstring_spec_text(spec: uni.UniNode) -> (str | None) {
+    if isinstance(spec, uni.String) {
+        return spec.lit_value;
+    }
+    if isinstance(spec, uni.MultiString) {
+        parts: list[str] = [];
+        for s in spec.strings {
+            if not isinstance(s, uni.String) {
+                return None;
+            }
+            parts.append(s.lit_value);
+        }
+        return "".join(parts);
+    }
+    if isinstance(spec, uni.FString) {
+        parts2: list[str] = [];
+        for p in spec.parts {
+            if not isinstance(p, uni.String) {
+                return None;
+            }
+            parts2.append(p.lit_value);
+        }
+        return "".join(parts2);
+    }
+    return None;
+}
+
 impl native_capability_violations(mod: uni.Module) -> list {
     import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
     import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
@@ -223,6 +250,99 @@ impl native_capability_violations(mod: uni.Module) -> list {
                     out.append((nd, "statement", "SkipStmt", _NATIVE_SKIP_HELP));
                 }
                 continue;
+            }
+
+            if isinstance(nd, uni.ParamVar) and nd.unpack is not None {
+                out.append(
+                    (
+                        nd,
+                        "variadic parameter",
+                        f"{nd.unpack.value}{nd.name.value if nd.name else ''}",
+                        None
+                    )
+                );
+                continue;
+            }
+
+            if isinstance(nd, uni.Ability)
+            and not isinstance(nd.signature, (uni.FuncSignature, uni.EventSignature))
+            and isinstance(nd.parent, uni.Archetype) {
+                _sig_kind = (
+                    type(nd.signature).__name__
+                        if nd.signature is not None
+                        else "no-signature"
+                );
+                _m_name = nd.name_ref.sym_name if nd.name_ref else "?";
+                _arch_name = nd.parent.name.value if nd.parent.name else "?";
+                out.append(
+                    (
+                        nd,
+                        "archetype method",
+                        f"{_arch_name}.{_m_name} ({_sig_kind})",
+                        None
+                    )
+                );
+                continue;
+            }
+
+            if isinstance(nd, uni.Ability)
+            and nd.find_parent_of_type(uni.Ability) is not None {
+                import from jaclang.compiler.symbol_utils { ability_of_symbol }
+                _data_caps = [
+                    _cs
+                    for _cs in nd.get_enclosing_captures()
+                    if ability_of_symbol(_cs) is None
+                ];
+                if _data_caps {
+                    out.append(
+                        (
+                            nd,
+                            "statement",
+                            "Ability (nested function capturing enclosing locals)",
+                            None
+                        )
+                    );
+                    continue;
+                }
+            }
+
+            if isinstance(nd, uni.BinaryExpr)
+            and isinstance(nd.op, uni.Token)
+            and nd.op.name == Tok.WALRUS_EQ
+            and not isinstance(nd.left, uni.Name) {
+                out.append((nd, "binary operator", "WALRUS_EQ", None));
+                continue;
+            }
+
+            if isinstance(nd, uni.CompareExpr) and len(nd.ops) > 1 {
+                _plain_ops = (Tok.EE, Tok.NE, Tok.LT, Tok.GT, Tok.LTE, Tok.GTE);
+                for _o in nd.ops {
+                    _oname = _o.name if isinstance(_o, uni.Token) else str(_o);
+                    if _oname not in _plain_ops {
+                        out.append((nd, "chained comparison operator", _oname, None));
+                        break;
+                    }
+                }
+            }
+
+            if isinstance(nd, uni.FormattedValue) {
+                _conv = nd.conversion if nd.conversion is not None else -1;
+                if _conv not in (-1, 115) {
+                    out.append(
+                        (
+                            nd,
+                            "f-string conversion",
+                            ("!r" if _conv == 114 else "!a"),
+                            None
+                        )
+                    );
+                    continue;
+                }
+                if nd.format_spec is not None
+                and static_fstring_spec_text(nd.format_spec) is None {
+                    out.append((nd, "f-string format spec", "<dynamic spec>", None));
+                    continue;
+                }
             }
 
             if isinstance(nd, uni.AtomTrailer)
@@ -348,6 +468,7 @@ impl NativeCapabilityCheckPass.transform(ir_in: uni.Module) -> uni.Module {
             E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
         );
     }
+    ir_in.gen.native_viols_reported = True;
     return ir_in;
 }
 

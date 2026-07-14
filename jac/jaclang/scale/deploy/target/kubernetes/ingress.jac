@@ -1,7 +1,7 @@
 import time;
 import subprocess;
-import bcrypt;
 import from jaclang.scale._optdeps.kubernetes { client, ApiException }
+import from jaclang.scale._optdeps.optional_deps { require_optional }
 import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
     KubernetesConfig
 }
@@ -10,6 +10,24 @@ import from jaclang.scale.deploy.target.kubernetes.utils.kubernetes_utils {
     delete_if_exists
 }
 import from jaclang.scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
+
+"""Build one htpasswd line for the RedisInsight dashboard's basic-auth secret.
+
+bcrypt is imported here rather than at module scope: it is only reachable
+through the optional dashboard branch, and a top-level import made merely
+importing the deploy target -- which every deploy and every --dry-run does --
+fail with 'No module named bcrypt'."""
+def _htpasswd_line(username: str, password: str) -> str {
+    require_optional("bcrypt", "deploy.k8s");
+    import bcrypt;
+    # nginx reads $2y$; bcrypt emits the equivalent $2b$.
+    pw_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode(
+        'utf-8'
+    ).replace(
+        '$2b$', '$2y$'
+    );
+    return f"{username}:{pw_hash}";
+}
 
 obj IngressDeployer {
     has k8s_config: KubernetesConfig,
@@ -521,14 +539,7 @@ obj IngressDeployer {
             ri_password = self.k8s_config.redis_insight_password;
             ri_auth_secret_name = f"{app_name}-redis-insight-auth";
 
-            pw_hash = bcrypt.hashpw(
-                ri_password.encode('utf-8'), bcrypt.gensalt()
-            ).decode(
-                'utf-8'
-            ).replace(
-                '$2b$', '$2y$'
-            );
-            htpasswd_line = f"{ri_username}:{pw_hash}";
+            htpasswd_line = _htpasswd_line(ri_username, ri_password);
             ri_auth_secret = {
                 'apiVersion': 'v1',
                 'kind': 'Secret',
