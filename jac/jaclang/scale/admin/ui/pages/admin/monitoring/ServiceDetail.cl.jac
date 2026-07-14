@@ -17,28 +17,33 @@ cl {
     import from ....utils.format { formatBytes, formatCores, formatAge }
 
     def:pub ServiceDetail(
-        service: dict, pods: list, cpu: list, memory: list, onBack: any
+        service: dict,
+        pods: list[dict],
+        cpu: list[dict],
+        memory: list[dict],
+        onBack: any
     ) -> JsxElement {
-        def maxOf(points: list) -> float {
+        def maxOf(points: list[dict]) -> float {
             mv = 0.0;
             for p in points {
-                if p["v"] > mv {
-                    mv = p["v"];
+                v = p["v"] or 0;
+                if v > mv {
+                    mv = v;
                 }
             }
             return mv;
         }
 
-        def lastOf(points: list) -> float {
+        def lastOf(points: list[dict]) -> float {
             n = len(points);
             if n == 0 {
                 return 0.0;
             }
-            return points[n - 1]["v"];
+            return points[n - 1]["v"] or 0;
         }
 
         # Drawing area inside the 900x240 viewBox: x:[90,880] y:[20,210].
-        def chartLine(points: list, maxV: float) -> str {
+        def chartLine(points: list[dict], maxV: float) -> str {
             n = len(points);
             if n == 0 {
                 return "";
@@ -54,7 +59,7 @@ cl {
                 if n > 1 {
                     x = 90.0 + (i / (n - 1) * 790.0);
                 }
-                y = 210.0 - (p["v"] / mv * 190.0);
+                y = 210.0 - ((p["v"] or 0) / mv * 190.0);
                 if out {
                     out = out + " ";
                 }
@@ -64,7 +69,7 @@ cl {
             return out;
         }
 
-        def chartArea(points: list, maxV: float) -> str {
+        def chartArea(points: list[dict], maxV: float) -> str {
             line = chartLine(points, maxV);
             if not line {
                 return "";
@@ -485,7 +490,7 @@ cl {
                                         <td
                                             className="px-4 py-2 text-muted tabular-nums"
                                         >
-                                            {formatBytes(p["memory_bytes"])}
+                                            {formatBytes(p["memory_bytes"] or 0)}
                                         </td>
                                         <td
                                             className="px-4 py-2 text-muted tabular-nums"
@@ -495,7 +500,7 @@ cl {
                                         <td
                                             className="px-4 py-2 text-muted tabular-nums"
                                         >
-                                            {formatAge(p["created"])}
+                                            {formatAge(p["created"] or 0)}
                                         </td>
                                     </tr> for p in pods
                                 ]}

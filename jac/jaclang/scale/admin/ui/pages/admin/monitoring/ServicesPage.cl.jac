@@ -15,7 +15,7 @@ cl import from "lucide-react" { Server, RefreshCw, Activity, ChevronRight }
 
 cl {
     import from react { useEffect }
-    import from ....components.common.Button { Button }
+    import from ....components.common.PageHeader { PageHeader }
     import from ....context.AuthContext { useAuth }
     import from ....services.workloadsService {
         getWorkloadsSummary,
@@ -31,9 +31,9 @@ cl {
             metricsAvailable: bool = True,
             unavailableReason: str = "",
             summary: dict = {},
-            services: list = [],
-            pods: list = [],
-            series: list = [],
+            services: list[dict] = [],
+            pods: list[dict] = [],
+            series: list[dict] = [],
             selectedService: str = "",
             autoRefresh: bool = True;
 
@@ -159,8 +159,8 @@ cl {
                 svcMem = [];
                 for w in series {
                     if w["name"] == selectedService {
-                        svcCpu = w["cpu"] or [];
-                        svcMem = w["memory"] or [];
+                        svcCpu = list(w["cpu"] or []);
+                        svcMem = list(w["memory"] or []);
                     }
                 }
                 return
@@ -267,35 +267,33 @@ cl {
             }
         ];
 
+        headerRight = <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-muted">
+                <input
+                    type="checkbox"
+                    checked={autoRefresh}
+                    onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
+                    className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
+                />
+                Auto-refresh
+            </label>
+            <button
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-surface-2 text-fg border border-line hover:bg-line transition-colors"
+                onClick={lambda { loadAll(); }}
+            >
+                <RefreshCw className="w-3.5 h-3.5"/>
+                Refresh
+            </button>
+        </div>;
+
         return
             <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                        <Server className="w-5 h-5 text-accent"/>
-                        <h1 className="text-lg font-semibold text-fg">Services</h1>
-                        <span
-                            className="ml-1 inline-flex items-center gap-1.5 text-xs text-success"
-                        >
-                            <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
-                            Live
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 text-xs text-muted">
-                            <input
-                                type="checkbox"
-                                checked={autoRefresh}
-                                onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
-                                className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
-                            />
-                            Auto-refresh
-                        </label>
-                        <Button variant="secondary" onClick={lambda { loadAll(); }}>
-                            <RefreshCw className="w-3.5 h-3.5"/>
-                            Refresh
-                        </Button>
-                    </div>
-                </div>
+                <PageHeader
+                    icon={Server}
+                    title="Services"
+                    live={True}
+                    right={headerRight}
+                />
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
                         <div
@@ -342,7 +340,8 @@ cl {
                     <h2 className="text-sm font-medium text-fg">
                         Services ({len(services)})
                     </h2>
-                    <p className="text-xs text-faint">refreshing every 10s</p>
+                    {autoRefresh
+                    and <p className="text-xs text-faint">refreshing every 10s</p>}
                 </div>
                 {len(services) == 0
                 and <div
@@ -356,8 +355,8 @@ cl {
                 >
                     {[
                         <button
-                            key={s["kind"] + "/" + s["name"]}
-                            onClick={makeSelect(s["name"])}
+                            key={str(s["kind"]) + "/" + str(s["name"])}
+                            onClick={makeSelect(str(s["name"]))}
                             className="text-left bg-surface border border-line rounded-lg p-4 shadow-sm hover:border-accent-line hover:bg-surface-2 transition-colors group"
                         >
                             <div className="flex items-start justify-between gap-2">
@@ -407,7 +406,7 @@ cl {
                                         CPU
                                     </p>
                                     <p className="text-sm text-fg tabular-nums">
-                                        {formatCores(s["cpu_cores"])}
+                                        {formatCores(s["cpu_cores"] or 0)}
                                     </p>
                                 </div>
                                 <div>
@@ -417,7 +416,7 @@ cl {
                                         Memory
                                     </p>
                                     <p className="text-sm text-fg tabular-nums">
-                                        {formatBytes(s["memory_bytes"])}
+                                        {formatBytes(s["memory_bytes"] or 0)}
                                     </p>
                                 </div>
                             </div>
