@@ -777,6 +777,80 @@ test "enum in schema generation" {
 }
 
 # =============================================================================
+# Regression: Title-Case key drop (issue #7442)
+# =============================================================================
+test "tool schema strips nested titles and marks strict" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Investigation }
+    import from jaclang.byllm.lib { Tool }
+
+    tool = Tool.make_finish_tool(Investigation);
+    tool_schema = tool.get_json_schema();
+
+    assert tool_schema["function"]["strict"] == True;
+
+    final_output = tool_schema["function"]["parameters"]["properties"]["final_output"];
+    for (field_name, field_schema) in final_output["properties"].items() {
+        assert "title" not in field_schema , f"leaked title on {field_name}: {field_schema}";
+    }
+}
+
+test "json_to_instance recovers Title-Case keys" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Investigation }
+    import jaclang.byllm.schema as schema;
+
+    # Title-Case keys, as a model emits for Title-Cased schema labels.
+    emitted = {
+        "Error Analysis": "two calls shared one list",
+        "Root Cause": "mutable default arg cart=[]",
+    };
+    inv = schema.json_to_instance(emitted, Investigation);
+
+    assert isinstance(inv, Investigation);
+    assert inv.error_analysis == "two calls shared one list";
+    assert inv.root_cause == "mutable default arg cart=[]";
+}
+
+test "finish tool parse_arguments recovers Title-Case keys" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Investigation }
+    import from jaclang.byllm.lib { Tool }
+
+    tool = Tool.make_finish_tool(Investigation);
+    # final_output keyed in Title Case -- the shape that bit the gpt-5 agent.
+    args = tool.parse_arguments(
+        {"final_output": {"Error Analysis": "x", "Root Cause": "mutable default arg"}}
+    );
+    inv = args["final_output"];
+
+    assert isinstance(inv, Investigation);
+    assert inv.root_cause == "mutable default arg";
+}
+
+test "key normalisation is type-directed for dict fields" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { TeamReport }
+    import jaclang.byllm.schema as schema;
+
+    # `scores` keys are data: they must survive even when Title-Cased, while
+    # the `investigation` dataclass field still gets its keys repaired.
+    emitted = {
+        "Investigation": {"Root Cause": "shared mutable default"},
+        "scores": {"Root Cause": 5, "Error Analysis": 9},
+    };
+    team_report = schema.json_to_instance(emitted, TeamReport);
+
+    assert isinstance(team_report, TeamReport);
+    assert team_report.investigation.root_cause == "shared mutable default";
+    assert team_report.scores == {"Root Cause": 5, "Error Analysis": 9};
+}
+
+# =============================================================================
 # Scope Resolution Consistency Tests (Runtime vs Compile-time)
 # =============================================================================
 test "same function name different files resolve distinctly" {
