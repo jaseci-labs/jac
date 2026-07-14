@@ -123,7 +123,7 @@ cl def difflib_cl -> dict {
 na {
     def difflib_na -> dict[str, any] {
         sm1: SequenceMatcher = SequenceMatcher(None, "abcde", "abfde");
-        bl1: list[list[int]] = sm1.get_matching_blocks();
+        bl1 = sm1.get_matching_blocks();
         m1: int = 0;
         i1: int = 0;
         while i1 < len(bl1) {
@@ -131,7 +131,7 @@ na {
             i1 += 1;
         }
         sm2: SequenceMatcher = SequenceMatcher(None, "kitten", "sitting");
-        bl2: list[list[int]] = sm2.get_matching_blocks();
+        bl2 = sm2.get_matching_blocks();
         m2: int = 0;
         i2: int = 0;
         while i2 < len(bl2) {
@@ -158,7 +158,7 @@ na {
             xi += 1;
         }
         sm3: SequenceMatcher = SequenceMatcher(None, aj_a, aj_b);
-        bl3: list[list[int]] = sm3.get_matching_blocks();
+        bl3 = sm3.get_matching_blocks();
         m3: int = 0;
         i3: int = 0;
         while i3 < len(bl3) {
@@ -166,7 +166,7 @@ na {
             i3 += 1;
         }
         sm4: SequenceMatcher = SequenceMatcher(None, aj_a, aj_b, False);
-        bl4: list[list[int]] = sm4.get_matching_blocks();
+        bl4 = sm4.get_matching_blocks();
         m4: int = 0;
         i4: int = 0;
         while i4 < len(bl4) {
