@@ -6,6 +6,7 @@ import from jaclang.scale.config.config_loader { get_scale_config }
 import from jaclang.scale.observability.factory { UtilityFactory }
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.config.app_config { AppConfig }
+import from jaclang.scale.runtime.discovery.route_policy { format_route_origin_lines }
 
 
 obj KubernetesRealizer {
@@ -19,6 +20,11 @@ obj KubernetesRealizer {
         show_yaml: bool = False
     ) -> int {
         enabled = self.ms_config.get("enabled", None);
+        # Whether jac.toml genuinely declares [scale.microservices]. Resolved
+        # up front: the "go set [scale.microservices]" guidance below must only
+        # fire when the section is truly absent (issue #7434), and realize
+        # itself writes merged routes back into the loaded config later.
+        ms_configured = get_scale_config().microservices_declared();
 
         if target == "kubernetes" and enabled is not False {
             scale_discovered: dict[str, str] = {};
@@ -39,16 +45,23 @@ obj KubernetesRealizer {
                     raw_ms = raw_cfg.setdefault("microservices", {});
                     raw_ms["routes"] = merged_routes;
                     self.ms_config["routes"] = merged_routes;
-                }
-                if scale_discovered {
-                    names = ", ".join(sorted(merged_routes.keys()));
-                    label = "auto-detected" if enabled is None else "default routes";
+                    plural = "s" if len(merged_routes) != 1 else "";
+                    hint = (
+                        ""
+                            if ms_configured
+                            else "; set [scale.microservices] in jac.toml to customize"
+                    );
+                    label = "" if ms_configured else " (auto-detected)";
                     console.print(
-                        f"Microservice mode ({label}): {len(merged_routes)} "
-                        f"services [{names}], routes /<name>. Deploying to "
-                        f"kubernetes; set [scale.microservices] to customize.",
+                        f"Microservice mode{label}: {len(merged_routes)} "
+                        f"service{plural}. Deploying to kubernetes{hint}.",
                         style="cyan"
                     );
+                    for line in format_route_origin_lines(
+                        merged_routes, explicit_routes
+                    ) {
+                        console.print(f"  {line}", style="muted");
+                    }
                 }
             }
         }
@@ -67,10 +80,17 @@ obj KubernetesRealizer {
             target_config = scale_config.get_section(target);
         }
         deployment_target = DeploymentTargetFactory.create(
-            target, target_config, logger
+            target, target_config, logger, dry_run=dry_run
         );
 
-        if enable_tls {
+        # --enable-tls issues certificates against the live cluster, so a dry
+        # run has to skip it and fall through to the plan.
+        if enable_tls and dry_run {
+            console.warning(
+                "--dry-run ignores --enable-tls: issuing certificates would "
+                "modify the cluster. Re-run without --dry-run to enable TLS."
+            );
+        } elif enable_tls {
             if not target_config.get('domain', '') {
                 raise ValueError(
                     "No domain configured. Set 'domain' under [scale.kubernetes] in jac.toml before running --enable-tls."
@@ -102,10 +122,15 @@ obj KubernetesRealizer {
                 "jac at pod startup. Keep secrets in [scale.secrets] "
                 "(synced as a K8s Secret) or in .env, never inline in source."
             );
-            console.warning(
-                "Set [scale.microservices] in jac.toml to configure "
-                "resources, scaling, ingress, and secrets before going to production."
-            );
+            # Only nudge toward [scale.microservices] when it is genuinely
+            # absent: telling a user to set a section they already set makes a
+            # degraded-config failure indistinguishable from a healthy run.
+            if not ms_configured {
+                console.warning(
+                    "Set [scale.microservices] in jac.toml to configure "
+                    "resources, scaling, ingress, and secrets before going to production."
+                );
+            }
         }
         if target == "kubernetes-microservice" {
             console.print("Preparing microservice deployment...");

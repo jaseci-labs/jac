@@ -5,15 +5,15 @@ impl navigate(path: str) -> None {
 
 impl __createJacSchema(zodLib: any) -> any {
     handler = {
-        "apply": lambda target: any , thisArg: any , argumentsList: any -> any { return zodLib.object.apply(
+        "apply": lambda (target: any, thisArg: any, argumentsList: any) -> any { return zodLib.object.apply(
             zodLib, argumentsList
         ); },
-        "get": lambda target: any , prop: any , receiver: any -> any { return zodLib[
+        "get": lambda (target: any, prop: any, receiver: any) -> any { return zodLib[
             prop
         ]; }
     };
 
-    dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
+    dummyFunc = lambda (schema: any) -> any { return zodLib.object(schema); };
     return Reflect.construct(Proxy, [dummyFunc, handler]);
 }
 
@@ -433,7 +433,7 @@ impl jacLogout -> None {
     if broker {
         try {
             fetch(f"{broker}/session", {"method": "DELETE"}).catch(
-                lambda e: any { console.warn(
+                lambda (e: any) { console.warn(
                     "[jac-client] broker session clear failed:", e
                 ); }
             );
@@ -470,7 +470,7 @@ impl __jacDesktopBroker -> str {
 
 impl __jacSleep(ms: int) -> None {
     await Reflect.construct(
-        Promise, [lambda resolve: any { setTimeout(resolve, ms); }]
+        Promise, [lambda (resolve: any) { setTimeout(resolve, ms); }]
     );
 }
 
@@ -578,7 +578,7 @@ impl __jacInstallErrorHandlers -> None {
 
     window.addEventListener(
         "error",
-        lambda event: any { __jacReportError(
+        lambda (event: any) { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -588,7 +588,7 @@ impl __jacInstallErrorHandlers -> None {
 
     window.addEventListener(
         "unhandledrejection",
-        lambda event: any {
+        lambda (event: any) {
             reason = event.reason;
             message = "";
             stack = "";

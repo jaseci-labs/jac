@@ -104,7 +104,17 @@ impl UnparsePass.exit_module(nd: uni.Module) -> None {
 }
 
 impl UnparsePass.exit_sub_tag(nd: uni.SubTag) -> None {
-    nd.gen.jac = ": " + nd.tag.gen.jac;
+    prefix = "";
+    if nd.ownership == OwnershipKind.OWN {
+        prefix = "own ";
+    } elif nd.ownership == OwnershipKind.MUT_BORROW {
+        prefix = "&mut ";
+    } elif nd.ownership == OwnershipKind.BORROW {
+        prefix = "&";
+    } elif nd.ownership == OwnershipKind.VAL {
+        prefix = "val ";
+    }
+    nd.gen.jac = ": " + prefix + nd.tag.gen.jac;
 }
 
 impl UnparsePass.exit_type_param(nd: uni.TypeParam) -> None {
@@ -412,7 +422,6 @@ impl UnparsePass.exit_ability(nd: uni.Ability) -> None {
 }
 
 impl UnparsePass.exit_func_signature(nd: uni.FuncSignature) -> None {
-    is_lambda = nd.parent and isinstance(nd.parent, uni.LambdaExpr);
     param_parts: list = [];
     if nd.posonly_params {
         for prm in nd.posonly_params {
@@ -435,13 +444,7 @@ impl UnparsePass.exit_func_signature(nd: uni.FuncSignature) -> None {
         param_parts.append(nd.kwargs.gen.jac);
     }
     params_str = ", ".join(param_parts);
-    if not is_lambda {
-        result = "(" + params_str + ")";
-    } elif not param_parts {
-        result = "()";
-    } else {
-        result = params_str;
-    }
+    result = "(" + params_str + ")";
     if nd.return_type {
         result = result + " -> " + nd.return_type.gen.jac;
     }
@@ -505,6 +508,11 @@ impl UnparsePass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     body = " ".join([s.gen.jac for s in nd.body]);
     parts.append("{ " + body + " }");
     nd.gen.jac = " ".join(parts);
+}
+
+impl UnparsePass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    body = " ".join([s.gen.jac for s in nd.body]);
+    nd.gen.jac = "region { " + body + " }";
 }
 
 impl UnparsePass.exit_if_stmt(nd: uni.IfStmt) -> None {
@@ -786,14 +794,17 @@ impl UnparsePass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
         body = " ".join([s.gen.jac for s in nd.body]);
         parts.append("{ " + body + " }");
     } else {
-        parts.append(":");
-        parts.append(nd.body.gen.jac);
+        parts.append("{ " + nd.body.gen.jac + " }");
     }
     nd.gen.jac = " ".join(parts);
 }
 
 impl UnparsePass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
-    nd.gen.jac = nd.op.gen.jac + " " + nd.operand.gen.jac;
+    if is_mut_kind(nd.ownership) {
+        nd.gen.jac = nd.op.gen.jac + "mut " + nd.operand.gen.jac;
+    } else {
+        nd.gen.jac = nd.op.gen.jac + " " + nd.operand.gen.jac;
+    }
 }
 
 impl UnparsePass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {

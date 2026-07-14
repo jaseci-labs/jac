@@ -134,7 +134,11 @@ def build_bootstrap_init_container(
     );
     # The toolchain bundle ships the prebuilt jac binary and the app bundle
     # ships source precompiled into .jir; first boot only needs to install the
-    # app's declared deps.
+    # app's declared deps. PIP_PREFIX puts them in the project venv on the
+    # shared volume (the CLI wires it onto sys.path at boot): pip's default
+    # target is the runtime site, which on the official base image is a
+    # container-local layer, so installs there never reach the main container.
+    commands.append(f'export PIP_PREFIX="{APP_MOUNT_PATH}/.jac/venv"');
     commands.append("jac install");
     script = ' && '.join(commands);
     container: dict[str, any] = {

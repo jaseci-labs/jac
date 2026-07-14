@@ -390,7 +390,7 @@ test "parallel hint appended without mutating original message" {
 test "shared worker pool is a thread pool executor" {
     assert isinstance(_WORKER_POOL, ThreadPoolExecutor);
     # Pool is alive — can submit work
-    future = _WORKER_POOL.submit(lambda : 42 );
+    future = _WORKER_POOL.submit(lambda { 42; });
     assert future.result(timeout=2) == 42;
 }
 

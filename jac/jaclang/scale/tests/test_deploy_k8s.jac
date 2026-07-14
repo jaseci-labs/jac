@@ -426,19 +426,18 @@ test "default redis memory limit does not emit a headroom warning" {
 
 test "redis pod resources propagate from [scale.database] config" {
     fake_config = SimpleNamespace(
-        get_database_config=lambda :
-            {
-                'redis_max_memory': '200mb',
-                'redis_cpu_request': '500m',
-                'redis_cpu_limit': '2000m',
-                'redis_memory_request': '1Gi',
-                'redis_memory_limit': '4Gi'
-            },
-        get_kubernetes_config=lambda : {}
+        get_database_config=lambda { {
+            'redis_max_memory': '200mb',
+            'redis_cpu_request': '500m',
+            'redis_cpu_limit': '2000m',
+            'redis_memory_request': '1Gi',
+            'redis_memory_limit': '4Gi'
+        }; },
+        get_kubernetes_config=lambda { {}; }
     );
 
     with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda : fake_config
+        redis_module, 'get_scale_config', lambda { fake_config; }
     ) {
         redis_provider = DatabaseProviderFactory.create(
             'kubernetes_redis', None, {'app_name': 'test-app'}
@@ -458,20 +457,19 @@ test "redis pod resources propagate from [scale.database] config" {
 
 test "redis warns when memory limit lacks headroom over maxmemory" {
     fake_config = SimpleNamespace(
-        get_database_config=lambda :
-            {
-                'redis_max_memory': '200mb',
-                'redis_cpu_request': '250m',
-                'redis_cpu_limit': '1000m',
-                'redis_memory_request': '128Mi',
-                'redis_memory_limit': '256Mi'
-            },
-        get_kubernetes_config=lambda : {}
+        get_database_config=lambda { {
+            'redis_max_memory': '200mb',
+            'redis_cpu_request': '250m',
+            'redis_cpu_limit': '1000m',
+            'redis_memory_request': '128Mi',
+            'redis_memory_limit': '256Mi'
+        }; },
+        get_kubernetes_config=lambda { {}; }
     );
     mock_logger = unittest.mock.MagicMock();
 
     with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda : fake_config
+        redis_module, 'get_scale_config', lambda { fake_config; }
     ) {
         with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
             redis_provider = DatabaseProviderFactory.create(

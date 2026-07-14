@@ -186,7 +186,17 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
 
     body = nd.body;
     if isinstance(body, list) {
-        self._codegen_body(body);
+        tail = nd.tail_return_expr();
+        if tail is not None {
+            val = self._codegen_expr(tail);
+            if val is not None {
+                self.builder.ret(self._coerce_type(val, ret_type));
+            } else {
+                self.builder.ret(ir.Constant(ret_type, 0));
+            }
+        } else {
+            self._codegen_body(body);
+        }
     } else {
         val = self._codegen_expr(body);
         if val is not None {

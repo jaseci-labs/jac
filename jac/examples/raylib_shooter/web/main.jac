@@ -35,7 +35,7 @@ cl {
             }
             run_game(
                 document.getElementById("glcanvas"),
-                lambda exports: any , fps: int {
+                lambda (exports: any, fps: int) {
                     score_el: any = document.getElementById("hud-score");
                     fps_el: any = document.getElementById("hud-fps");
                     score_el.textContent = exports.get_score();
