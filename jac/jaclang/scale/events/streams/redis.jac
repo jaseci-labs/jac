@@ -106,21 +106,31 @@ obj RedisEventStream(EventStreamBroker) {
         return start_from;
     }
 
-    def _ensure_group(topic: str, group: str, start_from: str = "latest") -> None {
+    def _ensure_group(
+        topic: str, group: str, start_from: str = "latest", force: bool = False
+    ) -> None {
         key = f"{topic}::{group}";
-        if key in self._ensured_groups {
+        if not force and key in self._ensured_groups {
             return;
         }
         try {
             self._get_client().xgroup_create(
                 topic, group, id=self._resolve_start_id(start_from), mkstream=True
             );
+            # Created cleanly — safe to memoize.
+            self._ensured_groups.add(key);
         } except Exception as e {
-            if "BUSYGROUP" not in str(e) {
+            if "BUSYGROUP" in str(e) {
+                # Group already exists; memoize so we skip the round-trip.
+                self._ensured_groups.add(key);
+            } else {
+                # Do NOT memoize on a genuine failure. Caching an un-created
+                # group poisons the reader: every later XREADGROUP returns
+                # NOGROUP forever and _ensure_group short-circuits on the stale
+                # entry. Leave it uncached so the next call retries the create.
                 _logger.warning(f"XGROUP CREATE failed for {topic}/{group}: {e}");
             }
         }
-        self._ensured_groups.add(key);
     }
 
     def _decode_message(topic: str, group: str, msg_id: any, fields: dict) -> Event {
@@ -170,17 +180,40 @@ obj RedisEventStream(EventStreamBroker) {
         grp = group or self._default_group;
         self._ensure_group(topic, grp, start_from);
         block_ms = max(1, int(timeout_seconds * 1000));
-        try {
-            result = self._get_client().xreadgroup(
-                groupname=grp,
-                consumername=self._consumer_name,
-                streams={topic: ">"},
-                count=max_messages,
-                block=block_ms
-            );
-        } except Exception as e {
-            _logger.error(f"XREADGROUP failed for {topic}/{grp}: {e}");
-            return [];
+        result: any = None;
+        attempt = 0;
+        while attempt < 2 {
+            try {
+                result = self._get_client().xreadgroup(
+                    groupname=grp,
+                    consumername=self._consumer_name,
+                    streams={topic: ">"},
+                    count=max_messages,
+                    block=block_ms
+                );
+                break;
+            } except Exception as e {
+                # NOGROUP means the stream/group vanished after we cached it as
+                # ensured — typically the stream was evicted under Redis memory
+                # pressure, which drops its consumer groups. Drop the stale cache
+                # entry, recreate the group (MKSTREAM), and retry once. Without
+                # this the reader hot-loops on NOGROUP with no backoff: the
+                # block= timeout does not apply because NOGROUP fails immediately,
+                # so one vanished stream pins a CPU core and floods the logs.
+                if "NOGROUP" in str(e) and attempt == 0 {
+                    self._ensured_groups.discard(f"{topic}::{grp}");
+                    self._ensure_group(topic, grp, start_from, force=True);
+                    attempt += 1;
+                    continue;
+                }
+                _logger.error(f"XREADGROUP failed for {topic}/{grp}: {e}");
+                # Pace the unrecoverable-error path: callers (consumer_loop,
+                # stream_events) re-invoke consume immediately on an empty
+                # return, so a persistent failure here must not become a hot
+                # loop the way a fast-failing XREADGROUP would.
+                time.sleep(0.5);
+                return [];
+            }
         }
         events: list[Event] = [];
         if not result {

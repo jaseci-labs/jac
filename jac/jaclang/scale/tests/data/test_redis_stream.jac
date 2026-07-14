@@ -111,6 +111,50 @@ test "ack prevents redelivery in same group" {
 }
 
 
+test "consume self-heals after the stream and group are evicted (NOGROUP)" {
+    # Regression for the XREADGROUP NOGROUP hot-loop: when the run stream is
+    # evicted under Redis memory pressure its consumer group is destroyed, but
+    # the broker still has the group cached in _ensured_groups. A later XADD
+    # recreates the stream without the group, so every read used to NOGROUP
+    # forever with no backoff. consume() must now drop the stale cache entry,
+    # recreate the group, and deliver the event.
+    _flush_redis();
+    b = _make_broker(group="t_evict");
+
+    b.publish("evict.topic", Event(event_type="e.one", data={"n": 1}));
+    got1 = b.consume(
+        "evict.topic",
+        group="t_evict",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
+    assert len(got1) == 1;
+    assert got1[0].data["n"] == 1;
+
+    # Simulate the eviction: deleting the stream key destroys the stream AND
+    # its consumer group, while the broker keeps the group cached.
+    client = get_redis_client(REDIS_URI);
+    client.delete("evict.topic");
+
+    # A publisher re-creates the stream via XADD but not the group.
+    b.publish("evict.topic", Event(event_type="e.two", data={"n": 2}));
+
+    got2 = b.consume(
+        "evict.topic",
+        group="t_evict",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
+    assert len(got2) == 1;
+    assert got2[0].data["n"] == 2;
+
+    b.stop(drain=False);
+    cleanup_connections();
+}
+
+
 test "consume returns empty on timeout when stream is empty" {
     _flush_redis();
     b = _make_broker(group="t_empty");
