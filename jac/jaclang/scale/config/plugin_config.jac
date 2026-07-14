@@ -126,8 +126,8 @@ class JacScalePluginConfig {
                         },
                         "namespace": {
                             "type": "string",
-                            "default": None,
-                            "description": "Kubernetes namespace for deployment. Defaults to a k8s-safe slug of [project].name when unset, or 'default' if no project name is usable, so unconfigured deploys don't share the cluster's default namespace"
+                            "default": "default",
+                            "description": "Kubernetes namespace for deployment"
                         },
                         "container_port": {
                             "type": "int",

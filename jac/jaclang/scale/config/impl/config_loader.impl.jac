@@ -47,8 +47,9 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'messages_per_second': 20
         },
         'kubernetes': {
-            # app_name/namespace intentionally absent: any key here wins the
-            # jac.toml deep-merge, which would kill the project-name default.
+            # app_name intentionally absent: any key here wins the jac.toml
+            # deep-merge, which would kill the project-name default.
+            'namespace': 'default',
             'container_port': 8000,
             'mongodb_enabled': True,
             'redis_enabled': True,
@@ -267,7 +268,6 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     derived = k8s_safe_slug(self.get_jac_config().project.name, fallback='');
     if derived {
         k8s_config.setdefault('app_name', derived);
-        k8s_config.setdefault('namespace', derived);
     }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
     return k8s_config_obj.to_dict();
