@@ -9,7 +9,6 @@ on so the gate cannot silently drift from `NaIRGenPass.transform`'s own trigger:
 2. `ModuleCodegenPass.has_native_context_stmts` -- the shared predicate the gate
    and the pass share -- is False for a plain Python module and True for a
    module carrying an inline `na {}` block.
-3. `get_py_code_gen(evict_py_ast=...)` includes `PyAstEvictPass` only when asked.
 """
 
 import os;
@@ -17,7 +16,6 @@ import from tests.support { TESTS_DIR }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compiler { get_py_code_gen }
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
-import from jaclang.jac0core.passes { PyAstEvictPass }
 import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
 
 glob FIXTURES = os.path.join(
@@ -36,12 +34,6 @@ test "get_py_code_gen schedules the native passes when native=True" {
     with_native = get_py_code_gen(native=True);
     assert NaIRGenPass in with_native;
     assert NativeCompilePass in with_native;
-}
-
-
-test "get_py_code_gen omits PyAstEvictPass unless evict_py_ast=True" {
-    assert PyAstEvictPass not in get_py_code_gen(native=False);
-    assert PyAstEvictPass in get_py_code_gen(native=False, evict_py_ast=True);
 }
 
 

@@ -5,6 +5,12 @@ impl PyBytecodeGenPass.transform(
     return ir_in;
 }
 
+impl PyBytecodeGenPass.post_transform(self: PyBytecodeGenPass) -> None {
+    if self.prog._evict_py_ast {
+        self.ir_out.evict_py_ast();
+    }
+}
+
 impl PyBytecodeGenPass.process_modules(
     self: PyBytecodeGenPass, root_module: uni.Module
 ) -> None {

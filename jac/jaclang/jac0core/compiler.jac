@@ -34,7 +34,6 @@ import from jaclang.jac0core.passes {
     DeclImplMatchPass,
     JacAnnexPass,
     PyastGenPass,
-    PyAstEvictPass,
     PyBytecodeGenPass,
     SemanticAnalysisPass,
     SymTabBuildPass,
@@ -208,7 +207,7 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 }
 
 def get_py_code_gen(
-    native: bool = True, evict_py_ast: bool = False
+    native: bool = True
 ) -> list[type[Transform[uni.Module, uni.Module]]] {
     if _codegen_sched_loading.get() or _ir_sched_loading.get() {
         return [PyastGenPass, PyBytecodeGenPass];
@@ -234,9 +233,6 @@ def get_py_code_gen(
             );
         }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
-        if evict_py_ast {
-            passes.append(PyAstEvictPass);
-        }
         return passes;
     } except ImportError {
         return [PyastGenPass, PyBytecodeGenPass];

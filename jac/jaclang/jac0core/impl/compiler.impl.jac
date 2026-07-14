@@ -947,7 +947,7 @@ impl JacCompiler.compile(
         needs_native = is_native_mod
         or ModuleCodegenPass.has_native_context_stmts(mod_targ);
 
-        should_evict_py_ast = (
+        actual_program._evict_py_ast = (
             not os.environ.get("JAC_NO_PYAST_EVICT")
             and (
                 bool(os.environ.get("JAC_PYAST_EVICT_ALL"))
@@ -957,9 +957,7 @@ impl JacCompiler.compile(
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_py_code_gen(
-                native=needs_native, evict_py_ast=should_evict_py_ast
-            ),
+            passes=get_py_code_gen(native=needs_native),
             cancel_token=options.cancel_token
         );
         import from jaclang.jac0core.ext_registry { is_native_module as _is_na_sfx }

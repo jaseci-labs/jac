@@ -5,8 +5,7 @@ import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.codeinfo { CodeGenTarget }
-import from jaclang.jac0core.compiler { get_py_code_gen }
-import from jaclang.jac0core.passes { PyAstEvictPass }
+import from jaclang.jac0core.passes { PyBytecodeGenPass }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -122,10 +121,30 @@ test "JAC_NO_PYAST_EVICT is a no-op even with EVICT_ALL" {
 }
 
 
-test "get_py_code_gen gates PyAstEvictPass on evict_py_ast" {
-    assert PyAstEvictPass not in get_py_code_gen(native=False);
-    assert PyAstEvictPass not in get_py_code_gen(native=False, evict_py_ast=False);
-    assert PyAstEvictPass in get_py_code_gen(native=False, evict_py_ast=True);
+test "PyBytecodeGenPass.post_transform evicts only when the program flag is set" {
+    # No dedicated eviction pass: the after-pass hook on PyBytecodeGenPass drops
+    # py_ast, gated by JacProgram._evict_py_ast.
+    prog = JacProgram();
+    ir = prog.compile(file_path=os.path.join(FIXTURES, "func.jac"));
+    assert ir.gen.py_ast , "expected py_ast before re-running the pass";
+    py_root = ir.gen.py_ast[0];
+    py_root.jac_link = [ir];
+
+    # Flag off: re-running the pass regenerates bytecode but keeps py_ast.
+    prog._evict_py_ast = False;
+    PyBytecodeGenPass(ir_in=ir, prog=prog);
+    assert ir.gen.py_bytecode is not None;
+    assert ir.gen.py_ast , "post_transform must not evict when the flag is off";
+
+    # Flag on: the hook clears py_ast across the whole module tree.
+    prog._evict_py_ast = True;
+    PyBytecodeGenPass(ir_in=ir, prog=prog);
+    assert ir.gen.py_bytecode is not None , "bytecode must survive eviction";
+    for nd in ir.flatten() {
+        assert not (nd.gen_or_none and nd.gen_or_none.py_ast) , (
+            "post_transform must clear py_ast when the flag is on"
+        );
+    }
 }
 
 

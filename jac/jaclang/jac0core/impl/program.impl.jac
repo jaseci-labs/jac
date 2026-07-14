@@ -23,6 +23,8 @@ impl JacProgram.init(
     self._inferred_mods: set = set();
 
     self._analyses_run: dict = {};
+
+    self._evict_py_ast: bool = False;
 }
 
 impl JacProgram.hub_cache_stamp(self: JacProgram, resolved_path: str) -> None {
