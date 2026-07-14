@@ -489,7 +489,12 @@ impl TypeEvaluator.match_args_to_params(
             );
             params_to_match.insert(0, synthetic_self);
         }
+        # For class types with explicit self, keep it in params_to_match (don't pop)
     } else {
+        # Bound call: pop self/cls as usual.
+        # For is_cls, only pop when the function is a classmethod (cls is auto-bound).
+        # __new__ is a staticmethod in CPython — its cls param has is_cls=True for
+        # constructor resolution but should NOT be auto-stripped in direct calls.
         if len(func_type.parameters) >= 1 {
             first = func_type.parameters[0];
             if first.is_self
@@ -780,6 +785,10 @@ impl TypeEvaluator._infer_type_args_from_method(
         init_method, expr, is_constructor_call=True
     );
 
+    # Bind TypeVars found in the constructor's self annotation (e.g. self: TemporaryDirectory[str]).
+    self._extract_self_annotation_bindings(caller_type, init_method, bindings);
+
+    # First, try direct binding from class type_params (works for enumerate)
     direct_args = [
         bindings.get(tp.name, types.UnknownType())
         for tp in caller_type.shared.type_params
@@ -804,6 +813,45 @@ impl TypeEvaluator._infer_type_args_from_method(
     return direct_args;
 }
 
+# Reads the `self: Class[T]` annotation on the constructor and binds T to the concrete type.
+impl TypeEvaluator._extract_self_annotation_bindings(
+    caller_type: types.ClassType,
+    method: types.FunctionType,
+    bindings: dict[str, TypeBase]
+) -> None {
+    if not method.parameters {
+        return;
+    }
+    first = method.parameters[0];
+    if not first.is_self {
+        return;
+    }
+    self_ann = first.param_type;
+    if not isinstance(self_ann, types.ClassType) {
+        return;
+    }
+    # Skip if the self annotation points to a different class.
+    if self_ann.shared != caller_type.shared {
+        return;
+    }
+    if not self_ann.private.type_args {
+        return;
+    }
+    # Map each class TypeVar to the concrete type from the self annotation.
+    class_params = caller_type.shared.type_params;
+    self_args = self_ann.private.type_args;
+    for i in range(min(len(class_params), len(self_args))) {
+        tp = class_params[i];
+        if not tp.name or tp.name in bindings {
+            continue;  # already resolved from call arguments
+        }
+        self.assign_type_to_type_var(tp, self_args[i], bindings);
+    }
+}
+
+"""
+Substitute TypeVars in a type using bindings.
+"""
 impl TypeEvaluator._substitute_type_vars(
     typ: types.TypeBase, bindings: dict[str, types.TypeBase]
 ) -> types.TypeBase {

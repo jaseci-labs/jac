@@ -39,6 +39,7 @@ Bug index:
                       Unknown when the included submodule imported back from its
                       own package (circular self-import); poisoned the vendored
                       llvm ir/binding surface and every native pass (#7163)
+  #SELF-ANNO-TVAR - Constructor overload's `self: C[T]` annotation didn't bind class TypeVar T
 """
 
 import os;
@@ -1007,6 +1008,13 @@ test "bug_byte_literal_typed_as_bytes" {
         "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
         "so it assigns to bytes and concatenates with other bytes. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_self_annotation_binds_class_typevars" {
+    program = compile_and_check("checker_bug_self_annotation_typevar.jac");
+    assert program.errors_had == [] , (
+        f"Bug #SELF-ANNO-TVAR: {[str(e) for e in program.errors_had]}"
     );
 }
 

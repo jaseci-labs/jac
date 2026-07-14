@@ -82,6 +82,7 @@ import from jaclang.jac0core.diagnostics {
     W1102
 }
 
+"""Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
     has none_type_class: types.ClassType | None = None,
         object_class: types.ClassType | None = None,
@@ -500,6 +501,12 @@ obj TypeEvaluator {
         expr: uni.FuncCall,
         matched_method: types.FunctionType | None
     ) -> list[TypeBase];
+
+    def _extract_self_annotation_bindings(
+        caller_type: types.ClassType,
+        method: types.FunctionType,
+        bindings: dict[str, TypeBase]
+    ) -> None;
 
     def _find_matching_raw_constructor(
         caller_type: types.ClassType,
