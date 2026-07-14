@@ -1123,7 +1123,7 @@ test "overload_rejection_help" {
         for e in program.errors_had
         if e.code and e.code.code == "E1054"
     ];
-    assert len(helps) == 6 , f"Expected 6 E1054s, got {len(helps)}";
+    assert len(helps) == 7 , f"Expected 7 E1054s, got {len(helps)}";
 
     def has(needle: str) -> bool {
         return any(needle in h for h in helps);
@@ -1131,6 +1131,14 @@ test "overload_rejection_help" {
 
     assert has("returns 'dict'") and has("must return") , f"Missing return-type reason:\n{helps}";
     assert has("takes 2 parameter(s)") , f"Missing arity reason:\n{helps}";
+
+    # An extra optional param is arity-compatible, so it must not be blamed on arity.
+    arity = [
+        h
+        for h in helps
+        if "parameter(s), but a callable taking" in h
+    ];
+    assert len(arity) == 1 , f"Expected exactly one arity reason, got {len(arity)}:\n{helps}";
     assert has("The candidates expect:") and has("overload 2:") , f"Missing candidate list:\n{helps}";
     assert has("Every overload expects 'SupportsIndex'") , f"Missing collapsed expectation:\n{helps}";
     assert has("parameter 'iterable'") , f"Missing per-argument reason:\n{helps}";

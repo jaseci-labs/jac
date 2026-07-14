@@ -69,19 +69,19 @@ impl TypeEvaluator._callable_reason(
         return None;
     }
 
-    def visible(fn: types.FunctionType) -> int {
-        return len(
-            [
-                p
-                for p in (fn.parameters or [])
-                if not p.is_self and not p.is_cls
-            ]
-        );
+    def visible(fn: types.FunctionType) -> list[types.Parameter] {
+        return [
+            p
+            for p in (fn.parameters or [])
+            if not p.is_self and not p.is_cls
+        ];
     }
 
-    (got, want) = (visible(arg_type), visible(expected));
-    if got != want {
-        return f"takes {got} parameter(s), but a callable taking {want} is expected";
+    (src_params, dest_params) = (visible(arg_type), visible(expected));
+    want = len(dest_params);
+
+    if len(src_params) < want or any(not p.is_optional for p in src_params[want:]) {
+        return f"takes {len(src_params)} parameter(s), but a callable taking {want} is expected";
     }
 
     src_ret = arg_type.return_type;
