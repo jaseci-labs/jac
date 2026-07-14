@@ -140,7 +140,7 @@ ingress_node_port = 30080
 
 | Key | Description | Default |
 |----------|-------------|---------|
-| `app_name` | Name of your application | `jaseci` |
+| `app_name` | Name of your application | slug of `[project].name` (else `jaseci`) |
 | `namespace` | Kubernetes namespace | `default` |
 | `ingress_node_port` | Ingress NodePort for local access | `30080` |
 

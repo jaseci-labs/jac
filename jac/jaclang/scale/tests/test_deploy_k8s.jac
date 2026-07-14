@@ -13,7 +13,13 @@ import from types { SimpleNamespace }
 
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.config.config_loader { JacScaleConfig, get_scale_config }
+import from jaclang.scale.config.config_loader {
+    JacScaleConfig,
+    get_scale_config,
+    reset_scale_config
+}
+import from tempfile { mkdtemp }
+import shutil;
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.deploy.database { kubernetes_redis as redis_module }
@@ -1066,5 +1072,66 @@ test "shared ingress merges caller-supplied annotations for non-nginx controller
     assert created_body["spec"]["ingressClassName"] == "alb" , "ingressClassName must be the shared class";
     for key in annos.keys() {
         assert not str(key).startswith("nginx.ingress.kubernetes.io/") , f"nginx annotation leaked onto non-nginx ingress: {key}";
+    }
+}
+
+test "k8s safe slug normalizes names into valid k8s identifiers" {
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        k8s_safe_slug
+    }
+
+    cases = [
+        ("this-is-jac", "this-is-jac"),
+        ("My App", "my-app"),
+        ("My_Cool_App!!", "my-cool-app"),
+        ("-lead-and-trail-", "lead-and-trail"),
+        ("UPPER", "upper"),
+        ("a" * 100, "a" * 63),
+        ("", "jaseci")
+    ];
+    for (raw, expected) in cases {
+        result = k8s_safe_slug(raw);
+        assert result == expected , f"k8s_safe_slug({raw!r}) = {result!r}, expected {expected!r}";
+    }
+}
+
+"""Resolve get_kubernetes_config() against a temp project with the given jac.toml."""
+def _k8s_config_for_toml(toml_content: str) -> dict {
+    tmp_dir = Path(mkdtemp());
+    (tmp_dir / "jac.toml").write_text(toml_content);
+    # get_scale_config() caches a process-wide singleton; reset around the temp project.
+    reset_scale_config();
+    try {
+        return get_scale_config(tmp_dir).get_kubernetes_config();
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+}
+
+test "unconfigured app_name derives from [project].name; namespace stays default" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\nentry-point = \"main.jac\"\n"
+    );
+    assert cfg["app_name"] == "my-app" , f"got {cfg['app_name']!r}";
+    assert cfg["namespace"] == "default" , f"got {cfg['namespace']!r}";
+}
+
+test "explicit app_name wins over the derived default" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\n\n[scale.kubernetes]\napp_name = \"custom-app\"\n"
+    );
+    assert cfg["app_name"] == "custom-app" , f"got {cfg['app_name']!r}";
+}
+
+test "no usable project name falls back to legacy app_name 'jaseci'" {
+    for toml in [
+        "[project]\nentry-point = \"main.jac\"\n",
+        "[project]\nname = \"---\"\n",
+        "[project]\nname = \"   \"\n"
+    ] {
+        cfg = _k8s_config_for_toml(toml);
+        assert cfg["app_name"] == "jaseci" , f"{toml!r}: got {cfg['app_name']!r}";
+        assert cfg["namespace"] == "default" , f"{toml!r}: got {cfg['namespace']!r}";
     }
 }
