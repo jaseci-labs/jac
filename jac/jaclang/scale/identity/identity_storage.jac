@@ -20,6 +20,7 @@ import from sqlalchemy.exc { IntegrityError, OperationalError }
 import from jaclang.scale._optdeps.pymongo { DuplicateKeyError }
 import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
+import from jaclang.scale.config.config_loader { get_scale_config }
 
 """Raised by storage backends when an identity uniqueness constraint fires."""
 obj IdentityTakenError(Exception) {}
