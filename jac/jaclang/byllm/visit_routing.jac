@@ -384,7 +384,7 @@ def _condense_context(
         return cached;
     }
     sys_txt = (
-        "You compress task context for a graph-routing agent. Rewrite the " + "context below as a brief of at most 120 words, keeping every " + "detail that could matter for choosing which node a walker visits " + "next. Output plain text only."
+        "You are a helper to compress task context for a graph-routing agent. Rewrite the " + "context below as a brief text, keeping every " + "detail that could matter for choosing which node a walker visits " + "next. Output plain text only."
     );
     mt_run = MTRuntime(
         messages=[
@@ -541,7 +541,10 @@ def route_visit(candidates: list, model: object) -> list {
     }
 
     call_params = model?.call_params or {};
-    if call_params.get("multistage") is not None {
+    if call_params.get("multistage") is True {
+        if call_params.get("verbose") is True{
+            print("\033[31m Visit by enabled multistage routing \033[0m");
+        }
         return route_visit_multistage(candidates, model);
     }
     select = _normalize_select(call_params);
