@@ -963,7 +963,8 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             return self.builder.xor(operand, all_ones, name="bwnot");
         }
     } elif op == Tok.PLUS {
-        if operand.type == self.complex_struct_type.as_pointer() {
+        if isinstance(operand.type, (ir.IntType, ir.DoubleType, ir.FloatType))
+        or operand.type == self.complex_struct_type.as_pointer() {
             return operand;
         }
     }
