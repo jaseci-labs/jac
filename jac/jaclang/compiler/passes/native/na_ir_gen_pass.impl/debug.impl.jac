@@ -28,9 +28,7 @@ impl NaIRGenPass._attach_di_subprogram(
         );
         func.set_metadata("dbg", _di_sp);
         self._di_current_sp = _di_sp;
-    } except Exception {
-        pass;
-    }
+    } except Exception { }
     func.attributes.add("noinline");
 }
 
@@ -50,9 +48,7 @@ impl NaIRGenPass._finalize_di_locations(func: ir.Function, fallback_line: int) -
                 }
             }
         }
-    } except Exception {
-        pass;
-    }
+    } except Exception { }
 }
 
 impl NaIRGenPass.post_transform -> None {
@@ -82,9 +78,7 @@ impl NaIRGenPass.post_transform -> None {
                     ]
                 )
             );
-        } except Exception {
-            pass;
-        }
+        } except Exception { }
     }
 
     ir_str = str(self.llvm_module);

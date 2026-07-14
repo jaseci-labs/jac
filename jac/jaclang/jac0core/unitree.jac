@@ -14,6 +14,7 @@ import from jaclang.jac0core.constant {
     DELIM_MAP,
     CodeContext,
     EdgeDir,
+    OwnershipKind,
     SymbolAccess,
     SymbolStorage,
     SymbolType
@@ -71,6 +72,7 @@ obj UniNode {
     def get_all_sub_nodes[T](typ: type[T]) -> list[T];
     def find_parent_of_type[T](typ: type[T]) -> (T | None);
     def parent_of_type[T](typ: type[T]) -> T;
+    def codespace -> CodeContext;
     def in_client_context -> bool;
     def in_native_context -> bool;
     def to_dict -> dict[(str, str)];
@@ -86,7 +88,11 @@ obj Symbol {
         access: SymbolAccess by postinit,
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
-        semstr: str by postinit;
+        semstr: str by postinit,
+        ownership: OwnershipKind = OwnershipKind.NONE,
+        param_rebound: bool = False,
+        na_escapes: bool = False,
+        na_stack_ok: bool = False;
 
     def init(
         defn: NameAtom,
@@ -314,7 +320,8 @@ obj SubTag[T](UniNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has tag: T;
+    has tag: T,
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def postinit -> None;
 }
@@ -337,6 +344,7 @@ obj Module(AstDocNode, UniScopeNode) {
 
     def format -> str;
     def unparse(requires_format: bool = True) -> str;
+    def declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
     ) -> Module {
@@ -422,8 +430,7 @@ obj ClientBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -432,8 +439,7 @@ obj ServerBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -442,8 +448,7 @@ obj NativeBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -680,6 +685,15 @@ obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
     def postinit -> None;
 }
 
+obj RegionStmt(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
+    has body: Sequence[CodeBlockStmt];
+
+    def postinit -> None;
+}
+
 obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
@@ -784,6 +798,15 @@ obj WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
 
     has condition: Expr,
         body: Sequence[CodeBlockStmt];
+
+    def postinit -> None;
+}
+
+obj ForeverStmt(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
+    has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
 }
@@ -922,7 +945,8 @@ obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
     has target: Sequence[Expr],
         value: Expr | YieldExpr | None,
         mutable: bool = True,
-        aug_op: (Token | None) = None;
+        aug_op: (Token | None) = None,
+        na_move_lowerable: bool = False;
 
     def postinit -> None;
 }
@@ -977,6 +1001,7 @@ obj LambdaExpr(Expr, UniScopeNode) {
         signature: (FuncSignature | None) = None;
 
     def postinit -> None;
+    def tail_return_expr -> Expr | None;
 
     has captures: list[Symbol] { getter; }
 }
@@ -986,7 +1011,8 @@ obj UnaryExpr(Expr) {
     def accept_enter(v: UniPass) -> None;
 
     has operand: Expr,
-        op: Token;
+        op: Token,
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def postinit -> None;
 }
@@ -1010,7 +1036,7 @@ obj MultiString(AtomExpr) {
 
     def postinit -> None;
 
-    has lit_value: str { getter; }
+    has lit_value: str | bytes { getter; }
 }
 
 obj FString(AtomExpr) {
@@ -1591,7 +1617,8 @@ obj Literal(Token, AtomExpr) {
         pos_end: int
     ) -> None;
 
-    has lit_value: int | str | float | bool | None | Callable[([], Any)] | EllipsisType {
+    has lit_value:
+        int | str | bytes | float | bool | None | Callable[([], Any)] | EllipsisType {
         getter;
     }
 }
@@ -1635,7 +1662,7 @@ obj String(Literal) {
         SYMBOL_TYPE = SymbolType.STRING;
     }
 
-    has lit_value: str { getter; }
+    has lit_value: str | bytes { getter; }
 }
 
 obj Bool(Literal) {

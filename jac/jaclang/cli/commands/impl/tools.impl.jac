@@ -85,9 +85,7 @@ impl dot(
                 format=format
             );
         } except Exception as e {
-            console.print(f"Error while generating graph: {e}");
-            import traceback;
-            traceback.print_exc();
+            console.error(f"Error generating graph: {e}");
             jac_machine.close();
             return 1;
         }

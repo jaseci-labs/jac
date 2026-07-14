@@ -86,7 +86,7 @@ test "debounce consolidates rapid changes" {
         temp_dir = Path(tmp);
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         watcher.start();
         # Simulate rapid changes to the same file
         test_file = str(temp_dir / "app.jac");
@@ -106,7 +106,7 @@ test "file change detection" {
         temp_dir = Path(tmp);
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         # Create test file before starting watcher
         test_file = temp_dir / "test.jac";
         test_file.write_text("initial content");
@@ -318,15 +318,115 @@ test "process change settles to ok unless an error was recorded" {
         # A change whose rebuild records no error ends healthy,
         # even when the build was previously broken.
         reloader.record_error("app.jac", "old failure");
-        reloader._dispatch_change = lambda p , d : None ;
+        reloader._dispatch_change = lambda (p, d) { None; };
         reloader._process_change("app.jac");
         assert reloader.build_status() == {"status": "ok", "error": None};
         # A change whose rebuild records an error stays broken.
-        reloader._dispatch_change = lambda p , d : reloader.record_error(p, "boom");
+        reloader._dispatch_change = lambda (p, d) { reloader.record_error(p, "boom"); };
         reloader._process_change("app.jac");
         status = reloader.build_status();
         assert status["status"] == "error";
         assert status["error"]["file"] == "app.jac";
+    }
+}
+
+# --- TestExportChangeReload ---
+# Fast Refresh boundaries hot-swap component edits silently, so an edit that
+# changes a module's export set (removing `:pub`, renaming a component) leaves
+# importers with a stale reference and no error. The reloader compares the
+# emitted .js exports before/after a recompile and forces a full reload so the
+# link error surfaces at load.
+test "extract js exports reads the compiled export list" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        js = temp_dir / "mod.js";
+        js.write_text(
+            "function Page() {}\nconst page = Page;\nexport {page, Card as c};\n"
+        );
+        assert reloader._extract_js_exports(js) == {"page", "c"};
+        # A module that dropped its export (e.g. `:pub` removed) reads as empty
+        js.write_text("function Page() {}\n");
+        assert reloader._extract_js_exports(js) == set();
+        # Missing file is empty, never an exception
+        assert reloader._extract_js_exports(temp_dir / "gone.js") == set();
+    }
+}
+
+test "signal full reload bumps the watched nonce file" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        client_dir = temp_dir / ".jac" / "client";
+        client_dir.mkdir(parents=True);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        signal = client_dir / ".jac-force-reload";
+        reloader._signal_full_reload();
+        first = signal.read_text();
+        # Each signal writes a distinct value so the Vite watcher sees a change
+        reloader._signal_full_reload();
+        assert signal.read_text() != first;
+    }
+}
+
+"""Client compiler stub: emits `next_code` as the module's compiled output."""
+obj _FakeJcc {
+    has out_path: Path,
+        next_code: str,
+        compiled_dir: str;
+
+    def _output_path_for(source_path: any, base_dir: any) -> Path {
+        return self.out_path;
+    }
+
+    def compile_dependencies_recursively(
+        source_path: any, source_root: any = None, skip_existing: bool = False
+    ) {
+        self.out_path.write_text(self.next_code);
+    }
+}
+
+obj _FakeCompiler {
+    has jac_client_compiler: any;
+}
+
+test "recompile signals a full reload only when the export set changes" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        compiled = temp_dir / ".jac" / "client" / "compiled";
+        compiled.mkdir(parents=True);
+        src = temp_dir / "widget.cl.jac";
+        src.write_text("def:pub Widget() -> JsxElement { return <p>w</p>; }");
+        js = compiled / "widget.js";
+        with_export = "function Widget() {}\nexport {Widget};\n";
+        js.write_text(with_export);
+        jcc = _FakeJcc(out_path=js, next_code=with_export, compiled_dir=str(compiled));
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir),
+            module_name="test",
+            watcher=watcher,
+            client_compiler=_FakeCompiler(jac_client_compiler=jcc)
+        );
+        signal = compiled.parent / ".jac-force-reload";
+        # An edit that leaves the export set alone stays hot-swappable
+        reloader._recompile_client_unified(str(src));
+        assert not signal.exists() , "a body-only edit must not force a reload";
+        # Dropping `:pub` removes the export: importers hold a stale reference,
+        # so the reloader must force a reload for the error to surface
+        jcc.next_code = "function Widget() {}\n";
+        reloader._recompile_client_unified(str(src));
+        assert signal.exists() , "a removed export must force a reload";
+        # Renaming the component is a removal plus an addition
+        signal.unlink();
+        jcc.next_code = "function Renamed() {}\nexport {Renamed};\n";
+        reloader._recompile_client_unified(str(src));
+        assert signal.exists() , "a renamed export must force a reload";
     }
 }
 
@@ -397,7 +497,7 @@ test "moves emit delete plus create; directories flagged, noise filtered" {
         (temp_dir / "pagesx").mkdir();
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         watcher.start();
         time.sleep(0.3);
         import os;
@@ -426,7 +526,7 @@ test "flush loop survives an exception and keeps delivering" {
         temp_dir = Path(tmp);
         watcher = JacFileWatcher(watch_paths=[str(temp_dir)], _debounce_ms=50);
         events: list[FileChangeEvent] = [];
-        watcher.add_callback(lambda e : events.append(e));
+        watcher.add_callback(lambda (e) { events.append(e); });
         original_flush = watcher._debounce_flush;
         def exploding_flush {
             raise RuntimeError("boom");

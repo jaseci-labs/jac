@@ -3986,9 +3986,14 @@ test "root_cause_6_stdlib_returns_unknown" {
         for e in program.errors_had
         if e.loc and 267 <= e.loc.first_line <= 305
     ];
-    # importlib.util resolves to Unknown — each function using it reports errors.
+    # 11 (down from 15): `importlib.util` itself now resolves — ModuleType
+    # attribute access falls back to on-disk submodule resolution, so the four
+    # `.util`-on-Unknown errors are gone. spec_from_file_location still types
+    # Unknown because util.pyi only re-exports it (`from importlib.
+    # _bootstrap_external import spec_from_file_location as ...`) and aliased
+    # stub re-exports are not followed yet; its cascades remain.
     # Cascade suppression handles chained AtomTrailer accesses but not Name targets.
-    assert len(rc6_errors) == 15 , f"Expected 15 stdlib-unknown errors, got {len(
+    assert len(rc6_errors) == 11 , f"Expected 11 stdlib-unknown errors, got {len(
         rc6_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc6_errors);
 }
@@ -4178,10 +4183,12 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # 29 errors (down from 35): partial union member access now returns
-    # resolved types instead of Unknown, eliminating 6 cascading errors
-    # (E1002 "return Unknown" and E1053 "Unknown->Sized" that followed E1099).
-    assert len(program.errors_had) == 29 , f"Expected 29 total errors, got {len(
+    # 26 errors (down from 29): dotted stdlib submodules (`importlib.util`)
+    # now resolve through ModuleType attribute access, removing the
+    # `.util`-on-Unknown errors from the Root Cause 6 corpus. Before that,
+    # 29 was down from 35: partial union member access returning resolved
+    # types instead of Unknown eliminated 6 cascading errors.
+    assert len(program.errors_had) == 26 , f"Expected 26 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
@@ -4537,14 +4544,17 @@ test "jsx_step4_lambda_inference" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
 
-    e1032_errors = [
+    # `e` is inferred as MouseEvent, so accessing `.nonexistent` is a no-such-
+    # attribute error on a known type (E1030) -- stronger than E1032 (Unknown),
+    # which would mean the param type was never inferred.
+    attr_errors = [
         e
         for e in program.errors_had
-        if e.code and e.code.code == "E1032"
+        if e.code and e.code.code in ["E1030", "E1032"]
     ];
-    assert len(e1032_errors) >= 1 , f"Expected E1032 for e.nonexistent on inferred MouseEvent, got {len(
-        e1032_errors
-    )} E1032 errors. All errors:\n" + "\n---\n".join(
+    assert len(attr_errors) >= 1 , f"Expected an attribute error for e.nonexistent on inferred MouseEvent, got {len(
+        attr_errors
+    )}. All errors:\n" + "\n---\n".join(
         f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
         for err in program.errors_had
     );
@@ -5000,45 +5010,26 @@ test "generator_yield_return_type_check" {
     );
 }
 
-test "strict_any_in_jac_modules" {
-    # Layer 2: in `.jac` files, `Any` can no longer be silently assigned to a
-    # declared non-Any destination. The rule applies uniformly at every
-    # "destination has a declared type" site: annotated assignments,
-    # has-var initializers, function arguments, and return statements,
-    # and recurses into containers (list[any] -> list[T] errors).
-    # Inferred destinations and explicit `any` annotations remain
-    # permissive — that is the user's escape valve.
-    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
-    program = JacProgram();
-    mod = program.compile(path, options=NO_TC);
-    TypeCheckPass(ir_in=mod, prog=program);
-    # The four expected strict-Any sites:
+test "uniform_gradual_any_in_jac_modules" {
+    # Uniform gradual typing: in `.jac` files `Any` is assignable to a declared
+    # non-Any destination at every "destination has a declared type" site
+    # (annotated assignments, has-var initializers, function arguments, return
+    # statements), recursing into containers (list[any] -> list[T]). This
+    # replaced a codespace-split policy that rejected Any -> T in server/client
+    # while permitting it in native; the split broke cross-backend congruence
+    # on identical code, so the verdict is now uniform-gradual everywhere.
     #   1. `t: Task = a;`              -- annotated assignment
     #   2. `ts: list[Task] = xs;`      -- annotated assignment (nested any)
     #   3. `needs_task(a);`            -- function arg
     #   4. `return make_any();`        -- typed return
-    # Each emits one type-mismatch error (E1001/E1002/E1053). We assert
-    # the *total* count rather than the per-code split, since the
-    # specific code depends on which checker site catches the violation.
-    strict_codes = ("E1001", "E1002", "E1053");
-    strict_errors = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code in strict_codes
-    ];
-    assert len(strict_errors) == 4 , f"Expected 4 strict-Any errors (Any -> declared T at 4 sites), got {len(
-        strict_errors
-    )}:\n" + "\n---\n".join(e.pretty_print() for e in strict_errors);
-    # No errors should fire on the `inferred destination` or `explicit any`
-    # paths above.
-    other = [
-        e
-        for e in program.errors_had
-        if e.code and e.code.code not in strict_codes
-    ];
-    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
-        e.pretty_print() for e in other
-    );
+    # None of these narrowing sites emits a type-mismatch error anymore.
+    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no errors under uniform gradual Any, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
 test "walker_typed_reports_validation" {
@@ -5639,4 +5630,60 @@ test "builtin_inference_regressions" {
     pretty = "\n".join([e.pretty_print() for e in program.errors_had]);
     assert len(program.errors_had) == 0 , "round() results and **spread dict literals must infer cleanly, "
     f"got {len(program.errors_had)} diagnostic(s):\n{pretty}";
+}
+
+test "bare_list_flow_inference" {
+    # Issue #6943 NA-7: an empty bare `list = []` defaulted its element type
+    # (the native backend then locked in `List.i64` and a later `str.join`
+    # mismatched). The declaration now flow-infers its element type from the
+    # mutations that follow: append/insert args, extend/`+=` operands'
+    # element types, and index-store values, widened out of literal types.
+    # Only concrete scalar evidence refines: mixed scalars (or None beside a
+    # scalar) collapse to the heterogeneous `any` element (backends lower
+    # `list[any]` as the boxed layout; a union would silently lower as its
+    # first member), while `any`/Unknown/object evidence aborts the
+    # inference - a dynamic value is absence of information, not proof of
+    # heterogeneity, and native code (the OSP kernel's handle lists) relies
+    # on the bare default. Multi-target assignments pool evidence from every
+    # bound name. No evidence leaves the list bare, and an explicit
+    # `list[T]` annotation still wins over usage.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_list_flow_inference.jac"),
+        type_check=True
+    );
+    assert len(program.errors_had) == 0 , "Unexpected errors:\n" + "\n---\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
+    expected = {
+        "flow_strs": "list[str]",
+        "flow_ints": "list[int]",
+        "flow_mixed": "list[Any]",
+        "flow_ext": "list[str]",
+        "flow_ins": "list[float]",
+        "flow_aug": "list[str]",
+        "flow_idx": "list[str]",
+        "flow_unann": "list[str]",
+        "flow_none": "list",
+        "flow_nonemix": "list[Any]",
+        "flow_dyn": "list",
+        "flow_poison": "list",
+        "flow_obj": "list",
+        "flow_bare": "list",
+        "flow_pinned": "list[int]",
+        "flow_multi_a": "list[str]",
+        "flow_multi_b": "list[str]",
+        "flow_rebound": "list[Any]"
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
 }

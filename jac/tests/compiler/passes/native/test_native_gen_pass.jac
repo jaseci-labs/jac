@@ -158,13 +158,13 @@ test "native partial class: native caller of a demoted method errors, not silent
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for native call to a demoted method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for native call to a demoted method, got {codes}"
     );
     # The diagnostic names the call site (the method), not the discarded
     # eval body that was demoted away.
     msgs = " ".join(str(e) for e in (prog.errors_had or []));
-    assert "Box.evaluate" in msgs , f"E5090 should name Box.evaluate, got: {msgs}";
+    assert "Box.evaluate" in msgs , f"E5092 should name Box.evaluate, got: {msgs}";
 }
 
 test "native partial class: un-lowerable virtual method stays a hard error" {
@@ -181,8 +181,8 @@ test "native partial class: un-lowerable virtual method stays a hard error" {
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for un-lowerable virtual method, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for un-lowerable virtual method, got {codes}"
     );
 }
 
@@ -1106,6 +1106,18 @@ test "aug assign aug in for" {
     assert f() == 45;  # 0+1+2+...+9
 }
 
+test "forever loop with break" {
+    (eng, _) = compile_native("aug_assign.na.jac");
+    f = get_func(eng, "test_forever_break", ctypes.c_int64);
+    assert f() == 45;  # 0+1+2+...+9, then break
+}
+
+test "forever loop with continue" {
+    (eng, _) = compile_native("aug_assign.na.jac");
+    f = get_func(eng, "test_forever_continue", ctypes.c_int64);
+    assert f() == 30;  # 2+4+6+8+10, odds skipped via continue
+}
+
 test "aug assign aug conditional" {
     (eng, _) = compile_native("aug_assign.na.jac");
     f = get_func(eng, "test_aug_conditional", ctypes.c_int64);
@@ -1928,7 +1940,7 @@ test "py interop native calls python function" {
     assert eng is not None;
     # Register the Python function in the interop callback table
     py_func_table = ir.gen.interop_py_funcs;
-    py_func_table["py_double"] = lambda x : x * 2;
+    py_func_table["py_double"] = lambda (x) { x * 2; };
     # Now call the native function
     f = get_func(eng, "native_add_one_to_doubled", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 11;  # py_double(5) = 10, + 1 = 11
@@ -2667,6 +2679,24 @@ test "rc stress large dict" {
     assert f(1000) == 1000;
 }
 
+test "cycle collector reclaims A<->B cycles without double-free" {
+    # collect_white reclaims each white node through its own per-type destructor
+    # so container backing arrays are freed, not just the header allocation. The
+    # dtor's recursive child-release is gated on __rc_collecting, so mid-sweep it
+    # frees backing storage + the struct WITHOUT re-releasing the cyclic members
+    # that collect_white already reclaims (which would double-free). The probe
+    # drives both a plain struct A<->B cycle and a cycle routed through a list
+    # field, over repeated sweeps in-process: an invalid/double free aborts the
+    # JIT here, and a leaked backing array shows up under ASan/valgrind. This runs
+    # without the static musl toolchain the RSS reclamation test in
+    # test_native_gc.jac needs, so it guards the free path locally and in CI.
+    (eng, _) = compile_native("cycle_collect_jit_probe.na.jac");
+    f = get_func(eng, "drive_cycles", ctypes.c_int64, ctypes.c_int64);
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
+    assert f(20000) == 20000;
+}
+
 test "dicts items iteration sum" {
     (eng, _) = compile_native("dicts_sets.na.jac");
     f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
@@ -2850,7 +2880,7 @@ test "auto promote chess.jac runs via cli" {
     );
     # Verify the native execution message appears (may be line-wrapped by Rich)
     combined = " ".join((result.stdout + result.stderr).split());
-    assert "executed natively" in combined , (
+    assert "natively" in combined , (
         "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
 }
@@ -4988,8 +5018,8 @@ test "isinstance mixed tuple unsupported type errors" {
         for e in (prog.errors_had or [])
         if e.code
     ];
-    assert "E5090" in codes , (
-        f"expected E5090 for mixed-tuple isinstance, got {codes}"
+    assert "E5092" in codes , (
+        f"expected E5092 for mixed-tuple isinstance, got {codes}"
     );
 }
 

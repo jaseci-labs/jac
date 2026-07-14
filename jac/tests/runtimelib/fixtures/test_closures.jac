@@ -30,7 +30,7 @@ cl {
 
     # Test 3: Lambda closures
     def make_adder(x: int) -> any {
-        return lambda  y: int: x + y;
+        return lambda  (y: int) { x + y; };
     }
 
     # Test 4: Multiple closures sharing state

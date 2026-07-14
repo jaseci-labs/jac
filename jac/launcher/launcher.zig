@@ -1,7 +1,7 @@
 //! jaclang single-binary launcher (Zig) -- dlopen embed.
 //!
 //! This executable carries the jaclang runtime + a private CPython as a
-//! gzip-compressed payload appended after the image (see `runtime.zig`). On
+//! zstd-compressed payload appended after the image (see `runtime.zig`). On
 //! first run it materializes that payload into a versioned cache dir, then
 //! **dlopens** the bundled shared libpython and drives it in-process. Nothing
 //! Python is linked at build time -- the launcher links only libc/libdl, exactly
@@ -12,7 +12,7 @@
 //! verbatim with the `na` desktop host (via the libjacpyembed shim). This file
 //! is now just the *headless CLI frontend* over that shared core: worker mode
 //! (drop-in `python`) and the jaclang CLI boot. The pure-Zig materialization
-//! half (trailer parse, cache resolution, gzip+tar extract, GC) lives in
+//! half (trailer parse, cache resolution, zstd+tar extract, GC) lives in
 //! `runtime.zig` and is unit-tested separately.
 
 const std = @import("std");
@@ -161,8 +161,14 @@ fn boot(emb: *const embed.Embed, exe_z: [*:0]const u8, init: std.process.Init) u
     // behave exactly like `python` (parse_argv) instead of booting the jac CLI.
     const worker = isPythonInvocation(init);
 
-    emb.initInterpreter(exe_z, .{ .argv = argv, .parse_argv = worker }) catch
-        die("interpreter initialization failed");
+    // A non-null result means the interpreter handled a print-and-exit flag
+    // (worker mode -h/-V/--help): exit with the code CPython requested, never the
+    // boot path. Nothing was initialized, so there is nothing to run or finalize.
+    if (emb.initInterpreter(exe_z, .{ .argv = argv, .parse_argv = worker }) catch
+        die("interpreter initialization failed")) |exit_code|
+    {
+        return exit_code;
+    }
 
     if (worker) {
         const Py_RunMain = emb.symOrErr(embed.Py_RunMain_t, "Py_RunMain") catch die("libpython missing symbol: Py_RunMain");
@@ -242,6 +248,43 @@ fn isNvimArgv0(init: std.process.Init) bool {
     return std.mem.eql(u8, std.fs.path.basename(argv0), "nvim");
 }
 
+/// True when a rival language toolchain is installed on `$PATH`. jac carries
+/// its own Bun inside the payload, invoked by absolute path and never placed on
+/// PATH -- so any of these names on PATH is a deliberately-installed competing
+/// ecosystem, the antithesis of the one-binary promise. Existence (a successful
+/// open) is the test; symlink shims (nvm/pyenv) resolve and count, as intended.
+/// python3.14 is named exactly, not `python3`: distros own `python3` as an OS
+/// dependency, but a fresh CPython 3.14 is a choice. Returns on the first hit.
+fn ninjaCompetingToolchain(init: std.process.Init) bool {
+    const banned = [_][]const u8{
+        "node",       "npm", "pnpm", "yarn", "deno", // JS runtimes + package managers
+        "python3.14", "pip", "pip3", // a deliberately-installed CPython + pip
+    };
+    const path = init.environ_map.get("PATH") orelse return false;
+    var dirs = std.mem.tokenizeScalar(u8, path, ':');
+    while (dirs.next()) |dir| {
+        for (banned) |name| {
+            var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+            const candidate = std.fmt.bufPrint(&buf, "{s}/{s}", .{ dir, name }) catch continue;
+            var f = std.Io.Dir.cwd().openFile(init.io, candidate, .{}) catch continue;
+            f.close(init.io);
+            return true;
+        }
+    }
+    return false;
+}
+
+/// The unspoken override. A ninja wrongly flagged by a stray shim -- or one who
+/// simply declines the ordeal -- enters with `jac ninja --imnotworthy`.
+/// Deliberately undocumented: knowing the incantation is itself the credential.
+fn ninjaIsUnworthyOverride(init: std.process.Init) bool {
+    var it = init.minimal.args.iterate();
+    while (it.next()) |a| {
+        if (std.mem.eql(u8, a, "--imnotworthy")) return true;
+    }
+    return false;
+}
+
 const NinjaMode = enum {
     ninja, // `jac ninja [args...]` -> nvim -u <ninja>/init.lua [args...]
     verbatim, // argv[0]=="nvim" -> pass argv through untouched (--embed hop)
@@ -252,6 +295,16 @@ const NinjaMode = enum {
 /// nvim_main() in-process. Never returns.
 fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, mode: NinjaMode) noreturn {
     if (!build_options.ninja) die("this jac build does not bundle the ninja editor (rebuild without -Dno-ninja)");
+
+    // The ninja is earned. Only the user-typed `jac ninja` path is gated --
+    // never `.verbatim`, which is nvim's --embed server hopping back through the
+    // launcher mid-session; gating that would kill the editor AFTER it opened.
+    // A rival toolchain on PATH bars the door unless the invoker confesses with
+    // the unspoken `--imnotworthy`.
+    if (mode == .ninja and !ninjaIsUnworthyOverride(init) and ninjaCompetingToolchain(init)) {
+        std.debug.print("You... are not ready.\n", .{});
+        std.process.exit(1);
+    }
 
     const io = init.io;
     const env = init.environ_map;
@@ -354,6 +407,9 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
             _ = it.next(); // argv[0]
             _ = it.next(); // "ninja"
             while (it.next()) |arg| {
+                // The gate's confession is consumed here, not handed to nvim
+                // (which would reject the unknown flag).
+                if (std.mem.eql(u8, arg, "--imnotworthy")) continue;
                 if (argc >= argv_storage.len - 1) die("too many arguments");
                 argv_storage[argc] = arg.ptr;
                 argc += 1;
@@ -370,17 +426,48 @@ fn runNinja(init: std.process.Init, exe_path: []const u8, exe_z: [*:0]const u8, 
 
 /// True if argv[1] is a Python interpreter short flag (`-c`, `-u`, `-m`, `-`,
 /// ...). Single-dash short flags mean "act like python"; jac subcommands (`run`,
-/// `test`) and long flags (`--version`) keep the jac CLI. This dispatch is a
-/// CONTRACT: the jac CLI must never accept a single-dash short flag as its
-/// first argument, or execnet/xdist worker re-spawns (`jac -u -c ...`) would
-/// be misrouted.
+/// `test`), long flags (`--version`), and the `-h` help alias keep the jac CLI.
+/// This dispatch is a CONTRACT: the jac CLI must never accept a single-dash short
+/// flag (other than `-h`) as its first argument, or execnet/xdist worker re-spawns
+/// (`jac -u -c ...`) would be misrouted. See `isPythonFirstArg` for the rule.
 fn isPythonInvocation(init: std.process.Init) bool {
     var it = init.minimal.args.iterate();
     _ = it.next(); // skip argv[0]
-    if (it.next()) |a| {
-        return a.len >= 1 and a[0] == '-' and (a.len == 1 or a[1] != '-');
-    }
+    if (it.next()) |a| return isPythonFirstArg(a);
     return false;
+}
+
+/// Pure classifier for `isPythonInvocation`'s first-arg decision (factored out so
+/// the routing contract is unit-testable without a `std.process.Init`).
+///
+/// A bare `-` or any single-dash short flag (`-c`, `-u`, `-m`, ...) means "act
+/// like python" (worker re-spawns). `-h` is the ONE exception: it is a jac CLI
+/// help alias handled in cli.impl.jac (alongside `--help`), and a human types it
+/// expecting jac's help, not the embedded interpreter's. No
+/// execnet/xdist/multiprocessing worker ever re-spawns with `-h` (a print-and-exit
+/// flag), so exempting it cannot misroute a worker. Without the exemption `-h`
+/// routes to parse_argv worker mode, where CPython prints its own interpreter
+/// usage and the config read requests a clean exit that the embed layer misreports
+/// as an init failure (exit 70).
+fn isPythonFirstArg(a: []const u8) bool {
+    if (std.mem.eql(u8, a, "-h")) return false;
+    return a.len >= 1 and a[0] == '-' and (a.len == 1 or a[1] != '-');
+}
+
+test "isPythonFirstArg routes worker flags to python, keeps jac verbs and -h" {
+    const t = std.testing;
+    // Worker re-spawn flags -> python.
+    try t.expect(isPythonFirstArg("-c"));
+    try t.expect(isPythonFirstArg("-u"));
+    try t.expect(isPythonFirstArg("-m"));
+    try t.expect(isPythonFirstArg("-")); // bare stdin marker
+    // `-h` is a jac CLI help alias -> jac CLI, not python.
+    try t.expect(!isPythonFirstArg("-h"));
+    // Long flags and jac subcommands -> jac CLI.
+    try t.expect(!isPythonFirstArg("--help"));
+    try t.expect(!isPythonFirstArg("--version"));
+    try t.expect(!isPythonFirstArg("run"));
+    try t.expect(!isPythonFirstArg("test"));
 }
 
 test {

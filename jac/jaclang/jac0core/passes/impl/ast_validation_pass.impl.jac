@@ -206,7 +206,9 @@ impl ASTValidationPass.enter_ctrl_stmt(
 
     parent = nd.parent;
     while parent is not None {
-        if isinstance(parent, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)) {
+        if isinstance(
+            parent, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt, uni.ForeverStmt)
+        ) {
             return;
         }
 
@@ -407,6 +409,11 @@ impl ASTValidationPass._check_slot_body(
             }
             self._check_slot_body([b for b in s.body], True, "while");
             self._check_slot_else(s.else_body, in_loop, loop_kw);
+        } elif isinstance(s, uni.ForeverStmt) {
+            if self._slot_emits_keyless_jsx([b for b in s.body]) {
+                self.emit(W2019, node_override=s);
+            }
+            self._check_slot_body([b for b in s.body], True, "forever");
         } elif isinstance(s, uni.InForStmt) or isinstance(s, uni.IterForStmt) {
             if self._slot_emits_keyless_jsx([b for b in s.body]) {
                 self.emit(W2021, node_override=s);
@@ -482,6 +489,7 @@ impl ASTValidationPass._slot_emits_keyless_jsx(
                 return True;
             }
         } elif isinstance(s, uni.WhileStmt)
+        or isinstance(s, uni.ForeverStmt)
         or isinstance(s, uni.InForStmt)
         or isinstance(s, uni.IterForStmt)
         or isinstance(s, uni.WithStmt) {

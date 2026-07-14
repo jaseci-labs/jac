@@ -266,6 +266,22 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 !!! tip "Fixing `E1105`"
     `E1105` fires only in `mobui` projects (`[project] client_kind = "mobui"` in `jac.toml`). Replace the HTML tag with the suggested `@jac/mobui` primitive: `div`/`section`/`main` -> `View`, `span`/`p`/`h1`-`h6` -> `Text`, `button` -> `Pressable`, `input`/`textarea` -> `TextInput`, `img` -> `Image`, `ul`/`ol` -> `ScrollView`. If the lowercase name is meant to be a component, import it so it resolves in scope. Web projects (`client_kind` unset) are unaffected -- HTML tags remain valid there.
 
+### Ownership / Borrow Errors
+
+Emitted by `OwnershipCheckPass` for `own`/`val`/`linear`/`borrow`/`&`/`&mut` bindings and `region` blocks. See [Ownership & Borrowing](language/ownership-borrowing.md). These are diagnostics only -- no backend reads the checker's results, and generated code is identical whether or not the checker ran.
+
+| Code | Message |
+|------|---------|
+| `E1301` | Use of '{name}' after it was moved |
+| `E1302` | Conflicting mutable borrow of '{name}' while another borrow is live |
+| `E1303` | Cannot mutate '{name}' while a shared borrow of it is live |
+| `E1304` | '{name}' is destroyed while still borrowed |
+| `E1305` | Linear resource '{name}' is never consumed (a `linear` binding must be moved exactly once; plain `own` is affine and may be silently dropped) |
+| `E1306` | Borrow of '{name}' escapes its scope |
+| `E1307` | Reference to '{name}' escapes its `region` block |
+| `E1308` | '{name}' is not sendable across a concurrency boundary |
+| `E1309` | Cannot mutate '{name}' through a deep-immutable `val` binding |
+
 ### Type Warnings
 
 | Code | Message |
@@ -284,6 +300,7 @@ Emitted by `JsxIntrinsicGuardPass` when a `mobui` project (see [React Native tar
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
 | `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `E1120` | Import of '{name}' from untyped external module '{module}' (no type declarations found) |
 | `W1103` | '{name}' is ambient and does not need to be imported from '{module}' |
 | `W1104` | Use the lowercase `any` keyword instead of importing `Any` from typing |
 
@@ -310,6 +327,26 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `W2006` | '@classmethod' decorator is not recommended in '{kind}' definitions |
 | `W2007` | '@staticmethod' is not supported in '{kind}' definitions |
 | `E2008` | Invalid target for context update: {target} |
+| `W2029` | '@{decorator}' is not recommended in '{kind}' definitions -- use native property syntax |
+
+`W2029` covers the Python property decorators -- `@property`, and the same-object
+`@x.getter` / `@x.setter` / `@x.deleter` -- in favour of [native property
+syntax](language/functions-objects.md#6-properties-and-encapsulation):
+
+```jac
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+        }
+}
+```
+
+`jac check --lint --fix` rewrites the decorator form automatically
+([`property-to-native`](#lint-rules-w3xxx-e3xxx)). As with `W2006`/`W2007`, a
+Python-compat `class` is exempt. A cross-object `@Base.x.setter` extends a parent's
+property and has no direct native form, so it is not reported.
 
 ### Declaration-Implementation Matching
 
@@ -340,7 +377,7 @@ Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body vio
 
 ---
 
-## Lint Rules (W3xxx / E3xxx)
+## Lint Rules (W3xxx, E3xxx)
 
 Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/index.md#checklint). The kebab-case name in brackets is used for `jac.toml` configuration.
 

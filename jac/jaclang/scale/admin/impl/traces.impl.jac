@@ -158,7 +158,7 @@ def _flatten_tempo_trace(payload: dict) -> dict {
         }
     }
 
-    spans.sort(key=lambda s : s.get("start_ns", 0));
+    spans.sort(key=lambda (s) { s.get("start_ns", 0); });
     total_ms = (max_end - min_start) / 1_000_000.0 if (max_end and min_start) else 0;
     return {
         "spans": spans,
@@ -267,7 +267,7 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             );
         }
 
-        traces.sort(key=lambda x : x.get("start_ns", 0), reverse=True);
+        traces.sort(key=lambda (x) { x.get("start_ns", 0); }, reverse=True);
         return JSONResponse(
             content={
                 "ok": True,

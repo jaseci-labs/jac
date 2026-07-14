@@ -32,7 +32,7 @@ A plain whole-module import (`import os;`) takes a trailing semicolon. The `impo
 
 ## Choosing the codespace
 
-Imports do not carry a codespace by themselves -- they inherit it from their surrounding context. There are four ways to set that context:
+Imports do not carry a codespace by themselves -- they inherit it from their surrounding context. There are three ways to set that context:
 
 ```jac
 # 1. Default: the top of any .jac file is the SERVER codespace.
@@ -45,19 +45,7 @@ cl {
 ```
 
 ```jac
-# 3. Section header -- everything until the next "to X:" runs in that codespace.
-to cl:
-import from react { useState }
-
-to na:
-import sys;
-
-to sv:
-import from json { dumps }
-```
-
-```jac
-# 4. Single-statement prefix -- tags exactly one statement.
+# 3. Single-statement prefix -- tags exactly one statement.
 cl import from react { useEffect }
 na import from math_utils { square }
 sv import from analytics { track }
@@ -66,13 +54,13 @@ sv import from analytics { track }
 You can also dedicate a whole file to one codespace with a file extension: `.sv.jac` (server), `.cl.jac` (client), `.na.jac` (native). Inside such a file no header or prefix is needed.
 
 !!! tip "Prefer file-based separation, then braced blocks"
-    For clean, scalable codebases, dedicating a whole file to one codespace (`.sv.jac` / `.cl.jac` / `.na.jac`) is best -- each file has a single, unambiguous target, nothing in the body to track, and the split is visible from the directory tree. Within a mixed file, `cl { }` / `sv { }` / `na { }` braced blocks are the idiomatic choice -- the braces bracket exactly the tagged region and keep imports grouped. Section headers are a flatter alternative for a file that is mostly one codespace; reserve the single-statement prefix for one-off cases.
+    For clean, scalable codebases, dedicating a whole file to one codespace (`.sv.jac` / `.cl.jac` / `.na.jac`) is best -- each file has a single, unambiguous target, nothing in the body to track, and the split is visible from the directory tree. Within a mixed file, `cl { }` / `sv { }` / `na { }` braced blocks are the idiomatic choice -- the braces bracket exactly the tagged region and keep imports grouped. Reserve the single-statement prefix for one-off cases.
 
 ---
 
 ## Server imports -- full PyPI compatibility
 
-Server code compiles to standard Python bytecode and runs on the Python runtime, so **every package on PyPI works unmodified** -- no wrappers, no interop layer. The server codespace is the default, so the examples below need no `to sv:` header at the top of a file.
+Server code compiles to standard Python bytecode and runs on the Python runtime, so **every package on PyPI works unmodified** -- no wrappers, no interop layer. The server codespace is the default, so the examples below need no `sv` block or prefix at the top of a file.
 
 ```jac
 """Server imports -- the default codespace."""
@@ -139,7 +127,7 @@ include math_helpers;
 
 ## Client imports -- full npm compatibility
 
-Client code compiles to JavaScript, so the import list maps directly onto ECMAScript `import` declarations -- giving you **the entire npm ecosystem**. Client imports must live in the client codespace (`to cl:`, a `cl` prefix, a `cl { }` block, or a `.cl.jac` file).
+Client code compiles to JavaScript, so the import list maps directly onto ECMAScript `import` declarations -- giving you **the entire npm ecosystem**. Client imports must live in the client codespace (a `cl { }` block, a `cl` prefix, or a `.cl.jac` file).
 
 ```jac
 cl {
@@ -280,7 +268,7 @@ cl {
 
     def TaskForm() -> JsxElement {
         has title: str = "";
-        return <button onClick={lambda e: ChangeEvent {
+        return <button onClick={lambda (e: ChangeEvent) {
             create_task(title=title);
         }}>Add</button>;
     }

@@ -764,7 +764,7 @@ impl CommentInjectionPass._inject_into_parts(
         ];
         if (real_tokens and self._comments) {
             last_token = max(
-                real_tokens, key=lambda t: any : (t.loc.last_line, t.loc.col_end)
+                real_tokens, key=lambda (t: any) { (t.loc.last_line, t.loc.col_end); }
             );
             token_id: int = hash(
                 (
@@ -897,7 +897,16 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
             processed_parts = self._handle_paren_comments(items, processed_parts);
         }
         if isinstance(
-            ctx, (uni.IfStmt, uni.ElseIf, uni.ElseStmt, uni.WhileStmt, uni.InForStmt)
+            ctx,
+            (
+                uni.IfStmt,
+                uni.ElseIf,
+                uni.ElseStmt,
+                uni.WhileStmt,
+                uni.ForeverStmt,
+                uni.InForStmt,
+                uni.IterForStmt
+            )
         ) {
             processed_parts = self._handle_empty_body_comments(ctx, processed_parts);
         }
@@ -992,7 +1001,7 @@ impl CommentStore.drain_unattached -> list[CommentInfo] {
             leftovers.append(info);
         }
     }
-    leftovers.sort(key=lambda c: any : (c.first_line, c.index));
+    leftovers.sort(key=lambda (c: any) { (c.first_line, c.index); });
     return leftovers;
 }
 
@@ -1059,7 +1068,10 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         items.append(('comment', idx, comment));
     }
     items.sort(
-        key=lambda `entry: any : (`entry[2].loc.first_line, `entry[2].loc.col_start)
+        key=lambda (`entry: any) { (
+            `entry[2].loc.first_line,
+            `entry[2].loc.col_start
+        ); }
     );
     inline: dict[(int, list[CommentInfo])] = {};
     standalone: list[CommentInfo] = [];
@@ -1100,9 +1112,9 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
         }
     }
     for collection in inline.values() {
-        collection.sort(key=lambda c: any : (c.first_line, c.index));
+        collection.sort(key=lambda (c: any) { (c.first_line, c.index); });
     }
-    standalone.sort(key=lambda c: any : (c.first_line, c.index));
+    standalone.sort(key=lambda (c: any) { (c.first_line, c.index); });
     return CommentStore(_inline=inline, _standalone=standalone);
 }
 

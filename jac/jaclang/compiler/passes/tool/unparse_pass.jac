@@ -1,6 +1,7 @@
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.constant { OwnershipKind, is_mut_kind }
 
 obj UnparsePass(UniPass) {
     def _comma_sep(nodes: list) -> str;
@@ -42,6 +43,7 @@ obj UnparsePass(UniPass) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
@@ -52,6 +54,7 @@ obj UnparsePass(UniPass) {
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
