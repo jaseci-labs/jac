@@ -11,8 +11,8 @@ use rustdoc_types::{Crate, Id, Item, ItemEnum, StructKind, Type};
 use crate::overlay::Overlay;
 use crate::types::{
     BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, DropReason,
-    DroppedType, MonoType, OwningWrapper, Recv, RootProducer, ScalarType, Skip, SkipReason,
-    TypeKind, WrapperKind,
+    DroppedType, MonoType, Ownership, OwningWrapper, Recv, RootProducer, ScalarType, Skip,
+    SkipReason, TypeKind, WrapperKind,
 };
 
 /// Classify a crate's public API with no overlay hints. Equivalent to
@@ -458,6 +458,14 @@ impl<'a> Ctx<'a> {
             })
             .unwrap_or_default();
 
+        // 0.3.1: a type can expose several `-> Self` associated fns (uuid's
+        // `nil`/`max`/`new_v4`/`parse_str`, chrono date ctors, …). Only one can be
+        // THE constructor the wrapper's `init` calls; collect every candidate here
+        // and resolve deterministically after the walk instead of letting the
+        // last-walked one silently clobber `bt.ctor`. Each entry is
+        // `(item_path, bridge_fn)`.
+        let mut ctor_candidates: Vec<(String, BridgeFn)> = vec![];
+
         for impl_id in impl_ids {
             let Some(impl_item) = self.item(&impl_id) else {
                 continue;
@@ -513,7 +521,7 @@ impl<'a> Ctx<'a> {
                                 ),
                             });
                         } else if is_ctor {
-                            bt.ctor = Some(bridge_fn);
+                            ctor_candidates.push((item_path, bridge_fn));
                         } else {
                             bt.methods.push(bridge_fn);
                         }
@@ -542,6 +550,27 @@ impl<'a> Ctx<'a> {
                         }
                     }
                 }
+            }
+        }
+
+        // Resolve the collected `-> Self` associated fns (0.3.1). Sort by name so
+        // the winner is deterministic across rustdoc index orderings, promote the
+        // first to the constructor, and record the rest as honest skips rather than
+        // dropping them silently. Uses `UnsupportedType` (the plan's `Skip("additional
+        // constructor")` string form) so the change stays confined to classify.rs —
+        // no new `SkipReason` variant is required.
+        ctor_candidates.sort_by(|a, b| a.1.name.cmp(&b.1.name));
+        let mut candidates = ctor_candidates.into_iter();
+        if let Some((_, winner)) = candidates.next() {
+            bt.ctor = Some(winner);
+            for (item_path, extra) in candidates {
+                self.skips.push(Skip {
+                    item: item_path,
+                    reason: SkipReason::UnsupportedType(format!(
+                        "additional constructor ({})",
+                        extra.name
+                    )),
+                });
             }
         }
     }
@@ -625,6 +654,7 @@ impl<'a> Ctx<'a> {
             throws: None,
             recv: Recv::Field0,
             is_async: f.header.is_async,
+            ret_ownership: Ownership::Owned,
         })
     }
 
@@ -807,6 +837,7 @@ impl<'a> Ctx<'a> {
             throws: None,
             recv: Recv::Field0,
             is_async: false,
+            ret_ownership: Ownership::Owned,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -857,6 +888,7 @@ impl<'a> Ctx<'a> {
             throws: None,
             recv: Recv::Inner,
             is_async: false,
+            ret_ownership: Ownership::Owned,
         };
         let pending = PendingWrapper {
             wrapper_name,
@@ -948,6 +980,7 @@ impl<'a> Ctx<'a> {
                     throws: None,
                     recv: Recv::DrainNext,
                     is_async: false,
+                    ret_ownership: Ownership::Owned,
                 };
                 let kind = WrapperKind::Drain {
                     params: params.clone(),
@@ -976,6 +1009,7 @@ impl<'a> Ctx<'a> {
                     throws: None,
                     recv: Recv::IterNext,
                     is_async: false,
+                    ret_ownership: Ownership::Owned,
                 };
                 // Pend the item wrapper (an owning wrapper, built inline by `next`;
                 // root None so it merges with any root producer like `find`).
@@ -1005,6 +1039,7 @@ impl<'a> Ctx<'a> {
             throws: None,
             recv: Recv::Field0,
             is_async: false,
+            ret_ownership: Ownership::Owned,
         };
         // The cursor/drain wrapper itself: its only reader is the synthesized `next`.
         let mut pendings = vec![PendingWrapper {
@@ -1079,6 +1114,7 @@ impl<'a> Ctx<'a> {
             throws: None,
             recv: Recv::DrainNext,
             is_async: false,
+            ret_ownership: Ownership::Owned,
         };
         let producer = BridgeFn {
             name: method_name.to_string(),
@@ -1088,6 +1124,7 @@ impl<'a> Ctx<'a> {
             throws: None,
             recv: Recv::Field0,
             is_async: false,
+            ret_ownership: Ownership::Owned,
         };
         let pending = PendingWrapper {
             wrapper_name: wrapper_name.clone(),
@@ -1184,6 +1221,7 @@ impl<'a> Ctx<'a> {
             throws: None,
             recv: Recv::Field0,
             is_async: false,
+            ret_ownership: Ownership::Owned,
         };
         Some((producer, vec![]))
     }
@@ -1413,6 +1451,7 @@ impl<'a> Ctx<'a> {
                         throws: None,
                         recv: Recv::Inner,
                         is_async: false,
+                        ret_ownership: Ownership::Owned,
                     }),
                     // A reader whose return is `Option<Borrowed<'h>>` isn't a dead
                     // skip — it's a NESTED producer of another owning wrapper, so

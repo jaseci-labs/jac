@@ -184,6 +184,33 @@ pub enum TypeKind {
     Error,
 }
 
+/// Ownership class of an opaque-handle return (Phase S, Track B). Rides the
+/// `Ref` return tag as an append-only high bit the loader reads
+/// (`TAG_SHARED_BIT`/`TAG_BORROW_BIT`); `Owned` is the default and emits no bit,
+/// keeping every existing handle return byte-identical.
+///
+///   * `Owned`    — the wrapper owns the returned object; `close()` drops it.
+///     Correct for a FRESH object (`NaiveDate::and_time -> NaiveDateTime`) and
+///     for every owning wrapper the M4 rules synthesize.
+///   * `Shared`   — the return is one reference on an RC'd inner; adopting it
+///     `retain`s, `close()` decrefs, the inner frees at rc==0.
+///   * `Borrowed` — a live, RC-pinned view into the receiver's interior; minting
+///     it `retain`s the owner so the view can never dangle.
+///
+/// The classifier defaults every handle return to `Owned` (see
+/// `classify_return`) because rustdoc cannot prove an honest crate's return is
+/// anything else; `shared`/`borrowed` are forced by an overlay
+/// `[fn."T::m"] ownership = "…"` key. The binder never infers a non-`Owned`
+/// class today — a Rust-level-unsound double-own is the crate author's bug and is
+/// handled by skip-with-reason, not silently defended.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum Ownership {
+    #[default]
+    Owned,
+    Shared,
+    Borrowed,
+}
+
 /// One bridgeable function (constructor or method).
 #[derive(Debug, Clone)]
 pub struct BridgeFn {
@@ -203,6 +230,12 @@ pub struct BridgeFn {
     /// True when the source API is `async fn` — the emitted wrapper must also be
     /// `pub async fn` so the macro detects asyncness and emits a blocking C shim.
     pub is_async: bool,
+    /// Ownership class of the return when it is an opaque handle (Phase S). See
+    /// [`Ownership`]. `Owned` (the default) emits no `#[jac(…)]` attribute, so a
+    /// method that returns a fresh object stays byte-identical to pre-Phase-S
+    /// output; `Shared`/`Borrowed` make codegen stamp `#[jac(shared|borrowed)]`
+    /// which the macro turns into the return tag's ownership bit.
+    pub ret_ownership: Ownership,
 }
 
 /// The receiver expression a method body delegates through.

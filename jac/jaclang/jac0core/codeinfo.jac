@@ -111,7 +111,7 @@ def native_stdlib_root -> (str | None) {
 }
 
 def _is_rust_bridge_module(module_name: str) -> bool {
-    clean = module_name.lstrip('.');
+    clean = module_name.lstrip(".");
     return clean.startswith("rust.") and clean.count(".") == 1;
 }
 

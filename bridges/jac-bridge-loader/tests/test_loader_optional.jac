@@ -133,3 +133,27 @@ test "unknown group name returns none" {
         caps.close();
     }
 }
+
+
+# ── 0.4.4 callback lifetime: the trampoline must outlive a GC cycle ───────────
+# A Rust bridge may hold the callback fn pointer past the call return, so the
+# CFUNCTYPE trampoline + its _JacCallback record are anchored on the runtime
+# (module lifetime) instead of a call-local list. A bare local would be collected
+# the moment _call returns -> use-after-free the next time Rust invokes it.
+test "callback trampoline survives a gc cycle" {
+    import gc;
+    with _Regex(r"\d+") as re {
+        rt = _MOD._rt;
+        before = len(rt._cb_keepalive);
+        out = re.replace_all("a1b2", lambda m : "#");
+        assert out == "a#b#";
+        # the trampoline + record were anchored on the runtime, not the frame.
+        assert len(rt._cb_keepalive) > before , "callback objects must be retained on the runtime";
+        # force a full collection: the anchored objects must NOT be reclaimed...
+        gc.collect();
+        # ...and a subsequent callback-driven call (which re-exercises make_buf and
+        # the CFUNCTYPE machinery) still works, proving no dangling fn pointer.
+        out2 = re.replace_all("x9y7", lambda m : "Z");
+        assert out2 == "xZyZ";
+    }
+}

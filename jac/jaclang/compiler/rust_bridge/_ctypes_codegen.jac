@@ -24,21 +24,40 @@ import from jaclang.compiler.rust_bridge._blob {
     TAG_VOID,
     TAG_BOOL,
     TAG_INT,
-    TAG_UINT,
     TAG_STR,
-    TAG_FN,
     KIND_OPAQUE,
     KIND_ERROR,
     FN_CTOR,
     FN_METHOD,
-    tag_base,
     tag_is_opt,
     tag_is_ref,
+    tag_is_borrowed,
     tag_ref_index,
-    tag_is_map,
     tag_map_value,
-    tag_is_list,
     tag_list_value
+}
+import from jaclang.compiler.rust_bridge._marshal {
+    Slot,
+    SlotKind,
+    classify,
+    STATUS_OK,
+    STATUS_ERR,
+    STATUS_CB_ERR
+}
+
+
+class BridgeSkip(Exception) {}
+
+
+def _ret_bridgeable(s: Slot) -> bool {
+    if s.kind == SlotKind.Unbridgeable or s.kind == SlotKind.Callback {
+        return False;
+    }
+
+    if s.is_opt and s.kind != SlotKind.Str and s.kind != SlotKind.OpaqueRef {
+        return False;
+    }
+    return True;
 }
 
 
@@ -71,6 +90,8 @@ class _Runtime {
     def init(self: _Runtime, lib: CDLL, meta: BridgeMeta) {
         self.lib = lib;
         self.meta = meta;
+
+        self._cb_keepalive = [];
 
         fb = getattr(lib, f"jac_{meta.module_name}_free_buf");
         fb.argtypes = [_JacBuf];
@@ -113,6 +134,25 @@ class _Runtime {
             self._err_cls[td.index] = type(td.name, (Exception, ), {});
         }
 
+        self._opaque_drops = {};
+        self._opaque_retains = {};
+        for td in meta.types {
+            if td.kind != KIND_OPAQUE {
+                continue;
+            }
+            od = getattr(lib, td.drop_sym);
+            od.argtypes = [c_uint64];
+            od.restype = None;
+            self._opaque_drops[td.index] = od;
+            rsym = td.drop_sym[:-len("_drop")] + "_retain";
+            orr = getattr(lib, rsym, None);
+            if orr is not None {
+                orr.argtypes = [c_uint64];
+                orr.restype = None;
+                self._opaque_retains[td.index] = orr;
+            }
+        }
+
         for fd in meta.fns {
             if fd.name != "message" or fd.self_type == TAG_VOID {
                 continue;
@@ -139,7 +179,7 @@ class _Runtime {
         buf = _JacBuf();
         out_e = c_uint64(0);
         st = fn(err_h, byref(buf), byref(out_e));
-        if st != 0 {
+        if st != STATUS_OK {
             drop = self._err_drops.get(idx);
             if drop {
                 drop(err_h);
@@ -162,7 +202,7 @@ class _Runtime {
         buf = _JacBuf();
         out_e = c_uint64(0);
         st = self.panic_msg(err_h, byref(buf), byref(out_e));
-        if st != 0 {
+        if st != STATUS_OK {
             self.panic_drop(err_h);
             return f"<panic reading panic message: status={st}>";
         }
@@ -187,25 +227,34 @@ def _wire(lib: CDLL, fd: FnDesc) -> object {
     }
 
     for p in fd.params {
-        if p.tag == TAG_STR {
+        s = classify(p.tag);
+        if s.kind == SlotKind.Str {
             args.extend([c_char_p, c_uint32]);
-        } elif p.tag == TAG_BOOL {
+        } elif s.kind == SlotKind.Bool {
             args.append(c_uint8);
-        } elif p.tag == TAG_FN {
+        } elif s.kind == SlotKind.Int
+        or s.kind == SlotKind.Uint
+        or s.kind == SlotKind.OpaqueRef
+        or s.kind == SlotKind.Callback {
             args.append(c_uint64);
         } else {
-            args.append(c_uint64);
+            raise BridgeSkip(
+                f"{fd.name}: unbridgeable param '{p.name}' (tag=0x{p.tag:08X})"
+            );
         }
     }
 
-    base_ret = tag_base(fd.ret);
-    if tag_is_map(fd.ret) or tag_is_list(fd.ret) {
+    ret = classify(fd.ret);
+    if not _ret_bridgeable(ret) {
+        raise BridgeSkip(f"{fd.name}: unbridgeable return (tag=0x{fd.ret:08X})");
+    }
+    if ret.kind == SlotKind.Map or ret.kind == SlotKind.List {
         args.append(POINTER(_JacBuf));
-    } elif base_ret == TAG_BOOL {
+    } elif ret.kind == SlotKind.Bool {
         args.append(POINTER(c_uint8));
-    } elif base_ret == TAG_STR {
+    } elif ret.kind == SlotKind.Str {
         args.append(POINTER(_JacBuf));
-    } elif base_ret != TAG_VOID {
+    } elif ret.kind != SlotKind.Void {
         args.append(POINTER(c_uint64));
     }
 
@@ -231,9 +280,9 @@ def _make_trampoline(fn: object, rt: _Runtime) -> object {
             result = fn(matched);
             enc = result.encode("utf-8") if isinstance(result, str) else bytes(result);
             make_buf(enc, len(enc), out_buf);
-            return 0;
+            return STATUS_OK;
         } except Exception {
-            return 3;
+            return STATUS_CB_ERR;
         }
     }
 
@@ -301,7 +350,6 @@ def _call(
     classes: dict[int, type]
 ) -> object {
     c_args = [];
-    keepalive = [];
 
     if fd.kind == FN_METHOD and self_h is not None {
         c_args.append(self_h);
@@ -309,21 +357,24 @@ def _call(
 
     for (i, p) in enumerate(fd.params) {
         v = py_args[i];
-        if p.tag == TAG_STR {
+        s = classify(p.tag);
+        if s.kind == SlotKind.Str {
             (enc, n) = _encode(v);
             c_args.extend([enc, c_uint32(n)]);
-        } elif p.tag == TAG_BOOL {
+        } elif s.kind == SlotKind.Bool {
             c_args.append(c_uint8(int(bool(v))));
-        } elif p.tag == TAG_INT or p.tag == TAG_UINT {
+        } elif s.kind == SlotKind.Int or s.kind == SlotKind.Uint {
             c_args.append(c_uint64(int(v) & 0xFFFFFFFFFFFFFFFF));
-        } elif p.tag == TAG_FN {
+        } elif s.kind == SlotKind.Callback {
             cb = _make_trampoline(v, rt);
             rec = _JacCallback(cast(cb, c_void_p), None);
-            keepalive.append(cb);
-            keepalive.append(rec);
+            rt._cb_keepalive.append(cb);
+            rt._cb_keepalive.append(rec);
             c_args.append(c_uint64(addressof(rec)));
+        } elif s.kind == SlotKind.OpaqueRef {
+            c_args.append(c_uint64(v._handle));
         } else {
-            c_args.append(c_uint64(int(v)));
+            raise BridgeSkip(f"{fd.name}: unbridgeable param '{p.name}'");
         }
     }
 
@@ -332,18 +383,15 @@ def _call(
     out_buf = _JacBuf();
     out_e = c_uint64(0);
 
-    opt = tag_is_opt(fd.ret);
-    is_map = tag_is_map(fd.ret);
-    is_list = tag_is_list(fd.ret);
-    base_ret = tag_base(fd.ret);
+    ret = classify(fd.ret);
 
-    if is_map or is_list {
+    if ret.kind == SlotKind.Map or ret.kind == SlotKind.List {
         c_args.append(byref(out_buf));
-    } elif base_ret == TAG_BOOL {
+    } elif ret.kind == SlotKind.Bool {
         c_args.append(byref(out_b));
-    } elif base_ret == TAG_STR {
+    } elif ret.kind == SlotKind.Str {
         c_args.append(byref(out_buf));
-    } elif base_ret != TAG_VOID {
+    } elif ret.kind != SlotKind.Void {
         c_args.append(byref(out_h));
     }
 
@@ -351,53 +399,58 @@ def _call(
 
     st = c_fn(*c_args);
 
-    if st == 1 {
+    if st == STATUS_ERR {
         msg = rt.drain_err(out_e.value, fd.throws if fd.throws != TAG_VOID else None);
         raise rt.err_cls(fd.throws)(msg);
     }
-    if st != 0 {
+    if st != STATUS_OK {
         msg = rt.drain_panic(out_e.value);
         raise rt.PanicError(msg);
     }
 
-    if is_map {
+    if ret.kind == SlotKind.Map {
+        if ret.is_opt and out_buf.ptr == 0 {
+            return None;
+        }
         raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
         rt.free_buf(out_buf);
         return _decode_map(raw, tag_map_value(fd.ret));
     }
-    if is_list {
+    if ret.kind == SlotKind.List {
+        if ret.is_opt and out_buf.ptr == 0 {
+            return None;
+        }
         raw = string_at(out_buf.ptr, out_buf.len) if out_buf.ptr != 0 else b"";
         rt.free_buf(out_buf);
         return _decode_list(raw, tag_list_value(fd.ret));
     }
-    if base_ret == TAG_VOID {
+    if ret.kind == SlotKind.Void {
         return None;
     }
-    if base_ret == TAG_BOOL {
+    if ret.kind == SlotKind.Bool {
         return bool(out_b.value);
     }
-    if base_ret == TAG_STR {
-        if opt and out_buf.ptr == 0 {
+    if ret.kind == SlotKind.Str {
+        if ret.is_opt and out_buf.ptr == 0 {
             return None;
         }
         raw = string_at(out_buf.ptr, out_buf.len);
         rt.free_buf(out_buf);
         return raw.decode("utf-8", errors="replace");
     }
-    if base_ret == TAG_INT {
+    if ret.kind == SlotKind.Int {
         v = out_h.value;
         return v - 0x10000000000000000 if v >= 0x8000000000000000 else v;
     }
-    if base_ret == TAG_UINT {
+    if ret.kind == SlotKind.Uint {
         return out_h.value;
     }
 
     h = out_h.value;
-    if opt and h == 0 {
+    if ret.is_opt and h == 0 {
         return None;
     }
-    ret_idx = tag_ref_index(fd.ret);
-    cls = classes.get(ret_idx);
+    cls = classes.get(ret.ref_index);
     if cls is None {
         return h;
     }
@@ -405,6 +458,17 @@ def _call(
     stub._handle = h;
     stub._closed = False;
     stub._rt = rt;
+    stub._finalizer = None;
+
+    if tag_is_borrowed(fd.ret) and fd.self_type != TAG_VOID and self_h is not None {
+        owner_retain = rt._opaque_retains.get(fd.self_type);
+        owner_drop = rt._opaque_drops.get(fd.self_type);
+        if owner_retain is not None and owner_drop is not None {
+            owner_retain(self_h);
+            stub._owner_handle = self_h;
+            stub._owner_drop = owner_drop;
+        }
+    }
     return stub;
 }
 
@@ -445,8 +509,22 @@ def _make_class(
         }
     }
 
-    ctor_c = _wire(lib, ctor_fd) if ctor_fd else None;
-    method_c = [(fd, _wire(lib, fd)) for fd in method_fds];
+    ctor_c = None;
+    if ctor_fd is not None {
+        try {
+            ctor_c = _wire(lib, ctor_fd);
+        } except BridgeSkip {
+            ctor_fd = None;
+        }
+    }
+    method_c = [];
+    for fd in method_fds {
+        try {
+            method_c.append((fd, _wire(lib, fd)));
+        } except BridgeSkip {
+            continue;
+        }
+    }
 
     if ctor_fd is not None {
         _ctor_fd = ctor_fd;
@@ -475,6 +553,15 @@ def _make_class(
             fin();
         } elif not self._closed {
             drop_fn(self._handle);
+        }
+
+        if not self._closed {
+            od = self?._owner_drop;
+            if od is not None {
+                od(self._owner_handle);
+                self._owner_handle = 0;
+                self._owner_drop = None;
+            }
         }
         self._handle = 0;
         self._closed = True;
@@ -523,9 +610,7 @@ def build_module(so_path: str, meta: BridgeMeta) -> object {
         init_fn.argtypes = [];
         init_fn.restype = c_void_p;
         init_fn();
-    } except AttributeError {
-        pass;
-    }
+    } except AttributeError { }
 
     rt = _Runtime(lib, meta);
 

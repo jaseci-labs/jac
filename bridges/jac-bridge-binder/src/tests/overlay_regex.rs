@@ -359,3 +359,116 @@ fn type_treat_as_with_skip_is_rejected() {
         "err should explain exclusivity: {err}"
     );
 }
+
+// ── Phase S: ownership overlay (owned / shared / borrowed) ─────────────────────
+
+/// The Rust source between a method's `#[jac(...)]` attribute (if any) and its
+/// `pub fn <name>(` header, so a test can prove the attribute sits ON that method
+/// and not on a neighbour. Returns the slice `[attr_start .. header_end)`.
+fn method_prelude<'a>(src: &'a str, exposed: &str) -> &'a str {
+    let header = format!("pub fn {exposed}(");
+    let hdr_pos = src.find(&header).unwrap_or_else(|| panic!("no `{header}`\n{src}"));
+    // Walk back to the start of the line before the header.
+    let line_start = src[..hdr_pos].rfind('\n').map(|i| i + 1).unwrap_or(0);
+    // Include the immediately-preceding line (the attribute, when present).
+    let prev_line_start = src[..line_start.saturating_sub(1)]
+        .rfind('\n')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    &src[prev_line_start..hdr_pos + header.len()]
+}
+
+#[test]
+fn ownership_borrowed_stamps_jac_attribute() {
+    // `Regex::find -> Option<OwnedMatch>` is a bridged handle return with `&self` —
+    // a legitimate borrowed-view target. The overlay forces the class rustdoc
+    // can't prove; codegen stamps the helper attribute the macro reads.
+    let mut spec = classify(&load_regex_doc());
+    let overlay = parse_overlay("[fn.\"Regex::find\"]\nownership = \"borrowed\"\n").unwrap();
+    apply_overlay(&mut spec, &overlay).unwrap();
+
+    let src = emit(&spec);
+    let prelude = method_prelude(&src, "find");
+    assert!(
+        prelude.contains("#[jac(borrowed)]"),
+        "borrowed attr missing on `find`\n{prelude}"
+    );
+    // The call target is untouched — ownership only tags the return.
+    assert!(
+        sig_contains(&src, "OwnedMatch::wrap(&self.0, haystack)"),
+        "borrowed override must not change the body\n{src}"
+    );
+}
+
+#[test]
+fn ownership_shared_stamps_jac_attribute() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay = parse_overlay("[fn.\"Regex::find\"]\nownership = \"shared\"\n").unwrap();
+    apply_overlay(&mut spec, &overlay).unwrap();
+
+    let src = emit(&spec);
+    assert!(
+        method_prelude(&src, "find").contains("#[jac(shared)]"),
+        "shared attr missing on `find`\n{src}"
+    );
+}
+
+#[test]
+fn ownership_default_and_explicit_owned_emit_no_jac_attribute() {
+    // No ownership key: byte-for-byte the pre-Phase-S output — no `#[jac(` anywhere.
+    let spec_default = classify(&load_regex_doc());
+    let src_default = emit(&spec_default);
+    assert!(
+        !src_default.contains("#[jac("),
+        "default codegen must not stamp any ownership attribute\n{src_default}"
+    );
+
+    // Explicit `ownership = "owned"` is an accepted no-op — same output.
+    let mut spec_owned = classify(&load_regex_doc());
+    let overlay = parse_overlay("[fn.\"Regex::find\"]\nownership = \"owned\"\n").unwrap();
+    apply_overlay(&mut spec_owned, &overlay).unwrap();
+    assert_eq!(
+        emit(&spec_owned),
+        src_default,
+        "explicit owned must be byte-identical to the default"
+    );
+}
+
+#[test]
+fn ownership_unknown_class_is_rejected() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay = parse_overlay("[fn.\"Regex::find\"]\nownership = \"leased\"\n").unwrap();
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(err.contains("ownership"), "err should name the directive: {err}");
+    assert!(err.contains("leased"), "err should quote the bad value: {err}");
+}
+
+#[test]
+fn ownership_with_skip_is_rejected() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay =
+        parse_overlay("[fn.\"Regex::find\"]\nownership = \"shared\"\nskip = true\n").unwrap();
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
+}
+
+#[test]
+fn ownership_with_treat_as_is_rejected() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay =
+        parse_overlay("[fn.\"Regex::find\"]\ntreat_as = \"owning\"\nownership = \"shared\"\n")
+            .unwrap();
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
+}
+
+#[test]
+fn ownership_on_absent_method_is_rejected() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay = parse_overlay("[fn.\"Regex::no_such_method\"]\nownership = \"shared\"\n").unwrap();
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(
+        err.contains("no_such_method") || err.contains("no bridged method"),
+        "err should name the missing method: {err}"
+    );
+}

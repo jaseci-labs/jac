@@ -1,0 +1,18 @@
+# Borrowed-view reference crate (Phase S, Track B). The ONLY crate whose bridge
+# exposes a `#[jac(borrowed)]` return: a live, non-owning view into an owner's
+# interior. It exists so the RC-pin ownership contract (a view retains its owner
+# handle, so the owner cannot be freed while the view is live) can be exercised
+# end-to-end. The view holds a RAW pointer into the owner's heap allocation, so
+# the retain is load-bearing: without it, closing the owner would free the
+# allocation and the view would read freed memory.
+[package]
+name = "jac-bridge-view"
+version = "0.1.0"
+edition = "2021"
+description = "Borrowed-view reference crate: a #[jac(borrowed)] interior view that RC-pins its owner, for the ownership-contract conformance gate"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }

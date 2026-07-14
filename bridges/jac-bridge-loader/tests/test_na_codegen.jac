@@ -4,10 +4,79 @@
 # compiler (which needs the LLVM shim).  The end-to-end "generated source compiles
 # and runs natively" check lives in the na conformance suite, gated on a shim.
 import from pathlib { Path }
-import from jaclang.compiler.rust_bridge._blob { parse }
+import from jaclang.compiler.rust_bridge._blob {
+    parse,
+    BridgeMeta,
+    TypeDesc,
+    FnDesc,
+    ParamDesc,
+    KIND_OPAQUE,
+    KIND_ERROR,
+    FN_CTOR,
+    FN_METHOD,
+    TAG_REF_BIT,
+    TAG_STR,
+    TAG_BOOL,
+    TAG_VOID
+}
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
 import from jaclang.compiler.rust_bridge._synth { render_na_source }
+import from jaclang.jac0core.parser { parse as jac_parse }
+import from jaclang.jac0core.program { JacProgram }
 import from _fixtures { regex_so, owning_so }
+
+
+def _parses(src: str) -> bool {
+    # Round-trip the synthesized source through the Jac parser; True iff it
+    # produces zero syntax errors (the 0.4.2 materialize_bridge guard).
+    prog = JacProgram();
+    (_mod, had_err) = jac_parse(src, "<synth-test>", prog=prog);
+    return not had_err;
+}
+
+
+def _keyword_meta -> BridgeMeta {
+    # A synthetic bridge whose type/method/param names are all Jac keywords —
+    # the shapes 0.4.1's sanitizer must rewrite (`node`/`root` are silent
+    # killers; `match`/`with` fail to parse outright).
+    types = [
+        TypeDesc(index=0, kind=KIND_OPAQUE, name="node", drop_sym="jac_kw_node_drop"),
+        TypeDesc(index=1, kind=KIND_ERROR, name="match", drop_sym="jac_kw_error_drop")
+    ];
+    fns = [
+        FnDesc(
+            index=0,
+            name="new",
+            sym="jac_kw_node_new",
+            self_type=TAG_VOID,
+            kind=FN_CTOR,
+            throws=1,
+            ret=(TAG_REF_BIT | 0),
+            params=[ParamDesc(name="with", tag=TAG_STR)]
+        ),
+        FnDesc(
+            index=1,
+            name="match",
+            sym="jac_kw_node_match",
+            self_type=0,
+            kind=FN_METHOD,
+            throws=TAG_VOID,
+            ret=TAG_BOOL,
+            params=[ParamDesc(name="root", tag=TAG_STR)]
+        ),
+        FnDesc(
+            index=2,
+            name="message",
+            sym="jac_kw_error_message",
+            self_type=1,
+            kind=FN_METHOD,
+            throws=TAG_VOID,
+            ret=TAG_STR,
+            params=[]
+        )
+    ];
+    return BridgeMeta(abi_version=1, module_name="kw", types=types, fns=fns);
+}
 
 
 glob _REGEX_SO = regex_so(),
@@ -248,4 +317,78 @@ test "callback bridge" {
     # make_buf is declared in the foreign import block (the callback's replacement
     # sink) — only emitted because a bridged method takes a callback.
     assert "def jac_owning_make_buf(s: str, s_len: int, out_buf: int) -> None;" in src;
+}
+
+
+# ── 0.4.1 identifier sanitizer: Jac-reserved Rust names must be renamed ────────
+test "reserved-word type, method and param names are sanitized" {
+    src = render_na_source(_keyword_meta(), "libjac_bridge_kw.so").source;
+    # The opaque type `node` (a silent codegen killer) becomes `node_`.
+    assert "obj node_ {" in src;
+    assert "obj node {" not in src;
+    # The method `match` (unparseable as an identifier) becomes `match_`.
+    assert "def match_(" in src;
+    # The params `with` and `root` become `with_` / `root_`, consistently in the
+    # Jac signature, the foreign shim decl, and the call site.
+    assert "def init(with_: str) {" in src;
+    assert "def match_(root_: str) -> bool {" in src;
+    assert "with_: str" in src and "with__len: int" in src;
+    assert "strlen(with_)" in src;
+    assert "strlen(root_)" in src;
+    # The real exported symbol (the linker name) is NEVER renamed.
+    assert "jac_kw_node_match(self.__handle, root_, strlen(root_)" in src;
+    # Every rename is recorded in the module header for auditability.
+    assert "# renamed (Jac-reserved word collision):" in src;
+    assert "#   node -> node_" in src;
+    assert "#   match -> match_" in src;
+    assert "#   with -> with_" in src;
+    assert "#   root -> root_" in src;
+}
+
+
+# ── 0.4.2 round-trip parse: sanitized keyword source must actually parse ───────
+test "keyword-laden synthesized source parses cleanly" {
+    src = render_na_source(_keyword_meta(), "libjac_bridge_kw.so").source;
+    assert _parses(src) , "sanitized keyword bridge must round-trip parse";
+}
+
+
+test "real bridge sources round-trip parse" {
+    for so in [regex_so(), owning_so()] {
+        meta = parse(read_jac_bridge_section(so));
+        src = render_na_source(meta, Path(so).name).source;
+        assert _parses(src) , f"{so} synthesized source must parse";
+    }
+}
+
+
+# ── 0.4.3 status-code branching in the raise path ─────────────────────────────
+test "drain branches on status: error (1) vs panic (2) raise distinctly" {
+    src = render_na_source(_REGEX_META, _REGEX_NAME).source;
+    # status 1 (Result::Err) reads via the error_message symbol and raises a
+    # ValueError; status 2 (panic) reads via panic_message and raises a
+    # RuntimeError — the two are no longer collapsed onto one unconditional raise.
+    assert "if st == 1 {" in src;
+    assert "jac_regex_error_message(err_h, mbuf, mben)" in src;
+    assert "raise ValueError(emsg);" in src;
+    assert "jac_regex_panic_message(err_h, mbuf, mben)" in src;
+    assert "jac_regex_panic_drop(err_h);" in src;
+    assert "raise RuntimeError(emsg);" in src;
+}
+
+
+test "bridge without error type still branches error vs panic" {
+    # `scalar` has no #[jac_error] type: status-1 handles are still Box<String>,
+    # read through the always-present panic_message symbol, but kept as ValueError
+    # while a status-2 panic raises RuntimeError.
+    import from _fixtures { scalar_so }
+    meta = parse(read_jac_bridge_section(scalar_so()));
+    src = render_na_source(meta, Path(scalar_so()).name).source;
+    if "if st == 1 {" in src {
+        assert "raise ValueError(emsg);" in src;
+        assert "raise RuntimeError(emsg);" in src;
+        # no error_message symbol exists, so BOTH branches lean on panic_message.
+        assert "jac_scalar_panic_message(err_h, mbuf, mben)" in src;
+        assert _parses(src);
+    }
 }

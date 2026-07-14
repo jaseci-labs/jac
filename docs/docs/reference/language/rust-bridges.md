@@ -172,6 +172,33 @@ The bridge boundary marshals a fixed set of shapes between Rust and Jac:
 The exact wire encoding, status codes, and shim naming are documented in the
 [Rust Bridge ABI](../../internals/rust_bridge_abi.md) internals reference.
 
+### Handle ownership
+
+Every opaque handle carries an ownership class that decides what `close()` (and
+the Jac object's `__del__`) does to the underlying Rust object:
+
+- **owned** (the default): the wrapper owns the object; `close()` drops it, and
+  it is safe to `close()` exactly once. A constructor result and any method that
+  returns a *fresh* object (e.g. `NaiveDate::and_time -> NaiveDateTime`) is
+  owned.
+- **shared**: the wrapper holds one reference on a reference-counted inner.
+  Adopting or aliasing the handle retains it; `close()` decrements the count and
+  the inner is freed only when the last reference drops, so a shared alias stays
+  valid after its originator closes and a double-close is idempotent.
+- **borrowed**: a live, non-owning view into an owner's interior. Minting the
+  view retains its owner, so the owner physically cannot be freed while the view
+  is live; the view reads through a live pointer (zero-copy) and dropping it
+  releases the owner. Mutable interior aliases (`&mut Field` views such as
+  serde_json `get_mut` or ndarray `view_mut`) are **not** bridged -- they would
+  alias the owner's exclusive borrow (Rust UB) -- and are skipped with a reason.
+
+Handles are reference-counted at the ABI layer (each box tracks its own count),
+so two wrappers over one object free it exactly once. A crate whose API is
+*unsound at the Rust level* -- one that hands out a second raw owner of the same
+allocation -- is **skipped with a reason**, not silently "defended": the bridge
+refuses to generate it rather than pretend a handle-table trick can make a
+double-owning `Drop` safe.
+
 ### Known limitations (ABI v1)
 
 !!! warning "Callback detection on na"

@@ -1,0 +1,16 @@
+# Reentrancy reference crate (Phase 0.0.2). The ONLY crate in the workspace with
+# a `&mut self` method that invokes a JacCallback — the exact shape that lets a
+# callback re-enter its own receiver and produce two live `&mut T`, the UB hole
+# the per-handle reentrancy guard (task 0.2.2) closes. Without this crate that
+# exit-gate scenario cannot be reproduced at all.
+[package]
+name = "jac-bridge-reentrant"
+version = "0.1.0"
+edition = "2021"
+description = "Reentrancy reference crate: a &mut self method invoking a JacCallback, for the reentrancy-guard conformance gate"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jac-bridge = { path = "../jac-bridge" }

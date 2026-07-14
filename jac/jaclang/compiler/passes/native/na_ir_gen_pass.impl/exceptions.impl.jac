@@ -410,6 +410,11 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
 
                 handler_exc_obj = self.builder.load(exc_obj_ptr, name="exc.bound.obj");
                 alloca = self._entry_alloca(i8p, var_name);
+
+                saved_block = self.builder.block;
+                self.builder.position_after(alloca);
+                self.builder.store(ir.Constant(i8p, None), alloca);
+                self.builder.position_at_end(saved_block);
                 self.builder.store(handler_exc_obj, alloca);
                 self.local_vars[var_name] = alloca;
             }

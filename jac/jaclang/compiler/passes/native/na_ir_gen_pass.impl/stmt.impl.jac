@@ -189,7 +189,7 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
 impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
     func_ret_type = self.builder.function.return_value.type;
     if nd.expr is not None {
-        val = self._codegen_required(nd.expr);
+        val = self._codegen_required(nd.expr, expected_type=func_ret_type);
         if val is not None {
             val = self._coerce_type(val, func_ret_type);
 
@@ -635,6 +635,22 @@ impl NaIRGenPass._emit_empty_container_for_type(
         }
     }
     return None;
+}
+
+impl NaIRGenPass._try_empty_container(
+    nd: (uni.UniNode | None), expected_type: (ir.Type | None)
+) -> (ir.Value | None) {
+    if expected_type is None or not isinstance(expected_type, ir.PointerType) {
+        return None;
+    }
+    _empty = (
+        (isinstance(nd, uni.DictVal) and not nd.kv_pairs)
+        or (isinstance(nd, uni.ListVal) and not nd.values)
+    );
+    if not _empty {
+        return None;
+    }
+    return self._emit_empty_container_for_type(expected_type, nd);
 }
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {

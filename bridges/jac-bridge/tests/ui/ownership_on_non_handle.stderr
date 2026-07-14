@@ -1,0 +1,5 @@
+error: #[jac(shared)]/#[jac(borrowed)] applies only to a method returning an opaque handle (a crate type or Option<crate type>)
+  --> tests/ui/ownership_on_non_handle.rs:18:28
+   |
+18 |         pub fn peek(&self) -> bool {
+   |                            ^

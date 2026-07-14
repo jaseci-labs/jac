@@ -1,0 +1,5 @@
+error: unknown `#[bridge(...)]` key `modle`; expected `module`
+ --> tests/ui/unknown_attr_key.rs:5:10
+  |
+5 | #[bridge(modle = "x")]
+  |          ^^^^^

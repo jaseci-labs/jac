@@ -15,3 +15,4 @@ jac-bridge-schema = { path = "../jac-bridge-schema" }
 
 [dev-dependencies]
 trybuild = "1"
+jac-bridge-schema = { path = "../jac-bridge-schema" }

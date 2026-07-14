@@ -381,43 +381,16 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
         return self._jac_iter_type.as_pointer();
     }
 
-    if cname == "list" {
-        elem_llvm: ir.Type = ir.IntType(64);
-        if type_args {
-            _e = self._lower_type(type_args[0]);
-            if _e is None {
+    if cname in ("list", "dict", "set", "frozenset") {
+        _elem_types: list = [];
+        for a in type_args {
+            _et = self._lower_type(a);
+            if _et is None {
                 return None;
             }
-            elem_llvm = _e;
+            _elem_types.append(_et);
         }
-        return self._lower_list_from_elem(elem_llvm);
-    }
-
-    if cname == "dict" {
-        k_llvm: ir.Type = ir.IntType(64);
-        v_llvm: ir.Type = ir.IntType(64);
-        if len(type_args) >= 2 {
-            _k = self._lower_type(type_args[0]);
-            _v = self._lower_type(type_args[1]);
-            if _k is None or _v is None {
-                return None;
-            }
-            k_llvm = _k;
-            v_llvm = _v;
-        }
-        return self._lower_dict_from_kv(k_llvm, v_llvm);
-    }
-
-    if cname in ("set", "frozenset") {
-        elem_llvm: ir.Type = ir.IntType(64);
-        if type_args {
-            _e = self._lower_type(type_args[0]);
-            if _e is None {
-                return None;
-            }
-            elem_llvm = _e;
-        }
-        return self._lower_set_from_elem(elem_llvm);
+        return self._lower_container_ir(cname, _elem_types);
     }
 
     if cname == "tuple" {
@@ -438,6 +411,24 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
         }
         return self.tuple_types[tuple_key].as_pointer();
+    }
+    return None;
+}
+
+impl NaIRGenPass._lower_container_ir(cname: str, elem_types: list) -> (ir.Type | None) {
+    if cname == "list" {
+        elem = elem_types[0] if elem_types else ir.IntType(64);
+        return self._lower_list_from_elem(elem);
+    }
+    if cname == "dict" {
+        if len(elem_types) >= 2 {
+            return self._lower_dict_from_kv(elem_types[0], elem_types[1]);
+        }
+        return self._lower_dict_from_kv(ir.IntType(64), ir.IntType(64));
+    }
+    if cname in ("set", "frozenset") {
+        elem = elem_types[0] if elem_types else ir.IntType(64);
+        return self._lower_set_from_elem(elem);
     }
     return None;
 }
@@ -649,38 +640,22 @@ impl NaIRGenPass._resolve_container_ast(ann: (uni.UniNode | None)) -> (ir.Type |
         arg_nodes.append(arg_node);
     }
 
-    if cname == "list" {
-        if not arg_nodes {
-            return None;
-        }
-        elem = self._lower_type_arg_ast(arg_nodes[0]);
-        if elem is None {
-            return None;
-        }
-        return self._lower_list_from_elem(elem);
+    if cname not in ("list", "dict", "set", "frozenset") {
+        return None;
     }
-    if cname == "dict" {
-        if len(arg_nodes) < 2 {
-            return None;
-        }
-        k = self._lower_type_arg_ast(arg_nodes[0]);
-        v = self._lower_type_arg_ast(arg_nodes[1]);
-        if k is None or v is None {
-            return None;
-        }
-        return self._lower_dict_from_kv(k, v);
+    _min_args = 2 if cname == "dict" else 1;
+    if len(arg_nodes) < _min_args {
+        return None;
     }
-    if cname in ("set", "frozenset") {
-        if not arg_nodes {
+    _elem_types: list = [];
+    for _an in arg_nodes {
+        _et = self._lower_type_arg_ast(_an);
+        if _et is None {
             return None;
         }
-        elem = self._lower_type_arg_ast(arg_nodes[0]);
-        if elem is None {
-            return None;
-        }
-        return self._lower_set_from_elem(elem);
+        _elem_types.append(_et);
     }
-    return None;
+    return self._lower_container_ir(cname, _elem_types);
 }
 
 

@@ -303,11 +303,15 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
 impl TypeEvaluator._try_resolve_rust_bridge(
     node_: uni.ModulePath
 ) -> types.TypeBase | None {
-    if len(node_.path) != 2 or node_.path[0].value != "rust" {
+    if len(node_.path) != 2 {
         return None;
     }
+    import from jaclang.compiler.rust_bridge._finder { is_bridge_module }
     crate = node_.path[1].value;
-    mod_name = "rust." + crate;
+    mod_name = node_.path[0].value + "." + crate;
+    if not is_bridge_module(mod_name) {
+        return None;
+    }
 
     import from jaclang.compiler.rust_bridge { materialize_bridge }
 

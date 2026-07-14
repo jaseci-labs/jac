@@ -224,8 +224,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
         cont_t: (ir.Type | None), nd: uni.UniNode
     ) -> (ir.Value | None);
 
-    def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
-    def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
+    def _try_empty_container(
+        nd: (uni.UniNode | None), expected_type: (ir.Type | None)
+    ) -> (ir.Value | None);
+
+    def _codegen_expr(
+        nd: (uni.UniNode | None), expected_type: (ir.Type | None) = None
+    ) -> (ir.Value | None);
+
+    def _codegen_required(
+        nd: (uni.UniNode | None), expected_type: (ir.Type | None) = None
+    ) -> (ir.Value | None);
+
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
@@ -239,14 +249,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
     has lambda_captures: dict[str, list[tuple]] = {},
         _pending_lambda_captures: (list[tuple] | None) = None,
         _callback_make_buf: (ir.Function | None) = None,
-        _bridge_make_buf_syms: set[str] = set();
+        _bridge_make_buf_syms: set[str] = set(),
+        _bridge_make_buf_fns: dict[str, ir.Function] = {},
+        _bridge_type_crate: dict[str, str] = {},
+        _bridge_fn_callback_params: dict[str, set[int]] = {};
 
+    def _resolve_bridge_lib_path(path: str) -> (str | None);
     def _register_bridge_metadata(path: str) -> None;
     def _note_bridge_sink(name: str, fn: ir.Function) -> None;
-    def _lambda_arg_is_callback(
-        nd: uni.UniNode, slot_type: (ir.Type | None) = None
-    ) -> bool;
-
+    def _callback_make_buf_for(func: ir.Function) -> (ir.Function | None);
+    def _bridge_callback_param(func: (ir.Function | None), pix: int) -> bool;
     def _owned_jac_str_from_raw(
         src: ir.Value,
         dlen: ir.Value,
@@ -283,6 +295,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _lower_class_type(t: any) -> (ir.Type | None);
     def _lower_function_type(t: any) -> ir.Type;
     def _lower_type_arg_ast(ann: (uni.UniNode | None)) -> (ir.Type | None);
+    def _lower_container_ir(cname: str, elem_types: list) -> (ir.Type | None);
     def _lower_list_from_elem(elem: ir.Type) -> ir.Type;
     def _lower_dict_from_kv(k: ir.Type, v: ir.Type) -> ir.Type;
     def _lower_set_from_elem(elem: ir.Type) -> ir.Type;
@@ -316,7 +329,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
     ) -> list;
 
-    def _codegen_callback_arg(nd: uni.LambdaExpr) -> (ir.Value | None);
+    def _codegen_callback_arg(
+        nd: uni.LambdaExpr, make_buf: (ir.Function | None) = None
+    ) -> (ir.Value | None);
+
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;

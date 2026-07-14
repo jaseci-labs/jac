@@ -1,6 +1,8 @@
 import os;
 
-impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_expr(
+    nd: (uni.UniNode | None), expected_type: (ir.Type | None) = None
+) -> (ir.Value | None) {
     if nd is None {
         return None;
     }
@@ -31,10 +33,13 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     }
 
     if isinstance(nd, uni.CfgExpr) {
-        return self._codegen_expr(nd.expr);
+        return self._codegen_expr(nd.expr, expected_type=expected_type);
     }
     _result: (ir.Value | None) = None;
-    if isinstance(nd, uni.Name) {
+    _ec = self._try_empty_container(nd, expected_type);
+    if _ec is not None {
+        _result = _ec;
+    } elif isinstance(nd, uni.Name) {
         _result = self._codegen_name(nd);
     } elif isinstance(nd, uni.BinaryExpr) {
         _result = self._codegen_binary(nd);
@@ -71,9 +76,9 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     } elif isinstance(nd, uni.SetVal) {
         _result = self._codegen_set_val(nd);
     } elif isinstance(nd, uni.AtomUnit) {
-        _result = self._codegen_expr(nd.value);
+        _result = self._codegen_expr(nd.value, expected_type=expected_type);
     } elif isinstance(nd, uni.CastExpr) {
-        _result = self._codegen_expr(nd.value);
+        _result = self._codegen_expr(nd.value, expected_type=expected_type);
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
     } elif isinstance(nd, uni.AwaitExpr) {
@@ -106,12 +111,14 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     return _result;
 }
 
-impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_required(
+    nd: (uni.UniNode | None), expected_type: (ir.Type | None) = None
+) -> (ir.Value | None) {
     if nd is None {
         return None;
     }
     _errs_before = len(self.errors_had);
-    val = self._codegen_expr(nd);
+    val = self._codegen_expr(nd, expected_type=expected_type);
     if val is None and len(self.errors_had) == _errs_before {
         self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
     }

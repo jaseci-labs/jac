@@ -6,7 +6,7 @@ import sys;
 import struct;
 import importlib;
 import from pathlib { Path }
-import from jaclang.compiler.rust_bridge { load_bridge, install_finder }
+import from jaclang.compiler.rust_bridge { load_bridge, install_rust_namespace }
 import from jaclang.compiler.rust_bridge._blob {
     FN_CTOR,
     FN_METHOD,
@@ -262,10 +262,10 @@ test "void return fd argtypes" {
 }
 
 
-# -- install_finder smoke-test -------------------------------------------------
+# -- install_rust_namespace smoke-test -----------------------------------------
 test "install finder import" {
     so_dir = str(Path(_SO).parent);
-    install_finder([so_dir]);
+    install_rust_namespace([so_dir]);
 
     if "jac_bridge_regex" in sys.modules {
         del sys.modules["jac_bridge_regex"];

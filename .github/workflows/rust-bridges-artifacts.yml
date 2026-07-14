@@ -67,13 +67,14 @@ jobs:
           rustup default stable
         shell: bash
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install jaclang (runs the .jac build tools)
-        run: python -m pip install --upgrade jaclang
-        shell: bash
+      # Install jaclang FROM THE CHECKOUT (the branch under review), not a
+      # published PyPI wheel. The bridge build tools import branch-only compiler
+      # modules (jaclang.compiler.rust_bridge.*) that a released jaclang does not
+      # ship, so a `pip install jaclang` is dead on arrival. setup-jac builds the
+      # `jac` binary from this tree (bundled CPython, so no separate setup-python
+      # step is needed) and puts it on PATH.
+      - name: Set up jac from the checkout
+        uses: ./.github/actions/setup-jac
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -113,13 +114,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install jaclang (runs the .jac build tools)
-        run: python -m pip install --upgrade jaclang
-        shell: bash
+      # Install jaclang FROM THE CHECKOUT (the branch under review), not a
+      # published PyPI wheel. The bridge build tools import branch-only compiler
+      # modules (jaclang.compiler.rust_bridge.*) that a released jaclang does not
+      # ship, so a `pip install jaclang` is dead on arrival. setup-jac builds the
+      # `jac` binary from this tree (bundled CPython, so no separate setup-python
+      # step is needed) and puts it on PATH.
+      - name: Set up jac from the checkout
+        uses: ./.github/actions/setup-jac
 
       - name: Download all target artifacts
         uses: actions/download-artifact@v4

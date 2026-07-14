@@ -55,6 +55,23 @@ struct Param {
     int_ty:     Option<String>,
 }
 
+/// Ownership class of an opaque-handle return (Phase S, Track B).  Rides the
+/// `Ref` return tag as append-only high bits; the default (`Owned`) is the frozen
+/// v1 behaviour and emits no bit, so every existing bridge stays byte-identical.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ownership { Owned, Shared, Borrowed }
+
+impl Ownership {
+    /// Tag bits OR'd into the `Ref` return tag.  `Owned` = 0 (byte-identical v1).
+    fn bits(self) -> u32 {
+        match self {
+            Ownership::Owned    => 0,
+            Ownership::Shared   => schema::TAG_SHARED_BIT,
+            Ownership::Borrowed => schema::TAG_BORROW_BIT,
+        }
+    }
+}
+
 struct FnDef {
     jac_name:      String,
     c_sym:         String,
@@ -62,6 +79,7 @@ struct FnDef {
     self_idx:      Option<usize>,
     params:        Vec<Param>,
     ret:           Tag,
+    ownership:     Ownership,   // Phase S: owned (default) / shared / borrowed return
     throws:        Option<usize>,
     rust_ident:    Ident,
     impl_type_i:   usize,
@@ -75,7 +93,10 @@ struct FnDef {
 
 #[proc_macro_attribute]
 pub fn bridge(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let module_name = parse_module_name(attr);
+    let module_name = match parse_module_name(attr) {
+        Ok(n)  => n,
+        Err(e) => return e.to_compile_error().into(),
+    };
     let input = parse_macro_input!(item as ItemMod);
     match expand(module_name, input) {
         Ok(ts) => ts.into(),
@@ -86,17 +107,26 @@ pub fn bridge(attr: TokenStream, item: TokenStream) -> TokenStream {
 struct BridgeAttr { name: String }
 impl Parse for BridgeAttr {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let _key: Ident = input.parse()?;
+        // 0.2.4: reject an unknown key with a spanned error rather than silently
+        // ignoring the name and defaulting the module to "bridge".
+        let key: Ident = input.parse()?;
+        if key != "module" {
+            return Err(Error::new(key.span(),
+                format!("unknown `#[bridge(...)]` key `{key}`; expected `module`")));
+        }
         let _eq: Token![=] = input.parse()?;
         let lit: LitStr = input.parse()?;
         Ok(BridgeAttr { name: lit.value() })
     }
 }
 
-fn parse_module_name(attr: TokenStream) -> String {
-    syn::parse::<BridgeAttr>(attr)
-        .map(|a| a.name)
-        .unwrap_or_else(|_| "bridge".to_string())
+fn parse_module_name(attr: TokenStream) -> Result<String, Error> {
+    // A bare `#[bridge]` (no args) keeps the historical "bridge" default; a
+    // non-empty attribute must be a well-formed `module = "..."`.
+    if attr.is_empty() {
+        return Ok("bridge".to_string());
+    }
+    syn::parse::<BridgeAttr>(attr).map(|a| a.name)
 }
 
 // ─── expansion ────────────────────────────────────────────────────────────────
@@ -114,8 +144,10 @@ fn expand(module_name: String, input: ItemMod) -> Result<TS2, Error> {
     let static_ts = gen_static(&blob, &module_name);
     let shims_ts  = gen_shims(&module_name, &types, &fns, &input.ident);
 
-    // Strip #[jac_error] from struct attrs before re-emitting
-    let mut cleaned: Vec<TS2> = items.iter().map(strip_jac_error).collect();
+    // Strip bridge-only helper attrs (#[jac_error] on structs, #[jac(...)] on
+    // impl methods) before re-emitting — they are metadata for this macro, not
+    // real Rust attributes the compiler understands.
+    let mut cleaned: Vec<TS2> = items.iter().map(strip_bridge_attrs).collect();
 
     // A bridge fn that names `JacCallback` as a param needs the type in scope
     // inside the re-emitted module; it lives in the sibling rt module.  Inject
@@ -142,7 +174,7 @@ fn expand(module_name: String, input: ItemMod) -> Result<TS2, Error> {
     })
 }
 
-fn strip_jac_error(item: &Item) -> TS2 {
+fn strip_bridge_attrs(item: &Item) -> TS2 {
     if let Item::Struct(s) = item {
         if has_attr(&s.attrs, "jac_error") {
             let mut s2 = s.clone();
@@ -150,6 +182,22 @@ fn strip_jac_error(item: &Item) -> TS2 {
             // The error type is a name-only marker for D2 metadata; error handles
             // are Box<String> at runtime, so the struct is never constructed.
             return quote! { #[allow(dead_code)] #s2 };
+        }
+    }
+    // Strip the per-method `#[jac(...)]` ownership annotation from every method in
+    // an inherent impl; it is consumed by `analyze_fn` (parse_ownership) and would
+    // otherwise reach rustc as an unknown attribute.
+    if let Item::Impl(imp) = item {
+        if imp.trait_.is_none()
+            && imp.items.iter().any(|ii| matches!(ii, ImplItem::Fn(f) if has_attr(&f.attrs, "jac")))
+        {
+            let mut imp2 = imp.clone();
+            for ii in &mut imp2.items {
+                if let ImplItem::Fn(f) = ii {
+                    f.attrs.retain(|a| !a.path().is_ident("jac"));
+                }
+            }
+            return quote! { #imp2 };
         }
     }
     quote! { #item }
@@ -205,6 +253,7 @@ fn analyze(
             self_idx:      Some(err_i),
             params:        vec![],
             ret:           Tag::Str,
+            ownership:     Ownership::Owned,
             throws:        None,
             rust_ident:    Ident::new("__auto", Span::call_site()),
             impl_type_i:   err_i,
@@ -250,6 +299,24 @@ fn analyze_fn(
     let (ret, throws, ret_is_result) =
         analyze_ret(&f.sig.output, types, type_i, error_idx)?;
 
+    let ownership = parse_ownership(&f.attrs)?;
+    // The ownership contract only governs opaque-handle returns, and `borrowed`
+    // additionally needs a receiver to retain (the owner the view pins).  Reject
+    // the annotation on anything else so a misplaced `#[jac(borrowed)]` is a
+    // compile error, not a silently-ignored no-op that emits an owned handle.
+    if ownership != Ownership::Owned {
+        if !matches!(ret, Tag::Ref(_) | Tag::Opt(_)) {
+            return Err(Error::new(f.sig.output.span(),
+                "#[jac(shared)]/#[jac(borrowed)] applies only to a method returning \
+                 an opaque handle (a crate type or Option<crate type>)"));
+        }
+        if ownership == Ownership::Borrowed && !has_self {
+            return Err(Error::new(f.sig.ident.span(),
+                "#[jac(borrowed)] needs a `&self` receiver — a borrowed view retains \
+                 the owner it views into; a constructor has no owner to pin"));
+        }
+    }
+
     let type_name = types[type_i].name.to_string();
     let c_sym = match types[type_i].kind {
         TypeKind::Error  => format!("jac_{module_name}_error_{name}"),
@@ -259,13 +326,32 @@ fn analyze_fn(
     Ok(FnDef {
         jac_name: name, c_sym, kind,
         self_idx: if has_self { Some(type_i) } else { None },
-        params, ret, throws,
+        params, ret, ownership, throws,
         rust_ident: f.sig.ident.clone(),
         impl_type_i: type_i,
         ret_is_result, self_is_mut,
         is_auto: false,
         is_async: f.sig.asyncness.is_some(),
     })
+}
+
+/// Read a method's ownership class from a `#[jac(shared)]` / `#[jac(borrowed)]`
+/// helper attribute.  Absent (or `#[jac(owned)]`) is the default `Owned`.  The
+/// attribute is stripped from the re-emitted source by [`strip_bridge_attrs`].
+fn parse_ownership(attrs: &[Attribute]) -> Result<Ownership, Error> {
+    for a in attrs {
+        if !a.path().is_ident("jac") { continue }
+        let mut cls = None;
+        a.parse_nested_meta(|m| {
+            if m.path.is_ident("owned")    { cls = Some(Ownership::Owned);    Ok(()) }
+            else if m.path.is_ident("shared")   { cls = Some(Ownership::Shared);   Ok(()) }
+            else if m.path.is_ident("borrowed") { cls = Some(Ownership::Borrowed); Ok(()) }
+            else { Err(m.error("unknown #[jac(...)] key: expected owned, shared, or borrowed")) }
+        })?;
+        return cls.ok_or_else(|| Error::new(a.span(),
+            "#[jac(...)] requires a class: #[jac(owned)], #[jac(shared)], or #[jac(borrowed)]"));
+    }
+    Ok(Ownership::Owned)
 }
 
 fn analyze_param(arg: &FnArg, types: &[TypeDef]) -> Result<Param, Error> {
@@ -575,7 +661,9 @@ fn build_blob(module_name: &str, types: &[TypeDef], fns: &[FnDef]) -> Vec<u8> {
         put_u32(&mut buf, off + 20, f.self_idx.map(|i| i as u32).unwrap_or(schema::TAG_VOID));
         buf[off + 24] = f.kind;
         put_u32(&mut buf, off + 28, f.throws.map(|i| i as u32).unwrap_or(schema::TAG_VOID));
-        put_u32(&mut buf, off + 32, f.ret.as_u32());
+        // Phase S: the ownership class rides the Ref return tag as append-only
+        // high bits (owned = 0, byte-identical to frozen v1).
+        put_u32(&mut buf, off + 32, f.ret.as_u32() | f.ownership.bits());
         // Canonicalize an empty param slice to offset 0 (never dereferenced when
         // count==0). Matches the hand-written M0 reference vector byte-for-byte;
         // a stray cursor offset into the pool for a zero-length slice is misleading.
@@ -653,8 +741,72 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
             #[repr(C)]
             pub struct JacBuf { pub ptr: *mut u8, pub len: u32, pub cap: u32 }
 
+            // Every opaque handle points at one of these, not a bare `T`.  The
+            // `busy` flag is a reentrancy latch: a `&mut self` shim try-locks it
+            // before forming the exclusive borrow, so a callback that re-enters
+            // its own receiver hits a clean Jac-layer error (status 1) instead of
+            // aliasing the live `&mut` (UB).  `&self`-only shims never touch it.
+            //
+            // `rc` (Phase S, Track A) is the handle box's reference count. It
+            // starts at 1 (one owner: the wrapper the return minted). A second
+            // wrapper over the SAME box — an identity/`Self` return, a copied
+            // handle integer, or an honestly-`shared` alias — `retain`s it
+            // (rc+1); the drop shim `release`s it (rc-1) and frees the box only
+            // at rc==0, so double-close is idempotent and the inner `T` drops
+            // exactly once.  `busy` stays first to preserve the `&(*p).busy`
+            // offset math the `&mut self` shims rely on; `rc` is appended last.
+            #[repr(C)]
+            pub struct JacHandle<T> {
+                pub busy: ::std::sync::atomic::AtomicBool,
+                pub value: T,
+                pub rc: ::std::sync::atomic::AtomicUsize,
+            }
+
+            impl<T> JacHandle<T> {
+                pub fn new(value: T) -> Self {
+                    JacHandle {
+                        busy: ::std::sync::atomic::AtomicBool::new(false),
+                        value,
+                        rc: ::std::sync::atomic::AtomicUsize::new(1),
+                    }
+                }
+            }
+
+            // RAII latch: `try_acquire` fails (None) when the handle is already in
+            // use; on success the guard releases the flag on drop, so the latch is
+            // cleared even if the wrapped call panics and unwinds.
+            pub struct BusyGuard<'a>(&'a ::std::sync::atomic::AtomicBool);
+
+            impl<'a> BusyGuard<'a> {
+                pub fn try_acquire(flag: &'a ::std::sync::atomic::AtomicBool)
+                    -> ::std::option::Option<BusyGuard<'a>>
+                {
+                    match flag.compare_exchange(
+                        false, true,
+                        ::std::sync::atomic::Ordering::Acquire,
+                        ::std::sync::atomic::Ordering::Relaxed,
+                    ) {
+                        ::std::result::Result::Ok(_) => ::std::option::Option::Some(BusyGuard(flag)),
+                        ::std::result::Result::Err(_) => ::std::option::Option::None,
+                    }
+                }
+            }
+
+            impl ::std::ops::Drop for BusyGuard<'_> {
+                fn drop(&mut self) {
+                    self.0.store(false, ::std::sync::atomic::Ordering::Release);
+                }
+            }
+
             pub fn string_to_jacbuf(s: String) -> JacBuf {
                 let mut v = s.into_bytes();
+                // 0.2.3: the boundary carries len/cap as u32; a >4 GiB buffer would
+                // silently truncate and later free the wrong extent. Panic (→ the
+                // shim's status-2 path) rather than corrupt the free.
+                assert!(
+                    v.len() <= u32::MAX as usize && v.capacity() <= u32::MAX as usize,
+                    "jac bridge: string buffer exceeds u32 boundary limit"
+                );
                 let ptr = v.as_mut_ptr();
                 let len = v.len() as u32;
                 let cap = v.capacity() as u32;
@@ -667,6 +819,11 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
             // via the module's free-buf shim).  Used for the serialized wire image
             // of a HashMap return (a dict[str, V] marshaled as one owned blob).
             pub fn vec_to_jacbuf(mut v: Vec<u8>) -> JacBuf {
+                // 0.2.3: same u32 boundary guard as string_to_jacbuf.
+                assert!(
+                    v.len() <= u32::MAX as usize && v.capacity() <= u32::MAX as usize,
+                    "jac bridge: vec buffer exceeds u32 boundary limit"
+                );
                 let ptr = v.as_mut_ptr();
                 let len = v.len() as u32;
                 let cap = v.capacity() as u32;
@@ -676,6 +833,30 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
 
             pub fn panic_err_handle(msg: &str) -> u64 {
                 ::std::boxed::Box::into_raw(::std::boxed::Box::new(msg.to_string())) as u64
+            }
+
+            // 0.2.5: recover the panic message from the caught payload. `panic!`
+            // payloads are almost always `&str` or `String`; downcast both so the
+            // Jac-side exception carries the real message (`ctx: detail`) instead
+            // of a bare "panic in <symbol>".
+            pub fn panic_err_handle_from(
+                payload: ::std::boxed::Box<dyn ::std::any::Any + ::std::marker::Send>,
+                ctx: &str,
+            ) -> u64 {
+                let detail = if let ::std::option::Option::Some(s) =
+                    payload.downcast_ref::<&str>()
+                {
+                    (*s).to_string()
+                } else if let ::std::option::Option::Some(s) =
+                    payload.downcast_ref::<String>()
+                {
+                    s.clone()
+                } else {
+                    "unknown panic payload".to_string()
+                };
+                ::std::boxed::Box::into_raw(
+                    ::std::boxed::Box::new(format!("{ctx}: {detail}"))
+                ) as u64
             }
 
             // A callback the Jac side hands us.  It crosses as a single u64 that
@@ -726,17 +907,29 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
                             format!("callback returned error status {st}")
                         );
                     }
-                    let out = if buf.ptr.is_null() {
-                        String::new()
+                    // 0.2.6: validate the callback's bytes strictly (matching the
+                    // param-side `str::from_utf8` discipline) rather than lossily
+                    // replacing invalid sequences.  Invalid UTF-8 becomes a callback
+                    // error the bridge fn propagates as status 1.
+                    let decoded: ::std::result::Result<String, String> = if buf.ptr.is_null() {
+                        ::std::result::Result::Ok(String::new())
                     } else {
                         let bytes = unsafe {
                             ::std::slice::from_raw_parts(buf.ptr, buf.len as usize)
                         };
-                        String::from_utf8_lossy(bytes).into_owned()
+                        match ::std::str::from_utf8(bytes) {
+                            ::std::result::Result::Ok(s) =>
+                                ::std::result::Result::Ok(s.to_string()),
+                            ::std::result::Result::Err(e) =>
+                                ::std::result::Result::Err(
+                                    format!("callback returned non-UTF-8 bytes: {e}")
+                                ),
+                        }
                     };
                     // Reclaim the owned replacement buffer (cap!=0 == Jac-allocated
                     // via `..._make_buf`).  cap==0 would be a borrowed buffer we
-                    // must not free; null ptr is a no-op.
+                    // must not free; null ptr is a no-op.  Freed regardless of
+                    // whether decoding succeeded.
                     if !buf.ptr.is_null() && buf.cap != 0 {
                         unsafe {
                             ::std::mem::drop(::std::vec::Vec::from_raw_parts(
@@ -744,16 +937,20 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
                             ));
                         }
                     }
-                    ::std::result::Result::Ok(out)
+                    decoded
                 }
             }
         }
     }];
 
     // D3: compile-time Send assertion for every opaque type (ABI requirement)
+    // The handle that crosses the boundary is `JacHandle<T>`, not a bare `T`, so
+    // the ABI Send requirement is asserted on the wrapper (`JacHandle<T>: Send`
+    // iff `T: Send`, since both `AtomicBool` and the Phase-S `AtomicUsize` rc
+    // field are Send+Sync).
     let opaque_paths: Vec<TS2> = types.iter()
         .filter(|t| t.kind == TypeKind::Opaque)
-        .map(|t| { let n = &t.name; quote! { #mod_ident :: #n } })
+        .map(|t| { let n = &t.name; quote! { #rt :: JacHandle< #mod_ident :: #n > } })
         .collect();
     if !opaque_paths.is_empty() {
         items.push(quote! {
@@ -771,13 +968,35 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
         match t.kind {
             TypeKind::Opaque => {
                 let sym = format_ident!("jac_{module_name}_{tname}_drop");
+                let retain_sym = format_ident!("jac_{module_name}_{tname}_retain");
                 items.push(quote! {
+                    // Phase S, Track A: bump the handle box's refcount. Called by
+                    // the loader when a SECOND wrapper adopts an existing handle
+                    // (identity/`Self` return, copied handle, honest `shared`
+                    // alias), so the box outlives every owner.  Null is a no-op.
+                    #[no_mangle]
+                    pub unsafe extern "C" fn #retain_sym(handle: u64) {
+                        if handle != 0 {
+                            let h = unsafe { &*(handle as *const #rt::JacHandle<#tpath>) };
+                            h.rc.fetch_add(1, ::std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
+                    // Phase S, Track A: `close()`/`__del__` is now a DECREF, not an
+                    // unconditional free.  The box (and its inner `T`) is dropped
+                    // only when the last reference releases (rc 1 -> 0), so a
+                    // double-close is idempotent and two wrappers over one box are
+                    // sound.  Release/Acquire fence around the free mirrors the
+                    // standard `Arc` drop discipline.
                     #[no_mangle]
                     pub unsafe extern "C" fn #sym(handle: u64) {
                         if handle != 0 {
-                            unsafe { ::std::mem::drop(
-                                ::std::boxed::Box::from_raw(handle as *mut #tpath)
-                            ); }
+                            let h = unsafe { &*(handle as *const #rt::JacHandle<#tpath>) };
+                            if h.rc.fetch_sub(1, ::std::sync::atomic::Ordering::Release) == 1 {
+                                ::std::sync::atomic::fence(::std::sync::atomic::Ordering::Acquire);
+                                unsafe { ::std::mem::drop(
+                                    ::std::boxed::Box::from_raw(handle as *mut #rt::JacHandle<#tpath>)
+                                ); }
+                            }
                         }
                     }
                 });
@@ -821,6 +1040,18 @@ fn gen_shims(module_name: &str, types: &[TypeDef], fns: &[FnDef], mod_ident: &Id
             out_buf: *mut #rt::JacBuf,
             out_err: *mut u64,
         ) -> i32 {
+            // 0.2.1: never dereference a null panic handle.
+            if err_handle == 0 {
+                unsafe {
+                    *out_buf = #rt::JacBuf {
+                        ptr: ::std::ptr::null_mut(), len: 0, cap: 0
+                    };
+                    *out_err = ::std::boxed::Box::into_raw(::std::boxed::Box::new(
+                        "null handle (use after close?)".to_string()
+                    )) as u64;
+                }
+                return 1;
+            }
             let r = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                 let s = unsafe { &*(err_handle as *const String) };
                 #rt::string_to_jacbuf(s.clone())
@@ -901,6 +1132,18 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
                 out_buf: *mut #rt::JacBuf,
                 out_err: *mut u64,
             ) -> i32 {
+                // 0.2.1: never dereference a null error handle.
+                if err_handle == 0 {
+                    unsafe {
+                        *out_buf = #rt::JacBuf {
+                            ptr: ::std::ptr::null_mut(), len: 0, cap: 0
+                        };
+                        *out_err = ::std::boxed::Box::into_raw(::std::boxed::Box::new(
+                            "null handle (use after close?)".to_string()
+                        )) as u64;
+                    }
+                    return 1;
+                }
                 let r = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                     let s = unsafe { &*(err_handle as *const String) };
                     #rt::string_to_jacbuf(s.clone())
@@ -978,12 +1221,45 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
         call_args.push(quote! { #pn });
     }
 
-    // Self deref (inside closure below)
+    // Self deref (inside closure below).  Two defensive guards precede every
+    // method deref:
+    //   0.2.1 null-handle guard — a raw handle of 0 (use-after-close on the
+    //         aliasing path the Jac wrapper cannot catch) returns status 1
+    //         instead of dereferencing null.
+    //   0.2.2 reentrancy guard — a `&mut self` method try-locks the handle's
+    //         `busy` latch before forming the exclusive borrow, so a callback
+    //         re-entering its own receiver gets status 1, never an aliased &mut.
+    // `&self`-only methods skip the busy latch (shared access is reentrancy-safe)
+    // but still null-check.  Field access goes through raw-pointer projections
+    // (`&(*p).busy` / `&mut (*p).value`) so the shared `busy` borrow and the
+    // exclusive `value` borrow stay on disjoint fields.
     let self_stmt: TS2 = if f.kind == schema::FN_METHOD {
+        let null_guard = quote! {
+            if handle == 0 {
+                return ::std::result::Result::<_, String>::Err(
+                    "null handle (use after close?)".to_string()
+                );
+            }
+        };
         if f.self_is_mut {
-            quote! { let self_ = unsafe { &mut *(handle as *mut #tpath) }; }
+            quote! {
+                #null_guard
+                let __busy = unsafe { &(*(handle as *const #rt::JacHandle<#tpath>)).busy };
+                let _guard = match #rt::BusyGuard::try_acquire(__busy) {
+                    ::std::option::Option::Some(g) => g,
+                    ::std::option::Option::None => {
+                        return ::std::result::Result::<_, String>::Err(
+                            "object already in use (reentrant call)".to_string()
+                        );
+                    }
+                };
+                let self_ = unsafe { &mut (*(handle as *mut #rt::JacHandle<#tpath>)).value };
+            }
         } else {
-            quote! { let self_ = unsafe { &*(handle as *const #tpath) }; }
+            quote! {
+                #null_guard
+                let self_ = unsafe { &(*(handle as *const #rt::JacHandle<#tpath>)).value };
+            }
         }
     } else {
         quote! {}
@@ -1008,14 +1284,14 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
     // Closure body — always yields Result<X, String>
     let closure_body: TS2 = if f.ret_is_result {
         quote! {
-            #(#decode)*
             #self_stmt
+            #(#decode)*
             #call_expr.map_err(|e| e.to_string())
         }
     } else {
         quote! {
-            #(#decode)*
             #self_stmt
+            #(#decode)*
             ::std::result::Result::<_, String>::Ok(#call_expr)
         }
     };
@@ -1048,10 +1324,10 @@ fn gen_fn_shim(f: &FnDef, types: &[TypeDef], mod_ident: &Ident, rt: &Ident, _has
                     }
                     1
                 }
-                ::std::result::Result::Err(_) => {
+                ::std::result::Result::Err(__payload) => {
                     unsafe {
                         #zero_out
-                        *out_err = #rt::panic_err_handle(#panic_msg);
+                        *out_err = #rt::panic_err_handle_from(__payload, #panic_msg);
                     }
                     2
                 }
@@ -1088,7 +1364,9 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
         ),
         Tag::Ref(_) => (
             quote! { out_handle: *mut u64, },
-            quote! { *out_handle = ::std::boxed::Box::into_raw(::std::boxed::Box::new(val)) as u64; },
+            quote! { *out_handle = ::std::boxed::Box::into_raw(
+                ::std::boxed::Box::new(#rt::JacHandle::new(val))
+            ) as u64; },
             quote! { *out_handle = 0; },
         ),
         // Nullable returns: `None` is signalled in-band on an OK status —
@@ -1099,7 +1377,9 @@ fn out_param_tokens(ret: &Tag, rt: &Ident) -> (TS2, TS2, TS2) {
                 quote! {
                     *out_handle = match val {
                         ::std::option::Option::Some(x) =>
-                            ::std::boxed::Box::into_raw(::std::boxed::Box::new(x)) as u64,
+                            ::std::boxed::Box::into_raw(
+                                ::std::boxed::Box::new(#rt::JacHandle::new(x))
+                            ) as u64,
                         ::std::option::Option::None => 0,
                     };
                 },

@@ -12,6 +12,8 @@ glob MAGIC = b"JACBRDG1",
      TAG_OPT_BIT = 0x40000000,
      TAG_MAP_BIT = 0x20000000,
      TAG_LIST_BIT = 0x10000000,
+     TAG_SHARED_BIT = 0x08000000,
+     TAG_BORROW_BIT = 0x04000000,
      KIND_OPAQUE = 0,
      KIND_ERROR = 3,
      FN_CTOR = 0,
@@ -41,8 +43,18 @@ def tag_is_ref(tag: int) -> bool {
 }
 
 
+def tag_is_shared(tag: int) -> bool {
+    return tag_is_ref(tag) and bool(tag & TAG_SHARED_BIT);
+}
+
+
+def tag_is_borrowed(tag: int) -> bool {
+    return tag_is_ref(tag) and bool(tag & TAG_BORROW_BIT);
+}
+
+
 def tag_ref_index(tag: int) -> int {
-    return tag_base(tag) & ~TAG_REF_BIT;
+    return tag_base(tag) & ~TAG_REF_BIT & ~TAG_SHARED_BIT & ~TAG_BORROW_BIT;
 }
 
 

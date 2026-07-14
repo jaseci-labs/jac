@@ -51,6 +51,22 @@ pub const TAG_MAP_BIT: u32 = 0x2000_0000;
 /// little-endian) and the loader deep-copies it into a fresh list.  Return-only.
 /// Additive to ABI v1 — old blobs never set it (append-only evolution rule, D2).
 pub const TAG_LIST_BIT: u32 = 0x1000_0000;
+/// OR'd into a `Ref` return tag to mark the returned handle as **shared** (Phase
+/// S, Track A): the return is an existing RC'd inner, not a fresh owner. The
+/// loader `retain`s the source handle when it adopts the return, so both
+/// wrappers hold an independent reference and `close()` (a decref) frees the
+/// inner exactly once at rc==0. Neither this bit nor [`TAG_BORROW_BIT`] set =
+/// **owned** (the default: the wrapper owns the object and `close()` drops it).
+/// Return-only. Additive to ABI v1 — old blobs never set it (append-only
+/// evolution rule, D2).
+pub const TAG_SHARED_BIT: u32 = 0x0800_0000;
+/// OR'd into a `Ref` return tag to mark the returned handle as **borrowed**
+/// (Phase S, Track A): a live, RC-pinned view into an owner's interior. Minting
+/// the view `retain`s the OWNER handle (rc+1); because the owner cannot reach
+/// rc==0 while the view is live, the view is always valid with no `__valid`
+/// flag. Dropping the view `release`s the owner. Return-only. Additive to ABI
+/// v1 — old blobs never set it (append-only evolution rule, D2).
+pub const TAG_BORROW_BIT: u32 = 0x0400_0000;
 
 // TypeKind values (u8, byte 4 of each TypeDesc)
 pub const KIND_OPAQUE: u8 = 0;

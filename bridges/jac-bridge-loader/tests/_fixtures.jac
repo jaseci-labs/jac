@@ -3,7 +3,7 @@
 # auto-generated ctypes modules.
 import from pathlib { Path }
 import from jaclang.compiler.rust_bridge { load_bridge }
-import from jaclang.compiler.rust_bridge._finder { find_lib_in_dirs }
+import from jaclang.compiler.rust_bridge._finder { find_bridge_lib }
 
 
 def workspace -> Path {
@@ -14,7 +14,7 @@ def workspace -> Path {
 
 def _find_so(crate: str) -> str {
     ws = workspace();
-    found = find_lib_in_dirs(crate, [ws / "target" / "release"]);
+    found = find_bridge_lib(crate, [ws / "target" / "release"]);
     if found is not None {
         return str(found);
     }

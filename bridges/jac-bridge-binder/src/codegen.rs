@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use crate::types::{
-    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, OwningWrapper, Recv,
+    BridgeFn, BridgeReturn, BridgeSpec, BridgeType, DrainCollect, Ownership, OwningWrapper, Recv,
     RootProducer, ScalarType, TypeKind, WrapperKind,
 };
 
@@ -513,8 +513,18 @@ fn emit_fn(f: &BridgeFn, bt: &BridgeType, is_ctor: bool) -> Option<String> {
     };
 
     let async_kw = if f.is_async { "async " } else { "" };
+    // Phase S: stamp the ownership helper attribute on non-`Owned` handle returns
+    // so the macro ORs the ownership bit into the `Ref` return tag. `Owned` (the
+    // default, and every ctor / fresh-object / owning-wrapper return) emits
+    // nothing — the generated source stays byte-identical to pre-Phase-S output,
+    // which is what keeps `coverage-baseline.toml` and the golden fixtures pinned.
+    let own_attr = match f.ret_ownership {
+        Ownership::Owned => String::new(),
+        Ownership::Shared => "        #[jac(shared)]\n".into(),
+        Ownership::Borrowed => "        #[jac(borrowed)]\n".into(),
+    };
     Some(format!(
-        "        pub {async_kw}fn {}({}){} {{\n            {}\n        }}",
+        "{own_attr}        pub {async_kw}fn {}({}){} {{\n            {}\n        }}",
         exposed, params_str, ret_ann, body
     ))
 }

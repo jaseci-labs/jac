@@ -105,6 +105,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "jac-bridge-owning2"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
+ "regex",
+]
+
+[[package]]
+name = "jac-bridge-owning3"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
+ "regex",
+]
+
+[[package]]
+name = "jac-bridge-reentrant"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
+]
+
+[[package]]
 name = "jac-bridge-regex"
 version = "0.1.0"
 dependencies = [
@@ -130,6 +153,13 @@ dependencies = [
 [[package]]
 name = "jac-bridge-schema"
 version = "0.1.0"
+
+[[package]]
+name = "jac-bridge-view"
+version = "0.1.0"
+dependencies = [
+ "jac-bridge",
+]
 
 [[package]]
 name = "libc"

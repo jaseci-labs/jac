@@ -12,6 +12,7 @@ pub use overlay::{apply_overlay, parse_overlay, Overlay};
 #[cfg(test)]
 mod tests {
     mod classify_regex;
+    mod ctor_dedup;
     mod codegen_async;
     mod codegen_containers;
     mod codegen_regex;

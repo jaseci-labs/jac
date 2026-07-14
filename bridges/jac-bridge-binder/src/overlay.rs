@@ -32,7 +32,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::types::BridgeSpec;
+use crate::types::{BridgeSpec, Ownership};
 
 /// Parsed overlay. Maps are `BTreeMap` so iteration is deterministic (the D6
 /// byte-identical-output guarantee must not depend on hash order).
@@ -63,6 +63,15 @@ pub struct FnOverlay {
     /// pick. A pinned rule whose preconditions the method fails records an honest
     /// skip. Exclusive with `skip`/`rename` on the same entry.
     pub treat_as: Option<String>,
+    /// Force the ownership class of an opaque-handle return (Phase S, Track B):
+    /// `"owned"` (default — same as omitting), `"shared"` (the return is one
+    /// reference on an RC'd inner), or `"borrowed"` (a live view that RC-pins its
+    /// `&self` owner). The binder defaults every handle return to `owned` because
+    /// rustdoc cannot prove otherwise; this key is the escape hatch where the
+    /// crate's contract is `shared`/`borrowed`. Exclusive with `skip` (a skipped
+    /// method has no return) and with `treat_as` (a reclassified method's return
+    /// shape is decided at classify time, not here).
+    pub ownership: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -198,15 +207,37 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
                 ));
             }
             // A treat_as directive fully determines the method's fate at classify
-            // time, so it is exclusive with skip/rename on the same entry —
-            // combining them would silently drop the skip/rename. Fail loud.
-            if f.skip || f.rename.is_some() {
+            // time, so it is exclusive with skip/rename/ownership on the same
+            // entry — combining them would silently drop the other directive.
+            // Fail loud.
+            if f.skip || f.rename.is_some() || f.ownership.is_some() {
                 return Err(format!(
-                    "overlay: [fn.\"{key}\"] treat_as is exclusive with skip/rename on \
-                     the same entry — split them into separate directives"
+                    "overlay: [fn.\"{key}\"] treat_as is exclusive with skip/rename/ownership \
+                     on the same entry — split them into separate directives"
                 ));
             }
             continue;
+        }
+
+        // Validate the ownership value early (before the type lookup) so a typo
+        // fails loud regardless of whether the target type survived earlier
+        // skips. `owned` is the default and is accepted as an explicit no-op.
+        let forced_ownership = match f.ownership.as_deref() {
+            None | Some("owned") => None,
+            Some("shared") => Some(Ownership::Shared),
+            Some("borrowed") => Some(Ownership::Borrowed),
+            Some(other) => {
+                return Err(format!(
+                    "overlay: [fn.\"{key}\"] ownership = \"{other}\" is not a known class — \
+                     expected \"owned\", \"shared\", or \"borrowed\""
+                ));
+            }
+        };
+        if forced_ownership.is_some() && f.skip {
+            return Err(format!(
+                "overlay: [fn.\"{key}\"] ownership is exclusive with skip = true — a skipped \
+                 method has no return to classify"
+            ));
         }
 
         let Some(bt) = spec.types.iter_mut().find(|bt| bt.name == type_name) else {
@@ -235,6 +266,21 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
                 None => {
                     return Err(format!(
                         "overlay: [fn.\"{key}\"] rename — no bridged method `{method}` on `{type_name}`"
+                    ))
+                }
+            }
+        }
+        if let Some(own) = forced_ownership {
+            let target = bt
+                .methods
+                .iter_mut()
+                .chain(bt.ctor.iter_mut())
+                .find(|m| m.name == method);
+            match target {
+                Some(m) => m.ret_ownership = own,
+                None => {
+                    return Err(format!(
+                        "overlay: [fn.\"{key}\"] ownership — no bridged method `{method}` on `{type_name}`"
                     ))
                 }
             }

@@ -12,6 +12,7 @@ import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
 import from jaclang.compiler.rust_bridge._finder {
     find_bridge_lib,
     is_bridge_module,
+    _cache_root,
     _crate_of
 }
 import from jaclang.compiler.rust_bridge._synth { NaModule, Skip, render_na_source }
@@ -55,8 +56,7 @@ def load_bridge(so_path: str | Path) -> object {
 
 
 def _gen_root -> Path {
-    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache");
-    return Path(base) / "jac" / "rust-bridges-gen";
+    return _cache_root().parent / "rust-bridges-gen";
 }
 
 
@@ -113,6 +113,21 @@ def materialize_bridge(module_name: str, extra_dirs: list | None = None) -> str 
     synth = synthesize_bridge(crate, extra_dirs);
     if synth is None {
         return None;
+    }
+
+    import from jaclang.jac0core.parser { parse as _jac_parse }
+    import from jaclang.jac0core.program { JacProgram }
+    _probe = JacProgram();
+    (_mod, _had_err) = _jac_parse(
+        synth.source, f"<rust.{crate} generated bridge>", prog=_probe
+    );
+    if _had_err {
+        _first = _probe.errors_had[0].pretty_print()
+            if _probe.errors_had
+            else "syntax error";
+        raise ValueError(
+            f"rust.{crate}: synthesized bridge source failed to parse " + f"(this is a jac rust-bridge codegen bug): {_first}"
+        );
     }
 
     out_dir = _gen_root();

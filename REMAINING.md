@@ -53,7 +53,7 @@ policy - see IMPLEMENTATION.md / PLAN.md). Updated 2026-07.
 
 ## ABI v1 ceiling (honest skips until v2)
 
-These are **not** “finish M6” items - they need TYPE-MODEL-V2 or accepted v1 limits:
+These are **not** “finish M6” items - they need the Lanes Plan (`bridges/reference/FFI-LANES-PLAN.md`, serde wide lane + py tier) or accepted v1 limits:
 
 | Gap | Example |
 |-----|---------|
@@ -69,13 +69,13 @@ These are **not** “finish M6” items - they need TYPE-MODEL-V2 or accepted v1
 | Unpinned generics | `Date<Tz>` dropped without overlay |
 | Trait-object APIs | uuid 0/6, sha2 0/0 |
 
-Reference: `bridges/reference/TYPE-MODEL-V2-PLAN.md`
+Reference: `bridges/reference/FFI-LANES-PLAN.md` (cancels TYPE-MODEL-V2)
 
 ---
 
-## TYPE-MODEL-V2 (broad interop) - ~3–6 months
+## Lanes Plan -- broad interop (serde wide lane + py tier) - ~3–6 months
 
-Clean cutover; delete v1 tag bitfield. Phases 0–7 in TYPE-MODEL-V2-PLAN.md:
+Replaces cancelled TYPE-MODEL-V2. See `bridges/reference/FFI-LANES-PLAN.md` for full plan. Phases:
 
 0. Foundation - `jac-bridge-typemodel`, postcard metadata, shared `_marshal.jac`, re-encode existing shapes
 1. Floats
@@ -116,4 +116,4 @@ Ratchet floors in `bridges/jac-bridge-binder/tests/corpus/coverage-baseline.toml
 2. Ship **experimental** - regex + registry + native-only docs
 3. Seed crates + overlays + use-site monomorphization
 4. na polish (`Option<String>`, Windows na if needed)
-5. TYPE-MODEL-V2 Phase 0 when v1 ceiling blocks real users
+5. Lanes Plan Phase 0 (serde wide lane) when v1 ceiling blocks real users

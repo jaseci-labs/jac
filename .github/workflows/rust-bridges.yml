@@ -92,10 +92,16 @@ jobs:
           restore-keys: bridges-${{ runner.os }}-
 
       # The na tests marshal against the real bridge .so files (metadata section
-      # + symbols), so build them in release before compiling any probe.
-      - name: Build the owning + scalar + map + list + async bridge .so files
+      # + symbols), so build EVERY bridge cdylib in the workspace before running
+      # any probe. A whole-workspace build (rather than a hand-picked `-p` list)
+      # means a newly added bridge crate's .so is always present for a newly
+      # added test -- there is no parallel "crate build list" to keep in sync
+      # with test discovery below. This also builds jac-bridge-regex (the
+      # flagship end-to-end path) and the adversarial suite's owning2/owning3/
+      # reentrant crates.
+      - name: Build every bridge .so (release)
         working-directory: bridges
-        run: cargo build -p jac-bridge-owning -p jac-bridge-scalar -p jac-bridge-map -p jac-bridge-list -p jac-bridge-async --release
+        run: cargo build --release
 
       # Provides the `jac` binary (bundled LLVM shim) on PATH and places the shim
       # in-tree at jac/jaclang/compiler/passes/native/llvm/libjacllvm.so.
@@ -107,61 +113,19 @@ jobs:
       - name: Export the in-tree LLVM shim
         run: echo "JAC_LLVM_SHIM=$GITHUB_WORKSPACE/jac/jaclang/compiler/passes/native/llvm/libjacllvm.so" >> "$GITHUB_ENV"
 
-      - name: Run the na callback RC-leak regression
-        run: jac test bridges/jac-bridge-loader/tests/na/test_callback_leak.jac
-
-      - name: Run the na owning conformance vertical
-        run: jac test bridges/jac-bridge-loader/tests/na/owning_conformance.jac
-
-      # M6.1 integer boundary tags (TAG_INT / TAG_UINT): the ABI drift guard, the
-      # CPython + na source-shape unit tests, and the na<->CPython conformance
-      # against the same scalar .so.
-      - name: Guard the ABI constants against drift
-        run: jac test bridges/jac-bridge-loader/tests/na/test_abi_drift.jac
-
-      - name: Run the scalar integer loader + codegen unit tests
-        run: |
-          jac test bridges/jac-bridge-loader/tests/test_scalar.jac
-          jac test bridges/jac-bridge-loader/tests/test_na_codegen_scalar.jac
-
-      - name: Run the na scalar integer conformance vertical
-        run: jac test bridges/jac-bridge-loader/tests/na/scalar_conformance.jac
-
-      # M6.2 HashMap->dict marshaling (TAG_MAP_BIT): the CPython loader deep-copies
-      # a HashMap<String, V> return into a real dict[str, V]; the na backend now
-      # ALSO builds and returns a real dict[str, V] (its synthesizer emits a decode
-      # loop, asserted at the source level by the codegen test).
-      - name: Run the map dict loader + na codegen unit tests
-        run: |
-          jac test bridges/jac-bridge-loader/tests/test_map.jac
-          jac test bridges/jac-bridge-loader/tests/test_na_codegen_map.jac
-
-      # Proves na==CPython for the dict[str, V] return: nacompiles the synthesized
-      # source against the real .so, runs it, diffs the values (sorted key=value).
-      - name: Run the na map dict conformance vertical
-        run: jac test bridges/jac-bridge-loader/tests/na/map_conformance.jac
-
-      # M6 Vec tail (TAG_LIST_BIT): the CPython loader deep-copies a Vec<V> return
-      # into a real list[V]; the na backend now ALSO builds and returns a real
-      # list[V] (its synthesizer emits a decode loop, asserted at the source level
-      # by the codegen test).
-      - name: Run the list loader + na codegen unit tests
-        run: |
-          jac test bridges/jac-bridge-loader/tests/test_list.jac
-          jac test bridges/jac-bridge-loader/tests/test_na_codegen_list.jac
-
-      # Proves na==CPython for the list[V] return: nacompiles the synthesized
-      # source against the real .so, runs it, diffs the elements in order.
-      - name: Run the na list conformance vertical
-        run: jac test bridges/jac-bridge-loader/tests/na/list_conformance.jac
-
-      # M6.3 async fn -> blocking C shim: the #[bridge] macro's async detection is
-      # already gated by the binder's codegen_async unit tests (cargo test
-      # --workspace above). These two steps prove the runtime round-trip: the
-      # CPython loader drives a real Tokio runtime through the sync shim, and the
-      # na vertical shows na==CPython for the async ctor + signed/str/Vec returns.
-      - name: Run the async fn loader tests
-        run: jac test bridges/jac-bridge-loader/tests/test_async.jac
-
-      - name: Run the na async fn conformance vertical
-        run: jac test bridges/jac-bridge-loader/tests/na/async_conformance.jac
+      # Discover-and-run EVERY .jac test suite under the loader tests tree by
+      # directory: `-d` marks the whole tree a Jac `[test]` root, so the collector
+      # runs the `test` blocks of every `.jac` file beneath it regardless of name
+      # (issue #7151), not just a hand-enumerated list. This one step therefore
+      # covers the CPython-loader suites, the na conformance verticals
+      # (owning/scalar/map/list/async), the callback RC-leak regression, the ABI
+      # drift guard, the na coverage-floor ratchet (test_na_coverage_floor.jac),
+      # AND the Phase 0 adversarial exit gate (adversarial_conformance.jac) -- and
+      # any test file added later is picked up automatically with nothing to edit
+      # here. Serial (JAC_TEST_JOBS=0): each na vertical nacompiles a probe and
+      # the parallel xdist runner OOMs the GitHub runner.
+      - name: Run the rust-bridge loader suites (auto-discovered by directory)
+        env:
+          JAC_TEST_JOBS: "0"
+          LD_LIBRARY_PATH: ${{ github.workspace }}/bridges/target/release
+        run: jac test -d bridges/jac-bridge-loader/tests

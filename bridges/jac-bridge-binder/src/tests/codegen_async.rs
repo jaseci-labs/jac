@@ -9,7 +9,8 @@
 
 use crate::codegen::{emit, emit_cargo_toml};
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Recv, ScalarType, TypeKind,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, ScalarType,
+    TypeKind,
 };
 
 fn async_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
@@ -21,6 +22,7 @@ fn async_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Brid
         throws: None,
         recv: Recv::Field0,
         is_async: true,
+        ret_ownership: Ownership::Owned,
     }
 }
 
@@ -33,6 +35,7 @@ fn sync_method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> Bridg
         throws: None,
         recv: Recv::Field0,
         is_async: false,
+        ret_ownership: Ownership::Owned,
     }
 }
 

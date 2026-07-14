@@ -93,9 +93,17 @@ dropped = 4
 # their error type and bridge instead of skipping. `dropped` 4 counts chrono's
 # remaining unpinned generic structs (Date/DateTime<Tz> without a monomorphize
 # overlay); `total` 174 -> 181 folds those four in as hidden surface.
+#
+# 0.3.1 (binder honesty — single deterministic constructor) then lifted `total`
+# 181 -> 198: types with several `-> Self` associated fns (TimeDelta's
+# `hours`/`weeks`/`zero`/… beside the winning `days`, NaiveDate's `from_ymd`/
+# `from_yo` beside `from_num_days_from_ce`) now record the losers as honest
+# "additional constructor" skips instead of silently letting the last-walked one
+# clobber the ctor. `bridged` is unchanged (still one ctor per type); the 17 newly
+# visible skips are unbridged surface that was previously invisible.
 [chrono]
 bridged = 33
-total = 181
+total = 198
 dropped = 4
 
 [uuid]

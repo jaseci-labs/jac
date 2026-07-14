@@ -893,6 +893,20 @@ test "lists list set" {
     assert f() == 99;
 }
 
+# empty `[]` literal lowered from a RETURN type context (0.5.5)
+test "lists empty list return" {
+    (eng, _) = compile_native("lists.na.jac");
+    f = get_func(eng, "empty_list_return_len", ctypes.c_int64);
+    assert f() == 0;
+}
+
+# empty `[]` literal lowered from a CALL-ARGUMENT slot type (0.5.5)
+test "lists empty list call arg" {
+    (eng, _) = compile_native("lists.na.jac");
+    f = get_func(eng, "empty_list_call_arg", ctypes.c_int64);
+    assert f() == 0;
+}
+
 # --- TestNativeComplexObjects ---
 test "complex objects chained field" {
     (eng, _) = compile_native("complex_objects.na.jac");
@@ -1320,6 +1334,20 @@ test "isinstance user no-vtable operand is clean false" {
 test "dicts dict new empty" {
     (eng, _) = compile_native("dicts_sets.na.jac");
     f = get_func(eng, "dict_new_empty", ctypes.c_int64);
+    assert f() == 0;
+}
+
+# empty `{}` literal lowered from a RETURN type context (0.5.5)
+test "dicts empty dict return" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "empty_dict_return_len", ctypes.c_int64);
+    assert f() == 0;
+}
+
+# empty `{}` literal lowered from a CALL-ARGUMENT slot type (0.5.5)
+test "dicts empty dict call arg" {
+    (eng, _) = compile_native("dicts_sets.na.jac");
+    f = get_func(eng, "empty_dict_call_arg", ctypes.c_int64);
     assert f() == 0;
 }
 

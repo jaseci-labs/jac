@@ -74,11 +74,46 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
     return ir.Constant(t, 0);
 }
 
+impl NaIRGenPass._resolve_bridge_lib_path(path: str) -> (str | None) {
+    import os;
+    if os.path.isfile(path) {
+        return path;
+    }
+    base = os.path.basename(path);
+    for var in ["JAC_RUST_BRIDGES_PATH", "LD_LIBRARY_PATH"] {
+        env = os.environ.get(var);
+        if not env {
+            continue;
+        }
+        for d in env.split(os.pathsep) {
+            if d {
+                cand = os.path.join(d, base);
+                if os.path.isfile(cand) {
+                    return cand;
+                }
+            }
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._register_bridge_metadata(path: str) -> None {
     import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
-    import from jaclang.compiler.rust_bridge._blob { parse }
+    import from jaclang.compiler.rust_bridge._blob {
+        parse,
+        TAG_FN,
+        TAG_VOID,
+        FN_CTOR,
+        FN_METHOD,
+        tag_is_ref,
+        tag_ref_index
+    }
+    resolved = self._resolve_bridge_lib_path(path);
+    if resolved is None {
+        return;
+    }
     try {
-        blob = read_jac_bridge_section(path);
+        blob = read_jac_bridge_section(resolved);
     } except Exception {
         return;
     }
@@ -87,31 +122,76 @@ impl NaIRGenPass._register_bridge_metadata(path: str) -> None {
     }
     try {
         meta = parse(blob);
-    } except Exception {
+    } except Exception as e {
+        self.log_info(
+            f"warning: bridge metadata in {resolved} present but unparseable " + f"({e}); callbacks for this crate will not be lowered"
+        );
         return;
     }
     self._bridge_make_buf_syms.add(
         f"jac_{meta.module_name}_{RUST_BRIDGE_MAKE_BUF_STEM}"
     );
+
+    for tdesc in meta.types {
+        tname = tdesc?.name;
+        if tname {
+            self._bridge_type_crate[tname] = meta.module_name;
+        }
+    }
+
+    n_types = len(meta.types);
+    for fd in meta.fns {
+        wrapper_name: (str | None) = None;
+        if fd.kind == FN_METHOD
+        and fd.self_type != TAG_VOID
+        and fd.self_type < n_types {
+            wrapper_name = f"{meta.types[fd.self_type].name}.{fd.name}";
+        } elif fd.kind == FN_CTOR and tag_is_ref(fd.ret) {
+            ti = tag_ref_index(fd.ret);
+            if ti < n_types {
+                wrapper_name = f"{meta.types[ti].name}.init";
+            }
+        }
+        if wrapper_name is None {
+            continue;
+        }
+        cb_idxs: set[int] = set();
+        for (pix, pdesc) in enumerate(fd.params) {
+            if pdesc.tag == TAG_FN {
+                cb_idxs.add(pix);
+            }
+        }
+        self._bridge_fn_callback_params[wrapper_name] = cb_idxs;
+    }
+}
+
+impl NaIRGenPass._bridge_callback_param(func: (ir.Function | None), pix: int) -> bool {
+    if func is None {
+        return False;
+    }
+    idxs = self._bridge_fn_callback_params.get(func.name);
+    return idxs is not None and pix in idxs;
 }
 
 impl NaIRGenPass._note_bridge_sink(name: str, fn: ir.Function) -> None {
     if name in self._bridge_make_buf_syms {
+        self._bridge_make_buf_fns[name] = fn;
         self._callback_make_buf = fn;
     }
 }
 
-impl NaIRGenPass._lambda_arg_is_callback(
-    nd: uni.UniNode, slot_type: (ir.Type | None) = None
-) -> bool {
-    if not isinstance(nd, uni.LambdaExpr) or self._callback_make_buf is None {
-        return False;
+impl NaIRGenPass._callback_make_buf_for(func: ir.Function) -> (ir.Function | None) {
+    nm = func.name;
+    tname = nm.split(".")[0] if "." in nm else None;
+    crate = self._bridge_type_crate.get(tname) if tname is not None else None;
+    if crate is not None {
+        sym = f"jac_{crate}_{RUST_BRIDGE_MAKE_BUF_STEM}";
+        fn = self._bridge_make_buf_fns.get(sym);
+        if fn is not None {
+            return fn;
+        }
     }
-
-    if slot_type is not None and not isinstance(slot_type, ir.IntType) {
-        return False;
-    }
-    return True;
+    return self._callback_make_buf;
 }
 
 impl NaIRGenPass._codegen_bound_args(
@@ -134,13 +214,16 @@ impl NaIRGenPass._codegen_bound_args(
     callee_sig = self._callee_sig_of(nd);
     args: list = [];
 
+    active_mb = self._callback_make_buf_for(func);
+
     if callee_sig is None {
-        for p in positional {
+        for (pix, p) in enumerate(positional) {
             _slot = self_offset + len(args);
-            _st = func.args[_slot].type if _slot < len(func.args) else None;
-            v = self._codegen_callback_arg(p)
-                if self._lambda_arg_is_callback(p, _st)
-                else self._codegen_expr(p);
+            _exp = func.args[_slot].type if _slot < len(func.args) else None;
+            v = self._codegen_callback_arg(p, active_mb)
+                if isinstance(p, uni.LambdaExpr)
+                and self._bridge_callback_param(func, pix)
+                else self._codegen_expr(p, expected_type=_exp);
             if v is not None {
                 args.append(v);
             }
@@ -171,10 +254,14 @@ impl NaIRGenPass._codegen_bound_args(
                 chosen = None;
             }
         }
-        if chosen is not None and self._lambda_arg_is_callback(chosen, expected_type) {
-            val = self._codegen_callback_arg(chosen);
+        if chosen is not None
+        and isinstance(chosen, uni.LambdaExpr)
+        and self._bridge_callback_param(func, pix) {
+            val = self._codegen_callback_arg(chosen, active_mb);
         } else {
-            val = self._codegen_expr(chosen) if chosen is not None else None;
+            val = self._codegen_expr(chosen, expected_type=expected_type)
+                if chosen is not None
+                else None;
         }
         if val is not None {
             args.append(val);
@@ -185,11 +272,11 @@ impl NaIRGenPass._codegen_bound_args(
 
     for pix in range(len(sig_params), len(positional)) {
         p = positional[pix];
-        _slot = self_offset + pix;
-        _st = func.args[_slot].type if _slot < len(func.args) else None;
-        v = self._codegen_callback_arg(p)
-            if self._lambda_arg_is_callback(p, _st)
-            else self._codegen_expr(p);
+        _slot = self_offset + len(args);
+        _exp = func.args[_slot].type if _slot < len(func.args) else None;
+        v = self._codegen_callback_arg(p, active_mb)
+            if isinstance(p, uni.LambdaExpr) and self._bridge_callback_param(func, pix)
+            else self._codegen_expr(p, expected_type=_exp);
         if v is not None {
             args.append(v);
         }
@@ -220,12 +307,42 @@ impl NaIRGenPass._owned_jac_str_from_raw(
     return raw;
 }
 
-impl NaIRGenPass._codegen_callback_arg(nd: uni.LambdaExpr) -> (ir.Value | None) {
+impl NaIRGenPass._codegen_callback_arg(
+    nd: uni.LambdaExpr, make_buf: (ir.Function | None) = None
+) -> (ir.Value | None) {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
 
-    make_buf = self._callback_make_buf;
+    _sig = nd.signature;
+    _declared_params = _sig.params if (_sig is not None and _sig.params) else [];
+    if len(_declared_params) != 1 {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="Rust bridge callback",
+            name=f"lambda declaring {len(_declared_params)} parameters",
+            help_text="A Rust bridge callback lambda must declare exactly one `str` parameter and return `str`, e.g. `lambda (m: str) -> str : ...`."
+        );
+        return None;
+    }
+    _ret_ir = self._resolve_jac_type(_sig.return_type)
+        if (_sig is not None and _sig.return_type is not None)
+        else None;
+    if _ret_ir is None or not isinstance(_ret_ir, ir.PointerType) {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="Rust bridge callback",
+            name="lambda with a non-`str` return type",
+            help_text="A Rust bridge callback lambda must return `str`, e.g. `lambda (m: str) -> str : ...`."
+        );
+        return None;
+    }
+
+    if make_buf is None {
+        make_buf = self._callback_make_buf;
+    }
     if make_buf is None {
         return self._codegen_expr(nd);
     }
@@ -294,7 +411,21 @@ impl NaIRGenPass._codegen_callback_arg(nd: uni.LambdaExpr) -> (ir.Value | None) 
     );
 
     self._emit_rc_release_simple(result, op="callback_result", loc="");
+    _res_i = self.builder.ptrtoint(result_p, i64, name="cb.res.addr");
+    _raw_i = self.builder.ptrtoint(raw, i64, name="cb.raw.addr");
+    _distinct = self.builder.icmp_unsigned("!=", _res_i, _raw_i, name="cb.distinct");
+    _rel_bb = tramp.append_basic_block("cb.rel_raw");
+    _cont_bb = tramp.append_basic_block("cb.cont");
+    self.builder.cbranch(_distinct, _rel_bb, _cont_bb);
+    self.builder.position_at_start(_rel_bb);
     self._emit_rc_release_simple(raw, op="callback_str", loc="");
+    self.builder.branch(_cont_bb);
+    self.builder.position_at_start(_cont_bb);
+
+    _out_err_p = self.builder.bitcast(
+        tramp.args[4], i64.as_pointer(), name="cb.outerr.p"
+    );
+    self.builder.store(ir.Constant(i64, 0), _out_err_p);
     self.builder.ret(ir.Constant(i32, 0));
 
     self._builder = saved_builder;

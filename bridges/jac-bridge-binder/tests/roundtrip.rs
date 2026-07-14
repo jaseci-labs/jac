@@ -40,6 +40,17 @@ fn regex_bridge_compiles_clean() {
     .expect("parse overlay");
     jac_bridge_binder::apply_overlay(&mut spec, &overlay).expect("apply overlay");
 
+    // Phase S: also force a `borrowed` ownership class on a bridged handle return
+    // (`Regex::find -> Option<OwnedMatch>`, a `&self` method). This proves the
+    // binder-emitted `#[jac(borrowed)]` attribute is macro-legal and the generated
+    // crate still compiles warning-clean with the ownership bit in play — S.2.3's
+    // "generated crate compiles under -D warnings" gate for the ownership path.
+    let own_overlay = jac_bridge_binder::parse_overlay(
+        "[fn.\"Regex::find\"]\nownership = \"borrowed\"\n",
+    )
+    .expect("parse ownership overlay");
+    jac_bridge_binder::apply_overlay(&mut spec, &own_overlay).expect("apply ownership overlay");
+
     let jac_bridge = manifest_dir().join("../jac-bridge");
     let lib_src = jac_bridge_binder::emit(&spec);
     let cargo_src = jac_bridge_binder::emit_cargo_toml(&spec, &jac_bridge.to_string_lossy());
@@ -78,6 +89,15 @@ fn regex_bridge_compiles_clean() {
     assert!(
         lib_src.contains("pub fn matches(&self,"),
         "rename missing\n{lib_src}"
+    );
+
+    // Ownership overlay took effect: `find` carries the borrowed attribute (which
+    // the macro consumed to set the return tag's borrow bit — its presence in the
+    // source plus a clean compile is the proof the attribute is macro-legal).
+    let find_pos = lib_src.find("pub fn find(&self,").expect("find method missing");
+    assert!(
+        lib_src[..find_pos].trim_end().ends_with("#[jac(borrowed)]"),
+        "borrowed attribute must sit immediately above `pub fn find`\n{lib_src}"
     );
 
     // Owning-wrapper synthesis (M4 Phase B v1): the generated crate compiling

@@ -6,7 +6,8 @@
 
 use crate::codegen::emit;
 use crate::types::{
-    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Recv, ScalarType, TypeKind,
+    BridgeFn, BridgeParam, BridgeReturn, BridgeSpec, BridgeType, Ownership, Recv, ScalarType,
+    TypeKind,
 };
 
 fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
@@ -18,6 +19,7 @@ fn method(name: &str, params: Vec<BridgeParam>, ret: BridgeReturn) -> BridgeFn {
         throws: None,
         recv: Recv::Field0,
         is_async: false,
+        ret_ownership: Ownership::Owned,
     }
 }
 

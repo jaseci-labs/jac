@@ -10,7 +10,7 @@ import from jaclang.compiler.rust_bridge._blob { parse }
 import from jaclang.compiler.rust_bridge._elf { read_jac_bridge_section }
 import from jaclang.compiler.rust_bridge._synth { render_na_source }
 import from jaclang.compiler.rust_bridge._finder {
-    find_lib_in_dirs,
+    find_bridge_lib,
     built_lib_candidates
 }
 
@@ -19,15 +19,16 @@ glob I64_MIN = -9223372036854775807 - 1;
 
 
 def workspace -> Path {
-    # na/ -> tests/ -> jac-bridge-loader/ -> bridges/ (cargo workspace root)
-    return Path(__file__).resolve().parent.parent.parent;
+    # _harness.jac -> na/ -> tests/ -> jac-bridge-loader/ -> bridges/ (the cargo
+    # workspace root, where the shared target/release/ lives).
+    return Path(__file__).resolve().parent.parent.parent.parent;
 }
 
 
 def bridge_so(crate: str) -> Path {
     ws = workspace();
     reldir = ws / "target" / "release";
-    found = find_lib_in_dirs(crate, [reldir]);
+    found = find_bridge_lib(crate, [reldir]);
     if found is not None {
         return found;
     }
@@ -146,6 +147,13 @@ def compile_env(shim: Path) -> dict {
     env = dict(os.environ);
     env["JAC_LLVM_SHIM"] = effective_shim(shim);
     env["PYTHONPATH"] = str(jac_root());
+    # Tell the na compiler where the bridge .so live so it can read each crate's
+    # `.jac_bridge` metadata section (needed to recognize callback params and
+    # register the make_buf sink). The synthesized `import from "libjac_bridge_
+    # <crate>.so"` names a bare soname; without a search hint the compiler can't
+    # open it and callbacks silently miscompile. Real installs resolve via the
+    # bridge cache; here we point at the cargo workspace's target/release.
+    env["JAC_RUST_BRIDGES_PATH"] = str(workspace() / "target" / "release");
     return env;
 }
 
@@ -189,6 +197,60 @@ def run_binary(binp: Path, so: Path, timeout: int = 60) -> str {
         );
     }
     return run.stdout;
+}
+
+
+def nacompile_dump_ir(
+    src: str, td: str, jac_name: str, bin_name: str, ir_name: str, shim: Path
+) -> tuple {
+    # Like nacompile_in_dir, but also dumps the final LLVM IR to `ir_name` and
+    # returns (binary_path, ir_text).  Opt is forced to 0 so an emitted-but-dead
+    # internal function (e.g. a wrongly-synthesized callback trampoline) is NOT
+    # eliminated before it can be observed.  Used by the adversarial suite to
+    # prove a lambda was/was not lowered into a bridge trampoline.
+    jac_file = Path(td) / jac_name;
+    jac_file.write_text(src);
+    binp = Path(td) / bin_name;
+    ir_path = Path(td) / ir_name;
+    env = compile_env(shim);
+    env["JAC_OPT_LEVEL"] = "0";
+    env["JAC_DUMP_IR"] = str(ir_path);
+    r = subprocess.run(
+        [sys.executable, "-m", "jaclang", "nacompile", str(jac_file), "-o", str(binp)],
+        cwd=str(jac_root()),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600
+    );
+    if not binp.exists() {
+        raise RuntimeError(
+            "nacompile (dump-ir) failed:\n" + r.stdout[-2000:] + r.stderr[-2000:]
+        );
+    }
+    ir_text = ir_path.read_text() if ir_path.is_file() else "";
+    return (binp, ir_text);
+}
+
+
+def nacompile_capture(
+    src: str, td: str, jac_name: str, bin_name: str, shim: Path
+) -> tuple {
+    # Compile and return (binary_was_produced, combined_stdout+stderr) WITHOUT
+    # raising on failure — for "compilation must fail with a readable error"
+    # cases where the diagnostic text, not a runtime line, is the assertion.
+    jac_file = Path(td) / jac_name;
+    jac_file.write_text(src);
+    binp = Path(td) / bin_name;
+    r = subprocess.run(
+        [sys.executable, "-m", "jaclang", "nacompile", str(jac_file), "-o", str(binp)],
+        cwd=str(jac_root()),
+        env=compile_env(shim),
+        capture_output=True,
+        text=True,
+        timeout=600
+    );
+    return (binp.exists(), r.stdout + r.stderr);
 }
 
 
@@ -240,5 +302,58 @@ def run_na_probe(
         llvm_shim(),
         strip_blank=strip_blank,
         sort_lines=sort_lines
+    );
+}
+
+
+def merge_na_sources(primary: str, secondary: str) -> str {
+    # Concatenate two synthesized bridge modules into ONE na source so a single
+    # compiled binary imports both crates' shims — the setup the per-crate
+    # allocator gate (0.1.1) needs. The two synthesized sources share a preamble
+    # (`import struct;` and the libc `strlen` import block); keep the primary's
+    # copy and strip the secondary's so there are no duplicate extern decls. The
+    # per-crate FFI decls (`jac_<mod>_*`) and the opaque `obj`s are uniquely
+    # named already (the two crates use distinct types, e.g. Regex vs Regex2).
+    out: list = [];
+    skip_libc = False;
+    for ln in secondary.splitlines() {
+        s = ln.strip();
+        if s.startswith("# AUTO-SYNTHESIZED")
+        or s.startswith("# module:")
+        or s == "import struct;" {
+            continue;
+        }
+        if s.startswith("import from \"libc.so.6\"") {
+            skip_libc = True;
+            continue;
+        }
+        if skip_libc {
+            if s == "}" {
+                skip_libc = False;
+            }
+            continue;
+        }
+        out.append(ln);
+    }
+    return primary + "\n" + "\n".join(out) + "\n";
+}
+
+
+def run_na_probe2(
+    so_a: Path,
+    so_b: Path,
+    probe_lines: list,
+    jac_name: str,
+    bin_name: str,
+    extra_src: str = "",
+    strip_blank: bool = False
+) -> list {
+    # Two-crate variant of run_na_probe: synthesize BOTH crates' sources, merge
+    # them, append the probe, and run. Both .so live in the same target/release
+    # dir, so run_env(so_a)'s LD_LIBRARY_PATH resolves both at load time.
+    merged = merge_na_sources(synthesize_source(so_a), synthesize_source(so_b));
+    src = merged + extra_src + "\n".join(probe_lines);
+    return nacompile_and_run(
+        src, so_a, jac_name, bin_name, llvm_shim(), strip_blank=strip_blank
     );
 }
