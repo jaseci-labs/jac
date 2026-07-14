@@ -1,11 +1,10 @@
 # Multistage Visit Routing
-
 `visit ... by llm(...)` lets a byllm model choose which node(s) a walker visits
 next. This example documents the **multistage** routing mode and the change that
 makes it render walker/node context **untruncated**, and ships a self-contained
 demo (`demo.jac`) that shows the difference — no API key required.
 
-## Background: how single-stage routing works
+## how current single-stage routing works
 
 When you write `visit [-->] by llm(...)`, byllm builds a prompt describing the
 walker, the current node, and each candidate node, then asks the model to pick.
@@ -59,21 +58,16 @@ router but is invisible to the single-stage router.
 
 ## Parameters
 
-Pass these as keyword arguments to `by llm(...)` on a `visit`:
+Added these 2 keyword arguments to `by llm(...)` on a `visit`:
 
 | Parameter    | Meaning |
-|--------------|---------|
-| `select`     | How many candidates to choose. `1` = exactly one; an `int` = up to N; a `(min, max)` tuple = a range. Defaults to "all". |
-| `intent`     | Natural-language goal describing when to pick which node. |
 | `incl_info`  | A `dict` of extra key/value context. Rendered verbatim (never truncated) in both modes. |
 | `multistage` | `True` enables the condense → reason → extract pipeline and untruncated field rendering. |
 
 Include `[here]` in the candidate set (`visit ([-->] + [here]) by llm(...)`) when
 you want the router to be able to *stay* on the current node and loop.
 
-> **Note:** the keyword is `multistage`. A misspelling such as `mutlistage` is
-> silently forwarded to the model as an API parameter rather than enabling the
-> feature, so double-check the spelling.
+> **Note:** the keyword is `multistage`. A misspelling such as `mutlistage` is silently forwarded to the model as an API parameter rather than enabling the feature, so double-check the spelling.
 
 ## Running the demo
 
@@ -83,7 +77,7 @@ jac run demo.jac
 ```
 
 The demo drives one identical graph and walker through both modes. The walker
-carries a long `case_notes` field with a fraud flag,
+carries a long `case_notes` field with a fraud flag, 
 `INTERNAL_FRAUD_FLAG_ESCALATE`, buried in the middle. The routing rule is the
 same for both modes — "escalate if you see the fraud flag" — so the only
 variable is whether the router can see it.
@@ -117,10 +111,12 @@ through to the default queue.
 Single-stage remains the lighter-weight default when routing context is short
 and fits comfortably under the 120-char per-field cap.
 
-## Files
+## Files edited
 
 ```
 visit_routing_multistage/
 ├── demo.jac    # Runnable MockLLM demo comparing both modes
 └── README.md   # This file
+
+
 ```
