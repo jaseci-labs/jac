@@ -22,15 +22,13 @@ jac create myapp --use ./my-template/   # from a local template DIRECTORY
 jac create myapp --use ./local.jacpack  # from a local jacpack archive
 jac create --use https://.../t.jacpack  # from a URL
 jac create --use jac-shadcn             # shadcn variant of web-app (built into jaclang)
-jac create --list_jacpacks              # list available kinds and named variants
+jac create --list                       # list available kinds and named variants
 jac create myapp --force                # overwrite an existing dir / reinit
 ```
 
 Without a project name, `jac create` initializes the **current directory** and names the project after it (like `cargo init` / `uv init`). Pass a name to create a subdirectory instead (`jac create myapp`).
 
 `--kind` and `--use` are mutually exclusive: `--kind` picks a built-in kind template; `--use` loads a custom template (path / URL) or a named variant.
-
-**The flag is `--list_jacpacks` (underscore), not `--list-jacpacks`** - the hyphen form is rejected with `unrecognized arguments`.
 
 ## Project kinds and what each scaffolds
 
@@ -104,7 +102,7 @@ description = "My custom project template"
 ```
 
 ```
-jac create --list_jacpacks             # registered templates and kinds
+jac create --list                      # registered kinds and named variants
 jac create --pack ./my-template/       # bundle dir -> mytemplate.jacpack (--pack_output for a custom path)
 jac create app --use ./my-template/    # use directly, no packing needed
 jac create app --use mytemplate.jacpack

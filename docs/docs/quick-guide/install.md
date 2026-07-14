@@ -65,6 +65,9 @@ The MCP server for AI-assisted Jac development is built into the binary -- run `
 
 ## IDE Setup
 
+!!! tip "No setup at all: `jac ninja`"
+    Only for the worthy.
+
 The **Jac Language Support** extension is available on both major extension marketplaces:
 
 | Marketplace | Link |
