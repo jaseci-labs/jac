@@ -82,7 +82,7 @@ class DeploymentTargetFactory {
                 KubernetesConfig
             }
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
-            return KubernetesTarget(config=k8s_config, logger=logger);
+            return KubernetesTarget(config=k8s_config, logger=logger, dry_run=dry_run);
         } elif target_type == 'kubernetes-microservice' {
             ensure_deploy_tooling(dry_run);
             _require_deploy_tooling(dry_run);
@@ -93,7 +93,9 @@ class DeploymentTargetFactory {
                 KubernetesMicroserviceTarget
             }
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
-            return KubernetesMicroserviceTarget(config=k8s_config, logger=logger);
+            return KubernetesMicroserviceTarget(
+                config=k8s_config, logger=logger, dry_run=dry_run
+            );
         } elif target_type == 'aws' {
             raise NotImplementedError("AWS target not yet implemented");
         } elif target_type == 'gcp' {

@@ -28,21 +28,31 @@ def _load_deploy_factories -> DeployFactories {
     return DeployFactories(utility=UtilityFactory, target=DeploymentTargetFactory);
 }
 
-def _print_autodetect_banner(routes: dict[str, str]) {
+def _print_local_ms_banner(
+    routes: dict[str, str], explicit_routes: dict[str, str], ms_configured: bool
+) {
+    import from .runtime.discovery.route_policy { format_route_origin_lines }
     names = sorted(routes.keys());
     plural = "s" if len(names) != 1 else "";
+    label = "" if ms_configured else " (auto-detected)";
     console.print(
-        f"Microservice mode (auto-detected): {len(names)} service{plural} "
+        f"Microservice mode{label}: {len(names)} service{plural} "
         f"[{', '.join(names)}], running locally as subprocesses with no "
         f"Docker images.",
         style="cyan"
     );
-    pairs = ", ".join([f"{n} -> {routes[n]}" for n in names]);
-    console.print(f"  Default routes: {pairs}", style="muted");
-    console.print(
-        "  Routes are auto-derived; set [scale.microservices] in jac.toml to customize.",
-        style="muted"
-    );
+    for line in format_route_origin_lines(routes, explicit_routes) {
+        console.print(f"  {line}", style="muted");
+    }
+    # Only nudge toward [scale.microservices] when the section is genuinely
+    # absent from jac.toml (issue #7434: the hint used to print even when the
+    # config was set and honored, masking real config-loading failures).
+    if not ms_configured {
+        console.print(
+            "  Routes are auto-derived; set [scale.microservices] in jac.toml to customize.",
+            style="muted"
+        );
+    }
 }
 
 def _scale_runtime_active -> bool {
@@ -85,6 +95,7 @@ def scale_start(
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
 
     enabled = ms_config.get("enabled", None);
+    explicit_routes = dict(ms_config.get("routes", {}));
     if (not is_sv_sibling) and (not scale) and (enabled is not False) {
         realizer = None;
         should_serve_ms = False;
@@ -94,9 +105,7 @@ def scale_start(
                     resolve_routes,
                     resolve_service_files
                 }
-                ms_config["routes"] = resolve_routes(
-                    filename, dict(ms_config.get("routes", {}))
-                );
+                ms_config["routes"] = resolve_routes(filename, explicit_routes);
                 ms_config["service_files"] = resolve_service_files(
                     filename, ms_config["routes"]
                 );
@@ -114,7 +123,11 @@ def scale_start(
         }
         if should_serve_ms and realizer is not None {
             if enabled is None {
-                _print_autodetect_banner(ms_config.get("routes", {}));
+                _print_local_ms_banner(
+                    ms_config.get("routes", {}),
+                    explicit_routes,
+                    scale_config.microservices_declared()
+                );
             }
             realizer.serve();
             return 0;

@@ -702,6 +702,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "'@staticmethod' is not supported in '{kind}' definitions. Use the 'static' keyword instead (e.g., 'static def method_name')."
      ),
+     W2029 = _warn(
+         "W2029",
+         Category.SEMANTIC,
+         "'@{decorator}' is not recommended in '{kind}' definitions. Use native property syntax 'has {name}: {type_name} {{ getter; ... }}' instead.",
+         help="Declare the property with an accessor block: 'has {name}: {type_name} "
+         "{{ getter {{ ... }} setter(value: {type_name}) {{ ... }} }}'. Backing storage "
+         "is a separate 'has _{name}: {type_name} = ...;' field. Run "
+         "'jac check --lint --fix' to rewrite it automatically. A Python-compat "
+         "'class' is exempt from this rule."
+     ),
      E2008 = _err(
          "E2008", Category.SEMANTIC, "Invalid target for context update: {target}"
      ),

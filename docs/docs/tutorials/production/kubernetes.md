@@ -117,9 +117,11 @@ against a local cluster and a remote one.
 jac start --scale --dry-run
 ```
 
-Prints the manifests that would be applied and changes nothing: nothing is sent
-to the cluster, no database is provisioned, and no TLS certificate is issued.
-Add `--show-yaml` to dump the raw YAML stream.
+Prints the manifests that would be applied and touches nothing: no cluster
+contact, no binary or console download, no client bundle build, no database
+provisioned, no TLS certificate issued, and no deploy tooling installed. The
+content-addressed bundle keys are rendered as placeholders (a real deploy
+computes the digests). Add `--show-yaml` to dump the raw YAML stream.
 
 ---
 
