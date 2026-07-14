@@ -2,6 +2,7 @@ import from dataclasses { field }
 
 obj CompileOptions {
     has type_check: bool = True,
+        emit_diagnostics: bool = True,
         symtab_ir_only: bool = False,
         no_cgen: bool = False,
         skip_native_engine: bool = False,

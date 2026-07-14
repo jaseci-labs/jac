@@ -47,7 +47,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'messages_per_second': 20
         },
         'kubernetes': {
-            'app_name': 'jaseci',
+            # app_name intentionally absent: any key here wins the jac.toml
+            # deep-merge, which would kill the project-name default.
             'namespace': 'default',
             'container_port': 8000,
             'mongodb_enabled': True,
@@ -71,11 +72,15 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            'readiness_initial_delay': 5,
-            'readiness_period': 5,
-            'liveness_initial_delay': 15,
-            'liveness_period': 10,
-            'liveness_failure_threshold': 3
+            # Probe timings must match the KubernetesConfig field defaults
+            # (deploy/target/kubernetes/kubernetes_config.jac) — this dict is
+            # deep-merged over jac.toml, so these values are what actually
+            # take effect when the user sets no probe keys.
+            'readiness_initial_delay': 10,
+            'readiness_period': 20,
+            'liveness_initial_delay': 10,
+            'liveness_period': 20,
+            'liveness_failure_threshold': 80
         },
         'secrets': {},
         'server': {
@@ -257,7 +262,12 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     ];
 
     import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig
+        KubernetesConfig,
+        k8s_safe_slug
+    }
+    derived = k8s_safe_slug(self.get_jac_config().project.name, fallback='');
+    if derived {
+        k8s_config.setdefault('app_name', derived);
     }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
     return k8s_config_obj.to_dict();
@@ -611,6 +621,17 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         'logs': dict(ms_config.get('logs', {})),
         'tracing': dict(ms_config.get('tracing', {}))
     };
+}
+
+impl JacScaleConfig.microservices_declared(self: JacScaleConfig) -> bool {
+    # The merged load() always carries a 'microservices' key from
+    # get_default_config (and callers may write merged routes back into the
+    # loaded doc), so "did the user write [scale.microservices]?" must be
+    # answered from the raw, unmerged plugin config in jac.toml.
+    declared = self.get_jac_config().get_plugin_config(self.get_plugin_name()).get(
+        'microservices'
+    );
+    return isinstance(declared, dict) and bool(declared);
 }
 
 impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
