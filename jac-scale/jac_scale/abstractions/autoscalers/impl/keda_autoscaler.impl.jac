@@ -1,41 +1,30 @@
+"""Stable identity for a trigger within its spec: its explicit name, else type plus position."""
+impl KEDAAutoscaler._trigger_key{
+    return trigger.name or f"{trigger.type}-{trigger_index}";
+}
+
 """Derive a short, unique TriggerAuthentication resource name scoped to the service."""
 impl KEDAAutoscaler._trigger_auth_name{
-    key = f"{app_name}/{trigger.name or f'{trigger.type}-{trigger_index}'}";
+    key = f"{app_name}/{self._trigger_key(trigger, trigger_index)}";
     short_hash = hashlib.sha256(key.encode()).hexdigest()[:8];
     return f"{app_name[:20].rstrip('-')}-{short_hash}-ta";
 }
 
-"""Raise ValueError if any two named triggers in spec share the same name, or if a named trigger collides with the auto-generated name of an unnamed trigger."""
+"""Raise ValueError if two triggers share an identity and would collide on one TriggerAuthentication."""
 impl KEDAAutoscaler._validate_triggers{
-    seen: dict[str, bool] = {};
-    for trigger in spec.triggers {
-        if trigger.name is not None {
-            if trigger.name in seen {
-                raise ValueError(
-                    f"Duplicate trigger name '{trigger.name}' in autoscaler spec for '{app_name}'. "
-                    "Each named trigger must have a unique name — duplicate names produce "
-                    "colliding TriggerAuthentication resource names."
-                );
-            }
-            seen[trigger.name] = True;
-        }
-    }
-    synthesized: dict[str, int] = {};
+    seen: dict[str, int] = {};
     for (i, trigger) in enumerate(spec.triggers) {
-        if trigger.name is None {
-            synthesized[f"{trigger.type}-{i}"] = i;
-        }
-    }
-    for trigger in spec.triggers {
-        if trigger.name is not None and trigger.name in synthesized {
+        key = self._trigger_key(trigger, i);
+        if key in seen {
             raise ValueError(
-                f"Trigger name '{trigger.name}' in autoscaler spec for '{app_name}' collides with "
-                f"the auto-generated name of an unnamed trigger at index {synthesized[
-                    trigger.name
-                ]}. "
-                "Rename this trigger or assign an explicit name to the unnamed trigger."
+                f"Trigger '{key}' in autoscaler spec for '{app_name}' collides with the trigger "
+                f"at index {seen[
+                    key
+                ]}; each trigger must resolve to a unique name so their "
+                "TriggerAuthentication resources do not overwrite one another."
             );
         }
+        seen[key] = i;
     }
 }
 

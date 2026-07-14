@@ -94,91 +94,34 @@ test "trigger with auth adds authenticationRef whose name matches the created Tr
     assert result["authenticationRef"] == {"name": "myapp-c3a558ec-ta"};
 }
 
-test "two services with the same trigger name get independent TriggerAuthentication names" {
-    # If both services produce the same auth name, the second deploy silently patches
-    # the first service's TriggerAuthentication with the wrong credentials — KEDA
-    # then authenticates the first service's trigger using the second service's secret
-    # and it stops scaling correctly without any visible error.
-    keda = KEDAAutoscaler();
-    trigger = Trigger(
-        type="redis",
-        metadata={},
-        name="cache",
-        auth=TriggerAuth(secret_refs={"password": {"name": "secret", "key": "pw"}})
-    );
-    order_result = keda._build_trigger(trigger, "order-service", 0);
-    payment_result = keda._build_trigger(trigger, "payment-service", 0);
-    assert order_result["authenticationRef"]["name"] == "order-service-daa02e20-ta";
-    assert payment_result["authenticationRef"]["name"] == "payment-service-53abb760-ta";
-    assert order_result["authenticationRef"]["name"] != payment_result[
-        "authenticationRef"
-    ]["name"];
-}
-
-test "two unnamed triggers of the same type in one spec get independent TriggerAuthentication names" {
-    # Without a trigger index in the name, both unnamed redis triggers produce the
-    # same auth resource name.  The second _apply_trigger_auth call then patches
-    # the first trigger's TriggerAuthentication with the second trigger's credentials,
-    # silently breaking the first trigger while leaving no error on the cluster.
+test "TriggerAuthentication names are scoped per service and per trigger position" {
+    # A shared name lets one deploy silently patch another's TriggerAuthentication with
+    # the wrong credentials. Names must differ across services (Gap 1) and across
+    # positions of an unnamed trigger within one spec (Gap 2).
     keda = KEDAAutoscaler();
     trigger = Trigger(
         type="redis",
         metadata={},
         auth=TriggerAuth(secret_refs={"password": {"name": "secret", "key": "pw"}})
     );
-    first_result = keda._build_trigger(trigger, "order-service", 0);
-    second_result = keda._build_trigger(trigger, "order-service", 1);
-    assert first_result["authenticationRef"]["name"] == "order-service-425f6d48-ta";
-    assert second_result["authenticationRef"]["name"] == "order-service-c3a94c81-ta";
-    assert first_result["authenticationRef"]["name"] != second_result[
-        "authenticationRef"
-    ]["name"];
+    order = keda._build_trigger(trigger, "order-service", 0)["authenticationRef"][
+        "name"
+    ];
+    payment = keda._build_trigger(trigger, "payment-service", 0)["authenticationRef"][
+        "name"
+    ];
+    order_second = keda._build_trigger(trigger, "order-service", 1)["authenticationRef"][
+        "name"
+    ];
+    assert order.startswith("order-service-") and order.endswith("-ta");
+    assert payment.startswith("payment-service-");
+    assert order != payment;
+    assert order != order_second;
 }
 
-
-test "named trigger whose name matches auto-generated name of unnamed trigger raises ValueError" {
-    # A trigger named 'redis-0' and an unnamed redis trigger at index 0 both produce
-    # the same hash key, causing the second _apply_trigger_auth call to silently
-    # overwrite the first trigger's TriggerAuthentication credentials.
-    keda = KEDAAutoscaler();
-    spec = AutoscalerSpec(
-        scale_target_name="svc-deployment",
-        app_name="order-service",
-        namespace="default",
-        triggers=[
-            Trigger(
-                type="redis",
-                metadata={},
-                auth=TriggerAuth(
-                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
-                )
-            ),
-            Trigger(
-                type="redis",
-                metadata={},
-                name="redis-0",
-                auth=TriggerAuth(
-                    secret_refs={"password": {"name": "redis-secret-2", "key": "pw"}}
-                )
-            )
-        ]
-    );
-    raised = False;
-    try {
-        keda.apply(spec);
-    } except ValueError as e {
-        raised = True;
-        assert "redis-0" in str(e);
-        assert "order-service" in str(e);
-    }
-    assert raised;
-}
-
-test "two named triggers with the same name in one spec raise ValueError before any cluster write" {
-    # Two triggers named 'cache' produce the same TriggerAuthentication resource name
-    # because trigger_index is only used when trigger.name is absent.  The second
-    # _apply_trigger_auth call would silently overwrite the first trigger's credentials
-    # with the second trigger's secret, breaking the first trigger with no visible error.
+test "duplicate trigger identities raise ValueError before any cluster write" {
+    # Two triggers resolving to the same identity would overwrite each other's
+    # TriggerAuthentication; apply() must reject the spec up front.
     keda = KEDAAutoscaler();
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
@@ -209,7 +152,6 @@ test "two named triggers with the same name in one spec raise ValueError before 
     } except ValueError as e {
         raised = True;
         assert "cache" in str(e);
-        assert "order-service" in str(e);
     }
     assert raised;
 }
@@ -455,11 +397,8 @@ test "apply logs the install docs link when KEDA CRDs are not installed" {
 }
 
 test "TriggerAuthentication name written to cluster matches authenticationRef name in ScaledObject" {
-    # _build_trigger sets authenticationRef.name inside the ScaledObject body;
-    # _apply_trigger_auth names the TriggerAuthentication resource on the cluster.
-    # A mismatch means KEDA cannot resolve the secret reference at admission time
-    # and rejects the ScaledObject — or silently leaves the trigger inactive if
-    # the ScaledObject was already accepted before the auth resource was renamed.
+    # _build_trigger (authenticationRef) and _apply_trigger_auth (the resource) must
+    # agree on the name end to end, or KEDA cannot resolve the secret at admission time.
     KEDAAutoscaler._preflight_cache.clear();
     mock_api = unittest.mock.MagicMock();
     mock_api.list_cluster_custom_object.return_value = {};

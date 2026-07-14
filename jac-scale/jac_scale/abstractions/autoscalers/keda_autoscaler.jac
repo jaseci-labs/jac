@@ -20,10 +20,13 @@ obj KEDAAutoscaler(Autoscaler) {
     """Return a cache key identifying the current cluster"""
     def _get_cluster_key -> str;
 
+    """Stable identity for a trigger within its spec: its name, else type plus position."""
+    def _trigger_key(trigger: Trigger, trigger_index: int) -> str;
+
     """Derive a short, unique TriggerAuthentication resource name scoped to the service."""
     def _trigger_auth_name(app_name: str, trigger: Trigger, trigger_index: int) -> str;
 
-    """Raise ValueError if any two named triggers in spec share the same name."""
+    """Raise ValueError if two triggers share an identity and would collide on one TriggerAuthentication."""
     def _validate_triggers(spec: AutoscalerSpec, app_name: str) -> None;
 
     """Build a single KEDA trigger dict from a Trigger object."""
