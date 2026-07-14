@@ -1,18 +1,18 @@
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.cfront.c_idioms { malloc_array_match, realloc_ptr_arg }
 
-def lb_merge(states: list) -> set {
+def lb_merge(states: list[set[str]]) -> set[str] {
     if not states {
         return set();
     }
-    out: set = set(states[0]);
+    out: set[str] = set(states[0]);
     for s in states[1:] {
         out &= s;
     }
     return out;
 }
 
-def lb_assignment_kills(name: str, rhs: object) -> bool {
+def lb_assignment_kills(name: str, rhs: c_ast.Node) -> bool {
     if malloc_array_match(rhs) is not None {
         return False;
     }
@@ -23,7 +23,7 @@ def lb_assignment_kills(name: str, rhs: object) -> bool {
     return True;
 }
 
-def collect_lb_kills(nd: object, killed: set) {
+def collect_lb_kills(nd: c_ast.Node, killed: set[str]) {
     if nd is None {
         return;
     }
@@ -39,7 +39,7 @@ def collect_lb_kills(nd: object, killed: set) {
             killed.add(nd.name);
         }
     }
-    for (_, child) in nd.children() {
+    for (_, child) in list(nd.children()) {
         collect_lb_kills(child, killed);
     }
 }

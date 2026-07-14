@@ -24,7 +24,11 @@ def synthesize_clib_bindings(mod: uni.Module, importer_path: str) -> None {
     }
     base_dir = os.path.dirname(os.path.abspath(importer_path));
     for imp in imports {
-        header_rel = imp.clib_header.lit_value;
+        hdr = imp.clib_header;
+        if hdr is None {
+            continue;
+        }
+        header_rel = hdr.lit_value;
         header_path = header_rel
             if os.path.isabs(header_rel)
             else os.path.join(base_dir, header_rel);

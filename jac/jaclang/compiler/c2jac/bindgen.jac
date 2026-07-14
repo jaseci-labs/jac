@@ -85,7 +85,7 @@ def ffi_prim(names: list) -> str {
     return "int";
 }
 
-def _collect_typedefs(file_ast: object) -> dict {
+def _collect_typedefs(file_ast: c_ast.Node) -> dict {
     out: dict = {};
     for ext in file_ast.ext {
         if not isinstance(ext, c_ast.Typedef) {
@@ -104,16 +104,18 @@ def _scalar_for_names(names: list, typedefs: dict, depth: int = 0) -> str {
     if names and len(names) == 1 and depth < _MAX_TYPEDEF_DEPTH {
         nm = names[0];
         if nm in LP64_SCALARS {
-            return LP64_SCALARS[nm];
+            return str(LP64_SCALARS[nm]);
         }
         if nm in typedefs {
-            return _scalar_for_names(typedefs[nm], typedefs, depth + 1);
+            return _scalar_for_names(list(typedefs[nm]), typedefs, depth + 1);
         }
     }
     return ffi_prim(names);
 }
 
-def _ptr_ffi(ptr_decl: object, typedefs: dict, structs: (set | None) = None) -> str {
+def _ptr_ffi(
+    ptr_decl: c_ast.Node, typedefs: dict, structs: (set | None) = None
+) -> str {
     if is_plain_char_ptr(ptr_decl) {
         return "str";
     }
@@ -128,7 +130,7 @@ def _ptr_ffi(ptr_decl: object, typedefs: dict, structs: (set | None) = None) -> 
 }
 
 def ffi_type(
-    decl_type: object, typedefs: dict | None = None, structs: (set | None) = None
+    decl_type: c_ast.Node, typedefs: dict | None = None, structs: (set | None) = None
 ) -> str {
     tds = typedefs or {};
     chain = walk_to_typedecl(decl_type);
@@ -176,7 +178,7 @@ obj FuncSig {
 }
 
 def _func_signature(
-    funcdecl: object, typedefs: dict, structs: (set | None) = None
+    funcdecl: c_ast.Node, typedefs: dict, structs: (set | None) = None
 ) -> FuncSig {
     pl = funcdecl.args;
     if pl is None {
@@ -202,24 +204,27 @@ def _func_signature(
 }
 
 def _struct_fields_from_node(
-    snode: object, typedefs: dict, known_structs: set
-) -> list {
-    out: list = [];
-    for decl in (snode.decls or []) {
-        fname = jac_id(decl.name or "_f");
-        ft = ffi_type(decl.type, typedefs, known_structs);
-        out.append((fname, ft));
+    snode: c_ast.Node, typedefs: dict, known_structs: set
+) -> list[tuple[str, str]] {
+    out: list[tuple[str, str]] = [];
+    sdecls = snode.decls;
+    if sdecls is not None {
+        for decl in sdecls {
+            fname = jac_id(decl.name or "_f");
+            ft = ffi_type(decl.type, typedefs, known_structs);
+            out.append((fname, ft));
+        }
     }
     return out;
 }
 
 obj StructDefs {
-    has emit_defs: list,
+    has emit_defs: list[tuple[str, list[tuple[str, str]]]],
         all_names: set;
 }
 
-def _collect_struct_defs(file_ast: object, typedefs: dict) -> StructDefs {
-    emit_defs: list = [];
+def _collect_struct_defs(file_ast: c_ast.Node, typedefs: dict) -> StructDefs {
+    emit_defs: list[tuple[str, list[tuple[str, str]]]] = [];
     all_names: set = set();
     for ext in file_ast.ext {
         if isinstance(ext, c_ast.Typedef) {
@@ -260,7 +265,7 @@ def _collect_struct_defs(file_ast: object, typedefs: dict) -> StructDefs {
 }
 
 def _collect_struct_descs(
-    emit_defs: list, block_set: set, rep: BindReport
+    emit_defs: list[tuple[str, list[tuple[str, str]]]], block_set: set, rep: BindReport
 ) -> list[StructDesc] {
     out: list[StructDesc] = [];
     for (name, fields) in emit_defs {
@@ -274,7 +279,7 @@ def _collect_struct_descs(
     return out;
 }
 
-def _func_node(ext: object) -> object {
+def _func_node(ext: c_ast.Node) -> c_ast.Node | None {
     if isinstance(ext, c_ast.FuncDef) {
         return ext.decl;
     }
@@ -304,12 +309,12 @@ def _int_from_macro_tokens(toks: list) -> int | None {
     if len(parts) - idx != 1 or parts[idx][0] != "CPP_INTEGER" {
         return None;
     }
-    v = parse_c_int(parts[idx][1]);
+    v = parse_c_int(str(parts[idx][1]));
     return None if v is None else sign * v;
 }
 
 
-def _enum_def(ext: object) -> object | None {
+def _enum_def(ext: c_ast.Node) -> c_ast.Node | None {
     t = ext?.type;
     while t is not None and not isinstance(t, c_ast.Enum) {
         t = t?.type;
@@ -321,7 +326,7 @@ def _enum_def(ext: object) -> object | None {
 }
 
 
-def _eval_enum(enum_node: object) -> list | None {
+def _eval_enum(enum_node: c_ast.Node) -> list[tuple[str, int]] | None {
     ep: EnumPairs = eval_enumerators(enum_node.values);
     if not ep.all_simple {
         return None;
@@ -354,7 +359,7 @@ def _take_const(
 
 
 def _collect_const_descs(
-    file_ast: object,
+    file_ast: c_ast.Node,
     macros: (dict | None),
     allow_set: (set | None),
     block_set: set,
@@ -377,10 +382,11 @@ def _collect_const_descs(
             _take_const(cname, val, allow_set, block_set, seen, out, rep);
         }
     }
-    for (mname, toks) in (macros or {}).items() {
-        val = _int_from_macro_tokens(toks);
+    md = macros or {};
+    for (mname, toks) in md.items() {
+        val = _int_from_macro_tokens(list(toks));
         if val is not None {
-            _take_const(mname, val, allow_set, block_set, seen, out, rep);
+            _take_const(str(mname), val, allow_set, block_set, seen, out, rep);
         }
     }
     return out;
@@ -394,7 +400,7 @@ obj BindDescs {
 }
 
 def collect_descs(
-    file_ast: object,
+    file_ast: c_ast.Node,
     allow: (list[str] | None),
     block: (list[str] | None),
     macros: (dict | None),
@@ -437,7 +443,7 @@ def collect_descs(
 }
 
 def _emit_bindings(
-    file_ast: object,
+    file_ast: c_ast.Node,
     lib: str,
     allow: (list[str] | None),
     block: (list[str] | None),
@@ -458,7 +464,7 @@ def parse_header_source(
     undefines: (list[str] | None) = None,
     force_includes: (list[str] | None) = None,
     nostdinc: bool = False
-) -> tuple {
+) -> tuple[c_ast.Node, dict] {
     macros: dict = {};
     if not filename.endswith(".i") {
         import from jaclang.compiler.cfront.preprocess { preprocess_c_collect }

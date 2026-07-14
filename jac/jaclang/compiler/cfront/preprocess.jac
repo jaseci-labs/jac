@@ -5,6 +5,8 @@ import from jaclang.vendor.pcpp { Preprocessor, OutputDirective, Action }
 
 
 class _C2JacPreprocessor(Preprocessor) {
+    has c2jac_errors: list[str] = [];
+
     def on_error(self: _C2JacPreprocessor, file: str, line: int, msg: str) {
         self.c2jac_errors.append(f"{file}:{line}: {msg}");
     }
@@ -50,8 +52,8 @@ def _configure_pp(
     defines: (list[str] | None),
     undefines: (list[str] | None),
     nostdinc: bool
-) -> _C2JacPreprocessor {
-    pp = _C2JacPreprocessor();
+) -> Preprocessor {
+    pp: Preprocessor = _C2JacPreprocessor();
     pp.c2jac_errors = [];
 
     pp.line_directive = None;
@@ -62,8 +64,6 @@ def _configure_pp(
         pp.add_path(d);
     }
     if not nostdinc {
-        # LP64-correct stddef/stdint/limits (+ jacport.h) win over fake
-        # placeholder widths; fake libc still covers the long-tail stubs.
         port = _porting_libc_dir();
         if port is not None {
             pp.add_path(port);
@@ -84,10 +84,7 @@ def _configure_pp(
 
 
 def _run_pp(
-    pp: _C2JacPreprocessor,
-    c_src: str,
-    filename: str,
-    force_includes: (list[str] | None)
+    pp: Preprocessor, c_src: str, filename: str, force_includes: (list[str] | None)
 ) -> str {
     prefix = "";
     for h in (force_includes or []) {
@@ -98,7 +95,7 @@ def _run_pp(
         pp.parse(prefix + c_src, filename);
         pp.write(out);
     } except OutputDirective {
-        pass;
+        ;
     }
     if pp.c2jac_errors {
         joined = "\n  ".join(pp.c2jac_errors);
@@ -108,7 +105,7 @@ def _run_pp(
 }
 
 
-def _object_macros(pp: _C2JacPreprocessor) -> dict[str, list] {
+def _object_macros(pp: Preprocessor) -> dict[str, list] {
     out: dict[str, list] = {};
     for (name, m) in pp.macros.items() {
         if name.startswith("__") {
@@ -118,7 +115,8 @@ def _object_macros(pp: _C2JacPreprocessor) -> dict[str, list] {
         if m.arglist is not None {
             continue;
         }
-        out[name] = [(t.type, t.value) for t in (m.value or [])];
+        vals = m.value;
+        out[name] = [(t.type, t.value) for t in vals] if vals else [];
     }
     return out;
 }

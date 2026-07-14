@@ -71,7 +71,7 @@ def lift_c_file(
     return lift_c_str(c_src, filename, lenient_c=lenient_c);
 }
 
-def _diag_sort_key(d: tuple) -> int {
+def _diag_sort_key(d: tuple[str, str, int]) -> int {
     return d[2];
 }
 

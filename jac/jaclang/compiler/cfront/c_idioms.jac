@@ -1,7 +1,7 @@
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.cfront.c_types { JacPrim, C_PRIM_MAP, user_type_name }
 
-def flatten_mult(nd: object, acc: list) {
+def flatten_mult(nd: c_ast.Node, acc: list) {
     if isinstance(nd, c_ast.BinaryOp) and nd.op == "*" {
         flatten_mult(nd.left, acc);
         flatten_mult(nd.right, acc);
@@ -10,7 +10,7 @@ def flatten_mult(nd: object, acc: list) {
     }
 }
 
-def sizeof_type(f: object) -> str | None {
+def sizeof_type(f: c_ast.Node) -> str | None {
     if not isinstance(f, c_ast.UnaryOp) or f.op != "sizeof" {
         return None;
     }
@@ -28,9 +28,11 @@ def sizeof_type(f: object) -> str | None {
             if isinstance(it, c_ast.Struct) and it.name {
                 return it.name;
             }
-            names = it?.names;
-            if names {
-                return names[-1];
+            if it is not None {
+                names = it.names;
+                if names {
+                    return str(names[-1]);
+                }
             }
         }
     }
@@ -48,7 +50,7 @@ def is_listable_elem(tname: str) -> bool {
     return True;
 }
 
-def _is_call_1arg(nd: object, fname: str) -> bool {
+def _is_call_1arg(nd: c_ast.Node, fname: str) -> bool {
     if not isinstance(nd, c_ast.FuncCall) {
         return False;
     }
@@ -58,7 +60,7 @@ def _is_call_1arg(nd: object, fname: str) -> bool {
     return nd.args is not None and len(nd.args.exprs) == 1;
 }
 
-def realloc_ptr_arg(nd: object) -> object | None {
+def realloc_ptr_arg(nd: c_ast.Node) -> object | None {
     if not isinstance(nd, c_ast.FuncCall) {
         return None;
     }
@@ -71,23 +73,26 @@ def realloc_ptr_arg(nd: object) -> object | None {
     return nd.args.exprs[0];
 }
 
-def malloc_array_match(nd: object) -> str | None {
+def malloc_array_match(nd: c_ast.Node) -> str | None {
     if not _is_call_1arg(nd, "malloc") {
         return None;
     }
-    factors: list = [];
+    factors: list[c_ast.Node] = [];
     flatten_mult(nd.args.exprs[0], factors);
-    sizeof_name: str | None = None;
+
+    sizeof_name: str = "";
+    have_size = False;
     others = 0;
     for f in factors {
         t = sizeof_type(f);
-        if t is not None and sizeof_name is None {
+        if t is not None and not have_size {
             sizeof_name = t;
+            have_size = True;
         } else {
             others += 1;
         }
     }
-    if sizeof_name is None or others == 0 {
+    if not have_size or others == 0 {
         return None;
     }
     if not is_listable_elem(sizeof_name) {
@@ -96,7 +101,7 @@ def malloc_array_match(nd: object) -> str | None {
     return sizeof_name;
 }
 
-def malloc_struct_type(nd: object) -> str | None {
+def malloc_struct_type(nd: c_ast.Node) -> str | None {
     if not _is_call_1arg(nd, "malloc") {
         return None;
     }
@@ -114,7 +119,7 @@ def malloc_struct_type(nd: object) -> str | None {
     return None;
 }
 
-def realloc_of_list_bound(nd: object, list_bound: set) -> bool {
+def realloc_of_list_bound(nd: c_ast.Node, list_bound: set) -> bool {
     ptr = realloc_ptr_arg(nd);
     return isinstance(ptr, c_ast.ID) and ptr.name in list_bound;
 }

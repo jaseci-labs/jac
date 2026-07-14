@@ -212,7 +212,11 @@ def _const_global(src: uni.Source, cd: ConstDesc) -> uni.GlobalVars {
 }
 
 
-def attach_synthesized_decls(imp: uni.Import, decls: list) {
+def attach_synthesized_decls(imp: uni.Import, decls: list[uni.ContextAwareNode]) {
+    from_loc = imp.from_loc;
+    if from_loc is None {
+        return;
+    }
     src = imp.loc.orig_src;
     imp_kw = _tok(src, Tok.KW_IMPORT, "import");
     from_kw = _tok(src, Tok.KW_FROM, "from");
@@ -220,14 +224,14 @@ def attach_synthesized_decls(imp: uni.Import, decls: list) {
     rbrace = _tok(src, Tok.RBRACE, "}");
     imp.items = [];
     imp.clib_decls = decls;
-    imp.set_kids(nodes=[imp_kw, from_kw, imp.from_loc, lbrace, *decls, rbrace]);
+    imp.set_kids(nodes=[imp_kw, from_kw, from_loc, lbrace, *decls, rbrace]);
 }
 
 
 def build_clib_decls(
     src: uni.Source, funcs: list[FuncDesc], structs: list[StructDesc]
-) -> list {
-    decls: list[uni.UniNode] = [];
+) -> list[uni.ContextAwareNode] {
+    decls: list[uni.ContextAwareNode] = [];
     for sd in structs {
         decls.append(_archetype(src, sd));
     }
@@ -246,7 +250,7 @@ def build_binding_module(
     mod_name: str = "bindings"
 ) -> uni.Module {
     src = uni.Source("", mod_path=f"<cbindgen:{lib}>");
-    elements: list[uni.UniNode] = [];
+    elements: list[uni.ElementStmt] = [];
     for sd in structs {
         elements.append(_clib_import(src, lib, [_archetype(src, sd)]));
     }

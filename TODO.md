@@ -216,6 +216,7 @@
 - __A2 RC + longjmp:__ `c_gen_pass.impl.jac` now emits a landing-pad / cleanup frame that releases owned locals on the longjmp path (`scope_release_lines`, lines ~637–638, ~1069–1070).
 - __A4 fidelity containment:__ new `cfront/fidelity.jac` splits STYLE/BEHAVIOR/HOLE bands; `band_quarantines()` quarantines the containing function for behavior/hole sites; `cfront/report.jac` records `quarantined_functions`.
 - __A5 cross-TU ingestion:__ new `cfront/project.jac` adds multi-TU lift with a cross-TU symbol registry; `cfront/report.jac` writes `*.c2jac.report.json` sidecars for re-lifts/aggregates/AI loop; commit `168f07a9c` adds transitive cross-module emit.
+- __A3 name-keyed type identity:__ ✅ RESOLVED by `e344d5ffe` -- module-qualified `TypeIdIndex` identity is shared across TypeFacts, layout, emitted symbols, runtime ids, and cross-module references; collision coverage is in `test_jac2c_name_collision.jac`.
 - __A6 LP64 libc:__ new `cfront/lp64_scalars.jac` is a curated LP64-correct scalar map (`size_t`/`Py_ssize_t` → u64/i64), name-matched ahead of alias resolution.
 - __B1 behavior-proven:__ `test_jac2c_runtime.jac` now executes lifted fixtures on both the cc-linked binary and the stock Jac interpreter and diffs them (`interpreter_run` / `link_and_run`).
 - __B5 hygiene:__ `jac.toml` already excludes `jac-py/*` from deslop/format; the `SKIP=jac-format` + pre-stripped-comments recipe is intact; this branch did not regress it.
@@ -224,10 +225,9 @@
 
 - __A7 round-trip oracle:__ emit-leg differential now runs (cc-binary vs interpreter), but jac2c still can't re-emit all idiomatic Jac and the oracle was not re-pointed at bytecode-backend execution.
 - __A8 type registry:__ `exception_type_id` is now sha256 hash-based (derivable/stable); emission is still whole-program-only (no separate compilation).
-- __B2 ingestion type-check:__ commit `956eaf28d` de-ignored the emit/derived passes (ownership/type-facts/c_gen); the core C-ingestion frontend (`cfront/*`, `cast_load_pass`, `ownership.jac`) is still in `.jacignore` (lines 271–282, 348).
+- __B2 ingestion type-check:__ ✅ RESOLVED -- vendor classification now treats untyped `jaclang/vendor` Python like other untyped third-party modules; the C-ingestion frontend and `ownership.jac` are no longer in `.jacignore`. The focused checker gate passes 13/13, and `test_bindgen.jac` + `test_cast_ingest.jac` pass 31/31. Foreign-`Any` propagation is covered separately by checker commit `606404ba4` (dedicated branch commit `ed32b62c2`).
 
 ## OPEN (not on this branch)
 
-- __A3 name-keyed type identity:__ `get_shared_type_facts` still merges by bare name with first-wins (`type_facts_pass.impl.jac:236+`). Flagged as the cheap one-time switch to module-qualified identity while the corpus is small.
 - __B3 local oracle:__ ✅ RESOLVED -- na-vs-C runtime leg now links the na object with the host `cc` (dynamic libc) so it runs locally, not just CI (`test_jac2c_differential.jac`).
 - __B4, B6, C1–C6, Layers 0–3:__ jacpython / D-track items -- `jac-py/PLAN.md` is still design/scoping (one module ported), `reference/cpython` still `3.16.0a0` (P0 pin unexecuted).

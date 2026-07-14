@@ -32,21 +32,21 @@ obj EnumVerdicts {
     }
 }
 
-def _collect_tu_names(file_ast: object) -> set[str] {
+def _collect_tu_names(file_ast: c_ast.Node) -> set[str] {
     names: set[str] = set();
-    ext = getattr(file_ast, "ext");
+    ext = file_ast.ext;
     if ext is None {
         return names;
     }
     for entry in ext {
         if isinstance(entry, c_ast.FuncDef) {
-            decl = getattr(entry, "decl");
-            nm = getattr(decl, "name") if decl is not None else None;
+            decl = entry.decl;
+            nm = decl.name if decl is not None else None;
             if nm {
                 names.add(nm);
             }
         } elif isinstance(entry, c_ast.Decl) or isinstance(entry, c_ast.Typedef) {
-            nm = getattr(entry, "name");
+            nm = entry.name;
             if nm {
                 names.add(nm);
             }
@@ -55,7 +55,7 @@ def _collect_tu_names(file_ast: object) -> set[str] {
     return names;
 }
 
-def _collect_int_use_names(nd: object, names: set[str]) {
+def _collect_int_use_names(nd: c_ast.Node, names: set[str]) {
     if isinstance(nd, c_ast.BinaryOp) and nd.op in _INT_USE_BINOPS {
         for operand in (nd.left, nd.right) {
             if isinstance(operand, c_ast.ID) {
@@ -73,7 +73,7 @@ def _collect_int_use_names(nd: object, names: set[str]) {
     }
 }
 
-def _enum_explicit_values(enumerator_list: object) -> dict[str, int] | None {
+def _enum_explicit_values(enumerator_list: c_ast.Node) -> dict[str, int] | None {
     ep: EnumPairs = eval_enumerators(enumerator_list);
     if not ep.all_simple {
         return None;
@@ -91,7 +91,7 @@ def _enum_explicit_values(enumerator_list: object) -> dict[str, int] | None {
     return result;
 }
 
-def _collect_enums(nd: object, results: list[object]) {
+def _collect_enums(nd: c_ast.Node, results: list[c_ast.Node]) {
     if isinstance(nd, c_ast.Enum) {
         results.append(nd);
     }
@@ -101,7 +101,7 @@ def _collect_enums(nd: object, results: list[object]) {
 }
 
 def _classify_enum(
-    en: object, seen_glob_names: set[str], int_use_names: set[str]
+    en: c_ast.Node, seen_glob_names: set[str], int_use_names: set[str]
 ) -> tuple[EnumShape, dict[str, int] | None, str] {
     name_map = _enum_explicit_values(en.values);
     used_as_int = name_map is not None and any(nm in int_use_names for nm in name_map);
@@ -139,9 +139,9 @@ def _classify_enum(
     return (EnumShape.ENUM_AS_CONSTS, best_map, "");
 }
 
-def build_enum_map(file_ast: object) -> EnumVerdicts {
+def build_enum_map(file_ast: c_ast.Node) -> EnumVerdicts {
     ev = EnumVerdicts();
-    enums: list[object] = [];
+    enums: list[c_ast.Node] = [];
     _collect_enums(file_ast, enums);
 
     seen_glob_names: set[str] = _collect_tu_names(file_ast);

@@ -17,7 +17,7 @@ impl CastBuildPass.postinit -> None {
 
 impl CastBuildPass._build_member_owner_map -> dict[str, str] {
     owner: dict[str, str] = {};
-    enums: list[object] = [];
+    enums: list[c_ast.Node] = [];
     self._collect_enum_nodes(self.ir_in.ast, enums);
     for en in enums {
         if self.enum_verdicts.verdicts.get(id(en)) != EnumShape.ENUM_AS_ENUM {
@@ -31,7 +31,7 @@ impl CastBuildPass._build_member_owner_map -> dict[str, str] {
     return owner;
 }
 
-impl CastBuildPass._collect_enum_nodes(nd: object, out: list) -> None {
+impl CastBuildPass._collect_enum_nodes(nd: c_ast.Node, out: list) -> None {
     if isinstance(nd, c_ast.Enum) {
         out.append(nd);
     }
@@ -50,7 +50,9 @@ impl CastBuildPass.nu(nd: uni.UniNode) -> uni.UniNode {
     return nd;
 }
 
-impl CastBuildPass.convert(nd: object, *, stmt: bool = False) -> object {
+impl CastBuildPass.convert(
+    nd: c_ast.Node, *, stmt: bool = False
+) -> uni.UniNode | list[uni.UniNode] {
     if self.is_canceled() {
         raise StopIteration;
     }
@@ -67,19 +69,19 @@ impl CastBuildPass.convert(nd: object, *, stmt: bool = False) -> object {
     if meth is None {
         return self._surrogate_stmt(nd) if stmt else self._surrogate_expr(nd);
     }
-    res = meth(nd);
+    res = cast(uni.UniNode | list[uni.UniNode], meth(nd));
     if stmt and isinstance(res, uni.Expr) {
         return uni.ExprStmt(expr=res, in_fstring=False, kid=[res]);
     }
     return res;
 }
 
-impl CastBuildPass.conv_expr(nd: object) -> object {
-    return self.convert(nd, stmt=False);
+impl CastBuildPass.conv_expr(nd: c_ast.Node) -> uni.Expr {
+    return cast(uni.Expr, self.convert(nd, stmt=False));
 }
 
 impl CastBuildPass.emit_c_diag(
-    c_node: object, num: int, anchor: uni.UniNode | None = None, **kw: object
+    c_node: c_ast.Node, num: int, anchor: uni.UniNode | None = None, **kw: object
 ) -> None {
     loc_node = anchor if anchor is not None else c_tok(c_node, self.orig_src);
     twin = ("W" if self.lenient_c else "E") + str(num);
@@ -120,7 +122,7 @@ impl CastBuildPass.quarantined_functions -> list[str] {
 }
 
 impl CastBuildPass._quarantine_raise(
-    c_node: object, fname: str, sites: list[CLiftSite]
+    c_node: c_ast.Node, fname: str, sites: list[CLiftSite]
 ) -> uni.RaiseStmt {
     parts: list[str] = [];
     for s in sites {
@@ -134,11 +136,11 @@ impl CastBuildPass._quarantine_raise(
     return uni.RaiseStmt(cause=lit, from_target=None, kid=[raise_tok, lit]);
 }
 
-impl CastBuildPass._coord(c_node: object) -> tuple[int, int] {
+impl CastBuildPass._coord(c_node: c_ast.Node) -> tuple[int, int] {
     return coord_of(c_node, 1);
 }
 
-impl CastBuildPass._name(c_node: object, value: str) -> uni.Name {
+impl CastBuildPass._name(c_node: c_ast.Node, value: str) -> uni.Name {
     (line, col) = self._coord(c_node);
     return uni.Name(
         orig_src=self.orig_src,
@@ -153,11 +155,11 @@ impl CastBuildPass._name(c_node: object, value: str) -> uni.Name {
     );
 }
 
-impl CastBuildPass._ident(c_node: object, value: str) -> uni.Name {
+impl CastBuildPass._ident(c_node: c_ast.Node, value: str) -> uni.Name {
     return self._name(c_node, jac_id(value));
 }
 
-impl CastBuildPass._op_tok(c_node: object, tok: str, value: str) -> uni.Token {
+impl CastBuildPass._op_tok(c_node: c_ast.Node, tok: str, value: str) -> uni.Token {
     (line, col) = self._coord(c_node);
     return uni.Token(
         orig_src=self.orig_src,
@@ -172,7 +174,7 @@ impl CastBuildPass._op_tok(c_node: object, tok: str, value: str) -> uni.Token {
     );
 }
 
-impl CastBuildPass._surrogate_expr(c_node: object) -> uni.FuncCall {
+impl CastBuildPass._surrogate_expr(c_node: c_ast.Node) -> uni.FuncCall {
     (line, _) = self._coord(c_node);
     target = self._name(c_node, C_UNSUPPORTED);
     line_lit = uni.Int(
@@ -193,7 +195,7 @@ impl CastBuildPass._surrogate_expr(c_node: object) -> uni.FuncCall {
     return call;
 }
 
-impl CastBuildPass._surrogate_stmt(c_node: object) -> uni.UniNode {
+impl CastBuildPass._surrogate_stmt(c_node: c_ast.Node) -> uni.UniNode {
     call = self._surrogate_expr(c_node);
     stmt = uni.ExprStmt(expr=call, in_fstring=False, kid=[call]);
     if self._func_depth > 0 {
@@ -213,8 +215,6 @@ impl CastBuildPass._scope_bind(assign: uni.Assignment) -> uni.UniNode {
 }
 
 impl CastBuildPass._collect_module_globals(ext: list) -> set[str] {
-    # File-scope Decl names (not function decls) become Jac `glob`s. Functions
-    # that assign to them need a `global` stmt or Python treats the name as local.
     out: set[str] = set();
     for entry in ext {
         if not isinstance(entry, c_ast.Decl) or entry.name is None {
@@ -228,22 +228,28 @@ impl CastBuildPass._collect_module_globals(ext: list) -> set[str] {
     return out;
 }
 
-impl CastBuildPass._global_stmt(c_node: object, names: list[str]) -> uni.GlobalStmt {
+impl CastBuildPass._global_stmt(
+    c_node: c_ast.Node, names: list[str]
+) -> uni.GlobalStmt {
     targets: list[uni.Name] = [self._name(c_node, n) for n in names];
     gtok = self._op_tok(c_node, Tok.GLOBAL_OP, "global");
     semi = self._op_tok(c_node, Tok.SEMI, ";");
     return uni.GlobalStmt(target=targets, kid=[gtok, *targets, semi]);
 }
 
-impl CastBuildPass.proc_file_ast(nd: object) -> uni.Module {
-    elements: list[uni.UniNode] = [];
+impl CastBuildPass.proc_file_ast(nd: c_ast.Node) -> uni.Module {
+    elements: list[uni.ElementStmt] = [];
     ext = nd?.ext or [];
     self._module_globals = self._collect_module_globals(ext);
     for entry in ext {
         res = self.convert(entry, stmt=True);
         if isinstance(res, list) {
-            elements.extend(res);
-        } elif res is not None {
+            for r in res {
+                if isinstance(r, uni.ElementStmt) {
+                    elements.append(r);
+                }
+            }
+        } elif isinstance(res, uni.ElementStmt) {
             elements.append(res);
         }
     }
@@ -259,24 +265,28 @@ impl CastBuildPass.proc_file_ast(nd: object) -> uni.Module {
         terminals=[],
         kid=elements
     );
-    return self.nu(ret);
+    return cast(uni.Module, self.nu(ret));
 }
 
-impl CastBuildPass.proc_compound(nd: object) -> list[uni.UniNode] {
-    out: list[uni.UniNode] = [];
+impl CastBuildPass.proc_compound(nd: c_ast.Node) -> list[uni.CodeBlockStmt] {
+    out: list[uni.CodeBlockStmt] = [];
     items = nd?.block_items or [];
     for it in items {
         res = self.convert(it, stmt=True);
         if isinstance(res, list) {
-            out.extend(res);
-        } elif res is not None {
+            for r in res {
+                if isinstance(r, uni.CodeBlockStmt) {
+                    out.append(r);
+                }
+            }
+        } elif isinstance(res, uni.CodeBlockStmt) {
             out.append(res);
         }
     }
     return out;
 }
 
-impl CastBuildPass.proc_func_def(nd: object) -> uni.Ability {
+impl CastBuildPass.proc_func_def(nd: c_ast.Node) -> uni.Ability {
     self._list_bound = set();
     self._var_types = {};
     fname = nd.decl.name;
@@ -330,35 +340,34 @@ impl CastBuildPass.proc_func_def(nd: object) -> uni.Ability {
             self._quarantined.append(fname);
         }
     } elif self._func_global_writes {
-        # Jac/Python needs `global name;` before assigning a module glob.
-        body = [
-            self._global_stmt(nd, sorted(self._func_global_writes)),
-            *body
-        ];
+        body = [self._global_stmt(nd, sorted(self._func_global_writes)), *body];
     }
     self._func_name = None;
     self._func_contam = [];
     self._func_global_writes = set();
     kid: list[uni.UniNode] = [name, sig, *body];
-    return self.nu(
-        uni.Ability(
-            name_ref=name,
-            is_async=False,
-            is_static=False,
-            is_classmethod=False,
-            is_abstract=False,
-            is_override=False,
-            access=None,
-            signature=sig,
-            body=body,
-            decorators=None,
-            doc=None,
-            kid=kid
+    return cast(
+        uni.Ability,
+        self.nu(
+            uni.Ability(
+                name_ref=name,
+                is_async=False,
+                is_static=False,
+                is_classmethod=False,
+                is_abstract=False,
+                is_override=False,
+                access=None,
+                signature=sig,
+                body=body,
+                decorators=None,
+                doc=None,
+                kid=kid
+            )
         )
     );
 }
 
-impl CastBuildPass.proc_decl(nd: object) -> object {
+impl CastBuildPass.proc_decl(nd: c_ast.Node) -> object {
     if nd.name is None {
         if isinstance(nd.type, c_ast.Struct) and nd.type.name is not None {
             return self.convert(nd.type);
@@ -404,17 +413,10 @@ impl CastBuildPass.proc_decl(nd: object) -> object {
         annot = uni.SubTag[uni.Expr](tag=ann, kid=[ann]);
         self._list_bound.discard(nd.name);
     }
-    value = (
-        self._init_value(nd_init, nd.type) if nd_init is not None else None
-    );
-    # C objects without an initializer are BSS-zeroed (file scope) or
-    # indeterminate (locals). Jac has no uninit locals: emit the same zero
-    # default used for `has` fields so `Point p;` → `p: Point = Point()` and
-    # scalar `int x;` → `x: int = 0` are readable before the first store.
+    value = self._init_value(nd_init, nd.type) if nd_init is not None else None;
+
     if (
-        value is None
-        and arr_elem is None
-        and not isinstance(inner, c_ast.ArrayDecl)
+        value is None and arr_elem is None and not isinstance(inner, c_ast.ArrayDecl)
     ) {
         value = self._elem_default(nd, elem_typename(nd.type));
     }
@@ -433,7 +435,7 @@ impl CastBuildPass.proc_decl(nd: object) -> object {
     );
 }
 
-impl CastBuildPass.proc_return(nd: object) -> uni.ReturnStmt {
+impl CastBuildPass.proc_return(nd: c_ast.Node) -> uni.ReturnStmt {
     val = self.conv_expr(nd.expr) if nd.expr is not None else None;
     if val is None or not isinstance(val, uni.Expr) {
         return uni.ReturnStmt(
@@ -443,8 +445,7 @@ impl CastBuildPass.proc_return(nd: object) -> uni.ReturnStmt {
     return uni.ReturnStmt(expr=val, kid=[val]);
 }
 
-impl CastBuildPass.proc_binary_op(nd: object) -> object {
-    # char*/str cursor + offset → suffix slice `p[n:]`.
+impl CastBuildPass.proc_binary_op(nd: c_ast.Node) -> object {
     if nd.op == "+" and self._is_str_cursor(nd.left) {
         if not (expr_reeval_safe(nd.left) and expr_reeval_safe(nd.right)) {
             return self._surrogate_expr(nd);
@@ -461,8 +462,7 @@ impl CastBuildPass.proc_binary_op(nd: object) -> object {
         return self._surrogate_expr(nd);
     }
     (kind, tok, text) = entry;
-    # C integer `/` truncates toward zero; Jac `/` is true division. When both
-    # operands are known ints, emit `//` so lifted arithmetic matches cc.
+
     if (
         nd.op == "/"
         and self._expr_prim(nd.left) == JacPrim.INT
@@ -477,6 +477,7 @@ impl CastBuildPass.proc_binary_op(nd: object) -> object {
         return self._surrogate_expr(nd);
     }
     op = self._op_tok(nd, tok, text);
+    inner: uni.Expr;
     if kind == BinKind.COMPARE {
         inner = uni.CompareExpr(
             left=left, rights=[right], ops=[op], kid=[left, op, right]
@@ -498,7 +499,7 @@ impl CastBuildPass.proc_binary_op(nd: object) -> object {
     );
 }
 
-impl CastBuildPass.proc_id(nd: object) -> uni.UniNode {
+impl CastBuildPass.proc_id(nd: c_ast.Node) -> uni.UniNode {
     owner = self._enum_member_owner.get(nd.name);
     if owner is not None {
         base = self._name(nd, owner);
@@ -514,7 +515,7 @@ impl CastBuildPass.proc_id(nd: object) -> uni.UniNode {
     return self._ident(nd, nd.name);
 }
 
-impl CastBuildPass.proc_constant(nd: object) -> uni.Literal {
+impl CastBuildPass.proc_constant(nd: c_ast.Node) -> uni.Literal {
     family = classify_c_constant(nd.type);
     (line, col) = self._coord(nd);
     if family == CLIT_INT {
@@ -534,7 +535,6 @@ impl CastBuildPass.proc_constant(nd: object) -> uni.Literal {
         return self._lit(uni.String, Tok.STRING, repr(nd.value), line, col);
     }
     if family == CLIT_CHAR {
-        # C character constants have type `int` after promotion.
         ov = c_char_ord(nd.value);
         if ov is not None {
             return self._lit(uni.Int, Tok.INT, str(ov), line, col);
@@ -556,20 +556,23 @@ impl CastBuildPass.proc_constant(nd: object) -> uni.Literal {
 impl CastBuildPass._lit(
     cls: type, tok: str, text: str, line: int, col: int
 ) -> uni.Literal {
-    return cls(
-        orig_src=self.orig_src,
-        name=tok,
-        value=text,
-        line=line,
-        end_line=line,
-        col_start=col,
-        col_end=col + len(text),
-        pos_start=0,
-        pos_end=len(text)
+    return cast(
+        uni.Literal,
+        cls(
+            orig_src=self.orig_src,
+            name=tok,
+            value=text,
+            line=line,
+            end_line=line,
+            col_start=col,
+            col_end=col + len(text),
+            pos_start=0,
+            pos_end=len(text)
+        )
     );
 }
 
-impl CastBuildPass.proc_func_call(nd: object) -> object {
+impl CastBuildPass.proc_func_call(nd: c_ast.Node) -> object {
     if isinstance(nd.name, c_ast.ID) and nd.name.name == "free" {
         return self._pass_semi(nd);
     }
@@ -608,7 +611,7 @@ impl CastBuildPass.proc_func_call(nd: object) -> object {
     return uni.FuncCall(target=target, params=params, genai_call=None, kid=kid);
 }
 
-impl CastBuildPass._realloc_elide(nd: object) -> uni.Expr | None {
+impl CastBuildPass._realloc_elide(nd: c_ast.Node) -> uni.Expr | None {
     ptr = realloc_ptr_arg(nd);
     if not (isinstance(ptr, c_ast.ID) and ptr.name in self._list_bound) {
         return None;
@@ -617,7 +620,7 @@ impl CastBuildPass._realloc_elide(nd: object) -> uni.Expr | None {
     return val if isinstance(val, uni.Expr) else None;
 }
 
-impl CastBuildPass._malloc_array(nd: object) -> object | None {
+impl CastBuildPass._malloc_array(nd: c_ast.Node) -> object | None {
     tname = malloc_array_match(nd);
     if tname is None {
         return None;
@@ -638,7 +641,7 @@ impl CastBuildPass._malloc_array(nd: object) -> object | None {
 }
 
 impl CastBuildPass._range_compr(
-    c_node: object, elem_default: uni.Expr, count: uni.Expr
+    c_node: c_ast.Node, elem_default: uni.Expr, count: uni.Expr
 ) -> uni.ListCompr {
     range_name = self._name(c_node, "range");
     range_call = uni.FuncCall(
@@ -657,7 +660,7 @@ impl CastBuildPass._range_compr(
     );
 }
 
-impl CastBuildPass._elem_default(c_node: object, tname: str) -> uni.Expr {
+impl CastBuildPass._elem_default(c_node: c_ast.Node, tname: str) -> uni.Expr {
     if tname in C_PRIM_MAP {
         return self._elem_zero_lit(c_node, tname);
     }
@@ -665,7 +668,7 @@ impl CastBuildPass._elem_default(c_node: object, tname: str) -> uni.Expr {
     return uni.FuncCall(target=ctor, params=[], genai_call=None, kid=[ctor]);
 }
 
-impl CastBuildPass._product_expr(c_node: object, factors: list) -> object {
+impl CastBuildPass._product_expr(c_node: c_ast.Node, factors: list) -> object {
     exprs = [self.conv_expr(f) for f in factors];
     valid = [
         e
@@ -687,7 +690,7 @@ impl CastBuildPass._product_expr(c_node: object, factors: list) -> object {
     return acc;
 }
 
-impl CastBuildPass._pass_semi(c_node: object) -> uni.Semi {
+impl CastBuildPass._pass_semi(c_node: c_ast.Node) -> uni.Semi {
     (line, _) = self._coord(c_node);
     return uni.Semi(
         orig_src=self.orig_src,
@@ -702,7 +705,7 @@ impl CastBuildPass._pass_semi(c_node: object) -> uni.Semi {
     );
 }
 
-impl CastBuildPass._stmts_from(c_node: object) -> list[uni.UniNode] {
+impl CastBuildPass._stmts_from(c_node: c_ast.Node) -> list[uni.UniNode] {
     if c_node is None {
         return [self._pass_semi(c_node)];
     }
@@ -717,7 +720,7 @@ impl CastBuildPass._stmts_from(c_node: object) -> list[uni.UniNode] {
     return [res] if res is not None else [self._pass_semi(c_node)];
 }
 
-impl CastBuildPass._block(c_node: object) -> list[uni.UniNode] {
+impl CastBuildPass._block(c_node: c_ast.Node) -> list[uni.CodeBlockStmt] {
     return [
         s
         for s in self._stmts_from(c_node)
@@ -725,7 +728,7 @@ impl CastBuildPass._block(c_node: object) -> list[uni.UniNode] {
     ];
 }
 
-impl CastBuildPass.proc_if(nd: object) -> object {
+impl CastBuildPass.proc_if(nd: c_ast.Node) -> object {
     test = self.conv_expr(nd.cond);
     if not isinstance(test, uni.Expr) {
         return self._surrogate_stmt(nd);
@@ -748,11 +751,14 @@ impl CastBuildPass.proc_if(nd: object) -> object {
             }
         }
     }
-    kid: list[uni.UniNode] = [test, *body, else_body] if else_body else [test, *body];
+    kid: list[uni.UniNode] = [test, *body];
+    if else_body {
+        kid.append(else_body);
+    }
     return uni.IfStmt(condition=test, body=body, else_body=else_body, kid=kid);
 }
 
-impl CastBuildPass.proc_while(nd: object) -> object {
+impl CastBuildPass.proc_while(nd: c_ast.Node) -> object {
     test = self.conv_expr(nd.cond);
     if not isinstance(test, uni.Expr) {
         return self._surrogate_stmt(nd);
@@ -761,7 +767,7 @@ impl CastBuildPass.proc_while(nd: object) -> object {
     return uni.WhileStmt(condition=test, body=body, else_body=None, kid=[test, *body]);
 }
 
-impl CastBuildPass._inc_dec_stmt(nd: object) -> uni.Assignment | None {
+impl CastBuildPass._inc_dec_stmt(nd: c_ast.Node) -> uni.Assignment | None {
     if isinstance(nd.expr, c_ast.ID) {
         forward = nd.op in ("p++", "++");
         adv = self._str_advance_assign(nd, nd.expr.name, forward);
@@ -787,20 +793,24 @@ impl CastBuildPass._inc_dec_stmt(nd: object) -> uni.Assignment | None {
     );
 }
 
-impl CastBuildPass._conv_stmts(items: list) -> list[uni.UniNode] {
-    out: list[uni.UniNode] = [];
+impl CastBuildPass._conv_stmts(items: list) -> list[uni.CodeBlockStmt] {
+    out: list[uni.CodeBlockStmt] = [];
     for item in items {
         n = self.convert(item, stmt=True);
         if isinstance(n, list) {
-            out.extend(n);
-        } elif n is not None {
+            for r in n {
+                if isinstance(r, uni.CodeBlockStmt) {
+                    out.append(r);
+                }
+            }
+        } elif isinstance(n, uni.CodeBlockStmt) {
             out.append(n);
         }
     }
     return out;
 }
 
-impl CastBuildPass._for_promotable(nd: object) -> bool {
+impl CastBuildPass._for_promotable(nd: c_ast.Node) -> bool {
     init_node = c_field(nd, "init");
     cond_node = nd.cond;
     step_node = nd?.next;
@@ -816,8 +826,7 @@ impl CastBuildPass._for_promotable(nd: object) -> bool {
     if not ok_init {
         return False;
     }
-    # Ascending and descending relational bounds; Jac IterForStmt runs
-    # count_by on `continue`, matching C `for` step semantics.
+
     if not (
         isinstance(cond_node, c_ast.BinaryOp)
         and cond_node.op in ("<", "<=", ">", ">=", "!=")
@@ -831,7 +840,9 @@ impl CastBuildPass._for_promotable(nd: object) -> bool {
     return isinstance(step_node, c_ast.Assignment) and step_node.op != "=";
 }
 
-impl CastBuildPass._for_clause_stmts(clause_node: object) -> list[uni.UniNode] {
+impl CastBuildPass._for_clause_stmts(
+    clause_node: c_ast.Node
+) -> list[uni.CodeBlockStmt] {
     if clause_node is None {
         return [];
     }
@@ -845,12 +856,9 @@ impl CastBuildPass._for_clause_stmts(clause_node: object) -> list[uni.UniNode] {
 }
 
 impl CastBuildPass._splice_for_continues(
-    stmts: list[uni.UniNode], step_c: object
-) -> list[uni.UniNode] {
-    # Rewrite loop-level `continue` to `step; continue` so a for→while
-    # lowering still runs the C `for` step. Nested loops are left alone —
-    # their continues target the inner loop.
-    out: list[uni.UniNode] = [];
+    stmts: list[uni.CodeBlockStmt], step_c: c_ast.Node
+) -> list[uni.CodeBlockStmt] {
+    out: list[uni.CodeBlockStmt] = [];
     for s in stmts {
         if isinstance(s, uni.CtrlStmt) and s.ctrl.name == Tok.KW_CONTINUE {
             out.extend(self._for_clause_stmts(step_c));
@@ -879,7 +887,7 @@ impl CastBuildPass._splice_for_continues(
     return out;
 }
 
-impl CastBuildPass.proc_for(nd: object) -> object {
+impl CastBuildPass.proc_for(nd: c_ast.Node) -> object {
     promotable = self._for_promotable(nd);
     init_stmts = self._for_clause_stmts(c_field(nd, "init"));
     step_stmts = self._for_clause_stmts(nd?.next);
@@ -891,11 +899,11 @@ impl CastBuildPass.proc_for(nd: object) -> object {
         and isinstance(count_by, uni.Assignment) {
             cond = self.conv_expr(nd.cond);
             if isinstance(cond, uni.AtomUnit) {
-                cond = cond.value;
+                cond = cast(uni.Expr, cond.value);
             }
             if isinstance(cond, uni.Expr) {
                 tgt = iter_old.target[0];
-                val = iter_old.value;
+                val = cast(uni.Expr, iter_old.value);
                 new_iter = uni.Assignment(
                     target=[tgt],
                     value=val,
@@ -930,8 +938,7 @@ impl CastBuildPass.proc_for(nd: object) -> object {
             );
         }
     }
-    # Continue-safe while: splice the step before each loop-level continue so
-    # it cannot skip the C `for` step. Nested-loop continues are untouched.
+
     if (
         step_node is not None
         and nd.stmt is not None
@@ -939,17 +946,16 @@ impl CastBuildPass.proc_for(nd: object) -> object {
         and step_stmts
     ) {
         body_stmts = self._splice_for_continues(body_stmts, step_node);
-    } elif step_node is not None and nd.stmt is not None and has_loop_continue(
-        nd.stmt
-    ) {
-        # Step exists in C but failed to lower — still flag the infidelity.
+    } elif step_node is not None
+    and nd.stmt is not None
+    and has_loop_continue(nd.stmt) {
         detail = "a loop-level `continue` skips the step that C runs each iteration";
         lossy_detail = detail if not lossy_detail else lossy_detail + " | " + detail;
     }
     if lossy_detail {
         self.emit_c_diag(nd, 4208, detail=lossy_detail);
     }
-    while_body: list[uni.UniNode] = [*body_stmts, *step_stmts];
+    while_body: list[uni.CodeBlockStmt] = [*body_stmts, *step_stmts];
     if not while_body {
         while_body = [self._pass_semi(nd)];
     }
@@ -959,12 +965,12 @@ impl CastBuildPass.proc_for(nd: object) -> object {
     return [*init_stmts, while_stmt];
 }
 
-impl CastBuildPass._bool_true(c_node: object) -> uni.Literal {
+impl CastBuildPass._bool_true(c_node: c_ast.Node) -> uni.Literal {
     (line, col) = self._coord(c_node);
     return self._lit(uni.Bool, Tok.BOOL, "True", line, col);
 }
 
-impl CastBuildPass._is_surrogate(expr: object) -> bool {
+impl CastBuildPass._is_surrogate(expr: c_ast.Node) -> bool {
     return (
         isinstance(expr, uni.FuncCall)
         and isinstance(expr.target, uni.Name)
@@ -972,22 +978,22 @@ impl CastBuildPass._is_surrogate(expr: object) -> bool {
     );
 }
 
-impl CastBuildPass.proc_break(nd: object) -> uni.CtrlStmt {
+impl CastBuildPass.proc_break(nd: c_ast.Node) -> uni.CtrlStmt {
     tok = self._op_tok(nd, Tok.KW_BREAK, "break");
     return uni.CtrlStmt(ctrl=tok, kid=[tok]);
 }
 
-impl CastBuildPass.proc_continue(nd: object) -> uni.CtrlStmt {
+impl CastBuildPass.proc_continue(nd: c_ast.Node) -> uni.CtrlStmt {
     tok = self._op_tok(nd, Tok.KW_CONTINUE, "continue");
     return uni.CtrlStmt(ctrl=tok, kid=[tok]);
 }
 
-impl CastBuildPass._break_stmt(c_node: object) -> uni.CtrlStmt {
+impl CastBuildPass._break_stmt(c_node: c_ast.Node) -> uni.CtrlStmt {
     tok = self._op_tok(c_node, Tok.KW_BREAK, "break");
     return uni.CtrlStmt(ctrl=tok, kid=[tok]);
 }
 
-impl CastBuildPass.proc_do_while(nd: object) -> object {
+impl CastBuildPass.proc_do_while(nd: c_ast.Node) -> object {
     cond = self.conv_expr(nd.cond);
     if not isinstance(cond, uni.Expr) {
         return self._surrogate_stmt(nd);
@@ -999,7 +1005,7 @@ impl CastBuildPass.proc_do_while(nd: object) -> object {
     guard = uni.IfStmt(
         condition=guard_cond, body=[brk], else_body=None, kid=[guard_cond, brk]
     );
-    full_body: list[uni.UniNode] = [*body, guard];
+    full_body: list[uni.CodeBlockStmt] = [*body, guard];
     if has_loop_continue(nd.stmt) {
         self.emit_c_diag(nd, 4203);
     }
@@ -1009,8 +1015,8 @@ impl CastBuildPass.proc_do_while(nd: object) -> object {
     );
 }
 
-impl CastBuildPass.proc_switch(nd: object) -> object {
-    groups: list[tuple] = [];
+impl CastBuildPass.proc_switch(nd: c_ast.Node) -> object {
+    groups: list[tuple[list, list]] = [];
     pending: list[object] = [];
     default_stmts: list | None = None;
     items: list = [];
@@ -1047,9 +1053,10 @@ impl CastBuildPass.proc_switch(nd: object) -> object {
         (vals, stmts) = grp;
         test = self._switch_test(nd, nd.cond, vals);
         body = self._switch_branch_body(nd, stmts);
-        kid: list[uni.UniNode] = [test, *body, tail_else]
-            if tail_else
-            else [test, *body];
+        kid: list[uni.UniNode] = [test, *body];
+        if tail_else {
+            kid.append(tail_else);
+        }
         ifs = uni.IfStmt(condition=test, body=body, else_body=tail_else, kid=kid);
         chain = ifs;
         tail_else = uni.ElseIf(
@@ -1060,7 +1067,7 @@ impl CastBuildPass.proc_switch(nd: object) -> object {
 }
 
 impl CastBuildPass._switch_test(
-    nd: object, cond_cnode: object, vals: list
+    nd: c_ast.Node, cond_cnode: c_ast.Node, vals: list
 ) -> uni.Expr {
     cmps: list[uni.Expr] = [];
     for v in vals {
@@ -1081,11 +1088,11 @@ impl CastBuildPass._switch_test(
 }
 
 impl CastBuildPass._switch_branch_body(
-    nd: object, stmts: list | None
-) -> list[uni.UniNode] {
+    nd: c_ast.Node, stmts: list | None
+) -> list[uni.CodeBlockStmt] {
     raw: list = stmts or [];
     if len(raw) == 1 and isinstance(raw[0], c_ast.Compound) {
-        raw = raw[0].block_items or [];
+        raw = list(raw[0].block_items or []);
     }
     kept = [
         s
@@ -1100,11 +1107,11 @@ impl CastBuildPass._switch_branch_body(
     return out or [self._pass_semi(nd)];
 }
 
-impl CastBuildPass.proc_empty_statement(nd: object) -> uni.Semi {
+impl CastBuildPass.proc_empty_statement(nd: c_ast.Node) -> uni.Semi {
     return self._pass_semi(nd);
 }
 
-impl CastBuildPass.proc_ternary_op(nd: object) -> object {
+impl CastBuildPass.proc_ternary_op(nd: c_ast.Node) -> object {
     test = self.conv_expr(nd.cond);
     body = self.conv_expr(nd.iftrue);
     orelse = self.conv_expr(nd.iffalse);
@@ -1126,7 +1133,7 @@ impl CastBuildPass.proc_ternary_op(nd: object) -> object {
     );
 }
 
-impl CastBuildPass._scalar_prim(type_node: object) -> JacPrim | None {
+impl CastBuildPass._scalar_prim(type_node: c_ast.Node) -> JacPrim | None {
     if isinstance(type_node, c_ast.TypeDecl)
     and isinstance(type_node.type, c_ast.IdentifierType) {
         return jac_prim(type_node.type.names);
@@ -1134,7 +1141,7 @@ impl CastBuildPass._scalar_prim(type_node: object) -> JacPrim | None {
     return None;
 }
 
-impl CastBuildPass._record_scalar_type(name: str, type_node: object) -> None {
+impl CastBuildPass._record_scalar_type(name: str, type_node: c_ast.Node) -> None {
     chain = walk_to_typedecl(type_node);
     if chain.kind == TypeKind.PTR and is_char_ptr(chain.node) {
         self._var_types[name] = JacPrim.STR;
@@ -1148,7 +1155,7 @@ impl CastBuildPass._record_scalar_type(name: str, type_node: object) -> None {
     }
 }
 
-impl CastBuildPass._expr_prim(c_node: object) -> JacPrim | None {
+impl CastBuildPass._expr_prim(c_node: c_ast.Node) -> JacPrim | None {
     if isinstance(c_node, c_ast.Constant) {
         fam = classify_c_constant(c_node.type);
         if fam == CLIT_INT or fam == CLIT_CHAR {
@@ -1175,12 +1182,12 @@ impl CastBuildPass._expr_prim(c_node: object) -> JacPrim | None {
     return None;
 }
 
-impl CastBuildPass._is_str_cursor(c_node: object) -> bool {
+impl CastBuildPass._is_str_cursor(c_node: c_ast.Node) -> bool {
     return self._expr_prim(c_node) == JacPrim.STR;
 }
 
 impl CastBuildPass._index_expr(
-    c_node: object, base: uni.Expr, idx: uni.Expr
+    c_node: c_ast.Node, base: uni.Expr, idx: uni.Expr
 ) -> uni.AtomTrailer {
     slice_node = uni.Slice(start=idx, stop=None, step=None, kid=[idx]);
     index = uni.IndexSlice(slices=[slice_node], is_range=False, kid=[slice_node]);
@@ -1190,7 +1197,7 @@ impl CastBuildPass._index_expr(
 }
 
 impl CastBuildPass._slice_from(
-    c_node: object, base: uni.Expr, start: uni.Expr
+    c_node: c_ast.Node, base: uni.Expr, start: uni.Expr
 ) -> uni.AtomTrailer {
     slice_node = uni.Slice(start=start, stop=None, step=None, kid=[start]);
     index = uni.IndexSlice(slices=[slice_node], is_range=True, kid=[slice_node]);
@@ -1199,18 +1206,14 @@ impl CastBuildPass._slice_from(
     );
 }
 
-impl CastBuildPass._ord_call(c_node: object, ch: uni.Expr) -> uni.FuncCall {
+impl CastBuildPass._ord_call(c_node: c_ast.Node, ch: uni.Expr) -> uni.FuncCall {
     target = self._name(c_node, "ord");
-    return uni.FuncCall(
-        target=target, params=[ch], genai_call=None, kid=[target, ch]
-    );
+    return uni.FuncCall(target=target, params=[ch], genai_call=None, kid=[target, ch]);
 }
 
 impl CastBuildPass._str_char_at(
-    c_node: object, base_c: object, idx_c: object | None
+    c_node: c_ast.Node, base_c: c_ast.Node, idx_c: c_ast.Node | None
 ) -> object {
-    # `(ord(base[idx]) if base[idx:] else 0)` — empty suffix ⇒ NUL (0).
-    # Always parenthesize: if-else binds looser than `and`/`or`.
     if not expr_reeval_safe(base_c) {
         return self._surrogate_expr(c_node);
     }
@@ -1224,7 +1227,7 @@ impl CastBuildPass._str_char_at(
         return self._surrogate_expr(c_node);
     }
     zero = self._lit(uni.Int, Tok.INT, "0", line, col);
-    # idx == 0 / absent: `ord(p[0]) if p else 0`
+
     if idx_c is None {
         zero_idx = self._lit(uni.Int, Tok.INT, "0", line, col);
         ch = self._index_expr(c_node, base2, zero_idx);
@@ -1253,11 +1256,9 @@ impl CastBuildPass._str_char_at(
         return self._surrogate_expr(c_node);
     }
     zero_idx = self._lit(uni.Int, Tok.INT, "0", line, col);
-    # Guard on the remaining suffix so an exhausted cursor yields 0 (NUL).
+
     tail = self._slice_from(c_node, base, idx_e);
-    ch = self._index_expr(
-        c_node, self._slice_from(c_node, base2, idx_e2), zero_idx
-    );
+    ch = self._index_expr(c_node, self._slice_from(c_node, base2, idx_e2), zero_idx);
     ord_ch = self._ord_call(c_node, ch);
     cond_cfg = uni.CfgExpr(expr=tail, kid=[tail]);
     val_cfg = uni.CfgExpr(expr=ord_ch, kid=[ord_ch]);
@@ -1278,7 +1279,7 @@ impl CastBuildPass._str_char_at(
     );
 }
 
-impl CastBuildPass._str_deref(c_node: object, ptr_c: object) -> object {
+impl CastBuildPass._str_deref(c_node: c_ast.Node, ptr_c: c_ast.Node) -> object {
     if not self._is_str_cursor(ptr_c) {
         return None;
     }
@@ -1293,13 +1294,12 @@ impl CastBuildPass._str_deref(c_node: object, ptr_c: object) -> object {
 }
 
 impl CastBuildPass._str_advance_assign(
-    c_node: object, name: str, forward: bool
+    c_node: c_ast.Node, name: str, forward: bool
 ) -> uni.Assignment | None {
     if self._var_types.get(name) != JacPrim.STR {
         return None;
     }
     if not forward {
-        # Decrementing a string cursor has no faithful str lowering.
         return None;
     }
     (line, col) = self._coord(c_node);
@@ -1308,15 +1308,11 @@ impl CastBuildPass._str_advance_assign(
     target = self._name(c_node, name);
     tail = self._slice_from(c_node, base, one);
     return uni.Assignment(
-        target=[target],
-        value=tail,
-        type_tag=None,
-        mutable=False,
-        kid=[target, tail]
+        target=[target], value=tail, type_tag=None, mutable=False, kid=[target, tail]
     );
 }
 
-impl CastBuildPass.proc_unary_op(nd: object) -> object {
+impl CastBuildPass.proc_unary_op(nd: c_ast.Node) -> object {
     entry = C_UNARY_TOK.get(nd.op);
     if entry is not None {
         (tok, text) = entry;
@@ -1350,7 +1346,7 @@ impl CastBuildPass.proc_unary_op(nd: object) -> object {
     return self._surrogate_expr(nd);
 }
 
-impl CastBuildPass._pre_incdec_walrus(nd: object) -> uni.AtomUnit | None {
+impl CastBuildPass._pre_incdec_walrus(nd: c_ast.Node) -> uni.AtomUnit | None {
     if not isinstance(nd.expr, c_ast.ID) {
         return None;
     }
@@ -1375,7 +1371,7 @@ impl CastBuildPass._pre_incdec_walrus(nd: object) -> uni.AtomUnit | None {
     );
 }
 
-impl CastBuildPass.proc_assignment(nd: object) -> object {
+impl CastBuildPass.proc_assignment(nd: c_ast.Node) -> object {
     if nd.op == "=" and isinstance(nd.rvalue, c_ast.Assignment) {
         targets_c: list[object] = [];
         cur = nd;
@@ -1423,7 +1419,7 @@ impl CastBuildPass.proc_assignment(nd: object) -> object {
     if aug_name is None {
         return self._surrogate_stmt(nd);
     }
-    # str cursor `p += 1` / `p -= 1` → suffix / (no faithful backstep).
+
     if (
         isinstance(nd.lvalue, c_ast.ID)
         and nd.op in ("+=", "-=")
@@ -1461,7 +1457,7 @@ impl CastBuildPass.proc_assignment(nd: object) -> object {
     );
 }
 
-impl CastBuildPass.proc_struct_ref(nd: object) -> object {
+impl CastBuildPass.proc_struct_ref(nd: c_ast.Node) -> object {
     target = self.conv_expr(nd.name);
     if not isinstance(target, uni.Expr) {
         return self._surrogate_expr(nd);
@@ -1472,7 +1468,7 @@ impl CastBuildPass.proc_struct_ref(nd: object) -> object {
     );
 }
 
-impl CastBuildPass.proc_array_ref(nd: object) -> object {
+impl CastBuildPass.proc_array_ref(nd: c_ast.Node) -> object {
     target = self.conv_expr(nd.name);
     idx = self.conv_expr(nd.subscript);
     if not (isinstance(target, uni.Expr) and isinstance(idx, uni.Expr)) {
@@ -1485,7 +1481,7 @@ impl CastBuildPass.proc_array_ref(nd: object) -> object {
     );
 }
 
-impl CastBuildPass._struct_field(mem: object) -> uni.ArchHas | None {
+impl CastBuildPass._struct_field(mem: c_ast.Node) -> uni.ArchHas | None {
     if mem.name is None {
         return None;
     }
@@ -1493,8 +1489,7 @@ impl CastBuildPass._struct_field(mem: object) -> uni.ArchHas | None {
     tname = elem_typename(mem.type);
     ann = self._name(mem, tname);
     type_tag = uni.SubTag[uni.Expr](tag=ann, kid=[ann]);
-    # C struct fields are zero at BSS / after `= {0}`; defaulted `has` lets
-    # malloc→`Type()` and `[Type() for _ in range(n)]` construct without args.
+
     default = self._elem_default(mem, tname);
     hv = uni.HasVar(
         name=name_node,
@@ -1516,18 +1511,20 @@ impl CastBuildPass._struct_field(mem: object) -> uni.ArchHas | None {
 }
 
 impl CastBuildPass._struct_archetype(
-    snode: object, name: str, origin: object
+    snode: c_ast.Node, name: str, origin: c_ast.Node
 ) -> uni.Archetype {
     fields: list[uni.ArchHas] = [];
     field_specs: list[tuple[str, object]] = [];
-    decls = snode?.decls or [];
-    for mem in decls {
-        ah = self._struct_field(mem);
-        if ah is not None {
-            fields.append(ah);
-        }
-        if mem.name is not None and mem.type is not None {
-            field_specs.append((mem.name, mem.type));
+    decls = snode.decls;
+    if decls is not None {
+        for mem in decls {
+            ah = self._struct_field(mem);
+            if ah is not None {
+                fields.append(ah);
+            }
+            if mem.name is not None and mem.type is not None {
+                field_specs.append((mem.name, mem.type));
+            }
         }
     }
     self._struct_fields[name] = field_specs;
@@ -1555,11 +1552,11 @@ impl CastBuildPass._struct_archetype(
     );
 }
 
-impl CastBuildPass.proc_struct(nd: object) -> uni.Archetype {
+impl CastBuildPass.proc_struct(nd: c_ast.Node) -> uni.Archetype {
     return self._struct_archetype(nd, nd.name or "_AnonStruct", nd);
 }
 
-impl CastBuildPass.proc_typedef(nd: object) -> object {
+impl CastBuildPass.proc_typedef(nd: c_ast.Node) -> object {
     inner = nd.type;
     if isinstance(inner, c_ast.TypeDecl) and isinstance(inner.type, c_ast.Struct) {
         return self._struct_archetype(inner.type, nd.name, nd);
@@ -1578,19 +1575,19 @@ impl CastBuildPass.proc_typedef(nd: object) -> object {
     );
 }
 
-impl CastBuildPass.proc_enum(nd: object) -> object {
+impl CastBuildPass.proc_enum(nd: c_ast.Node) -> uni.UniNode | list[uni.UniNode] {
     verdict = self.enum_verdicts.verdicts.get(id(nd), EnumShape.NONE);
     name_map = self.enum_verdicts.name_map.get(id(nd), {});
     if verdict == EnumShape.ENUM_AS_ENUM {
         return self._enum_as_enum(nd, name_map);
     }
     if verdict == EnumShape.ENUM_AS_CONSTS {
-        return self._enum_as_consts(nd, name_map);
+        return cast(list[uni.UniNode], self._enum_as_consts(nd, name_map));
     }
     return self._surrogate_stmt(nd);
 }
 
-impl CastBuildPass._enum_var_decl(nd: object, en: object) -> list[uni.UniNode] {
+impl CastBuildPass._enum_var_decl(nd: c_ast.Node, en: c_ast.Node) -> list[uni.UniNode] {
     stmts: list[uni.UniNode] = [];
 
     if en.values is not None {
@@ -1644,7 +1641,7 @@ impl CastBuildPass._enum_var_decl(nd: object, en: object) -> list[uni.UniNode] {
     return stmts;
 }
 
-impl CastBuildPass._enum_as_enum(nd: object, name_map: dict[str, int]) -> uni.Enum {
+impl CastBuildPass._enum_as_enum(nd: c_ast.Node, name_map: dict[str, int]) -> uni.Enum {
     (line, col) = self._coord(nd);
     enum_name = self._name(nd, nd.name or "_AnonEnum");
     members: list[uni.UniNode] = [];
@@ -1677,7 +1674,7 @@ impl CastBuildPass._enum_as_enum(nd: object, name_map: dict[str, int]) -> uni.En
 }
 
 impl CastBuildPass._enum_as_consts(
-    nd: object, name_map: dict[str, int]
+    nd: c_ast.Node, name_map: dict[str, int]
 ) -> list[uni.GlobalVars] {
     (line, col) = self._coord(nd);
     assigns: list[uni.Assignment] = [];
@@ -1703,7 +1700,7 @@ impl CastBuildPass._enum_as_consts(
     ];
 }
 
-impl CastBuildPass._list_ann(c_node: object, elem_name: str) -> uni.AtomTrailer {
+impl CastBuildPass._list_ann(c_node: c_ast.Node, elem_name: str) -> uni.AtomTrailer {
     raw = C_PRIM_MAP.get(elem_name);
     jac = raw.value if raw is not None else elem_name;
     elem = self._name(c_node, jac);
@@ -1719,7 +1716,7 @@ impl CastBuildPass._list_ann(c_node: object, elem_name: str) -> uni.AtomTrailer 
     );
 }
 
-impl CastBuildPass._elem_zero_lit(c_node: object, elem_name: str) -> uni.Literal {
+impl CastBuildPass._elem_zero_lit(c_node: c_ast.Node, elem_name: str) -> uni.Literal {
     (line, col) = self._coord(c_node);
     jac = C_PRIM_MAP.get(elem_name, JacPrim.INT);
     pz = jac_prim_zero(jac);
@@ -1736,7 +1733,7 @@ impl CastBuildPass._elem_zero_lit(c_node: object, elem_name: str) -> uni.Literal
     return self._lit(uni.Int, Tok.INT, pz.text, line, col);
 }
 
-impl CastBuildPass._decl_array(nd: object) -> object {
+impl CastBuildPass._decl_array(nd: c_ast.Node) -> object {
     arr_decl = nd.type;
     elem_name = elem_typename(arr_decl.type);
     list_ann = self._list_ann(nd, elem_name);
@@ -1771,13 +1768,11 @@ impl CastBuildPass._decl_array(nd: object) -> object {
     );
 }
 
-impl CastBuildPass.proc_array_decl(nd: object) -> object {
+impl CastBuildPass.proc_array_decl(nd: c_ast.Node) -> object {
     return self._surrogate_stmt(nd);
 }
 
-impl CastBuildPass.proc_init_list(nd: object) -> object {
-    # Untyped fallback (no enclosing Decl type): keep as a Jac list. Struct
-    # and struct-array inits go through `_typed_init` from Decl sites.
+impl CastBuildPass.proc_init_list(nd: c_ast.Node) -> object {
     elts: list[uni.Expr] = [];
     for e in nd?.exprs or [] {
         ev = self.conv_expr(e);
@@ -1793,24 +1788,25 @@ impl CastBuildPass.proc_init_list(nd: object) -> object {
     return uni.ListVal(values=[], kid=[lb, rb]);
 }
 
-impl CastBuildPass.proc_named_initializer(nd: object) -> object {
-    # Reached only from untyped InitList paths (array designators, etc.).
+impl CastBuildPass.proc_named_initializer(nd: c_ast.Node) -> object {
     names = nd.name or [];
     field = ".".join([self._desig_name(d) for d in names]);
     self.emit_c_diag(nd, 4209, field=field);
     return self.conv_expr(nd.expr);
 }
 
-impl CastBuildPass._desig_name(d: object) -> str {
+impl CastBuildPass._desig_name(d: c_ast.Node) -> str {
     return d.name if isinstance(d, c_ast.ID) else str(getattr(d, "value", "?"));
 }
 
-impl CastBuildPass._kw_pair(c_node: object, key: str, value: uni.Expr) -> uni.KWPair {
+impl CastBuildPass._kw_pair(
+    c_node: c_ast.Node, key: str, value: uni.Expr
+) -> uni.KWPair {
     key_n = self._name(c_node, key);
     return uni.KWPair(key=key_n, value=value, kid=[key_n, value]);
 }
 
-impl CastBuildPass._needs_typed_init(c_type: object) -> bool {
+impl CastBuildPass._needs_typed_init(c_type: c_ast.Node) -> bool {
     chain = walk_to_typedecl(c_type);
     if chain.kind == TypeKind.ARRAY {
         return self._needs_typed_init(chain.node.type);
@@ -1822,7 +1818,9 @@ impl CastBuildPass._needs_typed_init(c_type: object) -> bool {
     return tname in self._struct_fields;
 }
 
-impl CastBuildPass._init_value(c_init: object, c_type: object) -> uni.Expr | None {
+impl CastBuildPass._init_value(
+    c_init: c_ast.Node, c_type: c_ast.Node
+) -> uni.Expr | None {
     typed = self._typed_init(c_init, c_type);
     if typed is not None {
         return typed;
@@ -1831,7 +1829,9 @@ impl CastBuildPass._init_value(c_init: object, c_type: object) -> uni.Expr | Non
     return ev if isinstance(ev, uni.Expr) else None;
 }
 
-impl CastBuildPass._typed_init(c_init: object, c_type: object) -> uni.Expr | None {
+impl CastBuildPass._typed_init(
+    c_init: c_ast.Node, c_type: c_ast.Node
+) -> uni.Expr | None {
     if not isinstance(c_init, c_ast.InitList) {
         return None;
     }
@@ -1852,12 +1852,11 @@ impl CastBuildPass._typed_init(c_init: object, c_type: object) -> uni.Expr | Non
 }
 
 impl CastBuildPass._array_init_from_list(
-    c_init: object, elem_type: object
+    c_init: c_ast.Node, elem_type: c_ast.Node
 ) -> uni.ListVal | None {
     elts: list[uni.Expr] = [];
     for e in c_init?.exprs or [] {
         if isinstance(e, c_ast.NamedInitializer) {
-            # Array designators (`[2] = …`) stay STYLE/untyped for now.
             names = e.name or [];
             field = ".".join([self._desig_name(d) for d in names]);
             self.emit_c_diag(e, 4209, field=field);
@@ -1890,7 +1889,7 @@ impl CastBuildPass._field_index(type_name: str, field: str) -> int | None {
 }
 
 impl CastBuildPass._struct_init_from_list(
-    c_init: object, type_name: str
+    c_init: c_ast.Node, type_name: str
 ) -> uni.FuncCall | None {
     specs = self._struct_fields.get(type_name, []);
     by_name: dict[str, uni.Expr] = {};
@@ -1898,7 +1897,7 @@ impl CastBuildPass._struct_init_from_list(
     for e in c_init?.exprs or [] {
         if isinstance(e, c_ast.NamedInitializer) {
             desigs = e.name or [];
-            # Single-level `.field = expr` only; nested `.a.b` / `[i]` stay STYLE.
+
             if len(desigs) != 1 or not isinstance(desigs[0], c_ast.ID) {
                 field = ".".join([self._desig_name(d) for d in desigs]);
                 self.emit_c_diag(e, 4209, field=field);
@@ -1941,7 +1940,7 @@ impl CastBuildPass._struct_init_from_list(
     return uni.FuncCall(target=ctor, params=params, genai_call=None, kid=kid);
 }
 
-impl CastBuildPass.proc_expr_list(nd: object) -> object {
+impl CastBuildPass.proc_expr_list(nd: c_ast.Node) -> object {
     exprs = nd?.exprs or [];
     if not exprs {
         return self._surrogate_expr(nd);
@@ -1957,7 +1956,7 @@ impl CastBuildPass.proc_expr_list(nd: object) -> object {
     return self.conv_expr(exprs[-1]);
 }
 
-impl CastBuildPass.proc_cast(nd: object) -> object {
+impl CastBuildPass.proc_cast(nd: c_ast.Node) -> object {
     target = cast_scalar_target(nd);
     if target is not None {
         self.emit_c_diag(

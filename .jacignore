@@ -261,25 +261,6 @@ shadcn_handler.impl.jac
 jac/jaclang/cli/shadcn/cli.jac
 jac/jaclang/cli/shadcn/impl/cli.impl.jac
 theme_handler.jac
-# c2jac C-ingestion frontend (#7145 / #6973). These lift C into Jac, driving the
-# vendored pycparser whose `c_ast` nodes have no Jac-visible stubs — every AST
-# access resolves to `object`/`Any` and trips the re-enabled "has no attribute"
-# diagnostics. Same stub-gap class as the ignored `passes/native/llvm/*` package;
-# the code is valid and exercised by the c2jac/jac2c test suites. (The jac2c
-# emit side — `passes/c/c_gen_pass` and the `ownership_facts`/`type_facts`
-# passes — walks Jac IR, not pycparser, so it is type-checked normally.)
-jac/jaclang/compiler/c2jac/bindgen.jac
-jac/jaclang/compiler/cfront/c_common.jac
-jac/jaclang/compiler/cfront/c_dataflow.jac
-jac/jaclang/compiler/cfront/c_idioms.jac
-jac/jaclang/compiler/cfront/c_types.jac
-jac/jaclang/compiler/cfront/cbind_ir.jac
-jac/jaclang/compiler/cfront/clib_bind.jac
-jac/jaclang/compiler/cfront/enum_prepass.jac
-jac/jaclang/compiler/cfront/lift.jac
-jac/jaclang/compiler/cfront/preprocess.jac
-jac/jaclang/compiler/passes/main/cast_load_pass.jac
-jac/jaclang/compiler/passes/main/impl/cast_load_pass.impl.jac
 # c2jac-generated demonstration output: lifted C double-pointer params
 # (`rotating_node_t **root`) surface as `object`, and the `typedef struct
 # rotating_node_s rotating_node_t` alias does not carry the struct's fields.
@@ -345,7 +326,6 @@ jac/jaclang/cli/impl/cli.impl.jac
 jac/jaclang/cli/mcp/impl/protocol.impl.jac
 jac/jaclang/cli/mcp/protocol.jac
 jac/jaclang/compiler/code_intel.jac
-jac/jaclang/compiler/ownership.jac
 jac/jaclang/compiler/passes/ecmascript/backends/impl/react.impl.jac
 jac/jaclang/compiler/passes/ecmascript/backends/impl/solid.impl.jac
 jac/jaclang/compiler/passes/ecmascript/backends/react.jac

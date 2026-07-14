@@ -13,10 +13,10 @@ enum TypeKind { ARRAY = "array", PTR = "ptr", NONE = "none", SCALAR = "scalar" }
 
 obj TypeChain {
     has kind: TypeKind,
-        node: object;
+        node: c_ast.Node | None;
 }
 
-glob C_BUILTIN_TYPES: set = {
+glob C_BUILTIN_TYPES: set[str] = {
          "int",
          "float",
          "double",
@@ -46,12 +46,10 @@ glob C_BUILTIN_TYPES: set = {
          "Py_hash_t",
 
      },
-     C_PRIM_MAP: dict = {
+     C_PRIM_MAP: dict[str, JacPrim] = {
          "int": JacPrim.INT,
          "float": JacPrim.FLOAT,
          "double": JacPrim.FLOAT,
-         # Plain `char` is an integer type in C (promotion / arithmetic). The
-         # string idiom is specifically `char*` — see `is_plain_char_ptr`.
          "char": JacPrim.INT,
          "void": JacPrim.VOID,
          "long": JacPrim.INT,
@@ -73,13 +71,11 @@ def _jac_prim_from_lp64(name: str) -> JacPrim | None {
     return JacPrim.INT;
 }
 
-def jac_prim(names: list) -> JacPrim {
+def jac_prim(names: list[str]) -> JacPrim {
     if not names {
         return JacPrim.INT;
     }
     if "char" in names {
-        # All char flavours are integers as scalars; pointers are handled by
-        # `is_plain_char_ptr` / `is_char_ptr`.
         return JacPrim.INT;
     }
     if len(names) == 1 {
@@ -91,7 +87,7 @@ def jac_prim(names: list) -> JacPrim {
     return C_PRIM_MAP.get(names[-1], JacPrim.INT);
 }
 
-def user_type_name(t: object) -> str | None {
+def user_type_name(t: c_ast.Node) -> str | None {
     if isinstance(t, c_ast.Struct) and t.name {
         return t.name;
     }
@@ -102,7 +98,7 @@ def user_type_name(t: object) -> str | None {
     return None;
 }
 
-def walk_to_typedecl(decl_type: object) -> TypeChain {
+def walk_to_typedecl(decl_type: c_ast.Node) -> TypeChain {
     t = decl_type;
     while not isinstance(t, c_ast.TypeDecl) {
         if isinstance(t, c_ast.ArrayDecl) {
@@ -123,7 +119,7 @@ def walk_to_typedecl(decl_type: object) -> TypeChain {
     return TypeChain(kind=TypeKind.SCALAR, node=t);
 }
 
-def ptr_inner_typedecl(ptr_decl: object) -> object | None {
+def ptr_inner_typedecl(ptr_decl: c_ast.Node) -> c_ast.Node | None {
     inner = ptr_decl.type;
     if isinstance(inner, c_ast.TypeDecl) {
         return inner;
@@ -131,7 +127,7 @@ def ptr_inner_typedecl(ptr_decl: object) -> object | None {
     return None;
 }
 
-def _char_ptr_names(ptr_decl: object) -> list | None {
+def _char_ptr_names(ptr_decl: c_ast.Node) -> list | None {
     inner = ptr_inner_typedecl(ptr_decl);
     if inner is None {
         return None;
@@ -143,8 +139,7 @@ def _char_ptr_names(ptr_decl: object) -> list | None {
     return names;
 }
 
-def is_plain_char_ptr(ptr_decl: object) -> bool {
-    # `char*` / `const char*` string idiom (not signed/unsigned byte buffers).
+def is_plain_char_ptr(ptr_decl: c_ast.Node) -> bool {
     names = _char_ptr_names(ptr_decl);
     if names is None {
         return False;
@@ -152,13 +147,11 @@ def is_plain_char_ptr(ptr_decl: object) -> bool {
     return "signed" not in names and "unsigned" not in names;
 }
 
-def is_char_ptr(ptr_decl: object) -> bool {
-    # Any single-level pointer to char / signed char / unsigned char. Lift
-    # models these as `str` cursors (`*p` → `ord(p[0])`, `p++` → `p[1:]`).
+def is_char_ptr(ptr_decl: c_ast.Node) -> bool {
     return _char_ptr_names(ptr_decl) is not None;
 }
 
-def ptr_typename(ptr_decl: object) -> str {
+def ptr_typename(ptr_decl: c_ast.Node) -> str {
     if is_char_ptr(ptr_decl) {
         return "str";
     }
@@ -172,7 +165,7 @@ def ptr_typename(ptr_decl: object) -> str {
     return "object";
 }
 
-def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
+def _resolve_decl(decl_type: c_ast.Node, resolve_user: bool) -> str {
     chain = walk_to_typedecl(decl_type);
     if chain.kind == TypeKind.ARRAY {
         return "list";
@@ -193,10 +186,10 @@ def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
     return jac_prim(names).value;
 }
 
-def typename(decl_type: object) -> str {
+def typename(decl_type: c_ast.Node) -> str {
     return _resolve_decl(decl_type, False);
 }
 
-def elem_typename(decl_type: object) -> str {
+def elem_typename(decl_type: c_ast.Node) -> str {
     return _resolve_decl(decl_type, True);
 }

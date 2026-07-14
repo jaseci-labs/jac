@@ -45,7 +45,7 @@ def _c_int_autobase(raw: str) -> int {
     return int(raw, 0);
 }
 
-def _parse_strippable(raw: str, fn: callable, suffix: str) -> object | None {
+def _parse_strippable(raw: str, fn: any, suffix: str) -> any {
     try {
         return fn(raw);
     } except ValueError {
@@ -62,11 +62,13 @@ def _parse_strippable(raw: str, fn: callable, suffix: str) -> object | None {
 }
 
 def parse_c_int(raw: str) -> int | None {
-    return _parse_strippable(raw, _c_int_autobase, "uUlL");
+    v = _parse_strippable(raw, _c_int_autobase, "uUlL");
+    return v if isinstance(v, int) else None;
 }
 
 def parse_c_float(raw: str) -> float | None {
-    return _parse_strippable(raw, float, "fFlL");
+    v = _parse_strippable(raw, float, "fFlL");
+    return v if isinstance(v, float) else None;
 }
 
 glob CLIT_INT: str = "int",
@@ -124,17 +126,17 @@ def c_string_inner(raw: str) -> str | None {
     return None;
 }
 
-def coord_of(c_node: object, default_line: int) -> tuple[int, int] {
+def coord_of(c_node: c_ast.Node, default_line: int) -> tuple[int, int] {
     coord = c_node?.coord;
     if coord {
-        line = coord.line or default_line;
-        col = (coord.column - 1) if coord.column else 0;
+        line: int = int(coord.line) if coord.line else default_line;
+        col: int = (int(coord.column) - 1) if coord.column else 0;
         return (line, col);
     }
     return (default_line, 0);
 }
 
-def expr_reeval_safe(nd: object) -> bool {
+def expr_reeval_safe(nd: c_ast.Node) -> bool {
     if nd is None {
         return True;
     }
@@ -152,7 +154,7 @@ def expr_reeval_safe(nd: object) -> bool {
     return True;
 }
 
-def has_loop_continue(nd: object) -> bool {
+def has_loop_continue(nd: c_ast.Node) -> bool {
     if nd is None {
         return False;
     }
@@ -193,7 +195,7 @@ def section_terminates(stmts: list | None) -> bool {
     );
 }
 
-def switch_is_safe(items: list, cond: object) -> bool {
+def switch_is_safe(items: list[c_ast.Node], cond: c_ast.Node) -> bool {
     if not expr_reeval_safe(cond) {
         return False;
     }
@@ -224,7 +226,7 @@ def switch_is_safe(items: list, cond: object) -> bool {
     return True;
 }
 
-def is_simple_ref(c_node: object) -> bool {
+def is_simple_ref(c_node: c_ast.Node) -> bool {
     return (
         isinstance(c_node, c_ast.ID)
         or isinstance(c_node, c_ast.StructRef)
@@ -232,7 +234,7 @@ def is_simple_ref(c_node: object) -> bool {
     );
 }
 
-def cast_scalar_target(nd: object) -> str | None {
+def cast_scalar_target(nd: c_ast.Node) -> str | None {
     to_type = nd?.to_type;
     if to_type is None {
         return None;
@@ -246,7 +248,7 @@ def cast_scalar_target(nd: object) -> str | None {
     return None;
 }
 
-def is_null_ptr_constant(c_node: object) -> bool {
+def is_null_ptr_constant(c_node: c_ast.Node) -> bool {
     cur = c_node;
     while isinstance(cur, c_ast.Cast) {
         cur = cur.expr;
@@ -281,7 +283,7 @@ def jac_id(name: str) -> str {
     return f"`{name}" if name in _JAC_KW_IDS else name;
 }
 
-def c_field(nd: object, field: str) -> object {
+def c_field(nd: c_ast.Node, field: str) -> object {
     return getattr(nd, field, None);
 }
 
@@ -290,7 +292,7 @@ obj EnumVal {
         simple: bool;
 }
 
-def enumerator_value(en: object, counter: int) -> EnumVal {
+def enumerator_value(en: c_ast.Node, counter: int) -> EnumVal {
     if en.value is None {
         return EnumVal(value=counter, simple=True);
     }
@@ -317,12 +319,12 @@ def enumerator_value(en: object, counter: int) -> EnumVal {
 }
 
 obj EnumPairs {
-    has pairs: list,
+    has pairs: list[tuple[str, int]],
         all_simple: bool;
 }
 
-def eval_enumerators(enumerator_list: object) -> EnumPairs {
-    pairs: list = [];
+def eval_enumerators(enumerator_list: c_ast.Node) -> EnumPairs {
+    pairs: list[tuple[str, int]] = [];
     counter: int = 0;
     all_simple = True;
     for en in enumerator_list.enumerators {
@@ -330,13 +332,13 @@ def eval_enumerators(enumerator_list: object) -> EnumPairs {
         if not ev.simple {
             all_simple = False;
         }
-        pairs.append((en.name, ev.value));
+        pairs.append((str(en.name), ev.value));
         counter = ev.value + 1;
     }
     return EnumPairs(pairs=pairs, all_simple=all_simple);
 }
 
-def c_tok(c_node: object, orig_src: uni.Source, text: str = "") -> uni.Token {
+def c_tok(c_node: c_ast.Node, orig_src: uni.Source, text: str = "") -> uni.Token {
     (line, col) = coord_of(c_node, 1);
     span = max(len(text), 1);
     tok = uni.Token(
