@@ -1,159 +1,159 @@
 """AI Day Planner -- walker-based version with OSP."""
 
-to cl:
+cl {
+    import from frontend { app as ClientApp }
 
-import from frontend { app as ClientApp }
-
-def:pub app -> JsxElement {
-    return <ClientApp/>;
-}
-
-to sv:
-
-enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
-
-enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
-
-obj Ingredient {
-    has name: str,
-        quantity: float,
-        unit: Unit,
-        cost: float,
-        carby: bool;
-}
-
-sem Ingredient.cost = "Estimated cost in USD";
-sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
-
-def categorize(title: str) -> Category by llm();
-sem categorize = "Categorize a task based on its title";
-
-def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
-sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
-
-node Task {
-    has title: str,
-        done: bool = False,
-        category: str = "other";
-}
-
-node ShoppingItem {
-    has name: str,
-        quantity: float,
-        unit: str,
-        cost: float,
-        carby: bool;
-}
-
-walker:priv AddTask {
-    has title: str,
-        reports: list[Task] = [];
-
-    can create with Root entry {
-        category = str(categorize(self.title)).split(".")[-1].lower();
-        new_task = here ++> Task(title=self.title, category=category);
-        report new_task;
+    def:pub app -> JsxElement {
+        return <ClientApp/>;
     }
 }
 
-walker:priv ListTasks {
-    has results: list[Task] = [],
-        reports: list[list[Task]] = [];
+sv {
+    enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
-    can start with Root entry {
-        visit [-->];
+    enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
+
+    obj Ingredient {
+        has name: str,
+            quantity: float,
+            unit: Unit,
+            cost: float,
+            carby: bool;
     }
 
-    can collect with Task entry {
-        self.results.append(here);
+    sem Ingredient.cost = "Estimated cost in USD";
+    sem Ingredient.carby = "True if this ingredient is high in carbohydrates";
+
+    def categorize(title: str) -> Category by llm();
+    sem categorize = "Categorize a task based on its title";
+
+    def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
+    sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
+
+    node Task {
+        has title: str,
+            done: bool = False,
+            category: str = "other";
     }
 
-    can done with Root exit {
-        report self.results;
-    }
-}
-
-walker:priv ToggleTask {
-    has task_id: str,
-        reports: list[Task] = [];
-
-    can search with Root entry {
-        visit [-->];
+    node ShoppingItem {
+        has name: str,
+            quantity: float,
+            unit: str,
+            cost: float,
+            carby: bool;
     }
 
-    can toggle with Task entry {
-        if jid(here) == self.task_id {
-            here.done = not here.done;
-            report here;
-            disengage;
+    walker:priv AddTask {
+        has title: str,
+            reports: list[Task] = [];
+
+        can create with Root entry {
+            category = str(categorize(self.title)).split(".")[-1].lower();
+            new_task = here ++> Task(title=self.title, category=category);
+            report new_task;
         }
     }
-}
 
-walker:priv DeleteTask {
-    has task_id: str;
+    walker:priv ListTasks {
+        has results: list[Task] = [],
+            reports: list[list[Task]] = [];
 
-    can search with Root entry {
-        visit [-->];
+        can start with Root entry {
+            visit [-->];
+        }
+
+        can collect with Task entry {
+            self.results.append(here);
+        }
+
+        can done with Root exit {
+            report self.results;
+        }
     }
 
-    can remove with Task entry {
-        if jid(here) == self.task_id {
+    walker:priv ToggleTask {
+        has task_id: str,
+            reports: list[Task] = [];
+
+        can search with Root entry {
+            visit [-->];
+        }
+
+        can toggle with Task entry {
+            if jid(here) == self.task_id {
+                here.done = not here.done;
+                report here;
+                disengage;
+            }
+        }
+    }
+
+    walker:priv DeleteTask {
+        has task_id: str;
+
+        can search with Root entry {
+            visit [-->];
+        }
+
+        can remove with Task entry {
+            if jid(here) == self.task_id {
+                del here;
+                report {"deleted": self.task_id};
+                disengage;
+            }
+        }
+    }
+
+    walker:priv GenerateShoppingList {
+        has meal_description: str,
+            reports: list[list[ShoppingItem]] = [];
+
+        can generate with Root entry {
+            visit [-->];
+            ingredients = generate_shopping_list(self.meal_description);
+            for ing in ingredients {
+                here ++> ShoppingItem(
+                    name=ing.name,
+                    quantity=ing.quantity,
+                    unit=str(ing.unit).split(".")[-1].lower(),
+                    cost=ing.cost,
+                    carby=ing.carby
+                );
+            }
+            report [here-->][?:ShoppingItem];
+        }
+
+        can clear_old with ShoppingItem entry {
             del here;
-            report {"deleted": self.task_id};
-            disengage;
         }
     }
-}
 
-walker:priv GenerateShoppingList {
-    has meal_description: str,
-        reports: list[list[ShoppingItem]] = [];
+    walker:priv GetShoppingList {
+        has items: list[ShoppingItem] = [],
+            reports: list[list[ShoppingItem]] = [];
 
-    can generate with Root entry {
-        visit [-->];
-        ingredients = generate_shopping_list(self.meal_description);
-        for ing in ingredients {
-            here ++> ShoppingItem(
-                name=ing.name,
-                quantity=ing.quantity,
-                unit=str(ing.unit).split(".")[-1].lower(),
-                cost=ing.cost,
-                carby=ing.carby
-            );
+        can collect with Root entry {
+            visit [-->];
         }
-        report [here-->][?:ShoppingItem];
+
+        can gather with ShoppingItem entry {
+            self.items.append(here);
+        }
+
+        can done with Root exit {
+            report self.items;
+        }
     }
 
-    can clear_old with ShoppingItem entry {
-        del here;
-    }
-}
+    walker:priv ClearShoppingList {
+        can collect with Root entry {
+            visit [-->];
+        }
 
-walker:priv GetShoppingList {
-    has items: list[ShoppingItem] = [],
-        reports: list[list[ShoppingItem]] = [];
-
-    can collect with Root entry {
-        visit [-->];
-    }
-
-    can gather with ShoppingItem entry {
-        self.items.append(here);
-    }
-
-    can done with Root exit {
-        report self.items;
-    }
-}
-
-walker:priv ClearShoppingList {
-    can collect with Root entry {
-        visit [-->];
-    }
-
-    can clear with ShoppingItem entry {
-        del here;
-        report {"cleared": True};
+        can clear with ShoppingItem entry {
+            del here;
+            report {"cleared": True};
+        }
     }
 }

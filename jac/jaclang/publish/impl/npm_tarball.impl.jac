@@ -3,7 +3,7 @@ import gzip;
 import tarfile;
 
 impl pack_tarball(members: list[tuple[str, bytes]]) -> bytes {
-    ordered = sorted(members, key=lambda m: any : m[0]);
+    ordered = sorted(members, key=lambda (m: any) { m[0]; });
     raw = io.BytesIO();
     with tarfile.open(fileobj=raw, mode="w") as tar {
         for (arc, data) in ordered {

@@ -42,7 +42,7 @@ def:pub app -> JsxElement {
         <div>
             <input
                 value={input_text}
-                onChange={lambda e: any -> None { input_text = e.target.value; }}
+                onChange={lambda (e: any) -> None { input_text = e.target.value; }}
             />
             <button onClick={call_greet}>Greet</button>
             <button onClick={call_add_kw_only}>Add KW</button>

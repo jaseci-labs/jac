@@ -358,6 +358,10 @@ impl RaiseStmt.accept_enter(v: UniPass) -> None {
     v.enter_raise_stmt(self);
 }
 
+impl RegionStmt.accept_enter(v: UniPass) -> None {
+    v.enter_region_stmt(self);
+}
+
 impl ReportStmt.accept_enter(v: UniPass) -> None {
     v.enter_report_stmt(self);
 }
@@ -840,6 +844,10 @@ impl PyInlineCode.accept_exit(v: UniPass) -> None {
 
 impl RaiseStmt.accept_exit(v: UniPass) -> None {
     v.exit_raise_stmt(self);
+}
+
+impl RegionStmt.accept_exit(v: UniPass) -> None {
+    v.exit_region_stmt(self);
 }
 
 impl ReportStmt.accept_exit(v: UniPass) -> None {

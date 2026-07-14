@@ -19,6 +19,10 @@ import from jaclang.project.kinds {
     resolve_project_kind,
     resolve_entry,
     is_valid_kind,
+    kind_entry,
+    kind_spec,
+    RunPlan,
+    KIND_SPECS,
     VALID_KINDS
 }
 
@@ -48,10 +52,13 @@ def _plan(
     toml_extra: str,
     entry_name: str = "",
     entry_body: str = "with entry { print(\"ok\"); }"
-) -> object {
+) -> RunPlan {
     d = _mk_project(toml_extra, entry_name, entry_body);
     cfg = JacConfig.discover(start_path=Path(d));
-    return plan_project_run(cfg, d);
+    assert cfg is not None , "expected a discovered config";
+    plan = plan_project_run(cfg, d);
+    assert plan is not None , "expected a run plan";
+    return plan;
 }
 
 def _cleanup {
@@ -145,28 +152,35 @@ test "kind web-app -> serve dev (client framework is core)" {
     assert p.action == "serve";
     assert p.verb == "start";
     assert p.flags.get("dev") == True;
-    assert p.requires_plugin == "";
+    # A web-app serves the default web client, so it carries no --client flag.
+    assert "client" not in p.flags;
 }
 
 test "kind web-static -> serve (client framework is core)" {
     p = _plan("kind = \"web-static\"\nentry-point = \"page.cl.jac\"\n", "page.cl.jac");
     assert p.action == "serve";
     assert p.verb == "start";
-    assert p.requires_plugin == "";
+    assert "client" not in p.flags;
 }
 
-test "kind desktop -> serve (desktop target is core)" {
+test "kind desktop -> serve the desktop client target (core)" {
     p = _plan("kind = \"desktop\"\nentry-point = \"app.cl.jac\"\n", "app.cl.jac");
     assert p.action == "serve";
+    assert p.verb == "start";
+    # The desktop target is a core client target -- it must reach `start`,
+    # not be turned away as a missing plugin.
     assert p.flags.get("client") == "desktop";
-    assert p.requires_plugin == "";
+    assert "--client desktop" in p.command_line();
 }
 
-test "kind mobile -> build (client framework is core)" {
+test "kind mobile -> build the mobile client shell (core)" {
     p = _plan("kind = \"mobile\"\nentry-point = \"app.cl.jac\"\n", "app.cl.jac");
     assert p.action == "build";
     assert p.verb == "build";
-    assert p.requires_plugin == "";
+    # Must build the mobile shell, not fall through to a default .jab build.
+    assert p.flags.get("client") == "mobile";
+    assert "as" not in p.flags;
+    assert "--client mobile" in p.command_line();
 }
 
 # ---------------------------------------------------------------------------
@@ -228,6 +242,39 @@ test "is_valid_kind accepts known and rejects unknown kinds" {
     assert is_valid_kind("service");
     assert not is_valid_kind("banana");
     assert len(VALID_KINDS) == 12;
+}
+
+test "KIND_SPECS is the single source of truth for every kind" {
+    assert kind_spec("banana") is None;
+    for kname in VALID_KINDS {
+        spec = kind_spec(kname);
+        assert spec is not None , f"no spec for {kname}";
+        # The table key and the spec's own name can never drift apart.
+        assert spec.name == kname;
+        assert spec.action in ["execute", "build", "serve"];
+        assert spec.verb in ["run", "start", "nacompile", "build"];
+        assert spec.description;
+        assert spec.entry;
+        # kind_entry() reads the table rather than a second hardcoded list.
+        assert kind_entry(kname) == spec.entry;
+    }
+}
+
+test "a plan carries the spec it was planned from" {
+    p = _plan("kind = \"cli\"\n", "main.jac");
+    assert p.spec is KIND_SPECS["cli"];
+    assert p.kind == "cli" and p.kind == p.spec.name;
+    assert p.action == p.spec.action and p.verb == p.spec.verb;
+}
+
+test "planning never mutates the shared spec's flags" {
+    p = _plan(
+        "kind = \"service\"\nentry-point = \"api.sv.jac\"\n\n[serve]\nport = 3000\n",
+        "api.sv.jac"
+    );
+    assert p.flags.get("port") == 3000;
+    # The port landed on the plan, not on the table entry every project shares.
+    assert "port" not in KIND_SPECS["service"].flags;
 }
 
 # ---------------------------------------------------------------------------

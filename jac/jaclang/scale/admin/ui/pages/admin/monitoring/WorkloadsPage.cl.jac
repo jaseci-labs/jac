@@ -275,7 +275,7 @@ cl {
                 <input
                     type="checkbox"
                     checked={autoRefresh}
-                    onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                    onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
                     className="rounded border-line bg-surface-2 text-accent focus:ring-accent"
                 />
                 Auto-refresh
@@ -354,7 +354,7 @@ cl {
                                         if kindFilter == k
                                         else inactiveChipCls
                                 )}
-                                onClick={lambda e: any { kindFilter = k; }}
+                                onClick={lambda (e: any) { kindFilter = k; }}
                             >
                                 {k}
                             </button> for k in chipLabels

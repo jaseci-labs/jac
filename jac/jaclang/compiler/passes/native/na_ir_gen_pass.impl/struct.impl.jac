@@ -75,9 +75,7 @@ impl NaIRGenPass._emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | N
                 fields.append(("float", _sz, False));
                 total = total + _sz;
             }
-        } elif ch == " " {
-            pass;
-        } else {
+        } elif ch == " " { } else {
             parse_ok = False;
             break;
         }

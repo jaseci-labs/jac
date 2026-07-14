@@ -48,7 +48,8 @@ def parse_spec(text: str) -> dict[str, str] {
     current_body: str = "";
     for line in text.strip().splitlines() {
         line = line.rstrip();
-        if not line or line.startswith("#") or line.startswith("//") {
+        lead = line.lstrip();
+        if not lead or lead.startswith("#") or lead.startswith("//") {
             continue;
         }
         if "::=" in line {

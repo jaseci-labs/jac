@@ -244,7 +244,7 @@ test "E0025: gte (>=) does not fire" {
 }
 
 test "E0025: lambda syntax unaffected" {
-    (prog, had_err) = parse_with_prog('with entry { f = lambda x: int : x + 1; }');
+    (prog, had_err) = parse_with_prog('with entry { f = lambda (x: int) { x + 1; }; }');
     assert not had_err;
     assert not has_diagnostic_code(prog, "E0025");
 }
@@ -311,7 +311,7 @@ test "E0052: typed parameter is valid" {
 }
 
 test "E0052: lambda params do not require annotations" {
-    (has_err, _) = parse_and_validate('with entry { f = lambda x: x + 1; }');
+    (has_err, _) = parse_and_validate('with entry { f = lambda (x) { x + 1; }; }');
     assert not has_err;
 }
 
@@ -714,6 +714,13 @@ test "E2055: return in finally block" {
 test "W2058: None comparison with ==" {
     (prog, _) = compile_and_check("semantic_W2058_none_eq.jac");
     assert has_diagnostic_code(prog, "W2058", in_warnings=True);
+}
+
+test "W2029: python-style property decorators in an obj" {
+    (prog, _) = compile_and_check("semantic_W2029_property_decorators.jac");
+    # One per decorator: '@property', '@val.getter', '@val.setter', '@val.deleter'.
+    # The '@property' inside the Python-compat 'class' is exempt, like W2006/W2007.
+    assert count_diagnostic_code(prog, "W2029", in_warnings=True) == 4;
 }
 
 # --- Mutability / Assignment (INFRA-1) ---
@@ -1161,12 +1168,15 @@ test "view body check warns on a keyless while (W2019)" {
 # ══════════════════════════════════════════════════════════════════
 with entry {
     parametrize(
-        "new reject", list(MUST_REJECT_NEW.items()), reject_test, id_fn=lambda x : x[0]
+        "new reject",
+        list(MUST_REJECT_NEW.items()),
+        reject_test,
+        id_fn=lambda (x) { x[0]; }
     );
     parametrize(
         "new validate reject",
         list(MUST_VALIDATE_NEW.items()),
         validate_reject_test,
-        id_fn=lambda x : x[0]
+        id_fn=lambda (x) { x[0]; }
     );
 }

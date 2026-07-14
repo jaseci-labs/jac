@@ -20,9 +20,9 @@ The key insight is that Jac's compiler does not simply transpile syntax; it impl
 ```mermaid
 graph TD
     SRC["Jac Source Code"] --> COMPILER["Jac Compiler"]
-    COMPILER --> PY["Python / Server Backend<br/><code>to sv:</code>"]
-    COMPILER --> ES["ECMAScript / Client Backend<br/><code>to cl:</code>"]
-    COMPILER --> NA["Native / LLVM Backend<br/><code>to na:</code>"]
+    COMPILER --> PY["Python / Server Backend<br/><code>sv { }</code>"]
+    COMPILER --> ES["ECMAScript / Client Backend<br/><code>cl { }</code>"]
+    COMPILER --> NA["Native / LLVM Backend<br/><code>na { }</code>"]
 
     PY --> PRIM["Shared Primitive Semantics<br/>int, float, str, list, dict, ..."]
     ES --> PRIM
@@ -33,13 +33,13 @@ graph TD
 
 ## Codespace Model
 
-A **codespace** determines *where* your code runs. You select a codespace with a file extension or, within a file, one of three forms -- a **section header**, a **single-statement prefix**, or a **braced block**:
+A **codespace** determines *where* your code runs. You select a codespace with a file extension or, within a file, one of two forms -- a **braced block** or a **single-statement prefix**:
 
-| Codespace | Section Header | Statement Prefix | Braced Block | File Extension | Compiles To | Ecosystem |
-|-----------|---------------|-----------------|--------------|----------------|-------------|-----------|
-| Server    | `to sv:` | `sv stmt` | `sv { }` | `.sv.jac` or `.jac` (default) | Python | PyPI |
-| Client    | `to cl:` | `cl stmt` | `cl { }` | `.cl.jac` | JavaScript / TypeScript | npm |
-| Native    | `to na:` | `na stmt` | `na { }` | `.na.jac` | LLVM IR → machine code | C ABI |
+| Codespace | Braced Block | Statement Prefix | File Extension | Compiles To | Ecosystem |
+|-----------|--------------|-----------------|----------------|-------------|-----------|
+| Server    | `sv { }` | `sv stmt` | `.sv.jac` or `.jac` (default) | Python | PyPI |
+| Client    | `cl { }` | `cl stmt` | `.cl.jac` | JavaScript / TypeScript | npm |
+| Native    | `na { }` | `na stmt` | `.na.jac` | LLVM IR → machine code | C ABI |
 
 Code outside any tagged region defaults to the server codespace.
 
@@ -62,24 +62,6 @@ cl {
 
 Blocks also work inside a class or function body to locally override the active codespace.
 
-### Section headers
-
-A `to cl:` / `to sv:` / `to na:` header sets the default codespace for **every following module-level element** until the next header or end of file. Headers are an alternative to blocks -- convenient for a module that is mostly one codespace, since they avoid a wrapping block and a trailing brace far from the opening:
-
-```jac
-to sv:
-
-def fetch_items() -> list[dict] {
-    return [{"id": 1, "name": "Item A"}];
-}
-
-to cl:
-
-async def load() -> None {
-    items = await fetch_items();   # compiler generates the HTTP call
-}
-```
-
 ### Statement prefix
 
 The single-statement prefix is ideal for a one-off override:
@@ -93,7 +75,21 @@ cl def greet(name: str) -> str { return "Hello, " + name; }
 
 ### Cross-Codespace Interop
 
-When code in one codespace calls a function in another, the compiler generates the interop layer automatically -- HTTP calls between server and client, FFI bridges between Python and native, serialization and deserialization at boundaries. See the section-header example above.
+When code in one codespace calls a function in another, the compiler generates the interop layer automatically -- HTTP calls between server and client, FFI bridges between Python and native, serialization and deserialization at boundaries:
+
+```jac
+sv {
+    def fetch_items() -> list[dict] {
+        return [{"id": 1, "name": "Item A"}];
+    }
+}
+
+cl {
+    async def load() -> None {
+        items = await fetch_items();   # compiler generates the HTTP call
+    }
+}
+```
 
 ### What Is Shared
 

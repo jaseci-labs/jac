@@ -43,6 +43,9 @@ exclude = [
     #    native bridge extractor reads.
     "jir_registry.jac",
     "plugin_bridge.na.jac",
+    #  - uni_pass.jac carries the `# >>> generated visitor surface >>>` markers
+    #    that `jac gen-uni-dispatch` uses to locate the region it rewrites.
+    "uni_pass.jac",
 ]
 
 [byllm.model]

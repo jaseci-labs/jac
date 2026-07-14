@@ -93,7 +93,7 @@ For example, configuring a Mongo database under `[scale.database]` makes `jac in
 | Cloud object storage | boto3 | Using S3-compatible cloud storage |
 | Monitoring | prometheus-client | Prometheus `/metrics` endpoint |
 | Scheduling | apscheduler | `@schedule(trigger=...)` on walkers/functions |
-| Deployment | kubernetes, docker | `jac start --scale` or `jac start --build` |
+| Deployment | kubernetes, docker | `jac start --scale` |
 
 ---
 

@@ -65,7 +65,7 @@ walker me {
     can go with Root entry {
         if not [-->(?:UserProfile)] {
             new = here ++> UserProfile(tier="free");
-            on_commit(lambda () { grant_signup_bonus(new); });   # once, post-commit
+            on_commit(lambda { grant_signup_bonus(new); });   # once, post-commit
         }
     }
 }
@@ -282,7 +282,7 @@ impl User.__jac_schema__ -> None {
     schema_drop("legacy_bio");                # removed field: preserve its remains
     schema_upgrade(
         split_tags,
-        when=(lambda doc: dict : isinstance(doc.get("tags"), str))
+        when=(lambda (doc: dict) { isinstance(doc.get("tags"), str); })
     );
 }
 ```

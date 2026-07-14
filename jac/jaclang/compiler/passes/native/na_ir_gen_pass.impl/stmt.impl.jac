@@ -62,6 +62,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         self._codegen_for(nd);
     } elif isinstance(nd, uni.IterForStmt) {
         self._codegen_iter_for(nd);
+    } elif isinstance(nd, uni.RegionStmt) {
+        self._codegen_region(nd);
     } elif isinstance(nd, uni.MatchStmt) {
         self._codegen_match(nd);
     } elif isinstance(nd, uni.Ability) {
@@ -418,6 +420,31 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     self.loop_stack.pop();
 
     self.builder.position_at_end(end_bb);
+}
+
+impl NaIRGenPass._codegen_region(nd: uni.RegionStmt) -> None {
+    import from jaclang.compiler.ownership { loop_body_locals }
+    _region_body_locals = loop_body_locals(
+        nd.body if isinstance(nd.body, (list, tuple)) else None
+    );
+
+    _region_prebody = set(self.local_vars.keys());
+    if isinstance(nd.body, (list, tuple)) {
+        self._codegen_body(nd.body);
+    }
+    if not self.builder.block.is_terminated {
+        _region_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+            if nd.loc
+            else 0}";
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _region_body_locals
+                if _v not in _region_prebody
+            ],
+            loc=_region_loc
+        );
+    }
 }
 
 impl NaIRGenPass._codegen_forever(nd: uni.ForeverStmt) -> None {
@@ -1145,7 +1172,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if _is_raw_int_ptr {
                     self.param_vars.add(var_name);
                 } else {
-                    if not self._is_owned(value) {
+                    if not self._is_owned(value)
+                    and not self._can_native_move_lower(nd) {
                         self._emit_rc_retain(
                             coerced,
                             op="assign",
@@ -1153,6 +1181,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 if nd.loc
                                 else 0}"
                         );
+                    } elif self._is_owned(value) {
+                        self.rc_ops_elided += 1;
                     }
                     old_val = self.builder.load(alloca, name=f"{var_name}.old");
                     self._emit_rc_release_typed(
@@ -1323,6 +1353,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             if nd.loc
                             else 0}"
                     );
+                } else {
+                    self.rc_ops_elided += 1;
                 }
                 old_glob = self.builder.load(global_var, name=f"glob.{var_name}.old");
                 self._emit_rc_release_typed(
@@ -1412,7 +1444,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 if getattr(value, 'opname', '') == 'inttoptr' {
                     self.param_vars.add(var_name);
                 } else {
-                    if not self._is_owned(value) {
+                    if not self._is_owned(value)
+                    and not self._can_native_move_lower(nd) {
                         self._emit_rc_retain(
                             value,
                             op="assign",
@@ -1420,6 +1453,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 if nd.loc
                                 else 0}"
                         );
+                    } elif self._is_owned(value) {
+                        self.rc_ops_elided += 1;
                     }
                     old_val = self.builder.load(alloca, name=f"{var_name}.old");
                     self._emit_rc_release_typed(

@@ -14,6 +14,7 @@ import from jaclang.jac0core.constant {
     DELIM_MAP,
     CodeContext,
     EdgeDir,
+    OwnershipKind,
     SymbolAccess,
     SymbolStorage,
     SymbolType
@@ -86,7 +87,8 @@ obj Symbol {
         access: SymbolAccess by postinit,
         parent_tab: (UniScopeNode | None) by postinit,
         imported: bool by postinit,
-        semstr: str by postinit;
+        semstr: str by postinit,
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def init(
         defn: NameAtom,
@@ -314,7 +316,8 @@ obj SubTag[T](UniNode) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has tag: T;
+    has tag: T,
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def postinit -> None;
 }
@@ -422,8 +425,7 @@ obj ClientBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -432,8 +434,7 @@ obj ServerBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -442,8 +443,7 @@ obj NativeBlock(ElementStmt) {
     def accept_exit(v: UniPass) -> None;
     def accept_enter(v: UniPass) -> None;
 
-    has body: Sequence[ElementStmt],
-        implicit: bool = False;
+    has body: Sequence[ElementStmt];
 
     def postinit -> None;
 }
@@ -676,6 +676,15 @@ obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
 
     has type_ctx: Expr,
         body: Sequence[CodeBlockStmt];
+
+    def postinit -> None;
+}
+
+obj RegionStmt(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
+    has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
 }
@@ -931,7 +940,8 @@ obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
     has target: Sequence[Expr],
         value: Expr | YieldExpr | None,
         mutable: bool = True,
-        aug_op: (Token | None) = None;
+        aug_op: (Token | None) = None,
+        na_move_lowerable: bool = False;
 
     def postinit -> None;
 }
@@ -986,6 +996,7 @@ obj LambdaExpr(Expr, UniScopeNode) {
         signature: (FuncSignature | None) = None;
 
     def postinit -> None;
+    def tail_return_expr -> Expr | None;
 
     has captures: list[Symbol] { getter; }
 }
@@ -995,7 +1006,8 @@ obj UnaryExpr(Expr) {
     def accept_enter(v: UniPass) -> None;
 
     has operand: Expr,
-        op: Token;
+        op: Token,
+        ownership: OwnershipKind = OwnershipKind.NONE;
 
     def postinit -> None;
 }
