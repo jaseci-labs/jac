@@ -7,9 +7,15 @@ conformance test. Binder ownership classification (S.2) LANDED 2026-07-14 --
 `Ownership` enum + `ret_ownership` field, the `[fn."T::m"] ownership = "…"` overlay
 key, and codegen stamping `#[jac(shared|borrowed)]`, proven end-to-end by the
 regex roundtrip compiling under `-D warnings`; borrowed *auto-detection* is
-deliberately deferred to Phase 1.2.4 (see S.2.2). Remaining Track B: the
-`shared`/self-identity loader wrappers (S.4.1/S.4.3), and the unsound-crate skip
-fixture (S.5.2/S.6.4). Sequenced BEFORE Phase 1 (user decision 2026-07-13):
+deliberately deferred to Phase 1.2.4 (see S.2.2). Track B COMPLETE 2026-07-14 --
+the `shared`/self-identity loader wrappers (S.4.1/S.4.3) landed in both loaders
+(inert until a Phase 1.2.4 producer emits such a return; the macro boxes every
+return fresh today, so Arc-sharing is already sound under `owned` and no producer
+exists yet -- the plumbing is here so it is sound the moment one does), pinned by
+`test_shared_identity_retain.jac`; and the skip-with-reason contract (S.5.2/S.6.4)
+landed as an overlay `reason` key that records a deliberately-refused method as a
+VISIBLE skip carrying the author's rationale (fixing the prior silent `skip = true`
+removal), pinned by the new binder overlay tests. Sequenced BEFORE Phase 1 (user decision 2026-07-13):
 settle the handle ABI before Phase 1 lands more surface on it. Closes the
 deferred aliasing double-free (`aliasing_conformance.jac` test 3, DEMONSTRATED
 2026-07-11) and adds the ownership-contract metadata the "specialized bridge"
@@ -254,13 +260,16 @@ ABI stays **append-only** over frozen v1 (new high-bit return tags + a new per-t
 
 ## S.4 -- Loaders: ownership-aware wrappers (`_synth.jac`, `_ctypes_codegen.jac`)
 
-- [ ] S.4.1 `_synth.jac` opaque-wrapper emission (721-767): thread ownership through.
-  - `shared` type: `init(raw)` / `_adopt(raw)` (730-745) additionally call
-    `jac_<mod>_<T>_retain(raw)` so each wrapper is an independent RC owner; `close()`
-    (754-762) calls the drop-sym (now a decref). Double-close stays idempotent via
-    the existing `__closed` guard.
-  - Verify: a shared alias whose originator is closed still reads correctly, and
-    both wrappers' `__del__` running is safe (rc reaches 0 exactly once).
+- [x] S.4.1 `_synth.jac` (landed 2026-07-14): a `shared` (TAG_SHARED_BIT) method
+  return calls `jac_<mod>_<T>_retain(rh)` UNCONDITIONALLY on adopt so each wrapper
+  is an independent RC owner; `close()` calls the drop-sym (now a decref). The
+  retain shim is declared in the import block via `_retain_targets` (shared +
+  self-identity targets, merged with the borrowed owners). Mirrored in
+  `_ctypes_codegen._call` (S.4.4). Emission pinned by
+  `test_shared_identity_retain.jac`. INERT until a producer emits a shared return
+  (the macro boxes every return fresh today; Arc-sharing is already sound under
+  `owned`, so forcing `shared` on a fresh box would leak -- there is deliberately
+  no producer until Phase 1.2.4).
 - [x] S.4.2 `borrowed` wrapper (RC-pinned live view, per S.0.1): the wrapper holds
   a RETAINED ref to its owner handle (the `&self` receiver, marked by the binder).
   The adopt/init path calls `jac_<mod>_<T>_retain(owner_raw)`. `close()` calls the
@@ -270,13 +279,17 @@ ABI stays **append-only** over frozen v1 (new high-bit return tags + a new per-t
   rc>0 (the owner cannot reach 0 while a view is live). The owner's own `close()`
   is the same decref, so closing the owner first simply defers the actual free to
   the last view's release.
-- [ ] S.4.3 Self/identity returns: when a method returns a handle the wrapper already
-  owns (`rh == self.__handle`) OR the return is `shared`, `retain` + adopt instead
-  of minting a naked second owner. Closes the identity-double-free class at the
-  wrapper layer too.
-- [~] S.4.4 Mirror in `_ctypes_codegen.jac` -- the **borrowed** path is mirrored
-  (owner retain in `_call`, owner release in `close()`, `_opaque_retains` wiring);
-  the `shared`/self-identity paths (S.4.1/S.4.3) land with those tasks.
+- [x] S.4.3 Self/identity returns (landed 2026-07-14): a method whose return type
+  is the receiver's OWN type emits a runtime guard `if rh == self.__handle {
+  <retain>(rh); }` before adopt, so a return that hands back the receiver's own box
+  becomes an independent RC owner instead of a naked second owner. A fresh-box
+  return (the common case) skips the retain, so existing fixtures stay
+  byte-identical (the guard never fires today). Mirrored in `_ctypes_codegen._call`
+  as `elif self_h is not None and h == self_h { own_retain(h); }`.
+- [x] S.4.4 Mirror in `_ctypes_codegen.jac` -- the borrowed, shared, AND
+  self-identity paths are all mirrored in `_call` (`_opaque_retains` wiring for
+  every opaque type; `tag_is_shared`/`h == self_h` guards next to the borrowed
+  owner-retain block).
 
 ## S.5 -- Rewrite the reentrant fixture to an honestly-shareable shape
 
@@ -287,10 +300,16 @@ ABI stays **append-only** over frozen v1 (new high-bit return tags + a new per-t
   `Arc<Mutex<i64>>` or an RC'd `JacHandle` shared by both wrappers). `alias` returns
   a `shared` handle over the SAME inner -- so RC (S.1) makes closing either wrapper
   safe, and test 3 flips to a clean result.
-- [ ] S.5.2 Keep a SEPARATE, clearly-labeled fixture for the *unsound-crate* case
-  (an API that hands out a second raw owner) that the binder must **skip-with-reason**
-  -- the honest "we refuse this, we don't pretend to defend it" path. Assert the skip
-  appears in the coverage report.
+- [x] S.5.2 Landed 2026-07-14 as the overlay **`reason`** capability rather than a
+  synthetic corpus crate (user decision): the binder cannot auto-detect Rust-level
+  unsoundness, so the refusal is author-driven via `[fn."T::m"] skip = true,
+  reason = "…"`. The prior `skip = true` REMOVED the method silently (a
+  coverage-honesty gap); it now records a VISIBLE `SkipReason::OverlaySkip(reason)`
+  and the reason surfaces verbatim in `report()`. `reason` requires `skip` and is
+  exclusive with `treat_as`. A full synthetic rustdoc-JSON crate was rejected as
+  heavyweight ceremony -- the overlay-skip mechanism and its coverage-visibility
+  were already proven against the regex fixture; the new capability is the missing
+  author-supplied rationale the docs' "skipped with a reason" promise required.
 
 ## S.6 -- Flip / extend conformance (`aliasing_conformance.jac`)
 
@@ -308,8 +327,12 @@ ABI stays **append-only** over frozen v1 (new high-bit return tags + a new per-t
   retain proven load-bearing (de-retained build reads garbage). (The old "view
   raises after owner closes" spec is unreachable under RC-pinning -- the owner
   can't close past a live view.)
-- [ ] S.6.4 Add the unsound-crate fixture (S.5.2) as a skip-visibility test in the
-  binder corpus suite.
+- [x] S.6.4 Landed 2026-07-14: skip-visibility tests in the binder suite
+  (`src/tests/overlay_regex.rs`): `skip_with_reason_is_recorded_and_visible_in_the_report`
+  (skip + reason -> visible `OverlaySkip(Some(reason))` in `spec.skips` and the
+  reason verbatim in `report()`), `skip_without_reason_still_records_a_visible_skip`
+  (the honesty fix -- a reasonless skip is still recorded), and the two validation
+  guards (`reason` requires `skip`; `reason` is exclusive with `treat_as`).
 
 ## S.7 -- Docs + risk register
 

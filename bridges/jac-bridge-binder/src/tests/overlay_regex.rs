@@ -472,3 +472,85 @@ fn ownership_on_absent_method_is_rejected() {
         "err should name the missing method: {err}"
     );
 }
+
+// ── skip-with-reason (S.5.2/S.6.4): a deliberately-refused method stays visible ──
+
+#[test]
+fn skip_with_reason_is_recorded_and_visible_in_the_report() {
+    use crate::report;
+    use crate::types::SkipReason;
+
+    // The skip-with-reason contract: a crate the binder cannot soundly bridge
+    // (here framed as a Rust-level-unsound aliasing API that would hand out a
+    // second raw owner) is refused via the overlay WITH a machine-visible
+    // rationale, not silently dropped or falsely "defended".
+    let mut spec = classify(&load_regex_doc());
+    let reason = "unsound: hands out a second raw owner of the same allocation";
+    let overlay = parse_overlay(&format!(
+        "[fn.\"Regex::is_match\"]\nskip = true\nreason = \"{reason}\"\n"
+    ))
+    .unwrap();
+    apply_overlay(&mut spec, &overlay).unwrap();
+
+    // The method is off the bridge …
+    let regex = spec.types.iter().find(|t| t.name == "Regex").unwrap();
+    assert!(!regex.methods.iter().any(|m| m.name == "is_match"));
+
+    // … but recorded as a visible skip carrying the author's reason …
+    let skip = spec
+        .skips
+        .iter()
+        .find(|s| s.item == "Regex::is_match")
+        .expect("skipped method must be recorded, not silently dropped");
+    assert!(
+        matches!(&skip.reason, SkipReason::OverlaySkip(Some(r)) if r == reason),
+        "skip must carry the author reason, got {:?}",
+        skip.reason
+    );
+
+    // … and the coverage report shows the reason verbatim.
+    let r = report(&spec);
+    assert!(
+        r.contains(reason),
+        "coverage report must surface the skip reason: {r}"
+    );
+}
+
+#[test]
+fn skip_without_reason_still_records_a_visible_skip() {
+    use crate::types::SkipReason;
+
+    // Even with no author reason, `skip = true` must record the removal so the
+    // coverage ratio cannot be flattered by hiding a method.
+    let mut spec = classify(&load_regex_doc());
+    let overlay = parse_overlay("[fn.\"Regex::is_match\"]\nskip = true\n").unwrap();
+    apply_overlay(&mut spec, &overlay).unwrap();
+
+    let skip = spec
+        .skips
+        .iter()
+        .find(|s| s.item == "Regex::is_match")
+        .expect("a reasonless skip is still a recorded skip");
+    assert!(matches!(&skip.reason, SkipReason::OverlaySkip(None)));
+}
+
+#[test]
+fn reason_without_skip_is_rejected() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay =
+        parse_overlay("[fn.\"Regex::is_match\"]\nreason = \"stray reason\"\n").unwrap();
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(
+        err.contains("reason requires skip"),
+        "err should explain a reason needs a skip: {err}"
+    );
+}
+
+#[test]
+fn reason_with_treat_as_is_rejected() {
+    let mut spec = classify(&load_regex_doc());
+    let overlay =
+        parse_overlay("[fn.\"Regex::is_match\"]\ntreat_as = \"skip\"\nreason = \"x\"\n").unwrap();
+    let err = apply_overlay(&mut spec, &overlay).unwrap_err();
+    assert!(err.contains("exclusive"), "err should explain exclusivity: {err}");
+}

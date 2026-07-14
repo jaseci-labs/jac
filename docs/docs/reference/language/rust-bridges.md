@@ -199,6 +199,19 @@ allocation -- is **skipped with a reason**, not silently "defended": the bridge
 refuses to generate it rather than pretend a handle-table trick can make a
 double-owning `Drop` safe.
 
+An author records such a refusal in the crate's `.overlay.toml` with a `reason`
+alongside the `skip`:
+
+```toml
+[fn."Cell::alias"]
+skip = true
+reason = "unsound: hands out a second raw owner of the same allocation"
+```
+
+The reason surfaces verbatim in the coverage report, and the skip is always
+counted there -- a refused method stays visible in the API-coverage ratio
+instead of silently vanishing.
+
 ### Known limitations (ABI v1)
 
 !!! warning "Callback detection on na"

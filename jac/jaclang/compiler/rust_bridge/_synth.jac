@@ -17,6 +17,7 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_is_ref,
     tag_ref_index,
     tag_is_borrowed,
+    tag_is_shared,
     tag_is_map,
     tag_is_list,
     tag_map_value,
@@ -285,6 +286,20 @@ class _Synth {
         for vti in _borrowed_multi {
             del self.borrowed_owner[vti];
         }
+
+        self._retain_targets = set();
+        for fd in meta.fns {
+            if fd.kind == FN_METHOD
+            and tag_is_ref(fd.ret)
+            and tag_ref_index(fd.ret) in self.opaque {
+                rti = tag_ref_index(fd.ret);
+                if tag_is_shared(fd.ret) {
+                    self._retain_targets.add(rti);
+                } elif fd.self_type != TAG_VOID and rti == fd.self_type {
+                    self._retain_targets.add(rti);
+                }
+            }
+        }
         self.error_drop = _drop_sym_for(meta, KIND_ERROR);
         self.error_msg_sym = None;
         for fd in meta.fns {
@@ -516,10 +531,23 @@ class _Synth {
             }
             if rs.is_borrowed and rs.ref_index in self.borrowed_owner {
                 body_lines.append(f"        return {target}(rh, self.__handle);");
-            } elif rs.ref_index in self.adopt_via_static {
-                body_lines.append(f"        return {target}._adopt(rh);");
             } else {
-                body_lines.append(f"        return {target}(rh);");
+                tdrop = self.meta.types[rs.ref_index].drop_sym;
+                if tdrop and rs.ref_index in self._retain_targets {
+                    tretain = _retain_sym_for(tdrop);
+                    if rs.is_shared {
+                        body_lines.append(f"        {tretain}(rh);");
+                    } elif rs.ref_index == fd.self_type {
+                        body_lines.append("        if rh == self.__handle {");
+                        body_lines.append(f"            {tretain}(rh);");
+                        body_lines.append("        }");
+                    }
+                }
+                if rs.ref_index in self.adopt_via_static {
+                    body_lines.append(f"        return {target}._adopt(rh);");
+                } else {
+                    body_lines.append(f"        return {target}(rh);");
+                }
             }
         } elif rs.kind == SlotKind.Bool {
             body_lines.append('        return struct.unpack("<B", out_b)[0] != 0;');
@@ -685,12 +713,15 @@ class _Synth {
             }
         }
 
-        _retain_owners = set();
+        _retain_syms = set();
         for owner_ti in self.borrowed_owner.values() {
-            _retain_owners.add(owner_ti);
+            _retain_syms.add(owner_ti);
         }
-        for owner_ti in sorted(_retain_owners) {
-            odrop = m.types[owner_ti].drop_sym;
+        for rti in self._retain_targets {
+            _retain_syms.add(rti);
+        }
+        for rti in sorted(_retain_syms) {
+            odrop = m.types[rti].drop_sym;
             if odrop {
                 out.append(f"    def {_retain_sym_for(odrop)}(handle: int) -> None;");
             }

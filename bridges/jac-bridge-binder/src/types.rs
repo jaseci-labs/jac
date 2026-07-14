@@ -356,4 +356,10 @@ pub enum SkipReason {
     /// `treat_as = "skip"`, or a forced rule (`"cursor"`/`"drain"`/…) whose
     /// preconditions the method did not meet. The string records which.
     OverlayTreatAs(String),
+    /// An overlay `[fn."T::m"] skip = true` removed this method by explicit author
+    /// decision. The optional string is the author's `reason` — the machine-visible
+    /// rationale for the skip-with-reason contract (e.g. a Rust-level-unsound
+    /// aliasing API that hands out a second raw owner, which the binder refuses
+    /// rather than silently "defends"). `None` when the author gave no reason.
+    OverlaySkip(Option<String>),
 }

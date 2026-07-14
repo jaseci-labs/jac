@@ -32,6 +32,7 @@ import from jaclang.compiler.rust_bridge._blob {
     tag_is_opt,
     tag_is_ref,
     tag_is_borrowed,
+    tag_is_shared,
     tag_ref_index,
     tag_map_value,
     tag_list_value
@@ -459,6 +460,15 @@ def _call(
     stub._closed = False;
     stub._rt = rt;
     stub._finalizer = None;
+
+    own_retain = rt._opaque_retains.get(ret.ref_index);
+    if own_retain is not None {
+        if tag_is_shared(fd.ret) {
+            own_retain(h);
+        } elif self_h is not None and h == self_h {
+            own_retain(h);
+        }
+    }
 
     if tag_is_borrowed(fd.ret) and fd.self_type != TAG_VOID and self_h is not None {
         owner_retain = rt._opaque_retains.get(fd.self_type);

@@ -9,6 +9,7 @@
 //!
 //! [fn."Regex::is_match_at"]
 //! skip = true                  # hide a method
+//! reason = "unsound aliasing"  # optional rationale, shown in the coverage report
 //!
 //! [type."SetMatchesIntoIter"]
 //! skip = true                  # hide a type
@@ -23,7 +24,11 @@
 //! classification when neither the `impl std::error::Error` signal nor the
 //! `*Error` name heuristic gets it right), `monomorphize` (pin a generic
 //! struct's concrete instantiations — also classify-time), and `[module."m"]
-//! skip` (drop a whole submodule by provenance). An unknown value, an empty
+//! skip` (drop a whole submodule by provenance). A `skip = true` may carry an
+//! optional `reason` string that surfaces verbatim in the coverage report (the
+//! skip-with-reason contract for deliberately-refused, e.g. Rust-level-unsound,
+//! APIs); a skip is always recorded as a visible skip, never a silent removal.
+//! An unknown value, an empty
 //! `monomorphize` set, or a contradictory `treat_as` + `skip`/`rename` pairing is
 //! rejected with a precise reason — an overlay entry is a decision the author
 //! expects to take effect, never a silent no-op.
@@ -32,7 +37,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::types::{BridgeSpec, Ownership};
+use crate::types::{BridgeSpec, Ownership, Skip, SkipReason};
 
 /// Parsed overlay. Maps are `BTreeMap` so iteration is deterministic (the D6
 /// byte-identical-output guarantee must not depend on hash order).
@@ -72,6 +77,11 @@ pub struct FnOverlay {
     /// method has no return) and with `treat_as` (a reclassified method's return
     /// shape is decided at classify time, not here).
     pub ownership: Option<String>,
+    /// Human rationale recorded against a `skip = true` (the skip-with-reason
+    /// contract). Surfaces verbatim in the coverage report so a deliberately
+    /// refused method — e.g. a Rust-level-unsound aliasing API — is visible with
+    /// its justification, not silently absent. Only meaningful with `skip = true`.
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -210,13 +220,21 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
             // time, so it is exclusive with skip/rename/ownership on the same
             // entry — combining them would silently drop the other directive.
             // Fail loud.
-            if f.skip || f.rename.is_some() || f.ownership.is_some() {
+            if f.skip || f.rename.is_some() || f.ownership.is_some() || f.reason.is_some() {
                 return Err(format!(
-                    "overlay: [fn.\"{key}\"] treat_as is exclusive with skip/rename/ownership \
+                    "overlay: [fn.\"{key}\"] treat_as is exclusive with skip/rename/ownership/reason \
                      on the same entry — split them into separate directives"
                 ));
             }
             continue;
+        }
+
+        // A `reason` only annotates a skip; standing alone it would record nothing.
+        if f.reason.is_some() && !f.skip {
+            return Err(format!(
+                "overlay: [fn.\"{key}\"] reason requires skip = true — a reason with no \
+                 skip annotates nothing"
+            ));
         }
 
         // Validate the ownership value early (before the type lookup) so a typo
@@ -253,6 +271,14 @@ pub fn apply_overlay(spec: &mut BridgeSpec, overlay: &Overlay) -> Result<(), Str
             if bt.ctor.as_ref().map(|c| c.name == method).unwrap_or(false) {
                 bt.ctor = None;
             }
+            // Record the removal as a visible skip-with-reason so a deliberately
+            // refused method stays counted in coverage instead of silently
+            // vanishing (which would flatter the ratio). `bt`'s borrow of
+            // `spec.types` ends above; `spec.skips` is a disjoint field.
+            spec.skips.push(Skip {
+                item: key.clone(),
+                reason: SkipReason::OverlaySkip(f.reason.clone()),
+            });
             continue;
         }
         if let Some(new) = &f.rename {
