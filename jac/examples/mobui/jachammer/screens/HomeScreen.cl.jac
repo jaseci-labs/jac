@@ -12,7 +12,7 @@ cl {
     import from ..ui.icon { Icon }
     import from ..ui.theme { S }
     import from ..hooks.useStudio { useStudio }
-    import from ..lib.constants { SUGGESTIONS }
+    import from ..kit.constants { SUGGESTIONS }
     import from ..components.ProjectCard { ProjectCard }
     import from ..components.SuggChip { SuggChip }
     import from ..components.ModelChip { ModelChip }

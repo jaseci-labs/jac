@@ -8,7 +8,7 @@ cl {
     import from "react-native" { Linking }
     import from ..ui.icon { Icon }
     import from ..hooks.useStudio { useStudio }
-    import from ..lib.constants { PLANS, JB_API }
+    import from ..kit.constants { PLANS, JB_API }
 
     def:pub BillingScreen -> JsxElement {
         s = useStudio();

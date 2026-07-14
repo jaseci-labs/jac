@@ -24,7 +24,7 @@ jac start main.jac --dev
 
 > You need a **jacBuilder account** to use the app - sign in with a username /
 > password or **Continue with Google / GitHub** on the Auth screen. The backend
-> URL is `JB_API` in `lib/constants.cl.jac`
+> URL is `JB_API` in `kit/constants.cl.jac`
 > (`https://jac-builder-dev.jaseci.org` by default); the store pins it onto
 > `globalThis.__JAC_API_BASE_URL__` on mount so every `root spawn`, the auth
 > calls, the SSO flow and the build WebSocket all hit the hosted gateway. The AI
@@ -44,7 +44,7 @@ pages).
 main.jac                      # <StudioProvider><Root/></StudioProvider> + screen switch + overlays
 hooks/useStudio.cl.jac        # the Context provider - all has-state, actions, the value dict, useStudio()
 services/api.cl.jac           # one async def:pub per jacBuilder walker (thin RPC layer)
-lib/
+kit/
   constants.cl.jac            # JB_API, suggestion chips, plan catalogue
   mappers.cl.jac              # pure report→view mappers (jbProj / jbComm / jbMsg / prettyModel …)
   authcookies.cl.jac(.native) # clear the SSO WebView cookies on logout (native module; no-op in Expo Go)
@@ -61,7 +61,7 @@ picks the right one per target.
 
 State is plain `has` fields (→ `useState`); a functional-update `markBusy(key,
 val)` drives per-action loading flags without clobbering concurrent updates.
-Walker `reports` are plain dicts, mapped through `lib/mappers` into the thin local
+Walker `reports` are plain dicts, mapped through `kit/mappers` into the thin local
 mirror (`projects`, `communityItems`, `messages`, `curFiles`, `templates`,
 `models`, `monitor`, `billing`) that the store refreshes after each mutation.
 
@@ -193,12 +193,14 @@ dismisses the keyboard via `Keyboard.dismiss()`.
 
 ## Theme
 
-A "forge" charcoal (`#0b0d12`) with an electric-violet primary (`#7c5cff`) for
-navigation/brand and a warm amber (`#ff9d3c`) for build/deploy actions. Status
-reads at a glance: green = running, amber = building, muted = stopped, red =
-failed. Full **dark / light / system** support - every colour/spacing/radius lives
-in the token globals at the top of `ui/theme.cl.jac`; edit those to re-skin the
-whole app.
+jachammer wears **jacBuilder's own editorial design system** - the same tokens
+jacBuilder ships in `global.css`: warm parchment surfaces (`#f7f4ed` light /
+`#1a1714` dark), a **terracotta** brand primary (`#8b4f3a` / `#c6826a`) for
+navigation and brand, and a warm **amber "forge"** accent (`#b5652a` / `#d68a3a`)
+for build/deploy heat. Status still reads at a glance: green = running, amber =
+building, muted = stopped, red = failed. Full **dark / light / system** support -
+every colour/spacing/radius lives in the token globals at the top of
+`ui/theme.cl.jac`; edit a palette there to re-skin the whole app.
 
 ---
 
@@ -211,11 +213,108 @@ whole app.
   cd .jac/mobile-rn && npx expo start -c
   ```
 
-- **Dev build** - needed for the native cookie module (account picker on logout):
+- **Dev build** - needed for the native cookie module (account picker on logout).
+  Use the staging recipe in [Shipping an APK](#shipping-an-apk) below and swap
+  `--profile preview` for `--profile development`; running `eas build` straight
+  from `.jac/mobile-rn` does not work (see the first gotcha there).
 
-  ```bash
-  cd .jac/mobile-rn
-  eas build --profile development --platform android   # or ios
-  # then run the bundler and connect the dev app to it
-  npx expo start
-  ```
+---
+
+## Shipping an APK
+
+Two routes produce an installable Android build.
+
+**Local Gradle** - the supported one-liner, if you have the Android SDK and a
+JDK 17 installed:
+
+```bash
+jac build --client react-native --platform android
+# → .jac/mobile-rn/android/app/build/outputs/apk/debug/*.apk
+# → install with: adb install -r <path>
+```
+
+**EAS cloud** - no local Android SDK needed, but it takes a staging step. The
+`android_builder = "eas"` setting in `jac.toml` does *not* help here: it runs
+`eas build --local`, which still builds on your machine and still needs the SDK.
+A real cloud build has to be driven from a directory outside the repo:
+
+```bash
+# 1. compile + stage the app into .jac/mobile-rn
+jac start main.jac --client react-native --dev    # Ctrl-C once it prints "Wrote native entry"
+
+# 2. jac-app.js must re-export the compiled app, NOT the scaffold placeholder
+cat .jac/mobile-rn/jac-app.js                     # want: export { app } from './jac-src/main.js';
+
+# 3. copy to a build dir outside any git repo
+rsync -a --exclude node_modules --exclude android --exclude ios \
+      .jac/mobile-rn/ ~/jachammer-eas/
+rm -f ~/jachammer-eas/.gitignore ~/jachammer-eas/bun.lock
+
+# 4. npm lockfile (the EAS builder's bun is too old to read a modern bun.lock)
+cd ~/jachammer-eas && npm install --package-lock-only
+
+# 5. build in the cloud (eas.json needs the JDK 17 image pinned - see below)
+EAS_NO_VCS=1 npx eas-cli build --platform android --profile preview
+```
+
+The `preview` profile in the scaffolded `eas.json` is already
+`distribution: internal` + `buildType: apk`, which is the shareable
+install-on-a-device APK. Pin the builder image in that profile, otherwise EAS
+cannot resolve the Expo SDK version from a dependency-less directory, falls back
+to a legacy image, and Gradle dies on the wrong JDK:
+
+```json
+"preview": {
+  "distribution": "internal",
+  "android": { "buildType": "apk", "image": "ubuntu-24.04-jdk-17-ndk-r27b" }
+}
+```
+
+### Gotchas, and what each one looks like
+
+| Symptom in the EAS log | Cause | Fix |
+|------------------------|-------|-----|
+| `package.json does not exist in .../.jac/mobile-rn` | EAS packs the **git repo**, and `.jac/` is gitignored, so the whole Expo project is missing from the upload. A `.easignore` does not rescue this - EAS resolved the git root and never consulted it. | Build from a copy outside git with `EAS_NO_VCS=1` (step 3). |
+| `bun install --frozen-lockfile exited with non-zero code: 1` | The builder ships bun 1.0.14, which cannot read the JSON `bun.lock` written by a modern bun (1.3.x), so the frozen lockfile looks "changed". | Delete `bun.lock`, ship a `package-lock.json` (step 4); the builder then installs with npm. |
+| `Android Gradle plugin requires Java 17 ... You are currently using Java 11` | With no `node_modules` in the upload dir, eas-cli cannot detect the Expo SDK version, so EAS picks a legacy JDK 11 image. | Pin `"image": "ubuntu-24.04-jdk-17-ndk-r27b"` in the profile. |
+| APK installs, but opens on **"Run `jac build --client react-native` to compile the Jac app"** | `jac-app.js` (the one-line bridge to the compiled code) was reverted to the scaffold placeholder. The scaffold treats the generated file as refreshable (`_is_scaffold_managed`, `targets/react_native/scaffold.jac`), so a later `jac setup react-native` silently overwrites it, and the APK ships an empty shell. | Re-write it before syncing: `export { app } from './jac-src/main.js';` preceded by `import './jac-asset-registry';` (step 2). |
+
+Also blank `__jacApiBase.js` before a cloud build. `jac start --dev` bakes your
+LAN address into it (`globalThis.__JAC_API_BASE_URL__ = "http://192.168.x.x:8000"`),
+which has no business shipping in a distributable APK. jachammer overrides the
+base URL with `JB_API` on mount anyway, so this is belt-and-braces.
+
+### Verify the bundle before burning a cloud build
+
+A cloud build takes ~13 minutes, so confirm the JS bundle is the real app first.
+This runs the same Metro + Hermes path EAS does, from the workspace that already
+has `node_modules`:
+
+```bash
+cd .jac/mobile-rn && npx expo export --platform android --output-dir /tmp/jh-export
+python3 - <<'EOF'
+import glob
+data = open(glob.glob('/tmp/jh-export/_expo/static/js/android/*.hbc')[0], 'rb').read()
+def has(s):  # Hermes stores strings with non-ASCII chars (ellipsis, dashes) as UTF-16
+    return s.encode() in data or s.encode('utf-16-le') in data
+print('placeholder (must be absent):', has('Run `jac build'))
+print('real app (must be present)  :', has('Describe a change') and has('Create your account'))
+EOF
+```
+
+If the placeholder is present or the app strings are missing, step 2 is what went
+wrong - do not spend a cloud build on it.
+
+### Re-building after a code change
+
+EAS builds the JS staged in the build dir, not your `.cl.jac` sources. After any
+edit, recompile and re-sync only the compiled tree:
+
+```bash
+jac start main.jac --client react-native --dev            # Ctrl-C after "Wrote native entry"
+rsync -a .jac/mobile-rn/jac-src/ ~/jachammer-eas/jac-src/
+cd ~/jachammer-eas && EAS_NO_VCS=1 npx eas-cli build --platform android --profile preview
+```
+
+That leaves the build dir's `eas.json`, `package-lock.json` and blanked
+`__jacApiBase.js` intact.

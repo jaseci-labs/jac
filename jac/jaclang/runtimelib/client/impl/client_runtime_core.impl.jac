@@ -316,17 +316,21 @@ impl jacSignup(
         }
         return {"success": True, "user_id": user_id};
     } else {
+        # `status` lets callers tell the failures apart — 409 (identity taken) is
+        # a user error; 5xx is the server being down and says nothing about the
+        # account. Without it every caller has to guess from the error string.
         error_text = await response.text();
         try {
             error_data = JSON.parse(error_text);
             return {
                 "success": False,
+                "status": response.status,
                 "error": error_data["error"]
                     if error_data["error"] != None
                     else "Signup failed"
             };
         } except Exception {
-            return {"success": False, "error": error_text};
+            return {"success": False, "status": response.status, "error": error_text};
         }
     }
 }

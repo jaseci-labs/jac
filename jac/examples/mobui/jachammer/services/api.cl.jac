@@ -334,6 +334,23 @@ cl {
         }
     }
 
+    # Mint a short-lived handoff auth URL for the sandbox preview. A native
+    # WebView loads the preview as a TOP-LEVEL navigation, so the iframe-only
+    # `/__auth?t=<token>&embed=1` handshake jacBuilder uses for its embedded
+    # iframe is rejected (the sandbox proxy's embed check requires
+    # `Sec-Fetch-Dest: iframe`/empty, but a WebView sends `document`) and bounces
+    # to the builder login page. The handoff path (`/__auth?handoff=<h>`) has no
+    # such check — this walker (jacBuilder's `preview_auth_ops`) signs a handoff
+    # bound to the sandbox and returns a ready-to-load `auth_url`.
+    async def:pub jbPreviewAuth(return_to: str) -> dict {
+        try {
+            res = root spawn preview_auth_ops(return_to=return_to);
+            return res.reports[0];
+        } except Exception as e {
+            return _fail(e);
+        }
+    }
+
     # ── deploy ───────────────────────────────────────────────────────────────
     # mode = "sandbox" (7-day shareable sandbox) or "permanent" (production K8s
     # namespace + public URL). jacBuilder's DeployPanel exposes both; jachammer

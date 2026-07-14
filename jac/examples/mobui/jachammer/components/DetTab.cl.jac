@@ -26,6 +26,11 @@ cl {
                     if tabKey == "files" {
                         s["loadFiles"](s["selId"]);
                     }
+                    if tabKey == "preview" {
+                        # Mint a fresh handoff so the WebView authenticates on open
+                        # (the previous handoff is short-lived / single-shot).
+                        s["refreshPreviewAuth"]();
+                    }
                 }}
             >
                 <Icon name={icon} size={18} color={col} fill={False} width={2}/>

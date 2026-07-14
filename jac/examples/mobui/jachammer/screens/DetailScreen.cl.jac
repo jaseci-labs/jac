@@ -54,6 +54,15 @@ cl {
         # ── chat tab ──────────────────────────────────────────────────────────
         def renderChatTab -> JsxElement {
             thinking = s["isBusy"]("chat");
+            # Once the stream has upserted an in-flight assistant bubble (a message
+            # still marked not-done), that bubble's own "working…" row is the live
+            # indicator — so suppress the generic spinner to avoid a double one.
+            hasLive = False;
+            for m in messages {
+                if not m["done"] {
+                    hasLive = True;
+                }
+            }
             thinkMsg = "Starting your workspace…"
                 if s["isBusy"]("preview")
                 else "Generating your app — this can take a minute…";
@@ -103,7 +112,7 @@ cl {
                                             </View>
                                         </View>
                                     )
-                                        if thinking
+                                        if (thinking and not hasLive)
                                         else <View/>}
                                 </View>
                             )}
@@ -183,10 +192,22 @@ cl {
         # ── live preview: the real generated web app, in a WebView ────────────
         def renderPreviewTab -> JsxElement {
             previewUrl = s["previewUrl"];
+            previewAuthUrl = s["previewAuthUrl"];
             nonce = s["previewNonce"];
             building = s["isBusy"]("chat");
             starting = s["isBusy"]("preview");
-            waiting = building or starting or (previewUrl == "");
+            # The sandbox URL is auth-gated. A native WebView top-level-navigates,
+            # so jacBuilder's iframe-only `/__auth?t=<token>&embed=1` handshake is
+            # rejected by the sandbox proxy (its embed check needs
+            # `Sec-Fetch-Dest: iframe`) and bounces to the builder login page.
+            # Instead the store mints a signed *handoff* URL
+            # (`/__auth?handoff=<h>&next=/`, see refreshPreviewAuth) which the
+            # sandbox accepts without an embed check. Wait for that before loading.
+            waiting = building
+            or starting
+            or (previewUrl == "")
+            or (previewAuthUrl == "");
+            previewSrc = previewAuthUrl;
             return
                 <View style={styles.flex1}>
                     <View style={styles.previewBar}>
@@ -232,7 +253,11 @@ cl {
                                 {(
                                     "Generating your app…"
                                         if building
-                                        else "Starting preview…"
+                                        else (
+                                            "Starting preview…"
+                                                if starting
+                                                else "Authorizing preview…"
+                                        )
                                 )}
                             </Text>
                             <Text style={styles.emptyText}>
@@ -243,7 +268,7 @@ cl {
                         if waiting
                         else (
                             <PreviewFrame
-                                url={previewUrl}
+                                url={previewSrc}
                                 key={f"{previewUrl}-{nonce}"}
                             />
                         )}

@@ -15,7 +15,10 @@ cl {
             <Pressable
                 style={styles.tabItem}
                 onPress={lambda {
-                    s["setSelId"]("");
+                    # closeProject(), not the raw setSelId setter — the selection
+                    # is mirrored outside React state for the async build chain,
+                    # and only the action keeps the two in step.
+                    s["closeProject"]();
                     s["setTab"](tabKey);
                     if tabKey == "community" {
                         s["loadCommunity"]();

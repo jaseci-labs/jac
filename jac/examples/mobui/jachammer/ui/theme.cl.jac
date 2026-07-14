@@ -1,57 +1,60 @@
 """Design system — palettes + a StyleSheet factory, shared by the whole app.
 
-Two palettes (`DARK`, `LIGHT`) share the same key set; `buildStyles(palette)`
-bakes a StyleSheet from whichever is active, so the app can flip themes at
-runtime (`main.jac` prebuilds both and picks one). `S`/`R`/`F` (spacing, radii,
-font sizes) are theme-independent. Re-skin by editing a palette below.
+Mirrors jacBuilder's **editorial** design system: warm parchment surfaces, a
+terracotta brand, and an amber "forge" accent for build/deploy heat (the same
+tokens jacBuilder ships in `global.css`). Two palettes (`DARK`, `LIGHT`) share
+the same key set; `buildStyles(palette)` bakes a StyleSheet from whichever is
+active, so the app can flip themes at runtime (`main.jac` prebuilds both and
+picks one). `S`/`R`/`F` (spacing, radii, font sizes) are theme-independent.
+Re-skin by editing a palette below.
 """
 
 cl {
     import from "@jac/mobui" { StyleSheet }
 
-    # ── palettes (same keys, two looks) ───────────────────────────────────────
+    # ── palettes (same keys, two looks — jacBuilder editorial tokens) ─────────
     glob:pub DARK = {
-             bg: "#0b0d12",
-             surface: "#12151c",
-             elevated: "#181c25",
-             border: "#232936",
-             text: "#e6e9ef",
-             muted: "#8a93a6",
-             faint: "#59617a",
-             accent: "#7c5cff",
-             accentSoft: "#241f3d",
-             accentText: "#ffffff",
-             forge: "#ff9d3c",
-             forgeText: "#1a1206",
-             ok: "#31c76a",
-             warn: "#f5b83d",
-             danger: "#f4544e",
-             field: "#171b23",
-             track: "#232936",
+             bg: "#1a1714",
+             surface: "#221f1c",
+             elevated: "#2c2823",
+             border: "#2c2823",
+             text: "#f1ede4",
+             muted: "#9a958c",
+             faint: "#6f6a61",
+             accent: "#c6826a",
+             accentSoft: "#33261f",
+             accentText: "#221f1c",
+             forge: "#d68a3a",
+             forgeText: "#221f1c",
+             ok: "#5cb774",
+             warn: "#d49142",
+             danger: "#d6644b",
+             field: "#1f1c19",
+             track: "#2c2823",
              scrim: "rgba(0,0,0,0.62)"
          };
     glob:pub LIGHT = {
-             bg: "#f5f6fb",
-             surface: "#ffffff",
-             elevated: "#eef0f7",
-             border: "#e2e5ee",
-             text: "#14161c",
-             muted: "#5c6579",
-             faint: "#99a0b3",
-             accent: "#6b46ff",
-             accentSoft: "#ece8ff",
-             accentText: "#ffffff",
-             forge: "#e8760a",
-             forgeText: "#ffffff",
-             ok: "#1a9e52",
-             warn: "#b07d0a",
-             danger: "#d6342c",
-             field: "#ffffff",
-             track: "#e2e5ee",
-             scrim: "rgba(15,18,25,0.35)"
+             bg: "#f7f4ed",
+             surface: "#fcfbf8",
+             elevated: "#f0ede6",
+             border: "#eceae4",
+             text: "#1c1c1c",
+             muted: "#5f5f5d",
+             faint: "#918c83",
+             accent: "#8b4f3a",
+             accentSoft: "#efe1da",
+             accentText: "#fcfbf8",
+             forge: "#b5652a",
+             forgeText: "#fcfbf8",
+             ok: "#2f8a4a",
+             warn: "#a86a1b",
+             danger: "#b8442e",
+             field: "#fcfbf8",
+             track: "#eceae4",
+             scrim: "rgba(28,24,20,0.35)"
          };
     glob:pub S = {xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 28, huge: 40};
-    glob:pub R = {sm: 8, md: 12, lg: 16, round: 22, pill: 999};
+    glob:pub R = {sm: 6, md: 8, lg: 12, round: 18, pill: 999};
     glob:pub F = {xs: 12, sm: 14, md: 16, lg: 20, xl: 26, huge: 34};
 
     def:pub buildStyles(C: dict) -> dict {
@@ -443,16 +446,16 @@ cl {
                 rowTitle: {color: C.text, fontSize: F.sm, fontWeight: "600"},
                 rowMeta: {color: C.muted, fontSize: F.xs},
                 optionLabel: {color: C.text, fontSize: F.sm, flex: 1},
-                # logs / code
-                logBox: {backgroundColor: "#05070b", padding: S.md, gap: 2},
+                # logs / code (warm near-black terminal, editorial parchment)
+                logBox: {backgroundColor: "#17140f", padding: S.md, gap: 2},
                 logLine: {color: C.muted, fontSize: F.xs, fontFamily: "monospace"},
                 codeBox: {
-                    backgroundColor: "#05070b",
+                    backgroundColor: "#17140f",
                     padding: S.md,
                     borderRadius: R.md
                 },
                 codeLine: {
-                    color: "#e6e9ef",
+                    color: "#f1ede4",
                     fontSize: 13,
                     fontFamily: "monospace",
                     lineHeight: 20

@@ -69,11 +69,11 @@ def inject_dev_api_base_url(rn_dir: Path, api_url: str) -> Optional[str] {
     expo["extra"] = extra;
     cfg["expo"] = expo;
     config_path.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8");
-    # Also bake the URL in as a build-time global — the runtime checks that first
-    # and it doesn't depend on Expo config being readable at runtime (Expo Go can
-    # hide expo.extra), so this is the reliable path on a device.
+
     write_api_base_shim(rn_dir, api_url);
-    console.print(f"  ✔ app.json + __jacApiBase.js → apiBaseUrl = {api_url}", style="success");
+    console.print(
+        f"  ✔ app.json + __jacApiBase.js → apiBaseUrl = {api_url}", style="success"
+    );
     return original;
 }
 

@@ -4,7 +4,7 @@ cl {
     import from "@jac/mobui" { Text, Pressable }
     import from ..ui.icon { Icon }
     import from ..hooks.useStudio { useStudio }
-    import from ..lib.mappers { modelName }
+    import from ..kit.mappers { modelName }
 
     def:pub ModelChip -> JsxElement {
         s = useStudio();
