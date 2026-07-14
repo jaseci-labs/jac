@@ -29,6 +29,11 @@ impl start_cli -> None {
     import from jaclang.cli.help { get_help_formatter }
     import from jaclang.cli.console { console }
 
+    raw_argv = sys.argv[1:];
+    if _needs_feature_commands(raw_argv) {
+        register_feature_commands();
+    }
+
     dev_source = os.environ.get('JAC_DEV_SOURCE');
     if dev_source {
         notice = (
@@ -39,14 +44,9 @@ impl start_cli -> None {
         console.print(notice, style='info', file=sys.stderr);
     }
 
-    _load_project_config();
-
-    register_feature_commands();
-
     registry = get_registry();
     parser = registry.finalize();
 
-    raw_argv = sys.argv[1:];
     if raw_argv
     and raw_argv[0] in TOMBSTONED_VERBS
     and raw_argv[0] not in registry.commands {
@@ -114,6 +114,8 @@ impl start_cli -> None {
         return;
     }
 
+    _load_project_config();
+
     command_spec = registry.get(args.command);
     if not command_spec {
         console.error(f"Unknown command: {args.command}");
@@ -155,6 +157,21 @@ impl jac_version -> str {
         }
     }
     return pkg_version('jaclang');
+}
+
+def _needs_feature_commands(raw_argv: list[str]) -> bool {
+    if not raw_argv {
+        return True;
+    }
+    if "-h" in raw_argv or "--help" in raw_argv {
+        return True;
+    }
+    for token in raw_argv {
+        if not token.startswith("-") {
+            return token in ("setup", "scale", "retheme", "model");
+        }
+    }
+    return False;
 }
 
 def _extract_script_args(registry: object) -> list {
