@@ -15,7 +15,9 @@ impl KEDAAutoscaler._validate_triggers{
         if key in seen {
             raise ValueError(
                 f"Trigger '{key}' in autoscaler spec for '{app_name}' collides with the trigger "
-                f"at index {seen[key]}; each trigger must resolve to a unique name so their "
+                f"at index {seen[
+                    key
+                ]}; each trigger must resolve to a unique name so their "
                 "TriggerAuthentication resources do not overwrite one another."
             );
         }

@@ -24,9 +24,11 @@ obj KEDAAutoscaler(Autoscaler) {
     def _build_trigger(
         trigger: Trigger, app_name: str, trigger_index: int
     ) -> dict[str, any];
+
     def _apply_trigger_auth(
         api: any, trigger: Trigger, namespace: str, app_name: str, trigger_index: int
     ) -> None;
+
     def _build_manifests(spec: AutoscalerSpec) -> dict[str, any];
     def preflight -> list[str];
     def apply(spec: AutoscalerSpec) -> bool;
