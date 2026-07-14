@@ -1001,6 +1001,24 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
+impl TypeEvaluator._is_ability_staticmethod(node_: uni.Ability) -> bool {
+    if node_.is_static {
+        return True;
+    }
+    if node_.decorators {
+        for decorator in node_.decorators {
+            decor_type = self.get_type_of_expression(decorator);
+            if (
+                isinstance(decor_type, types.ClassType)
+                and decor_type.is_builtin("staticmethod")
+            ) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 impl TypeEvaluator._classify_property_symbol(
     symbol: uni.Symbol
 ) -> type_utils.PropertyWriteKind {

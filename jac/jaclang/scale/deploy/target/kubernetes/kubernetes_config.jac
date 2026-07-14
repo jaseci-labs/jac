@@ -1,5 +1,14 @@
 import from jaclang.scale.config.base_config { BaseConfig }
 
+def k8s_safe_slug(name: str, fallback: str = 'jaseci') -> str {
+    import re;
+    lowered = (name or '').strip().lower();
+    slug = re.sub(r'[^a-z0-9-]+', '-', lowered);
+    slug = re.sub(r'-+', '-', slug).strip('-');
+    slug = slug[:63].strip('-');
+    return slug or fallback;
+}
+
 obj KubernetesConfig(BaseConfig) {
     has container_port: int = 8000,
         mongodb_enabled: bool = True,

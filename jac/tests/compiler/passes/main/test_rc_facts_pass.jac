@@ -1,10 +1,11 @@
-"""Unit tests for `RcElisionProofPass`: which `b = a` move sites it proves safe.
+"""Unit tests for `RcFactsPass`: which `b = a` move sites it proves safe.
 
-The proof is native-owned: it lives in the native codegen schedule, which only
-runs for native-context modules. These fixtures are plain `.jac` files compiled
+The move-lowerability proof is a core analysis on the shared dataflow
+framework; the native codegen schedule consumes the stamped
+`Assignment.na_move_lowerable` facts. These fixtures are plain `.jac` files compiled
 with `type_check=False` (so the ownership checker never runs over the deliberate
-UAF channels), then we drive `RcElisionProofPass` directly over the CFG-built IR
-so the `na_move_lowerable` marks come purely from the native liveness proof. Each
+UAF channels), then we drive `RcFactsPass` directly over the CFG-built IR
+so the `na_move_lowerable` marks come purely from the core liveness proof. Each
 fixture function has a single `bN = a` candidate; we assert the mark per candidate
 by its target name.
 
@@ -19,11 +20,9 @@ import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.compiler.passes.native.rc_elision_proof_pass { RcElisionProofPass }
+import from jaclang.compiler.passes.main.rc_facts_pass { RcFactsPass }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "passes", "native", "fixtures"
-     );
+glob FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "main", "fixtures");
 
 """Map every single-target `Name = ...` assignment to its move-lowerable mark."""
 def move_marks(fixture: str) -> dict[str, bool] {
@@ -33,7 +32,7 @@ def move_marks(fixture: str) -> dict[str, bool] {
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     # Native codegen (which schedules this pass) is gated off for plain `.jac`
     # modules, so run the proof directly over the CFG-built IR to populate marks.
-    RcElisionProofPass(ir_in=ir, prog=prog);
+    RcFactsPass(ir_in=ir, prog=prog);
     out: dict[str, bool] = {};
     for nd in ir.get_all_sub_nodes(uni.Assignment) {
         if len(nd.target) == 1 {
@@ -47,18 +46,18 @@ def move_marks(fixture: str) -> dict[str, bool] {
 }
 
 test "the proof marks safe local last-use moves" {
-    marks = move_marks("rc_elision_proof_cases.jac");
+    marks = move_marks("rc_facts_cases.jac");
     assert marks["b1"] , "straight-line last-use move must be proven safe";
     assert marks["b9"] , "loop move with per-iteration redefinition must be proven safe";
 }
 
 test "the proof refuses an own-param source (own-param UAF channel)" {
-    marks = move_marks("rc_elision_proof_cases.jac");
+    marks = move_marks("rc_facts_cases.jac");
     assert not marks["b2"] , "a param source is not LOCAL and must never be move-lowered";
 }
 
 test "the proof refuses escaping sources (call-arg, field, closure, concurrent, borrow)" {
-    marks = move_marks("rc_elision_proof_cases.jac");
+    marks = move_marks("rc_facts_cases.jac");
     assert not marks["b3"] , "a call-arg use must disqualify the source";
     assert not marks["b4"] , "a field store must disqualify the source";
     assert not marks["b5"] , "a closure capture must disqualify the source";
@@ -67,6 +66,6 @@ test "the proof refuses escaping sources (call-arg, field, closure, concurrent, 
 }
 
 test "the proof refuses a loop-carried source re-read via the back-edge" {
-    marks = move_marks("rc_elision_proof_cases.jac");
+    marks = move_marks("rc_facts_cases.jac");
     assert not marks["b8"] , "a source live across the loop back-edge must not be move-lowered";
 }
