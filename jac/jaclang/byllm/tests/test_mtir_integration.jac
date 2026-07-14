@@ -928,19 +928,39 @@ test "dict-arm union leaves real keys untouched" {
     assert holder.payload == {"Root Cause": 5};
 }
 
-test "two aliases for one field keep the first without silent loss" {
+test "conflicting aliases for one field are rejected" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Investigation }
+    import jaclang.byllm.schema as schema;
+    import from jaclang.byllm.exceptions { OutputConversionError }
+
+    # `Root Cause` and `root-cause` both normalize to `root_cause` but carry
+    # different values: ambiguous, so reject instead of silently picking one.
+    raised = False;
+    try {
+        schema.json_to_instance(
+            {"Root Cause": "first", "root-cause": "second"}, Investigation
+        );
+    } except OutputConversionError {
+        raised = True;
+    }
+    assert raised;
+}
+
+test "identical duplicate aliases are kept without error" {
     jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
 
     import from keydrop_schema { Investigation }
     import jaclang.byllm.schema as schema;
 
-    # `Root Cause` and `root-cause` both normalize to `root_cause` and neither is
-    # an exact match: the first is kept (and a collision warning is logged).
+    # Two aliases for the same field with the SAME value are a harmless
+    # duplicate -- keep it, do not reject.
     inv = schema.json_to_instance(
-        {"Root Cause": "first", "root-cause": "second"}, Investigation
+        {"Root Cause": "same", "root-cause": "same"}, Investigation
     );
 
-    assert inv.root_cause == "first";
+    assert inv.root_cause == "same";
 }
 
 # =============================================================================

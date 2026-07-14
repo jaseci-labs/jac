@@ -553,16 +553,24 @@ impl normalize_json_keys(data: object, ty: any) -> object {
                 out[k] = v;
             } else {
                 canon = lookup[nk];
+                normalized = normalize_json_keys(v, field_types[canon]);
                 if canon in exact {
                     continue;  # real field name already supplied it -- stay quiet
                 } elif canon in out {
-                    # Two Title-Cased aliases for one field: ambiguous input.
-                    logger.warning(
-                        f"byllm: {ty.__name__} got multiple aliases for field "
-                        f"{canon!r} (including {k!r}); keeping the first."
-                    );
+                    # Two Title-Cased aliases for one field. Identical values are
+                    # a harmless duplicate; conflicting values are genuinely
+                    # ambiguous, so reject rather than pick one silently -- the
+                    # caller retries (OutputConversionError) or the model sees a
+                    # tool error and self-corrects.
+                    if normalized != out[canon] {
+                        raise OutputConversionError(
+                            f"byllm: {ty.__name__} received conflicting aliases "
+                            f"for field {canon!r} (including {k!r}); cannot "
+                            "disambiguate the intended value."
+                        );
+                    }
                 } else {
-                    out[canon] = normalize_json_keys(v, field_types[canon]);
+                    out[canon] = normalized;
                 }
             }
         }

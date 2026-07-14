@@ -11,7 +11,7 @@ import from types { FunctionType, MethodType, UnionType }
 import from typing { Callable, Union, get_args, get_origin, get_type_hints }
 import from jaclang.byllm._optdeps.pydantic { TypeAdapter }
 import from jaclang.jac0core.mtp { Info, FieldInfo, ClassInfo, ParamInfo, EnumInfo }
-import from jaclang.byllm.exceptions { ConfigurationError }
+import from jaclang.byllm.exceptions { ConfigurationError, OutputConversionError }
 
 glob _SCHEMA_OBJECT_WRAPPER = "schema_object_wrapper",
      _SCHEMA_DICT_WRAPPER = "schema_dict_wrapper";
