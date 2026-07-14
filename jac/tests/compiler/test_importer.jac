@@ -3,6 +3,8 @@
 import io;
 import os;
 import sys;
+import gc;
+import weakref;
 import subprocess;
 import marshal;
 import shutil;
@@ -13,6 +15,7 @@ import jaclang;
 import from jaclang { JacRuntime as Jac }
 import from jaclang { JacRuntimeInterface }
 import from jaclang.cli.commands { execution }
+import from jaclang.cli.commands { analysis }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compiler { JacCompiler }
 import from jaclang.jac0core.jir {
@@ -324,5 +327,111 @@ test "get_bytecode busts in-memory hub when .impl.jac changes" {
                 got
             )
         );
+    }
+}
+
+test "check preserves caller GC state" {
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
+    ) as tmp {
+        tmp.write("glob check_value = 1;\n");
+        check_file = tmp.name;
+    }
+    was_enabled = gc.isenabled();
+    gc.disable();
+    try {
+        assert analysis.check([check_file], print_errs=False) == 0;
+        assert not gc.isenabled();
+    } finally {
+        if was_enabled {
+            gc.enable();
+        } else {
+            gc.disable();
+        }
+        os.unlink(check_file);
+    }
+}
+
+test "release compile closure clears ASTs and evaluator but keeps stubs" {
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        source_path = os.path.join(d, "source.jac");
+        stub_path = os.path.join(d, "types.pyi");
+        prog = JacProgram();
+        def source_ref -> object {
+            source_mod = prog.parse_str("glob value = 1;\n", source_path);
+            return weakref.ref(source_mod);
+        }
+        ast_ref = source_ref();
+        prog.parse_str("value: int\n", stub_path);
+        prog.get_type_evaluator();
+        prog.release_compile_closure(keep_stubs=True);
+        gc.collect();
+        assert ast_ref() is None , "released AST is still strongly referenced";
+        assert source_path not in prog.mod.hub;
+        assert stub_path in prog.mod.hub;
+        assert prog.type_evaluator is None;
+    }
+}
+
+test "release compile closure honors no unit eviction" {
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        source_path = os.path.join(d, "source.jac");
+        prog = JacProgram();
+        prog.parse_str("glob value = 1;\n", source_path);
+        old_no_evict = os.environ.get("JAC_NO_UNIT_EVICT");
+        os.environ["JAC_NO_UNIT_EVICT"] = "1";
+        try {
+            prog.release_compile_closure();
+            assert source_path in prog.mod.hub;
+        } finally {
+            if old_no_evict is None {
+                os.environ.pop("JAC_NO_UNIT_EVICT", None);
+            } else {
+                os.environ["JAC_NO_UNIT_EVICT"] = old_no_evict;
+            }
+        }
+    }
+}
+
+test "internal get_bytecode evicts unit AST after compile" {
+    # Cold bootstrap used to retain every jaclang module AST in
+    # internal_program.mod.hub. After the outermost successful compile+cache
+    # write, non-stub ASTs must leave the hub so peak RSS stays near one import
+    # closure (+ warm typeshed), not the union of every module ever compiled.
+    compiler = JacCompiler();
+    prog = JacProgram();
+    # Two small, already-shipped jaclang modules (always under jaclang_root →
+    # resolve to internal_program). Force a fresh compile so we exercise the
+    # post-compile eviction path rather than a disk-cache hit.
+    samples = [
+        os.path.join(compiler._get_jaclang_root(), "jac0core", "log.jac"),
+        os.path.join(compiler._get_jaclang_root(), "jac0core", "constant.jac")
+    ];
+    for p in samples {
+        assert os.path.isfile(p) , f"missing fixture {p}";
+    }
+    old_rebuild = os.environ.get("JAC_REBUILD");
+    os.environ["JAC_REBUILD"] = "1";
+    try {
+        for p in samples {
+            code = compiler.get_bytecode(p, prog);
+            assert code is not None , f"compile failed for {p}";
+            hub = compiler.internal_program.mod.hub;
+            leftover_jac = [
+                k
+                for k in hub.keys()
+                if not k.endswith(".pyi")
+            ];
+            assert len(leftover_jac) == 0 , (
+                f"expected non-stub ASTs cleared after outermost get_bytecode of {p}; "
+                f"hub still has {leftover_jac[:8]}"
+            );
+        }
+    } finally {
+        if old_rebuild is None {
+            os.environ.pop("JAC_REBUILD", None);
+        } else {
+            os.environ["JAC_REBUILD"] = old_rebuild;
+        }
     }
 }

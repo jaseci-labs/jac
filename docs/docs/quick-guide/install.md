@@ -41,6 +41,40 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ---
 
+## Other installation options
+
+### AUR (Arch Linux)
+
+Jac is available in the Arch User Repository. Install it with your AUR helper of choice.
+
+```bash
+paru -S jaclang
+```
+
+### Docker
+
+Pull the official image:
+
+```bash
+docker pull jaseci/jaclang
+```
+
+Tags: `jaseci/jaclang:latest` (stable), `jaseci/jaclang:<version>` (specific), `jaseci/jaclang:dev` (main HEAD).
+
+Run a project from your working directory:
+
+```bash
+docker run --rm -v "$(pwd):/app" -w /app jaseci/jaclang run main.jac
+```
+
+Or drop into an interactive shell:
+
+```bash
+docker run --rm -it --entrypoint bash jaseci/jaclang
+```
+
+---
+
 ## Built-in Subsystems & Optional Dependencies
 
 The `jac` binary bundles every capability -- the AI (byLLM), MCP, full-stack client, and deployment & scaling subsystems are all built in. There is nothing to enable; what `jac install` does is resolve a capability's **optional third-party dependencies** into your project:

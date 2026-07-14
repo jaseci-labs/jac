@@ -71,11 +71,15 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            'readiness_initial_delay': 5,
-            'readiness_period': 5,
-            'liveness_initial_delay': 15,
-            'liveness_period': 10,
-            'liveness_failure_threshold': 3
+            # Probe timings must match the KubernetesConfig field defaults
+            # (deploy/target/kubernetes/kubernetes_config.jac) — this dict is
+            # deep-merged over jac.toml, so these values are what actually
+            # take effect when the user sets no probe keys.
+            'readiness_initial_delay': 10,
+            'readiness_period': 20,
+            'liveness_initial_delay': 10,
+            'liveness_period': 20,
+            'liveness_failure_threshold': 80
         },
         'secrets': {},
         'server': {
