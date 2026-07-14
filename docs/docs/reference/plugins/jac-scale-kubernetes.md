@@ -454,6 +454,81 @@ metadata = { queueName = "orders", mode = "QueueLength", value = "50", protocol 
 host = { name = "rabbitmq-secret", key = "host" }
 ```
 
+#### HTTP Add-on Activation (Scale-to-Zero on Request)
+
+The KEDA engine above scales on CPU, memory, or any KEDA trigger, but none of those triggers wake a workload from zero replicas in response to an incoming HTTP request itself. The [KEDA HTTP Add-on](https://github.com/kedacore/http-add-on) closes that gap: it intercepts HTTP traffic bound for the target, holds the request while a zero-replica workload starts, and forwards it only once the workload is ready. jac-scale exposes this as a typed, programmatic abstraction, `HTTPActivationSpec`, so that applications such as JacHammer IDE previews can wake a workload from a stable URL without a full `jac start --scale` deployment.
+
+!!! note "Not yet configured through `jac.toml`"
+    Unlike the rest of this page, HTTP Add-on activation is invoked programmatically rather than through `[scale.kubernetes]`. Import `KEDAAutoscaler` from `jaclang.scale.deploy.autoscale.keda_autoscaler` and `HTTPActivationSpec` from `jaclang.scale.deploy.autoscale.http_activation`, then call `apply_http_activation` / `destroy_http_activation` directly, either from your own deploy-time tooling or from a long-running control-plane process.
+
+**Prerequisites**
+
+Confirm each of these before calling `apply_http_activation`. Most are validated at call time and raise a clear error rather than failing silently, but checking them up front saves a round trip:
+
+- **KEDA core is installed on the cluster**, as described above for the `"keda"` engine.
+- **The KEDA HTTP Add-on is installed separately from KEDA core.** It ships as its own Helm chart and is not bundled with `kedacore/keda`:
+
+  ```bash
+  helm repo add kedacore https://kedacore.github.io/charts
+  helm repo update
+  helm install keda kedacore/keda -n keda --create-namespace --wait
+  helm install http-add-on kedacore/keda-add-ons-http -n keda --wait
+  ```
+
+  If the HTTP Add-on's CRDs are missing, `apply_http_activation` logs a warning and returns `False` instead of raising, matching the fallback behavior of the `"keda"` engine's own preflight check.
+- **The scale target exposes Kubernetes' `/scale` subresource.** A `Deployment` or `StatefulSet` works out of the box. A standalone `Pod` is rejected immediately with an error explaining the `/scale` requirement, since there is nothing for KEDA to scale on a bare Pod. A compatible custom resource, a `Rollout` for example, also works, but only once `scale_target_plural` is set on `HTTPActivationSpec` so jac-scale can validate that it exists before applying anything; omitting it fails the call closed rather than skipping validation.
+- **The target's Deployment or StatefulSet, and its Service, already exist.** This feature manages the `InterceptorRoute` and `ScaledObject` around an existing workload. It does not create the workload or the Service for you, and both are validated to exist before anything is applied.
+- **The Service stays present while replicas are zero.** A Kubernetes `Service` routes by label selector and has no dependency on replica count, so this is usually automatic. Do not gate Service creation on the Deployment having ready pods.
+- **Exactly one of `port` or `port_name` is set** on `HTTPServiceTarget`, and **at least one of `concurrency` or `request_rate`** is set on `HTTPActivationSpec`. Both are validated up front and raise `ValueError` when violated.
+
+**Example**
+
+```jac
+import from jaclang.scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jaclang.scale.deploy.autoscale.http_activation {
+    HTTPActivationSpec,
+    HTTPServiceTarget,
+    HTTPRoutingRule,
+    HTTPConcurrencyMetric
+}
+
+# Override http_scaler_address= if the HTTP Add-on's external scaler
+# does not run in the default "keda" namespace.
+keda = KEDAAutoscaler();
+
+spec = HTTPActivationSpec(
+    name="preview",
+    namespace="jachammer-previews",
+    scale_target_name="preview-abc123",
+    target=HTTPServiceTarget(service="preview-abc123-svc", port=80),
+    rules=[HTTPRoutingRule(hosts=["abc123.previews.example.com"])],
+    min_replicas=0,
+    max_replicas=1,
+    cooldown_period=300,
+    concurrency=HTTPConcurrencyMetric(target_value=1)
+);
+
+keda.apply_http_activation(spec);
+
+# Later, once the preview is torn down:
+keda.destroy_http_activation("preview-abc123", "jachammer-previews");
+```
+
+**Traffic topology**
+
+```mermaid
+graph TD
+    Client["Client"] -->|"HTTP request"| Interceptor["HTTP Add-on Interceptor<br/>(matches InterceptorRoute rules)"]
+    Interceptor -->|"pending request count"| Scaler["External Scaler"]
+    Scaler -->|"external-push metric"| Operator["KEDA Operator"]
+    Operator -->|"scale 0 to 1"| Target["Deployment (0 replicas)"]
+    Target -->|"pod Ready"| Interceptor
+    Interceptor -->|"forward held request"| Target
+    Target -->|"response"| Client
+```
+
+`apply_http_activation` always reconciles the `InterceptorRoute` before the `ScaledObject`, because the external scaler resolves the target Service and scaling metric from the route when KEDA evaluates the trigger. Applying them in the other order would leave the `ScaledObject` unable to find its metric source.
+
 ---
 
 ### Persistent Storage
