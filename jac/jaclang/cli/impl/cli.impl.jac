@@ -142,9 +142,6 @@ impl start_cli -> None {
     executor = get_executor();
     result = executor.execute(command_spec, args_dict);
 
-    if result.error {
-        console.error(f"{result.error}");
-    }
     if result.return_code != 0 {
         sys.exit(result.return_code);
     }
@@ -340,8 +337,6 @@ def _apply_config_defaults(config: object, args_dict: dict) {
 }
 
 def _try_fast_path(raw_argv: list) -> int | None {
-    import from jaclang.cli.registry { get_registry }
-    import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.console { console }
 
     if not raw_argv {
@@ -391,13 +386,30 @@ def _try_fast_path(raw_argv: list) -> int | None {
     };
     _apply_profile(args_dict);
 
-    spec = get_registry().get("run");
-    if spec is None {
+    import traceback;
+    import from jaclang.cli.command_dispatch { dispatch_command }
+
+    try {
+        (handled, result) = dispatch_command("run", args_dict);
+    } except Exception as e {
+        console.error(f"Error executing 'run': {e}");
+        if sys?.exc_info {
+            traceback.print_exc();
+        }
+        return 1;
+    }
+
+    if not handled {
         return None;
     }
-    result = get_executor().execute(spec, args_dict);
-    if result.error {
-        console.error(f"{result.error}");
+
+    if result is None {
+        return 0;
+    } elif isinstance(result, int) {
+        return result;
+    } elif isinstance(result, bool) {
+        return 0 if result else 1;
+    } else {
+        return 0;
     }
-    return result.return_code;
 }
