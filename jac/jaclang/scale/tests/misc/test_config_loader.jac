@@ -1,6 +1,8 @@
 import os;
 import from jaclang.scale.config.config_loader { JacScaleConfig }
-import from jaclang.scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
+import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+    KubernetesConfig
+}
 
 
 test "get_default_config kubernetes probe timings match KubernetesConfig defaults" {
@@ -17,8 +19,9 @@ test "get_default_config kubernetes probe timings match KubernetesConfig default
         "liveness_period",
         "liveness_failure_threshold"
     ] {
-        assert defaults[key] == getattr(struct_defaults, key) ,
-            f"{key}: get_default_config has {defaults[key]}, KubernetesConfig default is {getattr(struct_defaults, key)}";
+        expected = getattr(struct_defaults, key);
+        actual = defaults[key];
+        assert actual == expected , f"{key}: get_default_config has {actual}, expected {expected}";
     }
 }
 
