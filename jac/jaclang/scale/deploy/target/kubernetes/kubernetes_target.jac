@@ -55,7 +55,10 @@ obj KubernetesTarget(DeploymentTarget) {
         logger: (Logger | None) = None,
         k8s_config: KubernetesConfig by postinit,
         env_list: list = [],
-        secrets: dict[str, str] = {};
+        secrets: dict[str, str] = {},
+        # Set by the factory for --dry-run: manifest generation must then stay
+        # hermetic -- no cluster reads, downloads, or builds (issue #7431).
+        dry_run: bool = False;
 
     def postinit {
         self.k8s_config = self.config;

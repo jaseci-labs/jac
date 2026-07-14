@@ -10,7 +10,13 @@ import from jaclang.scale.injector.bundle {
     sanitized_jac_toml,
     pack_jab
 }
-import from jaclang.scale.injector.pvc_injector { PvcInjector, build_bundle_pvc }
+import from jaclang.scale.injector.pvc_injector {
+    PvcInjector,
+    build_bundle_pvc,
+    BUNDLE_MOUNT_PATH,
+    LOADER_UID,
+    LOADER_GID
+}
 
 
 glob _JAC_BIN: Path = Path(__file__).parents[4] / "zig-out" / "bin" / "jac";
@@ -180,7 +186,7 @@ test "host_path mode mounts the host directory instead of a PVC claim (#7433)" {
 }
 
 
-test "the loader pod stages bundles onto the host directory in host_path mode" {
+test "the loader pod stages bundles onto the host directory in host_path mode (#7433)" {
     injector = PvcInjector(host_path="/mnt/jac/bundles");
     pod = injector._loader_pod_manifest("orders");
     volumes = {volume["name"]: volume for volume in pod["spec"]["volumes"]};
@@ -188,22 +194,67 @@ test "the loader pod stages bundles onto the host directory in host_path mode" {
         "path": "/mnt/jac/bundles",
         "type": "DirectoryOrCreate"
     };
-    # kubelet never chowns hostPath volumes (fsGroup does not apply) and
-    # creates missing directories root-owned, so the loader must run as root
-    # to write there - acceptable for a local-single-node-only mode.
+    # kubelet never chowns hostPath volumes (fsGroup does not apply) and creates
+    # missing directories root-owned, so the loader must run as root to write
+    # there - acceptable for a local-single-node-only mode. runAsUser is set
+    # explicitly (not left to the image default) so this is image-independent.
     assert pod["spec"]["securityContext"].get("runAsNonRoot") is None;
+    assert pod["spec"]["securityContext"]["runAsUser"] == 0;
+    assert pod["spec"]["containers"][0]["securityContext"]["runAsUser"] == 0;
+    # A root loader writes the mount directly, so no bundle-perms init container.
+    assert pod["spec"].get("initContainers") is None;
 }
 
 
-test "the loader pod stays non-root and claims the bundle PVC in PVC mode" {
+test "the loader pod keeps fsGroup for storage that honors it in PVC mode (#7432)" {
     injector = PvcInjector(storage_class="efs-sc");
     pod = injector._loader_pod_manifest("orders");
-    volumes = {volume["name"]: volume for volume in pod["spec"]["volumes"]};
-    assert volumes["bundles"]["persistentVolumeClaim"] == {
-        "claimName": "orders-bundles"
-    };
-    assert pod["spec"]["securityContext"]["runAsNonRoot"];
-    assert pod["spec"]["securityContext"]["fsGroup"] == 1000;
+    assert pod["kind"] == "Pod";
+    assert pod["metadata"]["name"] == "orders-bundle-loader";
+    spec = pod["spec"];
+    assert spec["securityContext"]["runAsNonRoot"];
+    assert spec["securityContext"]["fsGroup"] == LOADER_GID;
+    assert spec["securityContext"]["runAsUser"] == LOADER_UID;
+    claims = [
+        v["persistentVolumeClaim"]["claimName"]
+        for v in spec["volumes"]
+        if "persistentVolumeClaim" in v
+    ];
+    assert claims == ["orders-bundles"];
+}
+
+
+test "the loader pod makes the bundle volume root writable without fsGroup in PVC mode (#7432)" {
+    # fsGroup alone is not enough: kubelet never applies it to hostPath or NFS
+    # volumes, and CSI drivers with the default fsGroupPolicy skip ReadWriteMany
+    # volumes -- exactly what the bundle PVC must be. On any such storage the
+    # non-root loader hits "mkdir: Permission denied" at the root-owned volume
+    # root. The pod must therefore hand the mount to the loader's uid/gid itself.
+    injector = PvcInjector(storage_class="efs-sc");
+    pod = injector._loader_pod_manifest("orders");
+    inits = pod["spec"].get("initContainers", []);
+    assert len(inits) == 1 , (
+        "the loader pod needs a volume-permission init container: fsGroup is "
+        "not applied on hostPath/NFS or RWX CSI volumes (#7432)"
+    );
+    perms = inits[0];
+    assert perms["image"] == "busybox:1.36";
+    # It must run as root to chown a root-owned volume root, but stay hardened.
+    sc = perms["securityContext"];
+    assert sc["runAsUser"] == 0;
+    assert sc["runAsNonRoot"] == False;
+    assert sc["allowPrivilegeEscalation"] == False;
+    assert sc["readOnlyRootFilesystem"] == True;
+    assert sc["capabilities"]["drop"] == ["ALL"];
+    assert set(sc["capabilities"]["add"]) == {"CHOWN", "FOWNER", "DAC_OVERRIDE"};
+    # And it must actually chown/chmod the bundle mount to the loader identity.
+    script = perms["command"][-1];
+    assert f"{LOADER_UID}:{LOADER_GID}" in script;
+    assert BUNDLE_MOUNT_PATH in script;
+    assert "chown" in script;
+    assert "chmod" in script;
+    mounts = [m["mountPath"] for m in perms["volumeMounts"]];
+    assert mounts == [BUNDLE_MOUNT_PATH];
 }
 
 

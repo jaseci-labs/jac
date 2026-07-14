@@ -556,10 +556,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
         # Resolve here, not in deploy(): `jac scale plan` calls this directly,
         # and an unresolved '' python_image would render image-less manifests.
-        # Idempotent - a no-op once python_image is non-empty.
+        # Idempotent - a no-op once python_image is non-empty. A dry run skips
+        # the registry reachability probe: no network under --dry-run.
         import from jaclang.scale.injector.binary { resolve_pod_base_image }
         self.k8s_config.python_image = resolve_pod_base_image(
-            app_config.code_folder, self.k8s_config.python_image
+            app_config.code_folder, self.k8s_config.python_image, probe=not self.dry_run
         );
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
@@ -568,7 +569,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             logger=self.logger,
             no_image=True,
             project_dir=app_config.code_folder,
-            microservices_config=self.microservices_config
+            microservices_config=self.microservices_config,
+            dry_run=self.dry_run
         );
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }

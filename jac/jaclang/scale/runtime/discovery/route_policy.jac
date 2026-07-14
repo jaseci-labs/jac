@@ -46,3 +46,37 @@ def guard_route_name(module_name: str) {
         );
     }
 }
+
+
+"""Render the applied routes as display lines, split by where each came from.
+
+Services whose route was declared in [scale.microservices.routes] are listed
+under `configured:`; the rest (derived from discovery) under `auto-derived:`.
+Surfacing the split lets an operator confirm at a glance that their config was
+read AND spot services silently riding on default routes.
+"""
+def format_route_origin_lines(
+    routes: dict[str, str], explicit_routes: dict[str, str]
+) -> list[str] {
+    names = sorted(routes.keys());
+    configured = [
+        n
+        for n in names
+        if n in explicit_routes
+    ];
+    derived = [
+        n
+        for n in names
+        if n not in explicit_routes
+    ];
+    lines: list[str] = [];
+    if configured {
+        pairs = ", ".join([f"{n} -> {routes[n]}" for n in configured]);
+        lines.append(f"configured:   {pairs}");
+    }
+    if derived {
+        pairs = ", ".join([f"{n} -> {routes[n]}" for n in derived]);
+        lines.append(f"auto-derived: {pairs}");
+    }
+    return lines;
+}

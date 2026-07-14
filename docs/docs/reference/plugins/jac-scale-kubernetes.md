@@ -1180,6 +1180,13 @@ kubectl get pvc                     # the bundle PVC must be Bound
   `bundle_storage_class` to one it does have, or, on a single-node local
   cluster (kind / k3d / minikube), set `bundle_host_path` to stage bundles in a
   host directory with no PVC at all.
+- `Permission denied` while the deploy seeds the bundle PVC means the volume
+  root is not writable by the loader (uid 1000). The bundle-loader pod's
+  `bundle-perms` init container chowns the mount root on startup (fsGroup is
+  not applied on hostPath/NFS or most ReadWriteMany CSI volumes), so this only
+  persists when the backend also rejects root `chown` -- for example a
+  root-squash NFS export. Make the export writable by uid/gid 1000 or disable
+  root squash.
 - `ImagePullBackOff` on the base image means the cluster cannot reach
   `jaseci/jaclang`; set `python_image` to a base it can pull.
 

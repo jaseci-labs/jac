@@ -15,6 +15,9 @@ glob logger = logging.getLogger(__name__);
 glob BUNDLE_VOLUME_NAME: str = "jac-bundles",
      BUNDLE_MOUNT_PATH: str = "/jac-bundles";
 
+glob LOADER_UID: int = 1000,
+     LOADER_GID: int = 1000;
+
 
 def bundle_pvc_name(app_name: str) -> str {
     return f"{app_name}-bundles";
@@ -60,6 +63,44 @@ def build_bundle_pvc(
             "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-store"}
         },
         "spec": spec
+    };
+}
+
+
+def build_loader_perms_init_container(loader_image: str) -> dict[str, any] {
+    # The pod's fsGroup is only honored on volumes whose plugin manages
+    # ownership: hostPath and NFS never do, and CSI drivers with the default
+    # fsGroupPolicy (ReadWriteOnceWithFSType) skip ReadWriteMany volumes --
+    # exactly what the bundle PVC must be. On such storage the volume root
+    # arrives root-owned 0755 and the non-root loader dies at its first mkdir
+    # with "Permission denied" (#7432). This init container runs as root just
+    # long enough to hand the mount to the loader identity; the hardened
+    # non-root loader then takes over. It is best-effort: storage that squashes
+    # root (EFS access points, root-squash NFS) rejects the chown, but there
+    # the backend's own identity mapping decides writability and the loader's
+    # mkdir still surfaces a clear error if the volume is truly unwritable.
+    script = (
+        f"chown -R {LOADER_UID}:{LOADER_GID} {BUNDLE_MOUNT_PATH} "
+        f"&& chmod 0775 {BUNDLE_MOUNT_PATH} "
+        "|| echo 'bundle-perms: chown/chmod not permitted by the storage "
+        "backend; relying on the volume permissions as provisioned' >&2"
+    );
+    return {
+        "name": "bundle-perms",
+        "image": loader_image,
+        "command": ["sh", "-c", script],
+        "securityContext": {
+            "runAsNonRoot": False,
+            "runAsUser": 0,
+            "readOnlyRootFilesystem": True,
+            "allowPrivilegeEscalation": False,
+            "capabilities": {
+                "drop": ["ALL"],
+                "add": ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            },
+            "seccompProfile": {"type": "RuntimeDefault"}
+        },
+        "volumeMounts": [{"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH}]
     };
 }
 
@@ -117,9 +158,7 @@ obj PvcInjector(Injector) {
 
     def _bundle_volume_source(app_name: str) -> dict[str, any] {
         if self.host_path {
-            return {
-                "hostPath": {"path": self.host_path, "type": "DirectoryOrCreate"}
-            };
+            return {"hostPath": {"path": self.host_path, "type": "DirectoryOrCreate"}};
         }
         return {"persistentVolumeClaim": {"claimName": bundle_pvc_name(app_name)}};
     }
@@ -131,22 +170,53 @@ obj PvcInjector(Injector) {
             "capabilities": {"drop": ["ALL"]},
             "seccompProfile": {"type": "RuntimeDefault"}
         };
-        pod_security: dict[str, any] = {
-            "seccompProfile": {"type": "RuntimeDefault"}
-        };
-        if not self.host_path {
+        pod_security: dict[str, any] = {"seccompProfile": {"type": "RuntimeDefault"}};
+        init_containers: list[dict[str, any]] = [];
+        if self.host_path {
+            # hostPath mode: kubelet creates the directory root-owned (0755) and
+            # never applies fsGroup, so the loader must run as root to write the
+            # staged bundles. Set runAsUser explicitly (rather than leaning on
+            # the loader image's default user) so this holds image-independently
+            # - acceptable for a local-single-node-only mode (#7433).
+            pod_security.update({"runAsUser": 0});
+            container_security.update({"runAsUser": 0});
+        } else {
             # PVC mode: fsGroup makes the volume group-writable, so the loader
-            # runs non-root. hostPath mode cannot do that (kubelet never chowns
-            # hostPath volumes and creates missing directories root-owned
-            # 0755), so there the loader runs as root to write the staged
-            # bundles - acceptable for a local-single-node-only mode.
+            # runs non-root. But fsGroup is not honored on hostPath/NFS or most
+            # ReadWriteMany CSI volumes (exactly what the bundle PVC must be),
+            # where the volume root arrives root-owned 0755; the bundle-perms
+            # init container runs as root just long enough to chown the mount to
+            # the loader identity so the non-root loader can write (#7432).
             pod_security.update(
-                {"runAsNonRoot": True, "runAsUser": 1000, "fsGroup": 1000}
+                {"runAsNonRoot": True, "runAsUser": LOADER_UID, "fsGroup": LOADER_GID}
             );
-            container_security.update({"runAsNonRoot": True, "runAsUser": 1000});
+            container_security.update({"runAsNonRoot": True, "runAsUser": LOADER_UID});
+            init_containers.append(
+                build_loader_perms_init_container(self.loader_image)
+            );
         }
         bundles_volume: dict[str, any] = {"name": "bundles"};
         bundles_volume.update(self._bundle_volume_source(app_name));
+        spec: dict[str, any] = {
+            "restartPolicy": "Never",
+            "securityContext": pod_security,
+            "containers": [
+                {
+                    "name": "loader",
+                    "image": self.loader_image,
+                    "command": ["sh", "-c", "sleep 3600"],
+                    "securityContext": container_security,
+                    "volumeMounts": [
+                        {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
+                        {"name": "tmp", "mountPath": "/tmp"}
+                    ]
+                }
+            ],
+            "volumes": [bundles_volume, {"name": "tmp", "emptyDir": {}}]
+        };
+        if init_containers {
+            spec["initContainers"] = init_containers;
+        }
         return {
             "apiVersion": "v1",
             "kind": "Pod",
@@ -154,23 +224,7 @@ obj PvcInjector(Injector) {
                 "name": f"{app_name}-bundle-loader",
                 "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-loader"}
             },
-            "spec": {
-                "restartPolicy": "Never",
-                "securityContext": pod_security,
-                "containers": [
-                    {
-                        "name": "loader",
-                        "image": self.loader_image,
-                        "command": ["sh", "-c", "sleep 3600"],
-                        "securityContext": container_security,
-                        "volumeMounts": [
-                            {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
-                            {"name": "tmp", "mountPath": "/tmp"}
-                        ]
-                    }
-                ],
-                "volumes": [bundles_volume, {"name": "tmp", "emptyDir": {}}]
-            }
+            "spec": spec
         };
     }
 
@@ -209,8 +263,8 @@ obj PvcInjector(Injector) {
         core_v1 = client.CoreV1Api();
         bundle_store = (
             f"host path {self.host_path}"
-            if self.host_path
-            else f"PVC {bundle_pvc_name(app_name)}"
+                if self.host_path
+                else f"PVC {bundle_pvc_name(app_name)}"
         );
         loader_pod = f"{app_name}-bundle-loader";
 

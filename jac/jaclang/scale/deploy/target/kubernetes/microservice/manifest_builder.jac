@@ -27,7 +27,10 @@ obj MicroserviceManifestBuilder {
         project_dir: str = "",
         _bundle_object_key: str = "",
         _toolchain_object_key: str = "",
-        microservices_config: dict[str, any] = {};
+        microservices_config: dict[str, any] = {},
+        # --dry-run: render manifests from config alone -- no client build, no
+        # binary/console download, no cluster reads (issue #7431).
+        dry_run: bool = False;
 
     def _ms_cfg -> dict[str, any] {
         if self.microservices_config {
@@ -56,7 +59,8 @@ obj MicroserviceManifestBuilder {
             self.k8s_config.namespace,
             proj,
             provisioned_database=("mongo" if self.k8s_config.mongodb_enabled else ""),
-            host_path=self.k8s_config.bundle_host_path
+            host_path=self.k8s_config.bundle_host_path,
+            dry_run=self.dry_run
         );
         injector: PvcInjector = selection[0];
         self._toolchain_object_key = str(selection[1]);
@@ -74,6 +78,14 @@ obj MicroserviceManifestBuilder {
         }
         entry_abs = os.path.join(project_dir, client_entry);
         if not os.path.isfile(entry_abs) {
+            return;
+        }
+        if self.dry_run {
+            # The bundle only affects what ships to the gateway pod, never the
+            # manifests, so a dry run can skip the build outright (issue #7431).
+            console.print(
+                f"dry-run: skipped the host client bundle build ({client_entry})."
+            );
             return;
         }
         dist = os.path.join(project_dir, ".jac", "client", "dist");
