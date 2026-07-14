@@ -552,7 +552,7 @@ impl list_examples(category: str | None = None) -> dict[str, any] {
             }
         }
     }
-    return {"examples": sorted(examples, key=lambda x : x["name"])};
+    return {"examples": sorted(examples, key=lambda (x) { x["name"]; })};
 }
 
 impl get_example(name: str) -> dict[str, any] {
@@ -631,7 +631,7 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
             );
         }
     }
-    scored.sort(key=lambda x : -x[0]);
+    scored.sort(key=lambda (x) { -x[0]; });
     results = [item[1] for item in scored[:limit]];
     return {"results": results};
 }
@@ -694,7 +694,7 @@ impl list_commands -> dict[str, any] {
             );
         }
 
-        commands.sort(key=lambda c : (c["group"], c["name"]));
+        commands.sort(key=lambda (c) { (c["group"], c["name"]); });
 
         return {
             "commands": commands,

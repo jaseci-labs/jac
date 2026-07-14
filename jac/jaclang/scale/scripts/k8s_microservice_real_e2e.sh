@@ -231,13 +231,16 @@ class StderrLogger:
     def debug(self, msg, *args, **kwargs):
         pass
 
-# No python_image override: the default base (python:3.12-slim) is a plain
+# Empty python_image = the plain default base; the official-image e2e leg
+# sets E2E_POD_BASE_IMAGE to an image built from this PR's binary so the
+# baked-cache path (container-local runtime site) is exercised too.
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
         namespace="${NAMESPACE}",
         container_port=8000,
         bundle_storage_class="${BUNDLE_STORAGE_CLASS}",
+        python_image="${E2E_POD_BASE_IMAGE:-}",
     ),
     logger=StderrLogger(),
 )

@@ -207,6 +207,7 @@ obj JacConfig {
     def is_valid -> bool;
     def save -> None;
     def persist_doc(doc: dict[str, any]) -> None;
+    def _write_toml_text(text: str) -> None;
     def add_dependency(
         name: str, version: str, dev: bool = False, dep_type: str = "python"
     ) -> None;

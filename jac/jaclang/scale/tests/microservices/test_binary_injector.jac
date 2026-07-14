@@ -1,10 +1,15 @@
 import os;
 import io;
+import functools;
+import hashlib;
+import http.server;
 import tarfile;
 import tempfile;
+import threading;
 import unittest.mock;
 import from pathlib { Path }
 import from types { SimpleNamespace }
+import jaclang.scale.injector.binary as binary_mod;
 import from jaclang.scale.config.dev_config {
     resolve_dev_channel,
     Channel,
@@ -14,7 +19,8 @@ import from jaclang.scale.injector.binary {
     pack_binary_bytes,
     cluster_node_archs,
     node_arch,
-    download_release_binary
+    download_release_binary,
+    stage_admin_dist
 }
 import from jaclang.runtimelib.utils { host_arch }
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
@@ -325,4 +331,200 @@ test "BinaryInjector unpacks AND seeds both the app .jab and the toolchain bundl
     keys = [key for (key, _) in injector._seed_artifacts()];
     assert "bundles/orders/aaa.jab" in keys;
     assert "toolchain/orders/bbb.tar.gz" in keys;
+}
+
+glob _fake_urls: dict = {};
+
+
+def _fake_admin_dist_urls(channel: str) -> tuple[str, str] {
+    return (_fake_urls["url"], _fake_urls["url"] + ".sha256");
+}
+
+
+def _no_http(url: str) -> bytes {
+    raise AssertionError("the network must not be touched");
+}
+
+
+def _make_dist_tar -> bytes {
+    buf = io.BytesIO();
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar {
+        for (name, data) in [
+            ("index.html", b"<html>admin</html>"),
+            ("assets/app.js", b"console.log('admin')")
+        ] {
+            info = tarfile.TarInfo(name=name);
+            info.size = len(data);
+            tar.addfile(info, io.BytesIO(data));
+        }
+    }
+    return buf.getvalue();
+}
+
+
+test "admin console asset: verified download staged, cache reused, bad checksum refused" {
+    serve_dir = tempfile.mkdtemp();
+    payload = _make_dist_tar();
+    asset = "jac-dev-admin-dist.tar.gz";
+    (Path(serve_dir) / asset).write_bytes(payload);
+    digest = hashlib.sha256(payload).hexdigest();
+    (Path(serve_dir) / (asset + ".sha256")).write_text(f"{digest}  {asset}\n");
+    handler = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=serve_dir
+    );
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler);
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    _fake_urls["url"] = f"http://127.0.0.1:{srv.server_address[1]}/{asset}";
+
+    saved_cache = os.environ.get("JAC_SCALE_CACHE_DIR");
+    os.environ["JAC_SCALE_CACHE_DIR"] = tempfile.mkdtemp();
+    try {
+        with unittest.mock.patch.object(
+            binary_mod, "_admin_dist_urls", _fake_admin_dist_urls
+        ) {
+            proj = tempfile.mkdtemp();
+            assert stage_admin_dist(proj, "dev");
+            admin = Path(proj) / ".jac" / "admin";
+            assert (admin / "index.html").is_file();
+            assert (admin / "assets" / "app.js").is_file();
+            # The tarball vanished from the server: a fresh deploy stages
+            # from the verified cache.
+            os.remove(os.path.join(serve_dir, asset));
+            proj2 = tempfile.mkdtemp();
+            assert stage_admin_dist(proj2, "dev");
+            assert (Path(proj2) / ".jac" / "admin" / "index.html").is_file();
+            # A checksum mismatch stages nothing.
+            os.environ["JAC_SCALE_CACHE_DIR"] = tempfile.mkdtemp();
+            (Path(serve_dir) / asset).write_bytes(payload);
+            (Path(serve_dir) / (asset + ".sha256")).write_text(
+                f"{'0' * 64}  {asset}\n"
+            );
+            proj3 = tempfile.mkdtemp();
+            assert not stage_admin_dist(proj3, "dev");
+            assert not (Path(proj3) / ".jac" / "admin").exists();
+        }
+    } finally {
+        srv.shutdown();
+        if saved_cache is None {
+            os.environ.pop("JAC_SCALE_CACHE_DIR", None);
+        } else {
+            os.environ["JAC_SCALE_CACHE_DIR"] = saved_cache;
+        }
+    }
+}
+
+
+test "local channel never downloads the admin console" {
+    with unittest.mock.patch.object(binary_mod, "_http_get_bytes", _no_http) {
+        proj = tempfile.mkdtemp();
+        assert not stage_admin_dist(proj, "local");
+        assert not (Path(proj) / ".jac" / "admin").exists();
+    }
+}
+
+
+def _dist_url_but_no_checksum(channel: str) -> tuple[str, str] {
+    return (_fake_urls["url"], "");
+}
+
+
+test "no published checksum refuses to stage without touching the network" {
+    _fake_urls["url"] = "http://127.0.0.1:1/jac-x-admin-dist.tar.gz";
+    with unittest.mock.patch.object(
+        binary_mod, "_admin_dist_urls", _dist_url_but_no_checksum
+    ) {
+        with unittest.mock.patch.object(binary_mod, "_http_get_bytes", _no_http) {
+            proj = tempfile.mkdtemp();
+            assert not stage_admin_dist(proj, "stable");
+            assert not (Path(proj) / ".jac" / "admin").exists();
+        }
+    }
+}
+
+
+test "explicit python_image wins over channel auto-selection" {
+    import from jaclang.scale.injector.binary { resolve_pod_base_image }
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    assert resolve_pod_base_image(d, "my-registry/custom:1") == "my-registry/custom:1";
+}
+
+
+test "local channel never auto-selects the official image" {
+    import from jaclang.scale.injector.binary { resolve_pod_base_image }
+    d = _write_toml("[project]\nname = \"app\"\n");
+    saved = os.environ.get(BINARY_PATH_ENV);
+    try {
+        os.environ[BINARY_PATH_ENV] = "/some/jac";
+        assert resolve_pod_base_image(d, "") == "python:3.12-slim";
+    } finally {
+        os.environ.pop(BINARY_PATH_ENV, None);
+        if saved is not None {
+            os.environ[BINARY_PATH_ENV] = saved;
+        }
+    }
+}
+
+
+test "dev channel picks the official dev image when the tag is published" {
+    import jaclang.scale.injector.binary as binary;
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = binary._http_get_bytes;
+    def _ok(url: str) -> bytes {
+        return b"{}";
+    }
+    try {
+        binary._http_get_bytes = _ok;
+        assert binary.resolve_pod_base_image(d, "") == "jaseci/jaclang:dev";
+    } finally {
+        binary._http_get_bytes = saved;
+    }
+}
+
+
+test "unpublished official image falls back to the plain python base" {
+    import jaclang.scale.injector.binary as binary;
+    d = _write_toml("[dev]\ntest_jobs = \"auto\"\n");
+    saved = binary._http_get_bytes;
+    def _raise(url: str) -> bytes {
+        raise RuntimeError("404");
+    }
+    try {
+        binary._http_get_bytes = _raise;
+        assert binary.resolve_pod_base_image(d, "") == "python:3.12-slim";
+    } finally {
+        binary._http_get_bytes = saved;
+    }
+}
+
+
+test "only the mutable dev tag forces imagePullPolicy Always" {
+    import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+        image_pull_policy
+    }
+    assert image_pull_policy("jaseci/jaclang:dev") == "Always";
+    assert image_pull_policy("jaseci/jaclang:latest") == "";
+    assert image_pull_policy("jaseci/jaclang:0.31.2") == "";
+    assert image_pull_policy("python:3.12-slim") == "";
+}
+
+
+test "bootstrap reuses the image binary only on a checksum match" {
+    cmds = build_runtime_install_commands(KubernetesConfig());
+    joined = " && ".join(cmds);
+    assert "sha256sum /usr/local/bin/jac" in joined;
+    assert "ln -sf /usr/local/bin/jac" in joined;
+    # the shipped-binary install stays as the mismatch/absence fallback
+    assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
+}
+
+
+test "pod dep installs are routed to the shared-volume venv" {
+    script = str(
+        build_bootstrap_init_container(KubernetesConfig(), "jaseci/jaclang:dev")["args"][
+            0
+        ]
+    );
+    # exported before jac install: the image's cache site is container-local
+    assert 'export PIP_PREFIX="/app/.jac/venv"' in script;
+    assert script.index("PIP_PREFIX") < script.index("jac install");
 }

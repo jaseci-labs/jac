@@ -26,7 +26,7 @@ def:pub Showcase -> JsxElement {
         <FullstackSection
             entries={guestbook}
             name={gbName}
-            onNameChange={lambda v: str { gbName = v; }}
+            onNameChange={lambda (v: str) { gbName = v; }}
             onSign={signGuestbook}
             signing={gbSigning}
         />
@@ -108,8 +108,8 @@ def:pub AppProvider(children: any = None) -> JsxElement {
     has theme: str = "light";
     value = {
         "user": user, "theme": theme,
-        "setUser": lambda u: any -> None { user = u; },
-        "setTheme": lambda t: str -> None { theme = t; },
+        "setUser": lambda (u: any) -> None { user = u; },
+        "setTheme": lambda (t: str) -> None { theme = t; },
     };
     return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }
@@ -117,7 +117,7 @@ def:pub AppProvider(children: any = None) -> JsxElement {
 # Any descendant reads/writes the SAME state
 def:pub ThemeToggle() -> JsxElement {
     ctx: any = useContext(AppCtx);
-    return <button onClick={lambda -> None {
+    return <button onClick={lambda {
         ctx.setTheme("dark" if ctx.theme == "light" else "light");
     }}>Theme: {ctx.theme}</button>;
 }

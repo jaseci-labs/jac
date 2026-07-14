@@ -619,7 +619,8 @@ function jacErrorReporter() {{
             loc += ")";
           }} catch(e) {{}}
         }}
-        console.error("Client error: " + data.type + ": " + data.message + loc);
+        // Timestamped: the log is append-only, so a fixed error otherwise reads as live.
+        console.error("[" + new Date(now).toISOString() + "] Client error: " + data.type + ": " + data.message + loc);
         if (data.phase === "load") {{
           try {{ reportClientLoad(data); }} catch (e) {{}}
           server.ws.send({{
@@ -649,6 +650,37 @@ function jacPortReporter() {{
           fs.writeFileSync(path.resolve(buildDir, ".dev-port"), String(addr.port));
         }}
       }});
+    }},
+  }};
+}}
+
+// Vite plugin: full-reload on demand. Fast Refresh boundaries swallow edits
+// that change a module's export set (e.g. removing `:pub`), running stale code
+// with no signal. The jac dev server detects the change and bumps
+// .jac-force-reload; this reload re-runs the app so the real link error
+// surfaces at load (overlay). jacTriggered keeps the dev-status vite slot intact.
+function jacForceReload() {{
+  const signalFile = path.resolve(buildDir, ".jac-force-reload");
+  return {{
+    name: "jac-force-reload",
+    configureServer(server) {{
+      // Create the file so the watch attaches to an existing path; each reload
+      // request bumps its contents, firing a "change" the watcher delivers.
+      // Reloads fire only when the nonce content actually advances, so a
+      // watcher replay of the boot-time value can never cause a spurious reload.
+      let lastNonce = "0";
+      try {{ fs.writeFileSync(signalFile, lastNonce); }} catch (e) {{}}
+      try {{ server.watcher.add(signalFile); }} catch (e) {{}}
+      const onSig = (f) => {{
+        if (path.resolve(f) !== signalFile) return;
+        let nonce;
+        try {{ nonce = fs.readFileSync(signalFile, "utf-8"); }} catch (e) {{ return; }}
+        if (nonce === lastNonce) return;
+        lastNonce = nonce;
+        server.ws.send({{ type: "full-reload", path: "*", jacTriggered: true }});
+      }};
+      server.watcher.on("add", onSig);
+      server.watcher.on("change", onSig);
     }},
   }};
 }}
@@ -746,6 +778,7 @@ export default defineConfig({{
     jacPortReporter(),
     jacBuildErrorOverlay(),
     jacDevStatus(),
+    jacForceReload(),
     jacFastRefresh(),{compiled_reload_plug_in}{(
             newline + plugins_str + newline + '  '
         )

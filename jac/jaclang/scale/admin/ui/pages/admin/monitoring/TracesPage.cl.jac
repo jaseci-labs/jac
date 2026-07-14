@@ -219,7 +219,7 @@ def:pub TracesPage -> JsxElement {
             <div className="flex flex-wrap gap-3 items-end">
                 <select
                     value={filterService}
-                    onChange={lambda e: any { filterService = e.target.value; }}
+                    onChange={lambda (e: any) { filterService = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="">All services</option>
@@ -227,7 +227,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={filterStatus}
-                    onChange={lambda e: any { filterStatus = e.target.value; }}
+                    onChange={lambda (e: any) { filterStatus = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="">All statuses</option>
@@ -235,7 +235,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={String(filterMinDuration)}
-                    onChange={lambda e: any { filterMinDuration = Number(
+                    onChange={lambda (e: any) { filterMinDuration = Number(
                         e.target.value
                     ); }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
@@ -247,7 +247,7 @@ def:pub TracesPage -> JsxElement {
                 </select>
                 <select
                     value={filterSince}
-                    onChange={lambda e: any { filterSince = e.target.value; }}
+                    onChange={lambda (e: any) { filterSince = e.target.value; }}
                     className="bg-surface border border-line rounded px-2 py-1.5 text-sm text-fg"
                 >
                     <option value="15m">Last 15 min</option>

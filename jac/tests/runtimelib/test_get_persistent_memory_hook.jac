@@ -32,7 +32,7 @@ test "TieredMemory.postinit uses a hook-provided L3 backend, else SqliteMemory" 
         original = JacRuntimeInterface.get_persistent_memory;
         try {
             JacRuntimeInterface.get_persistent_memory = (
-                lambda config : (captured.append(config) or sentinel)
+                lambda (config) { (captured.append(config) or sentinel); }
             );
             tm = TieredMemory(
                 base_path=tmpdir, target_path=str(Path(tmpdir) / "hooked.jac")

@@ -45,22 +45,69 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
 
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
 
-    if sig.return_type is not None {
-        hints = self._extract_tuple_struct_hints(sig.return_type);
-        if hints {
-            self.func_ret_tuple_hints[name] = hints;
-        }
-        _rt = sig.return_type;
+    self._record_ret_facts(name, sig);
+    self.has_native_code = True;
+}
 
-        if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
-            _rt = _rt.left;
-        }
-        _rname = self._get_name(_rt);
-        if _rname is not None {
-            self.func_ret_ann_name[name] = _rname;
+impl NaIRGenPass._normalize_type_key(key: str) -> str {
+    if key.startswith("type[") and key.endswith("]") {
+        key = key[5:-1];
+    }
+    if " | " in key {
+        for part in key.split(" | ") {
+            _p = part.strip();
+            if _p.startswith("type[") and _p.endswith("]") {
+                _p = _p[5:-1];
+            }
+            if _p not in ("None", "NoneType") {
+                return _p;
+            }
         }
     }
-    self.has_native_code = True;
+    return key;
+}
+
+impl NaIRGenPass._record_ret_facts(name: str, sig: uni.FuncSignature) -> None {
+    _rt = sig.return_type;
+    if _rt is None {
+        return;
+    }
+    if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
+        _rt = _rt.left;
+    }
+    _rtb = _rt?.type;
+    if _rtb is not None {
+        try {
+            self.func_ret_type_key[name] = self._normalize_type_key(_rtb.mangle());
+        } except Exception { }
+    }
+    elems: list = [];
+    if isinstance(_rt, uni.TupleVal) {
+        elems = list(_rt.values or []);
+    } elif _rt?.right and _rt.right?.slices {
+        for s in (_rt.right.slices or []) {
+            inner = s.start if s?.start else s;
+            if isinstance(inner, uni.TupleVal) {
+                elems.extend(list(inner.values or []));
+            } else {
+                elems.append(inner);
+            }
+        }
+    }
+    if elems {
+        keys: list = [];
+        for e in elems {
+            _ek: (str | None) = None;
+            _etb = e?.type if isinstance(e, uni.Expr) else None;
+            if _etb is not None {
+                try {
+                    _ek = self._normalize_type_key(_etb.mangle());
+                } except Exception { }
+            }
+            keys.append(_ek);
+        }
+        self.func_ret_elem_keys[name] = keys;
+    }
 }
 
 impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
@@ -216,6 +263,19 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
 
 impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     name = (nd).name_ref.sym_name if (nd).name_ref else "unnamed";
+    if isinstance(nd.signature, uni.FuncSignature) {
+        for _vp in nd.signature.get_parameters() {
+            if _vp.unpack is not None {
+                self.emit(
+                    E5092,
+                    node_override=_vp,
+                    kind="variadic parameter",
+                    name=f"{_vp.unpack.value}{_vp.name.value if _vp.name else ''}"
+                );
+                return;
+            }
+        }
+    }
     func = self.func_symtab.get(name);
     if func is None {
         return;
@@ -234,7 +294,6 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     );
 
     sig = (nd).signature;
-    import from jaclang.compiler.ownership { param_plainly_rebound }
     for (i, p) in enumerate(sig.get_parameters()) {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i];
@@ -243,7 +302,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         self.local_vars[param_name] = alloca;
 
         if isinstance(arg_val.type, ir.PointerType)
-        and param_plainly_rebound(p.name.sym if p.name else None) {
+        and bool(p.name?.sym?.param_rebound) {
             self._emit_rc_retain(arg_val, op="param_promote", loc=name);
         } else {
             self.param_vars.add(param_name);
@@ -387,7 +446,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     ];
     if free_vars {
         self.emit(
-            E5090,
+            E5092,
             node_override=nd,
             kind="statement",
             name="Ability (nested function capturing enclosing locals)"
@@ -573,6 +632,29 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     b_nogc.call(self.rc_gc_disable_fn, []);
     b_nogc.branch(_nogc_cont);
     self._builder = ir.IRBuilder(_nogc_cont);
+
+    if self._gc_mode() == "cycles" {
+        _cyc_str = self._get_snprintf_fmt("JAC_GC_CYCLES");
+        _cyc_ptr = self.builder.gep(
+            _cyc_str,
+            [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0)],
+            name="cyc.key"
+        );
+        _cyc_val = self.builder.call(_getenv_fn, [_cyc_ptr], name="cyc.env");
+        _cyc_set = self.builder.icmp_unsigned(
+            "!=", _cyc_val, ir.Constant(_i8p, None), name="cyc.set"
+        );
+        _cyc_then = func.append_basic_block("cyc_enable");
+        _cyc_cont = func.append_basic_block("cyc_cont");
+        self.builder.cbranch(_cyc_set, _cyc_then, _cyc_cont);
+        b_cyc = ir.IRBuilder(_cyc_then);
+        if self.rc_alloc_fn is None {
+            self._emit_rc_helpers();
+        }
+        b_cyc.call(self.rc_cycles_enable_fn, []);
+        b_cyc.branch(_cyc_cont);
+        self._builder = ir.IRBuilder(_cyc_cont);
+    }
     if glob_init_fn is not None {
         self.builder.call(glob_init_fn, []);
     }

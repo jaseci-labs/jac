@@ -55,7 +55,10 @@ obj KubernetesTarget(DeploymentTarget) {
         logger: (Logger | None) = None,
         k8s_config: KubernetesConfig by postinit,
         env_list: list = [],
-        secrets: dict[str, str] = {};
+        secrets: dict[str, str] = {},
+        # Set by the factory for --dry-run: manifest generation must then stay
+        # hermetic -- no cluster reads, downloads, or builds (issue #7431).
+        dry_run: bool = False;
 
     def postinit {
         self.k8s_config = self.config;
@@ -946,6 +949,10 @@ obj KubernetesTarget(DeploymentTarget) {
                 {'namespace': namespace}
             );
         }
+        import from jaclang.scale.injector.binary { resolve_pod_base_image }
+        self.k8s_config.python_image = resolve_pod_base_image(
+            app_config.code_folder, self.k8s_config.python_image
+        );
 
         try {
             validate_resource_limits(
@@ -1044,6 +1051,13 @@ obj KubernetesTarget(DeploymentTarget) {
                 needs_root=True
             );
             container_config['env'] = container_config['env'] + runtime_container_env();
+            import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
+                image_pull_policy
+            }
+            pull_policy = image_pull_policy(self.k8s_config.python_image);
+            if pull_policy {
+                container_config['imagePullPolicy'] = pull_policy;
+            }
 
             app_sa_name = f"{app_name}-sa";
             self._create_service_account(app_sa_name, app_name, namespace, core_v1);

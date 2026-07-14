@@ -58,7 +58,11 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
          "storage.s3": {"context": "runtime", "deps": {"boto3": ">=1.40.0,<2.0.0"}},
          "deploy.k8s": {
              "context": "deploy",
-             "deps": {"kubernetes": ">=34.1.0,<35.0.0", "docker": ">=7.1.0,<8.0.0"}
+             "deps": {
+                 "kubernetes": ">=34.1.0,<35.0.0",
+                 "docker": ">=7.1.0,<8.0.0",
+                 "bcrypt": ">=4.0.0,<5.0.0"
+             }
          },
          "llm": {
              "context": "runtime",

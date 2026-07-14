@@ -121,8 +121,8 @@ class JacScalePluginConfig {
                     "nested": {
                         "app_name": {
                             "type": "string",
-                            "default": "jaseci",
-                            "description": "Application name for Kubernetes resources"
+                            "default": None,
+                            "description": "Application name for Kubernetes resources. Defaults to a k8s-safe slug of [project].name when unset, or 'jaseci' if no project name is usable"
                         },
                         "namespace": {
                             "type": "string",

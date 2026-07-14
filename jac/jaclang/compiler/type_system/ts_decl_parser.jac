@@ -1,3 +1,32 @@
+enum TsTypeKind {
+    ANY = "any",
+    NEVER = "never",
+    VOID = "void",
+    PRIM = "prim",
+    LITERAL_STR = "literal-str",
+    LITERAL_NUM = "literal-num",
+    LITERAL_BOOL = "literal-bool",
+    UNION = "union",
+    ARRAY = "array",
+    TUPLE = "tuple",
+    FUNC = "func",
+    REF = "ref"
+}
+
+enum TsDeclKind {
+    ANY = "any",
+    FUNCTION = "function",
+    CONST = "const",
+    TYPEALIAS = "typealias",
+    INTERFACE = "interface",
+    CLASS = "class",
+    ENUM = "enum",
+    NAMESPACE = "namespace",
+    REEXPORT = "reexport"
+}
+
+enum TsAccess { PUBLIC = "public", PRIVATE = "private", PROTECTED = "protected" }
+
 obj TsParam {
     has name: str = "",
         ty: (TsType | None) = None,
@@ -6,17 +35,30 @@ obj TsParam {
 }
 
 obj TsType {
-    has kind: str = "any",
+    has kind: TsTypeKind = TsTypeKind.ANY,
         name: str = "",
         args: list[TsType] = [],
         params: list[TsParam] = [],
         ret: (TsType | None) = None;
 }
 
+obj TsMember {
+    has name: str = "",
+        ty: (TsType | None) = None,
+        optional: bool = False,
+        readonly: bool = False,
+        is_method: bool = False,
+        is_static: bool = False,
+        access: TsAccess = TsAccess.PUBLIC;
+}
+
 obj TsDecl {
     has name: str = "",
-        kind: str = "any",
-        ty: (TsType | None) = None;
+        kind: TsDeclKind = TsDeclKind.ANY,
+        ty: (TsType | None) = None,
+        members: list[TsMember] = [],
+        heritage: list[str] = [],
+        call_sig: (TsType | None) = None;
 }
 
 glob _PRIM_NAMES: frozenset = frozenset(
@@ -376,7 +418,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         params = parse_params();
         expect_p('=>');
         ret = parse_type_full();
-        return TsType(kind='func', params=params, ret=ret);
+        return TsType(kind=TsTypeKind.FUNC, params=params, ret=ret);
     }
 
     def parse_primary -> TsType {
@@ -396,11 +438,11 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 collect_generics();
             }
             parse_fn_type();
-            return TsType(kind='any');
+            return TsType(kind=TsTypeKind.ANY);
         }
         if is_p('{') {
             skip_balanced('{', '}');
-            return TsType(kind='any');
+            return TsType(kind=TsTypeKind.ANY);
         }
         if is_p('[') {
             advance();
@@ -418,25 +460,25 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 }
             }
             expect_p(']');
-            return TsType(kind='tuple', args=args);
+            return TsType(kind=TsTypeKind.TUPLE, args=args);
         }
         if kind_at() == 'str' {
-            t = TsType(kind='literal-str', name=val_at());
+            t = TsType(kind=TsTypeKind.LITERAL_STR, name=val_at());
             advance();
             return t;
         }
         if kind_at() == 'num' {
-            t = TsType(kind='literal-num', name=val_at());
+            t = TsType(kind=TsTypeKind.LITERAL_NUM, name=val_at());
             advance();
             return t;
         }
         if kind_at() == 'tmpl' {
             advance();
-            return TsType(kind='prim', name='string');
+            return TsType(kind=TsTypeKind.PRIM, name='string');
         }
         if (is_p('-') and kind_at(1) == 'num') {
             advance();
-            t = TsType(kind='literal-num', name='-' + val_at());
+            t = TsType(kind=TsTypeKind.LITERAL_NUM, name='-' + val_at());
             advance();
             return t;
         }
@@ -444,7 +486,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             v = val_at();
             if v in ('true', 'false') {
                 advance();
-                return TsType(kind='literal-bool', name=v);
+                return TsType(kind=TsTypeKind.LITERAL_BOOL, name=v);
             }
             if v == 'typeof' {
                 advance();
@@ -461,7 +503,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 if is_p('<') {
                     parse_generic_args();
                 }
-                return TsType(kind='any');
+                return TsType(kind=TsTypeKind.ANY);
             }
             if v == 'import' {
                 advance();
@@ -473,12 +515,12 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 if is_p('<') {
                     parse_generic_args();
                 }
-                return TsType(kind='any');
+                return TsType(kind=TsTypeKind.ANY);
             }
             if v in ('keyof', 'unique', 'infer') {
                 advance();
                 parse_postfix();
-                return TsType(kind='any');
+                return TsType(kind=TsTypeKind.ANY);
             }
             if v == 'readonly' {
                 advance();
@@ -492,23 +534,23 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 if eat_id('is') {
                     parse_type_full();
                 }
-                return TsType(kind='void');
+                return TsType(kind=TsTypeKind.VOID);
             }
             if v in _ANY_NAMES {
                 advance();
-                return TsType(kind='any');
+                return TsType(kind=TsTypeKind.ANY);
             }
             if v in _VOID_NAMES {
                 advance();
-                return TsType(kind='void');
+                return TsType(kind=TsTypeKind.VOID);
             }
             if v == 'never' {
                 advance();
-                return TsType(kind='never');
+                return TsType(kind=TsTypeKind.NEVER);
             }
             if v in _PRIM_NAMES {
                 advance();
-                return TsType(kind='prim', name=v);
+                return TsType(kind=TsTypeKind.PRIM, name=v);
             }
             name = parse_qualified_name();
             args: list[TsType] = [];
@@ -516,12 +558,12 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 args = parse_generic_args();
             }
             if in_typevars(name) {
-                return TsType(kind='any');
+                return TsType(kind=TsTypeKind.ANY);
             }
             if (name in ('Array', 'ReadonlyArray') and len(args) == 1) {
-                return TsType(kind='array', args=[args[0]]);
+                return TsType(kind=TsTypeKind.ARRAY, args=[args[0]]);
             }
-            return TsType(kind='ref', name=name, args=args);
+            return TsType(kind=TsTypeKind.REF, name=name, args=args);
         }
         raise ValueError('unexpected type token');
     }
@@ -534,11 +576,11 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 if (kind_at(1) == 'punct' and val_at(1) == ']') {
                     advance();
                     advance();
-                    t = TsType(kind='array', args=[t]);
+                    t = TsType(kind=TsTypeKind.ARRAY, args=[t]);
                     continue;
                 }
                 skip_balanced('[', ']');
-                t = TsType(kind='any');
+                t = TsType(kind=TsTypeKind.ANY);
                 continue;
             }
             break;
@@ -551,7 +593,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         while eat_p('&') {
             parts.append(parse_postfix());
         }
-        return parts[0] if len(parts) == 1 else TsType(kind='any');
+        return parts[0] if len(parts) == 1 else TsType(kind=TsTypeKind.ANY);
     }
 
     def parse_union -> TsType {
@@ -560,7 +602,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         while eat_p('|') {
             parts.append(parse_intersection());
         }
-        return parts[0] if len(parts) == 1 else TsType(kind='union', args=parts);
+        return parts[0]
+            if len(parts) == 1
+            else TsType(kind=TsTypeKind.UNION, args=parts);
     }
 
     def parse_type_full -> TsType {
@@ -572,7 +616,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             parse_type_full();
             expect_p(':');
             parse_type_full();
-            return TsType(kind='any');
+            return TsType(kind=TsTypeKind.ANY);
         }
         return t;
     }
@@ -582,7 +626,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             advance();
             advance();
             parse_type_full();
-            return TsType(kind='prim', name='boolean');
+            return TsType(kind=TsTypeKind.PRIM, name='boolean');
         }
         return parse_type_full();
     }
@@ -598,7 +642,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         typevar_stack.append(tvs);
         try {
             params = parse_params();
-            ret: TsType = TsType(kind='any');
+            ret: TsType = TsType(kind=TsTypeKind.ANY);
             if eat_p(':') {
                 ret = parse_return_type();
             }
@@ -607,7 +651,169 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         }
         eat_p(';');
         return TsDecl(
-            name=fname, kind='function', ty=TsType(kind='func', params=params, ret=ret)
+            name=fname,
+            kind=TsDeclKind.FUNCTION,
+            ty=TsType(kind=TsTypeKind.FUNC, params=params, ret=ret)
+        );
+    }
+
+    def parse_heritage -> list[str] {
+        nonlocal pos;
+        bases: list[str] = [];
+        while (pos < n and not is_p('{')) {
+            if (is_id('extends') or is_id('implements')) {
+                advance();
+                continue;
+            }
+            if kind_at() == 'id' {
+                name = parse_qualified_name();
+                if is_p('<') {
+                    collect_generics();
+                }
+                bases.append(name);
+                continue;
+            }
+            advance();
+        }
+        return bases;
+    }
+
+    def parse_members -> tuple[(list[TsMember], (TsType | None))] {
+        nonlocal pos;
+        members: list[TsMember] = [];
+        call_sig: (TsType | None) = None;
+        expect_p('{');
+        while (pos < n and not is_p('}')) {
+            if (is_p(';') or is_p(',')) {
+                advance();
+                continue;
+            }
+            is_static = False;
+            access = TsAccess.PUBLIC;
+            while (
+                is_id('public')
+                or is_id('private')
+                or is_id('protected')
+                or is_id('static')
+                or is_id('abstract')
+                or is_id('declare')
+            ) {
+                if is_id('static') {
+                    is_static = True;
+                } elif is_id('private') {
+                    access = TsAccess.PRIVATE;
+                } elif is_id('protected') {
+                    access = TsAccess.PROTECTED;
+                } elif is_id('public') {
+                    access = TsAccess.PUBLIC;
+                }
+                advance();
+            }
+            readonly = eat_id('readonly');
+
+            if is_p('[') {
+                skip_balanced('[', ']');
+                if eat_p(':') {
+                    parse_type_full();
+                }
+                eat_p(';');
+                eat_p(',');
+                continue;
+            }
+            if (
+                is_p('(')
+                or is_p('<')
+                or (is_id('new') and kind_at(1) == 'punct' and val_at(1) == '(')
+            ) {
+                is_construct = is_id('new');
+                if is_construct {
+                    advance();
+                }
+                ctvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(ctvs);
+                try {
+                    cs_params = parse_params();
+                    cs_ret: TsType = TsType(kind=TsTypeKind.ANY);
+                    if eat_p(':') {
+                        cs_ret = parse_return_type();
+                    }
+                } finally {
+                    typevar_stack.pop();
+                }
+
+                if (not is_construct and call_sig is None) {
+                    call_sig = TsType(
+                        kind=TsTypeKind.FUNC, params=cs_params, ret=cs_ret
+                    );
+                }
+                eat_p(';');
+                eat_p(',');
+                continue;
+            }
+            if kind_at() not in ('id', 'str', 'num') {
+                advance();
+                continue;
+            }
+            mname = val_at();
+            advance();
+            optional = eat_p('?');
+            is_method = False;
+            mty: (TsType | None) = None;
+            if (is_p('<') or is_p('(')) {
+                is_method = True;
+                mtvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(mtvs);
+                try {
+                    mparams = parse_params();
+                    mret: TsType = TsType(kind=TsTypeKind.ANY);
+                    if eat_p(':') {
+                        mret = parse_return_type();
+                    }
+                } finally {
+                    typevar_stack.pop();
+                }
+                mty = TsType(kind=TsTypeKind.FUNC, params=mparams, ret=mret);
+            } elif eat_p(':') {
+                mty = parse_type_full();
+            }
+            members.append(
+                TsMember(
+                    name=mname,
+                    ty=mty,
+                    optional=optional,
+                    readonly=readonly,
+                    is_method=is_method,
+                    is_static=is_static,
+                    access=access,
+                )
+            );
+            eat_p(';');
+            eat_p(',');
+        }
+        expect_p('}');
+        return (members, call_sig);
+    }
+
+    def _parse_struct_decl(kind: TsDeclKind) -> TsDecl {
+        sname = val_at();
+        advance();
+        stvs = collect_generics() if is_p('<') else set();
+        typevar_stack.append(stvs);
+        sheritage: list[str] = [];
+        smembers: list[TsMember] = [];
+        scall_sig: (TsType | None) = None;
+        try {
+            sheritage = parse_heritage();
+            (smembers, scall_sig) = parse_members();
+        } finally {
+            typevar_stack.pop();
+        }
+        return TsDecl(
+            name=sname,
+            kind=kind,
+            members=smembers,
+            heritage=sheritage,
+            call_sig=scall_sig
         );
     }
 
@@ -708,70 +914,11 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             if handled {
                 continue;
             }
-            if eat_id('function') {
-                record(parse_function_decl(), is_export);
-            } elif (is_id('const') or is_id('let') or is_id('var')) {
-                advance();
-                if eat_id('enum') {
-                    _parse_enum_decl(is_export);
-                    continue;
+            common = _parse_common_decl();
+            if common is not None {
+                for d in common {
+                    record(d, is_export);
                 }
-                while kind_at() == 'id' {
-                    vname = val_at();
-                    advance();
-                    vty: TsType = TsType(kind='any');
-                    if eat_p(':') {
-                        vty = parse_type_full();
-                    }
-                    record(TsDecl(name=vname, kind='const', ty=vty), is_export);
-                    if not eat_p(',') {
-                        break;
-                    }
-                }
-                eat_p(';');
-            } elif eat_id('type') {
-                tname = val_at();
-                advance();
-                has_generics = is_p('<');
-                if has_generics {
-                    collect_generics();
-                }
-                expect_p('=');
-                if has_generics {
-                    skip_to_semi();
-                    record(
-                        TsDecl(name=tname, kind='typealias', ty=TsType(kind='any')),
-                        is_export
-                    );
-                } else {
-                    aty = parse_type_full();
-                    eat_p(';');
-                    record(TsDecl(name=tname, kind='typealias', ty=aty), is_export);
-                }
-            } elif eat_id('interface') {
-                iname = val_at();
-                advance();
-                if is_p('<') {
-                    collect_generics();
-                }
-                while (pos < n and not is_p('{')) {
-                    advance();
-                }
-                skip_balanced('{', '}');
-                record(TsDecl(name=iname, kind='interface'), is_export);
-            } elif eat_id('class') {
-                cname = val_at();
-                advance();
-                if is_p('<') {
-                    collect_generics();
-                }
-                while (pos < n and not is_p('{')) {
-                    advance();
-                }
-                skip_balanced('{', '}');
-                record(TsDecl(name=cname, kind='class'), is_export);
-            } elif eat_id('enum') {
-                _parse_enum_decl(is_export);
             } elif (is_id('namespace') or is_id('module')) {
                 advance();
                 if kind_at() == 'str' {
@@ -794,7 +941,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 expect_p('}');
                 namespaces[nsname] = ns_decls;
                 if is_export {
-                    exported_direct[nsname] = TsDecl(name=nsname, kind='namespace');
+                    exported_direct[nsname] = TsDecl(
+                        name=nsname, kind=TsDeclKind.NAMESPACE
+                    );
                 }
             } elif eat_id('import') {
                 skip_to_semi();
@@ -820,61 +969,12 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             while (eat_id('export') or eat_id('declare')) {
                 ;
             }
-            if eat_id('function') {
-                d = parse_function_decl();
-                if (d.name and d.name not in ns_decls) {
-                    ns_decls[d.name] = d;
-                }
-            } elif (is_id('const') or is_id('let') or is_id('var')) {
-                advance();
-                while kind_at() == 'id' {
-                    vname = val_at();
-                    advance();
-                    vty: TsType = TsType(kind='any');
-                    if eat_p(':') {
-                        vty = parse_type_full();
+            common = _parse_common_decl();
+            if common is not None {
+                for d in common {
+                    if (d.name and d.name not in ns_decls) {
+                        ns_decls[d.name] = d;
                     }
-                    if vname not in ns_decls {
-                        ns_decls[vname] = TsDecl(name=vname, kind='const', ty=vty);
-                    }
-                    if not eat_p(',') {
-                        break;
-                    }
-                }
-                eat_p(';');
-            } elif eat_id('type') {
-                tname = val_at();
-                advance();
-                if is_p('<') {
-                    collect_generics();
-                    expect_p('=');
-                    skip_to_semi();
-                    ns_decls.setdefault(
-                        tname,
-                        TsDecl(name=tname, kind='typealias', ty=TsType(kind='any'))
-                    );
-                } else {
-                    expect_p('=');
-                    aty = parse_type_full();
-                    eat_p(';');
-                    ns_decls.setdefault(
-                        tname, TsDecl(name=tname, kind='typealias', ty=aty)
-                    );
-                }
-            } elif (is_id('interface') or is_id('class') or is_id('enum')) {
-                dkind = val_at();
-                advance();
-                dname = val_at() if kind_at() == 'id' else '';
-                advance();
-                if is_p('<') {
-                    collect_generics();
-                }
-                while (pos < n and not is_p('{')) {
-                    advance();
-                }
-                skip_balanced('{', '}');
-                if dname {
-                    ns_decls.setdefault(dname, TsDecl(name=dname, kind=dkind));
                 }
             } elif (is_id('namespace') or is_id('module')) {
                 advance();
@@ -892,7 +992,69 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         }
     }
 
-    def _parse_enum_decl(is_export: bool) {
+    def _parse_common_decl -> (list[TsDecl] | None) {
+        nonlocal pos;
+        if eat_id('function') {
+            return [parse_function_decl()];
+        }
+        if (is_id('const') or is_id('let') or is_id('var')) {
+            advance();
+            if eat_id('enum') {
+                ed = _parse_enum_body();
+                return [ed] if ed is not None else [];
+            }
+            out: list[TsDecl] = [];
+            while kind_at() == 'id' {
+                vname = val_at();
+                advance();
+                vty: TsType = TsType(kind=TsTypeKind.ANY);
+                if eat_p(':') {
+                    vty = parse_type_full();
+                }
+                out.append(TsDecl(name=vname, kind=TsDeclKind.CONST, ty=vty));
+                if not eat_p(',') {
+                    break;
+                }
+            }
+            eat_p(';');
+            return out;
+        }
+        if eat_id('type') {
+            tname = val_at();
+            advance();
+            has_generics = is_p('<');
+            if has_generics {
+                collect_generics();
+            }
+            expect_p('=');
+            if has_generics {
+                skip_to_semi();
+                return [
+                    TsDecl(
+                        name=tname,
+                        kind=TsDeclKind.TYPEALIAS,
+                        ty=TsType(kind=TsTypeKind.ANY)
+                    )
+                ];
+            }
+            aty = parse_type_full();
+            eat_p(';');
+            return [TsDecl(name=tname, kind=TsDeclKind.TYPEALIAS, ty=aty)];
+        }
+        if eat_id('interface') {
+            return [_parse_struct_decl(TsDeclKind.INTERFACE)];
+        }
+        if eat_id('class') {
+            return [_parse_struct_decl(TsDeclKind.CLASS)];
+        }
+        if eat_id('enum') {
+            ed = _parse_enum_body();
+            return [ed] if ed is not None else [];
+        }
+        return None;
+    }
+
+    def _parse_enum_body -> (TsDecl | None) {
         nonlocal pos;
         ename = val_at() if kind_at() == 'id' else '';
         if ename {
@@ -902,8 +1064,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             skip_balanced('{', '}');
         }
         if ename {
-            record(TsDecl(name=ename, kind='enum'), is_export);
+            return TsDecl(name=ename, kind=TsDeclKind.ENUM);
         }
+        return None;
     }
 
     def _parse_export_list {
@@ -937,7 +1100,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 advance();
             }
             for (_, exp_name) in entries {
-                exported_direct[exp_name] = TsDecl(name=exp_name, kind='reexport');
+                exported_direct[exp_name] = TsDecl(
+                    name=exp_name, kind=TsDeclKind.REEXPORT
+                );
             }
         } else {
             for pair in entries {
@@ -960,14 +1125,30 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             return;
         }
         if eat_id('class') {
-            if kind_at() == 'id' {
-                advance();
+            if (is_id('extends') or is_id('implements') or is_p('{') or is_p('<')) {
+                atvs = collect_generics() if is_p('<') else set();
+                typevar_stack.append(atvs);
+                try {
+                    aherit = parse_heritage();
+                    (amembers, acall_sig) = parse_members();
+                } finally {
+                    typevar_stack.pop();
+                }
+                exported_direct['default'] = TsDecl(
+                    name='default',
+                    kind=TsDeclKind.CLASS,
+                    members=amembers,
+                    heritage=aherit,
+                    call_sig=acall_sig
+                );
+                return;
             }
-            while (pos < n and not is_p('{')) {
-                advance();
+
+            d = _parse_struct_decl(TsDeclKind.CLASS);
+            exported_direct['default'] = d;
+            if (d.name and d.name not in decls) {
+                decls[d.name] = d;
             }
-            skip_balanced('{', '}');
-            exported_direct['default'] = TsDecl(name='default', kind='class');
             return;
         }
         if (kind_at() == 'id' and kind_at(1) == 'punct' and val_at(1) == ';') {
@@ -977,7 +1158,7 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
             return;
         }
         skip_to_semi();
-        exported_direct['default'] = TsDecl(name='default', kind='const');
+        exported_direct['default'] = TsDecl(name='default', kind=TsDeclKind.CONST);
     }
 
     parse_statements(False);
@@ -996,10 +1177,10 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
         for (local, exp_name) in export_pairs {
             d = decls.get(local);
             if (d is None and local in namespaces) {
-                d = TsDecl(name=local, kind='namespace');
+                d = TsDecl(name=local, kind=TsDeclKind.NAMESPACE);
             }
             if d is None {
-                d = TsDecl(name=local, kind='reexport');
+                d = TsDecl(name=local, kind=TsDeclKind.REEXPORT);
             }
             result[exp_name] = d;
         }
@@ -1011,7 +1192,9 @@ def _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
                 result.setdefault(name, d);
             }
             for nsname in namespaces.keys() {
-                result.setdefault(nsname, TsDecl(name=nsname, kind='namespace'));
+                result.setdefault(
+                    nsname, TsDecl(name=nsname, kind=TsDeclKind.NAMESPACE)
+                );
             }
         }
     }

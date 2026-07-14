@@ -4,10 +4,12 @@ impl NaIRGenPass._get_exception_state_type -> ir.Type {
     }
     jmp_buf_type = ir.ArrayType(ir.IntType(8), 200);
     exc_state = self.llvm_module.context.get_identified_type("JacExceptionState");
+
     exc_state.set_body(
         jmp_buf_type,
         ir.IntType(8).as_pointer(),
         ir.IntType(32),
+        ir.IntType(8).as_pointer(),
         ir.IntType(8).as_pointer()
     );
     self._exc_state_type = exc_state;
@@ -75,6 +77,9 @@ impl NaIRGenPass._emit_exc_push_helper -> None {
     obj_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="obj.ptr");
     b.store(ir.Constant(i8p, None), obj_ptr);
 
+    msg_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="msg.ptr");
+    b.store(ir.Constant(i8p, None), msg_ptr);
+
     b.store(state, self._exc_handler_global);
     b.ret_void();
     self._exc_push_fn = func;
@@ -109,17 +114,19 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     exc_state_ptr = exc_state_type.as_pointer();
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
-    fnty = ir.FunctionType(ir.VoidType(), [i8p, i32]);
+    fnty = ir.FunctionType(ir.VoidType(), [i8p, i32, i8p]);
     func = self._define_function("__jac_exc_raise", fnty);
     func.linkage = "private";
-    func.args[0].name = "msg";
+    func.args[0].name = "obj";
     func.args[1].name = "type_id";
+    func.args[2].name = "msg";
     entry_bb = func.append_basic_block("entry");
     has_handler_bb = func.append_basic_block("has.handler");
     no_handler_bb = func.append_basic_block("no.handler");
     b = ir.IRBuilder(entry_bb);
-    msg_val = func.args[0];
+    obj_val = func.args[0];
     type_val = func.args[1];
+    msg_val = func.args[2];
 
     cur_handler = b.load(self._exc_handler_global, name="cur.handler");
     null_ptr = ir.Constant(exc_state_ptr, None);
@@ -150,12 +157,17 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     obj_ptr = b.gep(
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
     );
-    b.store(msg_val, obj_ptr);
+    b.store(obj_val, obj_ptr);
 
     type_ptr = b.gep(
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="exc.type.ptr"
     );
     b.store(type_val, type_ptr);
+
+    msg_slot = b.gep(
+        cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="exc.msg.ptr"
+    );
+    b.store(msg_val, msg_slot);
 
     env_ptr = b.gep(
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
@@ -200,7 +212,9 @@ impl NaIRGenPass._emit_runtime_raise(
         self._rt_error_msgs[msg] = global_str;
     }
     msg_val = self.builder.bitcast(global_str, i8p, name="rt.msg.cast");
-    self.builder.call(self._exc_raise_fn, [msg_val, ir.Constant(i32, exc_type_id)]);
+    self.builder.call(
+        self._exc_raise_fn, [msg_val, ir.Constant(i32, exc_type_id), msg_val]
+    );
     self.builder.unreachable();
 
     self.builder.position_at_end(ok_bb);
@@ -233,6 +247,7 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
         self._declare_exception_runtime();
     }
 
+    exc_payload: (ir.Value | None) = None;
     exc_msg: (ir.Value | None) = None;
     exc_type_name = "Exception";
     exc_type_id = 0;
@@ -241,9 +256,13 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
             exc_type_name = self._get_name(nd.cause.target) or "Exception";
             exc_type_id = self._get_or_register_exc_type(exc_type_name);
 
-            params = nd.cause.params or [];
-            if params {
-                exc_msg = self._codegen_expr(params[0]);
+            if exc_type_name in self.struct_types {
+                exc_payload = self._codegen_expr(nd.cause);
+            } else {
+                params = nd.cause.params or [];
+                if params {
+                    exc_msg = self._codegen_expr(params[0]);
+                }
             }
         } else {
             exc_msg = self._codegen_expr(nd.cause);
@@ -257,8 +276,15 @@ impl NaIRGenPass._codegen_raise(nd: uni.RaiseStmt) -> None {
     if isinstance(exc_msg.type, ir.PointerType) and exc_msg.type != i8p {
         exc_msg = self.builder.bitcast(exc_msg, i8p, name="exc.msg.cast");
     }
+    if exc_payload is None {
+        exc_payload = exc_msg;
+    } elif isinstance(exc_payload.type, ir.PointerType) and exc_payload.type != i8p {
+        exc_payload = self.builder.bitcast(exc_payload, i8p, name="exc.obj.cast");
+    }
 
-    self.builder.call(self._exc_raise_fn, [exc_msg, ir.Constant(i32, exc_type_id)]);
+    self.builder.call(
+        self._exc_raise_fn, [exc_payload, ir.Constant(i32, exc_type_id), exc_msg]
+    );
     self.builder.unreachable();
 }
 
@@ -340,6 +366,9 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
         exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
     );
     exc_obj_val = self.builder.load(exc_obj_ptr, name="exc.obj");
+    exc_msg_slot = self.builder.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="exc.msg.slot"
+    );
     if nd.excepts {
         current_dispatch_bb = dispatch_bb;
         for (i, except_node) in enumerate(nd.excepts) {
@@ -395,7 +424,10 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
                     self.builder.call(self._exc_pop_fn, []);
                     reraise_obj = self.builder.load(exc_obj_ptr, name="reraise.obj");
                     reraise_type = self.builder.load(exc_type_ptr, name="reraise.type");
-                    self.builder.call(self._exc_raise_fn, [reraise_obj, reraise_type]);
+                    reraise_msg = self.builder.load(exc_msg_slot, name="reraise.msg");
+                    self.builder.call(
+                        self._exc_raise_fn, [reraise_obj, reraise_type, reraise_msg]
+                    );
                     self.builder.unreachable();
                 }
             }
@@ -408,9 +440,23 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
                     if isinstance(except_node.name, uni.Name)
                     else str(except_node.name);
 
-                handler_exc_obj = self.builder.load(exc_obj_ptr, name="exc.bound.obj");
-                alloca = self._entry_alloca(i8p, var_name);
-                self.builder.store(handler_exc_obj, alloca);
+                if caught_type_name in self.struct_types {
+                    handler_exc_obj = self.builder.load(
+                        exc_obj_ptr, name="exc.bound.obj"
+                    );
+                    _exc_sp_ty = self.struct_types[caught_type_name].as_pointer();
+                    typed_obj = self.builder.bitcast(
+                        handler_exc_obj, _exc_sp_ty, name="exc.bound.typed"
+                    );
+                    alloca = self._entry_alloca(_exc_sp_ty, var_name);
+                    self.builder.store(typed_obj, alloca);
+                } else {
+                    handler_exc_msg = self.builder.load(
+                        exc_msg_slot, name="exc.bound.msg"
+                    );
+                    alloca = self._entry_alloca(i8p, var_name);
+                    self.builder.store(handler_exc_msg, alloca);
+                }
                 self.local_vars[var_name] = alloca;
             }
 
@@ -427,7 +473,8 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
         }
     } else {
         self.builder.call(self._exc_pop_fn, []);
-        self.builder.call(self._exc_raise_fn, [exc_obj_val, exc_type_val]);
+        exc_msg_val = self.builder.load(exc_msg_slot, name="exc.msg");
+        self.builder.call(self._exc_raise_fn, [exc_obj_val, exc_type_val, exc_msg_val]);
         self.builder.unreachable();
     }
 

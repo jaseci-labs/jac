@@ -4,7 +4,7 @@ import textwrap;
 import from collections.abc { Sequence }
 import from typing { ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { CodeContext, EdgeDir }
+import from jaclang.jac0core.constant { CodeContext, EdgeDir, is_borrow_kind }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.codeinfo { BoundaryTypeInfo, InteropBinding }
@@ -125,6 +125,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def needs_enum_kind(kind: str) -> None;
     def _next_temp_name(prefix: str) -> str;
     def _py_name(nd: uni.AstSymbolNode) -> str;
+    def _emit_jobj_ref(nd: uni.UnaryExpr) -> None;
     def _function_expr_from_def(
         func_def: (ast3.FunctionDef | ast3.AsyncFunctionDef),
         jac_node: uni.UniNode,
@@ -184,6 +185,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
@@ -195,6 +197,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
@@ -217,6 +220,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
+    def _emit_lambda_expr_body(nd: uni.LambdaExpr, body_node: uni.Expr) -> None;
     def _remove_lambda_param_annotations(signature: uni.FuncSignature) -> None;
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;
     def exit_if_else_expr(nd: uni.IfElseExpr) -> None;

@@ -87,6 +87,29 @@ import "./styles.css";
 import "./global.css";
 ```
 
+### npm import type checking (`jac check`)
+
+Client npm imports are type-checked from each package's TypeScript declarations. During `jac check`, Jac locates the `.d.ts` for a specifier (via `package.json` `types`/`typings`, the `exports` `types` condition, a sibling declaration file next to the resolved entry, or `@types/<package>` fallback) and ingests a pragmatic subset:
+
+- **Functions, constants, and type aliases** get their declared signatures.
+- **`interface` and `class` declarations** are synthesized into structural types, so member access on imported values and on locals annotated with an imported interface/class resolves with real field types, and **method calls** (`c.onChange(v)`) are checked against their declared parameter and return types.
+- **Unions, arrays, literals, optional/rest parameters, namespaces with `export =`, and `extends` heritage** are modeled where the parser supports them.
+
+```jac
+cl import from "cfgpkg" { getConfig, Config }
+
+def:pub use() -> str {
+    c: Config = getConfig();
+    theme: str = c.theme;   # field access is checked
+    c.onChange("ready");    # method call is checked against its signature
+    return theme;
+}
+```
+
+Constructs outside the supported subset (generics, conditional/mapped types, `export *`, and similar) degrade to a declared foreign `any` at that boundary rather than failing the whole module. Imports with no declarations at all carry foreign `any` and surface **`W1102`** once; set **`[check] untyped-external = "error"`** in `jac.toml` to escalate those to **`E1120`**. Synthesized interface values use their declared structure: field access and matching interface annotations are checked precisely; whole-object assignment into an unrelated Jac type is rejected. Individual `any` fields on an interface still flow gradually, like other foreign sources. Assignments *into* an imported interface annotation remain strict.
+
+This is a type-checker feature only; bundling under `jac start` / `jac build` is unchanged.
+
 ### Include Statements
 
 Include merges code directly (like C's `#include`):
@@ -251,22 +274,6 @@ cl {
 
 A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
 
-### Section Headers
-
-As an alternative to a block, the `to cl:` section header tags **every following module-level element** as client-side, until the next `to X:` header or end of file. This is convenient for a file that is mostly client code, since it avoids a wrapping block:
-
-```jac
-to cl:
-
-def:pub app() -> JsxElement {
-    return <div>
-        <h1>Hello, World!</h1>
-    </div>;
-}
-```
-
-You can switch back with `to sv:`, `to na:`, or end the file.
-
 ### Single-Statement Forms
 
 For one-off client-side declarations, use the single-statement `cl` prefix:
@@ -357,7 +364,7 @@ cl {
 
 ### The `has` Keyword
 
-Inside client-tagged code (a `cl { }` block, a `.cl.jac` file, or a `to cl:` section), `has` creates reactive state:
+Inside client-tagged code (a `cl { }` block or a `.cl.jac` file), `has` creates reactive state:
 
 ```jac
 cl {
@@ -538,7 +545,7 @@ cl {
             localStorage.setItem(key, JSON.stringify(value));
         }, [value]);
 
-        return (value, lambda v: any -> None { value = v; });
+        return (value, lambda (v: any) -> None { value = v; });
     }
 
     def:pub Settings() -> JsxElement {
@@ -2326,8 +2333,8 @@ cl {
         return <div>
             <input
                 value={value}
-                onChange={lambda e: ChangeEvent { value = e.target.value; }}
-                onKeyPress={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
+                onKeyPress={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" { submit(); }
                 }}
             />
@@ -2390,17 +2397,17 @@ cl {
         return <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent { text = e.target.value; }}
-                onKeyDown={lambda e: KeyboardEvent {
+                onChange={lambda (e: ChangeEvent) { text = e.target.value; }}
+                onKeyDown={lambda (e: KeyboardEvent) {
                     if e.key == "Enter" and not e.shiftKey { submit(); }
                 }}
             />
             <input
                 type="checkbox"
                 checked={checked}
-                onChange={lambda e: ChangeEvent { checked = e.target.checked; }}
+                onChange={lambda (e: ChangeEvent) { checked = e.target.checked; }}
             />
-            <form onSubmit={lambda e: FormEvent {
+            <form onSubmit={lambda (e: FormEvent) {
                 e.preventDefault();
                 handleSubmit();
             }}>
@@ -2416,10 +2423,10 @@ cl {
 
     ```jac
     # Before
-    onChange={lambda e: any -> None { value = e.target.value; }}
+    onChange={lambda (e: any) -> None { value = e.target.value; }}
 
     # After (no import needed)
-    onChange={lambda e: ChangeEvent { value = e.target.value; }}
+    onChange={lambda (e: ChangeEvent) { value = e.target.value; }}
     ```
 
 ---

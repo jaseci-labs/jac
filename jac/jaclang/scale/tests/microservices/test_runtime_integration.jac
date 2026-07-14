@@ -53,7 +53,7 @@ def _make_handler(
 test "request flows through middleware, classifies to a service, dispatches in-process" {
     transport = InProcessTransport();
     transport.register_function(
-        "orders", "create", lambda payload: dict : {"order_id": payload["n"] * 10}
+        "orders", "create", lambda (payload: dict) { {"order_id": payload["n"] * 10}; }
     );
 
     registry = MiddlewareRegistry();
@@ -77,7 +77,7 @@ test "an unmatched path is served as static, never reaching the transport" {
     transport = InProcessTransport();
     reached: list[int] = [];
     transport.register_function(
-        "orders", "create", lambda payload: dict : reached.append(1)
+        "orders", "create", lambda (payload: dict) { reached.append(1); }
     );
 
     registry = MiddlewareRegistry();
@@ -94,7 +94,7 @@ test "a gate middleware short-circuits before the request reaches a service" {
     transport = InProcessTransport();
     reached: list[int] = [];
     transport.register_function(
-        "orders", "create", lambda payload: dict : reached.append(1)
+        "orders", "create", lambda (payload: dict) { reached.append(1); }
     );
 
     registry = MiddlewareRegistry();

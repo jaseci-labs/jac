@@ -48,7 +48,8 @@ def parse_spec(text: str) -> dict[str, str] {
     current_body: str = "";
     for line in text.strip().splitlines() {
         line = line.rstrip();
-        if not line or line.startswith("#") or line.startswith("//") {
+        lead = line.lstrip();
+        if not lead or lead.startswith("#") or lead.startswith("//") {
             continue;
         }
         if "::=" in line {
@@ -222,6 +223,21 @@ test "while stmt structure" {
     ebnf = fmt(rule_map["while_stmt"].body);
     assert '"while"' in ebnf;
     assert "expression" in ebnf;
+}
+
+test "forever stmt structure" {
+    prog = JacProgram();
+    mod = prog.compile(PARSER_PATH, no_cgen=True);
+    assert not prog.errors_had;
+    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    rule_map = {r.name: r for r in extracted.rules};
+    assert "forever_stmt" in rule_map;
+    ebnf = fmt(rule_map["forever_stmt"].body);
+    assert '"forever"' in ebnf;
+    assert "code_block_stmts" in ebnf;
+    # forever has no condition and no else clause
+    assert "expression" not in ebnf;
+    assert "else_stmt" not in ebnf;
 }
 
 test "ebnf output nonempty" {

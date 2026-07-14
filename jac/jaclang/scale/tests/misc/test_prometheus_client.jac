@@ -9,7 +9,7 @@ test "prometheus_client does not eager-import requests and degrades without it" 
     prometheus_client._warned_once.clear();
     fake_logger = MagicMock();
     with patch.object(
-        prometheus_client, "resolve_prometheus_url", lambda : "http://localhost:9090"
+        prometheus_client, "resolve_prometheus_url", lambda { "http://localhost:9090"; }
     ) {
         with patch.object(prometheus_client, "logger", fake_logger) {
             with patch.dict(sys.modules, {"requests": None}) {

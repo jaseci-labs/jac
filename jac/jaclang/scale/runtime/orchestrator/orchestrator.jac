@@ -26,7 +26,7 @@ obj MicroserviceOrchestrator {
         if not self.ms_config.get("routes", {}) {
             logger.warning(
                 "No microservices to run: no routes were declared or discovered "
-                "(no `sv import` / `to sv:` markers next to the entry file). "
+                "(no `sv import` / `sv { }` markers next to the entry file). "
                 "Set [scale.microservices.routes] to declare them explicitly."
             );
             return;

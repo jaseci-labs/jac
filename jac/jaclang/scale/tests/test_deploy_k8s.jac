@@ -1,7 +1,4 @@
-import base64;
-import json;
 import os;
-import subprocess;
 import time;
 import requests;
 import importlib.resources;
@@ -16,7 +13,13 @@ import from types { SimpleNamespace }
 
 import from jaclang.scale.config.app_config { AppConfig }
 import from jaclang.scale.models.deployment_result { DeploymentResult }
-import from jaclang.scale.config.config_loader { JacScaleConfig, get_scale_config }
+import from jaclang.scale.config.config_loader {
+    JacScaleConfig,
+    get_scale_config,
+    reset_scale_config
+}
+import from tempfile { mkdtemp }
+import shutil;
 import from jaclang.scale.deploy.target.factory { DeploymentTargetFactory }
 import from jaclang.scale.deploy.database.factory { DatabaseProviderFactory }
 import from jaclang.scale.deploy.database { kubernetes_redis as redis_module }
@@ -27,139 +30,6 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 import from jaclang.scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jaclang.scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jaclang.scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
-
-def _get_git_config -> tuple[str, str, str] {
-    try {
-        current_dir = os.path.dirname(os.path.abspath(__file__));
-        git_root = subprocess.check_output(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=current_dir,
-            text=True,
-            stderr=subprocess.PIPE
-        ).strip();
-
-        repo_url = None;
-        branch = None;
-        commit = None;
-
-        if (
-            "GITHUB_HEAD_REF" in os.environ
-            and os.environ["GITHUB_HEAD_REF"]
-            and "GITHUB_EVENT_PATH" in os.environ
-        ) {
-            try {
-                with open(os.environ["GITHUB_EVENT_PATH"]) as f {
-                    event_data = json.load(f);
-                }
-
-                if "pull_request" in event_data {
-                    pr_data = event_data["pull_request"];
-                    head_repo = pr_data.get("head", {}).get("repo");
-                    base_repo = pr_data.get("base", {}).get("repo");
-                    if head_repo and base_repo {
-                        head_full_name = head_repo.get("full_name", "");
-                        base_full_name = base_repo.get("full_name", "");
-                        if head_full_name != base_full_name {
-                            repo_url = head_repo.get("clone_url");
-                            branch = os.environ.get("GITHUB_HEAD_REF");
-                            commit = pr_data.get("head", {}).get("sha");
-                            print(f"Detected fork-based PR from {head_full_name}");
-                        } else {
-                            repo_url = base_repo.get("clone_url");
-                            branch = "main";
-                            commit = pr_data.get("base", {}).get("sha");
-                            print(
-                                f"Detected non-fork PR in {base_full_name}, using main branch"
-                            );
-                        }
-                    }
-                }
-            } except (FileNotFoundError, json.JSONDecodeError, KeyError) as e {
-                print(f"Warning: Could not parse GitHub event data: {e}");
-            }
-        }
-
-        if not repo_url {
-            repo_url = subprocess.check_output(
-                ["git", "remote", "get-url", "origin"], cwd=git_root, text=True
-            ).strip();
-        }
-
-        if not branch {
-            if "GITHUB_HEAD_REF" in os.environ and os.environ["GITHUB_HEAD_REF"] {
-                branch = os.environ["GITHUB_HEAD_REF"];
-            } elif "GITHUB_REF_NAME" in os.environ {
-                branch = os.environ["GITHUB_REF_NAME"];
-            } elif "GITHUB_REF" in os.environ {
-                ref = os.environ["GITHUB_REF"];
-                if ref.startswith("refs/heads/") {
-                    branch = ref.replace("refs/heads/", "");
-                } elif ref.startswith("refs/tags/") {
-                    branch = ref.replace("refs/tags/", "");
-                }
-            }
-            if not branch {
-                branch = subprocess.check_output(
-                    ["git", "branch", "--show-current"], cwd=git_root, text=True
-                ).strip();
-            }
-            if not branch {
-                try {
-                    branch = subprocess.check_output(
-                        ["git", "symbolic-ref", "--short", "HEAD"],
-                        cwd=git_root,
-                        text=True,
-                        stderr=subprocess.PIPE
-                    ).strip();
-                } except subprocess.CalledProcessError {
-                    try {
-                        branches = (
-                            subprocess.check_output(
-                                ["git", "branch", "-r", "--contains", "HEAD"],
-                                cwd=git_root,
-                                text=True
-                            ).strip().split(
-                                "\n"
-                            )
-                        );
-
-                        if branches and branches[0] {
-                            branch = (
-                                branches[0].strip().replace("origin/", "").replace(
-                                    "*", ""
-                                ).strip()
-                            );
-                        }
-                    } except subprocess.CalledProcessError {
-                        0;
-                    }
-
-                    if not branch {
-                        branch = subprocess.check_output(
-                            ["git", "rev-parse", "--short", "HEAD"],
-                            cwd=git_root,
-                            text=True
-                        ).strip();
-                        print(
-                            f"Warning: Detached HEAD state, using short commit as branch: {branch}"
-                        );
-                    }
-                }
-            }
-        }
-
-        if not commit {
-            commit = subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=git_root, text=True
-            ).strip();
-        }
-
-        return (repo_url, branch, commit);
-    } except subprocess.CalledProcessError as e {
-        print(f"Error getting git config: {e}");
-        raise;
-    }
-}
 
 def _request_with_retry(
     method: str,
@@ -562,19 +432,18 @@ test "default redis memory limit does not emit a headroom warning" {
 
 test "redis pod resources propagate from [scale.database] config" {
     fake_config = SimpleNamespace(
-        get_database_config=lambda :
-            {
-                'redis_max_memory': '200mb',
-                'redis_cpu_request': '500m',
-                'redis_cpu_limit': '2000m',
-                'redis_memory_request': '1Gi',
-                'redis_memory_limit': '4Gi'
-            },
-        get_kubernetes_config=lambda : {}
+        get_database_config=lambda { {
+            'redis_max_memory': '200mb',
+            'redis_cpu_request': '500m',
+            'redis_cpu_limit': '2000m',
+            'redis_memory_request': '1Gi',
+            'redis_memory_limit': '4Gi'
+        }; },
+        get_kubernetes_config=lambda { {}; }
     );
 
     with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda : fake_config
+        redis_module, 'get_scale_config', lambda { fake_config; }
     ) {
         redis_provider = DatabaseProviderFactory.create(
             'kubernetes_redis', None, {'app_name': 'test-app'}
@@ -594,20 +463,19 @@ test "redis pod resources propagate from [scale.database] config" {
 
 test "redis warns when memory limit lacks headroom over maxmemory" {
     fake_config = SimpleNamespace(
-        get_database_config=lambda :
-            {
-                'redis_max_memory': '200mb',
-                'redis_cpu_request': '250m',
-                'redis_cpu_limit': '1000m',
-                'redis_memory_request': '128Mi',
-                'redis_memory_limit': '256Mi'
-            },
-        get_kubernetes_config=lambda : {}
+        get_database_config=lambda { {
+            'redis_max_memory': '200mb',
+            'redis_cpu_request': '250m',
+            'redis_cpu_limit': '1000m',
+            'redis_memory_request': '128Mi',
+            'redis_memory_limit': '256Mi'
+        }; },
+        get_kubernetes_config=lambda { {}; }
     );
     mock_logger = unittest.mock.MagicMock();
 
     with unittest.mock.patch.object(
-        redis_module, 'get_scale_config', lambda : fake_config
+        redis_module, 'get_scale_config', lambda { fake_config; }
     ) {
         with unittest.mock.patch.object(redis_module, 'logger', mock_logger) {
             redis_provider = DatabaseProviderFactory.create(
@@ -1204,5 +1072,66 @@ test "shared ingress merges caller-supplied annotations for non-nginx controller
     assert created_body["spec"]["ingressClassName"] == "alb" , "ingressClassName must be the shared class";
     for key in annos.keys() {
         assert not str(key).startswith("nginx.ingress.kubernetes.io/") , f"nginx annotation leaked onto non-nginx ingress: {key}";
+    }
+}
+
+test "k8s safe slug normalizes names into valid k8s identifiers" {
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        k8s_safe_slug
+    }
+
+    cases = [
+        ("this-is-jac", "this-is-jac"),
+        ("My App", "my-app"),
+        ("My_Cool_App!!", "my-cool-app"),
+        ("-lead-and-trail-", "lead-and-trail"),
+        ("UPPER", "upper"),
+        ("a" * 100, "a" * 63),
+        ("", "jaseci")
+    ];
+    for (raw, expected) in cases {
+        result = k8s_safe_slug(raw);
+        assert result == expected , f"k8s_safe_slug({raw!r}) = {result!r}, expected {expected!r}";
+    }
+}
+
+"""Resolve get_kubernetes_config() against a temp project with the given jac.toml."""
+def _k8s_config_for_toml(toml_content: str) -> dict {
+    tmp_dir = Path(mkdtemp());
+    (tmp_dir / "jac.toml").write_text(toml_content);
+    # get_scale_config() caches a process-wide singleton; reset around the temp project.
+    reset_scale_config();
+    try {
+        return get_scale_config(tmp_dir).get_kubernetes_config();
+    } finally {
+        reset_scale_config();
+        shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+}
+
+test "unconfigured app_name derives from [project].name; namespace stays default" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\nentry-point = \"main.jac\"\n"
+    );
+    assert cfg["app_name"] == "my-app" , f"got {cfg['app_name']!r}";
+    assert cfg["namespace"] == "default" , f"got {cfg['namespace']!r}";
+}
+
+test "explicit app_name wins over the derived default" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\n\n[scale.kubernetes]\napp_name = \"custom-app\"\n"
+    );
+    assert cfg["app_name"] == "custom-app" , f"got {cfg['app_name']!r}";
+}
+
+test "no usable project name falls back to legacy app_name 'jaseci'" {
+    for toml in [
+        "[project]\nentry-point = \"main.jac\"\n",
+        "[project]\nname = \"---\"\n",
+        "[project]\nname = \"   \"\n"
+    ] {
+        cfg = _k8s_config_for_toml(toml);
+        assert cfg["app_name"] == "jaseci" , f"{toml!r}: got {cfg['app_name']!r}";
+        assert cfg["namespace"] == "default" , f"{toml!r}: got {cfg['namespace']!r}";
     }
 }
