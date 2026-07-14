@@ -12,7 +12,7 @@ impl _SetupProgress._get_jaclang_root -> str {
 impl _SetupProgress._atexit_handler -> None {
     if (self._banner_shown and (self._compile_count > 0)) {
         sys.stderr.write(
-            f"Jac setup complete! ({self._compile_count} modules compiled and cached)\n"
+            f"Jac setup complete ({self._compile_count} modules compiled and cached)\n"
         );
         sys.stderr.flush();
     }
@@ -219,8 +219,8 @@ impl JacCompiler.get_bytecode(
     is_internal = actual_program is self._internal_program;
     if is_internal {
         setup_progress.on_internal_compile(full_target);
+        self._internal_bytecode_depth += 1;
     }
-
     can_typecheck = (
         is_internal
         and 'jaclang.compiler.passes.main.type_checker_pass' in sys.modules
@@ -234,62 +234,94 @@ impl JacCompiler.get_bytecode(
         )
     );
     options = CompileOptions(type_check=can_typecheck);
-    result = self.compile(
-        file_path=full_target, target_program=actual_program, options=options
-    );
-    if result.gen.py_bytecode {
-        actual_program.hub_cache_stamp(full_target);
-        try {
-            import from jaclang.jac0core.jir_passes { JirWriter }
-            import pickle;
-            import json;
-            import zlib;
-            sections: dict[int, bytes] = {};
-            sections[SEC_BYTECODE] = result.gen.py_bytecode;
-            sections[SEC_MODKEY] = compute_module_key(full_target).encode('utf-8');
-            if actual_program.mtir_map {
-                sections[SEC_MTIR] = pickle.dumps(
-                    actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
-                );
-            }
-
-            native_bc = result.gen.native_bitcode;
-            if native_bc is not None {
-                import struct as _struct;
-                import jaclang.compiler.passes.native.llvm.binding as _llvm;
-                triple = _llvm.get_default_triple().encode('utf-8');
-                hdr = _struct.pack('<H', len(triple)) + triple;
-                sections[SEC_NATIVE_OBJ] = hdr + native_bc;
-            } else {
-                llvm_ir = result.gen.llvm_ir;
-                if llvm_ir is not None {
-                    sections[SEC_LLVM_IR] = zlib.compress(
-                        str(llvm_ir).encode('utf-8'), 6
+    result: (uni.Module | None) = None;
+    try {
+        result = self.compile(
+            file_path=full_target, target_program=actual_program, options=options
+        );
+        if result.gen.py_bytecode {
+            actual_program.hub_cache_stamp(full_target);
+            try {
+                import from jaclang.jac0core.jir_passes { JirWriter }
+                import pickle;
+                import json;
+                import zlib;
+                sections: dict[int, bytes] = {};
+                sections[SEC_BYTECODE] = result.gen.py_bytecode;
+                sections[SEC_MODKEY] = compute_module_key(full_target).encode('utf-8');
+                if actual_program.mtir_map {
+                    sections[SEC_MTIR] = pickle.dumps(
+                        actual_program.mtir_map, int(pickle.HIGHEST_PROTOCOL)
                     );
                 }
-            }
-            interop_dict = self._build_interop_dict(result);
-            if interop_dict {
-                sections[SEC_INTEROP] = json.dumps(interop_dict).encode('utf-8');
-            }
-            writer = JirWriter();
-            jir_bytes = writer.write_module(result, sections=sections);
-            cache_path.parent.mkdir(parents=True, exist_ok=True);
 
-            import os as _os;
-            tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
-            try {
-                tmp_path.write_bytes(jir_bytes);
-                tmp_path.rename(cache_path);
-            } finally {
-                tmp_path.unlink(missing_ok=True);
+                native_bc = result.gen.native_bitcode;
+                if native_bc is not None {
+                    import struct as _struct;
+                    import jaclang.compiler.passes.native.llvm.binding as _llvm;
+                    triple = _llvm.get_default_triple().encode('utf-8');
+                    hdr = _struct.pack('<H', len(triple)) + triple;
+                    sections[SEC_NATIVE_OBJ] = hdr + native_bc;
+                } else {
+                    llvm_ir = result.gen.llvm_ir;
+                    if llvm_ir is not None {
+                        sections[SEC_LLVM_IR] = zlib.compress(
+                            str(llvm_ir).encode('utf-8'), 6
+                        );
+                    }
+                }
+                interop_dict = self._build_interop_dict(result);
+                if interop_dict {
+                    sections[SEC_INTEROP] = json.dumps(interop_dict).encode('utf-8');
+                }
+                writer = JirWriter();
+                jir_bytes = writer.write_module(result, sections=sections);
+                cache_path.parent.mkdir(parents=True, exist_ok=True);
+
+                import os as _os;
+                tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+                try {
+                    tmp_path.write_bytes(jir_bytes);
+                    tmp_path.rename(cache_path);
+                } finally {
+                    tmp_path.unlink(missing_ok=True);
+                }
+            } except Exception {
+                ;
             }
-        } except Exception {
-            ;
+            return marshal.loads(result.gen.py_bytecode);
         }
-        return marshal.loads(result.gen.py_bytecode);
+        return None;
+    } finally {
+        if is_internal {
+            if self._internal_bytecode_depth == 1 {
+                self._evict_internal_unit(full_target, actual_program, result);
+            }
+            self._internal_bytecode_depth -= 1;
+        }
     }
-    return None;
+}
+
+impl JacCompiler._evict_internal_unit(
+    full_target: str, actual_program: JacProgram, result: (uni.Module | None)
+) -> None {
+    import os;
+    if os.environ.get("JAC_NO_UNIT_EVICT") {
+        return;
+    }
+
+    if result is not None and result.gen.native_engine is not None {
+        import from jaclang.jac0core.codeinfo { CodeGenTarget }
+        slim = CodeGenTarget();
+        slim.native_engine = result.gen.native_engine;
+        slim.native_layout = result.gen.native_layout;
+        slim.interop_py_funcs = result.gen.interop_py_funcs;
+        slim._interop_callbacks = result.gen._interop_callbacks;
+        slim.interop_manifest = result.gen.interop_manifest;
+        actual_program._native_cache[full_target] = slim;
+    }
+
+    actual_program.release_compile_closure(keep_stubs=True);
 }
 
 impl JacCompiler._load_native_from_cache(
@@ -683,7 +715,7 @@ impl JacCompiler.compile(
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_ir_gen_sched(),
+            passes=get_ir_gen_sched(gen_mtir=not options.no_cgen),
             cancel_token=options.cancel_token
         );
     }
@@ -891,10 +923,14 @@ impl JacCompiler.compile(
     }
     if (not had_parse_errors and not had_blocking_errors and not options.no_cgen) {
         actual_program._compile_options = options;
+
+        import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+        needs_native = is_native_mod
+        or ModuleCodegenPass.has_native_context_stmts(mod_targ);
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_py_code_gen(),
+            passes=get_py_code_gen(native=needs_native),
             cancel_token=options.cancel_token
         );
         if is_na_file {

@@ -76,7 +76,7 @@ def:pub app -> JsxElement {
     async def addItem -> None;
 
     return <div>
-        <input value={draft} onChange={lambda e: ChangeEvent { draft = e.target.value; }}/>
+        <input value={draft} onChange={lambda (e: ChangeEvent) { draft = e.target.value; }}/>
         <button onClick={addItem}>Add</button>
         {if loading { <p>Loading...</p> }}
         {for it in items { <li key={it}>{it}</li> }}

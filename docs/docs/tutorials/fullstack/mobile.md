@@ -296,7 +296,7 @@ cl {
                 <TextInput
                     value={name}
                     placeholder="Type your name"
-                    onChangeText={lambda t: str { name = t; }}
+                    onChangeText={lambda (t: str) { name = t; }}
                 />
                 <Pressable style={styles.button} onPress={lambda { name = "Jac"; }}>
                     <Text>Reset</Text>

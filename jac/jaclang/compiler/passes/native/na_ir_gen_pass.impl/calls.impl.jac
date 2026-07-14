@@ -1,3 +1,14 @@
+glob RC_INTRINSIC_NAMES: frozenset[str] = frozenset(
+         {
+             "__rc_debug_enable",
+             "__rc_debug_disable",
+             "__rc_gc_disable",
+             "__rc_gc_enable",
+             "__rc_collect_cycles",
+
+         }
+     );
+
 impl NaIRGenPass._resolve_type_str(type_name: str) -> ir.Type {
     if type_name in self.type_map {
         return self.type_map[type_name];
@@ -199,6 +210,20 @@ impl NaIRGenPass._native_module_call_target(nd: uni.FuncCall) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._codegen_rc_intrinsic(func_name: str) -> bool {
+    if func_name not in RC_INTRINSIC_NAMES {
+        return False;
+    }
+    if func_name == "__rc_collect_cycles" and self._gc_mode() != "cycles" {
+        return True;
+    }
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    self.builder.call(self.llvm_module.get_global(func_name), []);
+    return True;
+}
+
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     _call_kind = nd.call_kind;
     if _call_kind is None {
@@ -219,41 +244,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
 
+    if self._codegen_rc_intrinsic(func_name) {
+        return None;
+    }
+
     if _call_kind == "builtin" {
         if func_name == "print" {
             return self._emit_print(nd);
-        }
-
-        if func_name == "__rc_debug_enable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            en_fn = self.llvm_module.get_global("__rc_debug_enable");
-            self.builder.call(en_fn, []);
-            return None;
-        }
-        if func_name == "__rc_debug_disable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            dis_fn = self.llvm_module.get_global("__rc_debug_disable");
-            self.builder.call(dis_fn, []);
-            return None;
-        }
-
-        if func_name == "__rc_gc_disable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            self.builder.call(self.rc_gc_disable_fn, []);
-            return None;
-        }
-        if func_name == "__rc_gc_enable" {
-            if self.rc_alloc_fn is None {
-                self._emit_rc_helpers();
-            }
-            self.builder.call(self.rc_gc_enable_fn, []);
-            return None;
         }
 
         if func_name == "__float_bits" {
@@ -583,7 +580,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if params_l {
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
-                    result = self._dispatch_builtin(func_name, [arg_val]);
+                    result = self._dispatch_builtin(
+                        func_name,
+                        [arg_val],
+                        kwargs=self._split_call_kwargs(nd),
+                        kw_node=nd
+                    );
 
                     if isinstance(arg_val.type, ir.PointerType)
                     and self._is_owned(arg_val) {
@@ -595,7 +597,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         return result;
                     }
 
-                    self._emit_unsupported_builtin_call(nd, func_name);
+                    if not self._split_call_kwargs(nd) {
+                        self._emit_unsupported_builtin_call(nd, func_name);
+                    }
                     return None;
                 }
             }
@@ -922,7 +926,27 @@ impl NaIRGenPass._jacval_tags_for_type(name: str) -> list[int] {
     if name == "set" {
         return [5];
     }
+    if name == "NoneType" {
+        return [8];
+    }
     return [];
+}
+
+impl NaIRGenPass._isinstance_type_name(nd: uni.UniNode) -> (str | None) {
+    if (
+        isinstance(nd, uni.FuncCall)
+        and self._get_name(nd.target) == "type"
+        and nd.params
+        and len(nd.params) == 1
+        and isinstance(nd.params[0], uni.Null)
+    ) {
+        import from jaclang.compiler.symbol_utils { classify_call, CallKind }
+        if classify_call(nd) == CallKind.BUILTIN {
+            return "NoneType";
+        }
+        return None;
+    }
+    return self._get_name(nd);
 }
 
 impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
@@ -942,13 +966,13 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
     names: list[str] = [];
     if isinstance(type_arg, uni.TupleVal) {
         for v in (type_arg.values or []) {
-            nm = self._get_name(v);
+            nm = self._isinstance_type_name(v);
             if nm is not None {
                 names.append(nm);
             }
         }
     } else {
-        nm = self._get_name(type_arg);
+        nm = self._isinstance_type_name(type_arg);
         if nm is not None {
             names.append(nm);
         }

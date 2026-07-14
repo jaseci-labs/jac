@@ -543,3 +543,35 @@ test "import type wraps in TYPE_CHECKING and resolves circular imports" {
         }
     }
 }
+
+test "byte-string multistring lit_value returns bytes without crashing" {
+    # Adjacent byte-string literals form one MultiString node whose parts'
+    # lit_value are bytes. The getter must join homogeneously and return
+    # bytes, not raise TypeError (issue #7363). A plain str multistring
+    # must still return str.
+    code = """
+with entry {
+    b = b"ab" b"cd";
+    s = "ab" "cd";
+}
+""";
+    prog = JacProgram();
+    mod = prog.compile(file_path="test_multistring_bytes.jac", use_str=code);
+    assert not prog.errors_had , (
+        "byte-string multistring should compile cleanly, "
+        f"got: {[str(e) for e in prog.errors_had]}"
+    );
+    found: list[uni.MultiString] = [];
+    def collect(nd: uni.UniNode) {
+        if isinstance(nd, uni.MultiString) {
+            found.append(nd);
+        }
+        for k in nd.kid {
+            collect(k);
+        }
+    }
+    collect(mod);
+    values = [m.lit_value for m in found];
+    assert b"abcd" in values , f"expected bytes b'abcd' in {values}";
+    assert "abcd" in values , f"expected str 'abcd' in {values}";
+}

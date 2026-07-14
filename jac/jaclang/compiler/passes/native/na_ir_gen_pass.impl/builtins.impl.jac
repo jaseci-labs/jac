@@ -198,6 +198,142 @@ impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
     return self._make_global_string(_lit);
 }
 
+impl NaIRGenPass._fstring_spec_text(spec: uni.Expr) -> (str | None) {
+    if isinstance(spec, uni.String) {
+        return spec.lit_value;
+    }
+    if isinstance(spec, uni.MultiString) {
+        parts: list[str] = [];
+        for s in spec.strings {
+            if not isinstance(s, uni.String) {
+                return None;
+            }
+            parts.append(s.lit_value);
+        }
+        return "".join(parts);
+    }
+    if isinstance(spec, uni.FString) {
+        parts2: list[str] = [];
+        for p in spec.parts {
+            if not isinstance(p, uni.String) {
+                return None;
+            }
+            parts2.append(p.lit_value);
+        }
+        return "".join(parts2);
+    }
+    return None;
+}
+
+impl NaIRGenPass._fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None) {
+    fill: (str | None) = None;
+    align: (str | None) = None;
+    i = 0;
+    n = len(spec);
+    if n >= 2 and spec[1] in "<>^=" {
+        fill = spec[0];
+        align = spec[1];
+        i = 2;
+    } elif n >= 1 and spec[0] in "<>^=" {
+        align = spec[0];
+        i = 1;
+    }
+    sign: (str | None) = None;
+    if i < n and spec[i] in "+ " {
+        sign = spec[i];
+        i += 1;
+    } elif i < n and spec[i] == "-" {
+        i += 1;
+    }
+    if i < n and spec[i] == "#" {
+        return None;
+    }
+    zero = False;
+    if i < n and spec[i] == "0" {
+        zero = True;
+        i += 1;
+    }
+    width = "";
+    while i < n and spec[i].isdigit() {
+        width += spec[i];
+        i += 1;
+    }
+    if i < n and spec[i] == "," {
+        return None;
+    }
+    prec = "";
+    if i < n and spec[i] == "." {
+        i += 1;
+        while i < n and spec[i].isdigit() {
+            prec += spec[i];
+            i += 1;
+        }
+        if not prec {
+            return None;
+        }
+    }
+    type_ch = "";
+    if i < n {
+        type_ch = spec[i];
+        i += 1;
+    }
+    if i != n or align in ("^", "=") {
+        return None;
+    }
+    if fill is not None and fill != " " {
+        return None;
+    }
+    left = align == "<";
+    if kind == "str" and align is None {
+        left = True;
+    }
+    flags = "";
+    if left {
+        flags += "-";
+    }
+    if sign is not None {
+        flags += sign;
+    }
+    if zero and not left {
+        flags += "0";
+    }
+    body = flags + width + (("." + prec) if prec else "");
+    if kind == "int" {
+        if prec {
+            return None;
+        }
+        if type_ch in ("", "d") {
+            return ("%" + body + "lld", "int");
+        }
+        if type_ch == "x" {
+            return ("%" + body + "llx", "int");
+        }
+        if type_ch == "X" {
+            return ("%" + body + "llX", "int");
+        }
+        if type_ch == "o" {
+            return ("%" + body + "llo", "int");
+        }
+        if type_ch in ("f", "F", "e", "E", "g", "G") {
+            return ("%" + body + type_ch, "float");
+        }
+        return None;
+    }
+    if kind == "float" {
+        if type_ch in ("f", "F", "e", "E", "g", "G") {
+            return ("%" + body + type_ch, "float");
+        }
+        if type_ch == "" and not zero and sign is None and not prec {
+            return ("%" + body + "s", "repr");
+        }
+        return None;
+    }
+    if kind == "str" and type_ch in ("", "s") and not zero and sign is None {
+        return ("%" + body + "s", "str");
+    }
+    return None;
+}
+
 impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     fmt_parts: list[str] = [];
     args: list[ir.Value] = [];
@@ -212,6 +348,79 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
         } elif isinstance(part, uni.FormattedValue) {
             val = self._codegen_expr(part.format_part);
             if val is None {
+                continue;
+            }
+            _conv = part.conversion if part.conversion is not None else -1;
+            if _conv not in (-1, 115) {
+                self.emit(
+                    E5090,
+                    node_override=part,
+                    kind="f-string conversion",
+                    name=("!r" if _conv == 114 else "!a")
+                );
+                return None;
+            }
+            _spec_txt: (str | None) = None;
+            if part.format_spec is not None {
+                _spec_txt = self._fstring_spec_text(part.format_spec);
+                if _spec_txt is None {
+                    self.emit(
+                        E5090,
+                        node_override=part,
+                        kind="f-string format spec",
+                        name="<dynamic spec>"
+                    );
+                    return None;
+                }
+            }
+            if _spec_txt {
+                if isinstance(val.type, ir.IntType) and val.type.width == 1 {
+                    val = self.builder.zext(val, ir.IntType(64));
+                }
+                _fs_kind: (str | None) = None;
+                if isinstance(val.type, ir.IntType) {
+                    _fs_kind = "int";
+                } elif isinstance(val.type, ir.DoubleType) {
+                    _fs_kind = "float";
+                } elif isinstance(val.type, ir.PointerType) {
+                    _fs_kind = "str";
+                }
+                _tr = self._fstring_spec_to_printf(_spec_txt, _fs_kind or "");
+                if _tr is None {
+                    self.emit(
+                        E5090,
+                        node_override=part,
+                        kind="f-string format spec",
+                        name=_spec_txt
+                    );
+                    return None;
+                }
+                (directive, want) = _tr;
+                if want == "float" {
+                    fmt_parts.append(directive);
+                    args.append(self._coerce_type(val, ir.DoubleType()));
+                } elif want == "repr" {
+                    fmt_parts.append(directive);
+                    args.append(self._emit_float_repr(val));
+                } elif want == "str" {
+                    if val.type != ir.IntType(8).as_pointer() {
+                        obj_s = self._emit_obj_str(val);
+                        if obj_s is not None {
+                            if self._is_owned(val) {
+                                self._emit_rc_release_typed(
+                                    val, op="fstr_obj_src", loc=""
+                                );
+                            }
+                            val = obj_s;
+                            obj_strs.append(obj_s);
+                        }
+                    }
+                    fmt_parts.append(directive);
+                    args.append(val);
+                } else {
+                    fmt_parts.append(directive);
+                    args.append(val);
+                }
                 continue;
             }
             if isinstance(val.type, ir.IntType) and val.type.width == 64 {
@@ -240,15 +449,9 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
     }
     fmt_str = "".join(fmt_parts);
 
-    buf_size = ir.Constant(ir.IntType(64), 1024);
     _fstr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
-    buf = self._rc_call_with_ctx(
-        self.rc_alloc_fn, [buf_size], op="fstring", loc=_fstr_loc, name="fstr.buf"
-    );
-    self._emit_set_type_tag(self.builder, buf, "str");
-
     snprintf_fn = self._get_or_declare_extern(
         "snprintf",
         ir.IntType(32),
@@ -256,6 +459,24 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
         var_arg=True
     );
     fmt_global = self._make_global_string(fmt_str, name_prefix=".fstr.fmt");
+
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    measure_args: list[ir.Value] = [
+        ir.Constant(i8p, None),
+        ir.Constant(i64, 0),
+        fmt_global
+    ];
+    for a in args {
+        measure_args.append(a);
+    }
+    need32 = self.builder.call(snprintf_fn, measure_args, name="fstr.need");
+    need = self.builder.sext(need32, i64, name="fstr.need64");
+    buf_size = self.builder.add(need, ir.Constant(i64, 1), name="fstr.size");
+    buf = self._rc_call_with_ctx(
+        self.rc_alloc_fn, [buf_size], op="fstring", loc=_fstr_loc, name="fstr.buf"
+    );
+    self._emit_set_type_tag(self.builder, buf, "str");
     call_args: list[ir.Value] = [buf, buf_size, fmt_global];
     for a in args {
         call_args.append(a);
@@ -295,6 +516,63 @@ impl NaIRGenPass._codegen_string_index(
     return new_str;
 }
 
+impl NaIRGenPass._emit_norm_slice_bounds(
+    slice_node: object, src_len: ir.Value
+) -> (tuple | None) {
+    i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    b = self.builder;
+
+    step_val: ir.Value = one;
+    if slice_node?.step is not None {
+        sv = self._codegen_expr(slice_node.step);
+        if sv is None {
+            return None;
+        }
+        step_val = self._coerce_type(sv, i64);
+        _step_zero = b.icmp_signed("==", step_val, zero, name="nsl.step.zero");
+        self._emit_runtime_raise(_step_zero, "ValueError", "slice step cannot be zero");
+    }
+    step_pos = b.icmp_signed(">", step_val, zero, name="nsl.step.pos");
+    len_m1 = b.sub(src_len, one, name="nsl.lenm1");
+    neg_one = ir.Constant(i64, -1);
+
+    lo = b.select(step_pos, zero, neg_one, name="nsl.lo");
+    hi = b.select(step_pos, src_len, len_m1, name="nsl.hi");
+
+    start_val = b.select(step_pos, zero, len_m1, name="nsl.start.dflt");
+    if slice_node?.start is not None {
+        sv2 = self._codegen_expr(slice_node.start);
+        if sv2 is None {
+            return None;
+        }
+        v = self._coerce_type(sv2, i64);
+        _neg = b.icmp_signed("<", v, zero, name="nsl.s.neg");
+        v = b.select(_neg, b.add(v, src_len, name="nsl.s.wrap"), v, name="nsl.s.w");
+        _lo = b.icmp_signed("<", v, lo, name="nsl.s.lo");
+        v = b.select(_lo, lo, v, name="nsl.s.cl");
+        _hi = b.icmp_signed(">", v, hi, name="nsl.s.hi");
+        start_val = b.select(_hi, hi, v, name="nsl.s.ch");
+    }
+
+    stop_val = b.select(step_pos, src_len, neg_one, name="nsl.stop.dflt");
+    if slice_node?.stop is not None {
+        sv3 = self._codegen_expr(slice_node.stop);
+        if sv3 is None {
+            return None;
+        }
+        v2 = self._coerce_type(sv3, i64);
+        _neg2 = b.icmp_signed("<", v2, zero, name="nsl.e.neg");
+        v2 = b.select(_neg2, b.add(v2, src_len, name="nsl.e.wrap"), v2, name="nsl.e.w");
+        _lo2 = b.icmp_signed("<", v2, lo, name="nsl.e.lo");
+        v2 = b.select(_lo2, lo, v2, name="nsl.e.cl");
+        _hi2 = b.icmp_signed(">", v2, hi, name="nsl.e.hi");
+        stop_val = b.select(_hi2, hi, v2, name="nsl.e.ch");
+    }
+    return (start_val, stop_val, step_val, step_pos);
+}
+
 impl NaIRGenPass._codegen_list_slice(
     target_val: ir.Value, slice_node: object, elem_type_name: str
 ) -> (ir.Value | None) {
@@ -306,30 +584,11 @@ impl NaIRGenPass._codegen_list_slice(
     func = self.builder.basic_block.function;
 
     src_len = self.builder.call(helpers["len"], [target_val], name="sl.srclen");
-
-    start_val: ir.Value = ir.Constant(i64, 0);
-    if slice_node?.start is not None {
-        sv = self._codegen_expr(slice_node.start);
-        if sv is not None {
-            start_val = self._coerce_type(sv, i64);
-        }
+    bounds = self._emit_norm_slice_bounds(slice_node, src_len);
+    if bounds is None {
+        return None;
     }
-
-    stop_val: ir.Value = src_len;
-    if slice_node?.stop is not None {
-        sv = self._codegen_expr(slice_node.stop);
-        if sv is not None {
-            stop_val = self._coerce_type(sv, i64);
-        }
-    }
-
-    step_val: ir.Value = ir.Constant(i64, 1);
-    if slice_node?.step is not None {
-        sv = self._codegen_expr(slice_node.step);
-        if sv is not None {
-            step_val = self._coerce_type(sv, i64);
-        }
-    }
+    (start_val, stop_val, step_val, step_pos) = bounds;
 
     new_list = self.builder.call(helpers["new"], [], name="sl.new");
 
@@ -342,7 +601,9 @@ impl NaIRGenPass._codegen_list_slice(
 
     self.builder.position_at_end(loop_check);
     cur_i = self.builder.load(i_alloca, name="sl.cur");
-    in_range = self.builder.icmp_signed("<", cur_i, stop_val, name="sl.inrange");
+    fwd = self.builder.icmp_signed("<", cur_i, stop_val, name="sl.fwd");
+    bwd = self.builder.icmp_signed(">", cur_i, stop_val, name="sl.bwd");
+    in_range = self.builder.select(step_pos, fwd, bwd, name="sl.inrange");
     self.builder.cbranch(in_range, loop_body, loop_done);
 
     self.builder.position_at_end(loop_body);
@@ -364,38 +625,71 @@ impl NaIRGenPass._codegen_string_slice(
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    func = self.builder.function;
 
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
-    memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     src_len = self.builder.call(strlen_fn, [target_val], name="ss.len");
-
-    start_val: ir.Value = ir.Constant(i64, 0);
-    if slice_node?.start is not None {
-        sv = self._codegen_expr(slice_node.start);
-        if sv is not None {
-            start_val = self._coerce_type(sv, i64);
-        }
+    bounds = self._emit_norm_slice_bounds(slice_node, src_len);
+    if bounds is None {
+        return None;
     }
+    (start_val, stop_val, step_val, step_pos) = bounds;
 
-    stop_val: ir.Value = src_len;
-    if slice_node?.stop is not None {
-        sv = self._codegen_expr(slice_node.stop);
-        if sv is not None {
-            stop_val = self._coerce_type(sv, i64);
-        }
-    }
+    diff = self.builder.select(
+        step_pos,
+        self.builder.sub(stop_val, start_val, name="ss.d.fwd"),
+        self.builder.sub(start_val, stop_val, name="ss.d.bwd"),
+        name="ss.diff"
+    );
+    astep = self.builder.select(
+        step_pos,
+        step_val,
+        self.builder.sub(zero, step_val, name="ss.step.neg"),
+        name="ss.astep"
+    );
+    n_num = self.builder.add(
+        diff, self.builder.sub(astep, one, name="ss.am1"), name="ss.nnum"
+    );
+    n_raw = self.builder.sdiv(n_num, astep, name="ss.nraw");
+    diff_pos = self.builder.icmp_signed(">", diff, zero, name="ss.dpos");
+    n_val = self.builder.select(diff_pos, n_raw, zero, name="ss.n");
 
-    slice_len = self.builder.sub(stop_val, start_val, name="ss.slen");
-    alloc_size = self.builder.add(slice_len, ir.Constant(i64, 1), name="ss.alloc");
+    alloc_size = self.builder.add(n_val, one, name="ss.alloc");
     self._set_rc_ctx("str_substr", "");
     new_str = self.builder.call(self.rc_alloc_fn, [alloc_size], name="ss.new");
     self._clear_rc_ctx();
     self._emit_set_type_tag(self.builder, new_str, "str");
 
-    src_ptr = self.builder.gep(target_val, [start_val], name="ss.src");
-    self.builder.call(memcpy_fn, [new_str, src_ptr, slice_len]);
+    i_alloca = self.builder.alloca(i64, name="ss.i");
+    k_alloca = self.builder.alloca(i64, name="ss.k");
+    self.builder.store(start_val, i_alloca);
+    self.builder.store(zero, k_alloca);
+    loop_check = func.append_basic_block(name="ss.check");
+    loop_body = func.append_basic_block(name="ss.body");
+    loop_done = func.append_basic_block(name="ss.done");
+    self.builder.branch(loop_check);
 
-    null_ptr = self.builder.gep(new_str, [slice_len], name="ss.null");
+    self.builder.position_at_end(loop_check);
+    cur_i = self.builder.load(i_alloca, name="ss.cur");
+    fwd = self.builder.icmp_signed("<", cur_i, stop_val, name="ss.fwd");
+    bwd = self.builder.icmp_signed(">", cur_i, stop_val, name="ss.bwd");
+    in_range = self.builder.select(step_pos, fwd, bwd, name="ss.inrange");
+    self.builder.cbranch(in_range, loop_body, loop_done);
+
+    self.builder.position_at_end(loop_body);
+    ch_ptr = self.builder.gep(target_val, [cur_i], name="ss.src.ch");
+    ch = self.builder.load(ch_ptr, name="ss.ch");
+    cur_k = self.builder.load(k_alloca, name="ss.curk");
+    out_ptr = self.builder.gep(new_str, [cur_k], name="ss.out.ch");
+    self.builder.store(ch, out_ptr);
+    self.builder.store(self.builder.add(cur_k, one, name="ss.nextk"), k_alloca);
+    self.builder.store(self.builder.add(cur_i, step_val, name="ss.nexti"), i_alloca);
+    self.builder.branch(loop_check);
+
+    self.builder.position_at_end(loop_done);
+    null_ptr = self.builder.gep(new_str, [n_val], name="ss.null");
     self.builder.store(ir.Constant(i8, 0), null_ptr);
     return new_str;
 }

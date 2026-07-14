@@ -72,6 +72,8 @@ impl __getattr__(name: str) -> object {
         return _get_jid();
     } elif (name == 'jobj') {
         return _get_jobj();
+    } elif (name == 'jref') {
+        return _get_jref();
     } elif (name == 'grant') {
         return _get_grant();
     } elif (name == 'revoke') {
@@ -150,6 +152,17 @@ impl _get_grant -> Callable[..., any] {
 
 impl _get_jobj -> Callable[..., any] {
     return _get_jac().get_object;
+}
+
+impl _get_jref -> Callable[..., any] {
+    return jref;
+}
+
+impl jref(id_or_obj: any) -> any {
+    if isinstance(id_or_obj, str) {
+        return _get_jobj()(id=id_or_obj);
+    }
+    return id_or_obj;
 }
 
 impl _get_jid -> Callable[..., any] {

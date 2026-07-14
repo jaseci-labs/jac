@@ -1,11 +1,14 @@
-//! Build-time payload tool (pure Zig, std-only) -- replaces the three bash
-//! scripts (fetch-pbs.sh, fetch-typeshed.sh, mkpayload.sh) with one executable.
+//! Build-time payload tool (Zig) -- replaces the three bash scripts
+//! (fetch-pbs.sh, fetch-typeshed.sh, mkpayload.sh) with one executable.
 //!
 //! The host-tool dependencies the scripts needed (bash, curl, git, zstd, tar,
 //! find, cp) are gone: HTTP is `std.http.Client`, integrity is
 //! `std.crypto.sha2`, the pbs archive is decoded with `std.compress.zstd`, the
-//! typeshed tarball with `std.compress.flate`, the final payload is written with
-//! `std.tar.Writer` + `std.compress.flate` (gzip), and all file shuffling is
+//! typeshed tarball with `std.compress.flate`, the final payload is written
+//! with `std.tar.Writer` + vendored libzstd (`ZSTD_compress2`; Zig std has no
+//! zstd encoder -- the dep is pinned in build.zig.zon, and the launcher binds
+//! its decode side for the same reason: see runtime.zig's PayloadDecoder),
+//! and all file shuffling is
 //! `std.Io.Dir`. The remaining shellouts are to the freshly-fetched pbs
 //! `python` -- pip installs and the JIR precompile -- because those genuinely
 //! require executing CPython (see launcher/README.md "Bucket B"), plus a
@@ -24,9 +27,9 @@
 //!       (jaclang/vendor/typeshed/PIN) into jaclang/vendor/typeshed/stdlib,
 //!       verified against jaclang/vendor/typeshed/TARBALL_SHA256. Idempotent.
 //!
-//!   payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz>
+//!   payload mkpayload <pbs-python-dir> <repo-root> <out.tar.zst>
 //!       Assemble the runtime payload: jaclang site + private CPython, tarred
-//!       and gzip-compressed (the format runtime.zig decompresses).
+//!       and zstd-compressed (the format runtime.zig decompresses).
 //!
 //!   payload typeshed-sha <commit>
 //!       Print the decompressed-tar sha256 for a typeshed commit -- the value to
@@ -142,7 +145,7 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--pyembed=PATH] [--skip-precompile] [--skip-tui] [--bundle-byllm=PATH] [--link-source=PATH] [--musl=PATH] [--precompiled-cache=DIR] [--nvim=DIR] [--seal] [--debug-src]\n(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.zst> [--shim=PATH] [--pyembed=PATH] [--skip-precompile] [--skip-tui] [--bundle-byllm=PATH] [--link-source=PATH] [--musl=PATH] [--wasm-libc=PATH] [--precompiled-cache=DIR] [--nvim=DIR] [--ninja-link=PATH] [--seal] [--debug-src]\n(--seal: freeze bootstrap + emit MANIFEST.json; the payload boots from JIR, sources ship for tracebacks)", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
@@ -1147,6 +1150,10 @@ fn mkPayload(
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage, musl_dir, wasm_libc_dir);
 
+    // Precompile the staged stdlib + site to HASH-based .pyc. Must run AFTER
+    // stageTree (compiles the copied tree that gets tarred) and BEFORE tarGzDir.
+    precompilePyc(io, a, py, stage);
+
     // ninja editor: the assembled nvim tree (runtime/ + ninja/) rides the
     // payload verbatim -- the launcher's `jac ninja` dispatch resolves it at
     // <rt>/nvim without booting Python.
@@ -1164,8 +1171,8 @@ fn mkPayload(
         }
     }
 
-    log("==> packing tar | gzip", .{});
-    try tarGzDir(io, gpa, a, stage, out);
+    log("==> packing tar | zstd -{d}", .{PAYLOAD_ZSTD_LEVEL});
+    try tarZstDir(io, gpa, a, stage, out);
     log("==> payload: {s}", .{out});
 }
 
@@ -1527,7 +1534,6 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
     }
 }
 
-
 /// Stage the runtime tree: shared libpython + stdlib + the assembled site.
 fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site: []const u8, stage: []const u8, musl_dir: ?[]const u8, wasm_libc_dir: ?[]const u8) !void {
     log("==> staging runtime tree (shared libpython + stdlib + site)", .{});
@@ -1596,6 +1602,37 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // Vendored wasm32 libc bitcode, so an installed binary links libc into
     // na->wasm modules (in-module libc + jac_host1 import contract, #7048).
     if (wasm_libc_dir) |wd| try stageWasmLibc(io, a, wd, stage);
+}
+
+/// Compile the staged CPython stdlib + jaclang site to HASH-based `.pyc`
+/// (PEP 552 unchecked-hash). This is the cold-start fix.
+///
+/// Timestamp `.pyc` are worthless in our payload: the runtime materializer
+/// (runtime.zig) untars the payload into a fresh cache dir, and `std.tar` has
+/// no mtime field -- so every extracted `.py` gets a "now" timestamp that can
+/// never match a timestamp-`.pyc`'s embedded build-time mtime. The embedded
+/// interpreter runs with write_bytecode=0 (embed.zig), so on that mtime
+/// mismatch it discards the `.pyc` AND cannot cache a fresh one -- it re-parses
+/// the module from source on EVERY `jac` invocation. That is exactly why pbs's
+/// own shipped timestamp `.pyc` do nothing today; the hot stdlib chain (pdb,
+/// asyncio, logging, http.server, ...) is compiled cold every run.
+///
+/// Hash-based unchecked `.pyc` ignore mtime entirely -- the interpreter uses
+/// them as-is regardless of the source timestamp, so they survive materialize.
+/// `-f` overwrites pbs's dead timestamp `.pyc` in place with hash ones. The
+/// build never fails on this: compileall exits non-zero if any single module is
+/// uncompilable (a few stdlib corners are), which just means that module
+/// recompiles at runtime as before -- strictly no worse than today.
+fn precompilePyc(io: Io, a: Allocator, py: []const u8, stage: []const u8) void {
+    log("==> precompiling stdlib + site -> hash-based .pyc (survives materialize)", .{});
+    const stdlib = std.fmt.allocPrint(a, "{s}/python/lib/python{s}", .{ stage, py_ver }) catch return;
+    const site_dir = std.fmt.allocPrint(a, "{s}/site", .{stage}) catch return;
+    _ = runChild(io, &.{
+        py,                    "-m",             "compileall",
+        "--invalidation-mode", "unchecked-hash", "-q",
+        "-f",                  "-j",             "0",
+        stdlib,                site_dir,
+    }, null, true);
 }
 
 /// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names
@@ -1972,19 +2009,67 @@ fn runChild(io: Io, argv: []const []const u8, env: ?*const std.process.Environ.M
     return ok;
 }
 
-/// tar `stage` (its top-level `python` + `site`) and gzip it to `out`. The
-/// runtime side (runtime.zig) decompresses this exact format.
-fn tarGzDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []const u8) !void {
-    var file = try Dir.cwd().createFile(io, out, .{ .truncate = true });
-    defer file.close(io);
-    var fbuf: [64 * 1024]u8 = undefined;
-    var fw = file.writer(io, &fbuf);
+// ----------------------------------------------------- libzstd (encode only)
+// Upstream libzstd, pinned in build.zig.zon and compiled into this build-time
+// tool by build.zig's linkLibzstdCompress. ONLY the encoder is bound here:
+// everything this tool DECODES (pbs, typeshed, zips) stays std, and the
+// shipped launcher decodes the payload with pure `std.compress.zstd`. Zig std
+// has no zstd encoder -- that gap is this dependency's entire reason to exist.
+extern fn ZSTD_createCCtx() ?*anyopaque;
+extern fn ZSTD_freeCCtx(cctx: ?*anyopaque) usize;
+extern fn ZSTD_CCtx_setParameter(cctx: ?*anyopaque, param: c_int, value: c_int) usize;
+extern fn ZSTD_compress2(cctx: ?*anyopaque, dst: [*]u8, dst_cap: usize, src: [*]const u8, src_len: usize) usize;
+extern fn ZSTD_compressBound(src_len: usize) usize;
+extern fn ZSTD_isError(code: usize) c_uint;
+extern fn ZSTD_getErrorName(code: usize) [*:0]const u8;
 
-    const cbuf = try gpa.alloc(u8, flate.max_window_len);
-    defer gpa.free(cbuf);
-    var comp = try flate.Compress.init(&fw.interface, cbuf, .gzip, .best);
+// ZSTD_cParameter values -- part of zstd's stable public API (zstd.h).
+const ZSTD_c_compressionLevel: c_int = 100;
+const ZSTD_c_windowLog: c_int = 101;
+const ZSTD_c_nbWorkers: c_int = 400;
 
-    var tw: std.tar.Writer = .{ .underlying_writer = &comp.writer };
+/// Ratio knob for the runtime payload. 19 is the top non-ultra level: on the
+/// staged tree it beats the old gzip `.best` by ~10% while decode speed --
+/// the number every pod cold start pays -- is level-independent.
+const PAYLOAD_ZSTD_LEVEL = 19;
+
+fn setCParam(cctx: ?*anyopaque, param: c_int, value: c_int) void {
+    const rc = ZSTD_CCtx_setParameter(cctx, param, value);
+    if (ZSTD_isError(rc) != 0)
+        die("zstd: set parameter {d}={d}: {s}", .{ param, value, ZSTD_getErrorName(rc) });
+}
+
+/// zstd-compress `bytes` at PAYLOAD_ZSTD_LEVEL with the window log pinned to
+/// `runtime.PAYLOAD_WINDOW_LOG` -- the launcher sizes its decode window from
+/// that same constant, so an oversized-window payload cannot be produced.
+/// No frame checksum: the launcher sha256-verifies the compressed bytes via
+/// the trailer before ever decoding. Caller frees the returned frame.
+fn zstdCompressAlloc(gpa: Allocator, bytes: []const u8) ![]u8 {
+    const cctx = ZSTD_createCCtx() orelse die("zstd: ZSTD_createCCtx failed", .{});
+    defer _ = ZSTD_freeCCtx(cctx);
+    setCParam(cctx, ZSTD_c_compressionLevel, PAYLOAD_ZSTD_LEVEL);
+    setCParam(cctx, ZSTD_c_windowLog, runtime.PAYLOAD_WINDOW_LOG);
+    // Parallel compression (build.zig compiles with ZSTD_MULTITHREAD); the
+    // emitted frame is worker-count-independent, so builds stay reproducible.
+    // Best-effort: a failure here only costs build-time speed.
+    _ = ZSTD_CCtx_setParameter(cctx, ZSTD_c_nbWorkers, @intCast(@min(std.Thread.getCpuCount() catch 1, 32)));
+
+    const dst = try gpa.alloc(u8, ZSTD_compressBound(bytes.len));
+    errdefer gpa.free(dst);
+    const n = ZSTD_compress2(cctx, dst.ptr, dst.len, bytes.ptr, bytes.len);
+    if (ZSTD_isError(n) != 0) die("zstd: compress failed: {s}", .{ZSTD_getErrorName(n)});
+    return gpa.realloc(dst, n) catch dst[0..n];
+}
+
+/// tar `stage` (its top-level `python` + `site`) and zstd it to `out`. The
+/// runtime side (runtime.zig extractPayload) decompresses this exact format
+/// with pure std. The full tar is built in memory (~430 MB plus the compress
+/// bound) -- a build-machine-only cost that buys one-shot multithreaded
+/// ZSTD_compress2 instead of a hand-rolled streaming Io.Writer adapter.
+fn tarZstDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []const u8) !void {
+    var aw: Io.Writer.Allocating = .init(gpa);
+    defer aw.deinit();
+    var tw: std.tar.Writer = .{ .underlying_writer = &aw.writer };
 
     var stage_dir = try Dir.cwd().openDir(io, stage, .{ .iterate = true });
     defer stage_dir.close(io);
@@ -2011,8 +2096,9 @@ fn tarGzDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []cons
         }
     }
 
-    try comp.finish();
-    try fw.interface.flush();
+    const frame = try zstdCompressAlloc(gpa, aw.written());
+    defer gpa.free(frame);
+    try Dir.cwd().writeFile(io, .{ .sub_path = out, .data = frame });
 }
 
 // ----------------------------------------------------------------- tests
@@ -2115,7 +2201,13 @@ test "byllm jac.toml parsing: [dependencies] -> pip reqs, [entrypoints.jac] -> e
     try testing.expectEqualStrings("0.6.18", tomlString(toml, "version").?);
 }
 
-test "tarGzDir round-trips the executable bit through a runtime-style extract (EACCES regression)" {
+// The production payload pipe end-to-end: libzstd ENCODE (this tool, exactly
+// as mkpayload runs it) -> the launcher's own `runtime.PayloadDecoder` +
+// std.tar DECODE. Guards the two-sided encode/decode contract (level +
+// `PAYLOAD_WINDOW_LOG` on this side, the windowLogMax cap on the launcher
+// side). The big incompressible member forces multiple zstd blocks (raw-block
+// path); the text member exercises the compressed-block path.
+test "tarZstDir round-trips through the launcher's payload decoder" {
     const io = testing.io;
     const gpa = testing.allocator;
     var arena_state = std.heap.ArenaAllocator.init(gpa);
@@ -2127,45 +2219,43 @@ test "tarGzDir round-trips the executable bit through a runtime-style extract (E
     var base_buf: [MAX_PATH]u8 = undefined;
     const base = base_buf[0..try tmp.dir.realPath(io, &base_buf)];
 
-    // A stage mirroring the payload: one executable (the embed TUI host the
-    // `jac ai --tui` dispatch execve's) + one ordinary file that must NOT come
-    // out executable. The bug this guards: tarGzDir dropped the mode and the
-    // runtime extract used .ignore, so the host materialized 0o644 -> EACCES.
     const stage = try std.fmt.allocPrint(a, "{s}/stage", .{base});
-    const bindir = try std.fmt.allocPrint(a, "{s}/site/jaclang/cli/ai_tui_na/bin", .{stage});
-    try Dir.cwd().createDirPath(io, bindir);
+    try Dir.cwd().createDirPath(io, try std.fmt.allocPrint(a, "{s}/python/bin", .{stage}));
+    const text = "#!/bin/sh\nexec fake python\n" ** 64;
     try Dir.cwd().writeFile(io, .{
-        .sub_path = try std.fmt.allocPrint(a, "{s}/jac-ai-tui", .{bindir}),
-        .data = "\x7fELF fake host\n",
+        .sub_path = try std.fmt.allocPrint(a, "{s}/python/bin/python", .{stage}),
+        .data = text,
         .flags = .{ .permissions = Dir.Permissions.executable_file },
     });
+    const big = try a.alloc(u8, 3 * zstd.block_size_max + 12345);
+    var prng = std.Random.DefaultPrng.init(42);
+    prng.random().bytes(big);
     try Dir.cwd().writeFile(io, .{
-        .sub_path = try std.fmt.allocPrint(a, "{s}/site/mod.py", .{stage}),
-        .data = "x = 1\n",
+        .sub_path = try std.fmt.allocPrint(a, "{s}/python/big.bin", .{stage}),
+        .data = big,
     });
 
-    // Pack, then extract EXACTLY as runtime.zig extractPayload does.
-    const out = try std.fmt.allocPrint(a, "{s}/payload.tar.gz", .{base});
-    try tarGzDir(io, gpa, a, stage, out);
+    const out = try std.fmt.allocPrint(a, "{s}/payload.tar.zst", .{base});
+    try tarZstDir(io, gpa, a, stage, out);
 
-    const dest_path = try std.fmt.allocPrint(a, "{s}/out", .{base});
-    try Dir.cwd().createDirPath(io, dest_path);
-    var dest = try Dir.cwd().openDir(io, dest_path, .{});
-    defer dest.close(io);
-    const zbuf = try Dir.cwd().readFileAlloc(io, out, a, .unlimited);
-    const window = try gpa.alloc(u8, flate.max_window_len);
-    defer gpa.free(window);
-    var src = Io.Reader.fixed(zbuf);
-    var dz = flate.Decompress.init(&src, .gzip, window);
-    try std.tar.extract(io, dest, &dz.reader, .{
-        .mode_mode = .executable_bit_only,
-        .strip_components = 0,
-    });
+    const frame = try Dir.cwd().readFileAlloc(io, out, gpa, .unlimited);
+    defer gpa.free(frame);
+    const dctx = runtime.ZSTD_createDCtx() orelse return error.OutOfMemory;
+    defer _ = runtime.ZSTD_freeDCtx(dctx);
+    const dbuf = try gpa.alloc(u8, 1 << 20);
+    defer gpa.free(dbuf);
+    var dec = runtime.PayloadDecoder.init(dctx, frame, dbuf);
 
-    const host_mode = (try Dir.cwd().statFile(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/cli/ai_tui_na/bin/jac-ai-tui", .{dest_path}), .{})).permissions.toMode();
-    const mod_mode = (try Dir.cwd().statFile(io, try std.fmt.allocPrint(a, "{s}/site/mod.py", .{dest_path}), .{})).permissions.toMode();
-    try testing.expect(host_mode & 0o111 != 0); // +x survived pack+extract
-    try testing.expect(mod_mode & 0o111 == 0); // plain file stayed non-executable
+    const dest = try std.fmt.allocPrint(a, "{s}/dest", .{base});
+    try Dir.cwd().createDirPath(io, dest);
+    var dest_dir = try Dir.cwd().openDir(io, dest, .{});
+    defer dest_dir.close(io);
+    try std.tar.extract(io, dest_dir, &dec.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 });
+
+    try testing.expectEqualStrings(text, try dest_dir.readFileAlloc(io, "python/bin/python", a, .unlimited));
+    const python_mode = (try dest_dir.statFile(io, "python/bin/python", .{})).permissions.toMode();
+    try testing.expect(python_mode & 0o111 != 0); // executable bit survived pack+extract
+    try testing.expectEqualSlices(u8, big, try dest_dir.readFileAlloc(io, "python/big.bin", a, .unlimited));
 }
 
 test "pruneSite drops bytecode caches, keeps importable source + typeshed-style .pyi stubs" {

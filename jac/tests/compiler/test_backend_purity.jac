@@ -67,8 +67,12 @@ glob FORBIDDEN: dict[str, str] = {
              "declared NAME is the consumed fact, not a resolved type"
          ),
          ("native/na_ir_gen_pass.impl/calls.impl.jac", "symbol_utils"): (
-             1,
-             "classify_call fallback for call nodes synthesized after " "checking"
+             2,
+             "classify_call fallback for call nodes synthesized after "
+             "checking; and classify_call as the shadowing-aware builtin "
+             "test for the `type(None)` isinstance argument form (#6957) - "
+             "consuming the central classification instead of "
+             "re-implementing name resolution"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "symbol_utils"): (
              1,

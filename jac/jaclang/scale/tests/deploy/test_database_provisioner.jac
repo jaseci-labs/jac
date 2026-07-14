@@ -32,10 +32,10 @@ test "provision passes _deploy_databases the same number of args the real method
     provisioner = MicroserviceDatabaseProvisioner(k8s_target=mock_target, enabled=True);
 
     with unittest.mock.patch.object(
-        dp_module.client, "AppsV1Api", lambda : unittest.mock.MagicMock()
+        dp_module.client, "AppsV1Api", lambda { unittest.mock.MagicMock(); }
     ) {
         with unittest.mock.patch.object(
-            dp_module.client, "CoreV1Api", lambda : unittest.mock.MagicMock()
+            dp_module.client, "CoreV1Api", lambda { unittest.mock.MagicMock(); }
         ) {
             with unittest.mock.patch.object(dp_module, "ensure_namespace_exists") {
                 provisioner.provision("test-app");

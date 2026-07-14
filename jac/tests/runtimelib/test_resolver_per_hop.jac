@@ -106,7 +106,7 @@ test "predicate on non-final hop resolves via per-hop walk fallback" {
         }
         # `n.val > 5` introduces LOAD_ATTR + COMPARE_OP — this hop walks; the
         # second hop still uses the index.
-        pred_filter = lambda n: any : isinstance(n, R1Hop) and n.val > 5;
+        pred_filter = lambda (n: any) { isinstance(n, R1Hop) and n.val > 5; };
         path = ObjectSpatialPath(
             [r],
             [

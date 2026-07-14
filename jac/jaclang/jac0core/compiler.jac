@@ -52,7 +52,9 @@ def get_boundary_analysis_sched -> list[type[Transform[uni.Module, uni.Module]]]
     return [BoundaryAnalysisPass];
 }
 
-def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+def get_ir_gen_sched(
+    gen_mtir: bool = True
+) -> list[type[Transform[uni.Module, uni.Module]]] {
     global _ir_sched_loading;
     if _ir_sched_loading {
         return [
@@ -65,7 +67,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     _ir_sched_loading = True;
     try {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
-        import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
         import from jaclang.compiler.passes.main.capability_check_pass {
             CapabilityCheckPass
@@ -76,18 +77,23 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
+        import jaclang.compiler.type_registry;
 
-        return [
+        passes: list[type[Transform[uni.Module, uni.Module]]] = [
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
             SemanticAnalysisPass,
             SemDefMatchPass,
-            CFGBuildPass,
-            MTIRGenPass,
-            CapabilityCheckPass,
-            JsxIntrinsicGuardPass
+            CFGBuildPass
         ];
+        if gen_mtir {
+            import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
+            passes.append(MTIRGenPass);
+        }
+        passes.append(CapabilityCheckPass);
+        passes.append(JsxIntrinsicGuardPass);
+        return passes;
     } except ImportError {
         return [
             ASTValidationPass,
@@ -130,10 +136,14 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.capability_check_pass {
             PortabilityWarnPass
         }
+        import from jaclang.compiler.passes.main.ownership_check_pass {
+            OwnershipCheckPass
+        }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
         return [
             StaticAnalysisPass,
             AccessCheckPass,
+            OwnershipCheckPass,
             PortabilityWarnPass,
             JacLintCheckPass
         ];
@@ -174,7 +184,9 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
-def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
+def get_py_code_gen(
+    native: bool = True
+) -> list[type[Transform[uni.Module, uni.Module]]] {
     global _codegen_sched_loading;
     if _codegen_sched_loading or _ir_sched_loading {
         return [PyastGenPass, PyBytecodeGenPass];
@@ -187,8 +199,14 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
         }
 
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
-        import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
-        passes.extend([NaIRGenPass, NativeCompilePass]);
+        if native {
+            import from jaclang.compiler.passes.native {
+                RcElisionProofPass,
+                NaIRGenPass,
+                NativeCompilePass
+            }
+            passes.extend([RcElisionProofPass, NaIRGenPass, NativeCompilePass]);
+        }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
     } except ImportError {
@@ -332,7 +350,9 @@ obj JacCompiler {
         _jaclang_root: (str | None) = None;
     }
 
-    has _internal_program: (JacProgram | None) = None;
+    has _internal_program: (JacProgram | None) = None,
+        _internal_bytecode_depth: int = 0;
+
     has internal_program: JacProgram { getter; }
 
     @classmethod
@@ -350,6 +370,10 @@ obj JacCompiler {
     def get_bytecode(
         full_target: str, target_program: JacProgram
     ) -> (types.CodeType | None);
+
+    def _evict_internal_unit(
+        full_target: str, actual_program: JacProgram, result: uni.Module
+    ) -> None;
 
     def _load_native_from_cache(
         full_target: str,

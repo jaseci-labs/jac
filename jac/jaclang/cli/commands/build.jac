@@ -5,7 +5,7 @@ glob registry = get_registry();
 
 @registry.command(
     name="build",
-    help="Type-check the whole project (fail-closed) and build one sealed .jab; --as projects it to other formats",
+    help="Build a sealed .jab artifact (type-checks first)",
     args=[
         Arg.create(
             "filename",
@@ -49,7 +49,7 @@ glob registry = get_registry();
                 "pwa, mobile, desktop (desktop builds a native "
                 "webview app)."
             ),
-            choices=["web", "pwa", "mobile"],
+            choices=["web", "pwa", "mobile", "desktop"],
             short=""
         ),
         Arg.create(
