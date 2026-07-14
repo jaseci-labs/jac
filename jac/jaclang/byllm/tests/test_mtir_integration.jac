@@ -885,6 +885,64 @@ test "union handling is type-directed and non-corrupting" {
     assert holder.scores == {"Root Cause": 7};
 }
 
+test "multi-dataclass union repairs against the best-matching arm" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Cat, PetHolder }
+    import jaclang.byllm.schema as schema;
+
+    # `Color` + `Name` map to Cat (2 fields) vs Dog (1) -- Cat wins, and its
+    # Title-Case keys are repaired.
+    holder = schema.json_to_instance(
+        {"pet": {"Color": "black", "Name": "Tom"}}, PetHolder
+    );
+
+    assert isinstance(holder.pet, Cat);
+    assert holder.pet.color == "black";
+    assert holder.pet.name == "Tom";
+}
+
+test "ambiguous union tie still preserves shared-field data" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { PetHolder }
+    import jaclang.byllm.schema as schema;
+
+    # Only the shared `name` field is present, so Dog and Cat tie. The first arm
+    # is chosen, but the value is repaired instead of dropped to the default.
+    holder = schema.json_to_instance({"pet": {"Name": "Solo"}}, PetHolder);
+
+    assert holder.pet.name == "Solo";
+}
+
+test "dict-arm union leaves real keys untouched" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { DictArmHolder }
+    import jaclang.byllm.schema as schema;
+
+    # `payload` is `Investigation | dict[str,int]`. A dict-shaped value whose key
+    # looks Title-Cased must not be renamed toward the dataclass arm.
+    holder = schema.json_to_instance({"payload": {"Root Cause": 5}}, DictArmHolder);
+
+    assert holder.payload == {"Root Cause": 5};
+}
+
+test "two aliases for one field keep the first without silent loss" {
+    jac_import("keydrop_schema", base_path=FIXTURE_DIR + "/");
+
+    import from keydrop_schema { Investigation }
+    import jaclang.byllm.schema as schema;
+
+    # `Root Cause` and `root-cause` both normalize to `root_cause` and neither is
+    # an exact match: the first is kept (and a collision warning is logged).
+    inv = schema.json_to_instance(
+        {"Root Cause": "first", "root-cause": "second"}, Investigation
+    );
+
+    assert inv.root_cause == "first";
+}
+
 # =============================================================================
 # Scope Resolution Consistency Tests (Runtime vs Compile-time)
 # =============================================================================

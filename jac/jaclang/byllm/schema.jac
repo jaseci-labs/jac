@@ -38,6 +38,9 @@ def _strip_titles(sch: object) -> None;
 """Case/format-insensitive matching form of a key (`Root Cause` -> `rootcause`)."""
 def _norm_key(k: str) -> str;
 
+"""Pick the dataclass arm of a union whose fields best match the emitted keys."""
+def _best_union_arm(data: dict, arms: list) -> any;
+
 """Remap Title-Cased model keys onto dataclass field names, type-directed.
 
 Only touches dataclass levels, never a real `dict[str, V]` field's keys.

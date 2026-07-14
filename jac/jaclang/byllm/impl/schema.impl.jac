@@ -445,21 +445,62 @@ impl _norm_key(k: str) -> str {
     return k.replace("_", "").replace(" ", "").replace("-", "").lower();
 }
 
+"""Pick the dataclass arm whose fields best match the emitted keys (first on tie)."""
+impl _best_union_arm(data: dict, arms: list) -> any {
+    best_arm = None;
+    best_score = 0;
+    for arm in arms {
+        field_norms = {
+            _norm_key(str(name))
+            for name in get_type_hints(arm)
+            if not str(name).startswith("_")
+        };
+        score = sum(
+            [
+                1
+                for k in data.keys()
+                if _norm_key(str(k)) in field_norms
+            ]
+        );
+        if score > best_score {
+            best_score = score;
+            best_arm = arm;
+        }
+    }
+    return best_arm;
+}
+
 """Type-directed remap of model-emitted keys onto real dataclass field names."""
 impl normalize_json_keys(data: object, ty: any) -> object {
     origin = get_origin(ty);
-    # Union: descend only when exactly one arm is structural (dataclass /
-    # dict / list). With more than one we can't know which arm the value
-    # belongs to before pydantic validates, and rewriting keys against the
-    # wrong arm would corrupt data. Covers the common Optional[T] (T | None).
     if origin in (Union, UnionType) {
         structural = [
             arm
             for arm in get_args(ty)
             if is_dataclass(arm) or get_origin(arm) in (dict, list)
         ];
+        # Optional[T] and similar: exactly one structural arm, unambiguous.
         if len(structural) == 1 {
             return normalize_json_keys(data, structural[0]);
+        }
+        # Union of dataclasses only: pick the arm whose fields best match the
+        # emitted keys and repair against it. A dict/list arm carries real keys
+        # as data, so its presence makes the shape ambiguous -- leave the
+        # payload untouched rather than risk renaming a genuine dict key.
+        dc_arms = [
+            arm
+            for arm in structural
+            if is_dataclass(arm)
+        ];
+        if (
+            isinstance(data, dict)
+            and len(dc_arms) > 1
+            and len(dc_arms) == len(structural)
+        ) {
+            best_arm = _best_union_arm(data, dc_arms);
+            if best_arm is not None {
+                return normalize_json_keys(data, best_arm);
+            }
         }
         return data;
     }
@@ -490,11 +531,13 @@ impl normalize_json_keys(data: object, ty: any) -> object {
         lookup: dict = {_norm_key(str(name)): name for name in field_types};
         src: dict = data;
         out: dict = {};
+        exact: list = [];
         # Exact field-name matches win: a Title-Case variant must never clobber
         # a value the model already supplied under the real field name.
         for (k, v) in src.items() {
             if k in field_types {
                 out[k] = normalize_json_keys(v, field_types[k]);
+                exact.append(k);
             }
         }
         for (k, v) in src.items() {
@@ -502,17 +545,25 @@ impl normalize_json_keys(data: object, ty: any) -> object {
                 continue;
             }
             nk = _norm_key(str(k));
-            if nk in lookup {
-                canon = lookup[nk];
-                if canon not in out {
-                    out[canon] = normalize_json_keys(v, field_types[canon]);
-                }
-            } else {
+            if nk not in lookup {
                 logger.warning(
                     f"byllm: {ty.__name__} has no field for emitted key {k!r}; "
                     "ignored (matching field left at default)."
                 );
                 out[k] = v;
+            } else {
+                canon = lookup[nk];
+                if canon in exact {
+                    continue;  # real field name already supplied it -- stay quiet
+                } elif canon in out {
+                    # Two Title-Cased aliases for one field: ambiguous input.
+                    logger.warning(
+                        f"byllm: {ty.__name__} got multiple aliases for field "
+                        f"{canon!r} (including {k!r}); keeping the first."
+                    );
+                } else {
+                    out[canon] = normalize_json_keys(v, field_types[canon]);
+                }
             }
         }
         return out;
