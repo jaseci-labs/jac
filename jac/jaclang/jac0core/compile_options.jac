@@ -8,6 +8,7 @@ obj CompileOptions {
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
+        na_gc_mode: str = "cycles",
         suppress_codes: list[str] = field(default_factory=`list),
         project_kind: str = "web",
         project_root: (str | None) = None,

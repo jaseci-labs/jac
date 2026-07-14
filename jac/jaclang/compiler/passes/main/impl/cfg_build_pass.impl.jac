@@ -879,6 +879,13 @@ impl CFGBuildPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
     }
 }
 
+impl CFGBuildPass.exit_region_stmt(nd: uni.RegionStmt) -> None {
+    if nd.body {
+        self.link_bbs(nd, nd.body[0]);
+        self._link_sequential(nd.body);
+    }
+}
+
 impl CFGBuildPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
     if nd.body and isinstance(nd.body, Sequence) {
         body = [

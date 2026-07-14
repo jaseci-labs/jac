@@ -666,7 +666,7 @@ with entry {
         "parse values",
         ["500m", "2", "250"],
         _test_parse,
-        id_fn=lambda p: str -> str { return f"input_{p}"; }
+        id_fn=lambda (p: str) -> str { return f"input_{p}"; }
     );
 }
 ```

@@ -1014,8 +1014,12 @@ jobs:
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
 
   # Real-app microservice e2e on kind (not microk8s) so it runs on the fast blacksmith runner, whose minimal kernel lacks the ipset modules microk8s' calico needs. PR-only on core changes; not a required check.
+  # Two pod-base legs: `slim` = the plain python default; `official-image` =
+  # an image built from THIS PR's binary via docker/jaclang.Dockerfile, which
+  # exercises the baked-runtime path (container-local cache site, checksum
+  # binary reuse) that only exists on jaseci/jaclang bases.
   k8s-real-e2e:
-    name: microservice e2e (k8s)
+    name: microservice e2e (k8s, ${{ matrix.base }})
     needs: [changes, build-jac]
     if: >-
       github.event_name != 'push' &&
@@ -1023,6 +1027,10 @@ jobs:
       !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        base: [slim, official-image]
     env:
       # Ship the jac binary built from THIS PR (the build-jac artifact) to the
       # pods via channel LOCAL, so the e2e validates the code under test rather
@@ -1059,7 +1067,7 @@ jobs:
             "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
             "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
             "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
-            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
+            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" "humanize>=4.0.0" \
             --global
 
       - name: Set up kind cluster
@@ -1127,6 +1135,16 @@ jobs:
           kubectl cluster-info
           kubectl get nodes
           kubectl get pods -A
+
+      - name: Build the official base image from this PR's binary (official-image leg)
+        if: matrix.base == 'official-image'
+        run: |
+          mkdir -p /tmp/imgctx/amd64
+          cp "$JAC_SCALE_BINARY_PATH" /tmp/imgctx/amd64/jac
+          docker build --build-arg TARGETARCH=amd64 \
+              -f docker/jaclang.Dockerfile -t jaclang-e2e:pr /tmp/imgctx
+          kind load docker-image jaclang-e2e:pr --name jac
+          echo "E2E_POD_BASE_IMAGE=jaclang-e2e:pr" >> "$GITHUB_ENV"
 
       - name: Run K8s microservice real-app e2e
         env:
@@ -1196,6 +1214,11 @@ jobs:
           fi
 
       - name: "install: download + run the binary"
+        env:
+          # install.sh authenticates its GitHub API calls when a token is set;
+          # shared runners (macOS especially) exhaust the unauthenticated
+          # per-IP rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/install.sh
 
       - name: "install: verify jac"

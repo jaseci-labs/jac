@@ -444,7 +444,7 @@ def:pub LLMTracesPage -> JsxElement {
                         <input
                             type="checkbox"
                             checked={autoRefresh}
-                            onChange={lambda e: any { autoRefresh = e.target.checked; }}
+                            onChange={lambda (e: any) { autoRefresh = e.target.checked; }}
                             className="rounded border-line bg-surface-2 text-teal-500 focus:ring-teal-500"
                         />
                         Auto-refresh
@@ -498,7 +498,7 @@ def:pub LLMTracesPage -> JsxElement {
                             {(item["trace"]["child_count"] or 0) > 0
                             and <button
                                 className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-muted hover:text-teal-400 rounded hover:bg-surface-2"
-                                onClick={lambda e: any {
+                                onClick={lambda (e: any) {
                                     e.stopPropagation();
                                     toggleExpand(item["trace"]["invocation_id"]);
                                 }}

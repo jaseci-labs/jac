@@ -514,7 +514,7 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
     original_get_registry = jaclang.JacRuntime.get_sv_registry;
     httpx.Client = _mock_client_class(handler);
 
-    jaclang.JacRuntime.get_sv_registry = staticmethod(lambda : {});
+    jaclang.JacRuntime.get_sv_registry = staticmethod(lambda { {}; });
 
     try {
         sv_client.register("k9_fallback_mod", "http://fallback.invalid:9999");
@@ -551,10 +551,9 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
     setattr(
         cfg_mod,
         "get_scale_config",
-        lambda :
-            _K8sStubMsCfg(
-                data={"routes": {"k9_2_peer": "/api/peer"}, "gateway_port": 8000}
-            )
+        lambda { _K8sStubMsCfg(
+            data={"routes": {"k9_2_peer": "/api/peer"}, "gateway_port": 8000}
+        ); }
     );
 
     if "k9_2_peer" in sv_client._registry {

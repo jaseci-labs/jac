@@ -6,6 +6,8 @@ Exposes public functions for cart operations. Callable via:
 """
 
 import from shared.models { Cart, Product, Products, Order }
+# declared pip dep imported at boot: proves pod installs reach the served process
+import humanize;
 
 def _get_or_create_cart -> Cart {
     carts = [root()-->][?:Cart];
@@ -15,81 +17,86 @@ def _get_or_create_cart -> Cart {
     return root() ++> Cart();
 }
 
-to sv:
-
-def:pub add_to_cart(
-    product_id: str, product_name: str = "", price: float = 0.0, qty: int = 1
-) -> dict {
-    cart = _get_or_create_cart();
-    # Check if product already in cart
-    for item in cart.items {
-        if item.get("product_id") == product_id {
-            item["qty"] = item.get("qty", 0) + qty;
-            return {"action": "updated", "product_id": product_id, "qty": item["qty"]};
+sv {
+    def:pub add_to_cart(
+        product_id: str, product_name: str = "", price: float = 0.0, qty: int = 1
+    ) -> dict {
+        cart = _get_or_create_cart();
+        # Check if product already in cart
+        for item in cart.items {
+            if item.get("product_id") == product_id {
+                item["qty"] = item.get("qty", 0) + qty;
+                return {
+                    "action": "updated",
+                    "product_id": product_id,
+                    "qty_words": humanize.apnumber(item.get("qty", 0)),
+                    "qty": item["qty"]
+                };
+            }
         }
-    }
-    cart.items.append(
-        {
-            "product_id": product_id,
-            "product_name": product_name,
-            "price": price,
-            "qty": qty
-        }
-    );
-    return {"action": "added", "product_id": product_id, "qty": qty};
-}
-
-def:pub view_cart -> dict {
-    carts = [root()-->][?:Cart];
-    if not carts {
-        return {"items": [], "total": 0, "item_count": 0};
-    }
-    cart: Cart = carts[0];
-    total: float = 0.0;
-    display_items: list[dict] = [];
-    for item in cart.items {
-        line_total: float = float(item.get("price", 0)) * int(item.get("qty", 1));
-        display_items.append(
+        cart.items.append(
             {
-                "product_id": item.get("product_id", ""),
-                "product_name": item.get("product_name", ""),
-                "price": item.get("price", 0),
-                "qty": item.get("qty", 1),
-                "line_total": round(line_total, 2)
+                "product_id": product_id,
+                "product_name": product_name,
+                "price": price,
+                "qty": qty
             }
         );
-        total += line_total;
+        return {"action": "added", "product_id": product_id, "qty": qty};
     }
-    return {
-        "items": display_items,
-        "total": round(total, 2),
-        "item_count": len(cart.items)
-    };
-}
 
-def:pub remove_from_cart(product_id: str) -> dict {
-    carts = [root()-->][?:Cart];
-    if not carts {
-        return {"error": "Cart not found"};
-    }
-    cart: Cart = carts[0];
-    new_items: list[dict] = [];
-    for item in cart.items {
-        if item.get("product_id") != product_id {
-            new_items.append(item);
+    def:pub view_cart -> dict {
+        carts = [root()-->][?:Cart];
+        if not carts {
+            return {"items": [], "total": 0, "item_count": 0};
         }
+        cart: Cart = carts[0];
+        total: float = 0.0;
+        display_items: list[dict] = [];
+        for item in cart.items {
+            line_total: float = float(item.get("price", 0)) * int(item.get("qty", 1));
+            display_items.append(
+                {
+                    "product_id": item.get("product_id", ""),
+                    "product_name": item.get("product_name", ""),
+                    "price": item.get("price", 0),
+                    "qty": item.get("qty", 1),
+                    "line_total": round(line_total, 2)
+                }
+            );
+            total += line_total;
+        }
+        return {
+            "items": display_items,
+            "total": round(total, 2),
+            "item_count": len(cart.items)
+        };
     }
-    cart.items = new_items;
-    return {"action": "removed", "product_id": product_id};
-}
 
-def:pub clear_cart -> dict {
-    carts = [root()-->][?:Cart];
-    if not carts {
-        return {"action": "cleared", "items_removed": 0};
+    def:pub remove_from_cart(product_id: str) -> dict {
+        carts = [root()-->][?:Cart];
+        if not carts {
+            return {"error": "Cart not found"};
+        }
+        cart: Cart = carts[0];
+        new_items: list[dict] = [];
+        for item in cart.items {
+            if item.get("product_id") != product_id {
+                new_items.append(item);
+            }
+        }
+        cart.items = new_items;
+        return {"action": "removed", "product_id": product_id};
     }
-    cart: Cart = carts[0];
-    cleared: int = len(cart.items);
-    cart.items = [];
-    return {"action": "cleared", "items_removed": cleared};
+
+    def:pub clear_cart -> dict {
+        carts = [root()-->][?:Cart];
+        if not carts {
+            return {"action": "cleared", "items_removed": 0};
+        }
+        cart: Cart = carts[0];
+        cleared: int = len(cart.items);
+        cart.items = [];
+        return {"action": "cleared", "items_removed": cleared};
+    }
 }

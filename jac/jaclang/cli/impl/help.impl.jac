@@ -38,10 +38,7 @@ impl HelpFormatter.format_main_help(
 
     lines: list[str] = [];
 
-    lines.append(_help_color("Jac Programming Language CLI", _HELP_TITLE));
-    if version {
-        lines.append(f"Version: {version}");
-    }
+    lines.append(_help_color("The Jac programming language", _HELP_TITLE));
     lines.append("");
     lines.append(
         f"{_help_color('Usage:', _HELP_HEADER)} "
@@ -49,10 +46,10 @@ impl HelpFormatter.format_main_help(
     );
     lines.append("");
     lines.append(_help_color("Options:", _HELP_HEADER));
-    lines.append(f"  {_help_color('-V, --version', _HELP_CMD)}  Show version and exit");
-    lines.append(
-        f"  {_help_color('-h, --help', _HELP_CMD)}     Show this message and exit"
-    );
+    lines.append(f"  {_help_color('-V, --version', _HELP_CMD)}");
+    lines.append(f"          Print version info and exit");
+    lines.append(f"  {_help_color('-h, --help', _HELP_CMD)}");
+    lines.append(f"          Print help");
     lines.append("");
 
     grouped: dict[str, list[CommandSpec]] = {};
@@ -64,27 +61,29 @@ impl HelpFormatter.format_main_help(
         grouped[group].append(cmd);
     }
 
+    col = 12;
+    for cmd in commands {
+        if len(cmd.name) >= col {
+            col = len(cmd.name) + 2;
+        }
+    }
+
     ordered_groups = self.groups.get_ordered_groups();
     for group in ordered_groups {
         if group not in grouped {
             continue;
         }
-
         cmds = grouped[group];
         if not cmds {
             continue;
         }
-
         display_name = self.groups.get_display_name(group);
-
         lines.append(_help_color(f"{display_name}:", _HELP_HEADER));
-
-        cmds.sort(key=lambda c: str : c.name);
+        cmds.sort(key=lambda (c: str) { c.name; });
         for cmd in cmds {
-            padding = " " * (12 - len(cmd.name));
-            lines.append(f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
+            padding = " " * (col - len(cmd.name));
+            lines.append(f"    {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
         }
-
         lines.append("");
     }
 
@@ -94,16 +93,18 @@ impl HelpFormatter.format_main_help(
             display_name = self.groups.get_display_name(group);
             lines.append(_help_color(f"{display_name}:", _HELP_HEADER));
             for cmd in cmds {
-                padding = " " * (12 - len(cmd.name));
+                padding = " " * (col - len(cmd.name));
                 lines.append(
-                    f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}"
+                    f"    {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}"
                 );
             }
             lines.append("");
         }
     }
-    lines.append(f"Run '{prog} COMMAND --help' for command details.");
-    lines.append(f"New to Jac? Run '{prog} guide' for curated docs.");
+
+    lines.append(
+        f"See '{prog} COMMAND --help' for more information on a specific command."
+    );
     return "\n".join(lines);
 }
 
@@ -113,9 +114,11 @@ impl HelpFormatter.format_curated_help(
     import from jaclang.cli.command { CommandSpec }
     lines: list[str] = [];
 
+    lines.append(_help_color("The Jac programming language", _HELP_TITLE));
+    lines.append("");
     lines.append(
         f"{_help_color('Usage:', _HELP_HEADER)} "
-        f"{_help_color(prog, _HELP_PROG)} COMMAND [ARGS]..."
+        f"{_help_color(prog, _HELP_PROG)} [OPTIONS] COMMAND [ARGS]..."
     );
     lines.append("");
 
@@ -129,6 +132,13 @@ impl HelpFormatter.format_curated_help(
         }
     }
 
+    col = 12;
+    for cmd in commands {
+        if cmd.tier and len(cmd.name) >= col {
+            col = len(cmd.name) + 2;
+        }
+    }
+
     for tier in self.groups.tier_order {
         cmds = by_tier.get(tier, []);
         if not cmds {
@@ -137,10 +147,10 @@ impl HelpFormatter.format_curated_help(
         lines.append(
             _help_color(f"{self.groups.tier_sections.get(tier, tier)}:", _HELP_HEADER)
         );
-        cmds.sort(key=lambda c: str : c.name);
+        cmds.sort(key=lambda (c: str) { c.name; });
         for cmd in cmds {
-            padding = " " * (12 - len(cmd.name));
-            lines.append(f"  {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
+            padding = " " * (col - len(cmd.name));
+            lines.append(f"    {_help_color(cmd.name, _HELP_CMD)}{padding}{cmd.help}");
         }
         lines.append("");
     }

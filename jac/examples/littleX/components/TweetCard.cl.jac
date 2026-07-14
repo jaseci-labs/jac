@@ -223,8 +223,8 @@ def:pub TweetCard(
                             <Input
                                 placeholder="Post your reply..."
                                 value={commentText}
-                                onChange={lambda e: ChangeEvent { commentText = e.target.value; }}
-                                onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter"
+                                onChange={lambda (e: ChangeEvent) { commentText = e.target.value; }}
+                                onKeyDown={lambda (e: KeyboardEvent) { if e.key == "Enter"
                                 and commentText.strip() {
                                     onComment(tweet.id, commentText);
                                     commentText = "";

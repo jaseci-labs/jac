@@ -498,6 +498,130 @@ impl TypeEvaluator._get_expected_kv_types(
     return None;
 }
 
+impl TypeEvaluator._infer_list_elem_from_mutations(
+    expr: uni.ListVal
+) -> TypeBase | None {
+    asg = expr.parent;
+    if (
+        not isinstance(asg, uni.Assignment)
+        or asg.value is not expr
+        or asg.aug_op is not None
+    ) {
+        return None;
+    }
+    refs: list[uni.NameAtom] = [];
+    for tgt in asg.target {
+        if isinstance(tgt, uni.Name) and tgt.sym is not None {
+            refs.extend(tgt.sym.uses);
+            refs.extend(tgt.sym.defn);
+        }
+    }
+    if not refs {
+        return None;
+    }
+    elem_types: list[types.TypeBase] = [];
+    seen_refs: set[int] = set();
+    saw_none = False;
+    for ref in refs {
+        if id(ref) in seen_refs {
+            continue;
+        }
+        seen_refs.add(id(ref));
+        contrib = self._list_mutation_elem_contrib(ref);
+        if contrib is None {
+            continue;
+        }
+        widened = self._widen_literal_for_declaration(contrib);
+        if (
+            isinstance(widened, types.ClassType)
+            and widened.is_builtin(["NoneType", "None"])
+        ) {
+            saw_none = True;
+            continue;
+        }
+        if not (
+            isinstance(widened, types.ClassType)
+            and widened.is_builtin(["int", "float", "str", "bool"])
+        ) {
+            return None;
+        }
+        if not self._type_in_list(widened, elem_types) {
+            elem_types.append(widened);
+        }
+    }
+    if not elem_types {
+        return None;
+    }
+    if len(elem_types) == 1 and not saw_none {
+        return elem_types[0];
+    }
+    if self.prefetch and self.prefetch.any_class {
+        return self._convert_to_instance(self.prefetch.any_class);
+    }
+    return None;
+}
+
+impl TypeEvaluator._list_mutation_elem_contrib(ref: uni.NameAtom) -> TypeBase | None {
+    tr = ref.parent;
+    if isinstance(tr, uni.AtomTrailer) and tr.target is ref {
+        if (
+            tr.is_attr
+            and isinstance(tr.right, uni.Name)
+            and isinstance(tr.parent, uni.FuncCall)
+            and tr.parent.target is tr
+        ) {
+            args = [
+                p
+                for p in (tr.parent.params or [])
+                if not isinstance(p, uni.KWPair)
+            ];
+            if tr.right.value in ("append", "insert") {
+                arg_idx = 0 if tr.right.value == "append" else 1;
+                if len(args) > arg_idx {
+                    return self.get_type_of_expression(args[arg_idx]);
+                }
+                return None;
+            }
+            if tr.right.value == "extend" and args {
+                if not (self.prefetch and self.prefetch.list_class) {
+                    return None;
+                }
+                return self._get_expected_element_type(
+                    self.get_type_of_expression(args[0]), self.prefetch.list_class
+                );
+            }
+            return None;
+        }
+        if (
+            not tr.is_attr
+            and isinstance(tr.right, uni.IndexSlice)
+            and not tr.right.is_range
+            and isinstance(tr.parent, uni.Assignment)
+            and tr.parent.aug_op is None
+            and tr.parent.value is not None
+            and any(t is tr for t in tr.parent.target)
+        ) {
+            return self.get_type_of_expression(tr.parent.value);
+        }
+        return None;
+    }
+    if (
+        isinstance(tr, uni.Assignment)
+        and tr.aug_op is not None
+        and tr.aug_op.name == Tok.ADD_EQ
+        and tr.value is not None
+        and any(t is ref for t in tr.target)
+    ) {
+        if not (self.prefetch and self.prefetch.list_class) {
+            return None;
+        }
+        return self._get_expected_element_type(
+            self.get_type_of_expression(tr.value), self.prefetch.list_class
+        );
+    }
+    return None;
+}
+
 impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None {
     impl_ := nd.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
@@ -1512,6 +1636,18 @@ impl TypeEvaluator._infer_lambda_block_return_type(
     none_type = self._convert_to_instance(self.get_none_type());
     return_types: list[TypeBase] = [];
     always_returns = self._collect_return_types(body, return_types);
+
+    non_semi = [
+        s
+        for s in body
+        if not isinstance(s, uni.Semi)
+    ];
+    if (len(non_semi) == 1 and isinstance(non_semi[0], uni.ExprStmt)) {
+        return_types.append(
+            self._convert_to_instance(self.get_type_of_expression(non_semi[0].expr))
+        );
+        always_returns = True;
+    }
 
     if not return_types {
         return none_type;

@@ -12,7 +12,7 @@ impl _SetupProgress._get_jaclang_root -> str {
 impl _SetupProgress._atexit_handler -> None {
     if (self._banner_shown and (self._compile_count > 0)) {
         sys.stderr.write(
-            f"Jac setup complete! ({self._compile_count} modules compiled and cached)\n"
+            f"Jac setup complete ({self._compile_count} modules compiled and cached)\n"
         );
         sys.stderr.flush();
     }
@@ -891,10 +891,14 @@ impl JacCompiler.compile(
     }
     if (not had_parse_errors and not had_blocking_errors and not options.no_cgen) {
         actual_program._compile_options = options;
+
+        import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+        needs_native = is_native_mod
+        or ModuleCodegenPass.has_native_context_stmts(mod_targ);
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
-            passes=get_py_code_gen(),
+            passes=get_py_code_gen(native=needs_native),
             cancel_token=options.cancel_token
         );
         if is_na_file {
