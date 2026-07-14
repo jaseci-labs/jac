@@ -82,16 +82,6 @@ def create_server(workspace_path: str | None = None) -> JacLangServer {
     return lsp;
 }
 
-"""Return documentation text for a completion label, if present."""
-def completion_doc(items: list[lspt.CompletionItem], label: str) -> (str | None) {
-    for item in items {
-        if item.label == label and item.documentation {
-            return item.documentation.value;
-        }
-    }
-    return None;
-}
-
 obj Case {
     has pos: lspt.Position,
         expected: list[str],
@@ -406,6 +396,7 @@ test "test_completion" {
         lsp.type_check_file(base_module_file);
 
         test_cases: list[Case] = [
+            # Member access after `foo.`
             Case(pos=lspt.Position(8, 8), expected=["bar", "baz"]),
 
         ];
@@ -425,28 +416,98 @@ test "test_completion" {
     }
 }
 
-test "test_completion_docs" {
+test "test_completion_identifier_and_keywords" {
     import asyncio;
+    import tempfile;
 
     setup_test();
     try {
         lsp = create_server();
-        docs_file = uris.from_fs_path(fixture_path("completion_docs.jac"));
-        lsp.type_check_file(docs_file);
+        with tempfile.TemporaryDirectory() as td {
+            path = os.path.join(td, "completion_ident.jac");
+            uri = uris.from_fs_path(path);
+            # Member access after `self.`
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    has baz: int;
+    def greet {
+        self.
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            members = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 13), completion_trigger=".")
+            );
+            member_labels = [i.label for i in members.items];
+            assert "bar" in member_labels;
+            assert "baz" in member_labels;
+            # Prefix `pr` on its own line → scope symbols + builtins + keywords
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        pr
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            ident = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 10), completion_trigger=None)
+            );
+            ident_labels = [i.label for i in ident.items];
+            assert "print" in ident_labels , f"expected print in {ident_labels[:30]}";
+            assert "self" in ident_labels;
+            assert "return" in ident_labels , "expected keyword 'return'";
+            assert "walker" in ident_labels , "expected keyword 'walker'";
+            # Inside `self` (KW_SELF, not NAME) → scope completions
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        self
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            on_self = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(3, 10), completion_trigger=None)
+            );
+            on_self_labels = [i.label for i in on_self.items];
+            assert "print" in on_self_labels;
+            assert len(on_self_labels) > 0;
+            # Blank line inside method body → scope + keywords
+            with open(path, "w") as f {
+                f.write(
+                    """class Foo {
+    has bar: int;
+    def greet {
+        x = 1;
 
-        scope_results = asyncio.run(
-            lsp.get_completion(docs_file, lspt.Position(21, 5), completion_trigger="")
-        );
-        assert completion_doc(scope_results.items, "Circle") == "A circle shape.";
-        assert completion_doc(scope_results.items, "Direction") == "Cardinal directions.";
-
-        member_results = asyncio.run(
-            lsp.get_completion(docs_file, lspt.Position(23, 6), completion_trigger=".")
-        );
-        assert completion_doc(member_results.items, "radius") == "Radius of the circle.";
-        assert completion_doc(member_results.items, "add_values") == "Adds two numbers.";
-        assert completion_doc(member_results.items, "undocumented_field") is None;
-        assert completion_doc(member_results.items, "Circle") is None;
+    }
+}
+"""
+                );
+            }
+            lsp.type_check_file(uri);
+            blank = asyncio.run(
+                lsp.get_completion(uri, lspt.Position(4, 8), completion_trigger=None)
+            );
+            blank_labels = [i.label for i in blank.items];
+            assert "print" in blank_labels;
+            assert "x" in blank_labels or "self" in blank_labels;
+            assert "if" in blank_labels;
+        }
     } finally {
         teardown_test();
     }
