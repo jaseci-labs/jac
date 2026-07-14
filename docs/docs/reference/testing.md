@@ -149,7 +149,19 @@ jac test -d tests/
 
 # Run specific test
 jac test main.jac -t my_feature
+
+# Run with no arguments: discovery is scoped to [test] directory
+# from jac.toml (falls back to the project root when unset)
+jac test
 ```
+
+!!! note "No-argument discovery"
+    With no file and no `-d`, `jac test` reads `directory` from the `[test]`
+    section of `jac.toml` and collects tests only from that directory (like
+    pytest's `testpaths`). Scoping to `tests/` keeps collection from importing
+    application modules whose top-level `with entry` block would otherwise run
+    as a side effect of being imported. When `[test] directory` is unset, the
+    whole project (from the root) is walked, as before.
 
 ### CLI Options
 
@@ -183,6 +195,20 @@ jac test main.jac -t calculator_add -v
 
 !!! tip "File naming"
     Avoid naming `.jac` files with a `test_` prefix (e.g., `test_utils.jac`), as this can conflict with Python's module import system. Use descriptive names like `utils_tests.jac` or `my_app.jac` instead.
+
+---
+
+## Tests and Codespaces
+
+A `test` block runs in the codespace its surrounding context compiles to, so tests exercise the same semantics as the code beside them:
+
+| Context | Where the test runs |
+|---------|---------------------|
+| `.jac` / `.sv.jac` | Python runtime (unittest) |
+| `.na.jac` or inline `na { }` block | Native code via the LLVM JIT |
+| `test_*.cl.jac` / `*.test.cl.jac` | JavaScript runtime via bun |
+
+All of them report through the same `jac test` pass/fail pipeline, and the CLI options above apply uniformly. A test in a `.na.jac` module compiles to native code and runs with native semantics -- a failing `assert` reports the failing source location (`file:line`). See [Native Compilation -- Testing](language/native-pathway.md#testing) for native-specific details and limitations.
 
 ---
 
@@ -273,13 +299,13 @@ walker Incrementer {
 test "walker increments" {
     counter = root ++> Counter();
     root spawn Incrementer();
-    assert counter[0].count == 1;
+    assert counter.count == 1;
 }
 
 test "walker custom amount" {
     counter = root ++> Counter();
     root spawn Incrementer(amount=5);
-    assert counter[0].count == 5;
+    assert counter.count == 5;
 }
 ```
 
@@ -398,6 +424,17 @@ jac test -d tests/
 # Run specific file
 jac test tests/models_test.jac
 ```
+
+Tests under `tests/` import the modules they exercise with the **same
+project-root-absolute path** they would use from the root - no `..` dots:
+
+```jac
+# tests/models_test.jac
+import from src.models { User }   # resolves from the project root, any depth
+```
+
+Imports anchor to the project root (the nearest `jac.toml`), so a test file can
+move between directories without rewriting its imports.
 
 ### Tests in Same File
 
@@ -629,7 +666,7 @@ with entry {
         "parse values",
         ["500m", "2", "250"],
         _test_parse,
-        id_fn=lambda p: str -> str { return f"input_{p}"; }
+        id_fn=lambda (p: str) -> str { return f"input_{p}"; }
     );
 }
 ```
@@ -677,7 +714,7 @@ test "all math operations" {
 test "counter increment" {
     counter = root ++> Counter();
     root spawn Incrementer();
-    assert counter[0].count == 1;
+    assert counter.count == 1;
 }
 
 # Each test should be independent
@@ -726,3 +763,4 @@ test "calculation no message" {
 ## Related Resources
 
 - [CLI Reference](cli/index.md)
+- [Native Compilation -- Testing](language/native-pathway.md#testing)

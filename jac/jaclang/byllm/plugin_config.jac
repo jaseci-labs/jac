@@ -1,0 +1,180 @@
+"""Plugin configuration hooks for jac-byllm.
+
+This module implements JacConfig hooks to integrate with core's
+configuration system, registering:
+- Plugin metadata (name, version)
+- Config schema for [byllm] section
+"""
+
+"""Plugin configuration hooks for jac-byllm."""
+class JacByllmPluginConfig {
+    """Return plugin metadata."""
+    static def get_plugin_metadata -> dict[str, any] {
+        return {
+            "name": "byllm",
+            "version": "0.4.8",
+            "description": "byLLM - Easy to use APIs for LLM providers with Jaclang"
+        };
+    }
+
+    """Return the plugin's configuration schema for [byllm]."""
+    static def get_config_schema -> dict[str, any] {
+        return {
+            "section": "byllm",
+            "options": {
+                "model": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Default model configuration",
+                    "nested": {
+                        "default_model": {
+                            "type": "string",
+                            "default": "gpt-4o-mini",
+                            "description": "Default model name (e.g., 'gpt-4o', 'gpt-4o-mini', 'claude-3-sonnet')"
+                        },
+                        "api_key": {
+                            "type": "string",
+                            "default": "",
+                            "description": "API key for the LLM provider (can also use OPENAI_API_KEY, ANTHROPIC_API_KEY env vars)"
+                        },
+                        "base_url": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Custom API endpoint URL (for proxy or self-hosted models)"
+                        },
+                        "proxy": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable proxy mode (uses OpenAI client instead of LiteLLM)"
+                        },
+                        "verbose": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable verbose logging of LLM calls"
+                        }
+                    }
+                },
+                "call_params": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Default call parameters for LLM invocations",
+                    "nested": {
+                        "temperature": {
+                            "type": "float",
+                            "default": 0.7,
+                            "description": "Model creativity/randomness (0.0-2.0, lower is more deterministic)"
+                        },
+                        "max_tokens": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Maximum response tokens (0 means no limit/model default)"
+                        }
+                    }
+                },
+                "litellm": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "LiteLLM-specific configuration",
+                    "nested": {
+                        "local_cost_map": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Use local cost map instead of fetching from remote"
+                        },
+                        "drop_params": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Drop unsupported parameters for different providers"
+                        }
+                    }
+                },
+                "prompt_caching": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Anthropic prompt caching configuration — caches static prompt prefix (system prompt, tools) across ReAct iterations for ~90% input token savings",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Enable Anthropic prompt caching (auto-detected for Claude models, no effect on other providers)"
+                        }
+                    }
+                },
+                "system_prompt": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Override the default system prompt for LLM interactions. Leave empty to use built-in default."
+                },
+                "local": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "In-process local model runtime (llama.cpp via GGUF). Activated when default_model starts with 'local:' or when no API key is configured.",
+                    "nested": {
+                        "default_alias": {
+                            "type": "string",
+                            "default": "gemma-4-e4b",
+                            "description": "Bundled local-model alias to use when default_model is unset and no provider API key is detected"
+                        },
+                        "n_ctx": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Override context window in tokens (0 = use the alias's bundled default)"
+                        },
+                        "n_gpu_layers": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Number of transformer layers to offload to GPU (0 = pure CPU; -1 = all layers; requires a CUDA/Metal-enabled llama-cpp-python build)"
+                        },
+                        "n_threads": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "CPU threads for inference (0 = let llama.cpp decide based on cores)"
+                        },
+                        "verbose": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable llama.cpp verbose logging"
+                        },
+                        "auto_download": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Skip the first-run download prompt and pull weights silently. Equivalent to BYLLM_AUTO_DOWNLOAD=1."
+                        }
+                    }
+                },
+                "compaction": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Auto-compaction of ReAct loop message history when approaching context window limits",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Enable automatic message compaction when approaching the context window limit"
+                        },
+                        "threshold_ratio": {
+                            "type": "float",
+                            "default": 0.80,
+                            "description": "Fraction of the context window at which compaction triggers (e.g. 0.80 = 80%)"
+                        },
+                        "keep_recent_iterations": {
+                            "type": "int",
+                            "default": 3,
+                            "description": "Number of most-recent tool-call rounds to preserve verbatim; older rounds are summarised"
+                        },
+                        "ctx_window": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Global context window override in tokens (0 = auto-detect via LiteLLM). Useful for self-hosted or unknown models."
+                        },
+                        "compaction_model": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Model to use for the summarisation call (empty = use the same model as the active ReAct loop)"
+                        }
+                    }
+                }
+            }
+        };
+    }
+}

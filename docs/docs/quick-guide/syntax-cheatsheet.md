@@ -2,7 +2,7 @@
 
 This page is a **lookup reference**, not a learning guide. For hands-on learning, start with the [AI Day Planner tutorial](../tutorials/first-app/build-ai-day-planner.md) which teaches these concepts progressively.
 
-**Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
+**Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects-classes) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
 
 ```jac
 # ============================================================
@@ -409,13 +409,16 @@ obj Account {
 # Access Modifiers
 # ============================================================
 
-# Access modifiers work on obj, class, node, edge, walker,
-# def, has -- controlling visibility and API exposure
+# Access modifiers work on obj, class, node, edge, walker, def, has.
+# Same tags, three contexts (see reference/language/access-modifiers):
+#   members  -> :pub anywhere / :protect class+subclasses / :priv class
+#   top-level-> :pub exported / :protect same project / :priv this module
+#   endpoints-> only :pub skips auth; everything else requires a token
 
 obj:pub Profile {
-    has:pub name: str;          # Public (default)
-    has:priv ssn: str;          # Private
-    has:protect age: int;       # Protected
+    has:pub name: str;          # member: public
+    has:protect age: int;       # member: this class + subclasses
+    has:priv ssn: str;          # member: this class only
 }
 
 # Public walker becomes REST endpoint with `jac start`
@@ -518,15 +521,17 @@ impl Calculator.multiply(n: int) -> int {
 # ============================================================
 
 with entry {
-    # Simple lambda (untyped params, colon body)
-    add = lambda x, y: x + y;
+    # Simple lambda: params always parenthesized, body always braced.
+    # A body that is exactly one expression statement is the implicit return.
+    add = lambda (x: int, y: int) { x + y; };
     print(add(3, 4));
 
     # Typed lambda with return type
-    mul = lambda (x: int, y: int) -> int : x * y;
+    mul = lambda (x: int, y: int) -> int { x * y; };
     print(mul(3, 4));
 
-    # Multi-statement lambda (brace body)
+    # Multi-statement lambda: needs an explicit return
+    # (without one, the lambda returns None)
     classify = lambda (score: int) -> str {
         if score >= 90 { return "A"; }
         elif score >= 80 { return "B"; }
@@ -535,7 +540,7 @@ with entry {
     print(classify(85));
 
     # No-arg lambda
-    get_42 = lambda : 42;
+    get_42 = lambda { 42; };
 
     # Void lambda (common in JSX event handlers)
     handler = lambda -> None { print("clicked"); };
@@ -1218,7 +1223,7 @@ sem support_agent = "Answer customer questions about our products.";
 # Multimodal AI
 # ============================================================
 
-import from byllm.lib { Image }
+import from jaclang.byllm.lib { Image }
 
 def describe_image(image: Image) -> str by llm;
 
@@ -1232,9 +1237,9 @@ with entry {
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
-#   sv { } / to sv: = server (Python/PyPI)
-#   cl { } / to cl: = client (JavaScript/npm)
-#   na { } / to na: = native (C ABI)
+#   sv { } = server (Python/PyPI)
+#   cl { } = client (JavaScript/npm)
+#   na { } = native (C ABI)
 
 
 # ============================================================
@@ -1269,15 +1274,7 @@ cl {
 # Code after the block is back in the server codespace
 node Secret { has value: str; }
 
-# Section header -- an alternative to a block; sets the codespace for
-# every following element until the next "to X:" header or end of file
-to cl:
-
-import from react { useEffect }
-
-to sv:
-
-# Single-statement form (no header, no braces)
+# Single-statement form (no block, no braces) -- tags exactly one statement
 sv import from .database { connect_db }
 cl import from react { useState }
 
@@ -1356,7 +1353,7 @@ cl {
         # Mount effect (runs once on component mount)
         async can with entry {
             data = await fetch("/api/data").then(
-                lambda r: any -> any { return r.json(); }
+                lambda (r: any) -> any { return r.json(); }
             );
             loading = False;
         }

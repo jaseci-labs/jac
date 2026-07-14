@@ -1,5 +1,3 @@
-"""Implementation of WHEEL file and entry_points.txt generators."""
-
 import from jaclang.project.config { JacConfig }
 import from jaclang.publish.metadata { normalize_package_name }
 
@@ -40,7 +38,7 @@ impl generate_entry_points(config: JacConfig) -> str {
         if not refs {
             continue;
         }
-        # 'scripts' → 'console_scripts' (pip convention for CLI entry points)
+
         section_name = "console_scripts" if group == "scripts" else group;
         entry_lines: list[str] = [f"[{section_name}]"];
         for (ep_name, ref) in sorted(refs.items()) {
@@ -60,7 +58,7 @@ impl wheel_filename(
 ) -> str {
     if not config.project.name {
         raise ValueError(
-            "Cannot build wheel filename: [project] name is missing in jac.toml"
+            "Cannot build wheel filename: [project] name is missing in jac.toml."
         );
     }
     return f"{_pkg_norm_name(config)}-{config.project.version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
@@ -69,8 +67,17 @@ impl wheel_filename(
 impl dist_info_dirname(config: JacConfig) -> str {
     if not config.project.name {
         raise ValueError(
-            "Cannot build dist-info name: [project] name is missing in jac.toml"
+            "Cannot build dist-info name: [project] name is missing in jac.toml."
         );
     }
     return f"{_pkg_norm_name(config)}-{config.project.version}.dist-info";
+}
+
+impl sdist_filename(config: JacConfig) -> str {
+    if not config.project.name {
+        raise ValueError(
+            "Cannot build sdist filename: [project] name is missing in jac.toml."
+        );
+    }
+    return f"{_pkg_norm_name(config)}-{config.project.version}.tar.gz";
 }

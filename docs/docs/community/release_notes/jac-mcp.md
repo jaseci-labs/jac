@@ -1,6 +1,24 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.17 (Latest Release)
+## jac-mcp 0.1.24 (Latest Release)
+
+### New Features
+
+- **`run_snippet` executes in a child process**: Replaced the in-process thread runner with a dedicated subprocess worker (`_run_worker.py`). Global Jac runtime state (`mod.hub`, loaded modules, native caches, `sys.modules`) is now reclaimed by process exit instead of accumulating in the long-lived MCP server. Timeouts are enforced via `SIGKILL` on the child's process group, the only reliable way to stop a runaway snippet (CPython cannot interrupt an in-process thread).
+
+### Bug Fixes
+
+- **Fix: `run_snippet` worker no longer drops results on `close()` failure**: The worker now builds its result dict before calling `mach.close()` and makes `close()` best-effort via `_close_mach()`. Previously a `close()` failure (e.g. a broken plugin context in the host env) re-raised into the outer try, escaping before the result file was written, so the parent reported a "Worker produced no result" crash and discarded the snippet's real stdout/stderr/exit_code. The parent also now branches process teardown on `os.name` -- POSIX keeps `start_new_session` + `killpg(SIGKILL)`, Windows uses `CREATE_NEW_PROCESS_GROUP` + `taskkill /T /F` to tear down the child and its descendants.
+- **Fix: `run_snippet` no longer crashes on a corrupt result file or leaks worker pipes**: The parent's `json.load` of the worker's result file is now guarded -- a result file that exists but is truncated or malformed (e.g. the worker was `SIGKILL`ed mid-write) is treated as no result and falls through to the diagnostic path instead of raising an uncaught `JSONDecodeError` into the MCP server. The worker `Popen` is also wrapped in a `with` block so the child's stdout/stderr pipes are closed on every exit path, including the early timeout return that previously leaked two file descriptors per hung snippet.
+- **Fix: `find_repo_root` no longer trusts the bundled jaclang copy**: under the single `jac` binary, `jaclang` (and its `jac.spec`) live in the extracted runtime payload rather than the checkout, so resolving the docs root from `jaclang.__file__` returned a bogus temp directory and the doc-mapping test reported every doc file as missing. It now walks up from the working directory (and the `jac_mcp` package) for the monorepo markers `docs/docs` + `jac/jaclang`, returning `None` in standalone installs so callers fall back to bundled content.
+
+## jac-mcp 0.1.23
+
+### Bug Fixes
+
+- **Fix: MCP `create_project` default template**: The MCP compiler bridge's `create_project` (and `list_templates` test) defaulted to the `default` template, which the kind-aware `jac create` work renamed to `cli`. The bridge now defaults to the `cli` core template so MCP-driven project creation works again.
+
+## jac-mcp 0.1.17
 
 ### Refactors
 

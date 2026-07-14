@@ -17,13 +17,12 @@ Shortcoming index:
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     CHECKER_FIXTURES = os.path.join(
+glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      );
 
@@ -162,4 +161,14 @@ test "shortcoming_34_return_none_implicit" {
     assert len(program.errors_had) >= 2 , "#34: Missing return not detected. "
     f"Expected at least 2 type errors but got {len(program.errors_had)}. "
     "Functions declared -> int should error if they can return None.";
+}
+
+# A `while True` with no break can only exit via return/raise, so a
+# function ending in one must NOT be flagged as implicitly returning None.
+test "shortcoming_34_while_true_no_false_positive" {
+    program = compile_and_check("checker_while_true_returns.jac");
+    _msgs = [str(e) for e in program.errors_had];
+    assert not any("implicitly return" in m for m in _msgs) , (
+        f"E1004 false positive on `while True` with no break: {_msgs}"
+    );
 }

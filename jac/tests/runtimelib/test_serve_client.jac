@@ -116,6 +116,55 @@ def make_crossboundary_client(tmp_path: str) -> JacTestClient {
     );
 }
 
+"""Create a client for the cl->sv *dual-role* app (#6507).
+
+`dualrole_guestbook.jac` is reached only through the client's `sv import` (the
+cl->sv load path), AND it is itself a server->server consumer: it does its own
+relative `sv import from .dualrole_analytics`. Before the fix that outgoing
+relative import crashed the guestbook module at load time, silently dropping its
+own `sign_guestbook` / `get_guestbook` endpoints. Copied into an isolated dir so
+the relative imports resolve.
+"""
+def make_dualrole_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    module_name = f"dualrole_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "dualrole_app.jac", dest / f"{module_name}.jac");
+    for name in [
+        "dualrole_frontend.cl.jac",
+        "dualrole_guestbook.jac",
+        "dualrole_analytics.jac"
+    ] {
+        shutil.copy(fixtures_src / name, dest / name);
+    }
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
+"""Create a client whose cl->sv endpoint provider crashes at import (#6507).
+
+The server module behind `do_thing` raises while executing its module body, so
+the serve-side collector cannot resolve the symbol. It must log the failure
+rather than silently drop the endpoint. Copied into an isolated dir.
+"""
+def make_failload_client(tmp_path: str) -> JacTestClient {
+    fixtures_src = Path(fixture_abs_path("")).resolve();
+    unique_id = uuid.uuid4().hex[:8];
+    module_name = f"failload_app_{unique_id}";
+    dest = Path(tmp_path) / module_name;
+    dest.mkdir(parents=True, exist_ok=True);
+    shutil.copy(fixtures_src / "failload_app.jac", dest / f"{module_name}.jac");
+    for name in ["failload_frontend.cl.jac", "failload_server.jac"] {
+        shutil.copy(fixtures_src / name, dest / name);
+    }
+    return JacTestClient.from_file(
+        str(dest / f"{module_name}.jac"), base_path=str(dest), module_name=module_name
+    );
+}
+
 """Create a cross-boundary client whose app lives UNDER the jaclang package root.
 
 Same fixtures as `make_crossboundary_client`, but the entry/server/client files
@@ -622,6 +671,22 @@ test "serve root endpoint" {
         assert "GET /walkers" in data["endpoints"];
         client.close();
     }
+}
+
+test "serve root app inference follows intent not incidence" {
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    # Explicit config always wins, regardless of what the manifest exports.
+    cfg_intro = ModuleIntrospector("serve_api", FIXTURES);
+    assert cfg_intro.resolve_root_app("dashboard") == "dashboard";
+    # serve_api exports a single, non-conventionally-named cl page
+    # (`client_page`), reachable at /cl/client_page. That is an incidental page,
+    # not a declared entry point, so it must NOT be promoted to / -- the root
+    # path stays the JSON API index.
+    api_intro = ModuleIntrospector("serve_api", FIXTURES);
+    assert api_intro.resolve_root_app() == "";
+    # A conventionally-named entry page (`app`) signals intent and IS inferred.
+    app_intro = ModuleIntrospector("client_fullstack_app", FIXTURES);
+    assert app_intro.resolve_root_app() == "app";
 }
 
 test "serve update username" {
@@ -1219,6 +1284,55 @@ test "issue 6221: uncalled def:pub endpoint is not auto-exposed" {
         response = client.post("/function/cross_orphan", json={});
         assert not response.ok , "uncalled cross_orphan should not be registered";
         client.close();
+    }
+}
+
+test "issue 6507: cl->sv endpoint module keeps its endpoints when it is also an sv consumer" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_dualrole_client(tmpdir);
+        # `dualrole_guestbook` is reached only through the client's `sv import`
+        # and ALSO does its own `sv import from .dualrole_analytics`. That single
+        # outgoing relative import used to crash the module at load time, so its
+        # walkers vanished (POST -> 405). Both must register and run.
+        listing = client.get("/walkers");
+        assert listing.ok , f"/walkers should respond: {listing.data}";
+        names = listing.data["walkers"];
+        assert "get_guestbook" in names , f"get_guestbook missing from {names}";
+        assert "sign_guestbook" in names , f"sign_guestbook missing from {names}";
+        signed = client.post("/walker/sign_guestbook", json={"name": "ada"});
+        assert signed.ok , f"sign_guestbook should be callable: {signed.data}";
+        got = client.post("/walker/get_guestbook", json={});
+        assert got.ok , f"get_guestbook should be callable: {got.data}";
+        client.close();
+    }
+}
+
+test "issue 6507: a cross-boundary endpoint module that fails to import is logged, not silently dropped" {
+    with TemporaryDirectory() as tmpdir {
+        # Capture before building the client: the failing import happens during
+        # endpoint collection at load time (inside from_file).
+        logger = logging.getLogger("jaclang.serve");
+        cap = capture_log_start(logger, logging.WARNING);
+        buf = cap[0];
+        handler = cap[1];
+        old_level = cap[2];
+        try {
+            client = make_failload_client(tmpdir);
+            # The provider module raises at import, so do_thing cannot resolve;
+            # it must not be served...
+            resp = client.post("/function/do_thing", json={});
+            assert not resp.ok , "endpoint from a crashing module must not be callable";
+            # ...and the failure must be surfaced on the log (the #6507 trap was
+            # that it vanished with no error at all).
+            log_text = buf.getvalue();
+            assert "failload_server" in log_text , (
+                f"module-load failure should be logged, got: {log_text!r}"
+            );
+            assert "RuntimeError" in log_text;
+            client.close();
+        } finally {
+            capture_log_stop(logger, handler, old_level);
+        }
     }
 }
 
@@ -2016,5 +2130,143 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
                 f"expected {expected}"
             );
         }
+    }
+}
+
+"""A request whose setup raises outside the walker-execution envelope (here:
+the user's persisted root anchor is gone from the anchor store, e.g. stale
+state written by an older runtime) must surface as a 500 JSON error response
+- never as a silently dropped connection with no HTTP response at all."""
+test "orphaned user root returns 500 json instead of dropping the connection" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        reg = client.register_user("orphan_user", "pw12345");
+        assert reg.ok , f"register should succeed: {reg.text}";
+        # Point the users row at a root anchor id that does not exist in the
+        # anchor store, simulating a store that was reset or migrated out from
+        # under the users db.
+        um = client.user_manager;
+        um._ensure_connection();
+        um._conn.execute(
+            "UPDATE users SET root_id = ? WHERE username = ?",
+            ("deadbeefdeadbeefdeadbeefdeadbeef", "orphan_user")
+        );
+        um._conn.commit();
+        resp = client.post("/walker/CreateTask", json={"title": "x"});
+        assert resp.status_code == 500 , f"expected a 500 error envelope, got {resp.status_code}: {resp.text}";
+        body = resp.json();
+        assert "error" in body , f"500 body should carry an error: {resp.text}";
+        # Registered users are NOT healed: silently minting a new root would
+        # mask real data loss. The error names the problem instead.
+        assert "does not exist in the anchor store" in str(body.get("error")) , f"error should explain the missing root anchor: {resp.text}";
+        client.close();
+    }
+}
+
+"""The guest account is anonymous: when its persisted root anchor is gone
+from the anchor store (stale state from an older runtime), the server heals
+it in place by minting a fresh guest root instead of failing every
+unauthenticated request."""
+test "missing guest root anchor is healed with a fresh root" {
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            fixture_abs_path("serve_shared_root.jac"), base_path=tmpdir
+        );
+        # Anonymous call creates the __guest__ user with a valid root.
+        first = client.post("/walker/whereami", json={});
+        assert first.ok , f"anonymous walker call should work: {first.text}";
+        # Point the guest row at a root anchor that does not exist.
+        um = client.user_manager;
+        um._ensure_connection();
+        um._conn.execute(
+            "UPDATE users SET root_id = ? WHERE username = ?",
+            ("feedfacefeedfacefeedfacefeedface", "__guest__")
+        );
+        um._conn.commit();
+        healed = client.post("/walker/whereami", json={});
+        assert healed.ok , f"guest request should heal, got {healed.status_code}: {healed.text}";
+        row = um._conn.execute(
+            "SELECT root_id FROM users WHERE username = ?", ("__guest__", )
+        ).fetchone();
+        assert row[0] != "feedfacefeedfacefeedfacefeedface" , "guest root_id should have been replaced by the heal";
+        # And the healed root keeps working on subsequent requests.
+        again = client.post("/walker/whereami", json={});
+        assert again.ok , f"healed guest root should persist: {again.text}";
+        client.close();
+    }
+}
+
+"""/healthz must answer on the stdlib server: the sv sibling orchestration
+polls it to decide a spawned service is up, and on k8s it doubles as the
+liveness/readiness probe surface."""
+test "stdlib server answers health endpoints" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        for path in ["/healthz", "/healthz/live", "/healthz/ready"] {
+            resp = client.get(path);
+            assert resp.status_code == 200 , f"{path} should be 200: {resp.text}";
+            assert resp.json().get("status") == "ok" , f"{path} body: {resp.text}";
+        }
+        client.close();
+    }
+}
+
+"""A missing bun is an environmental precondition, cheap to re-check - the
+bundle layer must retry it on every request (so fetching bun fixes serving
+without a restart), while genuine build failures stay memoized."""
+test "ensure_bundle retries a missing-bun failure but memoizes build errors" {
+    import from unittest.mock { MagicMock }
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+    import from jaclang.runtimelib.client_bundle { ClientBundleError, MissingBunError }
+    intro = ModuleIntrospector("serve_api", FIXTURES);
+    intro._module = object();
+    bun_missing = MagicMock();
+    bun_missing.build.side_effect = MissingBunError("bun is not available");
+    intro._bundle_builder = bun_missing;
+    for _ in range(2) {
+        try {
+            intro.ensure_bundle();
+            assert False , "ensure_bundle should raise while bun is missing";
+        } except ClientBundleError { }
+    }
+    assert bun_missing.build.call_count == 2 , "missing bun must be re-checked on every call, not memoized";
+
+    intro2 = ModuleIntrospector("serve_api", FIXTURES);
+    intro2._module = object();
+    broken = MagicMock();
+    broken.build.side_effect = RuntimeError("vite exploded");
+    intro2._bundle_builder = broken;
+    for _ in range(2) {
+        try {
+            intro2.ensure_bundle();
+            assert False , "ensure_bundle should raise for a broken build";
+        } except ClientBundleError { }
+    }
+    assert broken.build.call_count == 1 , "a real build failure stays memoized until reload";
+}
+
+"""/graph, /graph/data and /docs must be served by the stdlib server too -
+previously they existed only on the scale (FastAPI) server, so apps embedding
+them 404'd whenever serving fell back to the zero-dependency stack."""
+test "stdlib server serves graph visualizer and docs" {
+    with TemporaryDirectory() as tmpdir {
+        client = JacTestClient.from_file(
+            fixture_abs_path("serve_shared_root.jac"), base_path=tmpdir
+        );
+        page = client.get("/graph");
+        assert page.status_code == 200 , f"/graph: {page.status_code}";
+        assert "<html" in page.text.lower() , "/graph should serve the visualizer html";
+        seeded = client.post("/walker/leave_note", json={"text": "hi"});
+        assert seeded.ok , f"seed walker failed: {seeded.text}";
+        data = client.get("/graph/data");
+        assert data.status_code == 200 , f"/graph/data: {data.text}";
+        payload = data.json();
+        assert "nodes" in payload and "edges" in payload , f"payload: {data.text}";
+        assert len(payload["nodes"]) >= 1 , "graph data should include the root node";
+        docs = client.get("/docs");
+        assert docs.status_code == 200 , f"/docs: {docs.status_code}";
+        assert "/walker/leave_note" in docs.text , "docs page should list the module's walkers";
+        assert "/user/login" in docs.text , "docs page should list auth endpoints";
+        client.close();
     }
 }

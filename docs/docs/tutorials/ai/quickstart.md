@@ -9,12 +9,12 @@ In this tutorial, you'll set up byLLM, write your first AI-powered function, exp
 > **Prerequisites**
 >
 > - Completed: [Installation](../../quick-guide/install.md)
-> - Jac installed with `pip install jaseci`
+> - Jac installed via the [one-line installer](../../quick-guide/install.md) (`curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash`)
 > - **Either** an API key from OpenAI/Anthropic/Google, **or** Ollama installed for local inference (recommended), **or** ~5 GB of disk for the bundled in-process `local:*` runtime
 > - Time: ~20 minutes
 
 !!! tip "No API key? Run a model locally."
-    byLLM has two local-inference paths. **Ollama** (recommended) is a separate daemon with automatic GPU detection -- `ollama pull gemma3:4b` then set `default_model = "ollama/gemma3:4b"` in `jac.toml` and you're done. **Built-in `local:*`** runs entirely in-process via `llama.cpp` -- single `pip install 'byllm[local]'`, no daemon. Use Ollama unless you specifically need the no-daemon property. See [Built-in Local Models](../../reference/plugins/byllm.md#built-in-local-models) for the full discussion.
+    byLLM has two local-inference paths. **Ollama** (recommended) is a separate daemon with automatic GPU detection -- `ollama pull gemma3:4b` then set `default_model = "ollama/gemma3:4b"` in `jac.toml` and you're done. **Built-in `local:*`** runs entirely in-process via `llama.cpp` -- single `jac install 'byllm[local]'`, no daemon. Use Ollama unless you specifically need the no-daemon property. See [Built-in Local Models](../../reference/plugins/byllm.md#built-in-local-models) for the full discussion.
 
 ---
 
@@ -25,7 +25,7 @@ In this tutorial, you'll set up byLLM, write your first AI-powered function, exp
 If you haven't already:
 
 ```bash
-pip install byllm
+jac install byllm
 ```
 
 ### 2. Pick a Backend
@@ -51,7 +51,7 @@ pip install byllm
 
     ```toml
     # jac.toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "ollama/gemma3:4b"
     ```
 
@@ -61,19 +61,19 @@ pip install byllm
     For users who specifically don't want a separate daemon, byLLM ships an in-process runtime as an opt-in extra:
 
     ```bash
-    pip install 'byllm[local]'
+    jac install 'byllm[local]'
     ```
 
     ```toml
     # jac.toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "local:gemma-4-e4b"
     ```
 
     The first `by llm()` call will prompt to download the model (~5 GB) to `~/.cache/jac/models/`. Set `BYLLM_AUTO_DOWNLOAD=1` to skip the prompt, or pre-fetch with `jac model pull gemma-4-e4b`. To skip the source build of `llama-cpp-python`, install with the prebuilt wheel index:
 
     ```bash
-    pip install 'byllm[local]' \
+    jac install 'byllm[local]' \
       --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
     ```
 
@@ -164,7 +164,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "OpenAI"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "gpt-4o-mini"
     ```
     ```bash
@@ -173,7 +173,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "Anthropic"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "claude-sonnet-4-6"
     ```
     ```bash
@@ -182,7 +182,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "Google"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "gemini/gemini-2.0-flash"
     ```
     ```bash
@@ -191,14 +191,14 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 
 === "Ollama (Local)"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "ollama/llama3:70b"
     ```
     No API key needed - runs locally. See [Ollama](https://ollama.ai/) for setup.
 
 === "HuggingFace"
     ```toml
-    [plugins.byllm.model]
+    [byllm.model]
     default_model = "huggingface/meta-llama/Llama-3.3-70B-Instruct"
     ```
     ```bash
@@ -208,7 +208,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) under the hood, giv
 You can also override the model per-file when needed:
 
 ```jac
-import from byllm.lib { Model }
+import from jaclang.byllm.lib { Model }
 glob llm = Model(model_name="gpt-4o");  # overrides the builtin for this file
 ```
 
@@ -304,13 +304,13 @@ with entry {
 Control model, parameters, and system prompt in `jac.toml`:
 
 ```toml
-[plugins.byllm.model]
+[byllm.model]
 default_model = "gpt-4o-mini"       # any LiteLLM-supported model
 
-[plugins.byllm.call_params]
+[byllm.call_params]
 temperature = 0.7
 
-[plugins.byllm]
+[byllm]
 system_prompt = "You are a helpful assistant."
 ```
 
@@ -342,7 +342,7 @@ with entry {
 Use MockLLM for deterministic tests:
 
 ```jac
-import from byllm.lib { MockLLM }
+import from jaclang.byllm.lib { MockLLM }
 
 glob llm = MockLLM(
     model_name="mockllm",
@@ -368,7 +368,7 @@ test "translate" {
 
 | Concept | Syntax |
 |---------|--------|
-| Configure LLM | `jac.toml` `[plugins.byllm.model]` or `glob llm = Model(...)` |
+| Configure LLM | `jac.toml` `[byllm.model]` or `glob llm = Model(...)` |
 | AI function | `def func() -> Type by llm()` |
 | Semantic context | `sem func = "..."` |
 | Type safety | Return type annotation |

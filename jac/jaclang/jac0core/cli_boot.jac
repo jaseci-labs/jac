@@ -76,8 +76,50 @@ def _handle_purge {
     sys.exit(0);
 }
 
+"""Run a bundled app if this binary was built with `jac build --as binary`.
+
+A `jac build --as binary` artifact carries the app's `.jab` appended after the
+runtime payload; the launcher exports its byte range as JAC_APP_OVERLAY_OFF/_LEN.
+Here we slice that `.jab` out of the running binary and mount it through the SAME
+path as `jac run app.jab` (materialize + register + kind-aware run) -- so a
+bundled binary and a loose `.jab` boot identically, entry read from the sealed
+manifest. Returns the app's exit code, or None when this is not an app binary
+(the caller then continues to the normal CLI)."""
+def _run_bundled_app -> (int | None) {
+    off = os.environ.get("JAC_APP_OVERLAY_OFF");
+    length = os.environ.get("JAC_APP_OVERLAY_LEN");
+    if not off or not length {
+        return None;
+    }
+    import from jaclang.runtimelib.jab { materialize_jab_bytes }
+    import from jaclang.cli.commands.execution { run_jab_image }
+    # The launcher sets these only for THIS binary and clears them for a plain
+    # jac, so reaching here means a real app binary; a failed slice/extract is a
+    # genuinely corrupt image -> clean error, never an uncaught traceback.
+    try {
+        with open(sys.executable, "rb") as f {
+            f.seek(int(off));
+            data = f.read(int(length));
+        }
+        img_root = materialize_jab_bytes(data);
+    } except Exception as e {
+        print(
+            f"jac: this binary's embedded app image is unreadable ({e})",
+            file=sys.stderr
+        );
+        return 1;
+    }
+    return run_jab_image(img_root, None, sys.argv[1:], False, "<app binary>");
+}
+
 """Start the Jac CLI."""
 def start_cli -> None {
+    # A bundled-app binary runs its app instead of the jac CLI.
+    app_rc = _run_bundled_app();
+    if app_rc is not None {
+        sys.exit(app_rc);
+    }
+
     # Check if first argument is 'purge'
     if len(sys.argv) >= 2 and sys.argv[1] == "purge" {
         _handle_purge();

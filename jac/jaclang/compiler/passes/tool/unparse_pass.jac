@@ -1,19 +1,12 @@
-"""
-UnparsePass for Jac AST.
-
-Serializes AST nodes to source code strings stored in node.gen.jac.
-Replaces the per-node normalize/unparse methods with a centralized pass.
-"""
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
-import from jaclang.jac0core.helpers { pascal_to_snake }
+import from jaclang.jac0core.constant { OwnershipKind, is_mut_kind }
 
-"""Serialize Jac AST nodes to source code strings."""
 obj UnparsePass(UniPass) {
     def _comma_sep(nodes: list) -> str;
     def exit_node(nd: uni.UniNode) -> None;
-    # Token types
+    def default_exit(nd: uni.UniNode) -> None;
     def exit_token(nd: uni.Token) -> None;
     def exit_name(nd: uni.Name) -> None;
     def exit_string(nd: uni.String) -> None;
@@ -25,24 +18,20 @@ obj UnparsePass(UniPass) {
     def exit_ellipsis(nd: uni.Ellipsis) -> None;
     def exit_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_special_var_ref(nd: uni.SpecialVarRef) -> None;
-    # Module level
     def exit_module(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag) -> None;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;
     def exit_global_vars(nd: uni.GlobalVars) -> None;
     def exit_test(nd: uni.Test) -> None;
-    # Blocks
     def exit_module_code(nd: uni.ModuleCode) -> None;
     def exit_client_block(nd: uni.ClientBlock) -> None;
     def exit_server_block(nd: uni.ServerBlock) -> None;
     def exit_native_block(nd: uni.NativeBlock) -> None;
     def exit_py_inline_code(nd: uni.PyInlineCode) -> None;
-    # Imports
     def exit_import(nd: uni.Import) -> None;
     def exit_module_path(nd: uni.ModulePath) -> None;
     def exit_module_item(nd: uni.ModuleItem) -> None;
-    # Definitions
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_impl_def(nd: uni.ImplDef) -> None;
     def exit_sem_def(nd: uni.SemDef) -> None;
@@ -54,7 +43,7 @@ obj UnparsePass(UniPass) {
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
-    # Control flow
+    def exit_region_stmt(nd: uni.RegionStmt) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
@@ -65,6 +54,7 @@ obj UnparsePass(UniPass) {
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
+    def exit_forever_stmt(nd: uni.ForeverStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_expr_as_item(nd: uni.ExprAsItem) -> None;
     def exit_raise_stmt(nd: uni.RaiseStmt) -> None;
@@ -79,9 +69,7 @@ obj UnparsePass(UniPass) {
     def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_global_stmt(nd: uni.GlobalStmt) -> None;
     def exit_non_local_stmt(nd: uni.NonLocalStmt) -> None;
-    # Assignments
     def exit_assignment(nd: uni.Assignment) -> None;
-    # Expressions
     def exit_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
@@ -115,7 +103,6 @@ obj UnparsePass(UniPass) {
     def exit_connect_op(nd: uni.ConnectOp) -> None;
     def exit_filter_compr(nd: uni.FilterCompr) -> None;
     def exit_assign_compr(nd: uni.AssignCompr) -> None;
-    # JSX
     def exit_jsx_element(nd: uni.JsxElement) -> None;
     def exit_jsx_element_name(nd: uni.JsxElementName) -> None;
     def exit_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> None;
@@ -124,7 +111,6 @@ obj UnparsePass(UniPass) {
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
     def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_comment(nd: uni.JsxComment) -> None;
-    # Match / Switch
     def exit_match_stmt(nd: uni.MatchStmt) -> None;
     def exit_match_case(nd: uni.MatchCase) -> None;
     def exit_switch_stmt(nd: uni.SwitchStmt) -> None;

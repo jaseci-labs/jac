@@ -7,13 +7,12 @@ AST preservation, micro suite round-trip, and regression tests.
 import ast as ast3;
 import os;
 import from difflib { unified_diff }
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.helpers { add_line_numbers }
 import from jaclang.jac0core.program { JacProgram }
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "tool", "fixtures"
      );
 
@@ -100,6 +99,13 @@ test "tagbreak" {
     compare_files(os.path.join(FIXTURES, "tagbreak.jac"));
 }
 
+test "connect op compact fmt" {
+    # Typed connect operators (`+>:E:+>`, `<+:E:<+`, `+>:E:w=5:+>`) format
+    # compactly, matching the traversal edge-op (`->:E:->`) and disconnect
+    # (`del ->:E:->`) forms; no spaces are inserted around the inner colons.
+    compare_files(os.path.join(FIXTURES, "connect_op_fmt.jac"));
+}
+
 test "has fmt" {
     compare_files(os.path.join(FIXTURES, "has_frmt.jac"));
 }
@@ -114,6 +120,18 @@ test "archetype" {
 
 test "lambda whitespace fmt" {
     compare_files(os.path.join(FIXTURES, "lambda_whitespace_fmt.jac"));
+}
+
+test "forever fmt" {
+    compare_files(os.path.join(FIXTURES, "forever_fmt.jac"));
+}
+
+test "forever keyword preserved not rewritten" {
+    path = os.path.join(FIXTURES, "forever_fmt.jac");
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+    assert "forever {" in formatted;
+    assert "while" not in formatted;
 }
 
 test "fstring comment not injected" {
@@ -229,7 +247,7 @@ test "unicode encoding write roundtrip" {
     path = os.path.join(FIXTURES, "unicode_encoding.jac");
 
     result = subprocess.run(
-        ["jac", "format", path, "--lintfix"], capture_output=True, text=True
+        ["jac", "fmt", path, "--lintfix"], capture_output=True, text=True
     );
     assert result.returncode == 0 , f"jac format failed: {result.stderr}";
 
@@ -351,7 +369,7 @@ test "jsx and lambda inline compact forms stay flat" {
         '        <div>\n'
         '            <input\n'
         '                value={text}\n'
-        '                onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}}\n'
+        '                onKeyPress={lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}}\n'
         '                placeholder="Add a todo..."\n'
         '            />\n'
         '            <button onClick={add}>Add</button>\n'
@@ -375,7 +393,7 @@ test "jsx and lambda inline compact forms stay flat" {
     );
 
     # A single-statement `if` inside a lambda body must stay flat.
-    lambda_form = 'lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}';
+    lambda_form = 'lambda (e: KeyboardEvent) { if e.key == "Enter" { add(); }}';
     assert lambda_form in formatted , (
         "lambda-nested `if { stmt; }` was expanded to multiple lines:\n" + str(
             formatted
@@ -566,8 +584,8 @@ test "if statement outside lambda still breaks" {
         '        d();\n'
         '        e();\n'
         '    }\n'
-        '    f = lambda e: int { if e > 0 { x = 1; y = 2; } };\n'
-        '    g = lambda e: int { if e > 0 { x = 1; } else { x = 2; } };\n'
+        '    f = lambda (e: int) { if e > 0 { x = 1; y = 2; } };\n'
+        '    g = lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } };\n'
         '}\n'
     );
     prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
@@ -592,12 +610,14 @@ test "if statement outside lambda still breaks" {
     );
 
     # Multi-statement `if` inside lambda should NOT stay flat.
-    assert "lambda e: int { if e > 0 { x = 1; y = 2; }" not in formatted , (
+    assert "lambda (e: int) { if e > 0 { x = 1; y = 2; }" not in formatted , (
         f"multi-statement lambda `if` must fall back to hard-line layout:\n{formatted}"
     );
 
     # Lambda `if` with else should NOT stay flat.
-    assert ("lambda e: int { if e > 0 { x = 1; } else { x = 2; } }") not in formatted , (
+    assert (
+        "lambda (e: int) { if e > 0 { x = 1; } else { x = 2; } }"
+    ) not in formatted , (
         f"lambda `if`/`else` must fall back to hard-line layout:\n{formatted}"
     );
 }
@@ -844,5 +864,73 @@ test "syntax error preserves original source" {
     result = gen_output if not prog.errors_had else bad_source;
     assert result == bad_source , (
         "Formatter must return original source on syntax error, " f"got: {repr(result)}"
+    );
+}
+
+"""Regression: significant whitespace between JSX text and inline child
+elements must survive formatting. JSX collapses a newline adjacent to a
+tag to nothing, so when the formatter breaks mixed children (text next to
+elements) onto separate lines it must preserve a same-line space as a
+`{" "}` whitespace marker (Prettier's jsxWhitespace) -- and keep short
+mixed JSX flat. Previously the mixed-children path emitted `hard_line()`
+between every child and the printer rstripped the trailing space, so
+`score <b>0</b> fps` silently reformatted to render `score0fps`."""
+test "jsx significant whitespace around inline elements is preserved" {
+    # Short, space-separated mixed JSX (text interleaved with <b> elements)
+    # must stay flat -- the inline spaces are significant and must survive.
+    short_src = (
+        'cl def:pub hud -> JsxElement {\n'
+        '    return <div id="hud">score <b>0</b> · <b>0</b> fps</div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=short_src, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    short_fmt = prog.mod.main.gen.jac or "";
+    flat_form = '<div id="hud">score <b>0</b> · <b>0</b> fps</div>';
+    assert flat_form in short_fmt , (
+        "short space-separated mixed JSX must stay flat with spaces intact:\n" + short_fmt
+    );
+    # Idempotency.
+    prog_i = JacProgram.jac_str_formatter(source_str=short_fmt, file_path="<test>.jac");
+    assert short_fmt == prog_i.mod.main.gen.jac , (
+        "short mixed-JSX formatting is not idempotent:\n" + short_fmt
+    );
+
+    # Long, space-separated mixed JSX must break, but the significant spaces
+    # at text<->element boundaries must be preserved as `{" "}` markers
+    # rather than dropped.
+    long_src = (
+        'cl def:pub hint -> JsxElement {\n'
+        '    return <div id="hint">Click the canvas to capture the mouse · '
+        '<b>WASD</b> move and mouse aim · <b>Space</b> fire · <b>Tab</b> release the '
+        'cursor</div>;\n'
+        '}\n'
+    );
+    prog2 = JacProgram.jac_str_formatter(source_str=long_src, file_path="<test>.jac");
+    assert not prog2.errors_had , f"formatter errors: {prog2.errors_had}";
+    long_fmt = prog2.mod.main.gen.jac or "";
+    # It must have broken across lines (too long to stay flat)...
+    assert "\n" in long_fmt.split("return")[1].split(";")[0] , (
+        "long mixed JSX was expected to break across lines:\n" + long_fmt
+    );
+    # ...and the significant spaces must be preserved as jsxWhitespace markers,
+    # never silently dropped at the line breaks.
+    assert '{" "}' in long_fmt , (
+        "significant whitespace at text<->element boundaries was dropped "
+        "instead of preserved as a `{\" \"}` marker:\n" + long_fmt
+    );
+    # The buggy pattern: a word line immediately followed by an element line
+    # with no whitespace marker between them must NOT occur for these spaced
+    # boundaries. Specifically, no line may end with a bare word `move` and be
+    # followed directly by `<b>Space</b>` losing the space.
+    assert "move ·" in long_fmt
+    or 'move ·{" "}' in long_fmt
+    or "move\n" not in long_fmt , (
+        "space after 'move ·' before next element appears dropped:\n" + long_fmt
+    );
+    # Idempotency.
+    prog2_i = JacProgram.jac_str_formatter(source_str=long_fmt, file_path="<test>.jac");
+    assert long_fmt == prog2_i.mod.main.gen.jac , (
+        "long mixed-JSX formatting is not idempotent:\n" + long_fmt
     );
 }

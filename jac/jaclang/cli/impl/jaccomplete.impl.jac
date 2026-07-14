@@ -1,4 +1,3 @@
-"""Generate a static shell completion script from pre-processed command data."""
 import from typing { cast }
 
 impl static_shellcode(
@@ -15,7 +14,7 @@ impl static_shellcode(
 
 impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
     cmd_names = " ".join(c["name"] for c in commands);
-    # Build per-command value-option cases
+
     value_cases: list = [];
     for c in commands {
         if not c["value_opts"] {
@@ -41,7 +40,7 @@ impl _static_bash(commands: list[dict[str, any]], exe: str) -> str {
     if value_cases {
         value_block = _BASH_VALUE_BLOCK % "\n".join(value_cases);
     }
-    # Build per-command flag/positional cases
+
     cmd_cases: list = [];
     for c in commands {
         cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
@@ -134,7 +133,7 @@ impl _static_zsh(commands: list[dict[str, any]], exe: str) -> str {
 impl _static_fish(commands: list[dict[str, any]], exe: str) -> str {
     lines: list = ["# Fish completions for " + exe];
     lines.append("complete -c %s -f" % exe);
-    # Subcommand completions
+
     for c in commands {
         h = c["help"].replace("'", "\\'");
         lines.append(
@@ -145,7 +144,7 @@ impl _static_fish(commands: list[dict[str, any]], exe: str) -> str {
             )
         );
     }
-    # Per-command flags
+
     for c in commands {
         cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
         cast_Flags = cast(list[tuple[str, str, str]], c["flags"]);

@@ -1,21 +1,12 @@
-"""Guide command: browse, read, and export the curated Jac reference guides.
-
-The guides ("Agent Skills") ship with the compiler and are the authoritative
-spec for writing correct, idiomatic Jac. Both humans and AI coding agents can
-self-serve them straight from the CLI -- no separate install required. For
-agents that auto-load Agent Skills, `jac guide --export` writes the guides out
-as a Claude Code skills directory.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Show curated Jac reference guides bundled with the compiler."""
 @registry.command(
     name="guide",
     help="Show curated Jac reference guides",
+    tier="learn",
     args=[
         Arg.create(
             "topic",

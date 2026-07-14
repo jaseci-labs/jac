@@ -1,16 +1,10 @@
-# MCP Server (jac-mcp)
+# MCP Server (jac mcp)
 
-The `jac-mcp` plugin provides a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants deep knowledge of the Jac language. It exposes grammar specifications, documentation, code examples, compiler tools, and prompt templates through a standardized protocol --so any MCP-compatible AI client can write, validate, format, and debug Jac code.
+The `jac mcp` server provides a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives AI assistants deep knowledge of the Jac language. It exposes grammar specifications, documentation, code examples, compiler tools, and prompt templates through a standardized protocol --so any MCP-compatible AI client can write, validate, format, and debug Jac code.
 
 ## Installation
 
-If you installed Jaseci via PyPI or the install script, `jac-mcp` is likely already included. Run `jac --version` to check -- it prints all installed plugins. If `jac-mcp` appears in the list, you're good to go.
-
-Otherwise, install it separately:
-
-```bash
-pip install jac-mcp
-```
+The MCP server is **built into the `jac` binary** -- there is nothing to install. The protocol (JSON-RPC 2.0 over stdio, streamable-HTTP, and SSE) is implemented on the Python standard library, so it pulls in no third-party dependencies. Just run `jac mcp` (see Quick Start below). On older releases it shipped as a separate `jac-mcp` plugin; that package is no longer needed.
 
 ## Quick Start
 
@@ -216,7 +210,7 @@ Then configure your client to connect to:
 </details>
 
 !!! tip
-If your `jac` binary is installed in a virtualenv, use the full path in the `command` field (e.g., `/path/to/venv/bin/jac`). You can find it with `which jac`.
+`jac` is a standalone binary. If it is not on your client's PATH, use its full path in the `command` field (e.g., `/path/to/jac`). You can find it with `which jac`.
 
 ## CLI Reference
 
@@ -252,7 +246,7 @@ jac mcp --inspect
 Add to your project's `jac.toml` to customize the server:
 
 ```toml
-[plugins.mcp]
+[mcp]
 # Transport settings
 transport = "stdio"          # "stdio", "sse", or "streamable-http"
 port = 3001                  # Port for SSE/HTTP transports
@@ -358,7 +352,7 @@ Resources are read-only reference materials that AI models can load for context.
 
 | URI                                    | Description                 |
 | -------------------------------------- | --------------------------- |
-| `jac://docs/jac-scale`                 | jac-scale plugin reference  |
+| `jac://docs/jac-scale`                 | Scale reference (deployment & scaling, built into core) |
 | `jac://docs/tutorial-production-local` | Local API server deployment |
 | `jac://docs/tutorial-production-k8s`   | Kubernetes deployment       |
 
@@ -1107,16 +1101,16 @@ Convert Python code to idiomatic Jac.
 
 ### "command not found: jac"
 
-The `jac` binary is not on your PATH. If installed in a virtualenv, use the full path:
+The `jac` binary is not on your PATH. `jac` is a standalone binary -- make sure its install location is on your PATH, or point your client at its full path:
 
 ```json
 {
-  "command": "/path/to/venv/bin/jac",
+  "command": "/path/to/jac",
   "args": ["mcp"]
 }
 ```
 
-Find the path with `which jac` or `python -m site --user-base`.
+Find the path with `which jac`.
 
 ### Server connects but shows no tools
 
@@ -1128,8 +1122,4 @@ The compiler bridge enforces a 10-second timeout per operation. If your code is 
 
 ### Resources show "Error: File not found"
 
-Resource paths are resolved relative to the jaclang package installation. In a **development install** (`pip install -e`), resources are read directly from the repository's `docs/` directory. In a **PyPI install**, bundled copies are used. If you see missing resources after a PyPI install, update to the latest version:
-
-```bash
-pip install --upgrade jac-mcp
-```
+jaclang's documentation resources are always bundled inside the `jac` binary, so resources resolve from that bundled copy. If you see missing or stale resources, upgrade `jac` to the latest release (the MCP server and its resources ship inside the binary).

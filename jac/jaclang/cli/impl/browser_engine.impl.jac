@@ -1,5 +1,3 @@
-"""Implementations for the browser-automation engine (see browser_engine.jac)."""
-
 import base64;
 import hashlib;
 import json;
@@ -13,9 +11,6 @@ import from pathlib { Path }
 import from urllib.request { urlopen }
 
 
-# ===========================================================================
-# WebSocket
-# ===========================================================================
 impl WebSocket._handshake(host: str, port: int) {
     key = base64.b64encode(os.urandom(16)).decode();
     req = (
@@ -32,7 +27,7 @@ impl WebSocket._handshake(host: str, port: int) {
     if "101".encode() not in status {
         raise ConnectionError(f"WebSocket upgrade failed: {status}");
     }
-    # Validate the server's accept token per the RFC.
+
     guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     expected = base64.b64encode(hashlib.sha1((key + guid).encode()).digest()).decode();
     if expected.encode() not in header {
@@ -69,11 +64,11 @@ impl WebSocket._recv_exact(n: int) -> bytes {
 
 impl WebSocket.send(data: (str | bytes), opcode: int = OP_TEXT) {
     payload = data.encode() if isinstance(data, str) else data;
-    b0 = 0x80 | opcode;  # FIN + opcode
+    b0 = 0x80 | opcode;
     header = bytearray([b0]);
     ln = len(payload);
     if ln < 126 {
-        header.append(0x80 | ln);  # mask bit + length
+        header.append(0x80 | ln);
     } elif ln < 65536 {
         header.append(0x80 | 126);
         header.extend(struct.pack("!H", ln));
@@ -121,7 +116,7 @@ impl WebSocket.recv -> (str | bytes) {
         if opcode == OP_CLOSE {
             raise ConnectionError("server closed WebSocket");
         }
-        if opcode != 0 {  # start of a new data message
+        if opcode != 0 {
             op_started = opcode;
         }
         chunks.extend(payload);
@@ -134,16 +129,11 @@ impl WebSocket.recv -> (str | bytes) {
 impl WebSocket.close{
     try {
         self.send(bytes(), opcode=OP_CLOSE);
-    } except OSError {
-    # socket already gone; nothing to flush
-    }
+    } except OSError { }
     self.sock.close();
 }
 
 
-# ===========================================================================
-# CDP
-# ===========================================================================
 impl CDP.call(
     method: str, params: (dict | None) = None, timeout: float = 30.0
 ) -> dict {
@@ -159,9 +149,32 @@ impl CDP.call(
             }
             return msg.get("result", {});
         }
-        # else: an event for a domain we enabled; ignore in this tier.
+        if "method" in msg {
+            self.events.append(msg);
+        }
     }
     raise TimeoutError(f"CDP call timed out: {method}");
+}
+
+impl CDP.drain_events(idle: float = 0.25) -> list {
+    self.ws.sock.settimeout(idle);
+    try {
+        while True {
+            try {
+                msg = json.loads(self.ws.recv());
+            } except OSError {
+                break;
+            }
+            if "method" in msg {
+                self.events.append(msg);
+            }
+        }
+    } finally {
+        self.ws.sock.settimeout(self.ws.timeout);
+    }
+    out = self.events;
+    self.events = [];
+    return out;
 }
 
 impl CDP.close{
@@ -169,9 +182,6 @@ impl CDP.close{
 }
 
 
-# ===========================================================================
-# Chrome process management + target discovery
-# ===========================================================================
 impl get_cache_dir -> Path {
     env = os.environ.get("JACBROWSER_CACHE");
     return Path(env) if env else (Path.home() / ".cache" / "jacbrowser");
@@ -194,18 +204,40 @@ impl _find_chrome -> str {
             return path;
         }
     }
-    # Playwright-managed Chromium (any installed version), newest first.
-    pw = Path.home() / ".cache" / "ms-playwright";
-    if pw.exists() {
-        for d in sorted(pw.glob("chromium-*"), reverse=True) {
-            exe = d / "chrome-linux64" / "chrome";
-            if exe.exists() {
-                return str(exe);
-            }
+    for app in [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        str(
+            Path.home() / "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        ),
+        "/opt/google/chrome/chrome",
+
+    ] {
+        if Path(app).exists() {
+            return app;
         }
     }
-    if Path("/opt/google/chrome/chrome").exists() {
-        return "/opt/google/chrome/chrome";
+
+    for pw in [
+        Path.home() / ".cache" / "ms-playwright",
+        Path.home() / "Library" / "Caches" / "ms-playwright",
+
+    ] {
+        if not pw.exists() {
+            continue;
+        }
+        for d in sorted(pw.glob("chromium-*"), reverse=True) {
+            for rel in [
+                "chrome-linux64/chrome",
+                "chrome-linux/chrome",
+                "chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+            ] {
+                exe = d / rel;
+                if exe.exists() {
+                    return str(exe);
+                }
+            }
+        }
     }
     raise FileNotFoundError("no Chrome/Chromium found; set JACBROWSER_CHROME");
 }
@@ -240,7 +272,7 @@ impl _page_ws(port: int) -> str {
             return t["webSocketDebuggerUrl"];
         }
     }
-    # No page target yet: mint one via the browser-level Target domain.
+
     browser_ws = _http_json(port, "/json/version")["webSocketDebuggerUrl"];
     cdp = CDP(ws_url=browser_ws);
     cdp.call("Target.createTarget", {"url": "about:blank"});
@@ -261,38 +293,87 @@ impl load_state(session: str) -> (dict | None) {
     return None;
 }
 
-impl launch(session: str = "default") -> dict {
+impl _parse_viewport(spec: str) -> tuple {
+    m = re.fullmatch(r"(\d+)\s*[xX,]\s*(\d+)", spec.strip());
+    if not m {
+        raise ValueError(f"invalid viewport '{spec}' (expected WIDTHxHEIGHT)");
+    }
+    return (int(m.group(1)), int(m.group(2)));
+}
+
+impl _chrome_args(chrome: str, profile: Path, viewport: str) -> list {
+    (w, h) = _parse_viewport(viewport);
+    return [
+        chrome,
+        "--headless=new",
+        "--remote-debugging-port=0",
+        f"--user-data-dir={profile}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        f"--window-size={w},{h}",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+        "--no-sandbox",
+        "about:blank",
+
+    ];
+}
+
+impl _calibrate_viewport(port: int, w: int, h: int) {
+    try {
+        cdp = CDP(ws_url=_page_ws(port));
+        iw = _eval(cdp, "window.innerWidth");
+        ih = _eval(cdp, "window.innerHeight");
+        cdp.close();
+        if iw == w and ih == h {
+            return;
+        }
+        tid = None;
+        for t in _http_json(port, "/json") {
+            if t.get("type") == "page" {
+                tid = t.get("id");
+                break;
+            }
+        }
+        if tid is None {
+            return;
+        }
+        bws = _http_json(port, "/json/version")["webSocketDebuggerUrl"];
+        bcdp = CDP(ws_url=bws);
+        win = bcdp.call("Browser.getWindowForTarget", {"targetId": tid});
+        b = win["bounds"];
+        bcdp.call(
+            "Browser.setWindowBounds",
+            {
+                "windowId": win["windowId"],
+                "bounds": {
+                    "width": b["width"] + (w - iw),
+                    "height": b["height"] + (h - ih)
+                }
+            }
+        );
+        bcdp.close();
+    } except Exception { }
+}
+
+impl launch(session: str = "default", viewport: str = "1280x720") -> dict {
     st = load_state(session);
     if st and _pid_alive(st["pid"]) {
         try {
             _http_json(st["port"], "/json/version");
             return st;
-        } except OSError {
-        # stale endpoint; fall through and relaunch below
-        }
+        } except OSError { }
     }
     cache = get_cache_dir();
     cache.mkdir(parents=True, exist_ok=True);
     profile = cache / f"profile-{session}";
     chrome = _find_chrome();
     proc = subprocess.Popen(
-        [
-            chrome,
-            "--headless=new",
-            "--remote-debugging-port=0",
-            f"--user-data-dir={profile}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-gpu",
-            "--no-sandbox",
-            "about:blank",
-
-        ],
+        _chrome_args(chrome, profile, viewport),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     );
-    # Chrome writes the chosen port to DevToolsActivePort. Clear any stale file
-    # first so we don't read a dead port from a prior run.
+
     port_file = profile / "DevToolsActivePort";
     port_file.unlink(missing_ok=True);
     port = None;
@@ -307,6 +388,8 @@ impl launch(session: str = "default") -> dict {
         proc.kill();
         raise RuntimeError("Chrome failed to start (no DevToolsActivePort)");
     }
+    (vw, vh) = _parse_viewport(viewport);
+    _calibrate_viewport(port, vw, vh);
     st = {"session": session, "pid": proc.pid, "port": port};
     _state_path(session).write_text(json.dumps(st));
     return st;
@@ -323,9 +406,6 @@ impl connect(session: str = "default") -> CDP {
 }
 
 
-# ===========================================================================
-# Shared helpers
-# ===========================================================================
 impl _eval(cdp: CDP, expr: str) -> any {
     res = cdp.call(
         "Runtime.evaluate",
@@ -347,49 +427,79 @@ impl _load_refs(session: str) -> dict {
     return {};
 }
 
-impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tuple {
-    deadline = time.time() + timeout;
+impl _resolve_object_id(cdp: CDP, session: str, selector: str) -> (str | None) {
     if selector.startswith("@") {
-        ref = selector[1:];
-        backend = _load_refs(session).get(ref);
+        backend = _load_refs(session).get(selector[1:]);
         if backend is None {
             raise RuntimeError(f"unknown ref '{selector}'; run `snapshot` first");
         }
-        cdp.call("DOM.enable");
-        last_err = "";
-        while time.time() < deadline {
-            try {
-                box = cdp.call("DOM.getBoxModel", {"backendNodeId": backend});
-                quad = box["model"]["content"];
-                return ((quad[0] + quad[4]) / 2, (quad[1] + quad[5]) / 2);
-            } except Exception as e {
-                last_err = str(e);  # node not yet laid out; retry
-                time.sleep(0.1);
-            }
+        try {
+            res = cdp.call("DOM.resolveNode", {"backendNodeId": backend});
+            return res["object"]["objectId"];
+        } except Exception {
+            return None;
         }
-        raise RuntimeError(f"ref '{selector}' not actionable: {last_err}");
     }
-    # CSS selector: poll for a visible element whose box is stable across samples.
-    js = (
-        f"(()=>{{const el=document.querySelector({json.dumps(selector)});"
-        "if(!el)return null;const r=el.getBoundingClientRect();"
-        "const ok=r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden';"
-        "return ok?[r.x+r.width/2, r.y+r.height/2]:null;})()"
+    res = cdp.call(
+        "Runtime.evaluate",
+        {"expression": f"document.querySelector({json.dumps(selector)})"}
     );
+    return res.get("result", {}).get("objectId");
+}
+
+impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tuple {
+    cdp.call("DOM.enable");
+    deadline = time.time() + timeout;
     prev = None;
+    last_err = "element not found";
+
     while time.time() < deadline {
-        val = _eval(cdp, js);
-        if val is not None {
-            if prev is not None
-            and abs(val[0] - prev[0]) < 1
-            and abs(val[1] - prev[1]) < 1 {
-                return (val[0], val[1]);
-            }
-            prev = val;
+        oid = _resolve_object_id(cdp, session, selector);
+        if oid is None {
+            last_err = "element not found";
+            prev = None;
+            time.sleep(0.1);
+            continue;
         }
-        time.sleep(0.1);
+        try {
+            res = cdp.call(
+                "Runtime.callFunctionOn",
+                {
+                    "functionDeclaration": ACTIONABILITY_JS,
+                    "objectId": oid,
+                    "returnByValue": True
+                }
+            );
+        } except RuntimeError as e {
+            last_err = str(e);
+            prev = None;
+            time.sleep(0.1);
+            continue;
+        }
+        st = res.get("result", {}).get("value") or {};
+        if not st.get("ok") {
+            last_err = st.get("reason", "not actionable");
+            prev = None;
+            time.sleep(0.1);
+            continue;
+        }
+        if not st.get("hitOk", True) {
+            last_err = (
+                f"point ({int(st['x'])},{int(st['y'])}) is covered by {st.get('hit')}"
+            );
+            prev = None;
+            time.sleep(0.1);
+            continue;
+        }
+        if prev is not None
+        and abs(st["x"] - prev[0]) < 1
+        and abs(st["y"] - prev[1]) < 1 {
+            return (st["x"], st["y"]);
+        }
+        prev = (st["x"], st["y"]);
+        time.sleep(0.05);
     }
-    raise RuntimeError(f"element not found or not stable: {selector}");
+    raise RuntimeError(f"{selector} not actionable: {last_err}");
 }
 
 impl _real_click(cdp: CDP, x: float, y: float) {
@@ -442,11 +552,8 @@ impl _press(cdp: CDP, key: str, modifiers: int = 0) {
 }
 
 
-# ===========================================================================
-# Command surface
-# ===========================================================================
-impl cmd_open(session: str, url: (str | None)) -> str {
-    launch(session);
+impl cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> str {
+    launch(session, viewport);
     if url {
         return cmd_navigate(session, url);
     }
@@ -454,14 +561,13 @@ impl cmd_open(session: str, url: (str | None)) -> str {
 }
 
 impl cmd_navigate(session: str, url: str) -> str {
-    # Add a scheme only to bare hosts (example.com); leave data:, file:, etc.
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url) {
         url = "https://" + url;
     }
     cdp = connect(session);
     cdp.call("Page.enable");
     cdp.call("Page.navigate", {"url": url});
-    # Tier-0/1 load wait: poll readyState rather than wiring load events.
+
     deadline = time.time() + 30;
     while time.time() < deadline {
         if _eval(cdp, "document.readyState") == "complete" {
@@ -492,7 +598,7 @@ impl cmd_click(session: str, selector: str) -> str {
 impl cmd_type(session: str, selector: str, text: str) -> str {
     cdp = connect(session);
     (x, y) = _locate(cdp, session, selector);
-    _real_click(cdp, x, y);  # focus first
+    _real_click(cdp, x, y);
     _type_text(cdp, text);
     cdp.close();
     return f"typed into {selector}";
@@ -502,9 +608,9 @@ impl cmd_fill(session: str, selector: str, text: str) -> str {
     cdp = connect(session);
     (x, y) = _locate(cdp, session, selector);
     _real_click(cdp, x, y);
-    _press(cdp, "a", modifiers=2);  # Ctrl+A (modifiers bit 2 = Ctrl)
+    _press(cdp, "a", modifiers=2);
     _press(cdp, "Delete");
-    _insert_text(cdp, text);  # fast, paste-like insertion
+    _insert_text(cdp, text);
     cdp.close();
     return f"filled {selector}";
 }
@@ -546,6 +652,110 @@ impl cmd_screenshot(session: str, path: (str | None)) -> str {
     }
     Path(out_path).write_bytes(data);
     return f"screenshot saved to {out_path} ({len(data)} bytes)";
+}
+
+impl _remote_obj_str(ro: dict) -> str {
+    if "value" in ro {
+        v = ro["value"];
+        return v if isinstance(v, str) else json.dumps(v);
+    }
+    if ro.get("unserializableValue") {
+        return ro["unserializableValue"];
+    }
+    if ro.get("description") {
+        return ro["description"];
+    }
+    return ro.get("type", "?");
+}
+
+impl _format_console_event(method: str, params: dict) -> (str | None) {
+    if method == "Runtime.consoleAPICalled" {
+        kind = params.get("type", "log");
+        parts = [_remote_obj_str(a) for a in params.get("args", [])];
+        return f"[{kind}] " + " ".join(parts);
+    }
+    if method == "Runtime.exceptionThrown" {
+        d = params.get("exceptionDetails", {});
+        desc = (d.get("exception") or {}).get("description")
+        or d.get("text", "uncaught exception");
+        return f"[error] {desc}";
+    }
+    if method == "Log.entryAdded" {
+        e = params.get("entry", {});
+        if e.get("source") == "console-api" {
+            return None;
+        }
+        url = e.get("url", "");
+        loc = f" ({url}:{e.get('lineNumber')})" if url else "";
+        return f"[{e.get('level', 'info')}] {e.get('text', '')}{loc}";
+    }
+    return None;
+}
+
+impl cmd_console(session: str, clear: bool = False) -> str {
+    cdp = connect(session);
+
+    cdp.call("Runtime.enable");
+    cdp.call("Log.enable");
+    events = cdp.drain_events();
+    if clear {
+        cdp.call("Runtime.discardConsoleEntries");
+        cdp.call("Log.clear");
+    }
+    cdp.close();
+    lines = [];
+    for ev in events {
+        line = _format_console_event(ev.get("method", ""), ev.get("params", {}));
+        if line is not None {
+            lines.append(line);
+        }
+    }
+    return "\n".join(lines) if lines else "(no console output)";
+}
+
+impl cmd_wait(session: str, arg: str, timeout: float = 30.0) -> str {
+    if re.fullmatch(r"\d+", arg) {
+        ms = int(arg);
+        time.sleep(ms / 1000);
+        return f"waited {ms}ms";
+    }
+    cdp = connect(session);
+    try {
+        _locate(cdp, session, arg, timeout=timeout);
+    } finally {
+        cdp.close();
+    }
+    return f"waited for {arg}";
+}
+
+impl cmd_scroll(session: str, target: str, amount: (int | None) = None) -> str {
+    cdp = connect(session);
+    try {
+        deltas = {"down": (0, 1), "up": (0, -1), "right": (1, 0), "left": (-1, 0)};
+        if target in deltas {
+            (sx, sy) = deltas[target];
+
+            amt = str(amount)
+                if amount is not None
+                else ("innerWidth * 0.8" if sx else "innerHeight * 0.8");
+            _eval(
+                cdp,
+                f"window.scrollBy({{left: {sx} * ({amt}), top: {sy} * ({amt}),"
+                " behavior: 'instant'})"
+            );
+        } elif target == "top" {
+            _eval(cdp, "window.scrollTo(0, 0)");
+        } elif target == "bottom" {
+            _eval(cdp, "window.scrollTo(0, document.documentElement.scrollHeight)");
+        } else {
+            (x, y) = _locate(cdp, session, target);
+            return f"scrolled {target} into view at ({int(x)},{int(y)})";
+        }
+        pos = _eval(cdp, "JSON.stringify([Math.round(scrollX), Math.round(scrollY)])");
+    } finally {
+        cdp.close();
+    }
+    return f"scrolled to {pos}";
 }
 
 impl _walk_ax(ax: dict, by_id: dict, depth: int, lines: list, refs: dict) {
@@ -670,9 +880,7 @@ impl cmd_sessions(session: str) -> str {
             lines.append(
                 f"{marker} {st.get('session')}  pid={st['pid']} port={st['port']} [{status}]"
             );
-        } except Exception {
-        # skip unreadable/partial state file
-        }
+        } except Exception { }
     }
     return "\n".join(lines) if lines else "(no sessions)";
 }
@@ -682,9 +890,7 @@ impl cmd_close(session: str) -> str {
     if st and _pid_alive(st["pid"]) {
         try {
             os.kill(st["pid"], 15);
-        } except OSError {
-        # process already dead
-        }
+        } except OSError { }
     }
     _state_path(session).unlink(missing_ok=True);
     _refs_path(session).unlink(missing_ok=True);
@@ -692,14 +898,11 @@ impl cmd_close(session: str) -> str {
 }
 
 
-# ===========================================================================
-# Standalone CLI dispatch
-# ===========================================================================
 impl main(argv: list) -> int {
     session = os.environ.get("JACBROWSER_SESSION", "default");
     if not argv {
         sys.stdout.write(
-            "usage: browser_engine.jac <open|navigate|eval|click|type|fill|press|get|snapshot|screenshot|state|sessions|close> ...\n"
+            "usage: browser_engine.jac <open|navigate|eval|click|type|fill|press|get|wait|scroll|console|snapshot|screenshot|state|sessions|close> ...\n"
         );
         return 1;
     }
@@ -723,6 +926,14 @@ impl main(argv: list) -> int {
             out = cmd_press(session, rest[0]);
         } elif cmd == "get" {
             out = cmd_get(session, rest[0], rest[1] if len(rest) > 1 else None);
+        } elif cmd == "wait" {
+            out = cmd_wait(session, rest[0]);
+        } elif cmd == "scroll" {
+            out = cmd_scroll(session, rest[0], int(rest[1]) if len(rest) > 1 else None);
+        } elif cmd == "scrollintoview" {
+            out = cmd_scroll(session, rest[0]);
+        } elif cmd == "console" {
+            out = cmd_console(session, "--clear" in rest or "clear" in rest);
         } elif cmd == "snapshot" {
             out = cmd_snapshot(session);
         } elif cmd == "screenshot" {

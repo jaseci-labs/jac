@@ -1,6 +1,6 @@
 """jac-gdb-helper — GDB Python extension for Jac native debug support.
 
-Loaded by `jac-gdb` after transpilation to Python via `jac jac2py`.
+Loaded by `jac-gdb` after transpilation to Python via `jac tool jac2py`.
 Provides GDB commands:
 
   jac-load-symbols [path]   — Load debug symbols from a .symmap file
@@ -34,9 +34,11 @@ class JacLoadSymbols(gdb.Command) {
             return env_path;
         }
         candidates = glob.glob("/tmp/jac_debug*.symmap");
+        candidates += glob.glob("**/.jac/cache/native/*.symmap", recursive=True);
+        # Legacy location from before native artifacts moved into .jac/cache.
         candidates += glob.glob("**/.jac_ir/*.symmap", recursive=True);
         if candidates {
-            candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True);
+            candidates.sort(key=lambda (p) { os.path.getmtime(p); }, reverse=True);
             return candidates[0];
         }
         return "";

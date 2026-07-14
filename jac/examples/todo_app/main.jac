@@ -1,0 +1,358 @@
+"""Todo desktop example -- adapted from jac-client basic-full-stack.
+
+Full `sv` + `cl` app runnable as a native desktop binary:
+
+    cd jac/examples/todo_app
+    jac start --client desktop
+"""
+
+node Todo {
+    has text: str,
+        done: bool = False;
+}
+
+walker:pub create_todo {
+    has text: str;
+
+    can create with Root entry {
+        new_todo = here ++> Todo(text=self.text);
+        report new_todo;
+    }
+}
+
+walker:pub toggle_todo {
+    can toggle with Todo entry {
+        here.done = not here.done;
+        report here;
+    }
+}
+
+walker:pub read_todos {
+    can read with Root entry {
+        visit [-->[?:Todo]];
+    }
+
+    can report_todos with exit {
+        report here;
+    }
+}
+
+cl {
+    def:pub app -> JsxElement {
+        has todos: list = [],
+            inputValue: str = "",
+            filter: str = "all";
+
+        async can with entry {
+            result = root spawn read_todos();
+            todos = result.reports;
+        }
+
+        async def addTodo -> None {
+            if not inputValue.strip() {
+                return;
+            }
+            response = root spawn create_todo(text=inputValue.strip());
+            newTodo = response.reports[0][0];
+            todos = todos + [newTodo];
+            inputValue = "";
+        }
+
+        async def toggleTodo(id: any) {
+            result = id spawn toggle_todo();
+            updated = result.reports[0][0];
+            todos = [updated if todo._jac_id == id else todo for todo in todos];
+        }
+
+        def deleteTodo(id: any) {
+            todos = [
+                todo
+                for todo in todos
+                if todo._jac_id != id
+            ];
+        }
+
+        def clearCompleted {
+            todos = [
+                todo
+                for todo in todos
+                if not todo.done
+            ];
+        }
+
+        def getFilteredTodos -> list {
+            if filter == "active" {
+                return [
+                    todo
+                    for todo in todos
+                    if not todo.done
+                ];
+            } elif filter == "completed" {
+                return [
+                    todo
+                    for todo in todos
+                    if todo.done
+                ];
+            }
+            return todos;
+        }
+
+        activeCount = len(
+            [
+                todo
+                for todo in todos
+                if not todo.done
+            ]
+        );
+        filteredTodos = getFilteredTodos();
+
+        return
+            <div
+                style={{
+                    "maxWidth": "600px",
+                    "margin": "40px auto",
+                    "padding": "24px",
+                    "fontFamily": "system-ui, -apple-system, sans-serif",
+                    "background": "#f9fafb",
+                    "minHeight": "100vh"
+                }}
+            >
+                <h1
+                    style={{
+                        "textAlign": "center",
+                        "color": "#1f2937",
+                        "marginBottom": "32px",
+                        "fontSize": "2.5rem",
+                        "fontWeight": "700"
+                    }}
+                >
+                    My Todo App
+                </h1>
+                <div
+                    style={{
+                        "display": "flex",
+                        "gap": "8px",
+                        "marginBottom": "24px",
+                        "background": "#ffffff",
+                        "padding": "16px",
+                        "borderRadius": "12px",
+                        "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"
+                    }}
+                >
+                    <input
+                        type="text"
+                        value={inputValue}
+                        onChange={lambda (e: any) { inputValue = e.target.value; }}
+                        onKeyPress={lambda (e: any) { if e.key == "Enter" {
+                            addTodo();
+                        }}}
+                        placeholder="What needs to be done?"
+                        style={{
+                            "flex": "1",
+                            "padding": "12px 16px",
+                            "border": "1px solid #e5e7eb",
+                            "borderRadius": "8px",
+                            "fontSize": "16px",
+                            "outline": "none"
+                        }}
+                    />
+                    <button
+                        onClick={addTodo}
+                        style={{
+                            "padding": "12px 24px",
+                            "background": "#3b82f6",
+                            "color": "#ffffff",
+                            "border": "none",
+                            "borderRadius": "8px",
+                            "fontSize": "16px",
+                            "fontWeight": "600",
+                            "cursor": "pointer"
+                        }}
+                    >
+                        Add
+                    </button>
+                </div>
+                <div
+                    style={{
+                        "display": "flex",
+                        "gap": "8px",
+                        "marginBottom": "24px",
+                        "justifyContent": "center"
+                    }}
+                >
+                    <button
+                        onClick={lambda { filter = "all"; }}
+                        style={{
+                            "padding": "8px 16px",
+                            "background": ("#3b82f6" if filter == "all" else "#ffffff"),
+                            "color": ("#ffffff" if filter == "all" else "#3b82f6"),
+                            "border": "1px solid #3b82f6",
+                            "borderRadius": "6px",
+                            "fontSize": "14px",
+                            "fontWeight": "600",
+                            "cursor": "pointer"
+                        }}
+                    >
+                        All
+                    </button>
+                    <button
+                        onClick={lambda { filter = "active"; }}
+                        style={{
+                            "padding": "8px 16px",
+                            "background": (
+                                "#3b82f6" if filter == "active" else "#ffffff"
+                            ),
+                            "color": ("#ffffff" if filter == "active" else "#3b82f6"),
+                            "border": "1px solid #3b82f6",
+                            "borderRadius": "6px",
+                            "fontSize": "14px",
+                            "fontWeight": "600",
+                            "cursor": "pointer"
+                        }}
+                    >
+                        Active
+                    </button>
+                    <button
+                        onClick={lambda { filter = "completed"; }}
+                        style={{
+                            "padding": "8px 16px",
+                            "background": (
+                                "#3b82f6" if filter == "completed" else "#ffffff"
+                            ),
+                            "color": (
+                                "#ffffff" if filter == "completed" else "#3b82f6"
+                            ),
+                            "border": "1px solid #3b82f6",
+                            "borderRadius": "6px",
+                            "fontSize": "14px",
+                            "fontWeight": "600",
+                            "cursor": "pointer"
+                        }}
+                    >
+                        Completed
+                    </button>
+                </div>
+                <div
+                    style={{
+                        "background": "#ffffff",
+                        "borderRadius": "12px",
+                        "boxShadow": "0 1px 3px rgba(0,0,0,0.1)",
+                        "overflow": "hidden"
+                    }}
+                >
+                    {(
+                        <div
+                            style={{
+                                "padding": "40px",
+                                "textAlign": "center",
+                                "color": "#9ca3af"
+                            }}
+                        >
+                            {(
+                                "No todos yet. Add one above!"
+                                    if filter == "all"
+                                    else (
+                                        "No active todos!"
+                                            if filter == "active"
+                                            else "No completed todos!"
+                                    )
+                            )}
+                        </div>
+                    )
+                        if len(filteredTodos) == 0
+                        else (
+                            [
+                                <div
+                                    key={todo._jac_id}
+                                    style={{
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "gap": "12px",
+                                        "padding": "16px",
+                                        "borderBottom": "1px solid #e5e7eb"
+                                    }}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={todo.done}
+                                        onChange={lambda { toggleTodo(todo._jac_id); }}
+                                        style={{
+                                            "width": "20px",
+                                            "height": "20px",
+                                            "cursor": "pointer"
+                                        }}
+                                    />
+                                    <span
+                                        style={{
+                                            "flex": "1",
+                                            "textDecoration": (
+                                                "line-through" if todo.done else "none"
+                                            ),
+                                            "color": (
+                                                "#9ca3af" if todo.done else "#1f2937"
+                                            ),
+                                            "fontSize": "16px"
+                                        }}
+                                    >
+                                        {todo.text}
+                                    </span>
+                                    <button
+                                        onClick={lambda { deleteTodo(todo._jac_id); }}
+                                        style={{
+                                            "padding": "6px 12px",
+                                            "background": "#ef4444",
+                                            "color": "#ffffff",
+                                            "border": "none",
+                                            "borderRadius": "6px",
+                                            "fontSize": "14px",
+                                            "cursor": "pointer"
+                                        }}
+                                    >
+                                        Delete
+                                    </button>
+                                </div> for todo in filteredTodos
+                            ]
+                        )}
+                </div>
+                {(
+                    <div
+                        style={{
+                            "display": "flex",
+                            "justifyContent": "space-between",
+                            "alignItems": "center",
+                            "marginTop": "24px",
+                            "padding": "16px",
+                            "background": "#ffffff",
+                            "borderRadius": "12px",
+                            "boxShadow": "0 1px 3px rgba(0,0,0,0.1)"
+                        }}
+                    >
+                        <span style={{"color": "#6b7280", "fontSize": "14px"}}>
+                            {activeCount}{"item" if activeCount == 1 else "items"}left
+                        </span>
+                        {(
+                            <button
+                                onClick={clearCompleted}
+                                style={{
+                                    "padding": "8px 16px",
+                                    "background": "#ef4444",
+                                    "color": "#ffffff",
+                                    "border": "none",
+                                    "borderRadius": "6px",
+                                    "fontSize": "14px",
+                                    "fontWeight": "600",
+                                    "cursor": "pointer"
+                                }}
+                            >
+                                Clear Completed
+                            </button>
+                        )
+                            if any(todo.done for todo in todos)
+                            else None}
+                    </div>
+                )
+                    if len(todos) > 0
+                    else None}
+            </div>;
+    }
+}

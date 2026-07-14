@@ -8,7 +8,7 @@ import marshal;
 import shutil;
 import tempfile;
 import time;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang { JacRuntime as Jac }
 import from jaclang { JacRuntimeInterface }
@@ -24,8 +24,7 @@ import from jaclang.jac0core.jir {
     read_sections
 }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
+glob TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures"),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_importer_");
@@ -280,5 +279,50 @@ test "get bytecode uses JIR cache on second call" {
         if cache_path2.exists() {
             cache_path2.unlink();
         }
+    }
+}
+
+test "get_bytecode busts in-memory hub when .impl.jac changes" {
+    # Regression: in a persistent process, editing a .impl.jac annex left a
+    # stale in-memory module in mod.hub; get_bytecode returned it with no
+    # freshness check. Cold runs were fine (disk cache busts via modkey).
+    with tempfile.TemporaryDirectory(dir=_test_tmp_dir) as d {
+        mod = os.path.join(d, "mod.jac");
+        impl_file = os.path.join(d, "mod.impl.jac");
+        with open(mod, "w") as f {
+            f.write(
+                "obj Thing {\n    has tag: int = 0;\n    def get_tag() -> int;\n}\n"
+            );
+        }
+        def write_body(v: int) {
+            with open(impl_file, "w") as f {
+                f.write(
+                    "impl Thing.get_tag() -> int {\n    return " + str(v) + ";\n}\n"
+                );
+            }
+        }
+        write_body(10);
+        past = time.time() - 5;
+        os.utime(mod, (past, past));
+        os.utime(impl_file, (past, past));
+        compiler = JacCompiler();
+        prog = JacProgram();
+        def tag_of -> int {
+            code = compiler.get_bytecode(mod, prog);
+            ns: dict = {};
+            exec(code, ns);
+            return ns["Thing"]().get_tag();
+        }
+        assert tag_of() == 10 , "first compile should use the annex body";
+        # edit the annex in the SAME persistent process
+        write_body(20);
+        future = time.time() + 5;
+        os.utime(impl_file, (future, future));
+        got = tag_of();
+        assert got == 20 , (
+            "stale in-memory hub bytecode reused; expected 20 after " + "annex edit, got " + str(
+                got
+            )
+        );
     }
 }

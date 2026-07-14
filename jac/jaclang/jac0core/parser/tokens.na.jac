@@ -1,10 +1,3 @@
-"""Token definitions for the Jac lexer and parser.
-
-This module defines all token kinds and the Token class used by the
-hand-written recursive descent parser. The token definitions are designed
-to be compile-time constants with no runtime reflection needed.
-"""
-
 enum TokenKind {
     INT = "INT",
     HEX = "HEX",
@@ -17,7 +10,7 @@ enum TokenKind {
     ELLIPSIS = "ELLIPSIS",
     PYNLINE = "PYNLINE",
     NAME = "NAME",
-    KWESC_NAME = "KWESC_NAME",  # Escaped keyword used as identifier
+    KWESC_NAME = "KWESC_NAME",
     TYP_STRING = "str",
     TYP_INT = "int",
     TYP_FLOAT = "float",
@@ -71,6 +64,7 @@ enum TokenKind {
     KW_TO = "to",
     KW_BY = "by",
     KW_WHILE = "while",
+    KW_FOREVER = "forever",
     KW_MATCH = "match",
     KW_SWITCH = "switch",
     KW_CASE = "case",
@@ -109,6 +103,8 @@ enum TokenKind {
     KW_NIN = "not in",
     KW_ISN = "is not",
     KW_LAMBDA = "lambda",
+    KW_OWN = "own",
+    KW_MUT = "mut",
     KW_PUB = "pub",
     KW_PRIV = "priv",
     KW_PROT = "protect",
@@ -189,7 +185,7 @@ enum TokenKind {
     DECOR_OP = "@",
     GLOBAL_OP = ":g:",
     NONLOCAL_OP = ":nl:",
-    TYPE_OP_ALIAS = ":typ:",  # Type alias definition
+    TYPE_OP_ALIAS = ":typ:",
     F_DQ_START = "f\"",
     F_SQ_START = "f'",
     F_TDQ_START = "f\"\"\"",
@@ -206,14 +202,9 @@ enum TokenKind {
     F_TEXT_SQ = "F_TEXT_SQ",
     F_TEXT_TDQ = "F_TEXT_TDQ",
     F_TEXT_TSQ = "F_TEXT_TSQ",
-    RF_TEXT_DQ = "RF_TEXT_DQ",
-    RF_TEXT_SQ = "RF_TEXT_SQ",
-    RF_TEXT_TDQ = "RF_TEXT_TDQ",
-    RF_TEXT_TSQ = "RF_TEXT_TSQ",
     D_LBRACE = "{{",
     D_RBRACE = "}}",
     CONV = "CONV",
-    F_FORMAT_TEXT = "F_FORMAT_TEXT",
     JSX_TEXT = "JSX_TEXT",
     JSX_COMMENT = "JSX_COMMENT",
     JSX_OPEN_START = "JSX_OPEN_START",
@@ -225,7 +216,6 @@ enum TokenKind {
     JSX_NAME = "JSX_NAME",
     COMMENT = "COMMENT",
     WS = "WS",
-    NEWLINE = "NEWLINE",
     EOF = "EOF",
     ERROR = "ERROR"
 }
@@ -247,14 +237,9 @@ obj Token {
         value: str,
         loc: SourceLoc;
 
-    def is_keyword -> bool;
     def __str__ -> str;
 }
 
-# Marshal-safe lexer diagnostic record. The native lexer cannot call back
-# into the Python `prog` to append unitree `Alert`s, so it accumulates these
-# flat records instead; `parser.parse()` replays them into `prog` (see
-# native-lexer-parser-pathway).
 obj LexDiag {
     has message: str,
         code_str: str,
@@ -262,7 +247,6 @@ obj LexDiag {
         is_error: bool = True;
 }
 
-# Marshal-safe captured-comment record (was an 8-tuple in lexer state).
 obj CommentData {
     has value: str,
         line: int,
@@ -275,7 +259,6 @@ obj CommentData {
 }
 
 glob KEYWORDS: dict[str, TokenKind] = {
-         # Built-in types
          "str": TokenKind.TYP_STRING,
          "int": TokenKind.TYP_INT,
          "float": TokenKind.TYP_FLOAT,
@@ -297,7 +280,6 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "u64": TokenKind.TYP_U64,
          "f32": TokenKind.TYP_F32,
          "f64": TokenKind.TYP_F64,
-         # Declaration keywords
          "abs": TokenKind.KW_ABSTRACT,
          "obj": TokenKind.KW_OBJECT,
          "class": TokenKind.KW_CLASS,
@@ -319,12 +301,10 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "glob": TokenKind.KW_GLOBAL,
          "global": TokenKind.KW_GLOBAL_REF,
          "nonlocal": TokenKind.KW_NONLOCAL,
-         # Import keywords
          "import": TokenKind.KW_IMPORT,
          "include": TokenKind.KW_INCLUDE,
          "from": TokenKind.KW_FROM,
          "as": TokenKind.KW_AS,
-         # Control flow
          "if": TokenKind.KW_IF,
          "elif": TokenKind.KW_ELIF,
          "else": TokenKind.KW_ELSE,
@@ -332,6 +312,7 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "to": TokenKind.KW_TO,
          "by": TokenKind.KW_BY,
          "while": TokenKind.KW_WHILE,
+         "forever": TokenKind.KW_FOREVER,
          "match": TokenKind.KW_MATCH,
          "switch": TokenKind.KW_SWITCH,
          "case": TokenKind.KW_CASE,
@@ -341,7 +322,6 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "finally": TokenKind.KW_FINALLY,
          "awaiting": TokenKind.KW_AWAITING,
          "with": TokenKind.KW_WITH,
-         # Jump statements
          "return": TokenKind.KW_RETURN,
          "yield": TokenKind.KW_YIELD,
          "break": TokenKind.KW_BREAK,
@@ -351,7 +331,6 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "assert": TokenKind.KW_ASSERT,
          "skip": TokenKind.KW_SKIP,
          "report": TokenKind.KW_REPORT,
-         # Walker/Graph keywords
          "visit": TokenKind.KW_VISIT,
          "spawn": TokenKind.KW_SPAWN,
          "entry": TokenKind.KW_ENTRY,
@@ -360,33 +339,29 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "here": TokenKind.KW_HERE,
          "visitor": TokenKind.KW_VISITOR,
          "root": TokenKind.KW_ROOT,
-         # Async keywords
          "async": TokenKind.KW_ASYNC,
          "await": TokenKind.KW_AWAIT,
          "flow": TokenKind.KW_FLOW,
          "wait": TokenKind.KW_WAIT,
-         # Boolean/Logic keywords
          "and": TokenKind.KW_AND,
          "or": TokenKind.KW_OR,
          "not": TokenKind.KW_NOT,
          "in": TokenKind.KW_IN,
          "is": TokenKind.KW_IS,
          "lambda": TokenKind.KW_LAMBDA,
-         # Access modifiers
+         "own": TokenKind.KW_OWN,
+         "mut": TokenKind.KW_MUT,
          "pub": TokenKind.KW_PUB,
          "priv": TokenKind.KW_PRIV,
          "protect": TokenKind.KW_PROT,
-         # Context keywords
          "cl": TokenKind.KW_CLIENT,
          "sv": TokenKind.KW_SERVER,
          "na": TokenKind.KW_NATIVE,
-         # Special keywords
          "self": TokenKind.KW_SELF,
          "props": TokenKind.KW_PROPS,
          "init": TokenKind.KW_INIT,
          "super": TokenKind.KW_SUPER,
          "postinit": TokenKind.KW_POST_INIT,
-         # Boolean literals (treated as keywords)
          "True": TokenKind.BOOL,
          "False": TokenKind.BOOL,
          "None": TokenKind.NULL
@@ -398,5 +373,3 @@ def lookup_keyword(text: str) -> TokenKind | None {
     }
     return None;
 }
-
-glob _init = 0;

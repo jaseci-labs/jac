@@ -1,6 +1,5 @@
 import from jaclang.cli.console { console }
 
-"""Generate mermaid markdown doc for uninodes."""
 impl AstTool.autodoc_uninode -> str {
     output = '';
     tick = chr(96);
@@ -42,7 +41,6 @@ impl AstTool.autodoc_uninode -> str {
     return output;
 }
 
-"""Generate a AST, SymbolTable tree for .jac file, or Python AST for .py file."""
 impl AstTool.ir(args: list[str]) -> str {
     error = 'Usage: ir <choose one of (sym / sym. / ast / ast. / docir / pyast / py / unparse / esast / es)> <.py or .jac file_path>';
     if (len(args) != 2) {
@@ -171,9 +169,10 @@ impl AstTool.ir(args: list[str]) -> str {
     }
 }
 
-"""List python ast nodes."""
 impl AstTool.py_uni_nodes -> str {
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
+
+    py_ast.unparse(py_ast.parse(""));
     visit_methods = [
         method
         for method in dir(py_ast._Unparser)
@@ -204,7 +203,6 @@ impl AstTool.py_uni_nodes -> str {
     return output;
 }
 
-"""Generate pass template."""
 impl AstTool.pass_template -> str {
     output = 'import jaclang.jac0core.unitree as ast\nfrom jaclang.jac0core.passes import Pass\n\nclass SomePass(Pass):\n';
     """Emit to output.""";
@@ -240,7 +238,6 @@ impl AstTool.pass_template -> str {
     return output;
 }
 
-"""Initialize."""
 impl AstTool.init -> None {
     module = sys.modules[uni.__name__];
     source_code = inspect.getsource(module);
@@ -287,11 +284,11 @@ impl AstTool.init -> None {
         )
     ];
     self.ast_classes = sorted(
-        uni_node_classes, key=lambda cls: any : source_code.find(f"class {cls.name}")
+        uni_node_classes,
+        key=lambda (cls: any) { source_code.find(f"class {cls.name}"); }
     );
 }
 
-"""Process UniNode class."""
 impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {
     self.name = cls.__name__;
     self.doc = cls.__doc__;
@@ -312,7 +309,6 @@ impl UniNodeInfo.process(cls: type[uni.UniNode]) -> None {
     }
 }
 
-"""Initialize."""
 impl UniNodeInfo.postinit -> None {
     self.process(self.cls);
 }

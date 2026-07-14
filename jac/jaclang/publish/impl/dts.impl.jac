@@ -1,5 +1,3 @@
-"""Implementation of TypeScript declaration generation."""
-
 import from jaclang.jac0core.unitree { Module, Ability, Archetype, GlobalVars }
 import from jaclang.publish.jsdoc { jac_type_to_ts }
 
@@ -76,7 +74,6 @@ def _class_decl(arch: Archetype) -> str {
     return "\n".join(lines);
 }
 
-"""Declaration for a single global assignment, or "" when not in `wanted`."""
 def _global_decl(assign: any, wanted: any) -> str {
     targets = assign?.target or [];
     if not targets {

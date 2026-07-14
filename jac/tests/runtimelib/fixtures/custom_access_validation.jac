@@ -32,7 +32,7 @@ walker create_other_root {
 walker create {
     can enter with Root entry {
         a = root ++> A();
-        print(a[0].__jac__.id);
+        print(a.__jac__.id);
     }
 }
 

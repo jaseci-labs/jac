@@ -1,10 +1,3 @@
-"""Centralized source map utility for resolving JS locations back to .jac files.
-
-Supports two mapping layers:
-1. Vite source maps (.map files): bundled client.js:line:col -> compiled .js:line:col
-2. Source comments (/* Source: path.jac */): compiled .js -> original .jac file
-"""
-
 import json;
 import os;
 import re;
@@ -14,13 +7,9 @@ import from collections { namedtuple }
 
 glob SourceLocation = namedtuple("SourceLocation", ["file", "line", "column"]);
 
-# ---------------------------------------------------------------------------
-# VLQ encoding / decoding
-# ---------------------------------------------------------------------------
 glob _B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
      _B64_DECODE = {c: i for (i, c) in enumerate(_B64)};
 
-"""Encode a single integer as Base64 VLQ."""
 def _encode_vlq(value: int) -> str {
     if value < 0 {
         value = ((-value) << 1) | 1;
@@ -42,7 +31,6 @@ def _encode_vlq(value: int) -> str {
     return "".join(result);
 }
 
-"""Decode a Base64 VLQ-encoded segment into a list of integers."""
 def _decode_vlq(segment: str) -> list[int] {
     values: list[int] = [];
     shift = 0;
@@ -61,19 +49,6 @@ def _decode_vlq(segment: str) -> list[int] {
     return values;
 }
 
-# ---------------------------------------------------------------------------
-# Source map generation
-# ---------------------------------------------------------------------------
-"""Generate a source map JSON string from a line map.
-
-Args:
-    source_file: Path to the original .jac source file.
-    output_file: Name of the generated .js file.
-    line_map: List of (output_line, source_line, source_col) tuples.
-
-Returns:
-    JSON string for the .map file.
-"""
 def generate_source_map_json(
     source_file: str, output_file: str, line_map: list[tuple[int, int, int]]
 ) -> str {
@@ -119,14 +94,6 @@ def generate_source_map_json(
     );
 }
 
-# ---------------------------------------------------------------------------
-# Source snippet reader (shared by diagnostics + error reporting)
-# ---------------------------------------------------------------------------
-"""Read source lines around a given line number for error display.
-
-Returns a formatted snippet with line numbers and an arrow pointing
-to the error line.
-"""
 def read_source_snippet(file_path: str, line: int, context_lines: int = 2) -> str {
     try {
         path = Path(file_path);
@@ -148,13 +115,7 @@ def read_source_snippet(file_path: str, line: int, context_lines: int = 2) -> st
     }
 }
 
-# ---------------------------------------------------------------------------
-# Source map parsing
-# ---------------------------------------------------------------------------
-"""Parse VLQ mappings string into an indexed structure."""
-def _parse_mappings(
-    mappings_str: str, sources_count: int
-) -> list[list[tuple[int, int, int, int]]] {
+def _parse_mappings(mappings_str: str) -> list[list[tuple[int, int, int, int]]] {
     lines: list[list[tuple[int, int, int, int]]] = [];
     src_idx = 0;
     src_line = 0;
@@ -182,11 +143,6 @@ def _parse_mappings(
     return lines;
 }
 
-"""Scan compiled JS files for /* Source: path.jac */ headers.
-
-Returns a dict mapping compiled JS paths to original .jac paths.
-Multiple key formats are stored for flexible matching.
-"""
 def _scan_source_comments(compiled_dir: Path) -> dict[str, str] {
     comments: dict[str, str] = {};
     if not compiled_dir.is_dir() {
@@ -212,19 +168,14 @@ def _scan_source_comments(compiled_dir: Path) -> dict[str, str] {
     return comments;
 }
 
-# ---------------------------------------------------------------------------
-# SourceMap — parsed .map file with lookup
-# ---------------------------------------------------------------------------
 glob _STACK_PATTERN = re.compile(r"at\s+(\S+)\s+\((.+?):(\d+):(\d+)\)"),
      _STACK_PATTERN_ANON = re.compile(r"at\s+(.+?):(\d+):(\d+)");
 
-"""Parsed source map with lookup capability."""
 obj SourceMap {
     has sources: list[str],
         source_comments: dict[str, str],
         _index: list[list[tuple[int, int, int, int]]];
 
-    """Resolve to raw compiled JS path/line/col (no source comment mapping)."""
     def _resolve_raw(line: int, column: int) -> tuple[str, int, int] | None {
         if line < 1 or line > len(self._index) {
             return None;
@@ -248,7 +199,6 @@ obj SourceMap {
         return (self.sources[src_idx], src_line + 1, src_col);
     }
 
-    """Resolve a bundled JS line:col to original source location."""
     def resolve(line: int, column: int) -> SourceLocation | None {
         if line < 1 or line > len(self._index) {
             return None;
@@ -274,7 +224,6 @@ obj SourceMap {
         return SourceLocation(file=jac_path, line=src_line + 1, column=src_col);
     }
 
-    """Map a compiled .js path to original .jac via source comments."""
     def _resolve_to_jac(compiled_path: str) -> str {
         if compiled_path in self.source_comments {
             return self.source_comments[compiled_path];
@@ -294,24 +243,15 @@ obj SourceMap {
     }
 }
 
-# ---------------------------------------------------------------------------
-# SourceMapper — main entry point
-# ---------------------------------------------------------------------------
-"""Check if a path is from node_modules."""
 def _is_node_modules(path: str) -> bool {
     return "node_modules" in path;
 }
 
-"""Trim a node_modules path to the package + relative file (e.g.
-'../node_modules/react-dom/cjs/foo.js' -> 'node_modules/react-dom/cjs/foo.js').
-Used by verbose mode to render node_modules frames with a readable path
-instead of the bundle map's `..`-relative form."""
 def _short_node_modules(path: str) -> str {
     idx = path.find("node_modules/");
     return path[idx:] if idx >= 0 else path;
 }
 
-"""Compute a cache signature from .map file modification times."""
 def _get_map_signature(base_path: str) -> str {
     client_dir = Path(base_path) / ".jac" / "client";
     parts: list[str] = [];
@@ -330,13 +270,8 @@ def _get_map_signature(base_path: str) -> str {
     return "|".join(parts);
 }
 
-# Global cache: base_path -> (signature, SourceMapper)
 glob _mapper_cache: dict[str, tuple[str, any]] = {};
 
-# ---------------------------------------------------------------------------
-# Rate limiter for client error reports
-# ---------------------------------------------------------------------------
-"""Rate limiter that deduplicates by message and caps errors per window."""
 obj ErrorRateLimiter {
     has _seen: dict[str, float] = {},
         _count: int = 0,
@@ -345,27 +280,26 @@ obj ErrorRateLimiter {
         window_seconds: float = 60.0,
         dedup_seconds: float = 10.0;
 
-    """Check if this error should be logged. Returns True if allowed."""
     def should_log(message: str) -> bool {
         now: float = time.time();
-        # Reset window if expired
+
         if now - self._window_start > self.window_seconds {
             self._window_start = now;
             self._count = 0;
         }
-        # Check rate limit
+
         if self._count >= self.max_per_window {
             return False;
         }
-        # Check dedup — skip if same message was logged recently
+
         last_seen = self._seen.get(message, 0.0);
         if now - last_seen < self.dedup_seconds {
             return False;
         }
-        # Allow this error
+
         self._seen[message] = now;
         self._count += 1;
-        # Prune old entries to avoid memory growth
+
         if len(self._seen) > 100 {
             cutoff = now - self.dedup_seconds;
             self._seen = {
@@ -380,23 +314,13 @@ obj ErrorRateLimiter {
 
 glob _error_rate_limiter = ErrorRateLimiter();
 
-"""Main entry point for resolving JS locations to .jac source.
-
-Supports two-layer resolution:
-1. Bundle source map: bundled client.js -> compiled .js (with line/col)
-2. Per-file source map: compiled .js -> original .jac (with line/col)
-"""
 obj SourceMapper {
     has _source_map: SourceMap | None = None,
         _per_file_maps: dict[str, SourceMap] = {},
         _base_path: str = "",
         _abs_base_path: str = "";
 
-    """Create a SourceMapper from a project's .jac/client/ directory.
-    Caches the result and invalidates when .map files change.
-    """
     static def from_bundle(base_path: str) -> SourceMapper {
-        # Check cache
         sig: str = _get_map_signature(base_path);
         cached: tuple[str, any] | None = _mapper_cache.get(base_path);
         if cached is not None and cached[0] == sig {
@@ -412,7 +336,6 @@ obj SourceMapper {
 
         source_comments = _scan_source_comments(compiled_dir);
 
-        # Load per-file .map files (compiled JS -> .jac line mapping)
         per_file_maps: dict[str, SourceMap] = {};
         if compiled_dir.is_dir() {
             for map_file in compiled_dir.rglob("*.js.map") {
@@ -422,7 +345,7 @@ obj SourceMapper {
                     }
                     sources: list[str] = list(raw.get("sources", []));
                     mappings: str = str(raw.get("mappings", ""));
-                    index = _parse_mappings(mappings, len(sources));
+                    index = _parse_mappings(mappings);
                     js_name: str = str(map_file.name)[:-(len(".map"))];
                     rel_path: str = str(map_file.relative_to(compiled_dir))[:-(
                         len(".map")
@@ -437,7 +360,6 @@ obj SourceMapper {
             }
         }
 
-        # Load bundle .map file
         source_map: SourceMap | None = None;
         if dist_dir.is_dir() {
             for map_file in dist_dir.glob("*.js.map") {
@@ -447,7 +369,7 @@ obj SourceMapper {
                     }
                     sources: list[str] = list(raw.get("sources", []));
                     mappings: str = str(raw.get("mappings", ""));
-                    index = _parse_mappings(mappings, len(sources));
+                    index = _parse_mappings(mappings);
                     source_map = SourceMap(
                         sources=sources, source_comments=source_comments, _index=index
                     );
@@ -461,12 +383,11 @@ obj SourceMapper {
         mapper = SourceMapper(
             _source_map=source_map, _per_file_maps=per_file_maps, _base_path=base_path
         );
-        # Store in cache
+
         _mapper_cache[base_path] = (sig, mapper);
         return mapper;
     }
 
-    """Resolve a bundled JS line:col to a .jac source location."""
     def resolve(line: int, column: int) -> SourceLocation | None {
         if self._source_map is None {
             return None;
@@ -476,7 +397,7 @@ obj SourceMapper {
             return None;
         }
         (compiled_path, compiled_line, compiled_col) = raw_loc;
-        # Try per-file source map for exact .jac line numbers
+
         compiled_basename = os.path.basename(compiled_path);
         for (key, per_file_map) in self._per_file_maps.items() {
             if key == compiled_basename or key.endswith(f"/{compiled_basename}") {
@@ -487,20 +408,11 @@ obj SourceMapper {
                 break;
             }
         }
-        # Fallback: file-level mapping via /* Source: */ comments
+
         jac_path = self._source_map._resolve_to_jac(compiled_path);
         return SourceLocation(file=jac_path, line=compiled_line, column=compiled_col);
     }
 
-    """Resolve a JS stack trace, replacing JS locations with .jac locations.
-
-    The single rule: a resolved frame is user source iff its path ends in
-    `.jac`. Anything else (node_modules, compiled JS, bundle output) lives
-    inside `.jac/` and is auto-generated. When `verbose` is False (the
-    default) those frames are dropped; verbose=True keeps them, with
-    node_modules paths shortened for readability. Unresolved frames pass
-    through unchanged either way.
-    """
     def resolve_stack_trace(stack: str, verbose: bool = False) -> str {
         if self._source_map is None {
             return stack;
@@ -515,12 +427,6 @@ obj SourceMapper {
         return "\n".join(resolved_lines);
     }
 
-    """Resolve a single stack trace line.
-
-    Returns None when a non-user-source frame is filtered out (so
-    `resolve_stack_trace` can drop it from the joined output); otherwise
-    returns the (possibly rewritten) line.
-    """
     def _resolve_stack_line(line: str, verbose: bool = False) -> str | None {
         if self._source_map is None {
             return line;
@@ -553,13 +459,6 @@ obj SourceMapper {
         return line;
     }
 
-    """Render a resolved file path for a stack frame, or signal a drop.
-
-    Returns None when the frame should be filtered (non-user-source path
-    in non-verbose mode). User-source paths get project-relative form;
-    verbose-mode node_modules paths get the shortened package form to
-    stay readable; everything else gets project-relative form.
-    """
     def _format_resolved_path(path: str, verbose: bool) -> str | None {
         if not path.endswith(".jac") {
             if not verbose {
@@ -572,12 +471,6 @@ obj SourceMapper {
         return self._make_relative(path);
     }
 
-    """Make a path relative to the project for cleaner display.
-
-    Both sides are absolutized lexically (abspath, not resolve) so we don't
-    touch the filesystem or follow symlinks per stack line. The base path is
-    cached on first call since it is constant for the mapper's lifetime.
-    """
     def _make_relative(path: str) -> str {
         if not self._base_path {
             return path;
@@ -593,19 +486,6 @@ obj SourceMapper {
     }
 }
 
-# ---------------------------------------------------------------------------
-# Client error report helpers
-# ---------------------------------------------------------------------------
-"""Resolve `stack` and `componentStack` to .jac locations via SourceMapper,
-swallowing any mapper failure so error reporting can never raise. React's
-componentStack uses the same `at fn (url:line:col)` format as JS stacks,
-so the same mapper resolves both — and that is the chain that points at
-user components when the JS stack lives inside react-dom.
-
-`verbose` is forwarded to the mapper. False (the default) drops build-
-artifact frames from the output; True keeps them. Wired from
-`[client_errors] verbose` in jac.toml at each handler's call site.
-"""
 def resolve_client_error_stacks(
     base_path: (str | None),
     stack: str = "",
@@ -626,9 +506,6 @@ def resolve_client_error_stacks(
     return (stack, component_stack);
 }
 
-"""Format a /cl/__error__ payload into the canonical log lines shared by every
-server impl that exposes the endpoint.
-"""
 def format_client_error_log(
     message: str,
     stack: str = "",

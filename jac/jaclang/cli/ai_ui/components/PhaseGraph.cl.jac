@@ -9,7 +9,7 @@ update from the poll loop.
 """
 
 import from react { useRef, useEffect }
-cl import from "cytoscape" { default as cytoscape }
+import from "cytoscape" { default as cytoscape }
 sv import from ..server { GraphNode, GraphEdge }
 
 def:pub PhaseGraph(
@@ -160,7 +160,7 @@ def:pub PhaseGraph(
             cyRef.current = cy;
             # Clicking a node selects it -- the parent shows that state's full
             # definition in the phase inspector. A grab cursor hints it's clickable.
-            cy.on("tap", "node", lambda evt: any { onSelect(evt.target.id()); });
+            cy.on("tap", "node", lambda (evt: any) { onSelect(evt.target.id()); });
             cy.on(
                 "mouseover",
                 "node",

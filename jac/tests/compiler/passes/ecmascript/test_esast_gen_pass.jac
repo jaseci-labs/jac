@@ -1,15 +1,39 @@
 """Test ECMAScript AST generation using consolidated Jac fixtures."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+"""Signals-style test backend: wraps a reactive read as `name()` so the
+value-read seam (contract §4.1.1) can be audited without a real Solid backend.
+React/Preact lower the same read to a bare identifier (a no-op)."""
+obj _WrapReadBackend(ReactBackend) {
+    def lower_state_read(name: str) -> es.Expression;
+}
+
+impl _WrapReadBackend.lower_state_read(name: str) -> es.Expression {
+    return es.CallExpression(callee=es.Identifier(name=name), arguments=[]);
+}
+
+"""Signals-style test backend: thunks a dynamic JSX position as `__view(expr)`
+so the view seam (contract §4.2) can be audited without a real Solid backend.
+The `__view(...)` marker is a test sentinel (not real Solid output); it makes the
+routing observable and unambiguous against event handlers, which stay unwrapped.
+React/Preact lower the same positions to the bare expr (a no-op)."""
+obj _ThunkViewBackend(ReactBackend) {
+    def lower_view_expr(expr: es.Expression) -> es.Expression;
+}
+
+impl _ThunkViewBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
+    return es.CallExpression(callee=es.Identifier(name="__view"), arguments=[expr]);
+}
+
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      );
 
@@ -43,6 +67,22 @@ def compile_to_esast(filename: str) -> es.Program {
     es_ir = es_pass.ir_out;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
+    assert isinstance(es_ir.gen.es_ast, es.Program);
+    return es_ir.gen.es_ast;
+}
+
+"""Compile Jac source to an ESTree program with an explicit FrameworkBackend."""
+def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program {
+    prog = JacProgram();
+    ir = prog.compile(file_path=filename, no_cgen=True);
+
+    assert not prog.errors_had , (
+        f"Compilation errors in {filename}: {[str(e) for e in prog.errors_had]}"
+    );
+
+    es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=backend);
+    es_ir = es_pass.ir_out;
+
     assert isinstance(es_ir.gen.es_ast, es.Program);
     return es_ir.gen.es_ast;
 }
@@ -317,6 +357,134 @@ test "reactive state scoping across functions" {
     assert "let cart = useCart()" in js_code;
 }
 
+test "react read seam lowers a reactive read to a bare identifier (#6677)" {
+    # The #6677 contract: lower_state_read(name) -> bare Identifier on hooks
+    # backends. This is the no-op that keeps React/Preact output byte-identical.
+    read_node = ReactBackend().lower_state_read("count");
+    assert isinstance(read_node, es.Identifier) , "react read seam must return an Identifier";
+    assert read_node.name == "count";
+}
+
+test "react read seam keeps reactive reads unwrapped (zero-diff)" {
+    # Under React the value-read seam must not alter reactive reads anywhere.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_read_audit.cl.jac"), ReactBackend()
+        )
+    );
+    assert "let doubled = (count + count)" in js_code;
+    assert 'let info = {"count": count}' in js_code;
+    assert "[count]" in js_code , "JSX child read stays a bare identifier";
+    assert "count()" not in js_code , "React must never wrap a reactive read";
+}
+
+test "read seam wraps only value positions under a signals backend" {
+    # Contract §4.1.1 audit, made executable with a signals-style backend that
+    # wraps reads as `count()`. Value positions MUST wrap; write targets,
+    # property keys, and string literals MUST NOT.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_read_audit.cl.jac"), _WrapReadBackend()
+        )
+    );
+
+    # Value positions wrap.
+    assert "let doubled = (count() + count())" in js_code , "RHS reads should wrap";
+    assert "let nested = [count(), (count() + 1)]" in js_code , "list reads should wrap";
+    assert "[count()]" in js_code , "JSX child read should wrap";
+
+    # Dict value wraps; the string key is a Literal, never the Name seam.
+    assert 'let info = {"count": count()}' in js_code , "dict value wraps, key untouched";
+
+    # Write target lowers to its setter — never an assignment to a call.
+    assert "setCount((count() + 1))" in js_code , "write target uses setter; RHS read wraps";
+    assert "count() =" not in js_code , "a reactive write target must not be wrapped";
+
+    # Member property keys and attribute string literals are reconstructed from
+    # sym_name / literals and must stay untouched.
+    assert "items[0].count" in js_code , "member property must not wrap";
+    assert ".count()" not in js_code , "member property key must not become a call";
+    assert 'data-count": "count"' in js_code , "attribute string literal untouched";
+}
+
+test "react view seam returns the expression unchanged (zero-diff)" {
+    # Contract §4.2: lower_view_expr is identity on hooks backends.
+    expr = es.Identifier(name="count");
+    out = ReactBackend().lower_view_expr(expr);
+    assert out is expr , "react view seam must return the same expression node";
+}
+
+test "react view seam keeps dynamic JSX unwrapped (zero-diff)" {
+    # Under React the dynamic-view seam must not alter JSX children or attributes.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_view_audit.cl.jac"), ReactBackend()
+        )
+    );
+    assert "__view(" not in js_code , "React must never thunk a dynamic JSX position";
+    assert '"value": count' in js_code , "dynamic attribute stays a bare read";
+    assert "[count]" in js_code , "dynamic JSX child stays a bare read";
+}
+
+test "view seam thunks only dynamic positions under a signals backend" {
+    # Contract §4.2 audit, made executable with a thunking backend that wraps a
+    # dynamic JSX position as `__view(expr)`. Dynamic child + dynamic attribute
+    # value MUST route through the seam; event handlers and static literals MUST NOT.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_view_audit.cl.jac"), _ThunkViewBackend()
+        )
+    );
+
+    # Dynamic attribute value and dynamic child route through the seam.
+    assert '"value": __view(count)' in js_code , "dynamic attribute value should thunk";
+    assert "[__view(count)]" in js_code , "dynamic JSX child should thunk";
+
+    # Event handler is emitted as-is — never view-wrapped.
+    assert '"onClick":' in js_code , "event handler attribute is still emitted";
+    assert '"onClick": __view(' not in js_code , "event handler must not be view-wrapped";
+
+    # Static string literal bypasses the seam entirely.
+    assert '"type": "text"' in js_code , "static literal attribute untouched";
+    assert "__view(\"text\")" not in js_code , "static literal must not thunk";
+}
+
+test "reactive writes transform inside nested and deferred closures" {
+    # Regression for #6459: a reactive `has` write must lower to its setter at
+    # any closure depth, not only in the direct handler scope.
+    es_ast = compile_to_esast(fixture_path("reactive_state_closures.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Direct handler scope.
+    assert "setSeen(true)" in js_code , "direct handler write should use setter";
+    # Inside a setTimeout(...) callback (deferred closure). If the write had not
+    # transformed it would emit `armed = true` and `setArmed` would be absent.
+    assert "setTimeout(" in js_code , "deferred fixture should emit setTimeout";
+    assert "setArmed(true)" in js_code , (
+        "write inside setTimeout closure should use setter"
+    );
+    # Inside an immediately-invoked nested lambda.
+    assert "setFired(true)" in js_code , (
+        "write inside nested closure should use setter"
+    );
+    # The raw reactive assignment form must never leak through.
+    assert "armed = true" not in js_code , "deferred write must not stay a bare assignment";
+}
+
+test "varargs parameter lowers to JS rest parameter" {
+    # Regression: `*args` was dropped from the emitted signature, leaving the
+    # body referencing an undefined name (broke the shadcn `cn(*inputs)` helper).
+    es_ast = compile_to_esast(fixture_path("vararg_params.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    assert "function collect(...items)" in js_code , (
+        "vararg-only function should emit a rest parameter"
+    );
+    assert "function mixed(first, ...rest)" in js_code , (
+        "regular param followed by vararg should emit `first, ...rest`"
+    );
+}
+
 # SKIP: Jac-in-Jac compilation produces different import output (e.g.
 # `import "lodash"` instead of `import { debounce } from "lodash"`).
 # test "equivalent context patterns" { ... }
@@ -528,6 +696,129 @@ test "single-`props` component definition warns W5015" {
     assert not any("SingleKeyStyle" in m for m in msgs) , (
         f"SingleKeyStyle (typed single-key bundle) should not warn, got: {msgs}"
     );
+}
+
+test "props-destructured component direct calls preserve wrapping and spreads" {
+    es_ast = compile_to_esast(fixture_path("component_direct_call_props_wrap.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    greeting = funcs["Greeting"];
+    assert len(greeting.params) == 1;
+    assert isinstance(greeting.params[0], es.Identifier);
+    assert greeting.params[0].name == "props";
+
+    direct_pos_ret = funcs["direct_pos"].body.body[0];
+    assert isinstance(direct_pos_ret, es.ReturnStatement);
+    direct_pos_call = direct_pos_ret.argument;
+    assert isinstance(direct_pos_call, es.CallExpression);
+    assert len(direct_pos_call.arguments) == 1;
+    assert isinstance(direct_pos_call.arguments[0], es.ObjectExpression);
+
+    direct_single_ret = funcs["direct_single_object"].body.body[0];
+    assert isinstance(direct_single_ret, es.ReturnStatement);
+    direct_single_call = direct_single_ret.argument;
+    assert isinstance(direct_single_call, es.CallExpression);
+    assert isinstance(direct_single_call.arguments[0], es.ObjectExpression);
+    direct_single_props = direct_single_call.arguments[0].properties;
+    assert len(direct_single_props) == 1;
+    assert isinstance(direct_single_props[0], es.Property);
+    assert isinstance(direct_single_props[0].key, es.Identifier);
+    assert direct_single_props[0].key.name == "payload";
+
+    direct_spread_ret = funcs["direct_spread"].body.body[0];
+    assert isinstance(direct_spread_ret, es.ReturnStatement);
+    direct_spread_call = direct_spread_ret.argument;
+    assert isinstance(direct_spread_call, es.CallExpression);
+    assert isinstance(direct_spread_call.callee, es.ArrowFunctionExpression);
+    assert isinstance(direct_spread_call.arguments[0], es.ArrayExpression);
+    spread_elems = direct_spread_call.arguments[0].elements;
+    assert len(spread_elems) == 1;
+    assert isinstance(spread_elems[0], es.SpreadElement);
+
+    direct_mixed_ret = funcs["direct_mixed_spread"].body.body[0];
+    assert isinstance(direct_mixed_ret, es.ReturnStatement);
+    direct_mixed_call = direct_mixed_ret.argument;
+    assert isinstance(direct_mixed_call, es.CallExpression);
+    assert isinstance(direct_mixed_call.arguments[0], es.ArrayExpression);
+    mixed_elems = direct_mixed_call.arguments[0].elements;
+    assert len(mixed_elems) == 2;
+    assert isinstance(mixed_elems[0], es.Literal);
+    assert isinstance(mixed_elems[1], es.SpreadElement);
+
+    passthrough_ret = funcs["passthrough_bundle"].body.body[0];
+    assert isinstance(passthrough_ret, es.ReturnStatement);
+    passthrough_call = passthrough_ret.argument;
+    assert isinstance(passthrough_call, es.CallExpression);
+    assert isinstance(passthrough_call.arguments[0], es.Identifier);
+
+    plain_spread_ret = funcs["plain_spread"].body.body[0];
+    assert isinstance(plain_spread_ret, es.ReturnStatement);
+    plain_spread_call = plain_spread_ret.argument;
+    assert isinstance(plain_spread_call, es.CallExpression);
+    assert len(plain_spread_call.arguments) == 1;
+    assert isinstance(plain_spread_call.arguments[0], es.SpreadElement);
+}
+
+test "conditional JSX returns still trigger props-destructure lowering" {
+    es_ast = compile_to_esast(fixture_path("component_conditional_jsx_return.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    # Both components have JSX returns nested inside if/else/match; they must
+    # still lower to a single `props` parameter plus destructure preamble.
+    conditional = funcs["ConditionalGreeting"];
+    assert len(conditional.params) == 1;
+    assert isinstance(conditional.params[0], es.Identifier);
+    assert conditional.params[0].name == "props";
+
+    match_greeting = funcs["MatchGreeting"];
+    assert len(match_greeting.params) == 1;
+    assert isinstance(match_greeting.params[0], es.Identifier);
+    assert match_greeting.params[0].name == "props";
+
+    # Direct call site must wrap positional args into a props object.
+    direct_ret = funcs["direct_call_conditional"].body.body[0];
+    assert isinstance(direct_ret, es.ReturnStatement);
+    direct_call = direct_ret.argument;
+    assert isinstance(direct_call, es.CallExpression);
+    assert len(direct_call.arguments) == 1;
+    assert isinstance(direct_call.arguments[0], es.ObjectExpression);
+    direct_props = direct_call.arguments[0].properties;
+    assert len(direct_props) == 2;
+}
+
+test "union JsxElement return type still triggers props-destructure lowering" {
+    es_ast = compile_to_esast(fixture_path("component_union_jsx_return.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    error_banner = funcs["ErrorBanner"];
+    assert len(error_banner.params) == 1;
+    assert isinstance(error_banner.params[0], es.Identifier);
+    assert error_banner.params[0].name == "props";
+
+    direct_ret = funcs["direct_call"].body.body[0];
+    assert isinstance(direct_ret, es.ReturnStatement);
+    direct_call = direct_ret.argument;
+    assert isinstance(direct_call, es.CallExpression);
+    assert len(direct_call.arguments) == 1;
+    assert isinstance(direct_call.arguments[0], es.ObjectExpression);
 }
 
 test "components with JSX slots compile to function declarations" {
@@ -861,5 +1152,31 @@ test "user function shadowing a builtin name is called, not the builtin" {
     assert len(user_len_calls) >= 1 , (
         "expected a call to the user-defined len(), but the builtin emitter "
         "was used instead:\n" + es_to_js(es_ast)
+    );
+}
+
+test "augmented reactive assignments do not double-apply the lhs" {
+    # Regression: count += 5 must emit setCount(count + 5), not
+    # setCount(count + (count + 5)).  The bug was that exit_assignment built
+    # the full BinaryExpression and also passed aug_op to StateUpdate, causing
+    # lower_state_update to wrap it a second time.
+    es_ast = compile_to_esast(fixture_path("reactive_aug_assign.cl.jac"));
+    js = es_to_js(es_ast);
+
+    # Each setter call must appear exactly once as a simple binary: setCount((count op N)).
+    # gen_binary_expression always wraps in parens, so the argument is (count op N).
+    assert "setCount((count + 5))" in js , (
+        "expected setCount((count + 5)) but got:\n" + js
+    );
+    assert "setCount((count - 2))" in js , (
+        "expected setCount((count - 2)) but got:\n" + js
+    );
+    assert "setCount((count * 3))" in js , (
+        "expected setCount((count * 3)) but got:\n" + js
+    );
+    # Double-application fingerprint: with parens from gen_binary_expression the bug
+    # produces setCount((count + (count + 5))) — catch the nested `(count + (count` shape.
+    assert "setCount((count + (count" not in js , (
+        "double-application bug detected in:\n" + js
     );
 }

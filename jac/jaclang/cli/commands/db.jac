@@ -1,22 +1,9 @@
-"""`jac db` — inspect, manage aliases, and recover anchors.
-
-These commands let developers and operators reason about persistence
-state from the outside: see what's stored, what's quarantined, add
-rescue-time aliases without a code deploy, and re-attempt loading of
-quarantined rows after fixing the schema.
-
-The default DB path is resolved by globbing `.jac/data/*.db` in the
-current directory: if exactly one is found, it's used; otherwise an
-explicit `--path` is required.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
 
-"""Summary of a Jac persistence DB: format version, counts, aliases."""
 @registry.command(
     name="db",
     help="Inspect, rescue, and manage Jac persistence databases",
@@ -25,7 +12,7 @@ glob registry = get_registry();
             "action",
             kind=ArgKind.POSITIONAL,
             default="inspect",
-            help="Action: inspect, quarantine, alias, recover, recover-all"
+            help="Action: inspect, fsck, quarantine, alias, recover, recover-all, schema"
         ),
         Arg.create(
             "sub",
@@ -65,6 +52,8 @@ glob registry = get_registry();
     examples=[
         ("jac db inspect", "Summarize the DB for the .jac in cwd"),
         ("jac db inspect --app path/to/app.jac", "Summarize a specific app's DB"),
+        ("jac db fsck", "Scan for dangling refs / orphans (read-only)"),
+        ("jac db fsck repair", "Heal dangling refs and collect orphans"),
         ("jac db quarantine list", "List quarantined anchors"),
         ("jac db quarantine show <row-id>", "Show one quarantined row in full"),
         ("jac db alias list", "List DB-resident aliases"),
@@ -72,6 +61,7 @@ glob registry = get_registry();
         ("jac db alias remove old.mod.OldName", "Remove a rescue alias"),
         ("jac db recover <row-id>", "Try to un-quarantine one row"),
         ("jac db recover-all", "Try to un-quarantine every row; report counts"),
+        ("jac db schema rules", "List registered __jac_schema__ drift rules"),
 
     ],
     group="db"

@@ -1,21 +1,9 @@
-"""Shared base for codegen passes that operate on Module AST."""
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.passes.transform { Transform }
-import type from jaclang.jac0core.program { JacProgram }
 
-"""Base for all module-level codegen passes.
-
-Provides static helpers for context-block unwrapping and body
-extraction, used by PyastGenPass, EsastGenPass, and NaIRGenPass.
-"""
 obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
-    """Unwrap ImplDef wrapper to get body statements.
-
-    Returns the body as a Sequence, handling both direct list bodies
-    and ImplDef-wrapped bodies. Returns None if body is not a list.
-    """
     static def unwrap_body(
         nd: uni.Archetype | uni.Enum | uni.Ability
     ) -> (Sequence | None) {
@@ -29,52 +17,63 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         return None;
     }
 
-    """Iterate top-level statements for a given context.
+    static def iter_woven_segments(module: uni.Module) -> list[tuple[Sequence, bool]] {
+        own_path = module.loc.mod_path;
+        annex_stmts = [
+            stmt
+            for stmt in module.body
+            if stmt.loc.mod_path and stmt.loc.mod_path != own_path
+        ];
+        head_stmts = [
+            stmt
+            for stmt in module.body
+            if not (stmt.loc.mod_path and stmt.loc.mod_path != own_path)
+        ];
+        return [(annex_stmts, True), (head_stmts, True)];
+    }
 
-    Unwraps NativeBlock/ClientBlock/ServerBlock and yields their
-    children matching the given CodeContext. When ctx is None, yields
-    all statements from all blocks (flat iteration).
-    """
     static def iter_context_stmts(
         module: uni.Module, ctx: (CodeContext | None) = None
     ) -> list[uni.ElementStmt] {
         result: list[uni.ElementStmt] = [];
-        for stmt in module.body {
-            if isinstance(stmt, uni.NativeBlock) {
-                if (ctx is None or ctx == CodeContext.NATIVE) {
-                    result.extend(stmt.body);
+        for (body, _strip) in ModuleCodegenPass.iter_woven_segments(module) {
+            for stmt in body {
+                if isinstance(stmt, uni.NativeBlock) {
+                    if (ctx is None or ctx == CodeContext.NATIVE) {
+                        result.extend(stmt.body);
+                    }
+                } elif isinstance(stmt, uni.ClientBlock) {
+                    if (ctx is None or ctx == CodeContext.CLIENT) {
+                        result.extend(stmt.body);
+                    }
+                } elif isinstance(stmt, uni.ServerBlock) {
+                    if (ctx is None or ctx == CodeContext.SERVER) {
+                        result.extend(stmt.body);
+                    }
+                } elif ctx is None {
+                    result.append(stmt);
+                } elif (
+                    isinstance(stmt, uni.ContextAwareNode) and stmt.code_context == ctx
+                ) {
+                    result.append(stmt);
+                } elif (
+                    not isinstance(stmt, uni.ContextAwareNode)
+                    and ctx == CodeContext.SERVER
+                ) {
+                    result.append(stmt);
                 }
-            } elif isinstance(stmt, uni.ClientBlock) {
-                if (ctx is None or ctx == CodeContext.CLIENT) {
-                    result.extend(stmt.body);
-                }
-            } elif isinstance(stmt, uni.ServerBlock) {
-                if (ctx is None or ctx == CodeContext.SERVER) {
-                    result.extend(stmt.body);
-                }
-            } elif ctx is None {
-                result.append(stmt);
-            } elif (
-                isinstance(stmt, uni.ContextAwareNode) and stmt.code_context == ctx
-            ) {
-                result.append(stmt);
-            } elif (
-                not isinstance(stmt, uni.ContextAwareNode) and ctx == CodeContext.SERVER
-            ) {
-                # Undecorated top-level nodes default to SERVER context
-                result.append(stmt);
             }
         }
         return result;
     }
 
-    """Names of archetypes referenced anywhere under `nd` (constructors, type
-    annotations, and `with X entry` triggers all surface as resolved `Name`s
-    whose symbol declares an Archetype). Backend-agnostic.
-    """
+    static def has_native_context_stmts(module: uni.Module) -> bool {
+        return bool(ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE));
+    }
+
     static def archetype_refs(nd: uni.UniNode) -> list[str] {
         names: list[str] = [];
-        for nm in nd.get_all_sub_nodes(uni.Name, brute_force=True) {
+        for nm in nd.get_all_sub_nodes(uni.Name) {
             sym = nm.sym;
             if (sym is not None) and sym.defn {
                 cand = sym.defn[0].name_of;
@@ -86,19 +85,11 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         return names;
     }
 
-    """Module-level (shared) archetypes transitively referenced by code in the
-    given codespace context. `obj`/`node`/`edge`/`walker` declared at module
-    level (direct children of the Module) are shared across all backends; a
-    backend compiles the ones its own code references. Declarations nested in a
-    codespace block, an `import from "lib" { ... }` clib block, or another
-    archetype have a non-Module parent and are owned by a different registration
-    path, so they are never returned here.
-    """
     static def shared_archetypes_for_context(
         module: uni.Module, ctx: CodeContext
     ) -> list[uni.Archetype] {
         shared: dict[(str, uni.Archetype)] = {};
-        for arch in module.get_all_sub_nodes(uni.Archetype, brute_force=True) {
+        for arch in module.get_all_sub_nodes(uni.Archetype) {
             if (arch.name is not None) and isinstance(arch.parent, uni.Module) {
                 shared[arch.name.value] = arch;
             }

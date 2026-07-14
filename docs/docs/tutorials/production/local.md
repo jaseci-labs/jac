@@ -220,7 +220,7 @@ Response (all walker responses are wrapped in a standard envelope):
 These endpoints are enabled by default. To disable them (e.g. in production), set `docs_enabled = false` in your `jac.toml`:
 
 ```toml
-[plugins.scale.server]
+[scale.server]
 docs_enabled = false
 ```
 
@@ -340,7 +340,7 @@ walker:pub health {
 ```
 
 ```bash
-# Built-in health endpoint (provided by jac-scale)
+# Built-in health endpoint (provided by the scale subsystem)
 curl http://localhost:8000/health
 
 # Custom health walker endpoint (POST to /walker/<name>)
@@ -376,7 +376,7 @@ walker:pub ready {
 | `--dev`, `-d` | Enable Hot Module Replacement | false |
 | `--no_client`, `-n` | Skip client bundling (API only) | false |
 | `--faux`, `-f` | Print API docs only (no server) | false |
-| `--scale` | Deploy to Kubernetes (requires jac-scale) | false |
+| `--scale` | Deploy to Kubernetes (built-in scale subsystem) | false |
 
 ---
 
@@ -508,5 +508,5 @@ curl -X POST http://localhost:8000/walker/health
 
 ## Next Steps
 
-- [Kubernetes Deployment](kubernetes.md) - Scale with jac-scale
+- [Kubernetes Deployment](kubernetes.md) - Scale with the built-in scale subsystem
 - [Authentication](../fullstack/auth.md) - Add user login

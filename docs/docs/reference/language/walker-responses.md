@@ -81,7 +81,7 @@ When the walker reports a *collection* once at exit, the element type is itself 
 
 ```jac
 walker ListTasks {
-    has reports: list[list[Task]];
+    has reports: list[list[Task]] = [];
 
     can collect with Root entry {
         report [-->][?:Task];
@@ -93,6 +93,8 @@ with entry {
     tasks: list[Task] = result.reports[0];   # type-safe single-shot collection
 }
 ```
+
+The `= []` default is required: without it, `reports` becomes a required spawn parameter and `root spawn ListTasks()` fails with E1050.
 
 #### How the type checker enforces the declaration
 
@@ -117,7 +119,7 @@ node Item {
 }
 
 walker:priv ListItems {
-    has reports: list[list[str]];
+    has reports: list[list[str]] = [];
     has items: list[str] = [];
 
     can collect with Root entry {
@@ -203,7 +205,7 @@ walker:priv CreateItem {
 
     can create with Root entry {
         new_item = here ++> Item(name=self.name);
-        report new_item[0];  # Report the created item
+        report new_item;  # Report the created item
     }
 }
 
@@ -359,7 +361,7 @@ walker:priv BadCreate {
 
     can create with Root entry {
         item = here ++> Item(name=self.name);
-        report {"name": item[0].name, "data": item[0].data};  # Don't do this
+        report {"name": item.name, "data": item.data};  # Don't do this
     }
 }
 
@@ -369,7 +371,7 @@ walker:priv GoodCreate {
 
     can create with Root entry {
         item = here ++> Item(name=self.name);
-        report item[0];  # The runtime handles serialization automatically
+        report item;  # The runtime handles serialization automatically
     }
 }
 ```

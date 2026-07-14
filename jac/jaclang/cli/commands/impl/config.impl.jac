@@ -1,13 +1,7 @@
-"""Implementation of config commands.
-
-Direct implementations - no delegation.
-"""
-
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.helpers { read_toml_with_encoding }
 
-# Configuration groups available in jac.toml
 glob CONFIG_GROUPS = [
          "project",
          "run",
@@ -18,427 +12,9 @@ glob CONFIG_GROUPS = [
          "check",
          "dot",
          "cache",
-         "plugins",
          "environment"
      ];
 
-"""Manage Jac plugins - list, disable, or enable plugins."""
-impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> int {
-    import from jaclang.jac0core.runtime { plugin_manager }
-    import from jaclang.cli.registry { get_registry }
-    import from jaclang.project.config { get_config, JacConfig, find_project_root }
-    import from pathlib { Path }
-    # Build a mapping from plugin object to its distribution info using pluggy's tracking
-    plugin_to_dist: dict[int, tuple[str, str]] = {};
-    for (plugin, dist_facade) in plugin_manager.list_plugin_distinfo() {
-        dist_name = dist_facade.project_name;
-        dist_version = dist_facade.version;
-        plugin_to_dist[id(plugin)] = (dist_name, dist_version);
-    }
-    # Build mappings for plugin identification
-    plugin_list = plugin_manager.list_name_plugin();
-    # Map: short_name -> list of (qualified_name, plugin) for detecting ambiguity
-    short_to_qualified: dict[str, list[tuple[str, object]]] = {};
-    # Map: qualified_name -> plugin
-    qualified_to_plugin: dict[str, object] = {};
-    # Map: package_name -> list of qualified_names
-    package_to_qualified: dict[str, list[str]] = {};
-    for (short_name, plugin) in plugin_list {
-        if short_name.isdigit() {
-            continue;  # Skip unnamed plugins
-        }
-        if id(plugin) in plugin_to_dist {
-            (pkg_name, pkg_version) = plugin_to_dist[id(plugin)];
-            qualified_name = f"{pkg_name}:{short_name}";
-            # Track qualified name
-            qualified_to_plugin[qualified_name] = plugin;
-            # Track short name -> qualified mappings (for ambiguity detection)
-            if short_name not in short_to_qualified {
-                short_to_qualified[short_name] = [];
-            }
-            short_to_qualified[short_name].append((qualified_name, plugin));
-            # Track package -> qualified names
-            if pkg_name not in package_to_qualified {
-                package_to_qualified[pkg_name] = [];
-            }
-            package_to_qualified[pkg_name].append(qualified_name);
-            # Also support version-qualified package names
-            pkg_with_version = f"{pkg_name}=={pkg_version}";
-            if pkg_with_version not in package_to_qualified {
-                package_to_qualified[pkg_with_version] = [];
-            }
-            package_to_qualified[pkg_with_version].append(qualified_name);
-        } else {
-            # Core plugin - use jaclang:name as qualified name
-            qualified_name = f"jaclang:{short_name}";
-            qualified_to_plugin[qualified_name] = plugin;
-            if short_name not in short_to_qualified {
-                short_to_qualified[short_name] = [];
-            }
-            short_to_qualified[short_name].append((qualified_name, plugin));
-            # Also track under jaclang package
-            if "jaclang" not in package_to_qualified {
-                package_to_qualified["jaclang"] = [];
-            }
-            package_to_qualified["jaclang"].append(qualified_name);
-        }
-    }
-    # Get config for disabled plugins info
-    config = get_config();
-    disabled_plugins: list[str] = [];
-    if config {
-        disabled_plugins = config.plugins_config.disabled;
-    }
-    # Helper to check if a plugin is from an external package (can be disabled)
-    def is_external_plugin(plugin: object) -> bool {
-        return id(plugin) in plugin_to_dist;
-    }
-    # Helper to check if a qualified name is disabled
-    def is_disabled(qualified_name: str) -> bool {
-        return qualified_name in disabled_plugins;
-    }
-    # Handle disable action
-    if action == 'disable' {
-        if not names {
-            console.error("Plugin or package name required for disable action.");
-            console.print(
-                "Usage: jac plugins disable <package> | <package:plugin> | *",
-                style="muted"
-            );
-            return 1;
-        }
-        # Get or create config - auto-create jac.toml if needed
-        if not config {
-            result = find_project_root();
-            if result {
-                (_, toml_path) = result;
-                config = JacConfig.load(toml_path);
-            } else {
-                toml_path = Path.cwd() / "jac.toml";
-                config = JacConfig();
-                config.toml_path = toml_path;
-                config.project_root = Path.cwd();
-                console.info(f"Creating {toml_path}...");
-            }
-        }
-        for target in names {
-            # Case 0: Wildcard - disable all external plugins
-            if target == '*' {
-                if '*' not in config.plugins_config.disabled {
-                    config.plugins_config.disabled = [
-                        '*'
-                    ];  # Replace with just wildcard
-                    console.success("Disabled: * (all external plugins)", emoji=False);
-                } else {
-                    console.warning(
-                        "Already disabled: * (all external plugins)", emoji=False
-                    );
-                }
-                continue;
-            }
-            # Case 1: Qualified name (package:plugin)
-            if ':' in target {
-                if target in qualified_to_plugin {
-                    plugin = qualified_to_plugin[target];
-                    if not is_external_plugin(plugin) {
-                        console.error(f"Cannot disable core plugin '{target}'.");
-                        continue;
-                    }
-                    if target not in config.plugins_config.disabled {
-                        config.plugins_config.disabled.append(target);
-                        console.success(f"Disabled: {target}", emoji=False);
-                    } else {
-                        console.warning(f"Already disabled: {target}", emoji=False);
-                    }
-                } else {
-                    console.warning(f"'{target}' not found.");
-                }
-                # Case 2: Package name (disable all plugins from package)
-            } elif target in package_to_qualified {
-                qualified_names = package_to_qualified[target];
-                for qname in qualified_names {
-                    if qname not in config.plugins_config.disabled {
-                        config.plugins_config.disabled.append(qname);
-                        console.success(f"Disabled: {qname}", emoji=False);
-                    } else {
-                        console.warning(f"Already disabled: {qname}", emoji=False);
-                    }
-                }
-                # Case 3: Short name - check for ambiguity
-            } elif target in short_to_qualified {
-                matches = short_to_qualified[target];
-                if len(matches) == 1 {
-                    (qname, plugin) = matches[0];
-                    if not is_external_plugin(plugin) {
-                        console.error(f"Cannot disable core plugin '{target}'.");
-                        continue;
-                    }
-                    if qname not in config.plugins_config.disabled {
-                        config.plugins_config.disabled.append(qname);
-                        console.success(f"Disabled: {qname}", emoji=False);
-                    } else {
-                        console.warning(f"Already disabled: {qname}", emoji=False);
-                    }
-                } else {
-                    console.warning(
-                        f"Ambiguous: '{target}' exists in multiple packages. Use qualified name:"
-                    );
-                    for (qname, _) in matches {
-                        console.print(f"  jac plugins disable {qname}", style="muted");
-                    }
-                }
-            } else {
-                console.warning(f"'{target}' not found as a plugin or package name.");
-            }
-        }
-        config.save();
-        console.success(f"Saved to {config.toml_path}");
-        return 0;
-    }
-    # Handle enable action
-    if action == 'enable' {
-        if not names {
-            console.error("Plugin or package name required for enable action.");
-            console.print(
-                "Usage: jac plugins enable <package> | <package:plugin> | *",
-                style="muted"
-            );
-            return 1;
-        }
-        if not config {
-            console.error("No jac.toml found. Nothing to enable.");
-            return 1;
-        }
-        enabled_any = False;
-        for target in names {
-            # Case 0: Wildcard - enable all (remove wildcard from disabled list)
-            if target == '*' {
-                if '*' in config.plugins_config.disabled {
-                    config.plugins_config.disabled.remove('*');
-                    console.success(
-                        "Enabled: * (all external plugins will now load)", emoji=False
-                    );
-                    enabled_any = True;
-                } else {
-                    console.warning(
-                        "Wildcard '*' is not currently disabled.", emoji=False
-                    );
-                }
-                continue;
-            }
-            # Case 1: Exact match in disabled list (qualified or legacy short name)
-            if target in config.plugins_config.disabled {
-                config.plugins_config.disabled.remove(target);
-                console.success(f"Enabled: {target}", emoji=False);
-                enabled_any = True;
-                # Case 2: Package name - enable all from that package
-            } elif target in package_to_qualified {
-                for qname in package_to_qualified[target] {
-                    if qname in config.plugins_config.disabled {
-                        config.plugins_config.disabled.remove(qname);
-                        console.success(f"Enabled: {qname}", emoji=False);
-                        enabled_any = True;
-                    }
-                }
-                # Case 3: Check if it's a package prefix in disabled entries
-            } else {
-                # Find all disabled entries that start with this package
-                matching = [
-                    m
-                    for m in config.plugins_config.disabled
-                    if m.startswith(f"{target}:")
-                ];
-                if matching {
-                    for qname in matching {
-                        config.plugins_config.disabled.remove(qname);
-                        console.success(f"Enabled: {qname}", emoji=False);
-                        enabled_any = True;
-                    }
-                } else {
-                    console.warning(
-                        f"'{target}' is not disabled. Use 'jac plugins disabled' to see disabled plugins."
-                    );
-                }
-            }
-        }
-        if not enabled_any {
-            console.info("No plugins were enabled.");
-            return 0;
-        }
-        config.save();
-        console.success(f"Saved to {config.toml_path}");
-        return 0;
-    }
-    # Handle disabled action - show currently disabled plugins
-    if action == 'disabled' {
-        if not disabled_plugins {
-            console.info("No plugins are currently disabled");
-        } elif '*' in disabled_plugins {
-            console.warning("All external plugins are disabled (wildcard *)");
-            if config and config.toml_path {
-                console.print(f"   Configured in: {config.toml_path}", style="muted");
-            }
-        } else {
-            console.warning(f"Currently disabled ({len(disabled_plugins)})");
-            for name in sorted(disabled_plugins) {
-                console.print(f"  ✖ {name}", style="muted");
-            }
-            if config and config.toml_path {
-                console.print(f"\n   Configured in: {config.toml_path}", style="muted");
-            }
-        }
-        console.print();
-        return 0;
-    }
-    # Handle list action (default)
-    if action != 'list' {
-        console.error(
-            f"Unknown action '{action}'. Use 'list', 'disable', 'enable', or 'disabled'."
-        );
-        return 1;
-    }
-    # Organize plugins by PyPI distribution for display
-    # Use the already-built mappings from above
-    plugins_by_dist: dict[str, list[tuple[str, str, object, str]]] = {};  # dist_key -> [(short_name, qualified_name, plugin, class_name)]
-    named_plugin_count = 0;
-    for (short_name, plugin) in plugin_list {
-        if short_name.isdigit() {
-            continue;
-        }
-        named_plugin_count += 1;
-
-        if id(plugin) in plugin_to_dist {
-            (dist_name, dist_version) = plugin_to_dist[id(plugin)];
-            dist_key = f"{dist_name}=={dist_version}" if dist_version else dist_name;
-            qualified_name = f"{dist_name}:{short_name}";
-        } else {
-            dist_key = "jaclang (built-in)";
-            qualified_name = f"jaclang:{short_name}";
-        }
-
-        if dist_key not in plugins_by_dist {
-            plugins_by_dist[dist_key] = [];
-        }
-        plugin_type = type(plugin);
-        plugin_class_name = plugin_type?.__name__ or str(plugin_type);
-        plugins_by_dist[dist_key].append(
-            (short_name, qualified_name, plugin, plugin_class_name)
-        );
-    }
-    if not plugins_by_dist {
-        console.info("No Jac plugins installed");
-        return 0;
-    }
-    # Build mapping of package -> commands for display
-    commands_by_package: dict[str, list[str]] = {};
-    registry = get_registry();
-    for command in registry.get_all() {
-        if command.source and command.source != 'jaclang' {
-            pkg = command.source;
-            if pkg not in commands_by_package {
-                commands_by_package[pkg] = [];
-            }
-            commands_by_package[pkg].append(command.name);
-        }
-    }
-    console.print(
-        f"\n🔌 Installed Jac Plugins ({named_plugin_count} plugins from {len(
-            plugins_by_dist
-        )} packages)\n",
-        style="bold"
-    );
-    # Print plugins organized by distribution
-    for dist_key in sorted(plugins_by_dist.keys()) {
-        plugins_in_dist = plugins_by_dist[dist_key];
-
-        # Style package name based on type
-        if "(built-in)" in dist_key {
-            console.print(f"  📦 {dist_key}", style="muted");
-        } else {
-            console.print(f"  📦 {dist_key}", style="cyan");
-        }
-
-        # Extract package name from dist_key (remove version if present)
-        pkg_name = dist_key.split("==")[0].strip();
-        if pkg_name.endswith(" (built-in)") {
-            pkg_name = pkg_name.replace(" (built-in)", "");
-        }
-
-        for (
-            short_name,
-            qualified_name,
-            plugin,
-            plugin_class_name
-        ) in plugins_in_dist {
-            # Check disabled status using qualified name
-            if qualified_name in disabled_plugins {
-                console.print(f"     ✖ {qualified_name} [DISABLED]", style="muted");
-            } else {
-                console.print(f"     ✔ {qualified_name}", style="success");
-            }
-
-            if verbose {
-                plugin_type = type(plugin);
-                module = getattr(plugin_type, '__module__', 'unknown');
-                console.print(f"       Class: {plugin_class_name}", style="muted");
-                console.print(f"       Module: {module}", style="muted");
-                # Show implemented hooks
-                hooks = [];
-                for attr_name in dir(plugin) {
-                    if not attr_name.startswith('_') {
-                        attr = getattr(plugin, attr_name, None);
-                        if callable(attr)
-                        and attr?.__wrapped__
-                        or (hasattr(plugin_manager.hook, attr_name)) {
-                            try {
-                                hook = getattr(plugin_manager.hook, attr_name, None);
-                                if hook is not None {
-                                    impls = hook.get_hookimpls();
-                                    for impl in impls {
-                                        if impl.plugin is plugin {
-                                            hooks.append(attr_name);
-                                            break;
-                                        }
-                                    }
-                                }
-                            } except Exception { }
-                        }
-                    }
-                }
-                if hooks {
-                    console.print(
-                        f"       Hooks: {', '.join(sorted(hooks))}", style="muted"
-                    );
-                }
-                console.print();
-            }
-        }
-
-        # Show commands provided by this package
-        pkg_commands = commands_by_package.get(pkg_name, []);
-        if pkg_commands {
-            console.print(
-                f"     💻 Commands: {', '.join(sorted(pkg_commands))}", style="warning"
-            );
-        }
-
-        console.print();
-    }
-    # Show disabled plugins summary if any
-    if disabled_plugins {
-        if '*' in disabled_plugins {
-            console.warning("All external plugins are disabled (wildcard *)");
-        } else {
-            console.warning(f"Disabled plugins ({len(disabled_plugins)})");
-            for name in sorted(disabled_plugins) {
-                console.print(f"  ✖ {name}", style="muted");
-            }
-        }
-    }
-    return 0;
-}
-
-"""View and modify jac.toml configuration settings."""
 impl config(
     action: str = 'show',
     key: str = '',
@@ -448,25 +24,25 @@ impl config(
 ) -> int {
     import json;
     import from jaclang.project.config { get_config, JacConfig }
-    # Handle 'path' action first - doesn't need config
+
     if action == 'path' {
         _config_path();
         return 0;
     }
-    # Handle 'groups' action - list available groups
+
     if action == 'groups' {
         _config_groups();
         return 0;
     }
-    # Load configuration
+
     config = get_config();
-    # Validate group if specified
+
     if group and group not in CONFIG_GROUPS {
         console.error(f"Unknown group '{group}'.");
         console.print(f"Available groups: {', '.join(CONFIG_GROUPS)}", style="muted");
         return 1;
     }
-    # Route to appropriate handler
+
     if action == 'list' {
         _config_list(config, group, output, True);
     } elif action == 'show' {
@@ -488,7 +64,6 @@ impl config(
     return 0;
 }
 
-"""Generate a display label for a config file path."""
 def _config_file_label(path: Path, active_profile: str) -> str {
     fname = path.name;
     if fname == "jac.toml" {
@@ -503,7 +78,6 @@ def _config_file_label(path: Path, active_profile: str) -> str {
     return "";
 }
 
-"""Show the path to the active configuration files."""
 def _config_path {
     import from jaclang.project.config { get_config, find_project_root }
 
@@ -537,7 +111,6 @@ def _config_path {
     }
 }
 
-"""List available configuration groups."""
 def _config_groups {
     console.print("\nAvailable configuration groups:\n", style="info");
     group_descriptions = {
@@ -550,7 +123,6 @@ def _config_groups {
         "check": "Check command defaults (print_errs)",
         "dot": "Dot/graph visualization defaults (depth, traverse, format)",
         "cache": "Cache settings (enabled, dir)",
-        "plugins": "Plugin settings (discovery, enabled, disabled)",
         "environment": "Environment profile settings (default_profile)"
     };
     for grp in CONFIG_GROUPS {
@@ -559,7 +131,6 @@ def _config_groups {
     }
 }
 
-"""Get the default values for a configuration group."""
 def _get_group_defaults(group_name: str) -> dict {
     import from jaclang.project.config {
         ProjectConfig,
@@ -571,7 +142,6 @@ def _get_group_defaults(group_name: str) -> dict {
         CheckConfig,
         DotConfig,
         CacheConfig,
-        PluginsConfig,
         EnvironmentConfig
     }
 
@@ -585,7 +155,6 @@ def _get_group_defaults(group_name: str) -> dict {
         "check": CheckConfig(),
         "dot": DotConfig(),
         "cache": CacheConfig(),
-        "plugins": PluginsConfig(),
         "environment": EnvironmentConfig()
     };
 
@@ -594,7 +163,6 @@ def _get_group_defaults(group_name: str) -> dict {
         return {};
     }
 
-    # Convert object to dict
     result: dict = {};
     for attr in dir(default_obj) {
         if not attr.startswith('_') {
@@ -607,13 +175,10 @@ def _get_group_defaults(group_name: str) -> dict {
     return result;
 }
 
-"""Get the JacConfig attribute name for a config group."""
 def _get_group_attr(group_name: str) -> str {
-    # Most groups have same name, except plugins -> plugins_config
-    return "plugins_config" if group_name == "plugins" else group_name;
+    return group_name;
 }
 
-"""Get the current values for a configuration group from config."""
 def _get_group_values(config: object, group_name: str) -> dict {
     attr_name = _get_group_attr(group_name);
     group_obj = getattr(config, attr_name, None);
@@ -621,7 +186,6 @@ def _get_group_values(config: object, group_name: str) -> dict {
         return {};
     }
 
-    # Convert object to dict
     result: dict = {};
     for attr in dir(group_obj) {
         if not attr.startswith('_') {
@@ -634,13 +198,11 @@ def _get_group_values(config: object, group_name: str) -> dict {
     return result;
 }
 
-"""Check if a setting was explicitly set in the TOML file."""
 def _is_explicitly_set(config: object, group_name: str, key: str) -> bool {
     if not config?._raw_data or config._raw_data is None {
         return False;
     }
 
-    # Group names match TOML section names
     raw_data = config._raw_data;
     if group_name not in raw_data {
         return False;
@@ -654,7 +216,6 @@ def _is_explicitly_set(config: object, group_name: str, key: str) -> bool {
     return key in section_data;
 }
 
-"""List configuration settings."""
 def _config_list(config: object, group: str, output: str, show_all: bool) -> None {
     import json;
 
@@ -663,10 +224,8 @@ def _config_list(config: object, group: str, output: str, show_all: bool) -> Non
         return;
     }
 
-    # Determine which groups to show
     groups_to_show = [group] if group else CONFIG_GROUPS;
 
-    # Collect all settings data
     all_settings: dict = {};
 
     for grp in groups_to_show {
@@ -678,7 +237,6 @@ def _config_list(config: object, group: str, output: str, show_all: bool) -> Non
             current_val = current.get(key, default_val);
             is_set = _is_explicitly_set(config, grp, key);
 
-            # For 'show' action, only include explicitly set values
             if not show_all and not is_set {
                 continue;
             }
@@ -695,7 +253,6 @@ def _config_list(config: object, group: str, output: str, show_all: bool) -> Non
         }
     }
 
-    # Output in requested format
     if output == 'json' {
         _output_json(all_settings);
     } elif output == 'toml' {
@@ -705,7 +262,6 @@ def _config_list(config: object, group: str, output: str, show_all: bool) -> Non
     }
 }
 
-"""Output settings as a formatted table."""
 def _output_table(settings: dict, show_all: bool) -> None {
     if not settings {
         if show_all {
@@ -720,7 +276,6 @@ def _output_table(settings: dict, show_all: bool) -> None {
         return;
     }
 
-    # Calculate column widths
     max_group = max(len(g) for g in settings.keys());
     max_key = 0;
     max_value = 0;
@@ -734,13 +289,11 @@ def _output_table(settings: dict, show_all: bool) -> None {
         }
     }
 
-    # Ensure minimum widths
     max_group = max(max_group, 5);
     max_key = max(max_key, 3);
     max_value = max(max_value, 5);
     max_default = max(max_default, 7);
 
-    # Print header using format method
     if show_all {
         fmt_str = "{:<" + str(max_group) + "}  {:<" + str(max_key) + "}  {:<" + str(
             max_value
@@ -758,7 +311,6 @@ def _output_table(settings: dict, show_all: bool) -> None {
     console.print(header);
     console.print(separator);
 
-    # Print settings
     for grp in sorted(settings.keys()) {
         grp_settings = settings[grp];
         for key in sorted(grp_settings.keys()) {
@@ -790,11 +342,9 @@ def _output_table(settings: dict, show_all: bool) -> None {
     }
 }
 
-"""Output settings as JSON."""
 def _output_json(settings: dict) {
     import json;
 
-    # Convert to simpler structure for JSON output
     output: dict = {};
     for (grp, grp_settings) in settings.items() {
         output[grp] = {};
@@ -809,7 +359,6 @@ def _output_json(settings: dict) {
     console.print(json.dumps(output, indent=2, default=str));
 }
 
-"""Output settings as TOML (only explicitly set values)."""
 def _output_toml(settings: dict, show_all: bool) {
     import from jaclang.project.config { toml_value }
     lines: list[str] = [];
@@ -820,7 +369,7 @@ def _output_toml(settings: dict, show_all: bool) {
 
         for key in sorted(grp_settings.keys()) {
             data = grp_settings[key];
-            # For TOML output, only show set values (or all if show_all)
+
             if show_all or data["is_set"] {
                 value = data["value"];
                 rendered = toml_value(value);
@@ -842,7 +391,6 @@ def _output_toml(settings: dict, show_all: bool) {
     }
 }
 
-"""Format a value for table display."""
 def _format_value(value: object) -> str {
     if value is None {
         return "null";
@@ -868,7 +416,6 @@ def _format_value(value: object) -> str {
     }
 }
 
-"""Get a specific configuration setting."""
 def _config_get(config: object, key: str) -> int {
     if not key {
         console.error("Key required for 'get' action.");
@@ -882,7 +429,6 @@ def _config_get(config: object, key: str) -> int {
         return 1;
     }
 
-    # Parse the key
     if '.' not in key {
         console.error("Key must be in 'group.name' format.");
         console.print("Example: jac config get serve.port", style="muted");
@@ -899,7 +445,6 @@ def _config_get(config: object, key: str) -> int {
         return 1;
     }
 
-    # Get the value
     current_values = _get_group_values(config, group_name);
     default_values = _get_group_defaults(group_name);
 
@@ -915,7 +460,6 @@ def _config_get(config: object, key: str) -> int {
     value = current_values.get(setting_name, default_values.get(setting_name));
     is_set = _is_explicitly_set(config, group_name, setting_name);
 
-    # Output the value
     console.print(_format_value(value).strip('"'));
 
     if is_set {
@@ -926,7 +470,6 @@ def _config_get(config: object, key: str) -> int {
     return 0;
 }
 
-"""Set a specific configuration setting."""
 def _config_set(config: object, key: str, value: str) -> int {
     import from jaclang.project.config { JacConfig, find_project_root }
 
@@ -943,7 +486,6 @@ def _config_set(config: object, key: str, value: str) -> int {
         return 1;
     }
 
-    # Parse the key
     if '.' not in key {
         console.error("Key must be in 'group.name' format.");
         console.print("Example: jac config set serve.port 9000", style="muted");
@@ -960,7 +502,6 @@ def _config_set(config: object, key: str, value: str) -> int {
         return 1;
     }
 
-    # Get or create config
     if config is None {
         result = find_project_root();
         if result {
@@ -974,7 +515,6 @@ def _config_set(config: object, key: str, value: str) -> int {
         }
     }
 
-    # Validate setting exists
     default_values = _get_group_defaults(group_name);
     if setting_name not in default_values {
         console.error(f"Unknown setting '{setting_name}' in group '{group_name}'.");
@@ -985,39 +525,33 @@ def _config_set(config: object, key: str, value: str) -> int {
         return 1;
     }
 
-    # Convert value to appropriate type
     default_val = default_values[setting_name];
     typed_value = _parse_value(value, type(default_val));
 
-    # Get the group object and set the value
     group_obj = getattr(config, _get_group_attr(group_name), None);
     if group_obj is None {
         console.error(f"Could not access group '{group_name}'.");
         return 1;
     }
 
-    # Set the value
     setattr(group_obj, setting_name, typed_value);
 
-    # Update raw_data for persistence
     if not config?._raw_data or config._raw_data is None {
         config._raw_data = {};
     }
 
-    toml_section = group_name;  # Group names match TOML section names
+    toml_section = group_name;
     if toml_section not in config._raw_data {
         config._raw_data[toml_section] = {};
     }
     config._raw_data[toml_section][setting_name] = typed_value;
 
-    # Save the configuration
     _save_config_with_setting(config, group_name, setting_name, typed_value);
 
     console.success(f"Set {key} = {_format_value(typed_value)}");
     return 0;
 }
 
-"""Unset (remove) a specific configuration setting."""
 def _config_unset(config: object, key: str) -> int {
     import from jaclang.project.config { find_project_root }
 
@@ -1033,7 +567,6 @@ def _config_unset(config: object, key: str) -> int {
         return 1;
     }
 
-    # Parse the key
     if '.' not in key {
         console.error("Key must be in 'group.name' format.");
         console.print("Example: jac config unset serve.port", style="muted");
@@ -1050,25 +583,22 @@ def _config_unset(config: object, key: str) -> int {
         return 1;
     }
 
-    # Check if setting is currently set
     if not _is_explicitly_set(config, group_name, setting_name) {
         console.info(f"Setting '{key}' is not explicitly set (already using default).");
         return 0;
     }
 
-    # Remove from raw_data
-    toml_section = group_name;  # Group names match TOML section names
+    toml_section = group_name;
     if config?._raw_data and config._raw_data and toml_section in config._raw_data {
         if setting_name in config._raw_data[toml_section] {
             del config._raw_data[toml_section][setting_name];
-            # Remove empty section
+
             if not config._raw_data[toml_section] {
                 del config._raw_data[toml_section];
             }
         }
     }
 
-    # Reset to default value in config object
     default_values = _get_group_defaults(group_name);
     default_val = default_values.get(setting_name);
 
@@ -1077,16 +607,13 @@ def _config_unset(config: object, key: str) -> int {
         setattr(group_obj, setting_name, default_val);
     }
 
-    # Save updated configuration
     _save_config_without_setting(config, group_name, setting_name);
 
     console.success(f"Unset {key} (reverted to default: {_format_value(default_val)})");
     return 0;
 }
 
-"""Parse a string value into the appropriate type."""
 def _parse_value(value: str, target_type: type) -> object {
-    # Handle boolean
     if target_type == bool {
         lower = value.lower();
         if lower in ('true', '1', 'yes', 'on') {
@@ -1099,7 +626,6 @@ def _parse_value(value: str, target_type: type) -> object {
         }
     }
 
-    # Handle integer
     if target_type == int {
         try {
             return int(value);
@@ -1109,7 +635,6 @@ def _parse_value(value: str, target_type: type) -> object {
         }
     }
 
-    # Handle float
     if target_type == float {
         try {
             return float(value);
@@ -1119,13 +644,12 @@ def _parse_value(value: str, target_type: type) -> object {
         }
     }
 
-    # Handle list (simple comma-separated)
     if target_type == list
     or (target_type?.__origin__ and target_type.__origin__ == list) {
         if value == '[]' or value == '' {
             return [];
         }
-        # Remove brackets if present
+
         if value.startswith('[') and value.endswith(']') {
             value = value[1:-1];
         }
@@ -1136,11 +660,9 @@ def _parse_value(value: str, target_type: type) -> object {
         ];
     }
 
-    # Default to string
     return value;
 }
 
-"""Save config with a new or updated setting."""
 def _save_config_with_setting(
     config: object, group_name: str, setting_name: str, value: object
 ) -> None {
@@ -1149,29 +671,23 @@ def _save_config_with_setting(
         return;
     }
 
-    # Load existing file content
     if config.toml_path.exists() {
         doc = read_toml_with_encoding(str(config.toml_path));
     } else {
         doc = {};
     }
 
-    # Map group name to TOML section
-    toml_section = group_name;  # Group names match TOML section names
+    toml_section = group_name;
 
-    # Ensure section exists
     if toml_section not in doc {
         doc[toml_section] = {};
     }
 
-    # Set the value
     doc[toml_section][setting_name] = value;
 
-    # Write back through the shared chokepoint (canonical serializer + guard).
     config.persist_doc(doc);
 }
 
-"""Save config without a specific setting (remove it)."""
 def _save_config_without_setting(
     config: object, group_name: str, setting_name: str
 ) -> None {
@@ -1181,24 +697,20 @@ def _save_config_without_setting(
     }
 
     if not config.toml_path.exists() {
-        return;  # Nothing to remove
+        return;
     }
 
-    # Load existing file content
     doc = read_toml_with_encoding(str(config.toml_path));
 
-    # Map group name to TOML section
-    toml_section = group_name;  # Group names match TOML section names
+    toml_section = group_name;
 
-    # Remove the setting if it exists
     if toml_section in doc and setting_name in doc[toml_section] {
         del doc[toml_section][setting_name];
-        # Remove empty section
+
         if not doc[toml_section] {
             del doc[toml_section];
         }
     }
 
-    # Write back through the shared chokepoint (canonical serializer + guard).
     config.persist_doc(doc);
 }

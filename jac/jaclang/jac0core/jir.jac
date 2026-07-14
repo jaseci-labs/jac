@@ -1,17 +1,3 @@
-"""Jac IR (.jir) binary serialization for the unified intermediate representation.
-
-Provides fast, compact serialization of the unitree (AST + symbol table + CFG)
-for caching type-checked modules. Each node is serialized as a single record
-encoding all its overlay data (AST core, scope, CFG, symbol references).
-
-File format:
-  Header (32 bytes) -> String Pool -> Unified Node Stream -> Link Table -> Metadata
-
-Cache locations (platform-aware):
-  Linux:   ~/.cache/jac/jir/
-  macOS:   ~/Library/Caches/jac/jir/
-  Windows: %LOCALAPPDATA%/jac/cache/jir/
-"""
 import hashlib;
 import os;
 import struct;
@@ -19,125 +5,25 @@ import sys;
 import zlib;
 import from pathlib { Path }
 
-# --- Constants ---
-"""JIR file magic bytes."""
-glob MAGIC = b"JIR\x00";
+glob MAGIC = b"JIR\x00",
+     FORMAT_VERSION: int = 14,
+     HEADER_SIZE: int = 32,
+     HEADER_FMT: str = "<4sHHIIIIII",
+     EXTERNAL_REF: int = 0xFFFFFF,
+     SECTIONS_MAGIC: any = b"JIRX",
+     SEC_BYTECODE: int = 0x02,
+     SEC_MTIR: int = 0x03,
+     SEC_LLVM_IR: int = 0x04,
+     SEC_INTEROP: int = 0x05,
+     SEC_NATIVE_OBJ: int = 0x06,
+     SEC_SYMINDEX: int = 0x07,
+     SEC_MODKEY: int = 0x08,
+     SEC_DEBUG_SRC: int = 0x09,
+     SEC_TERMINATOR: int = 0xFF,
+     FLAG_PRECOMPILED: int = 0x02,
+     PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
+     FLAG_BOOTSTRAP: int = 0x04;
 
-"""Current format version. Increment on breaking changes."""
-glob FORMAT_VERSION: int = 12;
-
-"""Header size in bytes."""
-glob HEADER_SIZE: int = 32;
-
-"""Header struct format (little-endian)."""
-glob HEADER_FMT: str = "<4sHHIIIIII";
-
-"""Sentinel node ID for external references (e.g. builtins parent_scope)."""
-glob EXTERNAL_REF: int = 0xFFFFFF;
-
-# --- Section constants (extended JIR format) ---
-"""Magic bytes marking the start of optional TLV sections after the AST payload."""
-glob SECTIONS_MAGIC: any = b"JIRX";
-
-"""Section type: raw marshal.dumps(code_object) bytes."""
-glob SEC_BYTECODE: int = 0x02;
-
-"""Section type: pickle.dumps(mtir_map, HIGHEST_PROTOCOL) bytes."""
-glob SEC_MTIR: int = 0x03;
-
-"""Section type: zlib.compress(llvm_ir_str.encode()) bytes."""
-glob SEC_LLVM_IR: int = 0x04;
-
-"""Section type: json.dumps(interop_dict).encode() bytes."""
-glob SEC_INTEROP: int = 0x05;
-
-"""Section type: post-optimization LLVM bitcode bytes.
-
-Stores the native module's bitcode after optimization passes have run.
-This is faster to parse than text IR (SEC_LLVM_IR) and produces properly
-optimized code on cache reload. Includes a platform header:
-  [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]
-"""
-glob SEC_NATIVE_OBJ: int = 0x06;
-
-"""Section type: json.dumps(module_structural_index).encode() bytes.
-
-A flat, parse-only structural index of one module -- its archetypes (with
-fields, member signatures, base classes) and walker entry points -- with no
-cross-module pointers. Lets `CodeIntelligence` serve `project_map` / structural
-queries on a cold start without re-running the semantic pipeline. Self-keyed by
-the source's content hash (the JIR header's `source_content_hash`), so it needs
-no transitive-dependency tracking: a parse-only index depends only on its own
-source and spliced annex files. See `jaclang.compiler.code_intel`.
-"""
-glob SEC_SYMINDEX: int = 0x07;
-
-"""Section terminator byte."""
-glob SEC_TERMINATOR: int = 0xFF;
-
-"""Header flag: JIR was shipped as a precompiled bundle (no live AST required)."""
-glob FLAG_PRECOMPILED: int = 0x02;
-
-"""Header flag: JIR is a bootstrap-only artifact (no AST payload, bytecode only)."""
-glob FLAG_BOOTSTRAP: int = 0x04;
-
-# --- Varint (LEB128) ---
-"""Encode an unsigned integer as LEB128 varint, appending to buf."""
-def write_varint(buf: bytearray, value: int) {
-    while value >= 0x80 {
-        buf.append((value & 0x7F) | 0x80);
-        value >>= 7;
-    }
-    buf.append(value & 0x7F);
-}
-
-"""Decode an unsigned LEB128 varint from data at pos. Returns (value, new_pos)."""
-def read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
-    result = 0;
-    shift = 0;
-    byte = data[pos];
-    while (byte & 0x80) != 0 {
-        result |= (byte & 0x7F) << shift;
-        shift += 7;
-        pos += 1;
-        byte = data[pos];
-    }
-    result |= (byte & 0x7F) << shift;
-    pos += 1;
-    return (result, pos);
-}
-
-# --- String Pool ---
-"""Deduplicated string table for identifiers, paths, and token values.
-
-Strings are assigned sequential indices. The pool is serialized as:
-  count: varint, then for each string: [length: varint, UTF-8 bytes].
-"""
-class StringPool {
-    def init(self: StringPool) -> None;
-    def intern(self: StringPool, s: str) -> int;
-    def get(self: StringPool, idx: int) -> str;
-    def __len__(self: StringPool) -> int;
-    def serialize(self: StringPool) -> bytes;
-}
-
-"""Deserialize a string pool from data at pos. Returns (pool, new_pos)."""
-def deserialize_string_pool(
-    data: (bytes | memoryview), pos: int
-) -> tuple[StringPool, int] {
-    pool = StringPool();
-    (count, pos) = read_varint(data, pos);
-    for _ in range(count) {
-        (length, pos) = read_varint(data, pos);
-        s = bytes(data[pos:pos + length]).decode('utf-8');
-        pool.intern(s);
-        pos += length;
-    }
-    return (pool, pos);
-}
-
-# --- Header ---
-"""JIR file header (32 bytes fixed size)."""
 obj JirHeader {
     has magic: any = b"JIR\x00",
         format_version: int = FORMAT_VERSION,
@@ -153,7 +39,6 @@ obj JirHeader {
     def is_compatible -> bool;
 }
 
-"""Create a JirHeader for the current environment."""
 def create_header(
     source_hash: int,
     node_count: int,
@@ -180,7 +65,6 @@ def create_header(
     );
 }
 
-"""Deserialize a JirHeader from bytes. Returns None if magic/version mismatch."""
 def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
     if len(data) < HEADER_SIZE {
         return None;
@@ -208,29 +92,11 @@ def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
     );
 }
 
-# --- Cache Directory ---
-"""Get the platform-appropriate global cache directory for JIR files."""
 def get_jir_cache_dir -> Path {
-    if sys.platform == 'win32' {
-        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'));
-        return base / 'jac' / 'cache' / 'jir';
-    } elif sys.platform == 'darwin' {
-        return Path.home() / 'Library' / 'Caches' / 'jac' / 'jir';
-    } else {
-        xdg_cache = os.environ.get('XDG_CACHE_HOME');
-        base = Path(xdg_cache) if xdg_cache else (Path.home() / '.cache');
-        return base / 'jac' / 'jir';
-    }
+    import from jaclang.jac0core.cache_paths { get_jir_cache_dir as _root }
+    return _root();
 }
 
-"""Compute CRC32 of file content for fast-reject validation."""
-def compute_content_crc32(file_path: str) -> int {
-    with open(file_path, 'rb') as f {
-        return zlib.crc32(f.read()) & 0xFFFFFFFF;
-    }
-}
-
-"""Compute SHA-256 hex digest of file content."""
 def compute_content_sha256(file_path: str) -> str {
     h = hashlib.sha256();
     with open(file_path, 'rb') as f {
@@ -245,26 +111,105 @@ def compute_content_sha256(file_path: str) -> str {
     return h.hexdigest();
 }
 
-"""Get the cache path for a stub file."""
-def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
-    cache_dir = get_jir_cache_dir() / 'stubs';
-    name = Path(stub_path).stem;
-    (major, minor) = (sys.version_info.major, sys.version_info.minor);
-    return cache_dir / f"{name}.{content_hash[:16]}.cpython-{major}{minor}.jir";
+def _related_files(source_path: str) -> list[tuple[str, str]] {
+    import from jaclang.jac0core.bccache {
+        discover_annex_files,
+        discover_variant_files,
+        discover_style_annex
+    }
+    src = Path(source_path).resolve();
+    base_dir = src.parent;
+    paths: set = set();
+    paths |= set(discover_annex_files(str(src), '.impl.jac'));
+    paths |= set(discover_annex_files(str(src), '.test.jac'));
+    paths |= set(discover_variant_files(str(src)));
+    style = discover_style_annex(str(src));
+    if style is not None {
+        paths.add(style);
+    }
+    result: list[tuple[str, str]] = [];
+    for p in sorted(paths) {
+        rel = os.path.relpath(p, str(base_dir)).replace(os.sep, '/');
+        result.append((rel, compute_content_sha256(p)));
+    }
+    return result;
 }
 
-"""Get the cache directory for a module based on its origin.
+glob _client_kind_probe_active: bool = False;
 
-1. Source inside sys.prefix or jaclang package (installed/editable) → global cache
-2. Source inside active project root → project .jac/cache/
-3. Otherwise (standalone user file) → .jac/cache/ next to source
-"""
+def _module_client_kind(source_path: str) -> str {
+    global _client_kind_probe_active;
+    if _client_kind_probe_active {
+        return "web";
+    }
+    _client_kind_probe_active = True;
+    try {
+        import from jaclang.project.client_kind { resolve_client_kind_context }
+        (kind, _) = resolve_client_kind_context(source_path);
+        return kind;
+    } except Exception {
+        return "web";
+    } finally {
+        _client_kind_probe_active = False;
+    }
+}
+
+def compute_module_key(source_path: str) -> str {
+    import from importlib.metadata { version as pkg_version }
+    try {
+        jac_ver = pkg_version('jaclang');
+    } except Exception {
+        jac_ver = "0.0.0";
+    }
+    h = hashlib.sha256();
+    h.update(jac_ver.encode());
+    h.update(struct.pack('<H', (sys.version_info.major << 8) | sys.version_info.minor));
+    h.update(struct.pack('<H', FORMAT_VERSION));
+    h.update(_module_client_kind(source_path).encode());
+    h.update(compute_content_sha256(source_path).encode());
+    for (rel, digest) in _related_files(source_path) {
+        h.update(rel.encode());
+        h.update(digest.encode());
+    }
+    return h.hexdigest();
+}
+
+def read_modkey(data: bytes) -> (str | None) {
+    try {
+        magic: any = SECTIONS_MAGIC;
+        pos = data.find(magic, HEADER_SIZE);
+        if pos < 0 {
+            return None;
+        }
+        sections = read_sections(data, pos + len(magic));
+        key_bytes = sections.get(SEC_MODKEY);
+        return key_bytes.decode('utf-8') if key_bytes is not None else None;
+    } except Exception {
+        return None;
+    }
+}
+
+def jir_matches_source(jir_data: bytes, source_path: str) -> bool {
+    stored = read_modkey(jir_data);
+    if stored is None {
+        return False;
+    }
+    return stored == compute_module_key(source_path);
+}
+
+def cache_mode -> tuple[bool, bool] {
+    truthy: set = {'1', 'true', 'True', 'TRUE', 'yes', 'YES', 'on', 'ON'};
+    rebuild = os.environ.get('JAC_REBUILD', '') in truthy;
+    no_precompile = os.environ.get('JAC_NO_PRECOMPILE', '') in truthy;
+    return (rebuild, no_precompile);
+}
+
 glob _jaclang_pkg_dir: str = str(Path(__file__).resolve().parent.parent);
 
 def _get_module_cache_dir(source_path: str) -> Path {
     resolved = Path(source_path).resolve();
     resolved_str = str(resolved);
-    # Installed or editable-installed packages always use global cache
+
     if resolved_str.startswith(_jaclang_pkg_dir + os.sep) {
         return get_jir_cache_dir() / 'modules';
     }
@@ -272,7 +217,7 @@ def _get_module_cache_dir(source_path: str) -> Path {
         resolved.relative_to(sys.prefix);
         return get_jir_cache_dir() / 'modules';
     } except ValueError { }
-    # Check for active project context
+
     try {
         config_mod = __import__("jaclang.project.config", fromlist=["get_config"]);
         cfg = config_mod.get_config();
@@ -281,15 +226,14 @@ def _get_module_cache_dir(source_path: str) -> Path {
                 resolved.relative_to(cfg.project_root);
                 return cfg.get_cache_dir();
             } except ValueError { }
-            # Source is outside project — use global cache
+
             return get_jir_cache_dir() / 'modules';
         }
     } except Exception { }
-    # No project context — use .jac/cache/ next to source
+
     return resolved.parent / ".jac" / "cache";
 }
 
-"""Get the cache path for a user module."""
 def get_module_cache_path(source_path: str) -> Path {
     cache_dir = _get_module_cache_dir(source_path);
     source = Path(source_path).resolve();
@@ -298,11 +242,32 @@ def get_module_cache_path(source_path: str) -> Path {
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
 }
 
-"""Serialize a dict of section_type -> bytes into a TLV blob.
+def get_native_cache_dir(source_path: str) -> Path {
+    return _get_module_cache_dir(source_path) / "native";
+}
 
-Returns bytes: SECTIONS_MAGIC + for each section [type(1) + len(4LE) + data]
-+ SEC_TERMINATOR + 0x00000000.
-"""
+def scrub_cache_dirs(root_dir: str) -> int {
+    import glob as _glob;
+    import shutil as _shutil;
+    patterns = [
+        os.path.join(root_dir, "**", ".jac", "cache"),
+        os.path.join(root_dir, "**", ".jac_ir")
+    ];
+    removed = 0;
+    seen: set[str] = set();
+    for pattern in patterns {
+        for cache_dir in _glob.glob(pattern, recursive=True) {
+            if cache_dir in seen or not os.path.isdir(cache_dir) {
+                continue;
+            }
+            seen.add(cache_dir);
+            _shutil.rmtree(cache_dir, ignore_errors=True);
+            removed += 1;
+        }
+    }
+    return removed;
+}
+
 def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     if not sections {
         return bytes();
@@ -319,11 +284,6 @@ def write_sections(sections: (dict[int, bytes] | None)) -> bytes {
     return bytes(buf);
 }
 
-"""Parse TLV sections from data starting at start_pos.
-
-start_pos should point to the byte immediately after SECTIONS_MAGIC.
-Returns dict mapping section_type -> bytes. Returns {} on any error.
-"""
 def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
     result: dict[int, bytes] = {};
     pos = start_pos;
@@ -351,11 +311,6 @@ def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes
     return result;
 }
 
-"""Fast path: find and return raw bytecode section bytes without deserializing AST.
-
-Scans for SECTIONS_MAGIC after the header, then reads only SEC_BYTECODE.
-Returns None if no bytecode section is present.
-"""
 def read_bytecode_only(data: bytes) -> (bytes | None) {
     try {
         magic_bytes: any = SECTIONS_MAGIC;
@@ -370,13 +325,12 @@ def read_bytecode_only(data: bytes) -> (bytes | None) {
     }
 }
 
-"""Build a minimal JIR file containing only a bytecode section (no AST).
-
-Used for bootstrap JIRs (FLAG_BOOTSTRAP) and precompiled bundles
-(FLAG_PRECOMPILED). The AST payload is an empty zlib-compressed single byte
-(varint 0x00 = empty string pool).
-"""
-def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> bytes {
+def write_precompiled_jir(
+    bytecode: bytes,
+    module_key: str = "",
+    flags: int = 0,
+    extra_sections: (dict[int, bytes] | None) = None
+) -> bytes {
     import from importlib.metadata { version as pkg_version }
     try {
         jac_hash = zlib.crc32(pkg_version('jaclang').encode()) & 0xFFFFFFFF;
@@ -389,64 +343,84 @@ def write_precompiled_jir(bytecode: bytes, source_hash: int, flags: int = 0) -> 
         FORMAT_VERSION,
         (sys.version_info.major << 8) | sys.version_info.minor,
         jac_hash,
-        source_hash & 0xFFFFFFFF,
+        0,
         0,
         0,
         0,
         flags
     );
     empty_payload = zlib.compress(bytes(1), 1);
-    section_bytes = write_sections({SEC_BYTECODE: bytecode});
+    sections: dict[int, bytes] = {SEC_BYTECODE: bytecode};
+    if module_key {
+        sections[SEC_MODKEY] = module_key.encode('utf-8');
+    }
+    if extra_sections {
+        sections.update(extra_sections);
+    }
+    section_bytes = write_sections(sections);
     return header + empty_payload + section_bytes;
 }
 
-"""Check whether a module's JIR cache is still valid.
+def read_debug_source(data: bytes) -> (str | None) {
+    try {
+        magic_bytes: any = SECTIONS_MAGIC;
+        pos = data.find(magic_bytes, HEADER_SIZE);
+        if pos < 0 {
+            return None;
+        }
+        sections = read_sections(data, pos + len(magic_bytes));
+        src = sections.get(SEC_DEBUG_SRC);
+        return zlib.decompress(src).decode('utf-8') if src is not None else None;
+    } except Exception {
+        return None;
+    }
+}
 
-The cache is valid if it exists, was written by a compatible compiler
-version (same jaclang + Python), and is newer than the source file and
-all its annex files (impl, test) and variant files (sv, cl, na).
-"""
 def is_module_cache_valid(source_path: str, cache_path: Path) -> bool {
     import from jaclang.jac0core.bccache {
         discover_annex_files,
-        discover_variant_files
+        discover_variant_files,
+        discover_style_annex
     }
     if not cache_path.exists() {
         return False;
     }
     try {
-        # Check header compatibility (jaclang version, Python version)
-        header_bytes: bytes = cache_path.read_bytes()[:HEADER_SIZE];
-        header = parse_header(header_bytes);
-        if header is None {
-            return False;
-        }
-        if not header.is_compatible() {
+        data: bytes = cache_path.read_bytes();
+        header = parse_header(data[:HEADER_SIZE]);
+        if header is None or not header.is_compatible() {
             return False;
         }
         cache_mtime = os.path.getmtime(cache_path);
-        if cache_mtime <= os.path.getmtime(source_path) {
-            return False;
+
+        related = (
+            discover_annex_files(source_path, '.impl.jac') + discover_annex_files(
+                source_path, '.test.jac'
+            ) + discover_variant_files(source_path)
+        );
+        style = discover_style_annex(source_path);
+        if style is not None {
+            related.append(style);
         }
-        for annex in discover_annex_files(source_path) {
-            try {
-                if cache_mtime <= os.path.getmtime(annex) {
-                    return False;
+        fresh = cache_mtime > os.path.getmtime(source_path);
+        if fresh {
+            for f in related {
+                try {
+                    if cache_mtime <= os.path.getmtime(f) {
+                        fresh = False;
+                        break;
+                    }
+                } except OSError {
+                    fresh = False;
+                    break;
                 }
-            } except OSError {
-                return False;
             }
         }
-        for variant in discover_variant_files(source_path) {
-            try {
-                if cache_mtime <= os.path.getmtime(variant) {
-                    return False;
-                }
-            } except OSError {
-                return False;
-            }
+        if fresh {
+            return True;
         }
-        return True;
+
+        return jir_matches_source(data, source_path);
     } except OSError {
         return False;
     }

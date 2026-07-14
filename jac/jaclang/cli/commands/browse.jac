@@ -1,24 +1,17 @@
-"""Browser automation command: `jac browse <action> [args...]`.
-
-Thin registration layer over jaclang.cli.browser_engine, a zero-dependency
-driver that controls headless Chrome/Chromium via the Chrome DevTools Protocol.
-The engine module holds the WebSocket/CDP implementation and the command logic.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Drive a headless browser over CDP: navigate, interact, snapshot, screenshot."""
 @registry.command(
     name="browse",
+    hidden=True,
     help="Headless browser automation over CDP (open, click, snapshot, ...)",
     args=[
         Arg.create(
             "action",
             kind=ArgKind.POSITIONAL,
-            help="open|navigate|click|type|fill|press|get|eval|snapshot|screenshot|state|sessions|close"
+            help="open|navigate|click|type|fill|press|get|eval|wait|scroll|console|snapshot|screenshot|state|sessions|close"
         ),
         Arg.create(
             "args",
@@ -32,6 +25,11 @@ glob registry = get_registry();
             short="s",
             help="Session name; each session is an isolated browser instance"
         ),
+        Arg.create(
+            "viewport",
+            default="1280x720",
+            help="Browser window size as WIDTHxHEIGHT (applied at open)"
+        ),
 
     ],
     examples=[
@@ -40,6 +38,9 @@ glob registry = get_registry();
         ("jac browse click @e5", "Click an element by snapshot ref (real input)"),
         ("jac browse fill '#email' you@example.com", "Clear and fill a field"),
         ("jac browse get title", "Read the page title"),
+        ("jac browse wait '#app'", "Wait until a selector is actionable"),
+        ("jac browse console", "Read buffered console/log output"),
+        ("jac browse scroll down", "Scroll the page by ~one viewport"),
         ("jac browse -s work open example.com", "Use an isolated 'work' session"),
         ("jac browse state save auth.json", "Save cookies + localStorage"),
         ("jac browse close", "Close the browser"),
@@ -47,4 +48,6 @@ glob registry = get_registry();
     ],
     group="tools"
 )
-def browse(action: str, args: list = [], session: str = "default") -> int;
+def browse(
+    action: str, args: list = [], session: str = "default", viewport: str = "1280x720"
+) -> int;

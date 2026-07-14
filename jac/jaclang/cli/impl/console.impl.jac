@@ -39,8 +39,6 @@ glob _ANSI_ROLES: dict = {
          'highlight': CYAN,
          'url': BRIGHT_BLUE + UNDERLINE,
          'time': GREEN,
-         'cyan': CYAN,
-         'dim': DIM,
          'bright_white': BRIGHT_WHITE
      };
 
@@ -61,6 +59,31 @@ glob _ANSI_STYLE_TOKENS: dict = {
          'bright_blue': BRIGHT_BLUE
      };
 
+"""Return True if `stream` is an interactive terminal.
+
+The facade's `use_color` is a process-wide master switch (NO_COLOR, TERM=dumb),
+resolved once from `sys.stdout.isatty()`. But a single process can write to
+many streams — `sys.stderr` redirected to a file, `print(file=...)` targeting
+an arbitrary sink — and ANSI escapes only render on a real TTY. Styling a
+non-TTY stream corrupts captured output (issue #6499), so each emit must
+re-check the *target* stream in addition to the master flag.
+
+Streams are not required to expose `isatty`, and it can raise (e.g. a closed
+file), so the call is guarded: anything that isn't clearly a TTY is treated as
+non-stylable.
+"""
+def _stream_is_tty(stream: any) -> bool {
+    try {
+        isatty = stream?.isatty;
+        if isatty is None {
+            return False;
+        }
+        return bool(isatty());
+    } except Exception {
+        return False;
+    }
+}
+
 """Resolve a style role/expression to ANSI prefix code(s), or empty string."""
 def _resolve_ansi_style(style: str | None) -> str {
     if not style {
@@ -80,12 +103,106 @@ def _resolve_ansi_style(style: str | None) -> str {
 }
 
 # ===============================================================================
+# Pure-Jac Rich-parity primitives (box drawing + animated spinner)
+# ===============================================================================
+# Spinner animation frames: braille dots, with an ASCII fallback for terminals
+# that can't render the fancy glyphs.
+glob _SPINNER_FRAMES: list[str] = [
+         '⠋',
+         '⠙',
+         '⠹',
+         '⠸',
+         '⠼',
+         '⠴',
+         '⠦',
+         '⠧',
+         '⠇',
+         '⠏'
+     ],
+     _SPINNER_FRAMES_ASCII: list[str] = ['|', '/', '-', "\\"];
+
+# Box-drawing glyph sets for panels/tables. Unicode by default; ASCII fallback
+# when the terminal can't render the fancy glyphs (NO_EMOJI / dumb / legacy win).
+glob _BOX_UNICODE: dict[str, str] = {
+         'tl': '┌',
+         'tm': '┬',
+         'tr': '┐',
+         'ml': '├',
+         'mm': '┼',
+         'mr': '┤',
+         'bl': '└',
+         'bm': '┴',
+         'br': '┘',
+         'h': '─',
+         'v': '│',
+         'ptl': '╭',
+         'ptr': '╮',
+         'pbl': '╰',
+         'pbr': '╯'
+     },
+     _BOX_ASCII: dict[str, str] = {
+         'tl': '+',
+         'tm': '+',
+         'tr': '+',
+         'ml': '+',
+         'mm': '+',
+         'mr': '+',
+         'bl': '+',
+         'bm': '+',
+         'br': '+',
+         'h': '-',
+         'v': '|',
+         'ptl': '+',
+         'ptr': '+',
+         'pbl': '+',
+         'pbr': '+'
+     };
+
+"""Build one horizontal box border row spanning the given column widths."""
+def _table_border(widths: list[int], left: str, mid: str, right: str, h: str) -> str {
+    segs = [h * (w + 2) for w in widths];
+    return left + mid.join(segs) + right;
+}
+
+"""Create an animated stdout spinner, or None when it can't animate.
+
+Animation requires color + an interactive TTY; otherwise the caller falls back to
+a static status line (so redirected/captured streams are never animated).
+"""
+def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
+    if not use_color {
+        return None;
+    }
+    try {
+        if not sys.stdout.isatty() {
+            return None;
+        }
+    } except Exception {
+        return None;
+    }
+    frames = _SPINNER_FRAMES if use_emoji else _SPINNER_FRAMES_ASCII;
+    prefix = str(_ANSI_ROLES.get('highlight') or "");
+    return _Spinner(
+        text=text, stream=sys.stdout, frames=frames, style_prefix=prefix, reset=RESET
+    );
+}
+
+# ===============================================================================
 # ConsoleRenderer (ANSI backend) Implementation
 # ===============================================================================
 """Sync the renderer's capability flags with the facade's resolved decision."""
 impl ConsoleRenderer.configure(use_emoji: bool, use_color: bool) -> None {
     self.use_emoji = use_emoji;
     self.use_color = use_color;
+}
+
+"""Erase the live status line, if one is active, so following output starts
+fresh. A no-op when nothing is running (non-TTY, or outside a status block).
+"""
+impl ConsoleRenderer.clear_status -> None {
+    if self._active_status is not None {
+        self._active_status.clear();
+    }
 }
 
 """Write one composed line; colored spans wrap raw ANSI, data spans pass through.
@@ -96,9 +213,13 @@ facade resolved `use_color = True`.
 """
 impl ConsoleRenderer.emit(spans: list[Span], stream: any = None) -> None {
     out = stream if stream is not None else sys.stdout;
+    # `use_color` is the master off-switch (NO_COLOR, TERM=dumb); the target
+    # stream must *also* be a TTY, or ANSI escapes corrupt captured output
+    # (issue #6499: `jac build 2>errors.log` with stdout a TTY at init).
+    can_style = self.use_color and _stream_is_tty(out);
     parts: list[str] = [];
     for s in spans {
-        if self.use_color and s.style is not None and _ANSI_ROLES.get(s.style) {
+        if can_style and s.style is not None and _ANSI_ROLES.get(s.style) {
             parts.append(f"{_ANSI_ROLES.get(s.style)}{s.text}{RESET}");
         } else {
             parts.append(s.text);
@@ -127,7 +248,9 @@ impl ConsoleRenderer.emit_raw(
     args: list, stream: any, style: str | None, kwargs: dict
 ) -> None {
     out = stream if stream is not None else sys.stdout;
-    style_prefix = _resolve_ansi_style(style) if self.use_color else "";
+    # Master switch (use_color) AND per-stream TTY check — see emit() / #6499.
+    can_style = self.use_color and _stream_is_tty(out);
+    style_prefix = _resolve_ansi_style(style) if can_style else "";
     # Handle Windows console encoding - replace unencodable chars
     if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
         encoding: str = str(out?.encoding or 'cp1252');
@@ -222,7 +345,7 @@ impl ConsoleRenderer.urls(items: list, symbol: str = '') -> None {
         self.emit(
             [
                 Span("  ", None),
-                Span(sym, 'cyan'),
+                Span(sym, 'highlight'),
                 Span("  ", None),
                 Span(padded_label, 'muted'),
                 Span(" ", None),
@@ -232,24 +355,54 @@ impl ConsoleRenderer.urls(items: list, symbol: str = '') -> None {
     }
 }
 
-"""Print a titled list of next steps. Step text is caller data (verbatim)."""
+"""Print next steps inside a bordered panel (pure-Jac equivalent of Rich's Panel).
+
+The index prefix and box borders are chrome (styled); each step's text is caller
+data, emitted verbatim. The title is embedded in the top border.
+"""
 impl ConsoleRenderer.next_steps(steps: list[str], title: str = 'Next Steps') -> None {
-    self.emit([Span("", None)]);
-    self.emit([Span(f"{title}:", 'bright_white')]);
+    box = _BOX_UNICODE if self.use_emoji else _BOX_ASCII;
+    rows: list[tuple[str, str]] = [];
+    content_w = 0;
     for (i, step) in enumerate(steps, 1) {
-        self.emit([Span(f"  {i}.", 'cyan'), Span(f" {step}", None)]);
+        prefix = f"  {i}  ";
+        content_w = max(content_w, len(prefix) + len(str(step)));
+        rows.append((prefix, str(step)));
     }
+    # Inner width must also fit the title in the top border ("h sp title sp h").
+    inner = max(content_w + 2, len(str(title)) + 4);
+    self.emit([Span("", None)]);
+    fill = inner - len(str(title)) - 3;
+    top = box['ptl'] + box['h'] + " " + str(title) + " " + box['h'] * fill + box['ptr'];
+    self.emit([Span(top, 'highlight')]);
+    for (prefix, step) in rows {
+        gap = (inner - 2) - (len(prefix) + len(step));
+        self.emit(
+            [
+                Span(box['v'], 'highlight'),
+                Span(" ", None),
+                Span(prefix, 'highlight'),
+                Span(step, None),
+                Span(" " * gap, None),
+                Span(" ", None),
+                Span(box['v'], 'highlight')
+            ]
+        );
+    }
+    self.emit([Span(box['pbl'] + box['h'] * inner + box['pbr'], 'highlight')]);
     self.emit([Span("", None)]);
 }
 
-"""Print a formatted table with colored headers. Cells are caller data."""
+"""Print a box-drawn table (pure-Jac equivalent of Rich's Table).
+
+Borders are dim chrome and headers are styled; every cell value is caller data,
+emitted verbatim (never markup-parsed). An optional title is printed above.
+"""
 impl ConsoleRenderer.table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
-    if title {
-        self.emit([Span(f"\n{title}:", 'bright_white')]);
-    }
-    col_widths: list[int] = [len(h) for h in headers];
+    box = _BOX_UNICODE if self.use_emoji else _BOX_ASCII;
+    col_widths: list[int] = [len(str(h)) for h in headers];
     for row in rows {
         for (i, cell) in enumerate(row) {
             if i < len(col_widths) {
@@ -257,50 +410,90 @@ impl ConsoleRenderer.table(
             }
         }
     }
-    # Header row: styled chrome, but separators around verbatim header text.
-    header_spans: list[Span] = [];
-    for (idx, (h, w)) in enumerate(zip(headers, col_widths)) {
-        if idx > 0 {
-            header_spans.append(Span(" | ", 'dim'));
-        }
-        header_spans.append(Span(h.ljust(w), 'bright_white'));
+    if title {
+        self.emit([Span(str(title), 'highlight')]);
+    }
+    self.emit(
+        [
+            Span(
+                _table_border(col_widths, box['tl'], box['tm'], box['tr'], box['h']),
+                'muted'
+            )
+        ]
+    );
+    # Header row: box separators are chrome, header labels are styled.
+    header_spans: list[Span] = [Span(box['v'], 'muted')];
+    for (h, w) in zip(headers, col_widths) {
+        header_spans.append(Span(" ", None));
+        header_spans.append(Span(str(h).ljust(w), 'highlight'));
+        header_spans.append(Span(" ", None));
+        header_spans.append(Span(box['v'], 'muted'));
     }
     self.emit(header_spans);
-    sep_len = sum(col_widths) + (len(col_widths) - 1) * 3;
-    self.emit([Span('-' * sep_len, 'dim')]);
-    # Data rows: cells emitted verbatim, only the separators styled.
+    self.emit(
+        [
+            Span(
+                _table_border(col_widths, box['ml'], box['mm'], box['mr'], box['h']),
+                'muted'
+            )
+        ]
+    );
+    # Data rows: cells emitted verbatim, only the box separators are styled.
     for row in rows {
-        row_spans: list[Span] = [];
-        for (i, cell) in enumerate(row) {
-            if i > 0 {
-                row_spans.append(Span(" | ", 'dim'));
-            }
-            width = col_widths[i] if i < len(col_widths) else 0;
-            row_spans.append(Span(str(cell).ljust(width), None));
+        row_spans: list[Span] = [Span(box['v'], 'muted')];
+        for (i, w) in enumerate(col_widths) {
+            cell = str(row[i]) if i < len(row) else "";
+            row_spans.append(Span(" ", None));
+            row_spans.append(Span(cell.ljust(w), None));
+            row_spans.append(Span(" ", None));
+            row_spans.append(Span(box['v'], 'muted'));
         }
         self.emit(row_spans);
     }
-    self.emit([Span("", None)]);
+    self.emit(
+        [
+            Span(
+                _table_border(col_widths, box['bl'], box['bm'], box['br'], box['h']),
+                'muted'
+            )
+        ]
+    );
 }
 
-"""Context manager for status during long operations."""
+"""Animated status line during long operations (Rich `console.status` parity).
+
+Spins on a color-capable TTY; otherwise prints the message once. The `spinner=`
+kwarg Rich callers pass is accepted and ignored (dots is the only style).
+"""
 @contextmanager
 impl ConsoleRenderer.status_ctx(args: list, kwargs: dict) -> object {
+    text = "";
     if args {
-        msg = args[0] if isinstance(args[0], str) else str(args[0]);
-        self.emit([Span(msg, 'muted')]);
+        text = args[0] if isinstance(args[0], str) else str(args[0]);
     }
-    yield None;
+    sp = _make_spinner(self.use_color, self.use_emoji, text);
+    if sp is None {
+        if text {
+            self.emit([Span(text, 'muted')]);
+        }
+        yield _NullStatus();
+    } else {
+        sp.start();
+        self._active_status = sp;
+        try {
+            yield sp;
+        } finally {
+            self._active_status = None;
+            sp.stop();
+        }
+    }
 }
 
-"""Context manager for spinner during long operations."""
+"""Animated spinner during long operations (delegates to the status spinner)."""
 @contextmanager
 impl ConsoleRenderer.spinner_ctx(text: str) -> object {
-    self.emit([Span(f"{text}...", 'muted')]);
-    try {
-        yield None;
-    } finally {
-        self.emit([Span(" done", 'success')]);
+    with self.status_ctx([text], {}) as st {
+        yield st;
     }
 }
 
@@ -322,9 +515,8 @@ impl JacConsole.postinit -> None {
     self._renderer.configure(self.use_emoji, self.use_color);
 }
 
-"""Build the rendering backend. The base console renders with ANSI; plugins
-override this to return a different `ConsoleRenderer` (e.g. jac-super's Rich
-backend).
+"""Build the rendering backend. The base console renders Rich-style output in
+pure Jac; subclasses may override this to return a different `ConsoleRenderer`.
 """
 impl JacConsole._make_renderer -> ConsoleRenderer {
     return ConsoleRenderer();
@@ -406,6 +598,9 @@ impl JacConsole.success(message: str, emoji: bool = True) -> None {
 impl JacConsole.error(
     message: str, hint: str | None = None, emoji: bool = True
 ) -> None {
+    # An error may fire mid-spinner (stdout) while it prints to stderr; clear the
+    # live status line first so the two don't collide on the terminal.
+    self._renderer.clear_status();
     prefix = '✖' if emoji and self.use_emoji else '[ERROR]';
     self._renderer.emit(
         [Span(f"{prefix} Error:", 'error'), Span(f" {message}", None)], sys.stderr

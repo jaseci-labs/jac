@@ -1,13 +1,9 @@
-"""Implementation of project template registry."""
-
-# ===============================================================================
-# ProjectTemplate Implementation
-# ===============================================================================
-"""Convert to dict for serialization (e.g., JSON bundling)."""
 impl ProjectTemplate.to_dict -> dict[str, any] {
     return {
         "name": self.name,
         "description": self.description,
+        "kind": self.kind,
+        "is_default_for_kind": self.is_default_for_kind,
         "config": self.config,
         "files": self.files,
         "directories": self.directories,
@@ -15,10 +11,6 @@ impl ProjectTemplate.to_dict -> dict[str, any] {
     };
 }
 
-# ===============================================================================
-# TemplateRegistry Implementation
-# ===============================================================================
-"""Register a new template from plugin hook data."""
 impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
     import from jaclang.project.template_registry { ProjectTemplate }
     name = template_info.get("name");
@@ -33,66 +25,93 @@ impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
     if not config {
         raise ValueError(f"Template '{name}' must have a 'config' field");
     }
-    # Create ProjectTemplate from the dict
+
+    kind = template_info.get("kind")
+    or config.get("project", {}).get("kind", "")
+    or "cli";
+
     template = ProjectTemplate(
         name=name,
         description=description,
+        kind=kind,
+        is_default_for_kind=template_info.get("is_default_for_kind", True),
         config=config,
         files=template_info.get("files", {}),
         directories=template_info.get("directories", []),
         root_gitignore_entries=template_info.get("root_gitignore_entries", []),
         post_create=template_info.get("post_create")
     );
-    # Register the template
+
     self._templates[name] = template;
 }
 
-"""Get template by name (e.g., 'default', 'client')."""
 impl TemplateRegistry.get(name: str) -> ProjectTemplate | None {
     import from jaclang.project.template_registry { ProjectTemplate }
     return self._templates.get(name);
 }
 
-"""Get the default template."""
+impl TemplateRegistry.get_by_kind(kind: str) -> ProjectTemplate | None {
+    fallback: ProjectTemplate | None = None;
+    for template in self._templates.values() {
+        if template.kind == kind {
+            if template.is_default_for_kind {
+                return template;
+            }
+            if fallback is None {
+                fallback = template;
+            }
+        }
+    }
+    return fallback;
+}
+
 impl TemplateRegistry.get_default -> ProjectTemplate {
     import from jaclang.project.template_registry { ProjectTemplate }
-    default_tmpl = self._templates.get("default");
+    default_tmpl = self.get_by_kind("cli");
     if default_tmpl is None {
-        raise RuntimeError("Default template not registered");
+        raise RuntimeError("Default (cli) template not registered");
     }
     return default_tmpl;
 }
 
-"""List all registered templates as (name, description) tuples."""
 impl TemplateRegistry.list_templates -> list[tuple[str, str]] {
     result: list[tuple[str, str]] = [];
-    # Put "default" first if it exists
-    if "default" in self._templates {
-        result.append(("default", self._templates["default"].description));
+    if "cli" in self._templates {
+        result.append(("cli", self._templates["cli"].description));
     }
-    # Add other templates sorted by name
     for name in sorted(self._templates.keys()) {
-        if name != "default" {
+        if name != "cli" {
             result.append((name, self._templates[name].description));
         }
     }
     return result;
 }
 
-"""Check if a template is registered."""
-impl TemplateRegistry.has_template(name: str) -> bool {
-    return name in self._templates;
+impl TemplateRegistry.list_kinds -> list[tuple[str, str]] {
+    import from jaclang.project.kinds { KIND_SPECS }
+    available: set[str] = set();
+    for template in self._templates.values() {
+        if template.is_default_for_kind {
+            available.add(template.kind);
+        }
+    }
+    result: list[tuple[str, str]] = [];
+    for (kind, spec) in KIND_SPECS.items() {
+        if kind in available {
+            result.append((kind, spec.description));
+        }
+    }
+    return result;
 }
 
-"""Clear all registered templates (for testing)."""
+impl TemplateRegistry.is_empty -> bool {
+    return not self._templates;
+}
+
 impl TemplateRegistry.clear -> None {
     self._templates.clear();
 }
 
-# ===============================================================================
-# Module-level Functions Implementation
-# ===============================================================================
-"""Get or create the global template registry."""
 impl get_template_registry -> TemplateRegistry {
     import from jaclang.project.template_registry { TemplateRegistry }
     global _registry;
@@ -102,56 +121,140 @@ impl get_template_registry -> TemplateRegistry {
     return _registry;
 }
 
-"""Initialize the registry by registering default template and calling plugin hooks."""
 impl initialize_template_registry -> None {
-    import from jaclang.jac0core.runtime { JacRuntime }
     registry = get_template_registry();
-    # Register the default template first
-    _register_default_template(registry);
-    # Call the hook - may return a single dict or list of dicts
-    results = JacRuntime.register_project_template();
-    if results is None {
+
+    _register_core_templates(registry);
+
+    _register_builtin_client_templates(registry);
+
+    _register_builtin_shadcn_template(registry);
+}
+
+def _register_builtin_shadcn_template(registry: TemplateRegistry) -> None {
+    try {
+        import from jaclang.cli.shadcn.cli { register_project_template }
+    } except Exception {
         return;
     }
-    # Handle both single result (dict) and multiple results (list)
-    if isinstance(results, dict) {
-        # Single plugin returned a dict
-        registry.register(results);
-    } elif isinstance(results, list) {
-        # Multiple plugins, each returning a dict
-        for result in results {
-            if result and isinstance(result, dict) {
-                registry.register(result);
-            }
+    results = register_project_template();
+    for entry in _iter_template_dicts(results) {
+        try {
+            registry.register(entry);
+        } except Exception as e {
+            import from jaclang.cli.console { console }
+            console.warning(f"Skipping invalid project template: {e}");
         }
     }
 }
 
-"""Register the default Jac project template."""
-def _register_default_template(registry: TemplateRegistry) {
-    registry.register(
-        {
-            "name": "default",
-            "description": "Basic Jac project",
-            "config": {
-                "project": {
-                    "name": "{{name}}",
-                    "version": "0.1.0",
-                    "description": "A Jac project",
-                    "entry-point": "main.jac"
-                },
-                "dependencies": {},
-                "dev-dependencies": {"watchdog": ">=3.0.0"}
-            },
-            "files": {
-                "main.jac": '"""Main entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n'
-            },
-            "root_gitignore_entries": [".jac/", "jac.local.toml"],
-            "directories": [".jac"],
-
+def _iter_template_dicts(results: any) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
+    if results is None {
+        return out;
+    }
+    if isinstance(results, dict) {
+        out.append(results);
+    } elif isinstance(results, list) {
+        for item in results {
+            out.extend(_iter_template_dicts(item));
         }
-    );
+    }
+    return out;
 }
-# ===============================================================================
-# Default Template
-# ===============================================================================
+
+def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
+    try {
+        import from jaclang.runtimelib.client.plugin_config { JacClientPluginConfig }
+        import from jaclang.runtimelib.client.desktop_plugin_config {
+            JacDesktopPluginConfig
+        }
+    } except Exception {
+        return;
+    }
+    entries: list[any] = list(JacClientPluginConfig.client_project_templates());
+    desktop = JacDesktopPluginConfig.desktop_project_template();
+    if desktop is not None {
+        entries.append(desktop);
+    }
+    for entry in _iter_template_dicts(entries) {
+        try {
+            registry.register(entry);
+        } except Exception as e {
+            import from jaclang.cli.console { console }
+            console.warning(f"Skipping invalid client template: {e}");
+        }
+    }
+}
+
+def _core_template(
+    kind: str, body: str, extra_config: dict[str, any] = {}
+) -> dict[str, any] {
+    import from jaclang.project.kinds { kind_spec }
+    spec = kind_spec(kind);
+    if spec is None {
+        raise ValueError(f"No KindSpec for core template kind '{kind}'");
+    }
+    project_section: dict[str, any] = {
+        "name": "{{name}}",
+        "version": "0.1.0",
+        "description": spec.description,
+        "entry-point": spec.entry,
+        "kind": kind
+    };
+    config: dict[str, any] = {
+        "project": project_section,
+        "dependencies": {},
+        "dev-dependencies": {"watchdog": ">=3.0.0"}
+    };
+    for (k, v) in extra_config.items() {
+        config[k] = v;
+    }
+    return {
+        "name": kind,
+        "description": spec.description,
+        "kind": kind,
+        "is_default_for_kind": True,
+        "config": config,
+        "files": {spec.entry: body},
+        "root_gitignore_entries": [".jac/", "jac.local.toml"],
+        "directories": [".jac"]
+    };
+}
+
+def _register_core_templates(registry: TemplateRegistry) {
+    _hello = '"""Entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n';
+    _lib = '"""Library module for {{name}}."""\n\ndef greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n';
+    _shared = '"""Shared library for {{name}} (exported C-ABI functions)."""\n\ndef add(a: int, b: int) -> int {\n    return a + b;\n}\n';
+    _service = (
+        '"""API service for {{name}}.\n\n'
+        'A minimal guestbook: messages are `Message` nodes on the shared `root`\n'
+        'graph. The `:pub` walkers are the HTTP API the service exposes.\n'
+        '"""\n\n'
+        'node Message {\n    has author: str,\n        text: str;\n}\n\n'
+        'walker:pub PostMessage {\n'
+        '    """Append a message and report the created node."""\n'
+        '    has author: str,\n        text: str,\n        reports: list[Message] = [];\n\n'
+        '    can post with `root entry {\n'
+        '        report here ++> Message(author=self.author, text=self.text);\n'
+        '    }\n}\n\n'
+        'walker:pub ListMessages {\n'
+        '    """Report every message in the guestbook."""\n'
+        '    has reports: list[Message] = [];\n\n'
+        '    can collect with `root entry {\n        visit [-->];\n    }\n\n'
+        '    can gather with Message entry {\n        report here;\n    }\n}\n'
+    );
+
+    for info in [
+        _core_template("cli", _hello),
+        _core_template("cli-native", _hello),
+        _core_template("native-binary", _hello),
+        _core_template("native-lib", _shared),
+        _core_template("service", _service),
+        _core_template("service-mesh", _service),
+        _core_template("py-package", _lib),
+        _core_template("js-package", _lib)
+    ] {
+        registry.register(info);
+    }
+}

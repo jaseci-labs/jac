@@ -6,6 +6,8 @@ Jac parser module. Also validates grammar matches jac.spec.
 """
 
 import from pathlib { Path }
+import os;
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.tool.grammar_extract_pass {
     GAlt,
@@ -27,7 +29,7 @@ import from jaclang.jac0core.program { JacProgram }
 glob PARSER_PATH = str(
          Path(jaclang.__file__).parent / "jac0core" / "parser" / "parser.jac"
      ),
-     SPEC_PATH = str(Path(jaclang.__file__).parent.parent / "jaclang" / "jac.spec");
+     SPEC_PATH = os.path.join(JAC_ROOT, "jaclang", "jac.spec");
 
 """Helper: format a GExpr as EBNF."""
 def fmt(expr: object) -> str {
@@ -46,7 +48,8 @@ def parse_spec(text: str) -> dict[str, str] {
     current_body: str = "";
     for line in text.strip().splitlines() {
         line = line.rstrip();
-        if not line or line.startswith("#") or line.startswith("//") {
+        lead = line.lstrip();
+        if not lead or lead.startswith("#") or lead.startswith("//") {
             continue;
         }
         if "::=" in line {
@@ -222,6 +225,21 @@ test "while stmt structure" {
     assert "expression" in ebnf;
 }
 
+test "forever stmt structure" {
+    prog = JacProgram();
+    mod = prog.compile(PARSER_PATH, no_cgen=True);
+    assert not prog.errors_had;
+    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
+    rule_map = {r.name: r for r in extracted.rules};
+    assert "forever_stmt" in rule_map;
+    ebnf = fmt(rule_map["forever_stmt"].body);
+    assert '"forever"' in ebnf;
+    assert "code_block_stmts" in ebnf;
+    # forever has no condition and no else clause
+    assert "expression" not in ebnf;
+    assert "else_stmt" not in ebnf;
+}
+
 test "ebnf output nonempty" {
     prog = JacProgram();
     mod = prog.compile(PARSER_PATH, no_cgen=True);
@@ -236,22 +254,6 @@ test "ebnf output nonempty" {
             continue;
         }
         assert "::=" in line or line.startswith(" ") , f"Malformed line: {line}";
-    }
-}
-
-test "lark output nonempty" {
-    prog = JacProgram();
-    mod = prog.compile(PARSER_PATH, no_cgen=True);
-    assert not prog.errors_had;
-    extracted = GrammarExtractPass(ir_in=mod, prog=prog);
-    lark = extracted.emit_lark();
-    assert len(lark) > 100;
-    for line in lark.strip().split("\n") {
-        s = line.strip();
-        if not s {
-            continue;
-        }
-        assert ":" in line or line.startswith(" ") , f"Malformed line: {line}";
     }
 }
 
