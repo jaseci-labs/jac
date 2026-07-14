@@ -378,15 +378,33 @@ obj PythonProvider(EcosystemProvider) {
     override def add_packages(
         config: JacConfig, specs: list[tuple[str, str]], dev: bool, ctx: InstallContext
     ) -> list[str] | None {
+        plan: list[tuple[str, str]] = [];
+        for (name, version) in specs {
+            declared = _declared_constraint(config, name, dev);
+            keep_typed_name = declared is None or "[" in name;
+            record_name = name if keep_typed_name else declared[0];
+            if version {
+                if declared and declared[1] != version {
+                    console.warning(
+                        f"{declared[0]}: replacing declared constraint "
+                        f"'{declared[1]}' with '{version}' in jac.toml"
+                    );
+                }
+                plan.append((record_name, version));
+            } elif declared {
+                plan.append((record_name, declared[1]));
+            } else {
+                plan.append((name, ""));
+            }
+        }
         install_targets: list[str] = [
-            make_pip_spec(name, version) if version else name
-            for (name, version) in specs
+            make_pip_spec(name, version) for (name, version) in plan
         ];
         if not self.install_specs(config, install_targets, ctx) {
             return None;
         }
         recorded: list[str] = [];
-        for (name, version) in specs {
+        for (name, version) in plan {
             version_str = version;
             if not version_str {
                 installed_version = self.get_installed_version(config, name);
@@ -684,6 +702,27 @@ def _normalized_name(name: str) -> str {
         base = base[:base.index("[")];
     }
     return base.strip().lower().replace("_", "-");
+}
+
+def _declared_constraint(
+    config: JacConfig, name: str, dev: bool
+) -> tuple[str, str] | None {
+    sections = (
+        [config.dev_dependencies, config.dependencies]
+            if dev
+            else [config.dependencies, config.dev_dependencies]
+    );
+    wanted = _normalized_name(name);
+    for section in sections {
+        for (declared, spec) in section.items() {
+            if _normalized_name(declared) == wanted
+            and isinstance(spec, str)
+            and spec.strip() {
+                return (declared, spec.strip());
+            }
+        }
+    }
+    return None;
 }
 
 def resolve_plan(
