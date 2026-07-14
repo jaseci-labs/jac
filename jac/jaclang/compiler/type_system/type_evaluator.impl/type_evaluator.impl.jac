@@ -2834,20 +2834,7 @@ impl TypeEvaluator.assign_type(
     }
 
     if self.is_explicit_any(src_type) {
-        if not strict {
-            return True;
-        }
-        if isinstance(dest_type, types.TypeVarType) {
-            return True;
-        }
-
-        if self._in_native_context() {
-            return True;
-        }
-        if isinstance(src_type, types.AnyType) and src_type.is_foreign {
-            return True;
-        }
-        return False;
+        return True;
     }
 
     if self.prefetch
