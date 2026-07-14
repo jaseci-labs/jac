@@ -387,10 +387,8 @@ def _format_single_file_worker(
                 default_format_cache_dir
             }
             import from jaclang.project.config { get_config_for_path }
-            discover_from = Path(cache_anchor)
-                if cache_anchor
-                else Path(effective_logical);
-            cfg = get_config_for_path(discover_from);
+
+            cfg = get_config_for_path(Path(effective_logical));
             if cfg is not None {
                 cache_dir = cfg.get_cache_dir();
             } else {

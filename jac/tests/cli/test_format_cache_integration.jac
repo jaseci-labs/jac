@@ -350,3 +350,56 @@ test "precommit cache keys on staged blob bytes, not the worktree" {
         shutil.rmtree(repo, ignore_errors=True);
     }
 }
+
+test "precommit cache uses nested file config instead of root anchor" {
+    import subprocess;
+    repo = tempfile.mkdtemp(prefix="fmtcache-nested-pc-");
+    subprocess.run(["git", "init", "-q", repo], check=True);
+    (Path(repo) / "jac.toml").write_text(
+        '[project]\nname = "root"\nversion = "0.0.1"\n\n'
+        '[precommit]\ntypecheck = false\n'
+    );
+    nested = Path(repo) / "nested";
+    nested.mkdir();
+    nested_config = nested / "jac.toml";
+    nested_config.write_text(
+        '[project]\nname = "nested"\nversion = "0.0.1"\n\n'
+        '[format]\noutfile = "nested-one"\n\n'
+        '[precommit]\ntypecheck = false\n'
+    );
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        f = nested / "a.jac";
+        f.write_text(CLEAN);
+        subprocess.run(["git", "add", "nested/a.jac"], check=True, cwd=repo);
+
+        # The first verify records a clean entry using nested/jac.toml.
+        reset_state();
+        stats1: dict = {};
+        r1 = precommit(staged=True, verify=True, cache_stats=stats1);
+        assert r1 == 0;
+        assert stats1.get("misses", 0) == 1 , (
+            f"first nested verify must miss, got {stats1}"
+        );
+
+        # Changing only the nested config must invalidate that entry. If the
+        # worker fingerprints cache_anchor (the repository root), this would
+        # incorrectly be a hit under the unchanged root config.
+        nested_config.write_text(
+            '[project]\nname = "nested"\nversion = "0.0.1"\n\n'
+            '[format]\noutfile = "nested-two"\n\n'
+            '[precommit]\ntypecheck = false\n'
+        );
+        reset_state();
+        stats2: dict = {};
+        r2 = precommit(staged=True, verify=True, cache_stats=stats2);
+        assert r2 == 0;
+        assert stats2.get("hits", 0) == 0 and stats2.get("misses", 0) == 1 , (
+            f"nested config changes must invalidate the cache, got {stats2}"
+        );
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+}
