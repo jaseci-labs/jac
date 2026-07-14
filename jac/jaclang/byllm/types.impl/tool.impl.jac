@@ -94,7 +94,9 @@ impl Tool.parse_arguments(args_json: dict) -> dict {
     }
     for (arg_name, arg_json) in args_json.items() {
         if arg_type := annotations.get(arg_name) {
-            args[arg_name] = TypeAdapter(arg_type).validate_python(arg_json);
+            # Repair Title-Cased keys before validation (finish_tool path).
+            normalized = normalize_json_keys(arg_json, arg_type);
+            args[arg_name] = TypeAdapter(arg_type).validate_python(normalized);
         }
     }
     return args;
