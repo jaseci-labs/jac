@@ -207,7 +207,7 @@ def enter(
                 "Client build target for dev server (web, pwa, mobile, desktop). "
                 "Choices reflect installed targets (desktop builds a native webview app)."
             ),
-            choices=["web", "pwa", "mobile"],
+            choices=["web", "pwa", "mobile", "desktop"],
             short=""
         ),
         Arg.create(
@@ -255,7 +255,7 @@ def enter(
             "dry-run",
             typ=bool,
             default=False,
-            help="Print manifests + image plan that would be applied; touch nothing (no cluster contact, no build, no DB provisioning)",
+            help="Print the manifests that would be applied; touch nothing (no cluster contact, no downloads, no client build, no DB provisioning, no TLS issuance, no deploy tooling installed)",
             short=""
         ),
         Arg.create(

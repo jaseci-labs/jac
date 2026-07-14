@@ -132,7 +132,6 @@ as interface contracts:
 
 - `database_provider.jac` -- provider interface
 - `deployment_target.jac` -- deployment abstraction
-- `image_registry.jac` -- container registry interface
 - `logger.jac` -- logging abstraction
 - `metrics.jac` -- metrics interface
 - `models/` -- `deployment_result.jac`, `resource_status.jac`

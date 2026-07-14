@@ -71,11 +71,15 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            'readiness_initial_delay': 5,
-            'readiness_period': 5,
-            'liveness_initial_delay': 15,
-            'liveness_period': 10,
-            'liveness_failure_threshold': 3
+            # Probe timings must match the KubernetesConfig field defaults
+            # (deploy/target/kubernetes/kubernetes_config.jac) — this dict is
+            # deep-merged over jac.toml, so these values are what actually
+            # take effect when the user sets no probe keys.
+            'readiness_initial_delay': 10,
+            'readiness_period': 20,
+            'liveness_initial_delay': 10,
+            'liveness_period': 20,
+            'liveness_failure_threshold': 80
         },
         'secrets': {},
         'server': {
@@ -152,7 +156,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'verify_token_ttl_seconds': 86400,
             'reset_url_template': '',
             'verify_url_template': '',
-            'token_collection': 'auth_tokens'
+            'token_collection': 'auth_tokens',
+            'password_hash_rounds': 12
         },
         'microservices': {
             'gateway_port': 8000,
@@ -450,6 +455,21 @@ impl reset_scale_config -> None {
     _scale_config_instance = None;
 }
 
+impl resolve_password_hash_rounds(configured_rounds: int) -> int {
+    env_val = os.environ.get('JAC_SCALE_BCRYPT_ROUNDS');
+    if not env_val {
+        return max(4, min(31, configured_rounds));
+    }
+    try {
+        rounds = int(env_val);
+    } except ValueError as e {
+        raise ValueError(
+            f"JAC_SCALE_BCRYPT_ROUNDS must be an integer in 4..31, got: {env_val!r}"
+        ) from e;
+    }
+    return max(4, min(31, rounds));
+}
+
 impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     telemetry_config = config.get('telemetry', {});
@@ -507,6 +527,9 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
         'reset_url_template': auth_config.get('reset_url_template', ''),
         'verify_url_template': auth_config.get('verify_url_template', ''),
         'token_collection': auth_config.get('token_collection', 'auth_tokens'),
+        'password_hash_rounds': resolve_password_hash_rounds(
+            int(auth_config.get('password_hash_rounds', 12))
+        ),
         'forgot_password_rate_per_hour': int(
             auth_config.get('forgot_password_rate_per_hour', 3)
         ),
@@ -592,6 +615,17 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         'logs': dict(ms_config.get('logs', {})),
         'tracing': dict(ms_config.get('tracing', {}))
     };
+}
+
+impl JacScaleConfig.microservices_declared(self: JacScaleConfig) -> bool {
+    # The merged load() always carries a 'microservices' key from
+    # get_default_config (and callers may write merged routes back into the
+    # loaded doc), so "did the user write [scale.microservices]?" must be
+    # answered from the raw, unmerged plugin config in jac.toml.
+    declared = self.get_jac_config().get_plugin_config(self.get_plugin_name()).get(
+        'microservices'
+    );
+    return isinstance(declared, dict) and bool(declared);
 }
 
 impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {

@@ -10,6 +10,7 @@ import from jaclang.jac0core.constant {
     is_mut_kind
 }
 import from jaclang.jac0core.passes.transform { Transform }
+import jaclang.compiler.passes.main.dataflow as dataflow;
 
 glob SymId: TypeAlias = int,
      DataflowTransfer: TypeAlias = Callable[[uni.UniCFGNode, set[SymId]], set[SymId]];
@@ -53,6 +54,9 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
         name_uses_by_sym: dict[SymId, list[uni.Name]] = {},
         val_decl: dict[SymId, uni.Name] = {};
 
+    static has PROVIDES: tuple = ('ownership', ),
+        REQUIRES: tuple = ('cfg', 'inference');
+
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def _build_index(tree: uni.UniNode) -> None;
@@ -60,6 +64,7 @@ obj OwnershipCheckPass(Transform[uni.Module, uni.Module]) {
     def _has_region_blocks -> bool;
     def _emit_region_escape_diagnostics -> None;
     def _emit_sendability_diagnostics -> None;
+    def _is_deep_immutable_scalar(nm: uni.Name) -> bool;
     def _emit_marker_diagnostics -> None;
     def _emit_val_mutation(
         sid: SymId, site: uni.UniNode, decl: uni.Name | None

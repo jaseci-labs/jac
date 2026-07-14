@@ -1,33 +1,13 @@
 impl NaIRGenPass._build_vtable(arch_name: str) -> None {
-    layout: list[str] = [];
-    seen_methods: set[str] = set();
-
-    mro = self._mro_of(arch_name);
-    for ancestor_name in mro[1:] {
-        ancestor_layout = self.vtable_layouts.get(ancestor_name, []);
-        for method_name in ancestor_layout {
-            if method_name not in seen_methods {
-                layout.append(method_name);
-                seen_methods.add(method_name);
-            }
-        }
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    lay = get_layout_registry(self.ir_in, self.prog).get_layout(arch_name);
+    if lay is None or not lay.has_vtable {
+        self.vtable_layouts[arch_name] = [];
+        self.vtable_method_indices[arch_name] = {};
+        return;
     }
-
-    prefix = f"{arch_name}.";
-    for full_name in self.method_funcs {
-        if full_name.startswith(prefix) {
-            method_name = full_name[len(prefix):];
-            if method_name not in seen_methods {
-                layout.append(method_name);
-                seen_methods.add(method_name);
-            }
-        }
-    }
-    self.vtable_layouts[arch_name] = layout;
-    self.vtable_method_indices[arch_name] = {};
-    for (i, name) in enumerate(layout) {
-        self.vtable_method_indices[arch_name][name] = i;
-    }
+    self.vtable_layouts[arch_name] = [m.name for m in lay.methods];
+    self.vtable_method_indices[arch_name] = dict(lay.method_index);
 }
 
 impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
@@ -40,16 +20,8 @@ impl NaIRGenPass._emit_vtable_global(arch_name: str) -> None {
 
     vtable_type = ir.ArrayType(i8_ptr, len(layout) + VTABLE_HEADER_SLOTS);
     entries: list[ir.Constant] = [self._emit_class_name_const(arch_name)];
-    mro = self._mro_of(arch_name);
     for method_name in layout {
-        func = None;
-        for check_name in mro {
-            full_name = f"{check_name}.{method_name}";
-            if full_name in self.method_funcs {
-                func = self.method_funcs[full_name];
-                break;
-            }
-        }
+        func = self._resolve_method(arch_name, method_name);
         if func is not None {
             entries.append(func.bitcast(i8_ptr));
         } else {
@@ -74,15 +46,7 @@ impl NaIRGenPass._codegen_virtual_call(
         return None;
     }
 
-    func = None;
-    mro = self._mro_of(obj_type_name);
-    for check_name in mro {
-        full_name = f"{check_name}.{method_name}";
-        if full_name in self.method_funcs {
-            func = self.method_funcs[full_name];
-            break;
-        }
-    }
+    func = self._resolve_method(obj_type_name, method_name);
     if func is None {
         return None;
     }

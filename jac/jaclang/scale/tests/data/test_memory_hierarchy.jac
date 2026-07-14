@@ -1287,6 +1287,38 @@ test "acommit leaves _committed False when commit() raises" {
     }
 }
 
+test "commit() re-arms _committed so an earlier clean commit cannot mask a later failure" {
+    import from unittest.mock { patch }
+    import from jaclang.scale.memory.memory_hierarchy { ScaleTieredMemory }
+    import from jaclang.runtimelib.memory { TieredMemory, PersistentMemory }
+    import from jaclang.runtimelib.changeset { ChangeSet }
+
+    mem = object.__new__(ScaleTieredMemory);
+    mem.changes = ChangeSet();
+    mem.l3 = None;
+    mem.commit();
+    assert mem._committed is True , "a clean full commit must mark _committed True";
+
+    def failing_collect(self: TieredMemory, changes: any) {
+        raise RuntimeError("simulated apply failure mid-commit");
+    }
+
+    mem.l3 = cast(PersistentMemory, object());
+    with patch.object(TieredMemory, '_collect_into', failing_collect) {
+        raised = False;
+        try {
+            mem.commit();
+        } except Exception {
+            raised = True;
+        }
+        assert raised , "commit() must propagate the failure";
+        assert mem._committed is False , (
+            "a failing commit must clear _committed on entry so it cannot inherit "
+            "the stale clean flag from the earlier commit and mask the failure"
+        );
+    }
+}
+
 
 def _reset_process_cache {
     _process_cache.clear();
