@@ -1,4 +1,4 @@
-"""drop hook determinism: `def drop` fires exactly once per value, in a
+"""drop hook determinism: def drop fires exactly once per value, in a
 defined order, on every exit kind (fall-through, early return)."""
 
 obj Res {
@@ -18,12 +18,13 @@ def use_and_leave_early(flag: int) -> int {
     return 2;
 }
 
-with entry {
+def run_all {
     print(use_and_leave_early(1));
     print(use_and_leave_early(0));
+    r: own Res = Res(tag=99);
+    print("end");
 }
 
-glob r: own Res = Res(tag=99);
 with entry {
-    print("end");
+    run_all();
 }

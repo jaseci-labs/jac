@@ -63,6 +63,9 @@ impl NaIRGenPass._emit_last_use_releases(stmt: uni.UniNode) -> None {
         if name == "self" or name in self.param_vars {
             continue;
         }
+        if name in self.nogc_stack_vars {
+            continue;
+        }
         alloca = self.local_vars.get(name);
         if alloca is None {
             continue;

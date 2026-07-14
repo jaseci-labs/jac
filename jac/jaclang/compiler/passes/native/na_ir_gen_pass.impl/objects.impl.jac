@@ -63,12 +63,6 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
 
     for arch in archetypes {
         arch_name = arch.name.value if arch.name else "unknown";
-        self._emit_struct_release_fn(arch_name);
-        self._emit_trace_fn(arch_name);
-    }
-
-    for arch in archetypes {
-        arch_name = arch.name.value if arch.name else "unknown";
         if arch.body is not None {
             for stmt in arch.body {
                 if isinstance(stmt, uni.Ability) {
@@ -109,6 +103,12 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                 }
             }
         }
+    }
+
+    for arch in archetypes {
+        arch_name = arch.name.value if arch.name else "unknown";
+        self._emit_struct_release_fn(arch_name);
+        self._emit_trace_fn(arch_name);
     }
 
     for arch in archetypes {
@@ -839,6 +839,7 @@ impl NaIRGenPass._codegen_instantiation(
         and self._arch_is_acyclic(type_name)
         and not self._struct_has_ref_fields(type_name)
         and not self._arch_has_vtable(type_name)
+        and f"{type_name}.drop" not in self.func_symtab
     );
     _headerless = self._nogc_headerless() and not self._arch_is_osp_name(type_name);
     if _stack_ok and _headerless {
