@@ -1095,57 +1095,52 @@ test "k8s safe slug normalizes names into valid k8s identifiers" {
     }
 }
 
-test "from_dict derives app_name and namespace from project_name when unset" {
-    k8s_config = KubernetesConfig.from_dict(
-        KubernetesConfig, {}, project_name="My App"
-    );
-    assert k8s_config.app_name == "my-app" , f"expected app_name derived from project_name, got {k8s_config.app_name!r}";
-    assert k8s_config.namespace == "my-app" , f"expected namespace derived from project_name, got {k8s_config.namespace!r}";
-}
-
-test "from_dict explicit app_name and namespace override project_name default" {
-    k8s_config = KubernetesConfig.from_dict(
-        KubernetesConfig, {"app_name": "custom-app"}, project_name="My App"
-    );
-    assert k8s_config.app_name == "custom-app" , "explicit app_name in config must not be overridden by project_name";
-    assert k8s_config.namespace == "my-app" , "namespace with no explicit config must still derive from project_name";
-}
-
-test "from_dict falls back safely with no config and no project_name" {
-    k8s_config = KubernetesConfig.from_dict(KubernetesConfig, {});
-    assert k8s_config.app_name == "jaseci" , "with zero context, app_name must fall back to the legacy default, not crash";
-    assert k8s_config.namespace == "default" , "with zero context, namespace must fall back to the legacy default, not crash";
-}
-
-test "from_dict falls back to legacy defaults when project_name slugifies to nothing" {
-    for degenerate_name in ["---", "!!!", "   "] {
-        k8s_config = KubernetesConfig.from_dict(
-            KubernetesConfig, {}, project_name=degenerate_name
-        );
-        assert k8s_config.app_name == "jaseci" , f"project_name={degenerate_name!r} has no usable slug; app_name must fall back to 'jaseci' like the no-project_name case, got {k8s_config.app_name!r}";
-        assert k8s_config.namespace == "default" , f"project_name={degenerate_name!r} has no usable slug; namespace must fall back to 'default' like the no-project_name case, not silently become 'jaseci', got {k8s_config.namespace!r}";
-    }
-}
-
-test "get_kubernetes_config resolves app_name and namespace from project name with zero scale config" {
+"""Resolve get_kubernetes_config() against a temp project with the given jac.toml."""
+def _k8s_config_for_toml(toml_content: str) -> dict {
     tmp_dir = Path(mkdtemp());
-    toml_path = tmp_dir / "jac.toml";
-    toml_path.write_text("[project]\nname = \"My App\"\nentry-point = \"main.jac\"\n");
-
-    # get_scale_config() caches a process-wide singleton on first call, so it
-    # must be reset before and after pointing it at this temp project.
+    (tmp_dir / "jac.toml").write_text(toml_content);
+    # get_scale_config() caches a process-wide singleton; reset around the temp project.
     reset_scale_config();
     try {
-        scale_config = get_scale_config(tmp_dir);
-        target_config = scale_config.get_kubernetes_config();
-        assert target_config["app_name"] == "my-app" , f"expected app_name derived from [project].name, got {target_config[
-            'app_name'
-        ]!r}";
-        assert target_config["namespace"] == "my-app" , f"expected namespace derived from [project].name, got {target_config[
-            'namespace'
-        ]!r}";
+        return get_scale_config(tmp_dir).get_kubernetes_config();
     } finally {
         reset_scale_config();
         shutil.rmtree(tmp_dir, ignore_errors=True);
+    }
+}
+
+test "unconfigured deploy identity derives from [project].name" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\nentry-point = \"main.jac\"\n"
+    );
+    assert cfg["app_name"] == "my-app" , f"expected app_name derived from [project].name, got {cfg[
+        'app_name'
+    ]!r}";
+    assert cfg["namespace"] == "my-app" , f"expected namespace derived from [project].name, got {cfg[
+        'namespace'
+    ]!r}";
+}
+
+test "explicit app_name still wins; namespace alone still derives" {
+    cfg = _k8s_config_for_toml(
+        "[project]\nname = \"My App\"\n\n[scale.kubernetes]\napp_name = \"custom-app\"\n"
+    );
+    assert cfg["app_name"] == "custom-app" , "explicit app_name in jac.toml must not be overridden by the derived default";
+    assert cfg["namespace"] == "my-app" , "namespace with no explicit config must still derive from [project].name";
+}
+
+test "no usable project name falls back to legacy jaseci/default identity" {
+    for toml in [
+        "[project]\nentry-point = \"main.jac\"\n",
+        "[project]\nname = \"---\"\n",
+        "[project]\nname = \"   \"\n"
+    ] {
+        cfg = _k8s_config_for_toml(toml);
+        assert cfg["app_name"] == "jaseci" , f"toml={toml!r}: no usable slug, app_name must fall back to 'jaseci', got {cfg[
+            'app_name'
+        ]!r}";
+        assert cfg["namespace"] == "default" , f"toml={toml!r}: no usable slug, namespace must fall back to 'default' (not 'jaseci'), got {cfg[
+            'namespace'
+        ]!r}";
     }
 }

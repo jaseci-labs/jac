@@ -164,29 +164,10 @@ obj KubernetesConfig(BaseConfig) {
         return base;
     }
 
-    static def from_dict(
-        cls: type, config: dict[str, any], project_name: (str | None) = None
-    ) -> KubernetesConfig {
-        # No explicit app_name/namespace in jac.toml: default to a k8s-safe
-        # slug of the project name instead of the shared 'jaseci'/'default',
-        # so an unconfigured deploy doesn't land in a namespace other
-        # projects also use.
-        default_app_name = 'jaseci';
-        default_namespace = 'default';
-        if project_name {
-            # A project name that's non-empty but slugifies to nothing (e.g.
-            # '---') must not silently collapse namespace into k8s_safe_slug's
-            # own 'jaseci' fallback; fall through to the same legacy defaults
-            # as the no-project_name case instead.
-            derived_identity = k8s_safe_slug(project_name, fallback='');
-            if derived_identity {
-                default_app_name = derived_identity;
-                default_namespace = derived_identity;
-            }
-        }
+    static def from_dict(cls: type, config: dict[str, any]) -> KubernetesConfig {
         return cls(
-            app_name=config.get('app_name', default_app_name),
-            namespace=config.get('namespace', default_namespace),
+            app_name=config.get('app_name', 'jaseci'),
+            namespace=config.get('namespace', 'default'),
             container_port=config.get('container_port', 8000),
             mongodb_enabled=config.get('mongodb_enabled', True),
             redis_enabled=config.get('redis_enabled', True),

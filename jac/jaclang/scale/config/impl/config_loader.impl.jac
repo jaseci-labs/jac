@@ -47,10 +47,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'messages_per_second': 20
         },
         'kubernetes': {
-            # app_name/namespace are intentionally absent here: leaving them
-            # unset lets KubernetesConfig.from_dict derive a project-specific
-            # default instead of always resolving to the literal 'jaseci'/
-            # 'default' baked into this dict.
+            # app_name/namespace intentionally absent: any key here wins the
+            # jac.toml deep-merge, which would kill the project-name default.
             'container_port': 8000,
             'mongodb_enabled': True,
             'redis_enabled': True,
@@ -263,12 +261,15 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     ];
 
     import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-        KubernetesConfig
+        KubernetesConfig,
+        k8s_safe_slug
     }
-    project_name = self.get_jac_config().project.name;
-    k8s_config_obj = KubernetesConfig.from_dict(
-        KubernetesConfig, k8s_config, project_name=project_name
-    );
+    derived = k8s_safe_slug(self.get_jac_config().project.name, fallback='');
+    if derived {
+        k8s_config.setdefault('app_name', derived);
+        k8s_config.setdefault('namespace', derived);
+    }
+    k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
     return k8s_config_obj.to_dict();
 }
 

@@ -60,8 +60,8 @@ Controls the application name used for all Kubernetes resource names and the nam
 
 | TOML Key  | Default | Description |
 |-----------|---------|-------------|
-| `app_name` | `jaseci` | Prefix for all K8s resource names (deployments, services, secrets, etc.) |
-| `namespace`| `default` | Kubernetes namespace to deploy into |
+| `app_name` | slug of `[project].name` | Prefix for all K8s resource names (deployments, services, secrets, etc.). Falls back to `jaseci` when no project name is usable |
+| `namespace`| slug of `[project].name` | Kubernetes namespace to deploy into. Falls back to `default` when no project name is usable |
 
 **To change in `jac.toml`:**
 
