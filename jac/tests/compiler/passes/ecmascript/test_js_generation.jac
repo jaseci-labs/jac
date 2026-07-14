@@ -3,24 +3,32 @@
 Migrated from test_js_generation.py to native Jac test format.
 """
 
+import json;
 import os;
 import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
-import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator, es_to_js }
+import from jaclang.compiler.passes.ecmascript.primitives_es {
+    ESDictEmitter,
+    ESEmitCtx
+}
 import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
+import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.modresolver { convert_to_js_import_path }
+import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _js_compile_cache: dict[str, str] = {},
+     _js_production_compile_cache: dict[str, str] = {},
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_js_");
 
 """Write code to a temp .jac file in a dedicated directory (avoids /tmp scan)."""
@@ -33,27 +41,38 @@ def write_temp_jac(code: str) -> str {
     }
 }
 
-"""Compile a Jac fixture to JavaScript and return the emitted source."""
-def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
+"""Resolve a fixture name to an on-disk path."""
+def _resolve_fixture_path(fixture_name: str, fixture_dir: str = "") -> str {
     fixture_path = fixture_name;
     if not Path(fixture_path).exists() and fixture_dir {
         fixture_path = os.path.join(fixture_dir, fixture_name);
     }
+    return fixture_path;
+}
+
+"""Return compile errors that are not non-fatal TypeCheckPass diagnostics."""
+def _fatal_compile_errors(prog: JacProgram) -> list[Alert] {
+    # Filter out type-checker diagnostics (non-fatal warnings about
+    # Unknown types in client code).  Only fail on parse/compile errors.
+    # issubclass: diagnostics may come from TypeCheckPass itself or its
+    # TypeInferencePass schedule entry.
+    return [
+        e
+        for e in prog.errors_had
+        if not issubclass(e.from_pass, TypeCheckPass)
+    ];
+}
+
+"""Compile a Jac fixture to JavaScript and return the emitted source."""
+def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
+    fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
     cache_key = os.path.abspath(fixture_path);
     if cache_key in _js_compile_cache {
         return _js_compile_cache[cache_key];
     }
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path, no_cgen=True, type_check=True);
-
-    # Filter out type-checker diagnostics (non-fatal warnings about
-    # Unknown types in client code).  Only fail on parse/compile errors.
-    import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
-    _fatal = [
-        e
-        for e in prog.errors_had
-        if e.from_pass is not TypeCheckPass
-    ];
+    _fatal = _fatal_compile_errors(prog);
     assert not _fatal , (
         f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
     );
@@ -72,18 +91,21 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
 
 """Compile a fixture through the normal production codegen path."""
 def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -> str {
-    fixture_path = fixture_name;
-    if not Path(fixture_path).exists() and fixture_dir {
-        fixture_path = os.path.join(fixture_dir, fixture_name);
+    fixture_path = _resolve_fixture_path(fixture_name, fixture_dir);
+    cache_key = os.path.abspath(fixture_path);
+    if cache_key in _js_production_compile_cache {
+        return _js_production_compile_cache[cache_key];
     }
     prog = JacProgram();
     ir = prog.compile(file_path=fixture_path);
-    assert not prog.errors_had , (
-        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
+    _fatal = _fatal_compile_errors(prog);
+    assert not _fatal , (
+        f"Compilation errors in {fixture_name}: {[str(e) for e in _fatal]}"
     );
     assert ir.gen.js and ir.gen.js.strip() , (
         f"Production JS codegen produced no output for {fixture_name}"
     );
+    _js_production_compile_cache[cache_key] = ir.gen.js;
     return ir.gen.js;
 }
 
@@ -147,6 +169,7 @@ test "core fixture emits expected constructs" {
         "for (const i of array)",
         "for (let i = 0; (i < limit); i += 1)",
         "while ((counter > 0))",
+        "while (true)",
 
     ] {
         assert pattern in js_code;
@@ -235,6 +258,40 @@ test "advanced fixture emits expected constructs" {
     assert len(js_code) > 150;
 }
 
+test "props-destructured JSX components wrap direct call arguments" {
+    fixture = "component_direct_call_props_wrap.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    assert "function Greeting(props) {" in js_code;
+    assert 'const {name, title: title = "!"} = props;' in js_code , (
+        "multi-param JSX component should still destructure from `props`"
+    );
+    assert "return Greeting({name: \"World\"});" in js_code , (
+        "direct positional component call should wrap into a props object"
+    );
+    assert "return Greeting({name: \"World\", title: \"?\"});" in js_code , (
+        "direct kwargs call should wrap into a named props object"
+    );
+    assert "return SingleKeyStyle({payload: payload});" in js_code , (
+        "single non-`props` object param must still be wrapped by its param name"
+    );
+    assert "{...vals}" not in js_code;
+    assert "([...vals], {})" in js_code , (
+        "starred positional args for props-destructured components should pack as an array, not object-spread"
+    );
+    assert "([\"Hi\", ...vals], {})" in js_code , (
+        "mixed positional + spread component call should preserve argument order in the packer"
+    );
+    assert "return PropsPassthrough(bundle);" in js_code , (
+        "single-`props` component should remain pass-through"
+    );
+    assert "return plain(...vals);" in js_code , (
+        "ordinary function calls should still use JS spread syntax"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
 test "client fixture generates client bundle" {
     client_fixture = "client_jsx.jac";
     js_code = compile_fixture_to_js(client_fixture, FIXTURES);
@@ -281,7 +338,7 @@ test "cli js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path],
+        [sys.executable, "-m", "jaclang.cli.cli", "tool", "jac2js", fixture_file_path],
         capture_output=True,
         text=True,
         env=env,
@@ -301,7 +358,15 @@ test "cl only js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path, ],
+        [
+            sys.executable,
+            "-m",
+            "jaclang.cli.cli",
+            "tool",
+            "jac2js",
+            fixture_file_path,
+
+        ],
         capture_output=True,
         text=True,
         env=env,
@@ -1167,7 +1232,6 @@ test "poly get dispatches through runtime helper for untyped receivers" {
     assert result.returncode == 0 , (
         "poly.get dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
     );
-    import json;
     got: dict[str, any] = json.loads(result.stdout.strip());
     assert "hit" in got and got["hit"] == 1 , (
         "poly.get hit must return existing value 1, got " + str(got)
@@ -1206,7 +1270,6 @@ test "poly get dispatches to custom obj method not plain-object bracket" {
     assert result.returncode == 0 , (
         "poly.get custom-obj dispatch crashed in Node:\n" "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
     );
-    import json;
     got: dict[str, any] = json.loads(result.stdout.strip());
     assert "hit" in got and got["hit"] == 42 , (
         "poly.get on custom obj must call the object's .get() method and "
@@ -1249,7 +1312,6 @@ test "poly call dispatches dict/list/set/user methods on untyped receivers" {
     assert result.returncode == 0 , (
         "poly.call dispatch crashed in Node:\nstdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
     );
-    import json;
     lines = result.stdout.strip().split("\n");
     got: dict[str, any] = json.loads(lines[0]);
     raised = json.loads(lines[1]);
@@ -1303,7 +1365,8 @@ test "issue 5508 case2 str methods on untyped receivers" {
     # Pluck out the user-compiled function bodies (slice from each function
     # so the injected _jac runtime is not scanned).
     user_chunks = [];
-    for fn_name in ["case2_props_upper", "case2_props_strip", "case2_props_lower"] {
+    # Lowercase components are declared PascalCase (react-refresh contract)
+    for fn_name in ["Case2_props_upper", "Case2_props_strip", "Case2_props_lower"] {
         idx = js_code.find("function " + fn_name);
         assert idx >= 0 , (f"missing compiled function {fn_name}");
         user_chunks.append(js_code[idx:idx + 400]);
@@ -1837,8 +1900,183 @@ test "sibling block scopes — try except finally each get their own let" {
 }
 
 
+test "except Exception catches native JS errors (interop resilience)" {
+    # jaseci-labs/jaseci#6656: `except Exception` lowered to
+    # `__jac_e instanceof _jac.exc.Exception`, which native JS errors
+    # (SyntaxError from JSON.parse, interop TypeError, host Errors) are NOT
+    # part of — so the common best-effort `try { ... } except Exception { ... }`
+    # pattern silently re-threw them. The fix routes builtin except clauses
+    # through `_jac.exc.matches`, whose `Exception` arm also accepts non-Jac
+    # throws (Python semantics).
+    jac_code = "\"\"\"native-error catch test.\"\"\"\n\ncl def parse_or_default(raw: str) -> any {\n    try { return JSON.parse(raw); } except Exception { return None; }\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.exc.matches(__jac_e, \"Exception\")" in js_code , (
+            "builtin except must dispatch via _jac.exc.matches, got:\n" f"{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (parse_or_default('not json') !== null)" + " { throw new Error('except Exception must catch native SyntaxError'); }" + "\nif (JSON.stringify(parse_or_default('[1,2]')) !== '[1,2]')" + " { throw new Error('valid JSON must still parse'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "except Exception failed to catch a native JS error (#6656):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "narrow builtin except does not catch native JS errors" {
+    # The flip side of #6656: `except ValueError` must stay Python-faithful and
+    # NOT swallow an unrelated native SyntaxError — only `except Exception`
+    # broadens to native throws. A native error here must propagate.
+    jac_code = "\"\"\"narrow except test.\"\"\"\n\ncl def narrow(raw: str) -> int {\n    try { JSON.parse(raw); return 1; } except ValueError { return 0; }\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.exc.matches(__jac_e, \"ValueError\")" in js_code , (
+            f"narrow builtin except must dispatch via _jac.exc.matches, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nlet threw = false;" + "\ntry { narrow('not json'); } catch (e) { threw = (e instanceof SyntaxError); }" + "\nif (!threw) { throw new Error('except ValueError must NOT catch native SyntaxError'); }" + "\nif (narrow('5') !== 1) { throw new Error('valid path must return 1'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "narrow except wrongly caught (or mis-handled) a native error:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "user-defined exception except is not a catch-all" {
+    # Before #6656, `except MyError` (a non-builtin type) fell through to the
+    # else branch and compiled to `if (true)` — catching EVERY exception. It
+    # must now emit `instanceof MyError` so it catches only that type and lets
+    # unrelated exceptions fall through to the next handler.
+    jac_code = "\"\"\"user-defined except is not a catch-all.\"\"\"\n\nobj MyError {}\ncl def classify(which: int) -> str {\n    try {\n        if which == 1 { raise MyError(); }\n        raise ValueError(\"b\");\n    } except MyError { return \"mine\"; } except ValueError { return \"ve\"; }\n    return \"none\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "instanceof MyError" in js_code , (
+            f"user-defined except must emit `instanceof MyError`, got:\n{js_code}"
+        );
+        assert "matches(__jac_e, \"MyError\")" not in js_code , (
+            "user-defined type must not be routed through the builtin "
+            f"_jac.exc.matches predicate, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (classify(1) !== 'mine')" + " { throw new Error('except MyError must catch MyError'); }" + "\nif (classify(2) !== 've')" + " { throw new Error('except MyError must NOT catch a ValueError'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "user-defined except behaved as a catch-all (#6656):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "exception archetype subclassing a builtin extends _jac.exc.X" {
+    jac_code = "\"\"\"custom exception base test.\"\"\"\n\nobj MyError(Exception) {}\ncl def boom() -> int {\n    try { raise MyError(\"x\"); } except Exception { return 1; }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "class MyError extends _jac.exc.Exception" in js_code , (
+            "custom exception base must extend `_jac.exc.Exception`, got:\n"
+            f"{js_code}"
+        );
+        assert "class MyError extends Exception" not in js_code , (
+            "base class must not reference the bare (undefined) `Exception` "
+            f"global, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (boom() !== 1)" + " { throw new Error('custom exception must load and be caught by except Exception'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "custom exception subclassing a builtin failed to load/catch (#6663):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "exception archetype subclassing ValueError extends _jac.exc.ValueError" {
+    jac_code = "\"\"\"custom ValueError base test.\"\"\"\n\nobj MyValueError(ValueError) {}\ncl def parse_int(s: str) -> int {\n    try { raise MyValueError(\"bad\"); } except ValueError { return -1; }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "class MyValueError extends _jac.exc.ValueError" in js_code , (
+            "custom ValueError base must extend `_jac.exc.ValueError`, got:\n"
+            f"{js_code}"
+        );
+        assert "class MyValueError extends ValueError" not in js_code , (
+            "base class must not reference the bare (undefined) `ValueError` "
+            f"global, got:\n{js_code}"
+        );
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (parse_int('x') !== -1)" + " { throw new Error('custom ValueError subclass must be caught by except ValueError'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            "custom exception subclassing ValueError failed to load/catch (#6663):\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
 test "in/not in on unknown-typed containers matches Python semantics" {
-    import json;
     # `opaque()` returns `any`, so the backend cannot statically prove the
     # container types. Membership must still behave like Python: substring
     # search for strings, element search for lists, key search for dicts.
@@ -1876,7 +2114,6 @@ test "in/not in on unknown-typed containers matches Python semantics" {
 
 
 test "cl negative indexing counts from the end like Python (#6320)" {
-    import json;
     # Python/Jac negative indices count from the end. A raw JS subscript
     # `xs[-1]` is `undefined`, silently producing the wrong value.
     jac_code = """
@@ -1929,7 +2166,6 @@ cl def neg_index() -> dict {
 
 
 test "cl collection truthiness matches Python emptiness (#6320)" {
-    import json;
     # JS arrays/objects/Sets are always truthy, so empty-collection guards
     # never short-circuit. Boolean contexts on a collection must test
     # emptiness like Python (empty list/dict/set is falsy; str already agrees).
@@ -2018,7 +2254,6 @@ cl def truthy_probe() -> dict {
 
 
 test "cl negative-index assignment and while-truthiness match Python (#6320)" {
-    import json;
     # Negative-index assignment must write the element counted from the end
     # (raw `xs[-1] = v` would create a bogus "-1" property), and a `while`
     # guard on a collection must drain like Python rather than loop forever.
@@ -2083,7 +2318,6 @@ cl def probe() -> dict {
 
 
 test "cl subscript on unknown-typed values keeps JS undefined-on-miss (#6320)" {
-    import json;
     # A subscript on an `any`-typed value must remain a faithful superset of a
     # raw `obj[i]`: string keys stay plain member access, a missing key/index
     # yields `undefined` (never throws), and only a possibly-negative numeric
@@ -2130,6 +2364,142 @@ cl def probe(resp: any, xs: any) -> dict {
                 f"js:\n{js_code}"
             );
         }
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+
+test "isinstance/issubclass against builtin types, user class, and tuples (#6458)" {
+    # Regression for jaseci-labs/jaseci#6458. `isinstance(x, str)` (and any
+    # other builtin-type check, as used by the shadcn `sidebar` component)
+    # crashed ES codegen with a bare `IndexError: list index out of range`:
+    # the ES pass had no `exit_builtin_type` handler, so the builtin-type
+    # argument was dropped and `emit_isinstance` indexed past the end of its
+    # arg list.
+    js_code = compile_fixture_to_js("isinstance_builtin.cl.jac", FIXTURES);
+
+    # The Python builtin-type name must never leak into the emitted JS as a
+    # bare reference to an undefined global (e.g. `value instanceof str`),
+    # which would be a ReferenceError at runtime.
+    assert "instanceof str" not in js_code , (
+        f"builtin type `str` must not lower to a JS `instanceof str`:\n{js_code}"
+    );
+
+    # Drive the emitted JS through Node to confirm correct Python semantics
+    # (including bool-as-subclass-of-int, tuple-of-types, and issubclass).
+    wrapper = (
+        js_code + "\nconst cases = [['hi'], [true], [5], [3.14], [[1, 2]], " + "[new Widget({name: 'w'})]];" + "\nconsole.log(JSON.stringify({" + "  classify: cases.map(c => classify(c[0]))," + "  scalar: [is_scalar(5), is_scalar(3.14), is_scalar('x'), " + "is_scalar(true), is_scalar([1])]," + "  subclass: subclass_probe()" + "}));\n"
+    );
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "isinstance codegen crashed in Node:\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got = json.loads(result.stdout.strip());
+    assert got["classify"] == ["str:hi", "bool", "int", "float", "list", "widget:w"] , (
+        f"classify mismatch: {got['classify']}\njs:\n{js_code}"
+    );
+    assert got["scalar"] == [True, True, True, True, False] , (
+        f"is_scalar (tuple-of-types) mismatch: {got['scalar']}\njs:\n{js_code}"
+    );
+    assert got["subclass"] == [True, True, False, False] , (
+        f"issubclass (builtin-tag) mismatch: {got['subclass']}\njs:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, "isinstance_builtin.cl.jac");
+}
+
+test "getattr default with or/and emits parenthesized nullish coalescing (#6562)" {
+    fixture = "dict_get_nullish_or_precedence.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    wrapper = js_code + "\nconsole.log(JSON.stringify(test_nullish_logical_precedence_cases()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "getattr + or/and fixture crashed in Node:\n" + "stdout=" + result.stdout + "\nstderr=" + result.stderr + "\njs:\n" + js_code
+    );
+
+    got: dict[str, any] = json.loads(result.stdout.strip());
+    expected = {
+        "getattr_two_arg_hit": "hi",
+        "getattr_two_arg_miss": "",
+        "getattr_two_arg_falsy": "",
+        "getattr_numeric_hit": 5,
+        "getattr_numeric_miss": 0,
+        "getattr_numeric_falsy": 0,
+        "getattr_fallback_hit": "hi",
+        "getattr_fallback_miss": "fallback",
+        "getattr_dict_or_hit": {"a": 1},
+        "getattr_dict_or_miss": {},
+        "getattr_chain_first": "A",
+        "getattr_chain_second": "B",
+        "getattr_chain_third": "c",
+        "literal_or_getattr": "x",
+        "getattr_and_truthy": True,
+        "getattr_and_falsy": False,
+        "getattr_alone_hit": "present",
+        "getattr_alone_miss": "default",
+        "dict_get_poly_hit": "hi",
+        "dict_get_poly_miss": "",
+        "dict_get_one_arg_hit": "hi",
+        "dict_get_one_arg_miss": "",
+        "dict_get_one_arg_falsy": ""
+    };
+    for (key, val) in expected.items() {
+        assert key in got , f"missing result key {key!r} in {got}";
+        assert got[key] == val , (
+            f"{key}: expected {val!r}, got {got[key]!r}\nfull={got}\njs:\n{js_code}"
+        );
+    }
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "ESDictEmitter.emit_get parenthesizes ?? for 1- and 2-arg forms (#6562)" {
+    emitter = ESDictEmitter();
+    ctx = ESEmitCtx(unparser=JSCodeGenerator());
+    one_arg = emitter.emit_get(ctx, "d", ['"k"']);
+    two_arg = emitter.emit_get(ctx, "d", ['"k"', '""']);
+    assert one_arg == '(d["k"] ?? undefined)' , (
+        "1-arg emit_get must wrap ?? in parens; got " + str(one_arg)
+    );
+    assert two_arg == '(d["k"] ?? "")' , (
+        "2-arg emit_get must wrap ?? in parens; got " + str(two_arg)
+    );
+}
+
+test "builtin name used as a dict key lowers to that key, not the 'key' fallback (#6458)" {
+    # Same root cause as the isinstance crash: a Python builtin used as a
+    # *value* (here the `type` key of an object literal) produced no es_ast,
+    # so `exit_dict_val` fell back to the literal string `'key'` -- silently
+    # turning `{type: "email"}` into `{key: "email"}`. JacForm's field
+    # renderer read that accidental `config.key`, so once the builtin-type
+    # handler started lowering `type` correctly the form input types broke
+    # (native `type="email"` validation stopped working). Lock the key down.
+    jac_code = "cl def make_cfg() -> dict {\n    return {type: \"email\", label: \"Email\"};\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "\"type\": \"email\"" in js_code or "type: \"email\"" in js_code , (
+            f"builtin `type` key must lower to `type`, not the `key` fallback:\n{js_code}"
+        );
+        assert "key: \"email\"" not in js_code
+        and "\"key\": \"email\"" not in js_code , (
+            f"builtin `type` key must not collapse to the literal `key`:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
     } finally {
         os.unlink(temp_path);
     }

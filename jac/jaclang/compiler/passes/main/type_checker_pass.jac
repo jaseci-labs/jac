@@ -1,17 +1,8 @@
-"""
-Type checker pass.
-
-This will perform type checking on the Jac program and accumulate any type
-errors found during the process in the pass's had_errors, had_warnings list.
-
-Reference:
-    Pyright: packages/pyright-internal/src/analyzer/checker.ts
-    craizy_type_expr branch: type_checker_pass.py
-"""
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics {
+    DiagnosticInfo,
     E1001,
     E1002,
     E1003,
@@ -35,6 +26,7 @@ import from jaclang.jac0core.diagnostics {
     E1113,
     E1116,
     E1117,
+    E1119,
     W1036,
     W1037,
     W1052,
@@ -42,12 +34,27 @@ import from jaclang.jac0core.diagnostics {
     E2015
 }
 
-"""Type checker pass for JacLang."""
+
 class TypeCheckPass(UniPass) {
+    static has inference_only: bool = False;
+    has _lambda_depth: int = 0;
+
     def before_pass(self: TypeCheckPass) -> None;
+    def after_pass(self: TypeCheckPass) -> None;
+    def emit(
+        self: TypeCheckPass,
+        diag: DiagnosticInfo,
+        node_override: (uni.UniNode | None) = None,
+        related: (list[tuple[str, uni.UniNode]] | None) = None,
+        help_text: (str | None) = None,
+        **kwargs: any
+    ) -> bool;
+
     def _insert_builtin_symbols(self: TypeCheckPass) -> None;
     def enter_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
     def exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
+    def enter_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None;
+    def exit_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None;
     def exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None;
     def exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None;
     def exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None;
@@ -96,4 +103,9 @@ class TypeCheckPass(UniPass) {
     ) -> object;
 
     def _check_event_trigger_archetype(self: TypeCheckPass, nd: uni.Ability) -> None;
+    def _check_unresolved_lambda_params(self: TypeCheckPass) -> None;
+}
+
+class TypeInferencePass(TypeCheckPass) {
+    static has inference_only: bool = True;
 }

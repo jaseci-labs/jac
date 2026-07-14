@@ -31,10 +31,18 @@ Bug index:
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
+  #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
+  #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
+  #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
+  #LITWIDEN - literal initializers not widened for mutable vars/attrs/container elements
+  #INCLUDE-MEMBER-1 - member access on `include`d (absorb) symbols resolved to
+                      Unknown when the included submodule imported back from its
+                      own package (circular self-import); poisoned the vendored
+                      llvm ir/binding surface and every native pass (#7163)
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
@@ -42,8 +50,7 @@ import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.compiler.type_system.type_utils { compute_mro_linearization }
 import from jaclang.compiler.type_system.types { ClassType, TypeFlags }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     CHECKER_FIXTURES = os.path.join(
+glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      );
 
@@ -139,6 +146,39 @@ test "bug_6_mro_not_c3_diamond" {
     assert mro_names == expected_c3 , "Bug #6: MRO is not C3 linearized. "
     f"Expected {expected_c3} but got {mro_names}. "
     "In diamond inheritance, C should come before A in the MRO.";
+}
+
+# =========================================================================
+# Cyclic heritage: compute_mro_linearization must not recurse infinitely
+#
+# compute_mro_linearization recursed into base_classes with no in-progress
+# guard. A malformed or cyclic inheritance graph (a self-referential class,
+# or A -> B -> A) recursed until the stack overflowed instead of degrading
+# to a best-effort MRO. The fix adds an in-progress guard keyed on the class.
+# =========================================================================
+test "cyclic_heritage_mro_does_not_recurse" {
+    # Self-referential: A lists itself as a base.
+    a_shared = ClassType.ClassDetailsShared(
+        class_name="A", symbol_table=None, mro=[], base_classes=[]
+    );
+    a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
+    a_type.shared.base_classes = [a_type];
+    compute_mro_linearization(a_type);
+    assert a_type.shared.mro and a_type.shared.mro[0] is a_type;
+
+    # Mutual cycle: B -> C -> B.
+    b_shared = ClassType.ClassDetailsShared(
+        class_name="B", symbol_table=None, mro=[], base_classes=[]
+    );
+    b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
+    c_shared = ClassType.ClassDetailsShared(
+        class_name="C", symbol_table=None, mro=[], base_classes=[]
+    );
+    c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
+    b_type.shared.base_classes = [c_type];
+    c_type.shared.base_classes = [b_type];
+    compute_mro_linearization(b_type);
+    assert b_type.shared.mro and b_type.shared.mro[0] is b_type;
 }
 
 # =========================================================================
@@ -703,7 +743,27 @@ test "bug_comprehension_narrowing" {
     assert len(program.errors_had) == 0 , (
         "`T | None` narrowing established by an enclosing guard must "
         "propagate into list/dict/set/gen comprehension iterators, out "
-        "expressions, and conditional clauses. "
+        "expressions, and conditional clauses -- both for early-return "
+        "guards and for in-body `if x is not None { ... }` blocks. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #COMPR-NARROW (true-positive guard): the in-body edge classification
+# must not over-narrow comprehension edges to the true branch. Inside
+# `if r is None { ... }` (and the else of `if r is not None`) the narrowed
+# type of `r` really is `None`, so `r.parts` inside a comprehension there
+# must still raise. Guards against a regression where the parent-walk
+# returns "true" for every nested comprehension, silently dropping errors.
+# =========================================================================
+test "bug_comprehension_narrowing_negative" {
+    program = compile_and_check("checker_bug_compr_narrowing_negative.jac");
+
+    assert len(program.errors_had) == 2 , (
+        "Comprehensions inside a branch where `r` is narrowed to `None` "
+        "must still raise on `r.parts` -- the in-body edge fix must not "
+        "over-classify nested comprehension edges as the true branch. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
@@ -893,5 +953,113 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_starguard_1_guarded_star_reexport_resolves" {
+    program = compile_and_check("checker_star_reexport_guard.jac");
+    e1055 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1055"
+    );
+    assert e1055 == 1 , (
+        "Bug #STARGUARD-1: `bytes + str` must error because str is not a "
+        "Buffer. The guarded ReadableBuffer/Buffer re-export must resolve so "
+        f"bytes.__add__ rejects str. Expected 1 E1055, got {e1055}."
+    );
+}
+
+test "bug_starguard_1_single_segment_reexport_resolves" {
+    program = compile_and_check(os.path.join("star_reexport_guard", "consumer.jac"));
+    e1032 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032"
+    );
+    assert len(program.errors_had) == 0 , (
+        "Bug #STARGUARD-1: a guarded name re-exported via a single-segment "
+        "`from M import *` must resolve. Marker was Unknown "
+        f"({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_starguard_1_multi_segment_reexport_resolves" {
+    program = compile_and_check(
+        os.path.join("star_reexport_guard_multiseg", "consumer.jac")
+    );
+    e1032 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032"
+    );
+    assert len(program.errors_had) == 0 , (
+        "Bug #STARGUARD-1: a guarded name re-exported via a MULTI-SEGMENT "
+        "`from pkg.submod import *` must resolve. The buggy extension-probing "
+        "appended an extension to an already-extensioned path, so Marker was "
+        f"Unknown ({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_byte_literal_typed_as_bytes" {
+    program = compile_and_check("checker_bytes_literal.jac");
+    assert program.errors_had == [] , (
+        "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
+        "so it assigns to bytes and concatenates with other bytes. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #EVOLVING-NONE: `x = None` then reassigning inside an `if` branch
+# was not picked up post-branch — CFG narrowing rejected the new type as
+# not assignable to NoneType, producing false E1002 on `return x`.
+test "bug_evolving_none_narrowing" {
+    program = compile_and_check("checker_bug_evolving_locals_narrowing.jac");
+    assert program.errors_had == [] , (
+        "Bug #EVOLVING-NONE: `x = None; if cond { x = real_value; }; return x;` "
+        "must narrow to the assigned type post-branch (Pyright evolving-locals). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #LITWIDEN: literal types inferred from a literal initializer were not
+# widened for mutable variables and container elements, so `row = ["."] * 3;
+# row[0] = "B";` failed with E1001 (Cannot assign Literal["B"] to Literal["."]).
+# Widening must reach into container element types (list/dict/set), matching
+# mypy/pyright, while explicit annotations and expression-position literals
+# keep their Literal type.
+test "bug_literal_widening_for_mutable_declarations" {
+    program = compile_and_check("checker_bug_literal_widening.jac");
+    assert program.errors_had == [] , (
+        "Bug #LITWIDEN: literals inferred for mutable variables and container "
+        "elements must widen to their base type (['.'] * 3 -> list[str]) so "
+        "later stores of a different value are allowed. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #INCLUDE-MEMBER-1 / #7163: a class re-exported into a package only via
+# `include` (absorb) was Unknown when reached through the package namespace
+# (`ir.Value`) if the included submodule imported back from its own package
+# (circular self-import, as the vendored llvm ir/binding submodules do). The
+# module-item path (`from pkg import X`) already fell back to walking the absorb
+# imports via _resolve_star_import_symbol; the member-access path did not, and
+# returned UnknownType on the lookup miss. This poisoned the whole llvm surface
+# -- the native passes do `import from ...llvm { ir }` then `ir.Value` /
+# `ir.Module` / ... -- cascading ~1,700 E1030/E1032 errors across every native
+# pass. The base Value class also did not declare its `type` attribute. With the
+# absorb-aware fallback in place and Value.type declared, the issue's repro must
+# type-check clean.
+#
+# The reproduction rides the vendored llvm package on purpose: the bug only
+# surfaces when the absorbing package is resolved through the type evaluator's
+# cross-module import path (external / JIR-cached), which a fixture compiled as
+# the main target does not exercise.
+test "bug_7163_llvm_ir_boundary_resolves" {
+    program = compile_and_check("checker_llvm_ir_boundary.jac");
+    assert program.errors_had == [] , (
+        "Bug #7163: `import from ...llvm { ir }` then `ir.Value` with `.type` "
+        "must resolve. `ir.Value` was Unknown (member access on an absorbed "
+        f"symbol). Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

@@ -4,14 +4,13 @@ import contextlib;
 import os;
 import shutil;
 import tempfile;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.project.config { JacConfig, CheckConfig, LintConfig, set_config }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     AUTO_LINT_FIXTURES = os.path.join(
+glob AUTO_LINT_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "tool", "fixtures", "auto_lint"
      ),
      STRESS_TEST_PATH = os.path.join(
@@ -695,15 +694,15 @@ test "ternary no lint preserves" {
 
 # ── TestSignatureMismatchFix ─────────────────────────────────────────────
 test "signature mismatch fixed" {
-    input_path = auto_lint_fixture_path("sig_mismatch.jac");
+    # Annex files are formatted as their own tool programs now; the auto-lint
+    # pass loads the base file's decls on demand to fix mismatched impl
+    # signatures, so we format the .impl.jac annex directly.
+    input_path = auto_lint_fixture_path(os.path.join("impl", "sig_mismatch.impl.jac"));
 
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
 
-    # Verify impl module is discovered
-    assert len(prog.mod.main.impl_mod) == 1 , "Should have one impl module";
-
     # Check the impl signatures were fixed by examining the AST nodes directly
-    impl_mod = prog.mod.main.impl_mod[0];
+    impl_mod = prog.mod.main;
 
     # Helper to get param names from an ImplDef
     def get_impl_params(impl_def: uni.ImplDef) -> list[str] {
@@ -746,14 +745,15 @@ test "signature mismatch fixed" {
 
 # ── TestNestedClassSignatureFix ──────────────────────────────────────────
 test "nested class impl signature fixed" {
-    input_path = auto_lint_fixture_path("nested_class_sig.jac");
+    # Format the .impl.jac annex directly; the auto-lint pass resolves nested
+    # archetype decls (OuterClass.InnerClass.init, ...) from the base file.
+    input_path = auto_lint_fixture_path(
+        os.path.join("impl", "nested_class_sig.impl.jac")
+    );
 
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
 
-    # Verify impl module is discovered
-    assert len(prog.mod.main.impl_mod) == 1 , "Should have one impl module";
-
-    impl_mod = prog.mod.main.impl_mod[0];
+    impl_mod = prog.mod.main;
 
     # Helper to get the full target path as a string
     def get_target_path(impl_def: uni.ImplDef) -> str {
@@ -1100,16 +1100,16 @@ test "inline suppress by code" {
         set_config(None);
     }
 
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
+    # Line of every surviving no-print error, so we can prove *which* line was
+    # suppressed rather than just counting totals.
+    no_print_lines = [
+        e.loc.first_line
+        for e in prog.errors_had
+        if "[no-print]" in e.msg
     ];
-    # Line 4 suppressed by E3012, line 5 NOT suppressed => 1 error
-    assert len(no_print_errors) == 1 , f"Expected 1 no-print error, got {len(
-        no_print_errors
-    )}: {no_print_errors}";
+    # `# jac:ignore[E3012]` on line 4 suppresses it; line 5 has no comment.
+    assert 4 not in no_print_lines , f"E3012 code suppression on line 4 failed: {no_print_lines}";
+    assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
 }
 
 test "inline suppress by alias" {
@@ -1124,21 +1124,21 @@ test "inline suppress by alias" {
         set_config(None);
     }
 
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
+    # Line of every surviving no-print error, so we can prove the *alias* form
+    # of suppression worked independently of the numeric-code form.
+    no_print_lines = [
+        e.loc.first_line
+        for e in prog.errors_had
+        if "[no-print]" in e.msg
     ];
-    # Line 9 suppressed by alias "no-print", line 10 suppressed by multi-code
-    # Only line 5 should fire => 1 error total
-    assert len(no_print_errors) == 1 , f"Expected 1 no-print error, got {len(
-        no_print_errors
-    )}: {no_print_errors}";
+    # `# jac:ignore[no-print]` (kebab alias) on line 9 suppresses it; line 5
+    # has no comment and must still fire.
+    assert 9 not in no_print_lines , f"alias suppression on line 9 failed: {no_print_lines}";
+    assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
 }
 
 test "inline suppress wrong code does not suppress" {
-    input_path = auto_lint_fixture_path("no_print.jac");
+    input_path = auto_lint_fixture_path("inline_suppress_wrong_code.jac");
 
     config = JacConfig();
     config.check = CheckConfig(lint=LintConfig(select=["all"]));
@@ -1149,14 +1149,15 @@ test "inline suppress wrong code does not suppress" {
         set_config(None);
     }
 
-    # no_print.jac has no jac:ignore comments, so all 2 errors should fire
-    error_msgs = [e.msg for e in prog.errors_had];
+    # The fixture's single print() carries `# jac:ignore[W3001]`, an unrelated
+    # rule, so the no-print (E3012) error must still fire: suppression is
+    # per-code and a non-matching code is a no-op.
     no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
+        e.msg
+        for e in prog.errors_had
+        if "[no-print]" in e.msg
     ];
-    assert len(no_print_errors) == 2;
+    assert len(no_print_errors) == 1 , f"wrong ignore code wrongly suppressed no-print: {no_print_errors}";
 }
 
 test "inline suppress multiple codes" {
@@ -1208,9 +1209,9 @@ test "W3037 auto-fix removes unnecessary -> None from lambdas" {
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
     formatted = prog.mod.main.gen.jac;
 
-    # Paren-less lambda with typed param: -> None removed, param kept
-    assert "lambda e: str {" in formatted;
-    assert "lambda x: int" in formatted and "y: int {" in formatted;
+    # Lambda with typed param: -> None removed, param kept
+    assert "lambda (e: str) {" in formatted;
+    assert "lambda (x: int" in formatted and "y: int) {" in formatted;
 
     # Lambda with no params: -> None removed
     assert "lambda {" in formatted;
@@ -1286,8 +1287,8 @@ test "W3042 converts map lambda to list comprehension" {
     # Multi-param case: MultiParamMap must be left untouched — list
     # comprehensions only bind one iteration variable per `for` clause.
     assert "items.map(" in formatted;
-    assert "lambda a: any" in formatted;
-    assert "b: any" in formatted;
+    assert "lambda (a: any" in formatted;
+    assert "b: any)" in formatted;
     assert "for a in items" not in formatted;
     assert "for a, b in items" not in formatted;
 }
@@ -1305,4 +1306,130 @@ test "W3042 filter-map chain converts to filtered comprehension" {
     assert "<li className=\"active\">{item.name}</li>" in formatted;
     assert "for item in items" in formatted;
     assert "if item.active" in formatted;
+}
+
+test "W3050 strip-comments removes all comments when selected" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-comments"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    assert "# standalone comment" not in formatted;
+    assert "# inline comment" not in formatted;
+    assert "# field comment" not in formatted;
+    # Docstrings are a separate rule and must be preserved here.
+    assert "Module docstring to deslop" in formatted;
+    assert "Archetype docstring to deslop" in formatted;
+}
+
+test "W3051 strip-docstrings removes all docstrings when selected" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-docstrings"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    assert "Module docstring to deslop" not in formatted;
+    assert "Archetype docstring to deslop" not in formatted;
+    # Comments are a separate rule and must be preserved here.
+    assert "# standalone comment" in formatted;
+    assert "# inline comment" in formatted;
+}
+
+test "deslop rules are opt-in and never fire under select all" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    # "all" must NOT activate the destructive deslop rules.
+    assert "# standalone comment" in formatted;
+    assert "Module docstring to deslop" in formatted;
+    assert "Archetype docstring to deslop" in formatted;
+}
+
+test "deslop rules are disabled under default select" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    assert "# standalone comment" in formatted;
+    assert "Module docstring to deslop" in formatted;
+}
+
+test "property-to-native folds '@x.getter' into the accessor block" {
+    input_path = auto_lint_fixture_path("property_getter_decorator.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # The whole '@property'/'@val.getter'/'@val.setter' cluster collapses into one
+    # native property, and '@val.getter' -- which supersedes the '@property' it
+    # extends -- supplies the getter body.
+    assert "has val: int {" in formatted;
+    assert "return self._val + 1;" in formatted;
+    assert "setter(new_val: int)" in formatted;
+
+    # No stray accessor method may survive the rewrite.
+    assert "@property" not in formatted;
+    assert "@val.getter" not in formatted;
+    assert "@val.setter" not in formatted;
+
+    # A cross-object accessor has no local native form; rewriting it as a local
+    # 'has val { setter }' would drop Container's getter, so it must be left alone.
+    assert "@Container.val.setter" in formatted;
+}
+
+test "property-to-native re-targets impl-separated accessor bodies" {
+    import from jaclang.cli.commands { analysis }
+
+    # The declaring object and its impl file are linted as two separate runs, so the
+    # impl side has to read the accessors back out of the file it annexes. A getter
+    # impl and a setter impl share the dotted target 'Temperature.celsius', so only
+    # their signatures say which accessor each one fills.
+    fixture_dir = os.path.dirname(auto_lint_fixture_path("property_impl_split.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        main_dst = os.path.join(tmpdir, "property_impl_split.jac");
+        shutil.copy2(auto_lint_fixture_path("property_impl_split.jac"), main_dst);
+        impl_dir = os.path.join(tmpdir, "impl");
+        os.makedirs(impl_dir);
+        impl_dst = os.path.join(impl_dir, "property_impl_split.impl.jac");
+        shutil.copy2(
+            os.path.join(fixture_dir, "impl", "property_impl_split.impl.jac"), impl_dst
+        );
+        with contextlib.suppress(SystemExit) {
+            analysis.lint([main_dst], fix=True);
+        }
+        with open(main_dst) as f {
+            updated_main = f.read();
+        }
+        with open(impl_dst) as f {
+            updated_impl = f.read();
+        }
+        # Declarations collapse into one native accessor block.
+        assert "has celsius: float {" in updated_main , updated_main;
+        assert "@property" not in updated_main , updated_main;
+        assert "@celsius.setter" not in updated_main , updated_main;
+        # Impl bodies are re-targeted to dotted-impl form so they still bind.
+        assert "impl Temperature.celsius.getter" in updated_impl , updated_impl;
+        assert "impl Temperature.celsius.setter" in updated_impl , updated_impl;
+    }
 }

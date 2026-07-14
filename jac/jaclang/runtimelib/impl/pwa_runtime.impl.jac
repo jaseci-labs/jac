@@ -1,27 +1,17 @@
-"""PWA runtime implementation - install prompts, platform detection, and components."""
-
-# =============================================================================
-# CONSTANTS
-# =============================================================================
 glob PWA_STORAGE_KEY = "__jac_pwa_prefs__",
      PWA_DEFAULT_REPROMPT_DAYS = 7,
      PWA_MAX_REPROMPTS = 3,
      PWA_BACKOFF_MULTIPLIER = 2;
 
-# =============================================================================
-# PLATFORM DETECTION
-# =============================================================================
 impl getPlatform -> str {
     ua = navigator.userAgent;
 
-    # iOS detection (iPhone, iPad, iPod, or iPad masquerading as Mac)
     iosPattern = Reflect.construct(RegExp, ["iPad|iPhone|iPod"]);
     if iosPattern.test(ua)
     or (navigator.platform == "MacIntel" and navigator.maxTouchPoints > 1) {
         return "ios";
     }
 
-    # Android detection
     if ua.includes("Android") {
         return "android";
     }
@@ -39,7 +29,7 @@ impl isAndroid -> bool {
 
 impl isSafari -> bool {
     ua = navigator.userAgent;
-    # Safari but not Chrome (Chrome on iOS includes Safari in UA)
+
     return ua.includes("Safari")
     and not ua.includes("Chrome")
     and not ua.includes("CriOS");
@@ -50,21 +40,15 @@ impl isMobile -> bool {
     return platform == "ios" or platform == "android";
 }
 
-# =============================================================================
-# STANDALONE DETECTION
-# =============================================================================
 impl isStandalone -> bool {
-    # Check display-mode media query
     if window.matchMedia("(display-mode: standalone)").matches {
         return True;
     }
 
-    # iOS Safari standalone mode
     if window.navigator.standalone == True {
         return True;
     }
 
-    # Android TWA
     if document.referrer.includes("android-app://") {
         return True;
     }
@@ -77,9 +61,8 @@ impl useIsStandalone -> bool {
 
     reactUseEffect(
         lambda -> any {
-            # Listen for display-mode changes
             mediaQuery = window.matchMedia("(display-mode: standalone)");
-            handler = lambda e: any { setStandalone(e.matches); };
+            handler = lambda (e: any) { setStandalone(e.matches); };
             mediaQuery.addEventListener("change", handler);
             return lambda { mediaQuery.removeEventListener("change", handler); };
         },
@@ -89,9 +72,6 @@ impl useIsStandalone -> bool {
     return standalone;
 }
 
-# =============================================================================
-# INSTALL PROMPT CAPTURE
-# =============================================================================
 impl captureInstallPrompt -> None {
     if window.__jacPwaPromptCaptured {
         return;
@@ -102,7 +82,7 @@ impl captureInstallPrompt -> None {
 
     window.addEventListener(
         "beforeinstallprompt",
-        lambda e: any {
+        lambda (e: any) {
             e.preventDefault();
             window.__jacPwaPrompt = e;
             window.dispatchEvent(
@@ -146,9 +126,6 @@ impl triggerInstallPrompt -> bool {
     return False;
 }
 
-# =============================================================================
-# MANIFEST HELPERS
-# =============================================================================
 impl getManifest -> dict {
     try {
         manifestLink = document.querySelector('link[rel="manifest"]');
@@ -177,14 +154,12 @@ impl getAppIcon -> str {
             return "";
         }
 
-        # Prefer 192x192
         for icon in icons {
             if icon.sizes == "192x192" {
                 return icon.src;
             }
         }
 
-        # Fallback to first icon
         return icons[0].src or "";
     } except Exception as e {
         console.warn("[jac-pwa] Failed to get app icon:", e);
@@ -202,9 +177,6 @@ impl getAppName -> str {
     }
 }
 
-# =============================================================================
-# USER PREFERENCES STORAGE
-# =============================================================================
 impl getPwaUserPrefs -> dict {
     try {
         stored = localStorage.getItem(PWA_STORAGE_KEY);
@@ -251,39 +223,29 @@ impl resetPwaUserPrefs -> None {
     }
 }
 
-# =============================================================================
-# RE-PROMPT LOGIC
-# =============================================================================
 impl shouldShowInstallBanner -> bool {
-    # Already installed
     if isStandalone() {
         return False;
     }
 
     prefs = getPwaUserPrefs();
 
-    # Already installed (recorded)
     if prefs.installed {
         return False;
     }
 
-    # Never dismissed
     if not prefs.dismissed {
         return True;
     }
 
-    # Check max reprompts
     if prefs.dismissCount >= PWA_MAX_REPROMPTS {
         return False;
     }
 
-    # Calculate required delay with exponential backoff
-    # 7 days -> 14 days -> 28 days
     baseDelay = PWA_DEFAULT_REPROMPT_DAYS;
     multiplier = Math.pow(PWA_BACKOFF_MULTIPLIER, prefs.dismissCount - 1);
     requiredDelayDays = baseDelay * multiplier;
 
-    # Check if enough time has passed
     daysSinceDismiss = (Date.now() - prefs.dismissedAt) / (1000 * 60 * 60 * 24);
 
     return daysSinceDismiss >= requiredDelayDays;
@@ -308,9 +270,6 @@ impl recordInstallSuccess -> None {
     setPwaUserPrefs({"installed": True, "installedAt": Date.now()});
 }
 
-# =============================================================================
-# CORE HOOK
-# =============================================================================
 impl usePwaInstall -> dict {
     [canInstall, setCanInstall] = reactUseState(hasInstallPrompt() or isIos());
     [isInstalled, setIsInstalled] = reactUseState(isStandalone());
@@ -323,7 +282,6 @@ impl usePwaInstall -> dict {
     prefs = getPwaUserPrefs();
     platform = getPlatform();
 
-    # Fetch manifest data on mount
     reactUseEffect(
         lambda -> any {
             async def loadManifest {
@@ -338,7 +296,6 @@ impl usePwaInstall -> dict {
         []
     );
 
-    # Listen for prompt ready event
     reactUseEffect(
         lambda -> any {
             handler = lambda {
@@ -353,7 +310,6 @@ impl usePwaInstall -> dict {
         []
     );
 
-    # Listen for installed event
     reactUseEffect(
         lambda -> any {
             handler = lambda {
@@ -367,7 +323,6 @@ impl usePwaInstall -> dict {
         []
     );
 
-    # Install action
     async def install -> bool {
         if isIos() {
             setIosGuideOpen(True);
@@ -388,19 +343,16 @@ impl usePwaInstall -> dict {
         }
     }
 
-    # Show iOS guide
     def showIosGuide {
         setIosGuideOpen(True);
         setPwaUserPrefs({"iosGuideShown": True, "iosGuideShownAt": Date.now()});
     }
 
-    # Dismiss action
     def dismiss {
         recordDismiss();
         setShowBanner(False);
     }
 
-    # Close iOS guide
     def closeIosGuide {
         setIosGuideOpen(False);
     }
@@ -422,9 +374,6 @@ impl usePwaInstall -> dict {
     };
 }
 
-# =============================================================================
-# GLASSMORPHIC STYLES
-# =============================================================================
 impl __getPwaStyles -> str {
     return '''
 /* PWA Install Banner - Glassmorphic Design */
@@ -678,15 +627,11 @@ impl __getPwaStyles -> str {
 ''';
 }
 
-# =============================================================================
-# COMPONENTS
-# =============================================================================
 impl PwaInstallBanner(props: dict) -> JsxElement {
     pwa = usePwaInstall();
     [visible, setVisible] = reactUseState(False);
     [dismissing, setDismissing] = reactUseState(False);
 
-    # Props with defaults
     title = props.title or pwa.appName or "Install App";
     description = props.description or "Add to home screen for the best experience";
     installText = props.installText or "Install";
@@ -698,7 +643,6 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
     className = props.className or "";
     style = props.style or {};
 
-    # Show after delay
     reactUseEffect(
         lambda -> any {
             if not pwa.shouldShowBanner or pwa.isInstalled {
@@ -710,7 +654,6 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
         [pwa.shouldShowBanner, pwa.isInstalled]
     );
 
-    # Handle dismiss with animation
     def handleDismiss {
         setDismissing(True);
         setTimeout(
@@ -723,7 +666,6 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
         );
     }
 
-    # Handle install
     async def handleInstall {
         result = await pwa.install();
         if result {
@@ -731,12 +673,10 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
         }
     }
 
-    # Don't render if not visible
     if not visible {
         return <></>;
     }
 
-    # Build class names
     bannerClass = "jac-pwa-banner";
     if dismissing {
         bannerClass = bannerClass + " jac-pwa-banner--dismissing";
@@ -850,7 +790,7 @@ impl IosInstallGuide(props: dict) -> JsxElement {
             <div className="jac-pwa-ios-overlay" onClick={onClose}>
                 <div
                     className={"jac-pwa-ios-guide " + className}
-                    onClick={lambda e: any { e.stopPropagation(); }}
+                    onClick={lambda (e: any) { e.stopPropagation(); }}
                 >
                     <div className="jac-pwa-ios-guide__title">{title}</div>
                     <div className="jac-pwa-ios-guide__subtitle">
@@ -893,10 +833,6 @@ impl IosInstallGuide(props: dict) -> JsxElement {
     );
 }
 
-# =============================================================================
-# INITIALIZATION
-# =============================================================================
 impl __jacPwaInit -> None {
-    # Capture install prompt as early as possible
     captureInstallPrompt();
 }

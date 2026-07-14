@@ -9,14 +9,13 @@ import io;
 import sys;
 import types;
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { PyastGenPass }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
@@ -37,6 +36,62 @@ def ast_to_list(`node: ast3.AST) -> list[ast3.AST] {
     return nodes;
 }
 
+def joinedstr_invariant_violations(`node: ast3.AST) -> list[str] {
+    violations: list[str] = [];
+    def walk(nd: ast3.AST, path: str) {
+        if isinstance(nd, ast3.JoinedStr) {
+            for (i, value) in enumerate(nd.values) {
+                piece_path = path + f".values[{i}]";
+                if isinstance(value, ast3.JoinedStr) {
+                    violations.append(f"nested JoinedStr at {piece_path}");
+                } elif isinstance(value, ast3.Constant) {
+                    if not isinstance(value.value, str) {
+                        violations.append(
+                            f"non-str Constant in JoinedStr at {piece_path}: " + repr(
+                                value.value
+                            )[:80]
+                        );
+                    }
+                } elif not isinstance(value, ast3.FormattedValue) {
+                    violations.append(
+                        f"unexpected {type(value).__name__} in JoinedStr at {piece_path}"
+                    );
+                }
+                walk(value, piece_path);
+            }
+        } else {
+            for (_, field_value) in ast3.iter_fields(nd) {
+                if isinstance(field_value, list) {
+                    for item in field_value {
+                        if isinstance(item, ast3.AST) {
+                            walk(item, path);
+                        }
+                    }
+                } elif isinstance(field_value, ast3.AST) {
+                    walk(field_value, path);
+                }
+            }
+        }
+    }
+    walk(`node, "module");
+    return violations;
+}
+
+
+test "joinedstr fstring quotes produce flat ast" {
+    # Regression for jaseci-labs/jaseci#6564: MultiString-wrapped f-strings must not
+    # nest JoinedStr nodes (breaks ast.unparse in jac2py).
+    fixture = os.path.join(FIXTURES, "joinedstr_fstring_quotes.jac");
+    prog = JacProgram();
+    code_gen = prog.compile(fixture);
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    py_mod = code_gen.gen.py_ast[0];
+    violations = joinedstr_invariant_violations(py_mod);
+    assert not violations , (
+        "JoinedStr AST invariant violated:\n" + "\n".join(violations)
+    );
+    ast3.unparse(py_mod);
+}
 
 test "hodge podge" {
     (out := JacProgram()).compile(
@@ -487,4 +542,36 @@ test "import type wraps in TYPE_CHECKING and resolves circular imports" {
             sys.path.remove(FIXTURES);
         }
     }
+}
+
+test "byte-string multistring lit_value returns bytes without crashing" {
+    # Adjacent byte-string literals form one MultiString node whose parts'
+    # lit_value are bytes. The getter must join homogeneously and return
+    # bytes, not raise TypeError (issue #7363). A plain str multistring
+    # must still return str.
+    code = """
+with entry {
+    b = b"ab" b"cd";
+    s = "ab" "cd";
+}
+""";
+    prog = JacProgram();
+    mod = prog.compile(file_path="test_multistring_bytes.jac", use_str=code);
+    assert not prog.errors_had , (
+        "byte-string multistring should compile cleanly, "
+        f"got: {[str(e) for e in prog.errors_had]}"
+    );
+    found: list[uni.MultiString] = [];
+    def collect(nd: uni.UniNode) {
+        if isinstance(nd, uni.MultiString) {
+            found.append(nd);
+        }
+        for k in nd.kid {
+            collect(k);
+        }
+    }
+    collect(mod);
+    values = [m.lit_value for m in found];
+    assert b"abcd" in values , f"expected bytes b'abcd' in {values}";
+    assert "abcd" in values , f"expected str 'abcd' in {values}";
 }

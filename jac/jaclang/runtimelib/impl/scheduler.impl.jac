@@ -1,4 +1,3 @@
-"""Return or create the module-level singleton Scheduler."""
 impl Scheduler.instance -> Scheduler {
     global _scheduler_instance;
     if _scheduler_instance is not None {
@@ -8,11 +7,10 @@ impl Scheduler.instance -> Scheduler {
     return _scheduler_instance;
 }
 
-"""Register a task with the scheduler."""
 impl Scheduler.register(
     name: str, target: Callable, spec: ScheduleSpec, is_walker: bool
 ) -> None {
-    now = datetime.datetime.now();
+    now = datetime.datetime.now(datetime.timezone.utc);
     next_run = self._compute_next_run(spec, now);
     if next_run is None {
         return;
@@ -29,7 +27,6 @@ impl Scheduler.register(
     );
 }
 
-"""Start the background scheduler thread."""
 impl Scheduler.start -> None {
     if self._running {
         return;
@@ -41,7 +38,6 @@ impl Scheduler.start -> None {
     self._thread.start();
 }
 
-"""Signal the scheduler to stop and wait for the thread to finish."""
 impl Scheduler.stop -> None {
     self._running = False;
     if self._stop_event is not None {
@@ -55,11 +51,6 @@ impl Scheduler.stop -> None {
     }
 }
 
-"""Block the calling thread until all tasks complete or KeyboardInterrupt.
-
-For one-shot (date) tasks, returns when all have fired.
-For recurring (interval/cron) tasks, blocks until Ctrl+C.
-"""
 impl Scheduler.wait -> None {
     if not self._running {
         return;
@@ -75,12 +66,10 @@ impl Scheduler.wait -> None {
     self.stop();
 }
 
-"""Check if any tasks still have a future run scheduled."""
 impl Scheduler.has_pending -> bool {
     return any(task.next_run is not None for task in self._tasks);
 }
 
-"""Main scheduler loop using a heapq priority queue."""
 impl Scheduler._run_loop -> None {
     heap: list = [];
     for (i, task) in enumerate(self._tasks) {
@@ -96,7 +85,7 @@ impl Scheduler._run_loop -> None {
             continue;
         }
         (next_ts, idx, task) = heap[0];
-        delay = next_ts - datetime.datetime.now().timestamp();
+        delay = next_ts - datetime.datetime.now(datetime.timezone.utc).timestamp();
         if delay > 0 {
             self._stop_event.wait(timeout=delay);
         }
@@ -104,7 +93,7 @@ impl Scheduler._run_loop -> None {
             break;
         }
         heapq.heappop(heap);
-        now = datetime.datetime.now();
+        now = datetime.datetime.now(datetime.timezone.utc);
         task.last_run = now;
         threading.Thread(target=self._execute, args=(task, ), daemon=True).start();
         new_next = self._compute_next_run(task.spec, now);
@@ -119,7 +108,6 @@ impl Scheduler._run_loop -> None {
     self._done_event.set();
 }
 
-"""Pick up any newly registered tasks not yet in the heap."""
 impl Scheduler._pick_up_new_tasks(heap: list) -> None {
     heap_tasks = {id(t) for (_, _, t) in heap};
     for (i, task) in enumerate(self._tasks) {
@@ -133,7 +121,6 @@ impl Scheduler._pick_up_new_tasks(heap: list) -> None {
     }
 }
 
-"""Compute the next run datetime for a given spec."""
 impl Scheduler._compute_next_run(
     spec: ScheduleSpec, now: datetime.datetime
 ) -> (datetime.datetime | None) {
@@ -149,7 +136,6 @@ impl Scheduler._compute_next_run(
     return None;
 }
 
-"""Compute next run for a date-based spec."""
 impl Scheduler._compute_date(
     date_str: str, now: datetime.datetime
 ) -> (datetime.datetime | None) {
@@ -159,13 +145,19 @@ impl Scheduler._compute_date(
         logger.warning(f"Invalid date format: {date_str}");
         return None;
     }
+    run_at_aware = run_at.tzinfo is not None;
+    now_aware = now.tzinfo is not None;
+    if now_aware and not run_at_aware {
+        run_at = run_at.astimezone(datetime.timezone.utc);
+    } elif run_at_aware and not now_aware {
+        run_at = run_at.replace(tzinfo=None);
+    }
     if run_at > now {
         return run_at;
     }
     return None;
 }
 
-"""Parse a 5-field cron string and return the next matching datetime."""
 impl Scheduler._parse_cron_next(
     cron: str, now: datetime.datetime
 ) -> datetime.datetime {
@@ -191,7 +183,6 @@ impl Scheduler._parse_cron_next(
     raise ValueError(f"No matching time found for cron: {cron}");
 }
 
-"""Check if a cron field matches a value."""
 impl Scheduler._cron_field_matches(
     field: str, value: int, min_val: int, max_val: int
 ) -> bool {
@@ -224,7 +215,6 @@ impl Scheduler._cron_field_matches(
     return False;
 }
 
-"""Execute a single scheduled task."""
 impl Scheduler._execute(task: ScheduledTask) -> None {
     try {
         if task.spec.trigger == ScheduleTrigger.DYNAMIC {

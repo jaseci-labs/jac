@@ -1,16 +1,3 @@
-"""Implementation of `jac db` subcommands.
-
-All subcommands dispatch through the abstract `PersistentMemory` interface
-so any L3 backend (SQLite today, MongoDB via jac-scale, plugin-provided
-backends in the future) gets the full operator surface without any
-CLI-side knowledge of the store.
-
-The CLI needs the user's app loaded so (a) user archetypes register for
-recovery attempts, (b) any plugin-configured backend (`MongoBackend` etc.)
-wins over the default via the runtime hooks. `--app PATH` selects the
-file; if omitted, the single `.jac` file in the current directory is used.
-"""
-
 import json;
 import os;
 import from pathlib { Path }
@@ -19,10 +6,6 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.memory { PersistentMemory, TieredMemory }
 
 
-"""Resolve the user's .jac app path.
-
-Priority: explicit --app → the one and only .jac in cwd → error.
-"""
 def _resolve_app_path(explicit: str) -> (str | None) {
     if explicit {
         p = Path(explicit);
@@ -32,8 +15,7 @@ def _resolve_app_path(explicit: str) -> (str | None) {
         }
         return str(p);
     }
-    # The cache directory `.jac/` matches `*.jac` because its name ends
-    # in `.jac` — filter to regular files.
+
     jacs = sorted(
         p
         for p in Path.cwd().glob("*.jac")
@@ -57,19 +39,6 @@ def _resolve_app_path(explicit: str) -> (str | None) {
 }
 
 
-"""Import the user's app so user archetypes register AND the right L3
-backend is installed via the usual plugin hooks. Returns the live
-PersistentMemory backend, or None on error.
-
-We pass `full_target_path` explicitly when constructing the context so
-`get_db_path()` / `get_name()` derive the DB filename from this app's
-stem. Without it the fallback is `main.db`, which would make `jac db`
-point at a different file than `jac enter` created (which DOES set the
-path via _discover_config_from_file), and the CLI would appear to "see
-no data" in an otherwise healthy DB. jac-scale overrides the DB path
-via its config loader and so masks this on installs that have
-jac-scale; pure jaclang deployments hit it.
-"""
 def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
     try {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -78,15 +47,12 @@ def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
         if mod.endswith('.jac') {
             mod = mod[:-4];
         }
-        # Match `jac enter`'s path setup so get_db_path() picks the same
-        # backing file the app writes to.
+
         Jac.set_full_target_path(abs_path);
         if not Jac.get_base_path_dir() {
             Jac.set_base_path(base);
         }
-        # Create a fresh CLI execution context so ctx.mem is wired up.
-        # Pass the seeds explicitly so the ctx's L3 path is locked in at
-        # postinit time, immune to later seed mutations.
+
         mach = Jac.create_j_context(
             user_root=None,
             base_path_dir=Jac.get_base_path_dir(),
@@ -109,7 +75,7 @@ def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
                     "No L3 persistent backend is configured.",
                     hint=(
                         "Ensure your app has a base_path set or a plugin "
-                        "(e.g. jac-scale) that installs one."
+                        "(e.g. the built-in scale backend) that installs one."
                     )
                 );
                 return None;
@@ -341,7 +307,93 @@ def _cmd_recover_all(app: str) -> int {
 }
 
 
-"""Entry point — dispatches to the right subcommand."""
+def _cmd_fsck(app: str, repair: bool) -> int {
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    r = backend.fsck(repair=repair);
+    dne = r.get('dangling_node_edge') or [];
+    den = r.get('dangling_edge_node') or [];
+    orphan_edges = r.get('orphan_edges') or [];
+    orphan_nodes = r.get('orphan_nodes') or [];
+    half_linked = r.get('half_linked_edges') or [];
+    dangling_total = len(dne) + len(den);
+
+    referrers_affected = len({p[0] for p in dne} | {p[0] for p in den});
+    console.print_header(f"Jac DB fsck: {r.get('location', '?')}");
+    console.info(
+        f"dangling refs : {dangling_total}   "
+        f"({referrers_affected} document(s) cite a missing referent)",
+        emoji=False
+    );
+    console.info(f"orphan edges  : {len(orphan_edges)}", emoji=False);
+    console.info(f"orphan nodes  : {len(orphan_nodes)}", emoji=False);
+    console.info(
+        f"half-linked   : {len(half_linked)}   "
+        "(edge cited by one endpoint only -- OCC residual)",
+        emoji=False
+    );
+    if r.get('repaired') {
+        c = r.get('repaired_counts') or {};
+        console.success(
+            f"repaired: pruned {c.get('pruned', 0)} citation(s), "
+            f"quarantined {c.get('quarantined', 0)} dangler(s) under "
+            f"DANGLING_REF, collected {c.get('collected', 0)} orphan(s)."
+        );
+    } elif (
+        dangling_total == 0
+        and not orphan_edges
+        and not orphan_nodes
+        and not half_linked
+    ) {
+        console.success("Clean: no referential-integrity violations.");
+    } else {
+        console.info(
+            "Run `jac db fsck repair` to heal danglers and collect orphans.",
+            emoji=False
+        );
+    }
+    return 0;
+}
+
+
+def _cmd_schema_rules(app: str) -> int {
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    import from jaclang.runtimelib.schema_rules { repair_mode }
+    import jaclang.runtimelib.schema_rules as _rules_mod;
+    collected = getattr(_rules_mod, '_collected', {});
+    console.print_header("Registered schema drift rules");
+    console.info(f"JAC_SCHEMA_REPAIR mode: {repair_mode()}", emoji=False);
+    if not collected {
+        console.info("No archetype declares a __jac_schema__ hook.");
+        return 0;
+    }
+    rows: list = [];
+    for (owner, r) in sorted(collected.items()) {
+        for w in r.was_names {
+            rows.append([owner, 'was', w]);
+        }
+        for a in r.aliases {
+            rows.append([owner, 'alias', f"{a.stored_name} -> {a.new_name}"]);
+        }
+        for d in r.drops {
+            rows.append([owner, 'drop', d.field_name]);
+        }
+        for u in r.upgrades {
+            rows.append([owner, 'upgrade', getattr(u.fn, '__name__', '<fn>')]);
+        }
+    }
+    console.print_table(
+        headers=["archetype", "rule", "detail"], rows=rows, title="Rules"
+    );
+    return 0;
+}
+
+
 impl db(
     action: str = 'inspect',
     sub: str = '',
@@ -352,6 +404,18 @@ impl db(
 ) -> int {
     if action == 'inspect' {
         return _cmd_inspect(app);
+    }
+    if action == 'fsck' {
+        if sub == '' or sub == 'check' or sub == 'scan' {
+            return _cmd_fsck(app, repair=False);
+        }
+        if sub == 'repair' or sub == 'fix' {
+            return _cmd_fsck(app, repair=True);
+        }
+        console.error(
+            f"Unknown fsck sub-action '{sub}'", hint="expected: (none), repair"
+        );
+        return 1;
     }
     if action == 'quarantine' {
         if sub == 'list' or sub == '' {
@@ -386,9 +450,16 @@ impl db(
     if action == 'recover-all' {
         return _cmd_recover_all(app);
     }
+    if action == 'schema' {
+        if sub == 'rules' or sub == '' {
+            return _cmd_schema_rules(app);
+        }
+        console.error(f"Unknown schema sub-action '{sub}'", hint="expected: rules");
+        return 1;
+    }
     console.error(
         f"Unknown action '{action}'",
-        hint="expected: inspect, quarantine, alias, recover, recover-all"
+        hint="expected: inspect, fsck, quarantine, alias, recover, recover-all, schema"
     );
     return 1;
 }

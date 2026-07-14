@@ -1,17 +1,54 @@
 [project]
 name = "jaclang"
 
+# Editable dev loop: reroute `import jaclang` to the in-repo source under jac/
+# so the `jac` binary runs your latest edits with no rebuild. Enabled here so
+# building from this repo always runs the in-tree compiler source; this skips
+# the binary's precompiled JIR bundle (the per-module cache is content-keyed, so
+# edits still self-invalidate). A one-time `zig build` is needed first, since
+# sitecustomize.py -- which reads this key -- ships inside the binary payload.
+# Comment this stanza out to fall back to the binary's bundled jaclang.
+[dev]
+jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
+
+# The pre-commit hook (`jac precommit --staged --verify`) gates commits on
+# formatting/lint only: the compiler tree itself is not yet `jac check`-clean,
+# so the type-check step would block every commit. Flip to true (or delete)
+# once `jac check jac/` passes.
+[precommit]
+typecheck = false
+
 [check.lint]
-select = ["all"]
+# "all" enables every autolint rule; the two strip-* entries are the opt-in
+# "deslop" rules (W3050/W3051) that remove all comments and docstrings. They
+# only activate when named explicitly here, so `jac format --lintfix`,
+# `jac precommit`, and CI's `jac format --check --lintfix` will strip comments
+# and docstrings from every non-excluded .jac file.
+select = ["all", "strip-comments", "strip-docstrings"]
 exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
+    # Folded-in scale subsystem: large self-contained subsystem whose inline
+    # comments (k8s/deploy/observability logic) are kept, not deslopped.
+    "*/scale/*",
+    # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale.
+    "*/byllm/*",
     "console.impl.jac",
     "cli_boot.jac",
+    # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:
+    #  - jir_registry.jac is generated (jac gen-jir-registry) and must match its
+    #    commented output;
+    #  - plugin_bridge.na.jac carries functional `# --- BRIDGE ... ---` markers the
+    #    native bridge extractor reads.
+    "jir_registry.jac",
+    "plugin_bridge.na.jac",
+    #  - uni_pass.jac carries the `# >>> generated visitor surface >>>` markers
+    #    that `jac gen-uni-dispatch` uses to locate the region it rewrites.
+    "uni_pass.jac",
 ]
 
-[plugins.byllm.model]
+[byllm.model]
 default_model = "anthropic/claude-sonnet-4-6"
 #default_model = "ollama/gemma4:31b"
 #default_model = "ollama/qwen3-coder"

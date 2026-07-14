@@ -26,15 +26,14 @@ Gap index:
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import jaclang.jac0core.unitree as uni;
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
      CHECKER_FIXTURES = os.path.join(

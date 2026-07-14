@@ -10,6 +10,7 @@ from __future__ import annotations
 import enum
 import os
 from dataclasses import dataclass, field
+from types import ModuleType
 
 # =============================================================================
 # Token Types
@@ -680,13 +681,104 @@ def _pop_primary_expr(out: list[Token]) -> list[Token]:
     return result
 
 
+def _lower_braced_lambdas(tokens: list[Token]) -> list[Token]:
+    """Lower braced Jac lambdas to the colon form the arms below understand.
+
+    `lambda (params)? (-> T)? { expr; }` (and the explicit
+    `{ return expr; }` spelling) becomes `lambda (params)? : expr`, which the
+    existing lambda arms then strip of annotations. A multi-statement body has
+    no Python-lambda equivalent and raises ParseError.
+    """
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if not (tok.type == TT.NAME and tok.value == "lambda"):
+            i += 1
+            continue
+        j = i + 1
+        # Optional parenthesized parameter list.
+        if j < len(tokens) and tokens[j].type == TT.LPAREN:
+            d = 0
+            k = j
+            while k < len(tokens):
+                if tokens[k].type == TT.LPAREN:
+                    d += 1
+                elif tokens[k].type == TT.RPAREN:
+                    d -= 1
+                    if d == 0:
+                        break
+                k += 1
+            if k >= len(tokens):
+                i += 1
+                continue
+            j = k + 1
+        # Optional `-> T` return hint (dropped: Python lambdas are unhinted).
+        arrow_start = None
+        if j < len(tokens) and tokens[j].type == TT.ARROW:
+            arrow_start = j
+            k = j + 1
+            d = 0
+            while k < len(tokens):
+                t = tokens[k]
+                if t.type in (TT.LPAREN, TT.LBRACKET):
+                    d += 1
+                elif t.type in (TT.RPAREN, TT.RBRACKET):
+                    d -= 1
+                elif t.type == TT.LBRACE and d == 0:
+                    break
+                k += 1
+            j = k
+        if not (j < len(tokens) and tokens[j].type == TT.LBRACE):
+            # Old colon-form lambda; the arms below handle it.
+            i += 1
+            continue
+        lbrace = j
+        d = 0
+        k = lbrace
+        while k < len(tokens):
+            if tokens[k].type == TT.LBRACE:
+                d += 1
+            elif tokens[k].type == TT.RBRACE:
+                d -= 1
+                if d == 0:
+                    break
+            k += 1
+        if k >= len(tokens):
+            i += 1
+            continue
+        rbrace = k
+        body = tokens[lbrace + 1 : rbrace]
+        if body and body[0].type == TT.NAME and body[0].value == "return":
+            body = body[1:]
+        if body and body[-1].type == TT.SEMI:
+            body = body[:-1]
+        d = 0
+        for t in body:
+            if t.type in (TT.LPAREN, TT.LBRACKET, TT.LBRACE):
+                d += 1
+            elif t.type in (TT.RPAREN, TT.RBRACKET, TT.RBRACE):
+                d -= 1
+            elif t.type == TT.SEMI and d == 0:
+                raise ParseError(
+                    f"line {tok.line}: multi-statement lambda body cannot be "
+                    "lowered to a Python lambda in jac0core bootstrap code"
+                )
+        head_end = arrow_start if arrow_start is not None else lbrace
+        colon = Token(TT.COLON, ":", tokens[lbrace].line, tokens[lbrace].col)
+        tokens = tokens[:head_end] + [colon] + body + tokens[rbrace + 1 :]
+        i += 1
+    return tokens
+
+
 def transform_tokens(tokens: list[Token]) -> list[Token]:
     """Apply Jac→Python transformations on a token list.
 
     1. super.method → super().method
     2. NAME[( ... )] → NAME[ ... ] (Jac generic syntax)
     3. lambda(args): → lambda args: (Jac lambda syntax)
+    4. lambda (args)? { expr; } → lambda args: expr (braced single-expression)
     """
+    tokens = _lower_braced_lambdas(tokens)
     out: list[Token] = []
     i = 0
     bracket_stack: list[int] = []
@@ -1078,6 +1170,9 @@ class Parser:
             if v == "def" or v == "can":
                 return self._parse_funcdef([])
             if v == "static":
+                if self._peek(1).type == TT.NAME and self._peek(1).value == "has":
+                    self._advance()  # consume "static"
+                    return self._parse_has()
                 return self._parse_funcdef([])
             if v == "async":
                 nxt = self._peek(1)
@@ -1289,8 +1384,15 @@ class Parser:
             tok = self._peek()
             if tok.type == TT.NAME and not tok.backtick:
                 v = tok.value
-                if v in ("def", "static", "async", "can"):
+                if v in ("def", "async", "can"):
                     body.append(self._parse_funcdef([]))
+                    continue
+                if v == "static":
+                    if self._peek(1).type == TT.NAME and self._peek(1).value == "has":
+                        self._advance()  # consume "static"
+                        body.append(self._parse_has())
+                    else:
+                        body.append(self._parse_funcdef([]))
                     continue
                 if v == "has":
                     body.append(self._parse_has())
@@ -2182,11 +2284,12 @@ class CodeGen:
                 self._line(f"{var.name}: {var.type_ann} = field(init=False)")
             elif var.default:
                 d = var.default.strip()
+                d_norm = d.replace(" ", "")
                 if d == "[]":
                     self._line(
                         f"{var.name}: {var.type_ann} = field(default_factory=list)"
                     )
-                elif d == "{}":
+                elif d_norm == "{}":
                     self._line(
                         f"{var.name}: {var.type_ann} = field(default_factory=dict)"
                     )
@@ -2366,18 +2469,45 @@ class CodeGen:
 # =============================================================================
 
 
+_ext_registry_mod: ModuleType | None = None
+
+
+def _ext_registry() -> ModuleType:
+    """Lazily load the plain-Python extension registry by path.
+
+    jac0 is the dependency-free bootstrap transpiler, so it reads the canonical
+    suffix data (issue #6858) by file path rather than importing through the
+    ``jaclang`` package.
+    """
+    global _ext_registry_mod
+    if _ext_registry_mod is None:
+        import importlib.util
+
+        path = os.path.join(os.path.dirname(__file__), "jac0core", "ext_registry.py")
+        spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load extension registry from {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _ext_registry_mod = module
+    return _ext_registry_mod
+
+
 def discover_impl_files(jac_path: str) -> list[str]:
     """Discover .impl.jac files for a given .jac file."""
+    reg = _ext_registry()
+    impl_suffix = reg.IMPL_SUFFIX  # ".impl.jac"
+    impl_folder = reg.ANNEX_FOLDER[impl_suffix]  # ".impl"
     impls: list[str] = []
     base = jac_path[:-4]  # strip .jac
     dir_path = os.path.dirname(jac_path) or "."
     base_name = os.path.basename(base)
 
-    # Detect variant suffix (.na, .sv, .cl) and compute bare base
+    # Detect variant suffix (.sv/.cl/.na) and compute bare base
     bare_base = base
     bare_base_name = base_name
     variant = None
-    for vext in (".na", ".sv", ".cl"):
+    for vext in reg.VARIANT_STEM_SUFFIXES:
         if base_name.endswith(vext):
             variant = vext
             bare_base_name = base_name[: -len(vext)]
@@ -2385,19 +2515,19 @@ def discover_impl_files(jac_path: str) -> list[str]:
             break
 
     # Same directory: foo.impl.jac (or foo.na.impl.jac for variants)
-    impl_file = f"{base}.impl.jac"
+    impl_file = f"{base}{impl_suffix}"
     if os.path.isfile(impl_file):
         impls.append(impl_file)
 
     # Module folder: foo.impl/*.impl.jac (or foo.na.impl/*.impl.jac)
-    impl_dir = f"{base}.impl"
+    impl_dir = f"{base}{impl_folder}"
     if os.path.isdir(impl_dir):
         for f in sorted(os.listdir(impl_dir)):
-            if f.endswith(".impl.jac"):
+            if f.endswith(impl_suffix):
                 impls.append(os.path.join(impl_dir, f))
 
     # Shared folder: impl/foo.impl.jac (or impl/foo.na.impl.jac)
-    shared_impl = os.path.join(dir_path, "impl", f"{base_name}.impl.jac")
+    shared_impl = os.path.join(dir_path, "impl", f"{base_name}{impl_suffix}")
     if os.path.isfile(shared_impl):
         impls.append(shared_impl)
 
@@ -2406,18 +2536,20 @@ def discover_impl_files(jac_path: str) -> list[str]:
         bare_head = f"{bare_base}.jac"
         if not os.path.isfile(bare_head):
             # Same directory: foo.impl.jac
-            bare_impl = f"{bare_base}.impl.jac"
+            bare_impl = f"{bare_base}{impl_suffix}"
             if os.path.isfile(bare_impl) and bare_impl not in impls:
                 impls.append(bare_impl)
             # Module folder: foo.impl/*.impl.jac
-            bare_impl_dir = f"{bare_base}.impl"
+            bare_impl_dir = f"{bare_base}{impl_folder}"
             if os.path.isdir(bare_impl_dir):
                 for f in sorted(os.listdir(bare_impl_dir)):
                     fp = os.path.join(bare_impl_dir, f)
-                    if f.endswith(".impl.jac") and fp not in impls:
+                    if f.endswith(impl_suffix) and fp not in impls:
                         impls.append(fp)
             # Shared folder: impl/foo.impl.jac
-            bare_shared = os.path.join(dir_path, "impl", f"{bare_base_name}.impl.jac")
+            bare_shared = os.path.join(
+                dir_path, "impl", f"{bare_base_name}{impl_suffix}"
+            )
             if os.path.isfile(bare_shared) and bare_shared not in impls:
                 impls.append(bare_shared)
 

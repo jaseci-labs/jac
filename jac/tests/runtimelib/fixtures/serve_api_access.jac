@@ -46,9 +46,7 @@ walker : protect ProtectedWalker {
 
     can enter with Root entry {
         tasks = here ++> Task(title=self.data);
-        report "Protected walker created task: " + tasks[0].title
-        if tasks
-        else "no task" ;
+        report "Protected walker created task: " + tasks.title ;
     }
 }
 

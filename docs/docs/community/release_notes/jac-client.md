@@ -2,7 +2,40 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.20 (Latest Release)
+## jac-client 0.3.25 (Latest Release)
+
+### New Features
+
+- **Client-only apps (`kind = "client"`)**: A project with `kind = "client"` is now auto-detected by `jac build` and `jac start` (no `--client static` flag needed). `jac build` inlines the JS bundle and CSS into a self-contained `index.html` that opens directly from disk (`file://`), and `jac start` serves it with a minimal static server (no API server, auth, or database) that still maps `/static/<name>.wasm` for `na`->wasm modules. The build flavor is also available explicitly as `--client static`; an explicit `--client` overrides the auto-detection.
+
+## jac-client 0.3.24
+
+### New Features
+
+- **Feature: `fullstack` / `wasm` / `mobile` create kinds**: jac-client now contributes project-kind templates to the kind-aware `jac create`. `jac create --kind fullstack` scaffolds a server + client app, `--kind wasm` a client-only page (the former `client` template), and `--kind mobile` a mobile client app. Each stamps `[project] kind` so the project's bare `jac run` does the right thing.
+
+## jac-client 0.3.23
+
+### New Features
+
+- **Feature: google-auth example wired to system-browser SSO**: The example's login and register buttons now drive the runtime's `jacSsoLogin()`, completing the previously missing `lib/auth` (AuthProvider/route guard) and storing the token under the canonical `jac_token` key so authenticated walker calls work. (jaseci-labs/jaseci#6485)
+
+### Refactors
+
+- **Examples drop redundant `cl` markers**: Bundled `.cl.jac` examples rely on the file extension for client context. (jaseci-labs/jaseci#6557)
+
+## jac-client 0.3.22
+
+### Bug Fixes
+
+- **Fix: jac-client CLI output no longer prints raw Rich markup**: npm/bun install and config-loader messages use `console.print(..., style=)`, `console.warning`, `console.success`, and `console.error` so status lines render with correct colors on the default ANSI console.
+
+### Refactors
+
+- **Refactor: client plugin consumes the unified core build pipeline**: The jac-client plugin no longer ships its own copy of the bun installer, Vite bundler, and client config loader; these moved into `jaclang.runtimelib.client` so the web, pwa, mobile, and desktop targets all share one runtime and one bundler. The plugin and its targets now import these from core instead of `jac_client.plugin.src.*`. (jaseci-labs/jaseci#6390)
+- **Refactor: Drop PyTauri-specific desktop handling**: Removed the `src-pytauri` setup detection/verification and the dead PyInstaller sidecar template from the client target plumbing. The `desktop` target (jac-desktop) is now a native webview build that needs no setup step.
+
+## jac-client 0.3.20
 
 ### New Features
 

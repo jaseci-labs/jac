@@ -1,15 +1,14 @@
-"""Pre-release validation to catch version conflicts early.
+"""Pre-release validation to catch version mistakes early.
 
 Runs during the create-release-pr workflow BEFORE bumping versions.
-Computes what the new versions would be and checks PyPI to ensure
-they don't already exist. Fails fast to prevent wasted PR creation
-if a version was already published.
+Computes and prints what the new versions would be so an invalid bump
+fails fast before any files are mutated.
 """
 import from __future__ { annotations }
 import argparse;
 import sys;
 import from pathlib { Path }
-import from release_utils { PACKAGES, bump_version, check_pypi, get_current_version }
+import from release_utils { PACKAGES, bump_version, get_current_version }
 
 def main -> int {
     parser = argparse.ArgumentParser();
@@ -22,7 +21,7 @@ def main -> int {
     }
     args = parser.parse_args();
     repo_root = Path(__file__).resolve().parent.parent;
-    releases: list[dict[(str, str)]] = [];
+    releases: list[dict] = [];
     errors: list[str] = [];
     for (pkg_name, pkg_info) in PACKAGES.items() {
         bump_type = getattr(args, pkg_name.replace("-", "_"));
@@ -31,20 +30,14 @@ def main -> int {
         }
         current = get_current_version(repo_root, pkg_info.dir);
         new_version = bump_version(current, bump_type);
-        print(f"Checking {pkg_info.pypi} {new_version}...");
-        if check_pypi(pkg_info.pypi, new_version) {
-            errors.append(f"{pkg_info.pypi} {new_version} already exists on PyPI");
-        } else {
-            releases.append(
-                {
-                    "name": pkg_name,
-                    "pypi": pkg_info.pypi,
-                    "current": current,
-                    "new": new_version,
-                    "bump": bump_type
-                }
-            );
-        }
+        entry = {
+            "name": pkg_name,
+            "pypi": pkg_info.pypi,
+            "current": current,
+            "new": new_version,
+            "bump": bump_type
+        };
+        releases.append(entry);
     }
     if errors {
         print("\nValidation failed:");

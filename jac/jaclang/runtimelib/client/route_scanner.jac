@@ -1,7 +1,5 @@
-"""File-based route scanner for pages/ directory convention."""
 import from pathlib { Path }
 
-"""A single route entry derived from a file in pages/."""
 obj RouteEntry {
     has path: str,
         component_import: str,
@@ -12,7 +10,6 @@ obj RouteEntry {
         children: list[RouteEntry] = [];
 }
 
-"""Scans a pages/ directory and produces a route tree."""
 obj RouteScanner {
     with entry {
         PAGES_DIR_NAME = 'pages';

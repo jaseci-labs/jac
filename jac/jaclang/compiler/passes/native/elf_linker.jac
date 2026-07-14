@@ -1,14 +1,3 @@
-"""Pure Python ELF linker for native Jac compilation.
-
-Takes raw object code bytes from llvmlite's emit_object() and produces
-a runnable ELF executable using only Python's struct module. No external
-linker (ld, cc) required.
-
-Supports ELF64 with dynamic linking against libc.
-Architecture support: x86_64, aarch64.
-"""
-
-"""Parsed ELF section."""
 obj ElfSection {
     has name: str,
         typ: int,
@@ -22,7 +11,6 @@ obj ElfSection {
         entsize: int;
 }
 
-"""Parsed ELF relocation."""
 obj ElfRela {
     has offset: int,
         sym_idx: int,
@@ -32,7 +20,6 @@ obj ElfRela {
         target_sec: str;
 }
 
-"""Parsed ELF symbol."""
 obj ElfSymbol {
     has name: str,
         value: int,
@@ -42,12 +29,6 @@ obj ElfSymbol {
         shndx: int;
 }
 
-"""Architecture-specific ELF configuration.
-
-Each supported architecture provides an ArchConfig that encapsulates
-all ISA-specific details: relocation handling, PLT stub generation,
-ELF constants, and interpreter paths.
-"""
 obj ArchConfig {
     has e_machine: int,
         base_vaddr: int,
@@ -58,7 +39,9 @@ obj ArchConfig {
         jump_slot_rtype: int,
         copy_rtype: int,
         glob_dat_rtype: int,
-        gotpcrel_rtypes: set[int];
+        gotpcrel_rtypes: set[int],
+        relative_rtype: int,
+        abs64_rtype: int;
 
     def build_plt0(got_plt_vaddr: int, plt_vaddr: int) -> bytes;
     def build_plt_entry(
@@ -81,11 +64,6 @@ obj ArchConfig {
     static def from_e_machine(e_machine: int) -> (ArchConfig | None);
 }
 
-"""Main ELF linker class.
-
-Parses a .o file and produces a dynamically-linked ELF executable.
-Architecture is auto-detected from the object file's e_machine field.
-"""
 obj ElfLinker {
     has obj_data: bytes,
         sections: list[ElfSection],
@@ -93,15 +71,27 @@ obj ElfLinker {
         relocations: list[ElfRela],
         needed_libs: list[str],
         arch: (ArchConfig | None) = None,
-        sym_vaddrs: dict[str, int] = {};
+        sym_vaddrs: dict[str, int] = {},
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = "";
 
     static def link(
         obj_bytes: bytes,
         output_path: str,
-        needed_libs: list[str] = ["libc.so.6"],
-        crt_objects: list[bytes] = []
+        needed_libs: list[str] = [],
+        crt_objects: list[bytes] = [],
+        shared: bool = False,
+        export_symbols: list[str] = [],
+        init_funcs: list[str] = [],
+        soname: str = "",
+        archive_members: list[bytes] = [],
+        static_link: bool = False
     ) -> bool;
 
     def parse_object -> bool;
     def build_executable -> bytes;
+    def build_static_executable -> bytes;
+    def build_shared_object -> bytes;
 }

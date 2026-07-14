@@ -1,15 +1,6 @@
-"""LSP type definitions for the Jac language server.
-
-Minimal subset of LSP 3.17.0 types used by langserve,
-implemented as Jac objs (no attrs/cattrs dependency).
-"""
-
 import from enum { IntEnum, StrEnum }
 import from typing { Dict, List, Optional, Union }
 
-# ---------------------------------------------------------------------------
-# Method name constants
-# ---------------------------------------------------------------------------
 glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
      TEXT_DOCUMENT_DID_SAVE = "textDocument/didSave",
      TEXT_DOCUMENT_DID_CHANGE = "textDocument/didChange",
@@ -35,9 +26,6 @@ glob TEXT_DOCUMENT_DID_OPEN = "textDocument/didOpen",
      WINDOW_SHOW_MESSAGE = "window/showMessage",
      WINDOW_LOG_MESSAGE = "window/logMessage";
 
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
 enum MessageType(IntEnum) { Error = 1, Warning = 2, Info = 3, Log = 4 }
 
 enum DiagnosticSeverity(IntEnum) { Error = 1, Warning = 2, Information = 3, Hint = 4 }
@@ -109,10 +97,6 @@ enum PositionEncodingKind(StrEnum) {
     Utf32 = "utf-32"
 }
 
-# ---------------------------------------------------------------------------
-# Core data types
-# ---------------------------------------------------------------------------
-"""A position in a text document (0-based line and character)."""
 obj Position {
     has line: int = 0,
         character: int = 0;
@@ -122,7 +106,6 @@ obj Position {
     def __hash__ -> int;
 }
 
-"""A range in a text document."""
 obj Range {
     has start: Position = Position(),
         end: Position = Position();
@@ -132,7 +115,6 @@ obj Range {
     def __hash__ -> int;
 }
 
-"""A location in a document (URI + range)."""
 obj Location {
     has uri: str = "",
         range: Range = Range();
@@ -140,19 +122,16 @@ obj Location {
     def __repr__ -> str;
 }
 
-"""A text edit to apply to a document."""
 obj TextEdit {
     has range: Range = Range(),
         new_text: str = "";
 }
 
-"""Markup content for hover/completion docs."""
 obj MarkupContent {
     has kind: MarkupKind = MarkupKind.PlainText,
         value: str = "";
 }
 
-"""A diagnostic (error/warning) in a document."""
 obj Diagnostic {
     has range: Range = Range(),
         message: str = "",
@@ -161,9 +140,6 @@ obj Diagnostic {
         source: Optional[str] = None;
 }
 
-# ---------------------------------------------------------------------------
-# Document identifiers
-# ---------------------------------------------------------------------------
 obj TextDocumentIdentifier {
     has uri: str = "";
 }
@@ -180,24 +156,16 @@ obj VersionedTextDocumentIdentifier {
         version: int = 0;
 }
 
-# ---------------------------------------------------------------------------
-# Content change events
-# ---------------------------------------------------------------------------
-"""Incremental change with a range."""
 obj TextDocumentContentChangeEvent_Type1 {
     has range: Range = Range(),
         text: str = "",
         range_length: Optional[int] = None;
 }
 
-"""Full document replacement (no range)."""
 obj TextDocumentContentChangeEvent {
     has text: str = "";
 }
 
-# ---------------------------------------------------------------------------
-# Request parameter types
-# ---------------------------------------------------------------------------
 obj DidOpenTextDocumentParams {
     has text_document: TextDocumentItem = TextDocumentItem();
 }
@@ -272,9 +240,6 @@ obj SemanticTokensParams {
     has text_document: TextDocumentIdentifier = TextDocumentIdentifier();
 }
 
-# ---------------------------------------------------------------------------
-# File operation parameter types
-# ---------------------------------------------------------------------------
 obj FileCreate {
     has uri: str = "";
 }
@@ -300,9 +265,6 @@ obj DeleteFilesParams {
     has files: list[FileDelete] = [];
 }
 
-# ---------------------------------------------------------------------------
-# Response / result types
-# ---------------------------------------------------------------------------
 obj CompletionItemLabelDetails {
     has detail: Optional[str] = None,
         description: Optional[str] = None;
@@ -311,7 +273,8 @@ obj CompletionItemLabelDetails {
 obj CompletionItem {
     has label: str = "",
         kind: Optional[CompletionItemKind] = None,
-        label_details: Optional[CompletionItemLabelDetails] = None;
+        label_details: Optional[CompletionItemLabelDetails] = None,
+        documentation: Optional[MarkupContent] = None;
 }
 
 obj CompletionList {
@@ -340,9 +303,6 @@ obj WorkspaceEdit {
     has changes: Optional[dict[str, list[TextEdit]]] = None;
 }
 
-# ---------------------------------------------------------------------------
-# Feature option types (used when registering features)
-# ---------------------------------------------------------------------------
 obj CompletionOptions {
     has trigger_characters: Optional[list[str]] = None,
         resolve_provider: Optional[bool] = None;
@@ -369,9 +329,6 @@ obj FileOperationRegistrationOptions {
     has filters: list[FileOperationFilter] = [];
 }
 
-# ---------------------------------------------------------------------------
-# METHOD_TO_PARAMS: maps method strings to their parameter types
-# ---------------------------------------------------------------------------
 glob METHOD_TO_PARAMS: dict[str, type] = {
          TEXT_DOCUMENT_DID_OPEN: DidOpenTextDocumentParams,
          TEXT_DOCUMENT_DID_SAVE: DidSaveTextDocumentParams,

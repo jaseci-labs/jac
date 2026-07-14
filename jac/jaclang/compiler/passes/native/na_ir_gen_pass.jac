@@ -1,139 +1,158 @@
-"""Native LLVM IR generation pass for na {} blocks.
-
-Compiles Jac AST nodes in NATIVE context to LLVM IR using llvmlite.
-All code in na {} or .na.jac is guaranteed to compile to native LLVM IR.
-
-Derives from ModuleCodegenPass (not UniPass) because LLVM IR generation
-uses manual tree-walking rather than the visitor pattern — instructions
-must be emitted into specific basic blocks in order for control flow.
-"""
-
-import from llvmlite { ir }
+import from jaclang.compiler.passes.native.llvm { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
+import from jaclang.jac0core.diagnostics { E2018, E5026, E5060, E5090, E5091, E9002 }
+import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
 
-# ── Sentinel refcount value for static (immortal) strings.
-# INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
+
+glob VTABLE_HEADER_SLOTS: int = 1;
+
+glob NATIVE_TIME_FUNCS: set[str] = {
+         "time",
+         "monotonic",
+         "perf_counter",
+         "time_ns",
+         "monotonic_ns",
+         "perf_counter_ns",
+         "sleep",
+
+     };
+
+glob NATIVE_OS_FUNCS: set[str] = {
+         "getpid",
+         "getcwd",
+         "getenv",
+         "chdir",
+         "mkdir",
+         "makedirs",
+         "rmdir",
+         "remove",
+         "unlink",
+         "rename",
+         "system",
+
+     };
+
+glob NATIVE_RANDOM_FUNCS: set[str] = {
+         "seed",
+         "random",
+         "getrandbits",
+         "randint",
+         "randrange",
+         "uniform",
+
+     };
+
+glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
+
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
-# ── 32-byte allocation header layout (offsets from user_ptr) ──────────────
-# malloc'd block starts at user_ptr - HDR_TOTAL. Every offset below is
-# relative to user_ptr, so the values are negative for header fields.
-glob HDR_ALLOC_ID_OFF: int = -32,  # i64 alloc_id (with HDR_MAGIC in upper 32 bits)
-     HDR_TAG_OFF: int = -24,  # i8*  type_tag string
-     HDR_RC_OFF: int = -16,  # i64  refcount    (UNCHANGED — also valid for static-string 16-byte hdr)
-     HDR_DTOR_OFF: int = -8,  # i64  dtor_fn_ptr (UNCHANGED — 0 = plain free)
+glob HDR_ALLOC_ID_OFF: int = -32,
+     HDR_TAG_OFF: int = -24,
+     HDR_RC_OFF: int = -16,
+     HDR_DTOR_OFF: int = -8,
      HDR_TOTAL: int = 32;
 
-# ── live-objects linked-list node layout (offsets from node start) ────────
-glob LIVE_NODE_ID_OFF: int = 0,  # i64  node id (matches header alloc_id)
-     LIVE_NODE_USER_OFF: int = 8,  # i8*  user pointer being tracked
-     LIVE_NODE_TAG_OFF: int = 16,  # i8*  cached type_tag (mirrors header)
-     LIVE_NODE_RC_OFF: int = 24,  # i64  rc_snap — last observed refcount
-     LIVE_NODE_NEXT_OFF: int = 32,  # i8*  next node in the list
+glob RC_COLOR_BLACK: int = 0,
+     RC_COLOR_WHITE: int = 1,
+     RC_COLOR_GRAY: int = 2,
+     RC_COLOR_PURPLE: int = 3,
+     RC_BUFFERED_BIT: int = 4,
+     RC_COLOR_SHIFT: int = 48,
+     RC_CYCLE_THRESHOLD: int = 1000;
+
+glob LIVE_NODE_ID_OFF: int = 0,
+     LIVE_NODE_USER_OFF: int = 8,
+     LIVE_NODE_TAG_OFF: int = 16,
+     LIVE_NODE_RC_OFF: int = 24,
+     LIVE_NODE_NEXT_OFF: int = 32,
      LIVE_NODE_SIZE: int = 40;
 
-# Magic value embedded in the upper 32 bits of alloc_id so retain/release
-# can detect external (e.g. ctypes-passed) pointers and skip them.
-glob HDR_MAGIC: int = 44061,  # 0xAC1D
-     HDR_MAGIC_SHIFT_BASE: int = 44061 * 4294967296;  # HDR_MAGIC << 32
+glob HDR_MAGIC: int = 44061,
+     HDR_MAGIC_SHIFT_BASE: int = 44061 * 4294967296;
 
-"""Compile na-context Jac AST to LLVM IR using llvmlite.
-
-Uses manual tree-walking for function bodies to properly handle
-control flow basic blocks (if/else, while loops).
-"""
 obj NaIRGenPass(ModuleCodegenPass) {
-    # LLVM module and builder (initialized in postinit)
     has llvm_module: ir.Module by postinit,
         type_map: dict[str, ir.Type] by postinit,
         complex_struct_type: object by postinit,
         range_struct_type: object by postinit,
         slice_struct_type: object by postinit,
         jacval_type: object by postinit,
-        # Simple defaults
-        builder: (ir.IRBuilder | None) = None,
+        _builder: (ir.IRBuilder | None) = None,
         func_symtab: dict[str, ir.Function] = {},
         local_vars: dict[str, ir.AllocaInstr] = {},
         param_vars: set[str] = set(),
         has_native_code: bool = False,
+        native_tests: list = [],
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
-        # External function cache (Phase 0)
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
-        # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
-        # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
-        # single source of truth for how a foreign call is marshalled — it
-        # replaces the old non-injective `result.type == abi_type` matching that
-        # corrupted scalar returns sharing an LLVM type with a struct (gap #7).
+        _foreign_modules: list = [],
+        _foreign_structs: (dict | None) = None,
+        _foreign_model_nmods: int = -1,
+        _foreign_fn_decls: (dict | None) = None,
+        _foreign_fns_nmods: int = -1,
         clib_fn_abi: dict[str, dict] = {},
-        # Enum support (Phase 1)
+        clib_vtable_structs: set[str] = set(),
+        clib_trampoline_funcs: dict[str, ir.Function] = {},
         enum_values: dict[str, ir.Constant] = {},
         enum_types: dict[str, ir.IntType] = {},
         enum_string_values: dict[str, list] = {},
         enum_value_arrays: dict[str, object] = {},
         enum_name_arrays: dict[str, object] = {},
         enum_member_ordinal: dict[str, int] = {},
-        var_enum_type: dict[str, str] = {},
         struct_field_enum_type: dict[str, dict] = {},
         loop_stack: list[tuple] = [],
         _str_count: int = 0,
-        # Object/struct support (Phase 3)
         struct_types: dict[str, object] = {},
         struct_field_indices: dict[str, dict] = {},
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
+        struct_field_opaque: dict[str, set] = {},
         method_funcs: dict[str, ir.Function] = {},
-        method_ast_sigs: dict[str, object] = {},
-        type_var_map: dict[str, str] = {},
-        # List support (Phase 4)
+        static_methods: dict[str, bool] = {},
+        static_fields: dict[str, object] = {},
+        static_field_types: dict[str, object] = {},
+        func_ret_tuple_hints: dict[str, list] = {},
+        func_ret_ann_name: dict[str, str] = {},
         list_types: dict[str, object] = {},
         list_helpers: dict[str, dict] = {},
-        var_list_elem_type: dict[str, str] = {},
-        field_type_node: dict[str, dict] = {},
-        var_type_node: dict[str, object] = {},
-        _list_type_hint: (str | None) = None,
-        _last_type_node_hint: (object | None) = None,
-        # True while codegen'ing the TupleVal of a `return (...)`. In that
-        # context borrowed (field-load / element-read) pointer elements must be
-        # retained so they outlive the owning local's scope-exit teardown — the
-        # returned tuple box does not own its elements (see _codegen_tuple_val).
-        _return_tuple_ctx: bool = False,
-        # Inheritance / vtable support (Phase 5)
-        class_hierarchy: dict[str, str] = {},
-        class_parents: dict[str, list[str]] = {},
-        mro_order: dict[str, list[str]] = {},
+        var_list_elem_struct: dict[str, object] = {},
+        _pending_list_elem_struct: (object | None) = None,
+        _self_arch: (str | None) = None,
         parent_field_start: dict[str, dict[str, int]] = {},
         arch_ast_map: dict[str, object] = {},
-        has_vtable: dict[str, bool] = {},
         vtable_layouts: dict[str, list[str]] = {},
         vtable_method_indices: dict[str, dict] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
-        # Tuple support (Phase 9)
+        _native_skipped_methods: set[str] = set(),
+        _class_name_consts: dict[str, ir.Value] = {},
+        osp_type_tag_field: dict[str, int] = {},
+        osp_reports_field: dict[str, int] = {},
+        osp_thunk_funcs: dict[str, ir.Function] = {},
+        _osp_thunk_uid: int = 0,
+        imported_osp_archs: dict[str, tuple] = {},
+        _osp_kernel_mod: (object | None) = None,
+        _osp_desc_global: (object | None) = None,
+        _osp_rt_global: (object | None) = None,
+        _osp_setup_fn: (object | None) = None,
+        _osp_ensure_fn: (object | None) = None,
+        _osp_kernel_inited_gv: (object | None) = None,
+        _osp_kernel_glob_init_fn: (object | None) = None,
+        _osp_filter_fn: (object | None) = None,
+        _osp_h2i_fn: (object | None) = None,
+        _osp_is_a_fn: (object | None) = None,
         tuple_types: dict[str, object] = {},
-        var_tuple_type: dict[str, str] = {},
-        # Complex/Range/Slice var tracking
-        var_complex: set[str] = set(),
-        var_range: set[str] = set(),
-        var_slice: set[str] = set(),
-        # Global variable support (Phase 11)
         global_vars: dict[str, ir.GlobalVariable] = {},
         global_var_types: dict[str, ir.Type] = {},
-        # Dictionary support (Phase 12)
         dict_types: dict[str, object] = {},
         dict_helpers: dict[str, dict] = {},
-        var_dict_type: dict[str, str] = {},
-        _dict_val_type_hint: (str | None) = None,
-        # Set support (Phase 13)
         set_types: dict[str, object] = {},
         set_helpers: dict[str, dict] = {},
-        var_set_elem_type: dict[str, str] = {},
-        # Exception handling support (Phase 14)
         _exc_state_type: (object | None) = None,
         _exc_handler_global: (object | None) = None,
         _exc_push_fn: (object | None) = None,
@@ -142,20 +161,20 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _exc_type_registry: dict[str, int] = {"Exception": 0},
         _exc_type_counter: int = 1,
         _rt_error_msgs: dict[str, object] = {},
-        # File I/O support (Phase 15)
         _file_struct_type: (object | None) = None,
         _file_helpers_emitted: bool = False,
-        # Primitive emitter singletons
+        _binary_file_struct_type: (object | None) = None,
+        _binary_file_helpers_emitted: bool = False,
+        _bytes_struct_type: (object | None) = None,
+        _bytes_repr_function: (object | None) = None,
+        _float_repr_function: (object | None) = None,
+        _jac_iter_type: (object | None) = None,
+        _iter_structs_registered: bool = False,
+        _iter_next_fns: dict[str, ir.Function] = {},
+        _iter_uid: int = 0,
         _native_emitters: (dict[str, object] | None) = None,
         _native_builtin_emitter: (object | None) = None,
-        # Cache: primitive type name -> named methods its emitter implements
         _primitive_method_name_cache: (dict[str, set[str]] | None) = None,
-        # Reference counting support (Phase RC)
-        # Phase R2: compile-time gate on debug-only RC machinery (live-list,
-        # ctx attribution, leak dump). Read from JAC_RC_DEBUG_CODEGEN env var
-        # in postinit. When False (default), every Jac allocation skips the
-        # malloc(LIVE_NODE_SIZE) live-list insert and the corresponding
-        # release-time list walk — recovering the per-allocation overhead.
         _rc_debug_codegen: bool = False,
         rc_alloc_fn: (ir.Function | None) = None,
         rc_retain_fn: (ir.Function | None) = None,
@@ -164,6 +183,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_gc_disable_fn: (ir.Function | None) = None,
         rc_gc_enable_fn: (ir.Function | None) = None,
         rc_gc_disabled_gv: object = None,
+        rc_cycles_enable_fn: (ir.Function | None) = None,
+        rc_cycles_enabled_gv: object = None,
         rc_debug_gv: object = None,
         rc_alloc_id_gv: object = None,
         rc_live_head_gv: object = None,
@@ -172,94 +193,135 @@ obj NaIRGenPass(ModuleCodegenPass) {
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
         rc_safe_free_fn: (ir.Function | None) = None,
+        rc_roots_buf_gv: object = None,
+        rc_roots_cap_gv: object = None,
+        rc_roots_count_gv: object = None,
+        rc_collecting_gv: object = None,
+        rc_push_root_fn: (ir.Function | None) = None,
+        rc_collect_cycles_fn: (ir.Function | None) = None,
+        rc_trace_lookup_fn: (ir.Function | None) = None,
+        rc_trace_pairs: dict[str, tuple] = {},
+        rc_retains_emitted: int = 0,
+        rc_releases_emitted: int = 0,
+        rc_ops_elided: int = 0,
+        struct_trace_fns: dict[str, ir.Function] = {},
         struct_release_fns: dict[str, ir.Function] = {},
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
         set_release_fns: dict[str, ir.Function] = {},
-        # Lazily initialized tracking sets
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        _native_module_imports: set[str] = set(),
+        _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
+        _clib_symbol_lib: dict[str, str] = {},
         _native_emit_ctx_class: (type | None) = None,
-        # Per-function tracking for borrowed-param promotion: entry-block store instruction
-        # per param (for position_after retain insertion) and set of already-promoted params.
-        # Both are reset at the start of each function/method.
-        _param_store_instr: dict[str, object] = {},
-        _param_promoted: set[str] = set(),
-        # Python-scoping for module globals (keeps na ⊆ sv): only module-level
-        # code (_in_module_scope) or a name pulled in by an explicit `global x;`
-        # (_declared_globals) may rebind a module global. A bare function-scope
-        # assignment to a glob-named variable allocates a function-local
-        # instead — matching CPython and the sv (.sv.jac) pathway. Both are
-        # reset per function.
-        _declared_globals: set[str] = set(),
-        _in_module_scope: bool = False,
-        # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
+        _lowered_type_cache: dict[str, ir.Type] = {},
         di_file: object = None,
         di_cu: object = None,
         _di_current_sp: object = None,
         _func_loc: dict[str, int] = {};
 
+    has builder: ir.IRBuilder { getter; }
+
     def postinit -> None;
-    # Main pass logic
     def transform(ir_in: uni.Module) -> uni.Module;
     def _register_enums(module: uni.Module) -> None;
     def _forward_declare_functions(module: uni.Module) -> None;
     def _maybe_declare_ability(nd: uni.ElementStmt) -> None;
-    # Ability (function definition) - manual codegen
     def _codegen_ability(nd: uni.Ability) -> None;
     def _codegen_nested_ability(nd: uni.Ability) -> None;
-    # Body / statement codegen
+    def _codegen_test(nd: uni.Test) -> None;
     def _codegen_body(stmts: (list | tuple)) -> None;
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
     def _codegen_if(nd: uni.IfStmt) -> None;
     def _codegen_switch(nd: uni.SwitchStmt) -> None;
     def _codegen_while(nd: uni.WhileStmt) -> None;
+    def _codegen_region(nd: uni.RegionStmt) -> None;
+    def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _codegen_assignment(nd: uni.Assignment) -> None;
-    # Expression codegen
     def _codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None);
+    def _codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _codegen_name(nd: uni.Name) -> (ir.Value | None);
     def _codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
+    def _codegen_compare_chain(
+        nd: uni.CompareExpr, left: ir.Value
+    ) -> (ir.Value | None);
+
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
-    # Lambda expressions (Phase 17)
-    # Maps variable name → list of (cap_name, cap_alloca) for closure injection.
-    # Populated during assignment of a capturing lambda, consumed during calls.
+    def _codegen_rc_intrinsic(func_name: str) -> bool;
+    def _native_module_call_target(nd: uni.FuncCall) -> (str | None);
+    def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
+
     has lambda_captures: dict[str, list[tuple]] = {},
         _pending_lambda_captures: (list[tuple] | None) = None;
-    # Pending captures from the most recently compiled lambda, to be associated
-    # with a variable name during assignment. Set by _codegen_lambda, consumed
-    # and cleared by _codegen_assignment.
+
     def _codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None);
-    def _find_free_vars(body: object, param_names: list[str]) -> list[str];
-    # External function support (Phase 0)
     def _get_or_declare_extern(
         name: str, ret_type: ir.Type, arg_types: list[ir.Type], var_arg: bool = False
     ) -> ir.Function;
 
-    def _call_extern(
-        b: ir.IRBuilder, func: ir.Function, args: list[ir.Value], name: str = ""
-    ) -> ir.Value;
-    # Print support
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
+    def _isinstance_type_name(nd: uni.UniNode) -> (str | None);
+    def _emit_isinstance_user(
+        nd: uni.FuncCall, operand: ir.Value, names: list[str]
+    ) -> (ir.Value | None);
+
+    def _jacval_tags_for_type(name: str) -> list[int];
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
-    # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    # Unified TypeBase -> LLVM lowering (consumes the central type checker's
-    # result; returns None when a type category is not yet handled).
+    def _prim_ir_types -> dict;
+    def _try_resolve_field_type(var: uni.UniNode) -> tuple;
+    def _type_base_is_unknown(tb: any) -> bool;
+    def _parse_callable_type_string(s: str) -> (ir.Type | None);
+    def _resolve_primitive_name(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     def _lower_type(t: any) -> (ir.Type | None);
     def _lower_class_type(t: any) -> (ir.Type | None);
     def _lower_function_type(t: any) -> ir.Type;
+    def _type_key_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _enum_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _tuple_key_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _set_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _spec_of(
+        expr: (uni.UniNode | None), names: tuple, registry: dict
+    ) -> (str | None);
+
+    def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
+    def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
+    def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    def _typed_elem_llvm_of(
+        expr: (uni.UniNode | None), prefix: str
+    ) -> (ir.Type | None);
+
+    def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
+    def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
+    def _arch_init_sig_of(type_name: str) -> (uni.FuncSignature | None);
+    def _codegen_call_args(nd: uni.FuncCall) -> list;
+    def _emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None;
+    def _codegen_bound_args(
+        nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
+    ) -> list;
+
+    def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
+    def _jacval_truthy(jv: ir.Value) -> ir.Value;
+    def _jacval_is_none(jv: ir.Value, negate: bool) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value;
@@ -273,7 +335,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value;
-    # Phase 1: Enums, BoolExpr, Break/Continue, For, Ternary
     def _codegen_enum(nd: uni.Enum) -> None;
     def _build_enum_string_table(
         enum_name: str, entries: list, with_values: bool = True
@@ -285,8 +346,24 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None);
     def _codegen_bool_expr(nd: uni.BoolExpr) -> (ir.Value | None);
+    def _bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | None);
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
+    def _codegen_for_indexed(
+        nd: uni.InForStmt,
+        kind: str,
+        collection_val: ir.Value,
+        helpers: (dict | None),
+        var_names: list,
+        var_types: list,
+        rc_vars: bool,
+        coll_release_op: str,
+        range_start: (ir.Value | None) = None,
+        elem_cast: (ir.Type | None) = None,
+        unpack_target: (uni.TupleVal | None) = None,
+        range_step: (ir.Value | None) = None
+    ) -> None;
+
     def _codegen_iter_for(nd: uni.IterForStmt) -> None;
     def _codegen_match(nd: uni.MatchStmt) -> None;
     def _match_pattern_cond(
@@ -296,43 +373,80 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _match_value_eq(subj: ir.Value, value_node: uni.UniNode) -> (ir.Value | None);
     def _bind_match_pattern(pat: uni.MatchPattern, subj: ir.Value) -> None;
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
-    # Phase 2: Strings and F-Strings
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
     def _codegen_string(nd: uni.String) -> (ir.Value | None);
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
+    def _fstring_spec_text(spec: uni.Expr) -> (str | None);
+    def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple | None);
     def _make_global_string(text: str, name_prefix: str = ".str") -> ir.Value;
-    # Phase 3: Objects, Fields, Methods, None
     def _forward_declare_archetype_names(module: uni.Module) -> None;
     def _native_archetypes(module: uni.Module) -> list[uni.Archetype];
     def _register_imported_struct_types -> None;
     def _extract_import_module_name(imp: uni.Import) -> (str | None);
-    def _walk_imported_module(imported_mod: uni.Module) -> None;
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
+    def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
+    def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
+    def _osp_active -> bool;
+    def _xmod_osp_help(names: list) -> (str | None);
+    def _register_osp_kernel_module -> None;
+    def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
+    def _emit_osp_setup -> None;
+    def _osp_rc_new(struct_name: str) -> (ir.Value | None);
+    def _osp_make_immortal(ptr: ir.Value) -> None;
+    def _osp_build_slot(trig_tag: int, thunk: ir.Function) -> (ir.Value | None);
+    def _osp_build_descriptor(
+        struct_name: str, type_tag: int, entry_slots: list, exit_slots: list
+    ) -> (ir.Value | None);
+
+    def _osp_build_slot_list(pairs: list) -> ir.Value;
+    def _osp_collect_slots(arch_name: str, is_entry: bool) -> list;
+    def _osp_emit_h2i_fn(hash_global: ir.GlobalVariable, n: int) -> ir.Function;
+    def _osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> dict;
+    def _osp_emit_filter_fn(
+        isa_global: ir.GlobalVariable, n: int
+    ) -> (ir.Function | None);
+
+    def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
+    def _register_static_fields(arch_name: str, archhas: uni.ArchHas) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
+    def _visit_nonprimary_ancestor_methods(arch: uni.Archetype, declare: bool) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
+    def _demote_method_if_unlowerable(
+        full_name: str, func: ir.Function, err_mark: int, local_mark: int
+    ) -> bool;
+
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
+    def _trigger_member_structs(tag: (uni.UniNode | None)) -> list[str];
+    def _trigger_struct_names(method: uni.Ability) -> list[str];
+    def _union_layout_conflict(members: list[str]) -> (str | None);
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_kernel_spawn(
+        walker_name: str, walker_val: ir.Value, loc_val: ir.Value
+    ) -> (ir.Value | None);
+
+    def _codegen_visit(nd: uni.VisitStmt) -> None;
+    def _codegen_disengage(nd: uni.DisengageStmt) -> None;
+    def _codegen_report(nd: uni.ReportStmt) -> None;
+    def _codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None);
+    def _codegen_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> (ir.Value | None);
+    def _osp_visit_targets(target: uni.UniNode) -> (ir.Value | None);
+    def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _emit_spawn_entry_dispatch(
-        walker_name: str,
-        walker_val: ir.Value,
-        loc_name: (str | None),
-        loc_val: ir.Value
-    ) -> None;
-
-    def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_instantiation(nd: (uni.FuncCall | uni.Name)) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_obj_str(val: ir.Value) -> (ir.Value | None);
+    def _emit_default_obj_repr(val: ir.Value, type_name: str) -> ir.Value;
     def _codegen_field_access(
         obj_val: ir.Value, field_name: str, type_name: str
     ) -> (ir.Value | None);
@@ -342,7 +456,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _codegen_field_assign(target: uni.AtomTrailer, value: ir.Value) -> None;
-    # Shared container helpers (used by lists, dicts, sets)
     def _emit_key_comparison(
         b: ir.IRBuilder,
         key_type: ir.Type,
@@ -351,6 +464,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         key_size: int = 0
     ) -> ir.Value;
 
+    def _dict_key_spec(key_type: ir.Type) -> tuple;
     def _emit_rc_alloc_container(
         b: ir.IRBuilder,
         container_ptr_type: ir.Type,
@@ -409,42 +523,51 @@ obj NaIRGenPass(ModuleCodegenPass) {
         elem_type: ir.Type,
         data_field_idx: int
     ) -> ir.Function;
-    # Phase 4: Lists
+
     def _emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> None;
     def _codegen_list_val(nd: uni.ListVal) -> (ir.Value | None);
     def _codegen_index(
         target_val: ir.Value, index_val: ir.Value, elem_type_name: str
     ) -> (ir.Value | None);
 
+    def _codegen_any_subscript(
+        jacval: ir.Value, key_val: ir.Value
+    ) -> (ir.Value | None);
+
+    def _codegen_any_len(jacval: ir.Value) -> ir.Value;
     def _codegen_index_set(
         target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
     ) -> None;
-    # Phase 5: Inheritance, Vtables, and C3 MRO
+
     def _build_vtable(arch_name: str) -> None;
     def _emit_vtable_global(arch_name: str) -> None;
+    def _emit_class_name_const(arch_name: str) -> ir.Value;
+    def _codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None);
+    def _mro_of(arch_name: str) -> list[str];
+    def _arch_has_vtable(arch_name: str) -> bool;
     def _codegen_virtual_call(
         obj_val: ir.Value, method_name: str, args: list[ir.Value], obj_type_name: str
     ) -> (ir.Value | None);
 
     def _generate_inherited_method_wrappers -> None;
-    # Phase 6: Complex Chains and Type Inference
     def _infer_type_name(val: ir.Value) -> (str | None);
     def _infer_list_elem_type(val: ir.Value) -> (str | None);
-    def _peel_list_type(type_node: (object | None)) -> tuple;
-    def _get_list_elem_from_type_node(type_node: (object | None)) -> (str | None);
     def _infer_compr_elem_struct(compr: object) -> (str | None);
-    def _resolve_for_loop_elem_type(
-        coll_name: (str | None), coll_node: (object | None)
-    ) -> (ir.Type | None);
-
-    def _resolve_ptr_elem_cast_type(type_node: (object | None)) -> (ir.Type | None);
-    # Phase 7: String Methods and Builtins
+    def _infer_unpack_struct_ptr(nd: object) -> (ir.Type | None);
     def _codegen_string_index(
         target_val: ir.Value, index_val: ir.Value
     ) -> (ir.Value | None);
 
-    def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
+    def _emit_is_strip_char(ch: ir.Value, charset: (ir.Value | None)) -> ir.Value;
+    def _codegen_str_strip_chars(
+        str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
+    ) -> (ir.Value | None);
+
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
+    def _emit_norm_slice_bounds(
+        slice_node: object, src_len: ir.Value
+    ) -> (tuple | None);
+
     def _codegen_list_slice(
         target_val: ir.Value, slice_node: object, elem_type_name: str
     ) -> (ir.Value | None);
@@ -452,90 +575,102 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_string_slice(
         target_val: ir.Value, slice_node: object
     ) -> (ir.Value | None);
-    # Native stdlib: sys module
+
     def _emit_sys_argv -> (ir.Value | None);
     def _emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None);
-    # Phase 8: Entry Block
-    def _codegen_entry(nd: uni.ModuleCode) -> None;
-    # Phase 9: Tuples
+    def _emit_math_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_math_const(name: str) -> (ir.Value | None);
+    def _emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_clock_gettime(clock_id: int) -> tuple;
+    def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_ospath_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _mt_ensure -> None;
+    def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_struct_pack(
+        nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    ) -> (ir.Value | None);
+
+    def _emit_struct_unpack(
+        nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    ) -> (ir.Value | None);
+
+    def _get_bytes_struct_type -> ir.Type;
+    def _bytes_alloc(n: ir.Value) -> ir.Value;
+    def _bytes_data_ptr(bv: ir.Value) -> ir.Value;
+    def _bytes_len_val(bv: ir.Value) -> ir.Value;
+    def _bytes_from_raw(src: ir.Value, n: ir.Value) -> ir.Value;
+    def _make_global_bytes(data: bytes) -> ir.Value;
+    def _is_bytes_value(v: ir.Value) -> bool;
+    def _codegen_bytes_index(bv: ir.Value, idx: ir.Value) -> (ir.Value | None);
+    def _codegen_bytes_slice(bv: ir.Value, slice_node: object) -> (ir.Value | None);
+    def _emit_bytes_eq(left: ir.Value, right: ir.Value, negate: bool) -> ir.Value;
+    def _is_bytes_type(t: ir.Type) -> bool;
+    def _emit_bytes_truthy(bv: ir.Value) -> ir.Value;
+    def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
+    def _emit_bytes_contains(needle: ir.Value, haystack: ir.Value) -> ir.Value;
+    def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
+    def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
+    def _bytes_repr_fn -> ir.Function;
+    def _emit_float_repr(fv: ir.Value) -> ir.Value;
+    def _float_repr_fn -> ir.Function;
+    def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
+    def _bytes_iter_next_fn -> ir.Function;
+    def _define_function(name: str, fnty: ir.FunctionType) -> ir.Function;
+    def _codegen_entry(nodes: list[uni.ModuleCode]) -> None;
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(
         targets: list, tuple_val: ir.Value, tuple_node: (object | None)
-    ) -> None;
+    ) -> bool;
 
     def _codegen_tuple_index(
         tuple_val: ir.Value, idx_val: ir.Value, struct_type: ir.LiteralStructType
     ) -> (ir.Value | None);
 
     def _get_struct_size(struct_type: ir.LiteralStructType) -> int;
+    def _sizeof_llvm(ty: ir.Type) -> ir.Value;
     def _box_value_tuple(val: ir.Value, loc: str = "") -> ir.Value;
-    # Phase 10: Comprehensions
+    def _coerce_tuple_to_struct(val: ir.Value, target_struct: ir.Type) -> ir.Value;
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
-    def _codegen_compr_loops(
-        comprs: list,
-        idx: int,
-        list_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str
-    ) -> None;
-
-    def _codegen_compr_range_loop(
-        inner: uni.InnerCompr,
-        comprs: list,
-        idx: int,
-        list_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str,
-        conditionals: list
-    ) -> None;
-
     def _codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None);
-    def _codegen_dict_compr_loops(
-        comprs: list,
-        idx: int,
-        dict_val: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: uni.UniNode,
-        dict_key: str
-    ) -> None;
-
-    def _codegen_dict_compr_range_loop(
-        inner: uni.InnerCompr,
-        comprs: list,
-        idx: int,
-        dict_val: ir.Value,
-        key_expr: uni.UniNode,
-        val_expr: uni.UniNode,
-        dict_key: str,
-        conditionals: list
-    ) -> None;
-
     def _codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None);
-    def _codegen_set_compr_loops(
-        comprs: list,
-        idx: int,
-        set_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str
+    def _emit_compr_element(
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str
     ) -> None;
 
-    def _codegen_set_compr_range_loop(
+    def _codegen_compr_walk(
+        comprs: list,
+        idx: int,
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str
+    ) -> None;
+
+    def _codegen_compr_range_walk(
         inner: uni.InnerCompr,
         comprs: list,
         idx: int,
-        set_val: ir.Value,
-        out_expr: uni.UniNode,
-        elem_type_name: str,
+        kind: str,
+        acc: ir.Value,
+        key_expr: uni.UniNode,
+        val_expr: (uni.UniNode | None),
+        spec: str,
         conditionals: list
     ) -> None;
-    # Phase 11: Global Variables
+
     def _register_globals(module: uni.Module) -> None;
     def _codegen_global_vars(nd: uni.GlobalVars) -> None;
     def _infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None);
     def _codegen_const_expr(
         nd: uni.UniNode, target_type: ir.Type
     ) -> (ir.Constant | None);
-    # Phase 12: Dictionaries
+
     def _emit_dict_helpers(
         key_type_name: str,
         val_type_name: str,
@@ -545,6 +680,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _box_to_jacval(value: ir.Value) -> ir.Value;
+    def _unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Value;
     def _codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None);
     def _codegen_dict_access(
         target_val: ir.Value, key_val: ir.Value, key_type_name: str, val_type_name: str
@@ -559,20 +695,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _infer_dict_type(val: ir.Value) -> (tuple | None);
-    # Phase 13: Sets
     def _emit_set_helpers(
         elem_type_name: str, elem_type: ir.Type, elem_size: int = 0
     ) -> None;
 
     def _codegen_set_val(nd: uni.SetVal) -> (ir.Value | None);
-    def _codegen_set_contains(
-        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
-    ) -> (ir.Value | None);
-
-    def _codegen_set_add(
-        set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
-    ) -> None;
-    # Phase 14: Exception Handling
     def _get_exception_state_type -> ir.Type;
     def _declare_exception_runtime -> None;
     def _emit_exc_push_helper -> None;
@@ -583,57 +710,93 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_exc_descendants(type_name: str) -> list[str];
     def _codegen_raise(nd: uni.RaiseStmt) -> None;
     def _codegen_try(nd: uni.TryStmt) -> None;
-    # Phase 15: File I/O
     def _get_file_struct_type -> ir.Type;
+    def _get_binary_file_struct_type -> ir.Type;
+    def _register_file_like_struct(name: str) -> ir.Type;
     def _emit_file_helpers -> None;
+    def _emit_binary_file_helpers -> None;
+    def _emit_file_like_helpers(
+        struct_name: str, struct_type: ir.Type, binary: bool
+    ) -> None;
+
     def _emit_open(nd: uni.FuncCall) -> (ir.Value | None);
-    # Phase 16: Context Managers
+    def _ensure_iter_types -> None;
+    def _register_iter_struct(
+        name: str, field_names: list[str], field_types: list[ir.Type]
+    ) -> None;
+
+    def _alloc_iter_struct(name: str) -> ir.Value;
+    def _make_jac_iter(next_fn: ir.Function, state_ptr: ir.Value) -> ir.Value;
+    def _emit_iter_advance(
+        b: ir.IRBuilder, iter_val: ir.Value, out_ptr: ir.Value
+    ) -> ir.Value;
+
+    def _list_iter_next_fn(elem_type_name: str, elem_type: ir.Type) -> ir.Function;
+    def _str_iter_next_fn -> ir.Function;
+    def _make_list_iter(
+        list_val: ir.Value, elem_type_name: str, elem_type: ir.Type
+    ) -> ir.Value;
+
+    def _make_str_iter(str_val: ir.Value) -> ir.Value;
+    def _dict_iter_next_fn(dict_key: str) -> ir.Function;
+    def _make_dict_iter(dict_val: ir.Value, dict_key: str) -> ir.Value;
+    def _set_iter_next_fn(elem_type_name: str, elem_type: ir.Type) -> ir.Function;
+    def _make_set_iter(
+        set_val: ir.Value, elem_type_name: str, elem_type: ir.Type
+    ) -> ir.Value;
+
+    def _range_iter_next_fn -> ir.Function;
+    def _make_range_iter(range_val: ir.Value) -> ir.Value;
+    def _make_iter_from_value(val: ir.Value, expr: uni.UniNode) -> (tuple | None);
+    def _build_iter_from_expr(expr: uni.UniNode) -> (tuple | None);
+    def _codegen_next(nd: uni.FuncCall) -> (ir.Value | None);
+    def _make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None);
+    def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
+    def _make_enumerate_iter(up: tuple) -> (tuple | None);
+    def _make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None);
+    def _resolve_method(arch_name: str, method_name: str) -> (ir.Function | None);
+    def _arch_implements_iter(arch_name: str) -> bool;
+    def _user_iter_next_fn(
+        iter_struct: str, next_method_fn: ir.Function, elem_type: ir.Type
+    ) -> ir.Function;
+
+    def _make_user_iter(it_obj: ir.Value, iter_struct: str) -> (tuple | None);
+    def _make_user_iter_from_obj(
+        obj_val: ir.Value, struct_name: str, expr: uni.UniNode
+    ) -> (tuple | None);
+
+    def _try_iter_protocol_for(nd: uni.InForStmt) -> bool;
     def _codegen_with(nd: uni.WithStmt) -> None;
     def _codegen_with_recursive(exprs: object, idx: int, body: object) -> None;
-    # C library imports: import from "libname" { def ...; }
     def _process_clib_imports(module: uni.Module) -> None;
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
-    # Compute the C in-memory layout of a clib struct: (size, align, scalars)
-    # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
-    # structs are flattened (inlined) recursively to match the C ABI.
+    def _clib_struct_has_fn_ptr(name: str) -> bool;
+    def _clib_detect_vtable_structs -> None;
+    def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.Type) -> ir.Value;
+    def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _emit_clib_c_trampoline(jac_fn: ir.Function, c_fn_ty: ir.Type) -> ir.Function;
+    def _clib_alloc_vtable(name: str) -> ir.Value;
     def _clib_struct_layout(name: str) -> tuple;
-    def _scalar_layout(llt: ir.Type) -> tuple;
-    # Classify a clib struct for the active target's C ABI (dispatches to the
-    # System V or AAPCS variant) into either MEMORY (indirect) or register
-    # coerce types.
-    def _classify_clib_struct(name: str) -> dict;
-    def _classify_clib_struct_sysv(name: str) -> dict;
-    def _classify_clib_struct_aapcs(name: str) -> dict;
-    # Name of the (struct) type an annotation refers to, or None.
-    def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
-    # True if the clib struct has a field that is itself a clib struct.
+    def _foreign_model -> dict;
+    def _foreign_fns -> dict;
+    def _foreign_fields_of(name: str) -> list;
     def _clib_has_nested(name: str) -> bool;
-    # C-laid-out LLVM type for a clib struct (nested clib structs inlined).
     def _clib_c_type(name: str) -> ir.Type;
-    # Produce a pointer to a C-laid-out copy of a Jac clib-struct value, ready
-    # for register slicing or byval. Flat structs reuse the value directly.
     def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;
-    # Box a C-laid-out struct pointer into an RC-managed Jac struct pointer.
     def _clib_box_c_ptr(c_ptr: ir.Value, name: str) -> ir.Value;
-    # Recursively copy between the Jac (pointer-nested) and C (inlined) layouts.
     def _clib_copy_jac_to_c(jac_ptr: ir.Value, c_ptr: ir.Value, name: str) -> None;
     def _clib_copy_c_to_jac(c_ptr: ir.Value, jac_ptr: ir.Value, name: str) -> None;
-    # Allocate an RC-managed box for a clib struct (size from GEP-of-null).
     def _clib_alloc_box(name: str) -> ir.Value;
-    # Marshal a foreign call from its stored ABI plan; returns the call result
-    # already reconstructed into Jac representation (or scalar).
     def _codegen_clib_call(
         func: ir.Function, func_name: str, args: list[ir.Value]
     ) -> (ir.Value | None);
-    # Layout metadata export
+
     def _llvm_type_str(ty: ir.Type) -> str;
     def _export_native_layout -> None;
     def _extract_tuple_struct_hints(type_node: object) -> list;
     def _extract_elem_struct_hint(type_node: object) -> (str | None);
-    # Primitive emitter dispatch
     def _ensure_emitters -> None;
     def _primitive_method_names(type_name: str) -> set[str];
     def _dispatch_primitive_method(
@@ -641,17 +804,77 @@ obj NaIRGenPass(ModuleCodegenPass) {
         method_name: str,
         target: ir.Value,
         args: list[ir.Value],
-        type_key: str
+        type_key: str,
+        kwargs: (dict | None) = None,
+        kw_node: (uni.UniNode | None) = None
     ) -> (ir.Value | None);
 
-    def _dispatch_builtin(func_name: str, args: list[ir.Value]) -> (ir.Value | None);
-    # Reference counting (Phase RC)
+    def _dispatch_builtin(
+        func_name: str,
+        args: list[ir.Value],
+        kwargs: (dict | None) = None,
+        kw_node: (uni.UniNode | None) = None
+    ) -> (ir.Value | None);
+
+    def _split_call_kwargs(nd: uni.FuncCall) -> dict;
+    def _gc_mode -> str;
     def _emit_rc_helpers -> None;
-    def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
-    def _rc_alloc_typed(
-        size: ir.Value, target_type: ir.Type, name: str = "rc.ptr"
+    def _emit_rc_roots_globals -> None;
+    def _emit_trace_fn(arch_name: str) -> None;
+    def _register_trace_pair(dtor_fn: object, trace_fn: ir.Function) -> bool;
+    def _finalize_trace_lookup -> None;
+    def _require_trace_fn(type_name: str, participates: bool, has_trace: bool) -> None;
+    def _struct_has_ref_fields(arch_name: str) -> bool;
+    def _container_type_name(dtor_fn: object) -> str;
+    def _emit_container_trace_fn(
+        trace_fn_name: str, container_ptr_type: ir.Type, pointer_data_fields: list
+    ) -> ir.Function;
+
+    def _emit_rc_collect_cycles -> None;
+    def _emit_rc_color_load(
+        b: ir.IRBuilder, obj_i8: ir.Value
+    ) -> tuple[ir.Value, ir.Value];
+
+    def _emit_rc_color_store(
+        b: ir.IRBuilder, csp: ir.Value, cb: ir.Value, color: int
+    ) -> None;
+
+    def _emit_rc_color_reset(b: ir.IRBuilder, csp: ir.Value) -> None;
+    def _emit_rc_clear_buffered(b: ir.IRBuilder, csp: ir.Value) -> None;
+    def _emit_rc_is_buffered(
+        b: ir.IRBuilder, obj_i8: ir.Value, name_prefix: str = "buf"
     ) -> ir.Value;
 
+    def _emit_rc_trace_dispatch(
+        fn: ir.Function,
+        b: ir.IRBuilder,
+        obj_i8: ir.Value,
+        visitor_fn: ir.Function,
+        done_block: ir.Block
+    ) -> None;
+
+    def _emit_rc_simple_visitor(name: str, phase_fn: ir.Function) -> ir.Function;
+    def _emit_rc_mark_gray_phase -> ir.Function;
+    def _emit_rc_scan_black_phase -> ir.Function;
+    def _emit_rc_scan_phase(scan_black_fn: ir.Function) -> ir.Function;
+    def _emit_rc_collect_white_phase -> ir.Function;
+    def _emit_rc_collect_white_reclaim(
+        fn: ir.Function, done_bb: ir.Block, ptr: ir.Value
+    ) -> ir.Block;
+
+    def _emit_rc_root_pass(
+        prefix: str,
+        count: ir.Value,
+        next_bb: ir.Block,
+        phase_fn: ir.Function,
+        clear_purple: bool
+    ) -> ir.Block;
+
+    def _emit_rc_collect_loop(
+        mark_gray_fn: ir.Function, scan_fn: ir.Function, collect_white_fn: ir.Function
+    ) -> None;
+
+    def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
     def _emit_rc_retain(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_simple(ptr: ir.Value, op: str = "", loc: str = "") -> None;
     def _emit_rc_release_typed(val: ir.Value, op: str = "", loc: str = "") -> None;
@@ -659,13 +882,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_magic_check(
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
-    # Ownership tracking: an owned ir.Value is one whose pointee has rc=1
-    # already (fresh allocation, function-call result, constructor) and the
-    # caller must therefore release on drop / not retain on store.
-    # Stored as `is_owned: bool` attribute on the ir.Value instance itself;
-    # propagated through _coerce_type so bitcasts/inttoptr keep the marker.
+
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
+    def _can_native_move_lower(nd: object) -> bool;
+    def _release_owned_operands(
+        left_orig: ir.Value, right_orig: ir.Value, op: str = ""
+    ) -> None;
+
+    def _release_owned_args(call_args: list, op: str = "call_arg") -> None;
     def _rc_call_with_ctx(
         fn: ir.Function, args: list, op: str, loc: str = "", name: str = ""
     ) -> ir.Value;
@@ -674,7 +899,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         skip_var: (str | None) = None, ret_val: object = None, loc: str = ""
     ) -> None;
 
-    def _emit_loop_iter_cleanup(saved_locals: object, loc: str = "") -> None;
+    def _emit_loop_iter_cleanup(body_locals: list, loc: str = "") -> None;
     def _set_rc_ctx(op: str, loc: str) -> None;
     def _clear_rc_ctx -> None;
     def _rc_strdup(ptr: ir.Value, name: str = "rc.str") -> ir.Value;
@@ -689,7 +914,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _emit_rc_live_dump -> None;
-    # GC debug helpers (gc_debug.impl.jac — R3 extracted)
     def _emit_rc_debug_globals -> None;
     def _emit_ctx_load(b: ir.IRBuilder) -> tuple;
     def _emit_live_node_insert(
@@ -740,7 +964,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _emit_glob_init_func -> None;
-    # DWARF debug helpers (JAC_NATIVE_DEBUG=1)
     def _attach_di_subprogram(func: ir.Function, name: str, line: int) -> None;
     def _finalize_di_locations(func: ir.Function, fallback_line: int) -> None;
     def post_transform -> None;

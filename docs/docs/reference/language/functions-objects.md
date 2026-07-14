@@ -26,7 +26,7 @@ def greet(name: str) -> str {
 }
 
 # No return value
-def log(message: str) -> None {
+def log(message: str) {
     print(f"[LOG] {message}");
 }
 ```
@@ -74,7 +74,7 @@ def complete_example(
     kw_only: str,              # 6. Keyword-only (after * or *args)
     kw_default: bool = True,   # 7. Keyword-only with default
     **kwargs: any              # 8. Variadic keyword (must be last)
-) -> None {
+) {
     print("called");
 }
 ```
@@ -95,7 +95,7 @@ with entry {
 **Keyword-only parameters (after `*`):**
 
 ```jac
-def configure(*, host: str, port: int = 8080) -> None {
+def configure(*, host: str, port: int = 8080) {
     print(f"Connecting to {host}:{port}");
 }
 
@@ -120,7 +120,7 @@ def build_config(**options: object) -> dict {
 }
 
 # Combined
-def flexible(required: int, *args: int, **kwargs: object) -> None {
+def flexible(required: int, *args: int, **kwargs: object) {
     print(f"Required: {required}");
     print(f"Extra positional: {args}");
     print(f"Extra keyword: {kwargs}");
@@ -204,7 +204,7 @@ obj Calculator {
         return self.total;
     }
 
-    def reset() -> None {
+    def reset() {
         self.total = 0.0;
     }
 }
@@ -229,7 +229,7 @@ obj Counter {
     }
 
     # Instance method -- self is the instance
-    def increment() -> None {
+    def increment() {
         Counter.count += 1;
     }
 }
@@ -305,33 +305,39 @@ with entry {
 
 ### 7 Lambda Expressions
 
-```jac
-# Simple lambda (note spacing around type annotations)
-glob add = lambda a: int , b: int -> int : a + b;
+Lambda parameters are parenthesized and the body is always braced; a
+zero-parameter lambda may omit the parens entirely (`lambda { 42; }`). A body
+that is a single expression statement is the **implicit return**
+(`lambda (x: int) { x + 1; }` returns `x + 1`); a multi-statement body uses an
+explicit `return` (with no `return`, it returns `None`).
 
-# Lambda with block
-glob process = lambda x: int -> int {
+```jac
+# Simple lambda -- single expression statement is the implicit return
+glob add = lambda (a: int, b: int) -> int { a + b; };
+
+# Lambda with a multi-statement block (explicit return)
+glob process = lambda (x: int) -> int {
     result = x * 2;
     result += 1;
     return result;
 };
 
-# Lambda without parameters
-glob get_value = lambda : 42;
+# Lambda without parameters (parens optional when there are none)
+glob get_value = lambda { 42; };
 
 # Lambda with return type only
-glob get_default = lambda -> int : 100;
+glob get_default = lambda -> int { 100; };
 
 # Lambda with default parameters
-glob power = lambda x: int = 2 , y: int = 3 : x ** y;
+glob power = lambda (x: int = 2, y: int = 3) { x ** y; };
 
 # Using lambdas
 glob numbers = [1, 2, 3, 4, 5];
-glob squared = list(map(lambda x: int : x ** 2, numbers));
-glob evens = list(filter(lambda x: int : x % 2 == 0, numbers));
+glob squared = list(map(lambda (x: int) { x ** 2; }, numbers));
+glob evens = list(filter(lambda (x: int) { x % 2 == 0; }, numbers));
 
 # Lambda returning lambda (closure -- see callout below)
-glob make_adder = lambda x: int : (lambda y: int : x + y);
+glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
 glob add_five = make_adder(5);  # add_five(10) returns 15
 ```
 
@@ -339,7 +345,7 @@ glob add_five = make_adder(5);  # add_five(10) returns 15
     A lambda (or nested `def`) captures variables from its enclosing scope, producing a *closure*. Each call to the outer function creates a fresh binding, so independently configured callables don't share state:
 
     ```jac
-    glob make_adder = lambda x: int : (lambda y: int : x + y);
+    glob make_adder = lambda (x: int) { lambda (y: int) { x + y; }; };
 
     with entry {
         add_five = make_adder(5);
@@ -359,7 +365,7 @@ An *Immediately Invoked Function Expression* defines a function and calls it in 
 
 ```jac
 with entry {
-    result = (lambda x: int -> int : x * 2)(5);   # result = 10
+    result = (lambda (x: int) -> int { x * 2; })(5);   # result = 10
 }
 ```
 
@@ -381,7 +387,7 @@ with entry {
 ```jac
 with entry {
     adder = (def make_adder(x: int) {
-        return lambda y: int : x + y;
+        return lambda (y: int) { x + y; };
     })(10);
 
     print(adder(5));   # 15
@@ -393,11 +399,11 @@ with entry {
 ```jac
 obj Counter {
     has count: int;
-    def inc -> None { self.count += 1; }
+    def inc { self.count += 1; }
     def get -> int  { return self.count; }
 }
 
-glob make_counter = lambda start: int -> Counter : Counter(count=start);
+glob make_counter = lambda (start: int) -> Counter { Counter(count=start); };
 
 with entry {
     c = make_counter(10);
@@ -412,13 +418,13 @@ with entry {
 !!! tip "Coming from JavaScript?"
     | JS idiom | Jac equivalent |
     |---|---|
-    | `x => x + 1` | `lambda x: int : x + 1` |
-    | `() => ({a: 1})` | `lambda : {"a": 1}` |
+    | `x => x + 1` | `lambda (x: int) { x + 1; }` |
+    | `() => ({a: 1})` | `lambda { {"a": 1}; }` |
     | `(() => 42)()` | `(def () -> int { return 42; })()` |
-    | `x => y => x + y` | `lambda x: int : (lambda y: int : x + y)` |
+    | `x => y => x + y` | `lambda (x: int) { lambda (y: int) { x + y; }; }` |
     | anonymous `class { ... }` | not supported -- declare a named `obj` and return instances |
 
-    Jac lambdas require type annotations on parameters and a space before the body colon (`lambda x: int : x + 1`).
+    Jac lambdas require type annotations on parameters and a braced body; a bare trailing expression is the implicit return (`lambda (x: int) { x + 1; }`).
 
 ### 9 Decorators
 
@@ -428,32 +434,36 @@ def decorator(func: object) -> object {
 }
 
 def decorator_with_args(arg1: object, arg2: object) -> object {
-    return lambda func: object: func;
+    return lambda (func: object) { func; };
 }
 
 @decorator
-def my_function -> None {
+def my_function {
     print("decorated");
 }
 
 @decorator_with_args("a", "b")
-def another_function -> None {
+def another_function {
     print("decorated with args");
 }
 ```
 
 ### 10 Access Modifiers
 
+For a **top-level** `def`, the access tag controls cross-module visibility (a *project* is the directory tree rooted at its `jac.toml`):
+
 ```jac
-# Public (default, accessible everywhere)
-def:pub public_func -> None { }
+# Public -- visible to any module, including a consuming project (exported)
+def:pub public_func { }
 
-# Private (accessible only within the module)
-def:priv _private_func -> None { }
+# Protected -- visible within the same project (shared jac.toml root)
+def:protect _project_func { }
 
-# Protected (accessible within module and subclasses)
-def:protect _protected_func -> None { }
+# Private -- visible only within the declaring module
+def:priv _private_func { }
 ```
+
+The same tags mean *member encapsulation* on a `has`/`def` declared inside an archetype (`:protect` then means the declaring class **and its subclasses**), and a separate auth-only meaning on served endpoints. See the [Access Modifiers reference](access-modifiers.md) for the full three-context model.
 
 ??? example "Try it: Functions complete example"
     ```jac
@@ -472,7 +482,7 @@ def:protect _protected_func -> None { }
     with entry {
         print(greet("World"));
         print(add(3, 4));
-        print(apply(lambda x: int, y: int -> int { return x * y; }, 5, 6));
+        print(apply(lambda (x: int, y: int) -> int { return x * y; }, 5, 6));
     }
     ```
 
@@ -496,7 +506,7 @@ obj Person {
     has name: str;
     has age: int;
 
-    def postinit() -> None {
+    def postinit() {
         # Called after the auto-generated init completes
         print(f"Created {self.name}");
     }
@@ -573,11 +583,11 @@ Even when using `class` for Python compatibility, you should avoid dynamic assig
 
 ```jac
 class Dog {
-    def rename() -> None {
+    def rename() {
         self.secret = "oops"; # Dynamic assignment - Avoid!
     }
 
-    def train() -> None {
+    def train() {
         self.trick = "sit"; # Dynamic assignment - Avoid!
     }
 }
@@ -590,11 +600,11 @@ obj Dog {
     has secret: str = "",
         trick: str = "";
 
-    def rename() -> None {
+    def rename() {
         self.secret = "oops";
     }
 
-    def train() -> None {
+    def train() {
         self.trick = "sit";
     }
 }

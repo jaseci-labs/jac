@@ -1,6 +1,6 @@
 # Kubernetes Deployment
 
-Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. The `jac-scale` plugin eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
+Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. Jac's built-in `scale` subsystem eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
 
 This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker Desktop), but the same command works for cloud providers (EKS, GKE, AKS) with `kubectl` properly configured.
 
@@ -9,10 +9,10 @@ This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker
 > - Completed: [Local API Server](local.md)
 > - Kubernetes cluster running (minikube, Docker Desktop, or cloud provider)
 > - `kubectl` configured
-> - jac-scale installed and enabled:
+> - Deployment dependencies installed into your project: the `scale` subsystem ships with `jaclang`, but `jac start --scale` needs `kubernetes`/`docker` in the project venv. Configure `[scale.kubernetes]` in `jac.toml` (or just run the deploy once -- the first `--scale` run resolves them) and:
 >
 >   ```bash
->   pip install jac-scale
+>   jac install
 >   ```
 >
 > - Time: ~10 minutes
@@ -62,7 +62,7 @@ walker:pub add_todo {
 
     can create with Root entry {
         todo = here ++> Todo(title=self.title);
-        report {"title": todo[0].title, "done": todo[0].done};
+        report {"title": todo.title, "done": todo.done};
     }
 }
 
@@ -100,30 +100,28 @@ That's it. Your application is now running on Kubernetes.
 
 ## Deployment Modes
 
-### Development Mode (Default)
-
-Deploys without building a Docker image. Fastest for iteration.
+### Deploy
 
 ```bash
 jac start --scale
 ```
 
-### Production Mode
+There is no image to build and no registry to configure. `jac-scale` packs your
+source into a bundle, copies it into the cluster, and runs every pod on a stock
+base image that a bootstrap initContainer prepares. The same command works
+against a local cluster and a remote one.
 
-Builds a Docker image and pushes to DockerHub before deploying.
+### Preview
 
 ```bash
-jac start --scale --build
+jac start --scale --dry-run
 ```
 
-**Requirements for production mode:**
-
-Create a `.env` file with your Docker credentials:
-
-```env
-DOCKER_USERNAME=your-dockerhub-username
-DOCKER_PASSWORD=your-dockerhub-password-or-token
-```
+Prints the manifests that would be applied and touches nothing: no cluster
+contact, no binary or console download, no client bundle build, no database
+provisioned, no TLS certificate issued, and no deploy tooling installed. The
+content-addressed bundle keys are rendered as placeholders (a real deploy
+computes the digests). Add `--show-yaml` to dump the raw YAML stream.
 
 ---
 
@@ -177,20 +175,55 @@ Configure deployment via environment variables in `.env`:
 
 ---
 
-## Remote Clusters and Image Registry
+## Autoscaling
 
-Local clusters (Docker Desktop, Minikube, k3d, kind) load the built image directly into the cluster's container runtime. **Remote clusters (EKS, GKE, AKS, anything you reach over the network) cannot do this** -- they pull images from a registry the cluster has IAM/auth to read.
-
-For a remote cluster, set `image_registry` in `jac.toml` so the build pipeline pushes there before applying manifests:
+By default scale creates a Kubernetes `HorizontalPodAutoscaler` that scales pods based on average CPU utilization. Configure the bounds in `jac.toml`:
 
 ```toml
-[plugins.scale.kubernetes]
-image_registry = "${ECR_REGISTRY}"   # e.g. 123456789012.dkr.ecr.us-east-2.amazonaws.com
+[scale.kubernetes]
+min_replicas = 2
+max_replicas = 10
+cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
 ```
 
-`${ENV_VAR}` interpolation lets you keep the registry URL out of source control -- export it from `.env` or your CI runner. The build pipeline tags the image as `<registry>/<app_name>:dev-<sha12>` and pushes before `kubectl apply`. Image tags are content-addressed (the `<sha12>` suffix changes whenever the source does), so subsequent rebuilds trigger an automatic rolling update.
+For event-driven scaling or scale-to-zero, switch to the KEDA engine:
 
-You also need to give your CI runner or developer machine permission to push to the registry. For ECR, that's typically `aws ecr get-login-password | docker login` plus an IAM policy granting `ecr:*` on the repo.
+```toml
+[scale.kubernetes]
+autoscaler_engine = "keda"
+min_replicas = 1              # default 1; floor while triggers are active
+max_replicas = 10             # default 3; ceiling for scale-out
+cpu_utilization_target = 50   # default 50; seeds a CPU trigger (requires cpu_request)
+idle_replicas = 0             # default null (uses min_replicas); set 0 for scale-to-zero
+autoscaler_polling_interval = 30   # default 30; seconds between trigger evaluations
+autoscaler_cooldown = 300          # default 300; seconds of inactivity before scaling down
+autoscaler_initial_cooldown = 0    # default 0; seconds after deploy before scale-to-zero kicks in
+```
+
+!!! note
+    KEDA must be installed on your cluster before setting `autoscaler_engine = "keda"`. See the [KEDA installation guide](https://keda.sh/docs/latest/deploy/).
+
+For the full list of autoscaling options (including event triggers, polling intervals, cooldown tuning, and authenticated triggers), see the [Scale Reference](../../reference/plugins/jac-scale-kubernetes.md#autoscaling).
+
+---
+
+## Local and Remote Clusters
+
+The same `jac start --scale` works against both, and neither needs a container
+registry. Because no application image is built, there is nothing to push and
+nothing for the cluster to pull: your source travels into the cluster as a
+bundle on a PVC, and pods boot from a stock base image.
+
+Pods pull only that base image -- `jaseci/jaclang` by default. If your cluster
+cannot reach Docker Hub, point `python_image` at one it can:
+
+```toml
+[scale.kubernetes]
+python_image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/jaclang:latest"
+```
+
+That is the only registry a deploy depends on, and only for the base image --
+your code is never baked into it.
 
 ---
 
@@ -199,7 +232,7 @@ You also need to give your CI runner or developer machine permission to push to 
 When two services need to read and write the same files (e.g. an IDE backend and a build worker that both touch a project workspace), declare a shared volume that gets mounted on both pods:
 
 ```toml
-[[plugins.scale.microservices.shared_volumes]]
+[[scale.microservices.shared_volumes]]
 name = "workspace"
 mount_path = "/data/workspace"
 services = ["builder_sv", "build_worker"]
@@ -224,7 +257,7 @@ Each entry is an array-of-tables (note the double brackets), so you can declare 
 By default microservice + gateway pods run as the namespace's `default` ServiceAccount, which has no RBAC. Apps that talk to the cluster API at runtime (sandbox-spawning, operator-style controllers, K8s Job / CronJob managers) need a ServiceAccount pre-bound with the right Role / ClusterRole. The microservice target does not create the SA -- it only references one you provide:
 
 ```toml
-[plugins.scale.kubernetes]
+[scale.kubernetes]
 service_account_name = "myapp-sa"
 ```
 
@@ -238,10 +271,10 @@ Auto-creating the SA + RoleBindings from `jac.toml` is on the roadmap but not ye
 
 ### Check Status
 
-Use `jac status main.jac` to see the health of all deployment components at a glance:
+Use `jac scale status main.jac` to see the health of all deployment components at a glance:
 
 ```bash
-jac status main.jac
+jac scale status main.jac
 ```
 
 This displays a table showing each component's status (Running, Degraded, Pending, Restarting, or Not Deployed), pod readiness counts, and service URLs.
@@ -253,7 +286,7 @@ kubectl get pods
 kubectl get services
 ```
 
-All jac-scale resources are labeled with `managed: jac-scale`, so you can list everything it owns:
+All scale-managed resources are labeled with `managed: jac-scale`, so you can list everything it owns:
 
 ```bash
 kubectl get all -l managed=jac-scale
@@ -267,10 +300,10 @@ kubectl logs -l app=jaseci -f
 
 ### Clean Up
 
-Remove all Kubernetes resources created by jac-scale:
+Remove all Kubernetes resources created by scale:
 
 ```bash
-jac destroy main.jac
+jac scale destroy main.jac
 ```
 
 This removes:
@@ -334,7 +367,7 @@ alias kubectl='microk8s kubectl'
 
 ```bash
 # Check all component statuses at once
-jac status main.jac
+jac scale status main.jac
 
 # Or use kubectl for more detail
 kubectl get pods
@@ -358,22 +391,30 @@ kubectl logs -l app=mongodb
 kubectl logs -l app=redis
 ```
 
-### Build failures (--build mode)
+### Pods stuck in Init
 
-- Ensure Docker daemon is running
-- Verify `.env` has correct `DOCKER_USERNAME` and `DOCKER_PASSWORD`
-- Check disk space for image building
+The bootstrap initContainer unpacks the source bundle and installs the runtime
+before your app starts, so a pod stuck in `Init` almost always failed there:
+
+```bash
+kubectl logs <pod-name> -c jac-bootstrap
+kubectl get pvc                     # the bundle PVC must be Bound
+```
+
+A `Pending` PVC means the cluster has no usable StorageClass; an
+`ImagePullBackOff` means it cannot reach the base image, so set `python_image`
+to one it can pull.
 
 ### General debugging
 
 ```bash
 # Quick overview of all components
-jac status main.jac
+jac scale status main.jac
 
 # Describe a pod for events
 kubectl describe pod <pod-name>
 
-# Get all jac-scale managed resources
+# Get all scale-managed resources
 kubectl get all -l managed=jac-scale
 
 # Check events
@@ -386,7 +427,7 @@ kubectl get events --sort-by='.lastTimestamp'
 
 ```bash
 # Create a new full-stack project
-jac create todo --use client
+jac create todo --use web-static
 cd todo
 
 # Deploy to Kubernetes
@@ -405,4 +446,4 @@ Access:
 
 - [Local API Server](local.md) - Development without Kubernetes
 - [Authentication](../fullstack/auth.md) - Add user authentication
-- [jac-scale Reference](../../reference/plugins/jac-scale.md) - Full configuration options
+- [Scale Reference](../../reference/plugins/jac-scale.md) - Full configuration options

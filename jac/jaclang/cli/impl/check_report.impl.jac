@@ -1,11 +1,3 @@
-"""Impl of Formatting utilities for jac check output"""
-
-"""Print a 'jac guide' pointer when a diagnostic maps to a reference guide.
-
-`alert` is an Alert from the compiler; its `code` field carries the
-DiagnosticInfo (code string + Category). When the code maps to a bundled
-guide, a one-line hint nudges the reader -- human or AI agent -- to the fix.
-"""
 def print_guide_hint(alert: any) -> None {
     import from jaclang.cli.console { console }
     import from jaclang.cli.guide_store { guide_for_diagnostic }
@@ -29,7 +21,7 @@ impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
 impl print_file_progress(file_path: str, success: bool, idx: int, total: int) -> None {
     import from jaclang.cli.console { console }
     percentage = int((idx / total) * 100);
-    status = "PASSED" if success else "FAILED";
+    status = "ok" if success else "FAILED";
     console.print(f"{file_path} {status} [{percentage}%]");
 }
 

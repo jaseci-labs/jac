@@ -1,18 +1,13 @@
 """Semantic definition match pass tests – migrated from test_sem_def_match_pass.py."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      );
 
 test "sem def match" {
@@ -175,7 +170,7 @@ test "sem target names produce no spurious warnings" {
     # of the resolved symbol — sym bound for the type checker / static
     # analysis passes, AND present in Symbol.uses so find-references and
     # refactor tooling see each segment as a real reference site.
-    sem_defs = mod.get_all_sub_nodes(typ=uni.SemDef, brute_force=True);
+    sem_defs = mod.get_all_sub_nodes(typ=uni.SemDef);
     for semdef in sem_defs {
         for part in semdef.target {
             assert part.sym is not None , (

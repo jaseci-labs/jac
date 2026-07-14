@@ -24,7 +24,7 @@
 
 Jac's native codespace compiles code to **machine-code via LLVM** -- the same Jac syntax, but running as native instructions instead of on the Python runtime. You can use it in two ways:
 
-1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `na { }` block (or `to na:` section header / `na` statement prefix). The compiler generates the interop layer automatically.
+1. **Inline native sections** -- drop native-compiled functions into any Jac application alongside Python-backed code using a `na { }` block (or `na` statement prefix). The compiler generates the interop layer automatically.
 2. **Standalone `.na.jac` files** -- compile an entire program to a self-contained binary with `jac nacompile`. No Python runtime, no external compiler, no external linker -- the entire toolchain from source to executable runs within Jac itself.
 
 Native compilation is ideal for:
@@ -39,16 +39,18 @@ Native compilation is ideal for:
 
 | Aspect | Details |
 |--------|---------|
-| **Inline section** | `na { }` block (or `to na:` header / `na` prefix) in any `.jac` file |
+| **Inline section** | `na { }` block (or `na` prefix) in any `.jac` file |
 | **Dedicated file** | `.na.jac` extension |
 | **Entry point** | `with entry { }` (standalone binaries only) |
-| **CLI command** | `jac nacompile <file> [-o output]` |
+| **CLI command** | `jac nacompile <file> [-o output] [--shared]` |
 | **Backend** | LLVM IR via llvmlite |
-| **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64) |
+| **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64), Windows (x86_64) |
 | **External toolchain** | None -- entire pipeline is self-contained |
-| **C interop** | `import from libname` (logical) or `import from "path"` (explicit) |
-| **Std library** | `import sys` (`sys.argv`, `sys.exit()`) |
+| **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
+| **C interop (out)** | `jac nacompile --shared` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
+| **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
 | **Memory model** | Automatic reference counting |
+| **Testing** | `test "description" { }` blocks compile native and run via `jac test` |
 
 ---
 
@@ -56,10 +58,9 @@ Native compilation is ideal for:
 
 The most common way to use native compilation is to tag elements of a regular `.jac` file for the native codespace. Functions in a native section compile to native machine code while the rest of the file runs on Python as usual.
 
-There are three ways to select the native codespace inside a file:
+There are two ways to select the native codespace inside a file:
 
 - **`na { ... }` braced block** (recommended) -- every element inside the braces compiles native; the braces bracket exactly the tagged region. Also works inside inner scopes.
-- **`to na:` section header** -- every following module-level element compiles native until the next `to X:` header or end of file. Convenient for a module that is mostly native.
 - **`na` single-statement prefix** -- tags one declaration.
 
 ```jac
@@ -232,6 +233,100 @@ graph LR
 
 ---
 
+## Shared Libraries (C ABI)
+
+Where `import from "lib.so" { ... }` lets native Jac *call into* C libraries, `jac nacompile --shared` does the inverse: it packages a `.na.jac` module as a **C-ABI shared library** that any C/C++/Python/Rust host can load and call. The same self-contained pipeline emits an ELF `.so`, a Mach-O `.dylib`, or a PE `.dll` -- no system linker required.
+
+```bash
+jac nacompile mathlib.na.jac --shared          # -> ./libmathlib.so   (host platform)
+jac nacompile mathlib.na.jac --shared --target macos     # -> ./libmathlib.dylib
+jac nacompile mathlib.na.jac --shared --target windows   # -> ./libmathlib.dll
+```
+
+### Choosing what to export
+
+A shared library has no `with entry {}` -- its surface is whatever you mark **`:pub`**. Only explicitly `:pub` functions and globals are placed in the library's export table; everything else stays internal (callable *within* the library, invisible to a host). This makes `:pub` a curated C-ABI surface rather than a dump of every symbol.
+
+```jac
+# mathlib.na.jac
+glob:pub counter: int = 7;          # exported global (read via dlsym/GetProcAddress)
+
+def:pub jadd(a: int, b: int) -> int {   # exported function
+    return a + b;
+}
+
+def helper(x: int) -> int {          # NOT exported -- internal only
+    return x * 2;
+}
+
+obj:pub Point {
+    has x: int = 0, y: int = 0;
+}
+
+def:pub make_point(x: int, y: int) -> Point {
+    return Point(x=x, y=y);          # returns an opaque handle (see below)
+}
+
+def:pub point_sum(p: Point) -> int {
+    return p.x + p.y;
+}
+```
+
+`:pub` symbols exported from imported native modules are re-exported too, so a library can be composed from several `.na.jac` files.
+
+### Calling it from C
+
+The exported names are plain C symbols. Scalars (`int`->`int64`, `float`->`double`, `bool`) pass by value; the library links and loads with the standard toolchain:
+
+```c
+// gcc app.c -L. -lmathlib -Wl,-rpath,. -o app
+extern long jadd(long, long);
+extern long get_counter(void);
+int main(void) { return (int)(jadd(2, 3) + get_counter()); }  // 12
+```
+
+…or via `dlopen`/`ctypes`:
+
+```python
+import ctypes
+lib = ctypes.CDLL("./libmathlib.so")
+lib.jadd.restype = ctypes.c_int64
+lib.jadd.argtypes = [ctypes.c_int64, ctypes.c_int64]
+print(lib.jadd(2, 3))   # 5
+```
+
+### Opaque object handles and lifetimes
+
+Jac objects, strings, lists and dicts are reference-counted heap values. They cross the C ABI as **opaque handles** (`void*`): a host receives the pointer from one `:pub` function and passes it to another, but must not dereference it directly. Because the library manages those objects with reference counting, it also exports two helpers so a host can manage their lifetime:
+
+```c
+void  jac_retain(void *handle);    // take a reference
+void  jac_release(void *handle);   // drop a reference (frees at zero)
+```
+
+```python
+p = lib.make_point(3, 4)     # opaque Point*
+lib.point_sum(p)             # -> 7
+lib.jac_release(p)           # release when done
+```
+
+### Initialization
+
+Module globals are initialized automatically when the library is loaded -- there is no `jac_init()` to remember. The loader runs an injected `__jac_shared_init` via the platform's standard mechanism (ELF `DT_INIT_ARRAY`, Mach-O `__mod_init_func`, PE `DllMain` on `DLL_PROCESS_ATTACH`), which runs this module's and every imported native module's global initializers before any export is called.
+
+### Per-platform output
+
+| Target | Output | Format details |
+|--------|--------|----------------|
+| Linux (default/host) | `lib<name>.so` | `ET_DYN`, PIC, exported `.dynsym` + `.hash`, `R_*_RELATIVE` fixups, `DT_INIT_ARRAY`, section headers (so `ld -l`, `readelf`, `nm -D` all work) |
+| `--target macos` | `lib<name>.dylib` | `MH_DYLIB`, export trie, `__mod_init_func`, `LC_ID_DYLIB`; ad-hoc code-signed on arm64 |
+| `--target windows` | `lib<name>.dll` | `IMAGE_FILE_DLL`, export directory, `.reloc` base relocations, `DllMain` entry |
+
+!!! note "What can be exported"
+    A `:pub` export's parameters and return value must be C-ABI representable: scalars and pointers (Jac objects/strings/containers as opaque `void*` handles), plus the C struct types from `import from "lib"` interop. Methods are not exported (their symbol is class-qualified, not a valid C name) -- wrap them in a `:pub` free function.
+
+---
+
 ## Type System
 
 ### Primitive Type Mappings
@@ -300,6 +395,7 @@ Collections are represented as LLVM struct types:
 | While loops | `while x > 0 { x -= 1; }` |
 | For-in range | `for i in range(10) { ... }` |
 | For-in collection | `for item in items { ... }` |
+| For-in lazy adapters | `for x in map(f, items) { ... }`, also `filter` / `enumerate` / `zip` |
 | Break / Continue | `break;` / `continue;` |
 | Ternary | `x = a if condition else b;` |
 
@@ -413,7 +509,7 @@ Collections are represented as LLVM struct types:
 
 | Feature | Example |
 |---------|---------|
-| `open(path, mode)` | `f = open("data.txt", "r");` |
+| `open(path, mode)` | `f = open("data.txt", "r");` -- raises `FileNotFoundError` if the path is missing (CPython-congruent) |
 | `f.read()` / `f.readline()` | Read entire file or one line |
 | `f.write(data)` / `f.flush()` | Write string, flush buffer |
 | `f.close()` | Close file handle |
@@ -431,19 +527,132 @@ Collections are represented as LLVM struct types:
 | `chr()` / `ord()` | Character conversion |
 | `str()` / `int()` | Type conversion |
 | `input()` | Read a line from stdin |
+| `map()` / `filter()` | Lazy iterator adapters; iterate in a `for` loop |
+| `enumerate()` / `zip()` | Lazy adapters yielding tuples; unpack in a `for` loop |
+
+The `map`, `filter`, `enumerate`, and `zip` builtins are lazy iterator adapters: a `for` loop consumes them, and they compose without building intermediate lists (e.g. `for x in map(double, filter(is_even, items)) { ... }`, or `for (i, x) in enumerate(items) { ... }`). They are supported as `for`-loop iterables; binding an iterator to a variable and advancing it with `next()` is not available.
 
 ### Standard Library Modules
 
-#### `sys` -- Command-Line Arguments and Exit
+Native Jac ships a growing, **Python-congruent** subset of the standard library:
+the *same* `import X` + `X.func(...)` source compiles and runs on both the
+Python/`sv` pathway and the native/`na` pathway, with the native side lowering
+to libc/libm. Where behavior can still diverge, it is noted per module below.
 
-Native Jac supports `import sys` for accessing command-line arguments and controlling process exit:
+| Module | Status | Lowering |
+|--------|--------|----------|
+| `math` | full (results match CPython to within floating-point ULP) | libm |
+| `time` | full | `clock_gettime` / `nanosleep` |
+| `sys` | subset | constants + argv/exit |
+| `os` / `os.path` | subset | libc |
+| `random` | seed-sequence faithful | CPython MT19937 |
+
+Anything not yet lowered is **rejected at compile time** (rather than silently
+producing a wrong binary), so an unsupported `import` or member fails loudly.
+
+#### `math` -- Floating-Point Math
+
+`import math` lowers to libm, so results are congruent with CPython (which also
+calls libm) to within floating-point ULP.
+
+| Group | Members |
+|-------|---------|
+| Constants | `pi`, `e`, `tau`, `inf`, `nan` |
+| Powers / roots | `sqrt`, `cbrt`, `pow` |
+| Trig + inverses | `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `hypot` |
+| Hyperbolic + inverses | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh` |
+| Exp / log | `exp`, `expm1`, `log` (one- or two-arg), `log2`, `log10`, `log1p` |
+| Rounding (return `int`) | `floor`, `ceil`, `trunc` |
+| Misc | `fabs`, `fmod`, `copysign`, `remainder`, `degrees`, `radians` |
+| Special | `gamma`, `lgamma`, `erf`, `erfc` |
+| Predicates (return `bool`) | `isnan`, `isinf`, `isfinite` |
+
+```jac
+import math;
+
+with entry {
+    print(math.sqrt(16.0));        # 4.0
+    print(math.hypot(3.0, 4.0));   # 5.0
+    print(math.floor(2.7));        # 2  (int)
+    print(math.log(8.0, 2.0));     # 3.0
+}
+```
+
+#### `time` -- Clocks and Sleep
+
+`import time` lowers to POSIX clocks. Wall-clock values are inherently
+non-deterministic, but each reader is congruent with its CPython counterpart.
+
+| Feature | Notes |
+|---------|-------|
+| `time.time()` | Unix epoch seconds (`float`), `CLOCK_REALTIME` |
+| `time.monotonic()` / `time.perf_counter()` | Monotonic seconds (`float`) |
+| `time.time_ns()` / `time.monotonic_ns()` / `time.perf_counter_ns()` | Integer nanoseconds |
+| `time.sleep(secs)` | Suspend for `secs` (fractional seconds OK), via `nanosleep` |
+
+#### `sys` -- Interpreter and Process
 
 | Feature | Example |
 |---------|---------|
-| `sys.argv` | `args = sys.argv;` -- list of command-line arguments |
-| `sys.exit(code)` | `sys.exit(1);` -- exit the process with a status code |
+| `sys.argv` | `args = sys.argv;` -- `list[str]`, `argv[0]` is the program name |
+| `sys.exit(code)` | `sys.exit(1);` -- exit with a status code |
+| `sys.maxsize` | `INT64_MAX` (native `int` is 64-bit) |
+| `sys.byteorder` | `"little"` / `"big"` (host arch) |
+| `sys.platform` | e.g. `"linux"` / `"darwin"` |
 
-`sys.argv` is a `list[str]` where `argv[0]` is the program name and subsequent elements are the arguments passed on the command line. This works both with `jac run --autonative` and standalone binaries compiled via `jac nacompile`.
+`sys.argv` works both with `jac run --autonative` and standalone binaries
+compiled via `jac nacompile`.
+
+#### `os` and `os.path` -- Operating System
+
+`import os` lowers to libc. `os.getcwd()` / `os.getenv(name)` return strings
+(`getenv` returns `None` for an unset variable); the mutating calls operate on
+the real filesystem.
+
+| `os` | Notes |
+|------|-------|
+| `os.getpid()` | Process id (`int`) |
+| `os.getcwd()` | Current working directory (`str`) |
+| `os.getenv(name)` | Environment value or `None` |
+| `os.chdir(path)` | Change directory |
+| `os.mkdir(path)` / `os.rmdir(path)` | Create / remove a directory |
+| `os.remove(path)` / `os.unlink(path)` | Remove a file |
+| `os.rename(src, dst)` | Rename |
+| `os.system(cmd)` | Run a shell command, return its exit code |
+
+| `os.path` | Notes |
+|-----------|-------|
+| `os.path.join(*parts)` | Join with `/`; an absolute part or trailing slash is handled |
+| `os.path.basename(p)` / `os.path.dirname(p)` | Final component / parent |
+| `os.path.exists(p)` | `access(F_OK)` |
+| `os.path.isfile(p)` / `os.path.isdir(p)` | `stat`-based |
+
+`split` / `splitext` / `abspath` / `normpath` are not yet lowered.
+
+#### `random` -- Pseudo-Random Numbers
+
+`import random` uses a faithful re-implementation of CPython's **MT19937**, so
+`random.seed(n)` followed by the same calls produces the **same sequence** on
+the `sv` and `na` pathways (seed an integer first for reproducibility).
+
+| Feature | Notes |
+|---------|-------|
+| `random.seed(n)` | Seed from an integer (CPython `init_by_array`) |
+| `random.random()` | Float in `[0, 1)` (53-bit, `genrand_res53`) |
+| `random.getrandbits(k)` | `k` up to 64 |
+| `random.randint(a, b)` | Inclusive, via the `_randbelow` rejection loop |
+| `random.randrange(stop)` / `randrange(start, stop)` | Half-open |
+| `random.uniform(a, b)` | Float in `[a, b]` |
+
+```jac
+import random;
+
+with entry {
+    random.seed(42);
+    print(random.random());        # matches CPython's seed(42) stream
+    print(random.randint(1, 100));
+}
+```
 
 ```jac
 import sys;
@@ -474,7 +683,7 @@ Verbose mode enabled
 
 ## C Library Interop
 
-Native Jac can call functions from any shared C library -- system libraries like libc and libm, or third-party libraries like [raylib](https://www.raylib.com/) -- using `import from`:
+Native Jac can call functions from any shared C library -- system libraries like libc and libm, or third-party libraries like [raylib](https://www.raylib.com/) -- using `import from`. (For plain math, prefer `import math` above, which lowers to libm for you; the example below shows the lower-level C-interop mechanism.)
 
 ```jac
 # Import math functions from libm
@@ -551,8 +760,9 @@ This is the form used for the libm example above. Any library that exposes a C A
 | Linux | aarch64 | Supported |
 | macOS | x86_64 | Supported |
 | macOS | arm64 (Apple Silicon) | Supported |
+| Windows | x86_64 | Supported (cross-build via `--target windows`, producing a PE `.exe` / `.dll`) |
 
-The platform and architecture are auto-detected at compile time. The correct binary format (ELF on Linux, Mach-O on macOS) is produced automatically -- no external compiler or linker is needed on any platform.
+The platform and architecture are auto-detected at compile time. The correct binary format (ELF on Linux, Mach-O on macOS, PE on Windows) is produced automatically -- no external compiler or linker is needed on any platform.
 
 !!! note "macOS arm64"
     On Apple Silicon, ad-hoc code signing is applied automatically as required by macOS.
@@ -565,6 +775,58 @@ Native Jac uses **automatic reference counting** for memory management. Heap-all
 
 !!! warning "Current Status"
     Deep release of nested structures is currently disabled to prevent use-after-free in complex ownership scenarios. This means certain long-running native programs may leak memory. Programs with bounded allocation are unaffected. Proper ownership tracking is a planned improvement.
+
+### Reserved `__rc_*` runtime hooks
+
+Five names are **reserved intrinsics** on the native pathway: `__rc_debug_enable()`, `__rc_debug_disable()`, `__rc_gc_disable()`, `__rc_gc_enable()`, and `__rc_collect_cycles()`. A call to any of them is dispatched by name to the corresponding runtime helper *before* normal call classification and symbol resolution -- ahead of builtins, module functions, and locals. You therefore cannot define or import your own function under one of these names in native code and expect it to be called; the name is claimed by the RC runtime (defining one would also collide with the runtime's own emitted symbol). The dispatch lives in a single table in the native code generator (`_codegen_rc_intrinsic`).
+
+These hooks exist only in native code. On the Python backend they have no runtime implementation, and a call surfaces an unresolved-type diagnostic at check time rather than silently type-checking.
+
+### Reference-count elision
+
+A move assignment `b = a` would normally emit a defensive `__rc_retain` on the source so that both slots can be released independently. When the move is the *last* use of `a`, that retain is pure overhead: the reference can simply be handed to `b` and the source slot nulled, so `a`'s later cleanup release loads null and is a no-op and the object is freed exactly once.
+
+The native backend decides where this is safe with `RcElisionProofPass`, a small intraprocedural pass that runs unconditionally in the native codegen path -- *before* `NaIRGenPass` and independent of the [ownership & borrow checker](ownership-borrowing.md), which does not run under `nacompile` (`type_check=False`). The pass reads only the syntactic AST and the CFG; it consults no checker or symbol facts, so the elision is sound whether or not the ownership diagnostics ever ran.
+
+It is deliberately conservative -- it proves only the safe case and retains everywhere else. An assignment `b = a` is elided only when:
+
+- `b` is a single, plain, **local** name (never a field, subscript, global, or parameter);
+- the binding is not a `borrow`/`val` binding;
+- `a` is a plain **local** name (an `own` *parameter* is never elided);
+- **every** use of `a` in its function is an alias-value into a plain local -- this one invariant excludes call-args, returns, field/container stores, `&a` borrows, and closure/concurrent captures, any of which is a use that is not an alias-value; and
+- `a` is **dead-out** at the move site, proven by backward liveness over the CFG. A later use reached through a loop back-edge without an intervening redefinition keeps `a` live and blocks the elision, so a `b = a` inside a loop is elided only when `a` is redefined each iteration before the move.
+
+The proof is scoped to the exact move site (`Assignment.na_move_lowerable`), not to a symbol, so a variable moved at its last use elides there even if it was aliased earlier.
+
+---
+
+## Testing
+
+`test` blocks in native context compile to native code and run through `jac test` -- the same harness used everywhere else in Jac. A test in a `.na.jac` module, or inside an inline `na { }` block, executes inside the module's JIT engine with full native semantics: the same integer, float, string, and object behavior as the code it exercises.
+
+```jac
+# vectors.na.jac
+
+def dot(x1: float, y1: float, x2: float, y2: float) -> float {
+    return x1 * x2 + y1 * y2;
+}
+
+test "dot product" {
+    assert dot(1.0, 0.0, 0.0, 1.0) == 0.0;
+    assert dot(2.0, 3.0, 4.0, 5.0) == 23.0;
+}
+```
+
+```bash
+jac test vectors.na.jac
+```
+
+Each native test runs under an implicit exception handler: a failing `assert` -- or any uncaught runtime raise (`IndexError`, `ZeroDivisionError`, ...) -- fails that one test and reports through the standard pass/fail pipeline. The failure message carries the assert site as `file:line`. All `jac test` options (`-t` name filtering, directory discovery, `--maxfail`, `--xit`) behave identically for native tests, and a mixed module can hold Python and native tests side by side -- each runs in its own codespace.
+
+Assert messages in native tests are limited to string literals: `assert cond, "message"` includes the literal in the failure report, while a dynamic message such as an f-string is not evaluated (the report falls back to the assert location).
+
+!!! warning "Process isolation"
+    Native tests run in-process via the JIT. A test that crashes the process outright -- for example a segfault through a bad C-interop pointer -- takes the test runner down with it, unlike an assert failure, which is caught and reported.
 
 ---
 
@@ -627,6 +889,35 @@ def fib(n: int) -> int {
 with entry {
     for i in range(10) {
         print(f"fib({i}) = {fib(i)}");
+    }
+}
+```
+
+### Lazy Iterators (map / filter / enumerate / zip)
+
+```jac
+# pipeline.na.jac
+
+def double(x: int) -> int { return x * 2; }
+def is_even(x: int) -> bool { return x % 2 == 0; }
+
+with entry {
+    nums: list[int] = [1, 2, 3, 4, 5, 6];
+
+    # map and filter compose lazily, with no intermediate lists
+    total: int = 0;
+    for x in map(double, filter(is_even, nums)) {
+        total = total + x;
+    }
+    print(f"sum of doubled evens: {total}");
+
+    # enumerate and zip yield tuples unpacked in the loop header
+    for (i, n) in enumerate(nums) {
+        print(f"#{i}: {n}");
+    }
+    scores: list[int] = [10, 20, 30];
+    for (n, s) in zip(nums, scores) {
+        print(f"{n} scored {s}");
     }
 }
 ```

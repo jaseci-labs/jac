@@ -14,15 +14,14 @@ in CI as an executable spec; this PR keeps CI green.
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     SLOT_EXT = os.path.join(
+glob SLOT_EXT = os.path.join(
          JAC_ROOT,
          "tests",
          "compiler",
@@ -215,5 +214,58 @@ test "sibling slots: each accumulator IIFE declares its own `let` binding" {
     );
     assert "let __jac_view_kids_1 = [];" in js_code , (
         "the second sibling slot needs its own suffixed accumulator:\n" + js_code
+    );
+}
+
+test "issue #6732: a bare expression statement in a slot is accumulated" {
+    # Inside a JSX `{...}` statement slot, a bare JSX element is pushed into
+    # the slot's children accumulator, but a bare expression statement (e.g.
+    # a string) used to be lowered as a discarded `ExpressionStatement`, so
+    # conditional content written that way silently rendered nothing. A bare
+    # expression statement is template content, exactly like a bare element,
+    # and must be accumulated too -- consistent with the `{expr}` slot.
+    es_ast = compile_to_esast("bare_expr_slot.cl.jac");
+    js_code = es_to_js(es_ast);
+
+    # A (the bug): the conditional bare string must be pushed, not dropped.
+    assert '.push("BARE_STRING_A")' in js_code , (
+        "a bare string statement inside a slot must be accumulated into the "
+        "slot's children, not evaluated and discarded:\n" + js_code
+    );
+    # B (no regression): a bare JSX element is still pushed.
+    assert '__jacJsx("span", {}, ["ELEMENT_STRING_B"])' in js_code , (
+        "a bare JSX element statement must still be accumulated:\n" + js_code
+    );
+    # C (no regression): the single-expression ternary slot stays inline.
+    assert '(show ? "TERNARY_STRING_C" : "")' in js_code , (
+        "a single-expression `{... if ... else ...}` slot stays a plain "
+        "expression child:\n" + js_code
+    );
+
+    # The general rule covers every value-producing expression statement,
+    # in both the `if`/`else` arms and the `for` body of `Kinds`.
+    assert '.push(`have ${count}`)' in js_code , (
+        "an f-string statement in a slot must be accumulated:\n" + js_code
+    );
+    assert '.push("EMPTY_BRANCH")' in js_code , (
+        "a bare string in an `else` arm must be accumulated:\n" + js_code
+    );
+    assert ".push(label)" in js_code , (
+        "a bare identifier statement in a `for` slot body must be "
+        "accumulated each iteration:\n" + js_code
+    );
+}
+
+test "issue #6732: no misleading W0060 docstring warning inside a slot" {
+    # The lone diagnostic on the dropped bare string was W0060 ("docstrings
+    # go before the declaration") -- doubly wrong: the string is slot content,
+    # not a docstring, and it now renders. A bare string in a JSX slot body
+    # must not be mis-flagged as a misplaced docstring.
+    prog = compile_for_diag("bare_expr_slot.cl.jac");
+    assert not has_code(prog, "W0060", in_warnings=True) , (
+        "a bare string inside a JSX `{...}` slot body is template content, "
+        "not a docstring, and must not fire W0060: " + str(
+            [(w.code.code if w.code else "?") for w in prog.warnings_had]
+        )
     );
 }
